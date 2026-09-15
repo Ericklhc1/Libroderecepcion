@@ -56,13 +56,15 @@ describe('mesa de supervisión', () => {
       severity: Severity.CRITICA,
       roomId: room.id,
       tags: [],
+      requiresFollowUp: false,
     });
 
     const rows = rowsOf((await getSupervisionData()).blocks, 'incidencias');
-    expect(rows.map((row) => row.ref)).toContain(`#${entry.seq}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.ref).toBe(`#${entry.seq}`);
     // Enlaza al registro del libro, no a un módulo aparte.
-    expect(rows[0].href).toBe(`/libro/${entry.id}`);
-    expect(rows[0].detail).toContain('Sin responsable');
+    expect(rows[0]!.href).toBe(`/libro/${entry.id}`);
+    expect(rows[0]!.detail).toContain('Sin responsable');
   });
 
   it('recoge la tarea vencida y no la que aún no vence', async () => {
@@ -83,8 +85,8 @@ describe('mesa de supervisión', () => {
 
     const rows = rowsOf((await getSupervisionData()).blocks, 'tareas');
     expect(rows).toHaveLength(1);
-    expect(rows[0].ref).toBe(`T#${vencida.seq}`);
-    expect(rows[0].meta).toContain('vencida hace 3 h');
+    expect(rows[0]!.ref).toBe(`T#${vencida.seq}`);
+    expect(rows[0]!.meta).toContain('vencida hace 3 h');
   });
 
   it('lista sin responsable sólo lo que sigue abierto y sin dueño', async () => {
@@ -96,6 +98,7 @@ describe('mesa de supervisión', () => {
       priority: Priority.MEDIA,
       roomId: room.id,
       tags: [],
+      requiresFollowUp: false,
     });
     const asignada = await createEntry(receptionist, {
       type: EntryType.MANTENIMIENTO,
@@ -105,6 +108,7 @@ describe('mesa de supervisión', () => {
       roomId: room.id,
       ownerId: supervisor.id,
       tags: [],
+      requiresFollowUp: false,
     });
 
     const refs = rowsOf((await getSupervisionData()).blocks, 'sin-responsable').map((r) => r.ref);
@@ -122,6 +126,7 @@ describe('mesa de supervisión', () => {
       severity: Severity.CRITICA,
       roomId: room.id,
       tags: [],
+      requiresFollowUp: false,
     });
     expect(rowsOf((await getSupervisionData()).blocks, 'incidencias')).toHaveLength(1);
 

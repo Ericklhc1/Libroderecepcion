@@ -28,6 +28,7 @@ describe('paralelismo de consultas', () => {
       description: 'Se ajustó la tarifa del grupo que llega mañana.',
       priority: Priority.MEDIA,
       tags: [],
+      requiresFollowUp: false,
     });
     await createTask(user, {
       title: 'Confirmar traslados',

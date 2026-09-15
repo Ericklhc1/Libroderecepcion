@@ -21,7 +21,7 @@ describe('menú principal', () => {
   });
 
   it('responde a las cinco preguntas operativas en el grupo principal', () => {
-    const primary = NAV_GROUPS[0];
+    const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // qué ocurre ahora

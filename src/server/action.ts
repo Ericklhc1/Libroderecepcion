@@ -3,8 +3,36 @@ import { z } from 'zod';
 import { AppError, ValidationError } from '@/server/errors';
 import { normalizeTags } from '@/domain/tags';
 
+/**
+ * Credenciales que sólo se pueden leer una vez.
+ *
+ * Viajan como dato, no dentro del texto del mensaje. Una clave metida en una
+ * frase se pierde en cuanto la interfaz decide cerrar el formulario, y esa
+ * clave no se puede recuperar: hay que volver a generarla.
+ */
+export type RevealedCredentials = {
+  name: string;
+  username: string;
+  email: string;
+  password: string;
+  /** A dónde se envió, si el correo está configurado. */
+  recipient: string;
+  sent: boolean;
+  /** Por qué no se pudo enviar, cuando corresponda. */
+  reason?: string | null;
+};
+
 export type ActionState =
-  | { ok: true; message: string; id?: string }
+  | {
+      ok: true;
+      message: string;
+      id?: string;
+      /**
+       * Su presencia obliga a la interfaz a mantener el formulario abierto:
+       * quien lo ve tiene que poder copiarlas antes de cerrar.
+       */
+      credentials?: RevealedCredentials;
+    }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /** Convierte FormData en objeto plano; agrupa claves repetidas en arreglos. */

@@ -98,9 +98,18 @@ const OPERATIONAL_BASE: PermissionKey[] = [
  * el ciclo operativo (ver `operational: false` en el rol).
  */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
-  // El Administrador de sistema queda fuera de la operación habitual: puede
-  // ver el estado y configurar el inventario, pero no confirma salidas, no
-  // entrega llaves ni importa los informes del día.
+  /*
+    El Administrador de sistema queda fuera de la **operación habitual**: no
+    inicia, recibe ni entrega turno, no confirma salidas ni entradas, y no
+    entrega llaves. Esas son las acciones en que aparecería como responsable
+    operativo de algo, y es justo lo que no debe ocurrir.
+
+    Sí importa los informes del PMS. Cargar los tres informes del día no es
+    operar: es alimentar el sistema con su fuente de datos, más cerca de la
+    configuración que del mesón. Excluirlo dejaba un callejón sin salida —la
+    persona que instala el hotel no podía cargar el primer día de datos— sin
+    proteger nada, porque la importación no asigna a nadie como responsable.
+  */
   [ROLE_KEYS.SYSTEM_ADMIN]: ALL_PERMISSIONS.filter(
     (p) =>
       ![
@@ -109,7 +118,6 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
         'shift.handover',
         'room.manage',
         'key.assign',
-        'pms.import',
       ].includes(p),
   ),
   [ROLE_KEYS.SUPERVISOR]: [

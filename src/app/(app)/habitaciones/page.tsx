@@ -137,6 +137,57 @@ export default async function RoomsPage({
         </span>
       </div>
 
+      {/*
+        Sin ninguna estadía cargada, las 89 habitaciones se ven "Disponible" y
+        nada dice por qué. Este aviso existe porque esa pantalla se lee como
+        un hotel vacío en lugar de como un tablero sin informes.
+      */}
+      {rooms.every(
+        (room) =>
+          !room.snapshot.outgoing && !room.snapshot.current && !room.snapshot.incoming,
+      ) ? (
+        <Card className="border-amber-300">
+          <div className="space-y-3 px-4 py-4">
+            <p className="text-sm font-semibold text-petrol-900">
+              Todavía no hay informes del PMS cargados
+            </p>
+            <p className="text-sm text-slate-600">
+              Por eso las {rooms.length} habitaciones aparecen disponibles: el sistema no
+              inventa estadías. En cuanto cargues los tres informes —entradas, in house y
+              salidas— cada habitación mostrará su huésped, su reserva, la salida pendiente,
+              la entrada en cola y sus llaves.
+            </p>
+            {hasPermission(user, 'pms.import') ? (
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/turno"
+                  className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-petrol-950 transition-colors hover:bg-gold-400 active:bg-gold-600"
+                >
+                  Cargarlos desde el inicio de turno
+                </Link>
+                <Link
+                  href="/habitaciones/importar"
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-petrol-800 transition-colors hover:bg-slate-50"
+                >
+                  Cargarlos aquí
+                </Link>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Tu rol no incluye el permiso «Importar informes del PMS». Se concede en{' '}
+                <Link
+                  href="/admin/roles"
+                  className="font-medium text-petrol-600 hover:underline"
+                >
+                  Administración → Roles
+                </Link>
+                .
+              </p>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
       {conflicts.length ? (
         <Card>
           <CardHeader title="Conflictos para revisar" count={conflicts.length} />

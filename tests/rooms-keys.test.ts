@@ -12,7 +12,12 @@ import {
 import { readStructuredReport, type TextFragment } from '@/domain/pms/layout';
 import { normalizeReport } from '@/domain/pms/normalize';
 import { applyImport, getImportPreview, prepareImport } from '@/server/services/pms-import';
-import { confirmCheckIn, confirmCheckOut, getRoomDetail } from '@/server/services/rooms';
+import {
+  confirmCheckIn,
+  confirmCheckOut,
+  getRoomDetail,
+  listRoomsWithState,
+} from '@/server/services/rooms';
 import { getKeyInventory, giveExtraCopy, returnKey, setKeyIncidentStatus } from '@/server/services/keys';
 import { getLiveConflicts } from '@/server/services/pms-import';
 import { RuleError } from '@/server/errors';
@@ -263,11 +268,120 @@ describe('habitaciones y llaves', () => {
       await applyImport(receptionist, await seedBatch(receptionist));
     });
 
-    it('una habitación in house sin check-in en el sistema no tiene llave entregada', async () => {
-      // El informe in house llega ya confirmado, pero la llave se entrega en
-      // el mesón: el sistema lo marca como conflicto en lugar de inventarlo.
+    /*
+      Decisión revisada. La primera versión no entregaba ninguna llave al
+      importar: el informe in house venía confirmado, pero la entrega ocurre
+      en el mesón y el sistema no quería inventarla. En la práctica eso dejaba
+      treinta avisos de «in house sin llave» en cada importación, ninguno
+      accionable: nadie había registrado la entrega porque el huésped entró
+      antes de que el sistema existiera.
+
+      Quien está dentro de la habitación tiene su llave. Es un hecho físico,
+      no una decisión del mesón, y ahora la importación lo refleja.
+    */
+    it('todo huésped in house queda con su llave principal asignada', async () => {
+      const inHouse = await prisma.roomStay.findMany({
+        where: { status: RoomStayStatus.IN_HOUSE, deletedAt: null, roomId: { not: null } },
+        select: { roomId: true },
+      });
+      expect(inHouse.length).toBeGreaterThan(20);
+
+      const rooms = await listRoomsWithState();
+      for (const stay of inHouse) {
+        const room = rooms.find((candidate) => candidate.id === stay.roomId);
+        // O la tiene asignada, o está pendiente de devolución porque además
+        // hoy se va: en ninguno de los dos casos está en el inventario.
+        expect(room?.snapshot.keysOut.length ?? 0).toBeGreaterThan(0);
+      }
+    });
+
+    it('la revisión ya no avisa de lo que la propia importación resuelve', async () => {
+      /*
+        La previsión simula la entrega con la misma regla que aplica la
+        importación. Antes anunciaba treinta «in house sin llave» que el botón
+        «Aplicar» resolvía acto seguido: un aviso que no había que atender.
+      */
+      const preview = await getImportPreview(await seedBatch(receptionist));
+      expect(preview.conflicts.filter((c) => c.kind === 'IN_HOUSE_SIN_LLAVE')).toEqual([]);
+      // Lo que sí debe seguir anunciando: las entradas que quedan en cola.
+      expect(
+        preview.conflicts.some((c) => c.kind === 'ENTRADA_CON_SALIDA_PENDIENTE'),
+      ).toBe(true);
+    });
+
+    it('ya no quedan avisos de «in house sin llave»', async () => {
       const conflicts = await getLiveConflicts();
-      expect(conflicts.some((conflict) => conflict.kind === 'IN_HOUSE_SIN_LLAVE')).toBe(true);
+      expect(conflicts.filter((conflict) => conflict.kind === 'IN_HOUSE_SIN_LLAVE')).toEqual([]);
+    });
+
+    it('la salida sin confirmar deja su llave pendiente de devolución', async () => {
+      // 405: sale Zhou Caiwu. El huésped todavía la tiene, y el mesón sabe
+      // que hay que recuperarla.
+      const room = await getRoomDetail('405');
+      expect(room.snapshot.state).toBe('CHECK_OUT_PENDIENTE');
+      expect(room.snapshot.mainKey?.status).toBe(KeyStatus.PENDIENTE_DEVOLUCION);
+      expect(room.snapshot.mainKey?.stayId).toBe(room.snapshot.outgoing?.id);
+    });
+
+    it('la entrada en cola sigue sin llave, con la principal en inventario', async () => {
+      /*
+        Es el límite de la regla nueva y el corazón de la regla de cola: la
+        408 tiene una salida sin confirmar y una entrada esperando. La llave
+        es de quien sale, nunca de quien espera.
+      */
+      const room = await getRoomDetail('408');
+      expect(room.snapshot.state).toBe('PENDIENTE_LIBERACION');
+      expect(room.snapshot.mainKey?.stayId).toBe(room.snapshot.outgoing?.id);
+      expect(room.snapshot.mainKey?.stayId).not.toBe(room.snapshot.incoming?.id);
+
+      // Y una habitación con la entrada lista, sin nadie dentro, no recibe nada.
+      const lista = await getRoomDetail('403');
+      expect(lista.snapshot.state).toBe('CHECK_IN_LISTO');
+      expect(lista.snapshot.keysOut).toEqual([]);
+      expect(lista.snapshot.mainKey?.status).toBe(KeyStatus.DISPONIBLE);
+    });
+
+    it('no le quita la llave a quien ya la tiene', async () => {
+      /*
+        La 404 está in house con su llave asignada. Volver a importar no puede
+        reasignarla ni registrar un movimiento nuevo: la llave ya está donde
+        debe.
+      */
+      const antes = await getRoomDetail('404');
+      const movimientosAntes = await prisma.keyMovement.count({
+        where: { keyId: antes.snapshot.mainKey!.id },
+      });
+
+      const result = await applyImport(receptionist, await seedBatch(receptionist));
+      expect(result.keysAssigned).toBe(0);
+
+      const despues = await getRoomDetail('404');
+      expect(despues.snapshot.mainKey?.id).toBe(antes.snapshot.mainKey?.id);
+      expect(despues.snapshot.mainKey?.stayId).toBe(antes.snapshot.mainKey?.stayId);
+      expect(
+        await prisma.keyMovement.count({ where: { keyId: antes.snapshot.mainKey!.id } }),
+      ).toBe(movimientosAntes);
+    });
+
+    it('una llave extraviada no se asigna: el conflicto se conserva', async () => {
+      const room = await getRoomDetail('406');
+      const key = room.snapshot.mainKey!;
+      await prisma.roomKey.update({
+        where: { id: key.id },
+        data: { status: KeyStatus.EXTRAVIADA, stayId: null },
+      });
+
+      await applyImport(receptionist, await seedBatch(receptionist));
+
+      const despues = await getRoomDetail('406');
+      expect(despues.snapshot.mainKey?.status).toBe(KeyStatus.EXTRAVIADA);
+      expect(despues.snapshot.mainKey?.stayId).toBeNull();
+      const conflicts = await getLiveConflicts();
+      expect(
+        conflicts.some(
+          (conflict) => conflict.kind === 'IN_HOUSE_SIN_LLAVE' && conflict.roomNumber === '406',
+        ),
+      ).toBe(true);
     });
 
     it('la entrada en cola nunca tiene llave asignada', async () => {

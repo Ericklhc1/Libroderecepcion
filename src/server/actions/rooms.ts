@@ -268,7 +268,10 @@ export async function applyImportAction(
         `Listo: ${outcome.created} estadías nuevas, ${outcome.updated} actualizadas, ` +
         `${outcome.preserved} conservadas por decisión manual` +
         (outcome.skipped ? `, ${outcome.skipped} sin habitación` : '') +
-        (outcome.keysFlagged ? `, ${outcome.keysFlagged} llave(s) por devolver` : '') +
+        (outcome.keysAssigned
+          ? `, ${outcome.keysAssigned} llave(s) principal(es) entregada(s) a su ocupante`
+          : '') +
+        (outcome.keysFlagged ? `, ${outcome.keysFlagged} copia(s) por devolver` : '') +
         '.',
     };
   });

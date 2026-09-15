@@ -210,6 +210,38 @@ export function deriveRoomState(input: {
  * alguien confirme el check-in. IN_HOUSE exige al menos la principal.
  * CHECK_OUT conserva la llave hasta que la salida se confirme.
  */
+/**
+ * Quién debe tener la llave principal de la habitación, y en qué estado.
+ *
+ * Es un hecho físico, no una decisión del mesón: quien está dentro tiene su
+ * llave. De aquí sale tanto lo que escribe la importación como lo que la
+ * pantalla de revisión anuncia que va a pasar, para que no puedan divergir.
+ *
+ *   · salida sin confirmar → PENDIENTE_DEVOLUCION: la tiene y hay que
+ *     recuperarla, así que confirmar la salida la devuelve al inventario.
+ *   · in house             → ASIGNADA.
+ *   · entrada sin confirmar→ nadie. Es la regla de cola: quien espera no
+ *     recibe llave hasta que la salida anterior se confirme.
+ *
+ * Cuando hay salida y estadía in house a la vez —el caso normal de quien se
+ * va hoy, que aparece en los dos informes— manda la salida.
+ */
+export type KeyHolderCandidate = { id: string; status: StayStatus; stage: StayStage };
+
+export function principalKeyHolder(
+  stays: KeyHolderCandidate[],
+): { stayId: string; status: 'ASIGNADA' | 'PENDIENTE_DEVOLUCION' } | null {
+  const active = stays.filter((stay) => ACTIVE_STAGES.includes(stay.stage));
+
+  const leaving = active.find((stay) => stay.status === 'CHECK_OUT');
+  if (leaving) return { stayId: leaving.id, status: 'PENDIENTE_DEVOLUCION' };
+
+  const inside = active.find((stay) => stay.status === 'IN_HOUSE');
+  if (inside) return { stayId: inside.id, status: 'ASIGNADA' };
+
+  return null;
+}
+
 export function expectedKeys(status: StayStatus, stage: StayStage): { min: number; max: number } {
   if (status === 'CHECK_IN') return { min: 0, max: 0 };
   if (status === 'IN_HOUSE') return { min: 1, max: Infinity };

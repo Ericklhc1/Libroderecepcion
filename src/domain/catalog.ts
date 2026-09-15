@@ -1,3 +1,4 @@
+import { KeyStatus, KeyType } from '@prisma/client';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
   ALL_PERMISSIONS,
@@ -55,92 +56,130 @@ type Client = PrismaClient | Prisma.TransactionClient;
  * Es idempotente, de modo que puede ejecutarse tanto desde la semilla de
  * desarrollo como desde la instalación inicial de un despliegue real.
  */
+/**
+ * Catálogo base: permisos, roles con su matriz, áreas, habitaciones y llaves.
+ *
+ * Es idempotente, de modo que puede ejecutarse tanto desde la semilla de
+ * desarrollo como desde la instalación inicial de un despliegue real.
+ *
+ * Está escrito por lotes a propósito. La versión anterior hacía un `upsert`
+ * por fila —más de doscientas consultas— y eso sólo es barato cuando la base
+ * está en la misma máquina. En un despliegue real la función y la base pueden
+ * estar en continentes distintos, con unos 120 ms por consulta, y la
+ * transacción se agotaba antes de terminar. Ahora son una decena de consultas,
+ * cada una con todas sus filas.
+ */
 export async function seedCatalog(
   client: Client,
   options: { hotelName?: string } = {},
 ): Promise<void> {
-  for (const key of ALL_PERMISSIONS) {
-    const meta = PERMISSIONS[key];
-    await client.permission.upsert({
-      where: { key },
-      update: { name: meta.name, group: meta.group },
-      create: { key, name: meta.name, group: meta.group },
-    });
-  }
+  // --- Permisos -----------------------------------------------------------
+  await client.permission.createMany({
+    data: ALL_PERMISSIONS.map((key) => ({
+      key,
+      name: PERMISSIONS[key].name,
+      group: PERMISSIONS[key].group,
+    })),
+    skipDuplicates: true,
+  });
 
-  for (const definition of ROLE_DEFINITIONS) {
-    const role = await client.role.upsert({
-      where: { key: definition.key },
-      update: {
-        name: definition.name,
-        description: definition.description,
-        level: definition.level,
-        operational: definition.operational,
-        isSystem: true,
-      },
-      create: {
-        key: definition.key,
-        name: definition.name,
-        description: definition.description,
-        level: definition.level,
-        operational: definition.operational,
-        isSystem: true,
-      },
-    });
+  // --- Roles --------------------------------------------------------------
+  await client.role.createMany({
+    data: ROLE_DEFINITIONS.map((definition) => ({
+      key: definition.key,
+      name: definition.name,
+      description: definition.description,
+      level: definition.level,
+      operational: definition.operational,
+      isSystem: true,
+    })),
+    skipDuplicates: true,
+  });
 
-    const permissions = await client.permission.findMany({
-      where: { key: { in: [...ROLE_PERMISSIONS[definition.key]] } },
-      select: { id: true },
-    });
-    await client.rolePermission.deleteMany({ where: { roleId: role.id } });
-    await client.rolePermission.createMany({
-      data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
-      skipDuplicates: true,
-    });
-  }
-
-  for (const department of DEPARTMENTS) {
-    await client.department.upsert({
-      where: { key: department.key },
-      update: { name: department.name, order: department.order },
-      create: department,
-    });
-  }
+  const roles = await client.role.findMany({ select: { id: true, key: true } });
+  const roleIdByKey = new Map(roles.map((role) => [role.key, role.id]));
 
   /*
-    Habitaciones y llaves. Cada habitación nace con su llave principal en el
-    inventario (disponible, no asignada: nadie ha hecho check-in todavía) y el
-    stock del Supervisor arranca con un puñado de copias sin destino.
+    Los roles que ya existían pueden traer nombre o nivel antiguos: se
+    actualizan, que son cuatro filas. Los permisos y las áreas no se tocan
+    porque su nombre no cambia con el tiempo.
   */
-  for (const room of roomNumbers()) {
-    const created = await client.room.upsert({
-      where: { number: room.number },
-      update: { floor: room.floor },
-      create: { number: room.number, floor: room.floor },
-    });
-    // La llave principal pertenece a la habitación desde el primer día: queda
-    // ligada a ella aunque todavía no se haya entregado a nadie.
-    await client.roomKey.upsert({
-      where: { code: `P-${room.number}` },
-      update: { roomId: created.id },
-      create: {
-        code: `P-${room.number}`,
-        type: 'PRINCIPAL',
-        status: 'DISPONIBLE',
-        roomId: created.id,
+  for (const definition of ROLE_DEFINITIONS) {
+    const id = roleIdByKey.get(definition.key);
+    if (!id) continue;
+    await client.role.update({
+      where: { id },
+      data: {
+        name: definition.name,
+        description: definition.description,
+        level: definition.level,
+        operational: definition.operational,
+        isSystem: true,
       },
     });
   }
 
-  for (let index = 1; index <= SPARE_KEYS; index += 1) {
-    const code = `C-${String(index).padStart(2, '0')}`;
-    await client.roomKey.upsert({
-      where: { code },
-      update: {},
-      create: { code, type: 'COPIA', status: 'DISPONIBLE' },
-    });
+  // --- Matriz de permisos por rol -----------------------------------------
+  const permissions = await client.permission.findMany({
+    select: { id: true, key: true },
+  });
+  const permissionIdByKey = new Map(permissions.map((p) => [p.key, p.id]));
+
+  const matrix: Array<{ roleId: string; permissionId: string }> = [];
+  for (const definition of ROLE_DEFINITIONS) {
+    const roleId = roleIdByKey.get(definition.key);
+    if (!roleId) continue;
+    for (const key of ROLE_PERMISSIONS[definition.key]) {
+      const permissionId = permissionIdByKey.get(key);
+      if (permissionId) matrix.push({ roleId, permissionId });
+    }
   }
 
+  // La matriz se reemplaza completa: es la definición vigente del código.
+  await client.rolePermission.deleteMany({
+    where: { roleId: { in: [...roleIdByKey.values()] } },
+  });
+  await client.rolePermission.createMany({ data: matrix, skipDuplicates: true });
+
+  // --- Áreas --------------------------------------------------------------
+  await client.department.createMany({ data: DEPARTMENTS, skipDuplicates: true });
+
+  // --- Habitaciones y llaves ----------------------------------------------
+  await client.room.createMany({ data: roomNumbers(), skipDuplicates: true });
+
+  const rooms = await client.room.findMany({ select: { id: true, number: true } });
+
+  await client.roomKey.createMany({
+    data: [
+      // La llave principal pertenece a su habitación desde el primer día.
+      ...rooms.map((room) => ({
+        code: `P-${room.number}`,
+        type: KeyType.PRINCIPAL,
+        status: KeyStatus.DISPONIBLE,
+        roomId: room.id,
+      })),
+      // Stock del Supervisor: copias sin destino.
+      ...Array.from({ length: SPARE_KEYS }, (_, index) => ({
+        code: `C-${String(index + 1).padStart(2, '0')}`,
+        type: KeyType.COPIA,
+        status: KeyStatus.DISPONIBLE,
+      })),
+    ],
+    skipDuplicates: true,
+  });
+
+  /*
+    Una llave principal creada por una versión anterior pudo quedar sin
+    habitación asociada. Se vincula por su código en una sola sentencia.
+  */
+  await client.$executeRaw`
+    UPDATE "RoomKey" AS k
+    SET "roomId" = r.id
+    FROM "Room" AS r
+    WHERE k."type" = 'PRINCIPAL' AND k."roomId" IS NULL AND k."code" = 'P-' || r."number"
+  `;
+
+  // --- Nombre del hotel ---------------------------------------------------
   if (options.hotelName) {
     await client.systemSetting.upsert({
       where: { key: 'hotel.name' },

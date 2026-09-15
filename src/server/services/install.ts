@@ -39,7 +39,8 @@ export async function runInstall(input: {
   const passwordHash = await hashPassword(input.password);
   const email = input.email.trim().toLowerCase();
 
-  const user = await prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(
+    async (tx) => {
     // Cierre de la carrera: si otra instalación se adelantó, esta se detiene.
     if ((await tx.user.count()) > 0) {
       throw new AppError('El sistema ya está instalado.', 'ALREADY_INSTALLED');
@@ -62,7 +63,16 @@ export async function runInstall(input: {
         mustChangePassword: false,
       },
     });
-  });
+    },
+    /*
+      La base de datos puede estar lejos del servidor que ejecuta esto. El
+      plazo por omisión de cinco segundos no alcanza para sembrar el catálogo
+      completo cuando cada consulta cruza un océano, y el catálogo tiene que
+      quedar entero o no quedar: si se cortara a medias, el sistema arrancaría
+      con roles sin permisos.
+    */
+    { timeout: 30_000, maxWait: 10_000 },
+  );
 
   await recordAudit({
     entity: 'User',

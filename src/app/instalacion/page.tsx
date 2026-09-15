@@ -6,6 +6,12 @@ import { InstallForm } from './install-form';
 export const metadata = { title: 'Instalación' };
 export const dynamic = 'force-dynamic';
 
+/*
+  Sembrar el catálogo o aplicar tres informes completos toma más que los diez
+  segundos que la plataforma concede por omisión a una función.
+*/
+export const maxDuration = 60;
+
 /**
  * Pantalla de instalación inicial. Sólo existe mientras la base de datos no
  * tenga ningún usuario: en cuanto hay uno, redirige al inicio de sesión.

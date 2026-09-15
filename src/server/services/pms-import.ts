@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   AuditAction,
+  KeyAction,
   KeyStatus,
   PmsImportStatus,
   RoomStayStage,
@@ -391,7 +392,8 @@ export async function applyImport(
   user: CurrentUser,
   batchId: string,
 ): Promise<ImportResult> {
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(
+    async (tx) => {
     const batch = await tx.pmsImportBatch.findUnique({ where: { id: batchId } });
     if (!batch) throw new NotFoundError('Esa importación no existe.');
     if (batch.status !== PmsImportStatus.BORRADOR) {
@@ -411,21 +413,47 @@ export async function applyImport(
     const rooms = await tx.room.findMany({ select: { id: true, number: true } });
     const byNumber = new Map(rooms.map((room) => [room.number, room]));
 
+    /*
+      Todo lo que sigue está escrito por lotes. Una consulta por fila es barata
+      contra una base local y ruinosa contra una base remota: cincuenta y siete
+      filas a 120 ms por consulta agotan cualquier transacción. Se lee el estado
+      de una vez, se decide en memoria y se escribe agrupado.
+    */
+    const existingStays = await tx.roomStay.findMany({
+      where: { businessDate },
+      select: {
+        id: true,
+        reservationId: true,
+        roomId: true,
+        status: true,
+        stage: true,
+        touchedManually: true,
+        guestNames: true,
+        channel: true,
+        arrivalDate: true,
+        departureDate: true,
+        pmsStatus: true,
+      },
+    });
+
+    const keyOf = (reservationId: string, roomId: string | null, status: RoomStayStatus) =>
+      `${reservationId}|${roomId ?? ''}|${status}`;
+    const existingByKey = new Map(
+      existingStays.map((stay) => [keyOf(stay.reservationId, stay.roomId, stay.status), stay]),
+    );
+
+    const toCreate: Prisma.RoomStayCreateManyInput[] = [];
+    const toUpdate: Array<{ id: string; data: Prisma.RoomStayUpdateInput }> = [];
+
+    const sameDay = (a: Date | null, b: Date | null) =>
+      a && b ? a.getTime() === b.getTime() : a === b;
+
     for (const draft of drafts) {
       const room = draft.roomNumber ? byNumber.get(draft.roomNumber) : null;
       if (!room) {
         summary.skipped += 1;
         continue;
       }
-
-      const existing = await tx.roomStay.findFirst({
-        where: {
-          businessDate,
-          reservationId: draft.reservationId,
-          roomId: room.id,
-          status: draft.status,
-        },
-      });
 
       const descriptive = {
         guestNames: draft.guestNames,
@@ -437,32 +465,45 @@ export async function applyImport(
         batchId: batch.id,
       };
 
+      const existing = existingByKey.get(keyOf(draft.reservationId, room.id, draft.status));
+
       if (existing) {
-        if (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE) {
-          // Sólo datos descriptivos: la etapa la decide una persona, no el PDF.
-          await tx.roomStay.update({ where: { id: existing.id }, data: descriptive });
-          summary.preserved += 1;
-        } else {
-          await tx.roomStay.update({ where: { id: existing.id }, data: descriptive });
-          summary.updated += 1;
-        }
+        const protectedStay =
+          existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE;
+        if (protectedStay) summary.preserved += 1;
+        else summary.updated += 1;
+
+        // Sólo se escribe si algo cambió de verdad: un informe idéntico no
+        // genera ninguna escritura.
+        const unchanged =
+          existing.guestNames.join('\u0000') === draft.guestNames.join('\u0000') &&
+          existing.channel === descriptive.channel &&
+          existing.pmsStatus === descriptive.pmsStatus &&
+          sameDay(existing.arrivalDate, descriptive.arrivalDate) &&
+          sameDay(existing.departureDate, descriptive.departureDate);
+        if (!unchanged) toUpdate.push({ id: existing.id, data: descriptive });
         continue;
       }
 
-      await tx.roomStay.create({
-        data: {
-          ...descriptive,
-          reservationId: draft.reservationId,
-          roomId: room.id,
-          status: draft.status,
-          stage:
-            draft.status === RoomStayStatus.IN_HOUSE
-              ? RoomStayStage.CONFIRMADO
-              : RoomStayStage.PENDIENTE,
-          businessDate,
-        },
+      toCreate.push({
+        ...descriptive,
+        reservationId: draft.reservationId,
+        roomId: room.id,
+        status: draft.status,
+        stage:
+          draft.status === RoomStayStatus.IN_HOUSE
+            ? RoomStayStage.CONFIRMADO
+            : RoomStayStage.PENDIENTE,
+        businessDate,
       });
       summary.created += 1;
+    }
+
+    if (toCreate.length) {
+      await tx.roomStay.createMany({ data: toCreate, skipDuplicates: true });
+    }
+    for (const update of toUpdate) {
+      await tx.roomStay.update({ where: { id: update.id }, data: update.data });
     }
 
     /*
@@ -479,37 +520,49 @@ export async function applyImport(
         deletedAt: null,
         roomId: { not: null },
       },
-      select: { id: true, roomId: true, reservationId: true },
+      select: { id: true, roomId: true },
     });
 
-    for (const departure of departures) {
-      if (!departure.roomId) continue;
-      const keys = await tx.roomKey.findMany({
-        where: {
-          roomId: departure.roomId,
-          status: { in: [KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL] },
-        },
-        select: { id: true, status: true },
-      });
-      for (const key of keys) {
-        await tx.roomKey.update({
-          where: { id: key.id },
-          data: { status: KeyStatus.PENDIENTE_DEVOLUCION, stayId: departure.id },
-        });
-        await tx.keyMovement.create({
-          data: {
-            keyId: key.id,
-            action: 'MARCADA_PENDIENTE_DEVOLUCION',
-            fromStatus: key.status,
-            toStatus: KeyStatus.PENDIENTE_DEVOLUCION,
-            roomId: departure.roomId,
-            stayId: departure.id,
-            userId: user.id,
-            note: 'Salida informada por el PMS',
+    const departureByRoom = new Map(
+      departures
+        .filter((departure) => departure.roomId)
+        .map((departure) => [departure.roomId as string, departure.id]),
+    );
+
+    const heldKeys = departureByRoom.size
+      ? await tx.roomKey.findMany({
+          where: {
+            roomId: { in: [...departureByRoom.keys()] },
+            status: { in: [KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL] },
           },
+          select: { id: true, status: true, roomId: true },
+        })
+      : [];
+
+    if (heldKeys.length) {
+      // Una actualización por estadía de salida, no una por llave.
+      for (const [roomId, stayId] of departureByRoom) {
+        const keys = heldKeys.filter((key) => key.roomId === roomId);
+        if (!keys.length) continue;
+        await tx.roomKey.updateMany({
+          where: { id: { in: keys.map((key) => key.id) } },
+          data: { status: KeyStatus.PENDIENTE_DEVOLUCION, stayId },
         });
-        summary.keysFlagged += 1;
       }
+
+      await tx.keyMovement.createMany({
+        data: heldKeys.map((key) => ({
+          keyId: key.id,
+          action: KeyAction.MARCADA_PENDIENTE_DEVOLUCION,
+          fromStatus: key.status,
+          toStatus: KeyStatus.PENDIENTE_DEVOLUCION,
+          roomId: key.roomId,
+          stayId: key.roomId ? (departureByRoom.get(key.roomId) ?? null) : null,
+          userId: user.id,
+          note: 'Salida informada por el PMS',
+        })),
+      });
+      summary.keysFlagged = heldKeys.length;
     }
 
     await tx.pmsImportBatch.update({
@@ -523,7 +576,11 @@ export async function applyImport(
     });
 
     return summary;
-  });
+    },
+    // La base puede estar lejos del servidor: el plazo por omisión de cinco
+    // segundos no alcanza para una importación completa.
+    { timeout: 30_000, maxWait: 10_000 },
+  );
 
   await recordAudit({
     entity: 'PmsImportBatch',

@@ -15,6 +15,12 @@ import { ReviewDecision } from './review';
 export const metadata = { title: 'Importar informes del PMS' };
 export const dynamic = 'force-dynamic';
 
+/*
+  Sembrar el catálogo o aplicar tres informes completos toma más que los diez
+  segundos que la plataforma concede por omisión a una función.
+*/
+export const maxDuration = 60;
+
 const REPORT_NAMES: Record<string, string> = {
   ENTRADAS: 'Informe de entradas',
   IN_HOUSE: 'Informe in house',

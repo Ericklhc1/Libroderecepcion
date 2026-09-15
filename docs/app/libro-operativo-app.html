@@ -1,4 +1,4 @@
-<title>Recorrido del Libro Operativo</title>
+<title>Libro Operativo de Recepción</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 
@@ -629,6 +629,9 @@ h3 { font-size: 13.5px; font-weight: 600; margin: 0; }
 .btn-ghost { background: transparent; color: var(--petrol-mid); padding-inline: 7px; }
 .btn-ghost:hover { background: var(--petrol-soft); }
 
+.btn-danger { background: var(--critico-mark); color: #fff; }
+.btn-danger:hover { filter: brightness(1.08); }
+
 .btn-sm { padding: 4px 9px; font-size: 12px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 
@@ -1086,15 +1089,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">L</span>
       <div>
-        <p class="brand-hotel">Hotel Costa Serena</p>
+        <p class="brand-hotel" id="brand-hotel">Recepción</p>
         <p class="brand-name">Libro Operativo</p>
       </div>
     </div>
     <nav class="nav" id="nav" aria-label="Navegación principal"></nav>
     <div class="whoami">
-      <p class="whoami-label">Sesión</p>
-      <select id="role-select" aria-label="Cambiar de usuario sin volver a iniciar sesión"></select>
-      <button class="nav-item" type="button" data-act="logout" style="margin-top:6px;font-size:12.5px">Cerrar sesión</button>
+      <p class="whoami-label">En el mesón</p>
+      <div id="whoami" style="display:flex;gap:9px;align-items:center;padding:3px 2px"></div>
+      <button class="nav-item" type="button" data-act="switch-user" style="margin-top:6px;font-size:12.5px">Cambiar de usuario</button>
     </div>
   </aside>
 
@@ -1123,16 +1126,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
 <div class="toast-host" id="toasts" aria-live="polite"></div>
 <div id="modal-host"></div>
 
+
 <script>
 /* ===========================================================================
-   Preview operativa del Libro Operativo de Recepción.
-   Reproduce el modelo, las reglas de turno, los permisos y el motor de
-   alertas de la aplicación real, ejecutándose por completo en el navegador.
-   El estado de esta preview vive en el navegador de cada visitante.
+   Libro Operativo de Recepción — aplicación operativa.
+
+   Los datos viven en la base de datos compartida del artefacto: persisten
+   entre sesiones y se sincronizan en vivo entre todos los dispositivos que
+   tengan la página abierta. La página es interna de la organización: sólo la
+   abre quien pertenece a ella y a quien se le comparta el enlace.
    =========================================================================== */
 (function () {
   'use strict';
-
   // ------------------------------- Iconos ---------------------------------
   const I = {
     home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>',
@@ -1152,6 +1157,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     close: '<path d="M18 6 6 18M6 6l12 12"/>'
   };
   const icon = (name, size) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"' + (size ? ' style="width:' + size + 'px;height:' + size + 'px"' : '') + '>' + I[name] + '</svg>';
+
 
   // ----------------------------- Vocabulario ------------------------------
   const TONE = { critico: '▲', atencion: '◆', pendiente: '●', curso: '▶', resuelto: '✓', neutro: '—' };
@@ -1220,34 +1226,35 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
 
   const DEPARTMENTS = ['Recepción', 'Reservas', 'Housekeeping', 'Mantenimiento', 'Seguridad', 'A&B', 'Administración', 'Ventas', 'Sistemas', 'Otro'];
 
+
   // ------------------------------- Permisos -------------------------------
   const PERMISSION_GROUPS = [
     { group: 'Libro operativo', items: [['entry.create', 'Crear registros'], ['entry.edit', 'Editar registros'], ['entry.close', 'Cerrar registros'], ['entry.reopen', 'Reabrir registros'], ['entry.delete', 'Eliminar registros']] },
     { group: 'Tareas', items: [['task.create', 'Crear tareas'], ['task.assign', 'Asignar tareas'], ['task.close', 'Completar tareas']] },
     { group: 'Incidencias', items: [['incident.create', 'Crear incidencias'], ['incident.manage', 'Gestionar incidencias'], ['incident.close', 'Cerrar incidencias']] },
     { group: 'Turnos', items: [['shift.start', 'Iniciar turno'], ['shift.receive', 'Recibir turno'], ['shift.handover', 'Entregar turno'], ['shift.close', 'Cerrar turno'], ['shift.manage', 'Programar turnos']] },
-    { group: 'Otros', items: [['followup.create', 'Crear seguimientos'], ['alert.manage', 'Gestionar alertas'], ['metrics.view', 'Ver indicadores'], ['audit.view', 'Ver auditoría'], ['user.manage', 'Administrar usuarios'], ['role.manage', 'Administrar roles'], ['system.configure', 'Configurar el sistema']] }
+    { group: 'Otros', items: [['followup.create', 'Crear seguimientos'], ['alert.manage', 'Gestionar alertas'], ['metrics.view', 'Ver indicadores'], ['audit.view', 'Ver auditoría'], ['guest.manage', 'Gestionar huéspedes y reservas'], ['user.manage', 'Administrar personal'], ['role.manage', 'Administrar roles'], ['system.configure', 'Configurar el sistema']] }
   ];
   const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i[0]));
 
-  const OPERATIONAL_BASE = ['entry.create', 'entry.edit', 'entry.close', 'task.create', 'task.assign', 'task.close', 'incident.create', 'followup.create', 'alert.manage', 'shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'metrics.view'];
+  const OPERATIONAL_BASE = ['entry.create', 'entry.edit', 'entry.close', 'task.create', 'task.assign', 'task.close', 'incident.create', 'followup.create', 'alert.manage', 'shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'guest.manage', 'metrics.view'];
 
-  const ROLES = {
+  /** Matriz de permisos por defecto. El Administrador de sistema puede editarla. */
+  const DEFAULT_ROLES = {
     RECEPCIONISTA: { name: 'Recepcionista', operational: true, permissions: OPERATIONAL_BASE.slice() },
     AUDITOR: { name: 'Auditor nocturno', operational: true, permissions: OPERATIONAL_BASE.concat(['incident.manage']) },
     SUPERVISOR: { name: 'Supervisor', operational: true, permissions: OPERATIONAL_BASE.concat(['entry.reopen', 'entry.delete', 'incident.manage', 'incident.close', 'shift.manage', 'audit.view']) },
-    ADMIN: { name: 'Administrador de sistema', operational: false, permissions: ALL_PERMISSIONS.filter((p) => !['shift.start', 'shift.receive', 'shift.handover'].includes(p)) }
+    ADMIN: { name: 'Administrador de sistema', operational: false, permissions: ALL_PERMISSIONS.filter((p) => ['shift.start', 'shift.receive', 'shift.handover'].indexOf(p) < 0) }
   };
+  const ROLE_ORDER = ['ADMIN', 'SUPERVISOR', 'AUDITOR', 'RECEPCIONISTA'];
 
-  const USERS = [
-    { id: 'u2', name: 'Camila Vera', role: 'RECEPCIONISTA', tag: 'Recepción · turno tarde' },
-    { id: 'u1', name: 'Diego Alarcón', role: 'RECEPCIONISTA', tag: 'Recepción · turno mañana' },
-    { id: 'u3', name: 'Rodrigo Núñez', role: 'AUDITOR', tag: 'Auditoría nocturna' },
-    { id: 'u4', name: 'Marcela Pinto', role: 'SUPERVISOR', tag: 'Supervisión' },
-    { id: 'u5', name: 'Sofía Reyes', role: 'ADMIN', tag: 'Sistemas' }
-  ];
+  /**
+   * Personal del hotel. Se llena desde la base de datos compartida; se mantiene
+   * el nombre `USERS` para que las vistas no dependan del origen de los datos.
+   */
+  let USERS = [];
   const userById = (id) => USERS.find((u) => u.id === id) || null;
-  const userName = (id) => (userById(id) ? userById(id).name : '—');
+  const userName = (id) => { const u = userById(id); return u ? u.name : '—'; };
 
   // -------------------------------- Fechas --------------------------------
   const DAY = 86400000;
@@ -1279,200 +1286,245 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
   const isOverdue = (iso, open) => Boolean(iso) && open && new Date(iso).getTime() < Date.now();
   const money = (n) => n == null ? '—' : '$' + Number(n).toLocaleString('es-CL');
 
-  // ----------------------------- Datos iniciales --------------------------
-  let seq = 0;
-  const nextSeq = () => ++seq;
 
-  function buildSeed() {
-    seq = 0;
-    const guests = [
-      { id: 'g1', name: 'Familia Moreau', room: '402', vip: true, notes: 'Aniversario de bodas. Amenidad de cortesía prometida.' },
-      { id: 'g2', name: 'Andrés Bustamante', room: '215', vip: false, notes: 'Viaje corporativo, requiere factura.' },
-      { id: 'g3', name: 'Helen Whitaker', room: '318', vip: true, notes: 'Alérgica a plumas: almohadas hipoalergénicas.' },
-      { id: 'g4', name: 'Paula Sanhueza', room: '107', vip: false, notes: 'Solicitó cuna adicional.' },
-      { id: 'g5', name: 'Grupo Andes Trekking', room: '501', vip: false, notes: '12 pasajeros, salida 06:00.' },
-      { id: 'g6', name: 'Tomás Ferreira', room: '223', vip: false, notes: 'Traslado al aeropuerto por confirmar.' }
-    ];
+  // --------------------------- Estado y persistencia ----------------------
+  /**
+   * Los datos operativos viven en la base de datos compartida del artefacto:
+   * persisten entre sesiones y se sincronizan en vivo entre todos los
+   * dispositivos que tienen la página abierta. Sólo las preferencias del
+   * dispositivo (quién soy, pestaña activa) quedan en este navegador.
+   */
+  const DEVICE_KEY = 'libro-operativo-dispositivo-v1';
 
-    const reservations = [
-      { id: 'r1', code: 'RES-10241', guestId: 'g1', room: '402', checkIn: at(0, 15), checkOut: at(3, 12), channel: 'Directo', status: 'CONFIRMADA', guarantee: 'VALIDADA', balance: null, action: 'Preparar decoración de aniversario antes del check-in.' },
-      { id: 'r2', code: 'RES-10255', guestId: 'g2', room: '215', checkIn: at(-1, 16), checkOut: at(1, 12), channel: 'Booking', status: 'EN_CASA', guarantee: 'RECHAZADA', balance: 184500, action: 'Tarjeta rechazada en pre-autorización. Solicitar otro medio de pago.' },
-      { id: 'r3', code: 'RES-10260', guestId: 'g3', room: '318', checkIn: at(0, 14), checkOut: at(2, 12), channel: 'Expedia', status: 'PENDIENTE', guarantee: 'PENDIENTE', balance: null, action: null },
-      { id: 'r4', code: 'RES-10262', guestId: 'g4', room: '107', checkIn: at(-2, 15), checkOut: at(0, 12), channel: 'Directo', status: 'EN_CASA', guarantee: 'VALIDADA', balance: 32000, action: null },
-      { id: 'r5', code: 'RES-10270', guestId: 'g5', room: '501', checkIn: at(-1, 18), checkOut: at(0, 6), channel: 'Agencia', status: 'EN_CASA', guarantee: 'VALIDADA', balance: 0, action: 'Salida anticipada 06:00: desayuno para llevar y cuentas cerradas.' },
-      { id: 'r6', code: 'RES-10275', guestId: 'g6', room: '223', checkIn: at(-1, 20), checkOut: at(1, 12), channel: 'Directo', status: 'EN_CASA', guarantee: 'VALIDADA', balance: null, action: 'Confirmar traslado al aeropuerto para las 09:30.' }
-    ];
+  const state = {
+    ready: false,
+    dbMissing: false,
+    dbError: null,
+    loaded: {},
+    hotel: { name: '', setupDone: false },
+    roles: JSON.parse(JSON.stringify(DEFAULT_ROLES)),
+    staff: [],
+    shifts: [], handovers: [], entries: [], tasks: [], followups: [],
+    alerts: [], guests: [], reservations: [], audit: [], archive: [],
+    currentUserId: null,
+    view: 'inicio',
+    openHandover: null,
+    tabs: { tareas: 'abiertas', alertas: 'activas', seguimientos: 'pendientes', incidencias: 'abiertas' },
+    filters: { q: '', tipo: '', estado: '', clase: '', prioridad: '', area: '' },
+    setupStep: 'cargando',
+    configWritable: null,
+    docCount: 0
+  };
 
-    const shifts = [
-      { id: 's-1m', type: 'MANANA', date: shiftDate(-1), status: 'CERRADO', staff: ['u1'], startedAt: at(-1, 7), endedAt: at(-1, 15) },
-      { id: 's-1t', type: 'TARDE', date: shiftDate(-1), status: 'CERRADO', staff: ['u2'], startedAt: at(-1, 15), endedAt: at(-1, 23) },
-      { id: 's-1n', type: 'NOCHE', date: shiftDate(-1), status: 'CERRADO', staff: ['u3'], startedAt: at(-1, 23), endedAt: at(0, 7) },
-      { id: 's0m', type: 'MANANA', date: shiftDate(0), status: 'ENTREGA_ENVIADA', staff: ['u1'], startedAt: at(0, 7), endedAt: null },
-      { id: 's0t', type: 'TARDE', date: shiftDate(0), status: 'PROGRAMADO', staff: ['u2', 'u4'], startedAt: null, endedAt: null },
-      { id: 's0n', type: 'NOCHE', date: shiftDate(0), status: 'PROGRAMADO', staff: ['u3'], startedAt: null, endedAt: null },
-      { id: 's1m', type: 'MANANA', date: shiftDate(1), status: 'PROGRAMADO', staff: ['u1'], startedAt: null, endedAt: null }
-    ];
-
-    const E = (o) => Object.assign({
-      id: 'e' + nextSeq(), seq: seq, tags: [], followUp: false, comments: [],
-      history: [], guestId: null, reservationId: null, deleted: false
-    }, o);
-
-    const entries = [
-      E({ type: 'INCIDENCIA', title: 'Aire acondicionado sin enfriar en habitación 318', description: 'La huésped reporta que el aire acondicionado no enfría desde las 22:00. Se ofreció ventilador de pie y cambio de habitación, que declinó por el equipaje ya desarmado.', department: 'Mantenimiento', priority: 'ALTA', status: 'EN_CURSO', createdBy: 'u3', ownerId: 'u1', shiftId: 's-1n', occurredAt: at(-1, 22, 15), dueAt: at(0, 12), tags: ['climatizacion', 'habitacion'], severity: 'ALTA', impact: 'HUESPED', immediateAction: 'Se entregó ventilador y se ofreció upgrade sin costo.', guestId: 'g3', reservationId: 'r3', followUp: true }),
-      E({ type: 'INCIDENCIA', title: 'Pre-autorización rechazada en habitación 215', description: 'La tarjeta del huésped fue rechazada al pre-autorizar el consumo extra. Se informó al huésped, que indicó regularizar el pago al regresar del aeropuerto.', department: 'Recepción', priority: 'CRITICA', status: 'ABIERTO', createdBy: 'u2', ownerId: 'u2', shiftId: 's-1t', occurredAt: at(-1, 19, 40), dueAt: at(0, 18), tags: ['garantia', 'cobro'], severity: 'CRITICA', impact: 'ECONOMICO', immediateAction: 'Se bloqueó el cargo a la habitación y se avisó a A&B.', guestId: 'g2', reservationId: 'r2', followUp: true }),
-      E({ type: 'MANTENIMIENTO', title: 'Filtración en baño de habitación 107', description: 'Filtración leve bajo el lavamanos. Housekeeping colocó paños absorbentes y se avisó a Mantenimiento.', department: 'Mantenimiento', priority: 'MEDIA', status: 'EN_ESPERA', createdBy: 'u1', ownerId: 'u1', shiftId: 's-1m', occurredAt: at(-2, 10, 20), dueAt: at(-1, 18), tags: ['gasfiteria'], guestId: 'g4' }),
-      E({ type: 'HUESPED', title: 'Aniversario de bodas Familia Moreau (hab. 402)', description: 'Llegan hoy a las 15:00 para celebrar su aniversario. Coordinar decoración, espumante de cortesía y tarjeta firmada por la gerencia.', department: 'Recepción', priority: 'ALTA', status: 'ABIERTO', createdBy: 'u1', ownerId: 'u2', shiftId: 's0m', occurredAt: at(0, 8, 30), dueAt: at(0, 14, 30), tags: ['vip', 'celebracion'], guestId: 'g1', reservationId: 'r1', followUp: true }),
-      E({ type: 'HUESPED', title: 'Traslado al aeropuerto pendiente de confirmar (hab. 223)', description: 'El huésped solicitó traslado para las 09:30 del día de salida. Falta confirmación de la empresa de transporte.', department: 'Recepción', priority: 'MEDIA', status: 'ABIERTO', createdBy: 'u2', ownerId: 'u2', shiftId: 's-1t', occurredAt: at(-1, 20, 10), dueAt: at(0, 20), tags: ['traslado'], guestId: 'g6', reservationId: 'r6', followUp: true }),
-      E({ type: 'CAJA', title: 'Diferencia de caja de $2.000 en cierre de turno tarde', description: 'Al cuadrar la caja se detecta una diferencia de $2.000 a favor. Se deja constancia y se informa a Administración para revisión de comprobantes.', department: 'Administración', priority: 'MEDIA', status: 'EN_CURSO', createdBy: 'u2', ownerId: 'u4', shiftId: 's-1t', occurredAt: at(-1, 22, 50), dueAt: at(0, 17), tags: ['caja', 'cuadratura'], followUp: true }),
-      E({ type: 'SISTEMAS', title: 'PMS con lentitud intermitente al generar facturas', description: 'El PMS demora entre 20 y 40 segundos al emitir documentos. Reportado al proveedor con ticket 48219.', department: 'Sistemas', priority: 'ALTA', status: 'EN_ESPERA', createdBy: 'u1', ownerId: null, shiftId: 's0m', occurredAt: at(0, 9, 15), dueAt: null, tags: ['pms', 'proveedor'], followUp: true }),
-      E({ type: 'HOUSEKEEPING', title: 'Faltante de toallas de piscina en bodega de piso 1', description: 'Quedan 14 toallas de piscina disponibles. Housekeeping solicita reposición desde lavandería antes del mediodía.', department: 'Housekeeping', priority: 'BAJA', status: 'ABIERTO', createdBy: 'u1', ownerId: null, shiftId: 's0m', occurredAt: at(0, 9, 40), dueAt: at(0, 12), tags: ['insumos'] }),
-      E({ type: 'AYB', title: 'Reclamo por demora en desayuno buffet', description: 'Dos huéspedes reportan demora en la reposición del buffet entre 08:30 y 09:00. Se ofreció disculpa y café de cortesía.', department: 'A&B', priority: 'MEDIA', status: 'RESUELTO', createdBy: 'u1', ownerId: 'u1', shiftId: 's0m', occurredAt: at(0, 9, 5), dueAt: null, tags: ['reclamo', 'desayuno'], resolution: 'Se reforzó la dotación del buffet desde las 08:00 según acuerdo con A&B.' }),
-      E({ type: 'RESERVA', title: 'Salida anticipada grupo Andes Trekking (12 pax)', description: 'El grupo sale a las 06:00. Cuentas cerradas la noche anterior y desayuno para llevar coordinado con A&B.', department: 'Reservas', priority: 'ALTA', status: 'RESUELTO', createdBy: 'u3', ownerId: 'u3', shiftId: 's-1n', occurredAt: at(-1, 23, 30), dueAt: null, tags: ['grupo', 'salida'], resolution: 'Cuentas cerradas a las 04:10 y desayunos entregados a las 05:40.', guestId: 'g5', reservationId: 'r5' }),
-      E({ type: 'SEGURIDAD', title: 'Ruido molesto en piso 4 durante la madrugada', description: 'Dos habitaciones reportan ruido en el pasillo del piso 4 cerca de las 02:00. Seguridad acudió y la situación se normalizó sin incidentes.', department: 'Seguridad', priority: 'MEDIA', status: 'CERRADO', createdBy: 'u3', ownerId: 'u3', shiftId: 's-1n', occurredAt: at(0, 2, 5), dueAt: null, tags: ['ruido'], resolution: 'Se conversó con los huéspedes involucrados; sin reincidencia en la ronda siguiente.' }),
-      E({ type: 'NOVEDAD', title: 'Cierre de auditoría nocturna sin anomalías', description: 'Se ejecutó el cierre diario del PMS. Cuadratura de ingresos correcta; 3 habitaciones con cargos pendientes revisados y conciliados.', department: 'Recepción', priority: 'BAJA', status: 'CERRADO', createdBy: 'u3', ownerId: null, shiftId: 's-1n', occurredAt: at(0, 4, 30), dueAt: null, tags: ['cierre-diario', 'auditoria'], resolution: 'Cierre ejecutado y respaldado. Informe enviado a Administración.' }),
-      E({ type: 'MANTENIMIENTO', title: 'Luminaria intermitente en pasillo del piso 2', description: 'La luminaria frente a la habitación 208 parpadea. Mantenimiento programó el recambio del balastro.', department: 'Mantenimiento', priority: 'BAJA', status: 'ABIERTO', createdBy: 'u3', ownerId: null, shiftId: 's-1n', occurredAt: at(-2, 23, 10), dueAt: null, tags: ['electricidad'] })
-    ];
-
-    const byTitle = (part) => entries.find((e) => e.title.indexOf(part) >= 0);
-
-    entries.forEach((e) => {
-      e.history.push({ at: e.occurredAt, action: 'CREAR', actor: e.createdBy, summary: ENTRY_TYPE[e.type] + ' #' + e.seq + ' registrada' });
-      if (e.status === 'CERRADO' || e.status === 'RESUELTO') {
-        e.history.push({ at: new Date(new Date(e.occurredAt).getTime() + 3600000).toISOString(), action: 'CERRAR', actor: e.createdBy, summary: 'Registro cerrado' + (e.resolution ? ': ' + e.resolution : '') });
-      }
-    });
-
-    const addComment = (entry, authorId, body, offsetH) => {
-      entry.comments.push({ id: 'c' + nextSeq(), authorId: authorId, body: body, at: new Date(new Date(entry.occurredAt).getTime() + offsetH * 3600000).toISOString() });
-    };
-    addComment(byTitle('Aire acondicionado'), 'u1', 'Mantenimiento confirma visita a las 10:00. Aviso a la huésped por teléfono.', 10);
-    addComment(byTitle('Aire acondicionado'), 'u4', 'Si no queda resuelto antes del mediodía, ofrecer cambio a la 320 con upgrade sin costo.', 11);
-    addComment(byTitle('Pre-autorización'), 'u4', 'Prioridad máxima: no permitir nuevos cargos a la habitación hasta regularizar.', 2);
-    addComment(byTitle('Diferencia de caja'), 'u4', 'Revisé los vouchers del turno: falta contrastar las boletas manuales de A&B.', 9);
-    addComment(byTitle('Aniversario'), 'u2', 'Decoración solicitada a Housekeeping. Espumante reservado en bodega de A&B.', 1);
-
-    const T = (o) => Object.assign({ id: 't' + nextSeq(), seq: seq, checklist: [], comments: [], history: [], deleted: false, blockedReason: null }, o);
-
-    const tasks = [
-      T({ title: 'Confirmar traslado al aeropuerto con la empresa de transporte', description: 'Confirmar móvil para las 09:30 y dejar constancia del número de conductor.', assigneeId: 'u2', priority: 'ALTA', status: 'PENDIENTE', dueAt: at(0, 19), department: 'Recepción', entryId: byTitle('Traslado al aeropuerto').id, origin: 'REGISTRO', createdBy: 'u2', checklist: [{ id: 'k1', text: 'Llamar a la empresa de transporte', done: false }, { id: 'k2', text: 'Registrar patente y conductor', done: false }, { id: 'k3', text: 'Informar al huésped', done: false }] }),
-      T({ title: 'Solicitar medio de pago alternativo a huésped de hab. 215', description: 'La tarjeta fue rechazada. Coordinar transferencia o efectivo antes del check-out.', assigneeId: 'u2', priority: 'CRITICA', status: 'EN_CURSO', dueAt: at(-1, 23), department: 'Recepción', entryId: byTitle('Pre-autorización').id, origin: 'INCIDENCIA', createdBy: 'u4', checklist: [{ id: 'k4', text: 'Contactar al huésped', done: true }, { id: 'k5', text: 'Registrar nuevo medio de pago', done: false }, { id: 'k6', text: 'Liberar bloqueo de cargos', done: false }] }),
-      T({ title: 'Reparar aire acondicionado de habitación 318', description: 'Mantenimiento debe revisar el equipo y confirmar temperatura antes del mediodía.', assigneeId: 'u1', priority: 'ALTA', status: 'BLOQUEADA', dueAt: at(0, 12), department: 'Mantenimiento', entryId: byTitle('Aire acondicionado').id, origin: 'INCIDENCIA', createdBy: 'u3', blockedReason: 'Falta repuesto de condensador; llega con el proveedor a las 11:00.', checklist: [{ id: 'k7', text: 'Revisar unidad', done: true }, { id: 'k8', text: 'Cambiar filtro', done: false }, { id: 'k9', text: 'Confirmar temperatura con la huésped', done: false }] }),
-      T({ title: 'Preparar decoración de aniversario hab. 402', description: 'Coordinar con Housekeeping y A&B: decoración, espumante y tarjeta de gerencia.', assigneeId: 'u2', priority: 'ALTA', status: 'PENDIENTE', dueAt: at(0, 14, 30), department: 'Recepción', entryId: byTitle('Aniversario').id, origin: 'REGISTRO', createdBy: 'u1', checklist: [{ id: 'k10', text: 'Solicitar decoración a Housekeeping', done: true }, { id: 'k11', text: 'Pedir espumante a A&B', done: true }, { id: 'k12', text: 'Imprimir tarjeta', done: false }] }),
-      T({ title: 'Revisar comprobantes por diferencia de caja', description: 'Contrastar boletas y vouchers del turno tarde para ubicar la diferencia de $2.000.', assigneeId: 'u4', priority: 'MEDIA', status: 'PENDIENTE', dueAt: at(0, 17), department: 'Administración', entryId: byTitle('Diferencia de caja').id, origin: 'REGISTRO', createdBy: 'u2', checklist: [] }),
-      T({ title: 'Escalar ticket 48219 con proveedor del PMS', description: 'Pedir tiempo de respuesta comprometido y dejar registro del contacto.', assigneeId: 'u1', priority: 'MEDIA', status: 'PENDIENTE', dueAt: at(1, 11), department: 'Sistemas', entryId: byTitle('PMS con lentitud').id, origin: 'REGISTRO', createdBy: 'u1', checklist: [] }),
-      T({ title: 'Recambio de balastro en pasillo piso 2', description: 'Coordinar con Mantenimiento el recambio de la luminaria frente a la 208.', assigneeId: 'u1', priority: 'BAJA', status: 'PENDIENTE', dueAt: at(-1, 18), department: 'Mantenimiento', entryId: byTitle('Luminaria').id, origin: 'REGISTRO', createdBy: 'u3', checklist: [] }),
-      T({ title: 'Verificar almohadas hipoalergénicas en hab. 318', description: 'La huésped es alérgica a plumas: confirmar el set correcto antes de su regreso.', assigneeId: 'u2', priority: 'MEDIA', status: 'PENDIENTE', dueAt: at(0, 16), department: 'Housekeeping', entryId: null, origin: 'MANUAL', createdBy: 'u4', checklist: [] }),
-      T({ title: 'Reponer toallas de piscina en bodega piso 1', description: 'Solicitar 40 toallas a lavandería y registrar la recepción.', assigneeId: 'u1', priority: 'BAJA', status: 'COMPLETADA', dueAt: at(0, 12), department: 'Housekeeping', entryId: byTitle('Faltante de toallas').id, origin: 'REGISTRO', createdBy: 'u1', completedAt: at(0, 11, 20), checklist: [] }),
-      T({ title: 'Cerrar cuentas del grupo Andes Trekking', description: 'Dejar cuentas cerradas y facturas emitidas antes de la salida de las 06:00.', assigneeId: 'u3', priority: 'ALTA', status: 'COMPLETADA', dueAt: at(0, 5), department: 'Recepción', entryId: byTitle('Salida anticipada grupo').id, origin: 'REGISTRO', createdBy: 'u3', completedAt: at(0, 4, 10), checklist: [] })
-    ];
-
-    tasks.forEach((t) => {
-      const base = t.dueAt ? new Date(t.dueAt).getTime() - 4 * 3600000 : Date.now() - DAY;
-      t.createdAt = new Date(base).toISOString();
-      t.history.push({ at: t.createdAt, action: 'CREAR', actor: t.createdBy, summary: 'Tarea #' + t.seq + ' creada y asignada a ' + userName(t.assigneeId) });
-      if (t.status === 'COMPLETADA') t.history.push({ at: t.completedAt, action: 'CERRAR', actor: t.assigneeId, summary: 'Tarea completada' });
-      if (t.status === 'BLOQUEADA') t.history.push({ at: new Date(base + 3600000).toISOString(), action: 'CAMBIO_ESTADO', actor: t.assigneeId, summary: 'Tarea bloqueada: ' + t.blockedReason });
-    });
-
-    const F = (o) => Object.assign({ id: 'f' + nextSeq(), comments: [] }, o);
-    const followups = [
-      F({ entryId: byTitle('Aire acondicionado').id, action: 'Se coordinó visita de Mantenimiento con la huésped para las 10:00.', result: 'La huésped acepta la visita y permanecerá en la habitación.', nextAction: 'Confirmar temperatura del equipo y registrar conformidad de la huésped.', scheduledAt: at(0, 12), ownerId: 'u1', createdBy: 'u3', status: 'PENDIENTE', createdAt: at(-1, 22, 40) }),
-      F({ entryId: byTitle('Pre-autorización').id, action: 'Se contactó al huésped por teléfono para regularizar el medio de pago.', result: 'No contesta. Se dejó mensaje en la habitación.', nextAction: 'Reintentar contacto y, si no responde, escalar a Administración.', scheduledAt: at(-1, 23, 30), ownerId: 'u2', createdBy: 'u2', status: 'VENCIDO', createdAt: at(-1, 20) }),
-      F({ entryId: byTitle('Diferencia de caja').id, action: 'Se envió el detalle de la diferencia a Administración.', result: 'Administración acusa recibo y revisará los comprobantes.', nextAction: 'Obtener respuesta formal sobre el origen de la diferencia.', scheduledAt: at(1, 12), ownerId: 'u4', createdBy: 'u2', status: 'PENDIENTE', createdAt: at(-1, 23) }),
-      F({ entryId: byTitle('PMS con lentitud').id, action: 'Ticket 48219 abierto con el proveedor del PMS.', result: 'El proveedor solicita logs del servidor de facturación.', nextAction: 'Enviar logs y pedir plazo comprometido de solución.', scheduledAt: at(1, 10), ownerId: 'u1', createdBy: 'u1', status: 'PENDIENTE', createdAt: at(0, 9, 30) }),
-      F({ entryId: byTitle('Traslado al aeropuerto').id, action: 'Se solicitó cotización y disponibilidad a la empresa de transporte.', result: 'Confirmación pendiente por parte de la empresa.', nextAction: 'Confirmar móvil y avisar al huésped.', scheduledAt: at(0, 19), ownerId: 'u2', createdBy: 'u2', status: 'PENDIENTE', createdAt: at(-1, 20, 30) }),
-      F({ entryId: byTitle('Reclamo por demora').id, action: 'Se acordó con A&B reforzar la dotación del buffet desde las 08:00.', result: 'Acuerdo aplicado y verificado al día siguiente.', nextAction: null, scheduledAt: at(0, 9), ownerId: 'u1', createdBy: 'u1', status: 'CUMPLIDO', createdAt: at(0, 9, 10), completedAt: at(0, 9, 30) })
-    ];
-
-    const alerts = [
-      { id: 'a1', type: 'SALIDA_ANTICIPADA', level: 'ATENCION', title: 'Salida anticipada 06:00 — grupo Andes Trekking (12 pax)', message: 'Cuentas cerradas y desayuno para llevar coordinado. Verificar llaves devueltas.', status: 'VISTA', auto: false, dueAt: at(0, 6), createdBy: 'u3', createdAt: at(0, 3), reservationId: 'r5', guestId: 'g5' },
-      { id: 'a2', type: 'TRASLADO_PENDIENTE', level: 'ATENCION', title: 'Traslado al aeropuerto sin confirmar — hab. 223', message: 'Confirmar móvil para las 09:30 con la empresa de transporte.', status: 'NUEVA', auto: false, dueAt: at(0, 19), createdBy: 'u2', createdAt: at(-1, 20, 15), entryId: byTitle('Traslado al aeropuerto').id, reservationId: 'r6', guestId: 'g6' }
-    ];
-
-    const handovers = [
-      {
-        id: 'h1', fromShiftId: 's-1n', toShiftId: 's0m', status: 'RECIBIDA', issuedBy: 'u3', issuedAt: at(0, 6, 40),
-        receivedBy: 'u1', receivedAt: at(0, 7, 5), notes: 'Auditoría nocturna cerrada sin anomalías. La 318 sigue sin aire acondicionado.',
-        receiverObservations: 'Recibido conforme. Priorizo la 318 con Mantenimiento.',
-        items: [
-          { level: 'URGENTE', section: 'Incidencias abiertas', title: 'Aire acondicionado sin enfriar en habitación 318', detail: 'Huésped VIP alérgica a plumas. Ventilador entregado. Visita comprometida a las 10:00.' },
-          { level: 'URGENTE', section: 'Cobros pendientes', title: 'Andrés Bustamante · hab. 215 · saldo $184.500', detail: 'Sigue sin regularizar. Mensaje dejado en la habitación.' },
-          { level: 'IMPORTANTE', section: 'Novedades activas', title: 'Cierre de auditoría nocturna sin anomalías', detail: 'Cuadratura correcta. Informe enviado a Administración.' },
-          { level: 'INFORMATIVO', section: 'Novedades activas', title: 'Ruido molesto en piso 4 resuelto', detail: 'Seguridad intervino a las 02:05. Sin reincidencia.' }
-        ]
-      },
-      {
-        id: 'h2', fromShiftId: 's0m', toShiftId: 's0t', status: 'ENVIADA', issuedBy: 'u1', issuedAt: at(0, 14, 40),
-        receivedBy: null, receivedAt: null,
-        notes: 'Prioridad de la tarde: llegada VIP de la Familia Moreau (402) y regularizar el pago de la 215. La 318 queda con Mantenimiento, repuesto en camino.',
-        receiverObservations: null,
-        items: [
-          { level: 'URGENTE', section: 'Incidencias abiertas', title: '#2 Pre-autorización rechazada en habitación 215', detail: 'Crítica. Cargos bloqueados. Contactar al huésped a su regreso y registrar nuevo medio de pago.' },
-          { level: 'URGENTE', section: 'Incidencias abiertas', title: '#1 Aire acondicionado sin enfriar en habitación 318', detail: 'Tarea bloqueada esperando repuesto de condensador (llega 11:00). Confirmar con la huésped.' },
-          { level: 'URGENTE', section: 'Tareas pendientes', title: '#2 Solicitar medio de pago alternativo a huésped de hab. 215', detail: 'VENCIDA desde ayer 23:00. Asignada a Camila Vera.' },
-          { level: 'URGENTE', section: 'Cobros pendientes', title: 'Andrés Bustamante · hab. 215 · saldo $184.500', detail: 'Reserva RES-10255 con garantía rechazada.' },
-          { level: 'IMPORTANTE', section: 'Solicitudes de huéspedes', title: '#4 Aniversario de bodas Familia Moreau (hab. 402)', detail: 'Llegan a las 15:00. Decoración, espumante y tarjeta de gerencia antes del check-in.' },
-          { level: 'IMPORTANTE', section: 'Tareas pendientes', title: '#1 Confirmar traslado al aeropuerto con la empresa de transporte', detail: 'Vence hoy 19:00. Confirmar móvil para las 09:30 de mañana.' },
-          { level: 'IMPORTANTE', section: 'Garantías pendientes', title: 'Helen Whitaker · hab. 318 · garantía pendiente', detail: 'Reserva RES-10260 sin garantía válida registrada.' },
-          { level: 'IMPORTANTE', section: 'Seguimientos próximos', title: 'Reintentar contacto con huésped de la 215', detail: 'VENCIDO desde ayer 23:30. Responsable: Camila Vera.' },
-          { level: 'INFORMATIVO', section: 'Novedades activas', title: '#7 PMS con lentitud intermitente al generar facturas', detail: 'Ticket 48219 abierto con el proveedor. Emitir documentos con margen de tiempo.' }
-        ]
-      }
-    ];
-
-    const audit = [
-      { at: at(0, 14, 40), action: 'TURNO_ENTREGAR', actor: 'u1', entity: 'Entrega de turno', summary: 'Entrega del turno mañana enviada (9 puntos)' },
-      { at: at(0, 7, 5), action: 'TURNO_RECIBIR', actor: 'u1', entity: 'Entrega de turno', summary: 'Entrega del turno noche recibida y confirmada' },
-      { at: at(0, 7), action: 'TURNO_INICIAR', actor: 'u1', entity: 'Turno', summary: 'Inicio de turno mañana' },
-      { at: at(0, 4, 30), action: 'CREAR', actor: 'u3', entity: 'Registro', summary: 'Novedad #12: cierre de auditoría nocturna sin anomalías' },
-      { at: at(-1, 23, 10), action: 'TURNO_RECIBIR', actor: 'u3', entity: 'Entrega de turno', summary: 'Entrega del turno tarde recibida y confirmada' }
-    ];
-
-    return {
-      version: 5,
-      authed: false,
-      loginError: null,
-      failedAttempts: {},
-      lockedUntil: {},
-      currentUserId: 'u2',
-      view: 'inicio',
-      guests: guests, reservations: reservations, shifts: shifts, entries: entries,
-      tasks: tasks, followups: followups, alerts: alerts, handovers: handovers,
-      audit: audit, roles: JSON.parse(JSON.stringify(ROLES)),
-      filters: { q: '', tipo: '', estado: '', clase: '', prioridad: '', area: '' },
-      tabs: { tareas: 'abiertas', alertas: 'activas', seguimientos: 'pendientes', incidencias: 'abiertas' },
-      seq: seq,
-      notice: null
-    };
-  }
-
-  // ------------------------------- Estado ---------------------------------
-  const STORAGE_KEY = 'libro-operativo-preview-v5';
-  let state;
-
-  function load() {
+  let db = null;
+  const deviceId = (function () {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || parsed.version !== 5) return null;
-      seq = parsed.seq || 100;
-      return parsed;
-    } catch (_) { return null; }
+      let id = localStorage.getItem(DEVICE_KEY + ':id');
+      if (!id) { id = 'd' + Math.random().toString(36).slice(2, 10); localStorage.setItem(DEVICE_KEY + ':id', id); }
+      return id;
+    } catch (_) { return 'd' + Math.random().toString(36).slice(2, 10); }
+  })();
+
+  function readDevice() {
+    try { return JSON.parse(localStorage.getItem(DEVICE_KEY) || '{}'); } catch (_) { return {}; }
+  }
+  function writeDevice(patch) {
+    try {
+      const next = Object.assign(readDevice(), patch);
+      localStorage.setItem(DEVICE_KEY, JSON.stringify(next));
+    } catch (_) { /* almacenamiento bloqueado: la sesión dura lo que la pestaña */ }
   }
 
-  function save() {
-    try {
-      state.seq = seq;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (_) { /* modo privado o almacenamiento bloqueado: la preview sigue funcionando */ }
-  }
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   const me = () => userById(state.currentUserId);
-  const myRole = () => state.roles[me().role];
+  const myRole = () => {
+    const user = me();
+    return (user && state.roles[user.role]) || { name: 'Sin rol', operational: false, permissions: [] };
+  };
   const can = (permission) => myRole().permissions.indexOf(permission) >= 0;
-  const operationalUsers = () => USERS.filter((u) => state.roles[u.role].operational);
+  const operationalUsers = () => USERS.filter((u) => state.roles[u.role] && state.roles[u.role].operational && u.active !== false);
+
+  /**
+   * El número visible de cada registro (#12, T#7) se deriva del orden de
+   * creación, no de un contador compartido: la base de datos resuelve las
+   * escrituras simultáneas por última-gana y un contador leído-y-escrito
+   * podría repetir números.
+   */
+  function assignSeq(list, dateField) {
+    list.slice()
+      .sort(function (a, b) {
+        const diff = new Date(a[dateField] || 0) - new Date(b[dateField] || 0);
+        return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+      })
+      .forEach(function (item, index) { item.seq = index + 1; });
+  }
+
+  // --------------------------- Lectura en vivo ----------------------------
+  const SUBSCRIPTIONS = [
+    { key: 'staff', path: 'staff' },
+    { key: 'shifts', path: 'shifts' },
+    { key: 'handovers', path: 'handovers' },
+    { key: 'entries', path: 'entries' },
+    { key: 'tasks', path: 'tasks' },
+    { key: 'followups', path: 'followups' },
+    { key: 'alerts', path: 'alerts' },
+    { key: 'guests', path: 'guests' },
+    { key: 'reservations', path: 'reservations' }
+  ];
+
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(function () { renderQueued = false; render(); });
+  }
+
+  function docsToArray(snapshot) {
+    return snapshot.docs.map(function (doc) {
+      return Object.assign({ id: doc.id }, doc.data());
+    });
+  }
+
+  function onDbError(error) {
+    state.dbError = error && error.code ? error.code : 'unavailable';
+    if (state.dbError === 'revoked' || state.dbError === 'not_granted') state.ready = false;
+    scheduleRender();
+  }
+
+  async function connect() {
+    db = await window.claude.use('db');
+    if (!db) {
+      state.dbMissing = true;
+      state.setupStep = 'sin-base';
+      render();
+      return;
+    }
+
+    db.doc('config/hotel').onSnapshot(function (snap) {
+      state.hotel = snap.exists ? Object.assign({ name: '', setupDone: false }, snap.data()) : { name: '', setupDone: false };
+      state.loaded.hotel = true;
+      afterLoad();
+    }, onDbError);
+
+    db.doc('config/roles').onSnapshot(function (snap) {
+      const stored = snap.exists ? snap.data() : null;
+      state.roles = stored && stored.roles ? stored.roles : JSON.parse(JSON.stringify(DEFAULT_ROLES));
+      state.loaded.roles = true;
+      afterLoad();
+    }, onDbError);
+
+    SUBSCRIPTIONS.forEach(function (sub) {
+      db.collection(sub.path).onSnapshot(function (snapshot) {
+        state[sub.key] = docsToArray(snapshot);
+        if (sub.key === 'staff') {
+          USERS = state.staff.slice().sort(function (a, b) {
+            const levelA = ROLE_ORDER.indexOf(a.role);
+            const levelB = ROLE_ORDER.indexOf(b.role);
+            return levelA !== levelB ? levelA - levelB : String(a.name).localeCompare(String(b.name));
+          });
+        }
+        if (sub.key === 'entries') assignSeq(state.entries, 'occurredAt');
+        if (sub.key === 'tasks') assignSeq(state.tasks, 'createdAt');
+        state.loaded[sub.key] = true;
+        afterLoad();
+      }, onDbError);
+    });
+
+    // Auditoría: un documento por día y persona, para que dos personas
+    // escribiendo a la vez no se sobrescriban entre sí.
+    db.collection('audit').orderBy('day', 'desc').limit(60).onSnapshot(function (snapshot) {
+      const events = [];
+      snapshot.docs.forEach(function (doc) {
+        const body = doc.data();
+        (body.events || []).forEach(function (event) { events.push(event); });
+      });
+      events.sort((a, b) => new Date(b.at) - new Date(a.at));
+      state.audit = events.slice(0, 300);
+      state.loaded.audit = true;
+      afterLoad();
+    }, onDbError);
+  }
+
+  function afterLoad() {
+    const pending = ['hotel', 'roles', 'staff', 'shifts', 'handovers', 'entries', 'tasks', 'followups', 'alerts', 'guests', 'reservations', 'audit']
+      .filter((key) => !state.loaded[key]);
+    if (pending.length > 0) { scheduleRender(); return; }
+
+    if (!state.ready) {
+      state.ready = true;
+      const device = readDevice();
+      if (device.staffId && state.staff.some((s) => s.id === device.staffId && s.active !== false)) {
+        state.currentUserId = device.staffId;
+      }
+      if (device.view) state.view = device.view;
+      resolveStep();
+      scheduleRender();
+      // El motor de alertas corre una vez al abrir y luego cada 4 minutos.
+      runAlertEngine();
+      setInterval(runAlertEngine, 240000);
+      return;
+    }
+
+    // Si la persona elegida en este dispositivo fue desactivada o eliminada.
+    if (state.currentUserId && !state.staff.some((s) => s.id === state.currentUserId && s.active !== false)) {
+      state.currentUserId = null;
+      writeDevice({ staffId: null });
+    }
+    resolveStep();
+    scheduleRender();
+  }
+
+  function resolveStep() {
+    if (!state.hotel.setupDone || state.staff.length === 0) state.setupStep = 'configuracion';
+    else if (!state.currentUserId) state.setupStep = 'identidad';
+    else state.setupStep = 'listo';
+  }
+
+  // ------------------------------ Escritura -------------------------------
+  /** Traduce los códigos de error de la base de datos a lenguaje operativo. */
+  function describeDbError(error) {
+    const code = error && error.code ? error.code : 'unavailable';
+    if (code === 'invalid_argument') return 'No tienes permiso de edición sobre esta página para ese cambio.';
+    if (code === 'quota_exceeded') return 'La base de datos está llena. Archiva registros cerrados desde Administración.';
+    if (code === 'resource_exhausted') return 'Demasiadas operaciones seguidas. Espera unos segundos y reintenta.';
+    if (code === 'revoked') return 'Se retiró tu acceso a esta página mientras la usabas. Vuelve a abrirla.';
+    if (code === 'not_granted') return 'Esta vista no tiene acceso a la base de datos.';
+    return 'No se pudo guardar. Revisa la conexión y reintenta.';
+  }
+
+  async function write(operation, successMessage) {
+    if (!db) { fail('Sin conexión a la base de datos.'); return false; }
+    try {
+      await operation();
+      if (successMessage) toast(successMessage, 'ok');
+      return true;
+    } catch (error) {
+      console.error('[base de datos]', error);
+      fail(describeDbError(error));
+      return false;
+    }
+  }
+
+  const setDoc = (path, data) => db.doc(path).set(data);
+  const updateDoc = (path, data) => db.doc(path).update(data);
+
+  /** Registra un evento de auditoría en el documento del día de esta persona. */
+  async function pushAudit(action, entity, summary) {
+    if (!db || !state.currentUserId) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const path = 'audit/' + day + '_' + state.currentUserId;
+    const event = { at: new Date().toISOString(), action: action, entity: entity, actor: state.currentUserId, summary: summary };
+    try {
+      const snap = await db.doc(path).get();
+      const events = snap.exists ? (snap.data().events || []).slice() : [];
+      events.push(event);
+      // Un documento por día y persona: se acota para no superar su tamaño.
+      await db.doc(path).set({ day: day, actor: state.currentUserId, events: events.slice(-400) });
+    } catch (error) {
+      console.error('[auditoría] no se pudo registrar', error);
+    }
+  }
 
   // --------------------------- Utilidades de vista -------------------------
   const esc = (value) => String(value == null ? '' : value)
@@ -1494,6 +1546,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     while (host.children.length > 2) host.firstElementChild.remove();
     setTimeout(function () { el.remove(); }, kind === 'error' ? 5200 : 3400);
   }
+
 
   // ------------------------ Reglas de turno (dominio) ---------------------
   const shiftById = (id) => state.shifts.find((s) => s.id === id) || null;
@@ -1525,13 +1578,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     return state.handovers.find((x) => x.toShiftId === shift.id && x.status === 'ENVIADA') || null;
   }
 
-  function pushAudit(action, entity, summary) {
-    state.audit.unshift({ at: new Date().toISOString(), action: action, entity: entity, actor: state.currentUserId, summary: summary });
-    if (state.audit.length > 120) state.audit.pop();
-  }
+
 
   // --------------------------- Motor de alertas ---------------------------
-  function runAlertEngine() {
+  /**
+   * Mismas reglas que la aplicación de servidor. Cada alerta automática se
+   * guarda en un documento cuyo identificador ES su clave de deduplicación:
+   * la base de datos garantiza por construcción que no haya duplicados, sin
+   * necesidad de transacciones.
+   *
+   * Para que varios dispositivos abiertos no escriban lo mismo a la vez, el
+   * motor toma un arriendo corto (`acquire`) antes de escribir.
+   */
+  function collectCandidates() {
     const now = Date.now();
     const candidates = [];
 
@@ -1550,75 +1609,123 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
         candidates.push({ key: 'maintenance-stale:' + e.id, type: 'MANTENIMIENTO_SIN_RESOLVER', level: 'ATENCION', title: 'Mantenimiento sin resolver: ' + e.title, message: 'Abierto desde ' + fmtDT(e.occurredAt) + ' sin resolución.', entryId: e.id });
       }
       if (e.type === 'HUESPED' && e.followUp) {
-        candidates.push({ key: 'guest-request:' + e.id, type: 'SOLICITUD_HUESPED_PENDIENTE', level: 'ATENCION', title: 'Solicitud de huésped pendiente: ' + e.title, message: 'La solicitud sigue abierta y requiere seguimiento.', entryId: e.id, guestId: e.guestId });
+        candidates.push({ key: 'guest-request:' + e.id, type: 'SOLICITUD_HUESPED_PENDIENTE', level: 'ATENCION', title: 'Solicitud de huésped pendiente: ' + e.title, message: 'La solicitud sigue abierta y requiere seguimiento.', entryId: e.id, guestId: e.guestId || null });
       }
     });
 
     state.followups.forEach(function (f) {
       if (f.status !== 'PENDIENTE' && f.status !== 'VENCIDO') return;
       if (!f.scheduledAt || new Date(f.scheduledAt).getTime() >= now) return;
-      f.status = 'VENCIDO';
-      candidates.push({ key: 'followup-overdue:' + f.id, type: 'SEGUIMIENTO_VENCIDO', level: 'ATENCION', title: 'Seguimiento vencido: ' + f.action, message: 'Estaba programado para ' + fmtDT(f.scheduledAt) + '.', followUpId: f.id, entryId: f.entryId, dueAt: f.scheduledAt });
+      candidates.push({ key: 'followup-overdue:' + f.id, type: 'SEGUIMIENTO_VENCIDO', level: 'ATENCION', title: 'Seguimiento vencido: ' + f.action, message: 'Estaba programado para ' + fmtDT(f.scheduledAt) + '.', followUpId: f.id, entryId: f.entryId || null, dueAt: f.scheduledAt });
     });
 
     state.handovers.forEach(function (h) {
       if (h.status !== 'ENVIADA' || !h.issuedAt) return;
       if (new Date(h.issuedAt).getTime() >= now - 3600000) return;
       const from = shiftById(h.fromShiftId);
+      if (!from) return;
       candidates.push({ key: 'handover-pending:' + h.id, type: 'ENTREGA_TURNO_PENDIENTE', level: 'ATENCION', title: 'Entrega de turno sin confirmar', message: 'La entrega del turno ' + SHIFT_TYPE[from.type] + ' del ' + fmtDate(from.date) + ' sigue sin ser recibida.', handoverId: h.id });
     });
 
     const endOfToday = todayStart().getTime() + DAY - 1;
     state.reservations.forEach(function (r) {
+      if (r.status === 'CANCELADA' || r.status === 'SALIDA') return;
       const guest = state.guests.find((g) => g.id === r.guestId);
       const who = guest ? guest.name : 'Reserva ' + r.code;
       const room = r.room ? ' (hab. ' + r.room + ')' : '';
-      if (r.status === 'CANCELADA' || r.status === 'SALIDA') return;
-      if (r.guarantee === 'PENDIENTE') candidates.push({ key: 'guarantee:' + r.id, type: 'GARANTIA_PENDIENTE', level: 'ATENCION', title: 'Garantía pendiente: ' + who + room, message: 'La reserva ' + r.code + ' no tiene garantía válida registrada.', reservationId: r.id, guestId: r.guestId });
-      if (r.guarantee === 'RECHAZADA') candidates.push({ key: 'card:' + r.id, type: 'TARJETA_INVALIDA', level: 'CRITICA', title: 'Tarjeta rechazada: ' + who + room, message: 'La garantía de la reserva ' + r.code + ' fue rechazada. Solicitar medio de pago alternativo.', reservationId: r.id, guestId: r.guestId });
-      if (r.balance > 0) candidates.push({ key: 'payment:' + r.id, type: 'PAGO_PENDIENTE', level: 'ATENCION', title: 'Cobro pendiente: ' + who + room, message: 'Saldo pendiente de ' + money(r.balance) + ' en la reserva ' + r.code + '.', reservationId: r.id, guestId: r.guestId });
-      if (r.status === 'PENDIENTE' && r.checkIn && new Date(r.checkIn).getTime() <= endOfToday) candidates.push({ key: 'unconfirmed:' + r.id, type: 'RESERVA_SIN_CONFIRMAR', level: 'ATENCION', title: 'Reserva sin confirmar con llegada inminente: ' + who, message: 'La reserva ' + r.code + ' llega el ' + fmtDate(r.checkIn) + ' y sigue sin confirmar.', reservationId: r.id, guestId: r.guestId, dueAt: r.checkIn });
-      if (guest && guest.vip && r.checkIn && new Date(r.checkIn).getTime() <= endOfToday && r.status !== 'EN_CASA') candidates.push({ key: 'vip:' + r.id, type: 'HUESPED_VIP', level: 'INFORMATIVA', title: 'Llegada VIP: ' + who + room, message: 'Coordinar atención preferente, amenidad y acompañamiento a la habitación.', reservationId: r.id, guestId: r.guestId, dueAt: r.checkIn });
+      if (r.guarantee === 'PENDIENTE') candidates.push({ key: 'guarantee:' + r.id, type: 'GARANTIA_PENDIENTE', level: 'ATENCION', title: 'Garantía pendiente: ' + who + room, message: 'La reserva ' + r.code + ' no tiene garantía válida registrada.', reservationId: r.id, guestId: r.guestId || null });
+      if (r.guarantee === 'RECHAZADA') candidates.push({ key: 'card:' + r.id, type: 'TARJETA_INVALIDA', level: 'CRITICA', title: 'Tarjeta rechazada: ' + who + room, message: 'La garantía de la reserva ' + r.code + ' fue rechazada. Solicitar medio de pago alternativo.', reservationId: r.id, guestId: r.guestId || null });
+      if (r.balance > 0) candidates.push({ key: 'payment:' + r.id, type: 'PAGO_PENDIENTE', level: 'ATENCION', title: 'Cobro pendiente: ' + who + room, message: 'Saldo pendiente de ' + money(r.balance) + ' en la reserva ' + r.code + '.', reservationId: r.id, guestId: r.guestId || null });
+      if (r.status === 'PENDIENTE' && r.checkIn && new Date(r.checkIn).getTime() <= endOfToday) candidates.push({ key: 'unconfirmed:' + r.id, type: 'RESERVA_SIN_CONFIRMAR', level: 'ATENCION', title: 'Reserva sin confirmar con llegada inminente: ' + who, message: 'La reserva ' + r.code + ' llega el ' + fmtDate(r.checkIn) + ' y sigue sin confirmar.', reservationId: r.id, guestId: r.guestId || null, dueAt: r.checkIn });
+      if (guest && guest.vip && r.checkIn && new Date(r.checkIn).getTime() <= endOfToday && r.status !== 'EN_CASA') candidates.push({ key: 'vip:' + r.id, type: 'HUESPED_VIP', level: 'INFORMATIVA', title: 'Llegada VIP: ' + who + room, message: 'Coordinar atención preferente, amenidad y acompañamiento a la habitación.', reservationId: r.id, guestId: r.guestId || null, dueAt: r.checkIn });
       const coveredManually = state.alerts.some((a) => !a.auto && a.reservationId === r.id && a.status !== 'RESUELTA');
-      if (r.action && r.guarantee !== 'RECHAZADA' && !coveredManually) candidates.push({ key: 'action:' + r.id, type: 'TRASLADO_PENDIENTE', level: 'ATENCION', title: 'Reserva requiere acción: ' + who + room, message: r.action, reservationId: r.id, guestId: r.guestId });
+      if (r.action && r.guarantee !== 'RECHAZADA' && !coveredManually) candidates.push({ key: 'action:' + r.id, type: 'TRASLADO_PENDIENTE', level: 'ATENCION', title: 'Reserva requiere acción: ' + who + room, message: r.action, reservationId: r.id, guestId: r.guestId || null });
     });
 
-    const keys = {};
-    candidates.forEach(function (c) { keys[c.key] = true; });
-    let created = 0, reopened = 0, resolved = 0;
-
-    candidates.forEach(function (c) {
-      const existing = state.alerts.find((a) => a.key === c.key);
-      if (!existing) {
-        state.alerts.push(Object.assign({ id: 'auto-' + (++seq), status: 'NUEVA', auto: true, createdAt: new Date().toISOString(), createdBy: null }, c));
-        created++;
-      } else if (existing.status === 'RESUELTA') {
-        existing.status = 'NUEVA';
-        existing.resolvedAt = null;
-        existing.resolutionNote = null;
-        existing.level = c.level;
-        reopened++;
-      }
-    });
-
-    state.alerts.forEach(function (a) {
-      if (a.auto && a.status !== 'RESUELTA' && !keys[a.key]) {
-        a.status = 'RESUELTA';
-        a.resolvedAt = new Date().toISOString();
-        a.resolutionNote = 'Resuelta automáticamente: la condición de origen ya no se cumple.';
-        resolved++;
-      }
-    });
-
-    return { created: created, reopened: reopened, resolved: resolved };
+    return candidates;
   }
 
   const alertIsLive = (a) => {
+    if (a.deleted) return false;
     if (a.status === 'RESUELTA') return false;
     if (a.status === 'POSPUESTA') return a.snoozedUntil ? new Date(a.snoozedUntil).getTime() <= Date.now() : true;
     return true;
   };
   const liveAlerts = () => state.alerts.filter(alertIsLive);
+
+  let engineRunning = false;
+
+  async function runAlertEngine(options) {
+    if (!db || !state.ready || engineRunning) return null;
+    const announce = options && options.announce;
+    engineRunning = true;
+    try {
+      const candidates = collectCandidates();
+      const byKey = {};
+      candidates.forEach(function (c) { byKey[c.key] = c; });
+
+      const creates = candidates.filter((c) => !state.alerts.some((a) => a.id === c.key));
+      const reopens = state.alerts.filter((a) => a.auto && a.status === 'RESUELTA' && byKey[a.id]);
+      const stale = state.alerts.filter((a) => a.auto && a.status !== 'RESUELTA' && !a.deleted && !byKey[a.id]);
+      const overdueFollowups = state.followups.filter((f) => f.status === 'PENDIENTE' && f.scheduledAt && new Date(f.scheduledAt).getTime() < Date.now());
+
+      if (creates.length === 0 && reopens.length === 0 && stale.length === 0 && overdueFollowups.length === 0) {
+        if (announce) toast('Alertas al día: no hay cambios.', 'ok');
+        return { created: 0, reopened: 0, resolved: 0 };
+      }
+
+      // Un solo dispositivo escribe por vez.
+      const lease = await db.doc('locks/motor-alertas').acquire({ holder: deviceId, ttlMs: 20000 });
+      if (!lease.acquired) {
+        if (announce) toast('Otro dispositivo está actualizando las alertas en este momento.', 'ok');
+        return null;
+      }
+
+      const now = new Date().toISOString();
+
+      for (const candidate of creates) {
+        await db.doc('alerts/' + candidate.key).set({
+          type: candidate.type, level: candidate.level, title: candidate.title,
+          message: candidate.message || null, status: 'NUEVA', auto: true,
+          dueAt: candidate.dueAt || null, entryId: candidate.entryId || null,
+          taskId: candidate.taskId || null, followUpId: candidate.followUpId || null,
+          handoverId: candidate.handoverId || null, reservationId: candidate.reservationId || null,
+          guestId: candidate.guestId || null, createdAt: now, createdBy: null, deleted: false
+        });
+      }
+
+      for (const alert of reopens) {
+        const candidate = byKey[alert.id];
+        await db.doc('alerts/' + alert.id).update({
+          status: 'NUEVA', resolvedAt: null, resolvedBy: null, resolutionNote: null,
+          level: candidate.level, title: candidate.title, message: candidate.message || null
+        });
+      }
+
+      for (const alert of stale) {
+        await db.doc('alerts/' + alert.id).update({
+          status: 'RESUELTA', resolvedAt: now, resolvedBy: null,
+          resolutionNote: 'Resuelta automáticamente: la condición de origen ya no se cumple.'
+        });
+      }
+
+      for (const followUp of overdueFollowups) {
+        await db.doc('followups/' + followUp.id).update({ status: 'VENCIDO' });
+      }
+
+      const result = { created: creates.length, reopened: reopens.length, resolved: stale.length };
+      if (announce) {
+        toast('Motor de alertas: ' + result.created + ' nueva(s), ' + result.reopened + ' reabierta(s), ' + result.resolved + ' resuelta(s).', 'ok');
+      }
+      return result;
+    } catch (error) {
+      console.error('[alertas] el motor falló', error);
+      if (announce) fail(describeDbError(error));
+      return null;
+    } finally {
+      engineRunning = false;
+    }
+  }
 
   // ------------------- Resumen automático de la entrega -------------------
   function buildSnapshot() {
@@ -1703,278 +1810,816 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     return items;
   }
 
+
   // ------------------------------- Acciones -------------------------------
-  const ACTIONS = {
-    nav: function (view) { state.view = view; state.openHandover = null; commit(); window.scrollTo({ top: 0 }); },
-
-    'start-shift': function (shiftId) {
-      const shift = shiftById(shiftId);
-      if (!myRole().operational) return fail('El Administrador de sistema no participa en la operación de turnos. Cambia a una cuenta operativa.');
-      if (!can('shift.start')) return fail('Tu rol no tiene el permiso shift.start.');
-      if (shift.staff.indexOf(state.currentUserId) < 0) return fail('No estás asignado a este turno.');
-      const open = myOpenShift();
-      if (open && OCCUPYING.indexOf(open.status) >= 0) return fail('Ya tienes el turno ' + SHIFT_TYPE[open.type] + ' del ' + fmtDate(open.date) + ' en estado ' + SHIFT_LABEL[open.status] + '. Ciérralo o entrégalo antes de iniciar otro.');
-      if (SHIFT_TRANSITIONS[shift.status].indexOf('INICIADO') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Iniciado.');
-
-      shift.status = 'INICIADO';
-      shift.startedAt = new Date().toISOString();
-      pushAudit('TURNO_INICIAR', 'Turno', 'Inicio de turno ' + SHIFT_TYPE[shift.type] + ' del ' + fmtDate(shift.date));
-      state.view = 'turno';
-      commit('Turno iniciado. Revisa y confirma la entrega anterior.');
-    },
-
-    receive: function (shiftId) {
-      const shift = shiftById(shiftId);
-      if (!can('shift.receive')) return fail('Tu rol no tiene el permiso shift.receive.');
-      if (SHIFT_TRANSITIONS[shift.status].indexOf('ACTIVO') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Turno activo.');
-
-      const incoming = incomingHandover(shift);
-      const observations = (document.getElementById('receive-obs') || {}).value || '';
-
-      if (incoming) {
-        if (incoming.status === 'RECIBIDA') return fail('Esa entrega ya fue recibida y confirmada.');
-        incoming.status = 'RECIBIDA';
-        incoming.receivedBy = state.currentUserId;
-        incoming.receivedAt = new Date().toISOString();
-        incoming.receiverObservations = observations.trim() || null;
-        incoming.toShiftId = incoming.toShiftId || shift.id;
-
-        const from = shiftById(incoming.fromShiftId);
-        if (from && from.status === 'ENTREGA_ENVIADA') {
-          from.status = 'CERRADO';
-          from.endedAt = new Date().toISOString();
-          pushAudit('TURNO_CERRAR', 'Turno', 'Turno ' + SHIFT_TYPE[from.type] + ' cerrado automáticamente tras la confirmación de recepción');
-        }
-        state.alerts.forEach(function (a) {
-          if (a.handoverId === incoming.id && a.auto && a.status !== 'RESUELTA') {
-            a.status = 'RESUELTA';
-            a.resolvedAt = new Date().toISOString();
-            a.resolutionNote = 'Entrega recibida.';
-          }
-        });
-      }
-
-      shift.status = 'ACTIVO';
-      pushAudit('TURNO_RECIBIR', 'Turno', incoming ? 'Recepción de turno confirmada' + (observations ? ' — ' + observations : '') : 'Turno activado sin entrega previa pendiente');
-      commit(incoming ? 'Recepción confirmada. Tu turno está activo.' : 'Turno activado. Quedó constancia de que no había entrega previa.');
-    },
-
-    prepare: function (shiftId) {
-      const shift = shiftById(shiftId);
-      if (!can('shift.handover')) return fail('Tu rol no tiene el permiso shift.handover.');
-      if (shift.staff.indexOf(state.currentUserId) < 0) return fail('Sólo quien está en el turno puede preparar su entrega.');
-      let handover = handoverFrom(shift.id);
-      if (handover && handover.status !== 'BORRADOR') return fail('Este turno ya envió su entrega.');
-      if (shift.status !== 'PREPARANDO_ENTREGA' && SHIFT_TRANSITIONS[shift.status].indexOf('PREPARANDO_ENTREGA') < 0) {
-        return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Preparando entrega.');
-      }
-
-      const next = neighbour(shift, 'next');
-      const generated = buildSnapshot();
-
-      if (!handover) {
-        handover = { id: 'h' + (++seq), fromShiftId: shift.id, toShiftId: next ? next.id : null, status: 'BORRADOR', issuedBy: state.currentUserId, issuedAt: null, receivedBy: null, receivedAt: null, notes: '', receiverObservations: null, items: [] };
-        state.handovers.push(handover);
-      }
-      // El resumen automático se regenera; las notas manuales se conservan.
-      const manual = handover.items.filter((i) => i.manual);
-      handover.items = generated.concat(manual);
-      handover.toShiftId = next ? next.id : null;
-      shift.status = 'PREPARANDO_ENTREGA';
-
-      pushAudit('CAMBIO_ESTADO', 'Turno', 'Turno en preparación de entrega (' + generated.length + ' puntos generados)');
-      state.view = 'entrega';
-      state.openHandover = handover.id;
-      commit('Resumen de entrega generado: ' + generated.length + ' puntos. Revísalo, agrega notas y envíalo.');
-    },
-
-    'regenerate': function (handoverId) {
-      const handover = state.handovers.find((h) => h.id === handoverId);
-      if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada.');
-      const manual = handover.items.filter((i) => i.manual);
-      const generated = buildSnapshot();
-      handover.items = generated.concat(manual);
-      commit('Resumen actualizado con el estado actual (' + generated.length + ' puntos). Tus notas manuales se conservaron.');
-    },
-
-    send: function (shiftId) {
-      const shift = shiftById(shiftId);
-      if (!can('shift.handover')) return fail('Tu rol no tiene el permiso shift.handover.');
-      const handover = handoverFrom(shift.id);
-      if (!handover) return fail('Primero debes preparar la entrega.');
-      if (handover.status !== 'BORRADOR') return fail('Esta entrega ya fue enviada.');
-      if (SHIFT_TRANSITIONS[shift.status].indexOf('ENTREGA_ENVIADA') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Entrega enviada.');
-
-      const notes = (document.getElementById('handover-notes') || {}).value || '';
-      handover.notes = notes.trim();
-      handover.status = 'ENVIADA';
-      handover.issuedAt = new Date().toISOString();
-      handover.issuedBy = state.currentUserId;
-      handover.snapshotAt = handover.issuedAt;
-      shift.status = 'ENTREGA_ENVIADA';
-
-      pushAudit('TURNO_ENTREGAR', 'Entrega de turno', 'Entrega enviada por ' + me().name + ' (' + handover.items.length + ' puntos)');
-      commit('Entrega enviada. El turno siguiente debe confirmarla.');
-    },
-
-    'cancel-prep': function (shiftId) {
-      const shift = shiftById(shiftId);
-      const handover = handoverFrom(shift.id);
-      if (handover && handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada: no puede cancelarse.');
-      if (handover) state.handovers = state.handovers.filter((h) => h.id !== handover.id);
-      shift.status = 'ACTIVO';
-      pushAudit('CAMBIO_ESTADO', 'Turno', 'Preparación de entrega cancelada');
-      state.view = 'turno';
-      commit('Preparación cancelada. Tu turno sigue activo.');
-    },
-
-    'close-shift': function (shiftId) {
-      const shift = shiftById(shiftId);
-      if (!can('shift.close')) return fail('Tu rol no tiene el permiso shift.close.');
-      const next = neighbour(shift, 'next');
-      const handover = handoverFrom(shift.id);
-      const hasNext = Boolean(next) && next.status !== 'CERRADO' && next.status !== 'ANULADO';
-
-      if (hasNext) {
-        if (!handover || handover.status === 'BORRADOR') return fail('No puedes cerrar el turno sin enviar la entrega al turno siguiente.');
-        if (handover.status === 'ENVIADA') return fail('La entrega fue enviada pero el turno siguiente aún no la confirma. El turno se cierra una vez recibida.');
-      } else if (shift.status !== 'ACTIVO' && shift.status !== 'RECIBIDO') {
-        return fail('No puedes cerrar un turno en estado ' + SHIFT_LABEL[shift.status] + '.');
-      }
-
-      shift.status = 'CERRADO';
-      shift.endedAt = new Date().toISOString();
-      pushAudit('TURNO_CERRAR', 'Turno', 'Turno ' + SHIFT_TYPE[shift.type] + ' del ' + fmtDate(shift.date) + ' cerrado por ' + me().name);
-      commit('Turno cerrado.');
-    },
-
-    'open-handover': function (id) { state.view = 'entrega'; state.openHandover = id; commit(); window.scrollTo({ top: 0 }); },
-
-    'remove-note': function (args) {
-      const parts = args.split('|');
-      const handover = state.handovers.find((h) => h.id === parts[0]);
-      if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada.');
-      handover.items.splice(Number(parts[1]), 1);
-      commit('Nota eliminada de la entrega.');
-    },
-
-    'task-status': function (args) {
-      const parts = args.split('|');
-      const task = state.tasks.find((t) => t.id === parts[0]);
-      const next = parts[1];
-      if (!task) return;
-      const allowed = {
-        PENDIENTE: ['EN_CURSO', 'BLOQUEADA', 'COMPLETADA', 'CANCELADA'],
-        EN_CURSO: ['BLOQUEADA', 'COMPLETADA', 'CANCELADA', 'PENDIENTE'],
-        BLOQUEADA: ['EN_CURSO', 'PENDIENTE', 'COMPLETADA', 'CANCELADA'],
-        COMPLETADA: ['EN_CURSO'], CANCELADA: ['PENDIENTE']
-      };
-      if (allowed[task.status].indexOf(next) < 0) return fail('No puedes pasar una tarea de ' + TASK_STATUS[task.status] + ' a ' + TASK_STATUS[next] + '.');
-      if ((next === 'COMPLETADA' || next === 'CANCELADA') && !can('task.close')) return fail('Tu rol no tiene el permiso task.close.');
-
-      task.status = next;
-      task.completedAt = next === 'COMPLETADA' ? new Date().toISOString() : null;
-      if (next !== 'BLOQUEADA') task.blockedReason = null;
-      task.history.push({ at: new Date().toISOString(), action: next === 'COMPLETADA' ? 'CERRAR' : 'CAMBIO_ESTADO', actor: state.currentUserId, summary: 'Estado: ' + TASK_STATUS[next] });
-      pushAudit(next === 'COMPLETADA' ? 'CERRAR' : 'CAMBIO_ESTADO', 'Tarea', 'Tarea #' + task.seq + ' → ' + TASK_STATUS[next]);
-      commit('Tarea #' + task.seq + ': ' + TASK_STATUS[next].toLowerCase() + '.');
-    },
-
-    'toggle-check': function (args) {
-      const parts = args.split('|');
-      const task = state.tasks.find((t) => t.id === parts[0]);
-      const item = task && task.checklist.find((c) => c.id === parts[1]);
-      if (!item) return;
-      item.done = !item.done;
-      commit();
-    },
-
-    'alert-ack': function (id) {
-      const alert = state.alerts.find((a) => a.id === id);
-      if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
-      if (alert.status === 'RESUELTA') return fail('La alerta ya está resuelta.');
-      alert.status = 'VISTA';
-      alert.acknowledgedBy = state.currentUserId;
-      alert.snoozedUntil = null;
-      commit('Alerta marcada como vista.');
-    },
-
-    'alert-snooze': function (args) {
-      const parts = args.split('|');
-      const alert = state.alerts.find((a) => a.id === parts[0]);
-      if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
-      if (alert.status === 'RESUELTA') return fail('La alerta ya está resuelta.');
-      const minutes = Number(parts[1] || 60);
-      alert.status = 'POSPUESTA';
-      alert.snoozedUntil = new Date(Date.now() + minutes * 60000).toISOString();
-      commit('Alerta pospuesta ' + (minutes >= 60 ? (minutes / 60) + ' h' : minutes + ' min') + '.');
-    },
-
-    'alert-resolve': function (id) {
-      const alert = state.alerts.find((a) => a.id === id);
-      if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
-      alert.status = 'RESUELTA';
-      alert.resolvedBy = state.currentUserId;
-      alert.resolvedAt = new Date().toISOString();
-      alert.resolutionNote = 'Resuelta por ' + me().name + '.';
-      pushAudit('CERRAR', 'Alerta', 'Alerta resuelta: ' + alert.title);
-      commit(alert.auto ? 'Alerta resuelta. Si la condición de origen persiste, el motor la reabrirá.' : 'Alerta resuelta.');
-    },
-
-    'run-engine': function () {
-      const result = runAlertEngine();
-      commit('Motor de alertas: ' + result.created + ' nueva(s), ' + result.reopened + ' reabierta(s), ' + result.resolved + ' resuelta(s).');
-    },
-
-    tab: function (args) {
-      const parts = args.split('|');
-      state.tabs[parts[0]] = parts[1];
-      commit();
-    },
-
-    'toggle-permission': function (args) {
-      const parts = args.split('|');
-      if (!can('role.manage')) return fail('Tu rol no tiene el permiso role.manage.');
-      const role = state.roles[parts[0]];
-      const permission = parts[1];
-      const index = role.permissions.indexOf(permission);
-      if (index >= 0) {
-        if (parts[0] === 'ADMIN' && ['user.manage', 'role.manage', 'system.configure'].indexOf(permission) >= 0) {
-          return fail('El Administrador de sistema no puede perder ' + permission + ': es necesario para recuperar el sistema.');
-        }
-        role.permissions.splice(index, 1);
-      } else {
-        role.permissions.push(permission);
-      }
-      pushAudit('PERMISOS', 'Rol', 'Permisos de ' + role.name + ' actualizados (' + role.permissions.length + ')');
-      commit('Permisos de ' + role.name + ' actualizados.');
-    },
-
-    reset: function () {
-      state = buildSeed();
-      runAlertEngine();
-      commit('Preview reiniciada con los datos de demostración.');
-    },
-
-    'open-entry': function (id) { openEntrySheet(id); },
-    'open-task': function (id) { openTaskSheet(id); },
-    'new-entry': function () { openEntryForm('NOVEDAD'); },
-    'new-incident': function () { openEntryForm('INCIDENCIA'); },
-    'new-task': function (entryId) { openTaskForm(entryId || null); },
-    'new-followup': function (entryId) { openFollowUpForm(entryId || null); },
-    'close-modal': function () { closeSheet(); },
-    'print': function () { window.print(); }
-  };
-
   function fail(message) { toast(message, 'error'); }
 
-  function commit(message) {
-    save();
+  const ACTIONS = {};
+
+  ACTIONS.nav = function (view) {
+    state.view = view;
+    state.openHandover = null;
+    writeDevice({ view: view });
     render();
-    if (message) toast(message, 'ok');
-  }
+    window.scrollTo({ top: 0 });
+  };
+
+  ACTIONS.tab = function (args) {
+    const parts = args.split('|');
+    state.tabs[parts[0]] = parts[1];
+    render();
+  };
+
+  // ---------------------------- Puesta en marcha --------------------------
+  ACTIONS['submit-setup'] = async function () {
+    const hotel = (val('setup-hotel') || '').trim();
+    const name = (val('setup-name') || '').trim();
+    if (hotel.length < 2) return fail('Escribe el nombre del hotel.');
+    if (name.length < 3) return fail('Escribe tu nombre completo.');
+
+    const staffId = newId();
+    const ok = await write(async function () {
+      await setDoc('staff/' + staffId, { name: name, role: 'ADMIN', active: true, createdAt: new Date().toISOString() });
+      await setDoc('config/roles', { roles: JSON.parse(JSON.stringify(DEFAULT_ROLES)) });
+      await setDoc('config/hotel', { name: hotel, setupDone: true, createdAt: new Date().toISOString() });
+    }, 'Sistema configurado. Ahora agrega al personal de recepción.');
+
+    if (ok) {
+      state.currentUserId = staffId;
+      writeDevice({ staffId: staffId });
+      state.view = 'admin';
+      await pushAudit('CONFIGURAR', 'Sistema', 'Puesta en marcha del Libro Operativo de ' + hotel);
+    }
+  };
+
+  ACTIONS['pick-user'] = function (staffId) {
+    const person = state.staff.find((s) => s.id === staffId);
+    if (!person || person.active === false) return fail('Esa persona no está activa.');
+    state.currentUserId = staffId;
+    writeDevice({ staffId: staffId });
+    state.view = 'inicio';
+    resolveStep();
+    render();
+    toast('Sesión iniciada como ' + person.name + '.', 'ok');
+  };
+
+  ACTIONS['switch-user'] = function () {
+    state.currentUserId = null;
+    writeDevice({ staffId: null });
+    closeSheet();
+    resolveStep();
+    render();
+  };
+
+  // ------------------------------- Personal -------------------------------
+  ACTIONS['submit-staff'] = async function () {
+    if (!can('user.manage')) return fail('Tu rol no puede administrar el personal.');
+    const id = val('staff-id');
+    const name = (val('staff-name') || '').trim();
+    const role = val('staff-role');
+    if (name.length < 3) return fail('Escribe el nombre completo.');
+    if (!state.roles[role]) return fail('Selecciona un rol válido.');
+
+    const staffId = id || newId();
+    const existing = state.staff.find((s) => s.id === staffId);
+    const ok = await write(function () {
+      return setDoc('staff/' + staffId, {
+        name: name, role: role,
+        active: existing ? existing.active !== false : true,
+        createdAt: existing ? existing.createdAt : new Date().toISOString()
+      });
+    }, id ? 'Persona actualizada.' : 'Persona agregada al equipo.');
+    if (ok) {
+      await pushAudit(id ? 'EDITAR' : 'CREAR', 'Personal', (id ? 'Actualizada ' : 'Agregada ') + name + ' con rol ' + state.roles[role].name);
+      closeSheet();
+    }
+  };
+
+  ACTIONS['toggle-staff'] = async function (staffId) {
+    if (!can('user.manage')) return fail('Tu rol no puede administrar el personal.');
+    const person = state.staff.find((s) => s.id === staffId);
+    if (!person) return;
+    if (person.id === state.currentUserId) return fail('No puedes desactivar tu propia cuenta.');
+    const nextActive = person.active === false;
+    if (!nextActive && person.role === 'ADMIN') {
+      const otherAdmins = state.staff.filter((s) => s.role === 'ADMIN' && s.active !== false && s.id !== staffId);
+      if (otherAdmins.length === 0) return fail('Debe quedar al menos un Administrador de sistema activo.');
+    }
+    const ok = await write(function () { return updateDoc('staff/' + staffId, { active: nextActive }); },
+      nextActive ? person.name + ' reactivada.' : person.name + ' desactivada.');
+    if (ok) await pushAudit('EDITAR', 'Personal', (nextActive ? 'Reactivada ' : 'Desactivada ') + person.name);
+  };
+
+  ACTIONS['toggle-permission'] = async function (args) {
+    if (!can('role.manage')) return fail('Tu rol no puede administrar permisos.');
+    const parts = args.split('|');
+    const roleKey = parts[0];
+    const permission = parts[1];
+    const roles = JSON.parse(JSON.stringify(state.roles));
+    const role = roles[roleKey];
+    if (!role) return;
+    const index = role.permissions.indexOf(permission);
+    if (index >= 0) {
+      if (roleKey === 'ADMIN' && ['user.manage', 'role.manage', 'system.configure'].indexOf(permission) >= 0) {
+        return fail('El Administrador de sistema no puede perder ' + permission + ': es necesario para recuperar el sistema.');
+      }
+      role.permissions.splice(index, 1);
+    } else {
+      role.permissions.push(permission);
+    }
+    const ok = await write(function () { return setDoc('config/roles', { roles: roles }); }, 'Permisos de ' + role.name + ' actualizados.');
+    if (ok) await pushAudit('PERMISOS', 'Rol', 'Permisos de ' + role.name + ' actualizados (' + role.permissions.length + ')');
+  };
+
+  // -------------------------------- Turnos --------------------------------
+  ACTIONS['schedule-shifts'] = async function () {
+    if (!can('shift.manage')) return fail('Tu rol no puede programar turnos.');
+    const date = val('sched-date');
+    if (!date) return fail('Elige la fecha.');
+    const day = new Date(date + 'T00:00:00');
+    if (Number.isNaN(day.getTime())) return fail('Fecha inválida.');
+
+    const assignments = {
+      MANANA: val('sched-manana'),
+      TARDE: val('sched-tarde'),
+      NOCHE: val('sched-noche')
+    };
+    const iso = day.toISOString();
+    const key = date.replace(/-/g, '');
+
+    const ok = await write(async function () {
+      for (const type of ORDER) {
+        const staffId = assignments[type];
+        const id = 's' + key + type.slice(0, 3);
+        const existing = state.shifts.find((s) => s.id === id);
+        if (existing && existing.status !== 'PROGRAMADO') continue;
+        if (!staffId && !existing) continue;
+        await setDoc('shifts/' + id, {
+          date: iso, type: type,
+          status: existing ? existing.status : 'PROGRAMADO',
+          staff: staffId ? [staffId] : [],
+          startedAt: existing ? existing.startedAt || null : null,
+          endedAt: existing ? existing.endedAt || null : null,
+          createdAt: existing ? existing.createdAt : new Date().toISOString()
+        });
+      }
+    }, 'Turnos del ' + fmtDate(iso) + ' programados.');
+
+    if (ok) await pushAudit('EDITAR', 'Turno', 'Programación de turnos del ' + fmtDate(iso));
+  };
+
+  ACTIONS['start-shift'] = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    if (!shift) return;
+    if (!myRole().operational) return fail('El Administrador de sistema no participa en la operación de turnos. Cambia a una cuenta operativa.');
+    if (!can('shift.start')) return fail('Tu rol no tiene el permiso shift.start.');
+    if (shift.staff.indexOf(state.currentUserId) < 0) return fail('No estás asignado a este turno.');
+    const open = myOpenShift();
+    if (open && OCCUPYING.indexOf(open.status) >= 0) {
+      return fail('Ya tienes el turno ' + SHIFT_TYPE[open.type] + ' del ' + fmtDate(open.date) + ' en estado ' + SHIFT_LABEL[open.status] + '. Ciérralo o entrégalo antes de iniciar otro.');
+    }
+    if (SHIFT_TRANSITIONS[shift.status].indexOf('INICIADO') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Iniciado.');
+
+    const ok = await write(function () {
+      return updateDoc('shifts/' + shiftId, { status: 'INICIADO', startedAt: new Date().toISOString(), startedBy: state.currentUserId });
+    }, 'Turno iniciado. Revisa y confirma la entrega anterior.');
+    if (ok) {
+      state.view = 'turno';
+      await pushAudit('TURNO_INICIAR', 'Turno', 'Inicio de turno ' + SHIFT_TYPE[shift.type] + ' del ' + fmtDate(shift.date));
+    }
+  };
+
+  ACTIONS.receive = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    if (!shift) return;
+    if (!can('shift.receive')) return fail('Tu rol no tiene el permiso shift.receive.');
+    if (shift.staff.indexOf(state.currentUserId) < 0) return fail('No estás asignado a este turno.');
+
+    const incoming = incomingHandover(shift);
+    if (incoming && incoming.status === 'RECIBIDA') return fail('Esa entrega ya fue recibida y confirmada.');
+    if (SHIFT_TRANSITIONS[shift.status].indexOf('ACTIVO') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Turno activo.');
+
+    const observations = (val('receive-obs') || '').trim();
+    const now = new Date().toISOString();
+
+    const ok = await write(async function () {
+      if (incoming) {
+        await updateDoc('handovers/' + incoming.id, {
+          status: 'RECIBIDA', receivedBy: state.currentUserId, receivedAt: now,
+          receiverObservations: observations || null,
+          toShiftId: incoming.toShiftId || shift.id
+        });
+        const from = shiftById(incoming.fromShiftId);
+        if (from && from.status === 'ENTREGA_ENVIADA') {
+          await updateDoc('shifts/' + from.id, { status: 'CERRADO', endedAt: now });
+        }
+        const pending = state.alerts.filter((a) => a.handoverId === incoming.id && a.auto && a.status !== 'RESUELTA');
+        for (const alert of pending) {
+          await updateDoc('alerts/' + alert.id, { status: 'RESUELTA', resolvedAt: now, resolvedBy: state.currentUserId, resolutionNote: 'Entrega recibida.' });
+        }
+      }
+      await updateDoc('shifts/' + shiftId, { status: 'ACTIVO' });
+    }, incoming ? 'Recepción confirmada. Tu turno está activo.' : 'Turno activado. Quedó constancia de que no había entrega previa.');
+
+    if (ok) {
+      await pushAudit('TURNO_RECIBIR', 'Turno', incoming
+        ? 'Recepción de turno confirmada' + (observations ? ' — ' + observations : '')
+        : 'Turno activado sin entrega previa pendiente');
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS.prepare = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    if (!shift) return;
+    if (!can('shift.handover')) return fail('Tu rol no tiene el permiso shift.handover.');
+    if (shift.staff.indexOf(state.currentUserId) < 0) return fail('Sólo quien está en el turno puede preparar su entrega.');
+    const existing = handoverFrom(shift.id);
+    if (existing && existing.status !== 'BORRADOR') return fail('Este turno ya envió su entrega.');
+    if (shift.status !== 'PREPARANDO_ENTREGA' && SHIFT_TRANSITIONS[shift.status].indexOf('PREPARANDO_ENTREGA') < 0) {
+      return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Preparando entrega.');
+    }
+
+    const next = neighbour(shift, 'next');
+    const generated = buildSnapshot();
+    const handoverId = existing ? existing.id : 'h' + shift.id;
+    const manual = existing ? (existing.items || []).filter((i) => i.manual) : [];
+
+    const ok = await write(async function () {
+      await setDoc('handovers/' + handoverId, {
+        fromShiftId: shift.id, toShiftId: next ? next.id : null,
+        status: 'BORRADOR', issuedBy: state.currentUserId,
+        issuedAt: existing ? existing.issuedAt || null : null,
+        receivedBy: null, receivedAt: null,
+        notes: existing ? existing.notes || '' : '',
+        receiverObservations: null,
+        items: generated.concat(manual),
+        createdAt: existing ? existing.createdAt : new Date().toISOString()
+      });
+      if (shift.status !== 'PREPARANDO_ENTREGA') {
+        await updateDoc('shifts/' + shift.id, { status: 'PREPARANDO_ENTREGA' });
+      }
+    }, 'Resumen de entrega generado: ' + generated.length + ' puntos. Revísalo, agrega notas y envíalo.');
+
+    if (ok) {
+      state.view = 'entrega';
+      state.openHandover = handoverId;
+      await pushAudit('CAMBIO_ESTADO', 'Turno', 'Turno en preparación de entrega (' + generated.length + ' puntos generados)');
+    }
+  };
+
+  ACTIONS.regenerate = async function (handoverId) {
+    const handover = state.handovers.find((h) => h.id === handoverId);
+    if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada.');
+    const manual = (handover.items || []).filter((i) => i.manual);
+    const generated = buildSnapshot();
+    await write(function () { return updateDoc('handovers/' + handoverId, { items: generated.concat(manual) }); },
+      'Resumen actualizado con el estado actual (' + generated.length + ' puntos). Tus notas manuales se conservaron.');
+  };
+
+  ACTIONS['add-note'] = async function (handoverId) {
+    const handover = state.handovers.find((h) => h.id === handoverId);
+    if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada: no admite nuevas notas.');
+    const title = (val('note-title') || '').trim();
+    const detail = (val('note-detail') || '').trim();
+    const level = val('note-level') || 'IMPORTANTE';
+    if (title.length < 3) return fail('Escribe la nota (mínimo 3 caracteres).');
+    const items = (handover.items || []).concat([{ level: level, section: 'Observaciones del turno', title: title, detail: detail || null, manual: true }]);
+    await write(function () { return updateDoc('handovers/' + handoverId, { items: items }); }, 'Nota agregada a la entrega.');
+  };
+
+  ACTIONS['remove-note'] = async function (args) {
+    const parts = args.split('|');
+    const handover = state.handovers.find((h) => h.id === parts[0]);
+    if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada.');
+    const items = (handover.items || []).slice();
+    items.splice(Number(parts[1]), 1);
+    await write(function () { return updateDoc('handovers/' + handover.id, { items: items }); }, 'Nota eliminada de la entrega.');
+  };
+
+  ACTIONS.send = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    if (!shift) return;
+    if (!can('shift.handover')) return fail('Tu rol no tiene el permiso shift.handover.');
+    const handover = handoverFrom(shift.id);
+    if (!handover) return fail('Primero debes preparar la entrega.');
+    if (handover.status !== 'BORRADOR') return fail('Esta entrega ya fue enviada.');
+    if (SHIFT_TRANSITIONS[shift.status].indexOf('ENTREGA_ENVIADA') < 0) return fail('Transición no permitida: ' + SHIFT_LABEL[shift.status] + ' → Entrega enviada.');
+
+    const notes = (val('handover-notes') || '').trim();
+    const now = new Date().toISOString();
+
+    const ok = await write(async function () {
+      await updateDoc('handovers/' + handover.id, {
+        status: 'ENVIADA', issuedAt: now, issuedBy: state.currentUserId, notes: notes, snapshotAt: now
+      });
+      await updateDoc('shifts/' + shift.id, { status: 'ENTREGA_ENVIADA' });
+    }, 'Entrega enviada. El turno siguiente debe confirmarla.');
+
+    if (ok) await pushAudit('TURNO_ENTREGAR', 'Entrega de turno', 'Entrega enviada por ' + me().name + ' (' + (handover.items || []).length + ' puntos)');
+  };
+
+  ACTIONS['cancel-prep'] = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    const handover = handoverFrom(shiftId);
+    if (handover && handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada: no puede cancelarse.');
+    const ok = await write(async function () {
+      if (handover) await db.doc('handovers/' + handover.id).delete();
+      await updateDoc('shifts/' + shiftId, { status: 'ACTIVO' });
+    }, 'Preparación cancelada. Tu turno sigue activo.');
+    if (ok) {
+      state.view = 'turno';
+      await pushAudit('CAMBIO_ESTADO', 'Turno', 'Preparación de entrega cancelada del turno ' + SHIFT_TYPE[shift.type]);
+    }
+  };
+
+  ACTIONS['close-shift'] = async function (shiftId) {
+    const shift = shiftById(shiftId);
+    if (!shift) return;
+    if (!can('shift.close')) return fail('Tu rol no tiene el permiso shift.close.');
+    const next = neighbour(shift, 'next');
+    const handover = handoverFrom(shift.id);
+    const hasNext = Boolean(next) && next.status !== 'CERRADO' && next.status !== 'ANULADO';
+
+    if (hasNext) {
+      if (!handover || handover.status === 'BORRADOR') return fail('No puedes cerrar el turno sin enviar la entrega al turno siguiente.');
+      if (handover.status === 'ENVIADA') return fail('La entrega fue enviada pero el turno siguiente aún no la confirma. El turno se cierra una vez recibida.');
+    } else if (shift.status !== 'ACTIVO' && shift.status !== 'RECIBIDO') {
+      return fail('No puedes cerrar un turno en estado ' + SHIFT_LABEL[shift.status] + '.');
+    }
+
+    const ok = await write(function () {
+      return updateDoc('shifts/' + shiftId, { status: 'CERRADO', endedAt: new Date().toISOString(), closedBy: state.currentUserId });
+    }, 'Turno cerrado.');
+    if (ok) await pushAudit('TURNO_CERRAR', 'Turno', 'Turno ' + SHIFT_TYPE[shift.type] + ' del ' + fmtDate(shift.date) + ' cerrado por ' + me().name);
+  };
+
+  ACTIONS['open-handover'] = function (id) {
+    state.view = 'entrega';
+    state.openHandover = id;
+    render();
+    window.scrollTo({ top: 0 });
+  };
+
+  // ------------------------------- Registros ------------------------------
+  ACTIONS['submit-entry'] = async function () {
+    const type = val('f-type');
+    const isIncident = type === 'INCIDENCIA';
+    if (!can(isIncident ? 'incident.create' : 'entry.create')) return fail('Tu rol no puede crear este tipo de registro.');
+    const title = (val('f-title') || '').trim();
+    const description = (val('f-description') || '').trim();
+    if (title.length < 3) return fail('El título debe tener al menos 3 caracteres.');
+    if (description.length < 5) return fail('La descripción debe tener al menos 5 caracteres.');
+
+    const shift = myOpenShift();
+    const id = newId();
+    const now = new Date().toISOString();
+    const record = {
+      type: type, title: title, description: description,
+      department: val('f-department') || null, priority: val('f-priority'), status: 'ABIERTO',
+      createdBy: state.currentUserId, ownerId: val('f-owner') || null,
+      shiftId: shift ? shift.id : null, occurredAt: now, dueAt: dueFrom(val('f-due')),
+      tags: (val('f-tags') || '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 12),
+      followUp: checked('f-followup'),
+      severity: isIncident ? val('f-severity') : null,
+      impact: isIncident ? val('f-impact') : null,
+      immediateAction: isIncident ? (val('f-immediate') || '').trim() || null : null,
+      rootCause: null, resolution: null, closedAt: null,
+      guestId: val('f-guest') || null, reservationId: val('f-reservation') || null,
+      comments: [],
+      history: [{ at: now, action: 'CREAR', actor: state.currentUserId, summary: ENTRY_TYPE[type] + ' registrada' }],
+      deleted: false, createdAt: now
+    };
+
+    const ok = await write(function () { return setDoc('entries/' + id, record); }, 'Registro creado' + (shift ? ' en tu turno.' : '.'));
+    if (ok) {
+      closeSheet();
+      await pushAudit('CREAR', 'Registro', ENTRY_TYPE[type] + ': ' + title);
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS['entry-status'] = async function (args) {
+    const parts = args.split('|');
+    const entry = state.entries.find((e) => e.id === parts[0]);
+    if (!entry) return;
+    const next = parts[1];
+    const closing = next === 'CERRADO' || next === 'RESUELTO';
+    const reopening = (entry.status === 'CERRADO' || entry.status === 'RESUELTO') && ENTRY_OPEN.indexOf(next) >= 0;
+
+    if (closing && !can('entry.close') && !can('incident.close')) return fail('Tu rol no tiene permiso para cerrar registros.');
+    if (reopening && !can('entry.reopen')) return fail('Tu rol no tiene el permiso entry.reopen. Un supervisor puede reabrirlo.');
+
+    if (next === 'CERRADO') {
+      if (entry.type === 'INCIDENCIA' && !entry.resolution) return fail('Para cerrar una incidencia debes registrar cómo se resolvió.');
+      const openFollowups = state.followups.filter((f) => f.entryId === entry.id && (f.status === 'PENDIENTE' || f.status === 'VENCIDO'));
+      if (openFollowups.length > 0) return fail('No puedes cerrar el registro: tiene ' + openFollowups.length + ' seguimiento(s) sin cerrar.');
+    }
+
+    const now = new Date().toISOString();
+    const history = (entry.history || []).concat([{
+      at: now, action: next === 'CERRADO' ? 'CERRAR' : reopening ? 'REABRIR' : 'CAMBIO_ESTADO',
+      actor: state.currentUserId, summary: 'Estado: ' + ENTRY_STATUS[next]
+    }]);
+
+    const ok = await write(function () {
+      return updateDoc('entries/' + entry.id, {
+        status: next, closedAt: next === 'CERRADO' ? now : null,
+        closedBy: next === 'CERRADO' ? state.currentUserId : null,
+        reopenedAt: reopening ? now : entry.reopenedAt || null,
+        history: history
+      });
+    }, 'Registro ' + ENTRY_STATUS[next].toLowerCase() + '.');
+
+    if (ok) {
+      await pushAudit(next === 'CERRADO' ? 'CERRAR' : 'CAMBIO_ESTADO', 'Registro', '#' + entry.seq + ' ' + entry.title + ' → ' + ENTRY_STATUS[next]);
+      runAlertEngine();
+      if (document.querySelector('.sheet')) openEntrySheet(entry.id);
+    }
+  };
+
+  ACTIONS['submit-resolve'] = async function () {
+    const id = val('f-id');
+    const entry = state.entries.find((e) => e.id === id);
+    if (!entry) return;
+    const resolution = (val('f-resolution') || '').trim();
+    const cause = (val('f-cause') || '').trim();
+    if (entry.type === 'INCIDENCIA' && !resolution) return fail('Para cerrar una incidencia debes registrar cómo se resolvió.');
+
+    const ok = await write(function () {
+      return updateDoc('entries/' + id, { resolution: resolution || entry.resolution || null, rootCause: cause || entry.rootCause || null });
+    });
+    if (ok) {
+      closeSheet();
+      entry.resolution = resolution || entry.resolution;
+      await ACTIONS['entry-status'](id + '|CERRADO');
+    }
+  };
+
+  ACTIONS['delete-entry'] = async function (id) {
+    if (!can('entry.delete')) return fail('Tu rol no tiene el permiso entry.delete.');
+    const entry = state.entries.find((e) => e.id === id);
+    const reason = (val('f-reason') || '').trim();
+    if (reason.length < 5) return fail('Indica el motivo de la eliminación (mínimo 5 caracteres).');
+    const ok = await write(function () {
+      return updateDoc('entries/' + id, { deleted: true, deletedAt: new Date().toISOString(), deletedBy: state.currentUserId, deletionReason: reason });
+    }, 'Registro eliminado. Queda recuperable desde Administración.');
+    if (ok) {
+      closeSheet();
+      await pushAudit('ELIMINAR', 'Registro', 'Eliminación lógica de «' + entry.title + '»: ' + reason);
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS['restore-entry'] = async function (id) {
+    if (!can('entry.delete')) return fail('Tu rol no puede restaurar registros.');
+    const entry = state.entries.find((e) => e.id === id);
+    const ok = await write(function () {
+      return updateDoc('entries/' + id, { deleted: false, deletedAt: null, deletedBy: null, deletionReason: null });
+    }, 'Registro restaurado.');
+    if (ok) await pushAudit('RESTAURAR', 'Registro', 'Restaurado «' + entry.title + '»');
+  };
+
+  // -------------------------------- Tareas --------------------------------
+  ACTIONS['submit-task'] = async function () {
+    if (!can('task.create')) return fail('Tu rol no tiene el permiso task.create.');
+    const title = (val('f-title') || '').trim();
+    if (title.length < 3) return fail('El título debe tener al menos 3 caracteres.');
+    const assignee = val('f-assignee');
+    if (assignee && assignee !== state.currentUserId && !can('task.assign')) return fail('Tu rol no tiene el permiso task.assign.');
+
+    const entryId = val('f-entry') || null;
+    const entry = entryId ? state.entries.find((e) => e.id === entryId) : null;
+    const shift = myOpenShift();
+    const id = newId();
+    const now = new Date().toISOString();
+
+    const record = {
+      title: title, description: (val('f-description') || '').trim() || null,
+      assigneeId: assignee || null, priority: val('f-priority'), status: 'PENDIENTE',
+      dueAt: dueFrom(val('f-due')), department: val('f-department') || null,
+      entryId: entryId, origin: entry ? (entry.type === 'INCIDENCIA' ? 'INCIDENCIA' : 'REGISTRO') : 'MANUAL',
+      createdBy: state.currentUserId, createdAt: now, shiftId: shift ? shift.id : null,
+      checklist: (val('f-checklist') || '').split('\n').map((t) => t.trim()).filter(Boolean).slice(0, 30)
+        .map(function (text, i) { return { id: 'k' + i + newId().slice(0, 4), text: text, done: false }; }),
+      comments: [],
+      history: [{ at: now, action: 'CREAR', actor: state.currentUserId, summary: 'Tarea creada y asignada a ' + (assignee ? userName(assignee) : 'nadie') }],
+      deleted: false, blockedReason: null, completedAt: null
+    };
+
+    const ok = await write(function () { return setDoc('tasks/' + id, record); }, 'Tarea creada.');
+    if (ok) {
+      closeSheet();
+      await pushAudit('CREAR', 'Tarea', title + (assignee ? ' → ' + userName(assignee) : ''));
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS['task-status'] = async function (args) {
+    const parts = args.split('|');
+    const task = state.tasks.find((t) => t.id === parts[0]);
+    if (!task) return;
+    const next = parts[1];
+    const allowed = {
+      PENDIENTE: ['EN_CURSO', 'BLOQUEADA', 'COMPLETADA', 'CANCELADA'],
+      EN_CURSO: ['BLOQUEADA', 'COMPLETADA', 'CANCELADA', 'PENDIENTE'],
+      BLOQUEADA: ['EN_CURSO', 'PENDIENTE', 'COMPLETADA', 'CANCELADA'],
+      COMPLETADA: ['EN_CURSO'], CANCELADA: ['PENDIENTE']
+    };
+    if ((allowed[task.status] || []).indexOf(next) < 0) return fail('No puedes pasar una tarea de ' + TASK_STATUS[task.status] + ' a ' + TASK_STATUS[next] + '.');
+    if ((next === 'COMPLETADA' || next === 'CANCELADA') && !can('task.close')) return fail('Tu rol no tiene el permiso task.close.');
+
+    let blockedReason = task.blockedReason;
+    if (next === 'BLOQUEADA') {
+      blockedReason = (val('f-blocked') || '').trim();
+      if (!blockedReason) return fail('Indica por qué la tarea queda bloqueada.');
+    } else {
+      blockedReason = null;
+    }
+
+    const now = new Date().toISOString();
+    const history = (task.history || []).concat([{
+      at: now, action: next === 'COMPLETADA' ? 'CERRAR' : 'CAMBIO_ESTADO',
+      actor: state.currentUserId, summary: 'Estado: ' + TASK_STATUS[next] + (blockedReason ? ' — ' + blockedReason : '')
+    }]);
+
+    const ok = await write(function () {
+      return updateDoc('tasks/' + task.id, {
+        status: next, blockedReason: blockedReason,
+        completedAt: next === 'COMPLETADA' ? now : null,
+        completedBy: next === 'COMPLETADA' ? state.currentUserId : null,
+        history: history
+      });
+    }, 'Tarea ' + TASK_STATUS[next].toLowerCase() + '.');
+
+    if (ok) {
+      closeSheet();
+      await pushAudit(next === 'COMPLETADA' ? 'CERRAR' : 'CAMBIO_ESTADO', 'Tarea', task.title + ' → ' + TASK_STATUS[next]);
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS['block-task'] = function (taskId) {
+    openSheet('Bloquear tarea',
+      '<div class="form-grid">' +
+      '<input type="hidden" id="f-id" value="' + esc(taskId) + '">' +
+      '<label class="field"><span class="field-label">Motivo del bloqueo</span><textarea id="f-blocked" placeholder="Qué falta para poder avanzar."></textarea></label>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn btn-primary" type="button" data-act="task-status" data-args="' + esc(taskId) + '|BLOQUEADA">Bloquear tarea</button></div></div>');
+  };
+
+  ACTIONS['toggle-check'] = async function (args) {
+    const parts = args.split('|');
+    const task = state.tasks.find((t) => t.id === parts[0]);
+    if (!task) return;
+    const checklist = (task.checklist || []).map(function (item) {
+      return item.id === parts[1] ? Object.assign({}, item, { done: !item.done }) : item;
+    });
+    const ok = await write(function () { return updateDoc('tasks/' + task.id, { checklist: checklist }); });
+    if (ok && document.querySelector('.sheet')) openTaskSheet(task.id);
+  };
+
+  ACTIONS['assign-task'] = async function () {
+    if (!can('task.assign')) return fail('Tu rol no tiene el permiso task.assign.');
+    const id = val('f-id');
+    const task = state.tasks.find((t) => t.id === id);
+    const assignee = val('f-assignee') || null;
+    if (!task) return;
+    const now = new Date().toISOString();
+    const history = (task.history || []).concat([{ at: now, action: 'CAMBIO_RESPONSABLE', actor: state.currentUserId, summary: 'Reasignada a ' + (assignee ? userName(assignee) : 'sin asignar') }]);
+    const ok = await write(function () { return updateDoc('tasks/' + id, { assigneeId: assignee, history: history }); }, 'Responsable actualizado.');
+    if (ok) {
+      closeSheet();
+      await pushAudit('CAMBIO_RESPONSABLE', 'Tarea', task.title + ' → ' + (assignee ? userName(assignee) : 'sin asignar'));
+    }
+  };
+
+  // ----------------------------- Seguimientos -----------------------------
+  ACTIONS['submit-followup'] = async function () {
+    if (!can('followup.create')) return fail('Tu rol no tiene el permiso followup.create.');
+    const action = (val('f-action') || '').trim();
+    const entryId = val('f-entry');
+    if (action.length < 3) return fail('Describe la acción realizada (mínimo 3 caracteres).');
+    if (!entryId) return fail('El seguimiento debe asociarse a un registro.');
+
+    const id = newId();
+    const now = new Date().toISOString();
+    const ok = await write(async function () {
+      await setDoc('followups/' + id, {
+        entryId: entryId, taskId: null, action: action,
+        result: (val('f-result') || '').trim() || null,
+        nextAction: (val('f-next') || '').trim() || null,
+        scheduledAt: dueFrom(val('f-when')),
+        ownerId: val('f-owner') || state.currentUserId,
+        createdBy: state.currentUserId, status: 'PENDIENTE',
+        createdAt: now, completedAt: null, comments: []
+      });
+      await updateDoc('entries/' + entryId, { followUp: true });
+    }, 'Seguimiento registrado.');
+
+    if (ok) {
+      closeSheet();
+      await pushAudit('SEGUIMIENTO', 'Seguimiento', action);
+      runAlertEngine();
+    }
+  };
+
+  ACTIONS['submit-close-followup'] = async function () {
+    const id = val('f-id');
+    const result = (val('f-result') || '').trim();
+    if (!result) return fail('Para cerrar un seguimiento debes registrar el resultado.');
+    const followUp = state.followups.find((f) => f.id === id);
+    if (!followUp) return;
+    const now = new Date().toISOString();
+
+    const ok = await write(async function () {
+      await updateDoc('followups/' + id, { status: 'CUMPLIDO', result: result, completedAt: now });
+      const linked = state.alerts.filter((a) => a.followUpId === id && a.auto && a.status !== 'RESUELTA');
+      for (const alert of linked) {
+        await updateDoc('alerts/' + alert.id, { status: 'RESUELTA', resolvedAt: now, resolvedBy: state.currentUserId, resolutionNote: 'Seguimiento cerrado.' });
+      }
+    }, 'Seguimiento cerrado.');
+
+    if (ok) {
+      closeSheet();
+      await pushAudit('CERRAR', 'Seguimiento', followUp.action);
+    }
+  };
+
+  // -------------------------------- Alertas -------------------------------
+  ACTIONS['alert-ack'] = async function (id) {
+    if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
+    const alert = state.alerts.find((a) => a.id === id);
+    if (!alert || alert.status === 'RESUELTA') return fail('La alerta ya está resuelta.');
+    await write(function () {
+      return updateDoc('alerts/' + id, { status: 'VISTA', acknowledgedBy: state.currentUserId, acknowledgedAt: new Date().toISOString(), snoozedUntil: null });
+    }, 'Alerta marcada como vista.');
+  };
+
+  ACTIONS['alert-snooze'] = async function (args) {
+    if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
+    const parts = args.split('|');
+    const alert = state.alerts.find((a) => a.id === parts[0]);
+    if (!alert || alert.status === 'RESUELTA') return fail('La alerta ya está resuelta.');
+    const minutes = Number(parts[1] || 60);
+    await write(function () {
+      return updateDoc('alerts/' + alert.id, {
+        status: 'POSPUESTA', snoozedUntil: new Date(Date.now() + minutes * 60000).toISOString(),
+        acknowledgedBy: state.currentUserId, acknowledgedAt: new Date().toISOString()
+      });
+    }, 'Alerta pospuesta ' + (minutes >= 60 ? (minutes / 60) + ' h' : minutes + ' min') + '.');
+  };
+
+  ACTIONS['alert-resolve'] = async function (id) {
+    if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
+    const alert = state.alerts.find((a) => a.id === id);
+    if (!alert) return;
+    const ok = await write(function () {
+      return updateDoc('alerts/' + id, {
+        status: 'RESUELTA', resolvedBy: state.currentUserId, resolvedAt: new Date().toISOString(),
+        resolutionNote: 'Resuelta por ' + me().name + '.', snoozedUntil: null
+      });
+    }, alert.auto ? 'Alerta resuelta. Si la condición de origen persiste, el motor la reabrirá.' : 'Alerta resuelta.');
+    if (ok) await pushAudit('CERRAR', 'Alerta', alert.title);
+  };
+
+  ACTIONS['submit-alert'] = async function () {
+    if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
+    const title = (val('f-title') || '').trim();
+    if (title.length < 3) return fail('El título debe tener al menos 3 caracteres.');
+    const id = 'm-' + newId();
+    const ok = await write(function () {
+      return setDoc('alerts/' + id, {
+        type: val('f-type'), level: val('f-level'), title: title,
+        message: (val('f-message') || '').trim() || null, status: 'NUEVA', auto: false,
+        dueAt: dueFrom(val('f-due')), entryId: val('f-entry') || null, taskId: null,
+        followUpId: null, handoverId: null, reservationId: val('f-reservation') || null,
+        guestId: val('f-guest') || null, createdBy: state.currentUserId,
+        createdAt: new Date().toISOString(), deleted: false
+      });
+    }, 'Alerta creada.');
+    if (ok) {
+      closeSheet();
+      await pushAudit('CREAR', 'Alerta', title);
+    }
+  };
+
+  ACTIONS['run-engine'] = function () { runAlertEngine({ announce: true }); };
+
+  // ------------------------------ Comentarios -----------------------------
+  ACTIONS['add-comment'] = async function (args) {
+    const parts = args.split('|');
+    const collection = parts[0] === 'entry' ? 'entries' : 'tasks';
+    const list = parts[0] === 'entry' ? state.entries : state.tasks;
+    const item = list.find((x) => x.id === parts[1]);
+    if (!item) return;
+    const body = (val('comment-body') || '').trim();
+    if (!body) return fail('El comentario no puede estar vacío.');
+    const comments = (item.comments || []).concat([{ id: newId(), authorId: state.currentUserId, body: body, at: new Date().toISOString() }]);
+    const ok = await write(function () { return updateDoc(collection + '/' + item.id, { comments: comments }); }, 'Comentario publicado.');
+    if (ok) {
+      await pushAudit('COMENTAR', parts[0] === 'entry' ? 'Registro' : 'Tarea', 'Comentario en «' + item.title + '»');
+      if (parts[0] === 'entry') openEntrySheet(item.id); else openTaskSheet(item.id);
+    }
+  };
+
+  // -------------------------- Huéspedes y reservas ------------------------
+  ACTIONS['submit-guest'] = async function () {
+    if (!can('guest.manage')) return fail('Tu rol no puede gestionar huéspedes.');
+    const id = val('f-id') || newId();
+    const name = (val('f-name') || '').trim();
+    if (name.length < 3) return fail('Escribe el nombre del huésped.');
+    const ok = await write(function () {
+      return setDoc('guests/' + id, {
+        name: name, room: (val('f-room') || '').trim() || null,
+        vip: checked('f-vip'), notes: (val('f-notes') || '').trim() || null,
+        phone: (val('f-phone') || '').trim() || null,
+        createdAt: new Date().toISOString()
+      });
+    }, 'Huésped guardado.');
+    if (ok) { closeSheet(); await pushAudit('CREAR', 'Huésped', name); runAlertEngine(); }
+  };
+
+  ACTIONS['submit-reservation'] = async function () {
+    if (!can('guest.manage')) return fail('Tu rol no puede gestionar reservas.');
+    const id = val('f-id') || newId();
+    const code = (val('f-code') || '').trim();
+    if (code.length < 2) return fail('Escribe el código de la reserva.');
+    const balanceRaw = val('f-balance');
+    const ok = await write(function () {
+      return setDoc('reservations/' + id, {
+        code: code, guestId: val('f-guest') || null,
+        room: (val('f-room') || '').trim() || null,
+        checkIn: val('f-checkin') ? new Date(val('f-checkin')).toISOString() : null,
+        checkOut: val('f-checkout') ? new Date(val('f-checkout')).toISOString() : null,
+        channel: (val('f-channel') || '').trim() || null,
+        status: val('f-status'), guarantee: val('f-guarantee'),
+        balance: balanceRaw ? Number(balanceRaw) : null,
+        action: (val('f-action') || '').trim() || null,
+        createdAt: new Date().toISOString()
+      });
+    }, 'Reserva guardada.');
+    if (ok) { closeSheet(); await pushAudit('CREAR', 'Reserva', code); runAlertEngine(); }
+  };
+
+  // ----------------------------- Mantenimiento ----------------------------
+  /**
+   * La base de datos del artefacto admite hasta 5.000 documentos. El archivado
+   * agrupa los registros cerrados antiguos en un documento por mes y libera
+   * los individuales, conservando la información consultable.
+   */
+  ACTIONS['archive-closed'] = async function () {
+    if (!can('system.configure')) return fail('Tu rol no puede archivar registros.');
+    const days = Number(val('archive-days') || '90');
+    const cutoff = Date.now() - days * DAY;
+
+    const entries = state.entries.filter((e) => ENTRY_OPEN.indexOf(e.status) < 0 && new Date(e.closedAt || e.occurredAt).getTime() < cutoff);
+    const tasks = state.tasks.filter((t) => TASK_OPEN.indexOf(t.status) < 0 && new Date(t.completedAt || t.createdAt).getTime() < cutoff);
+    if (entries.length === 0 && tasks.length === 0) return toast('No hay registros cerrados anteriores a ' + days + ' días.', 'ok');
+
+    const buckets = {};
+    const put = (kind, item, dateIso) => {
+      const month = String(dateIso || new Date().toISOString()).slice(0, 7);
+      buckets[month] = buckets[month] || [];
+      buckets[month].push(Object.assign({ archivedKind: kind }, item));
+    };
+    entries.forEach((e) => put('entry', e, e.closedAt || e.occurredAt));
+    tasks.forEach((t) => put('task', t, t.completedAt || t.createdAt));
+
+    const ok = await write(async function () {
+      for (const month of Object.keys(buckets)) {
+        const path = 'archive/' + month;
+        const snap = await db.doc(path).get();
+        const previous = snap.exists ? (snap.data().items || []) : [];
+        await db.doc(path).set({ month: month, items: previous.concat(buckets[month]), archivedAt: new Date().toISOString() });
+      }
+      for (const entry of entries) await db.doc('entries/' + entry.id).delete();
+      for (const task of tasks) await db.doc('tasks/' + task.id).delete();
+    }, 'Archivados ' + entries.length + ' registro(s) y ' + tasks.length + ' tarea(s).');
+
+    if (ok) await pushAudit('CONFIGURAR', 'Sistema', 'Archivado de ' + (entries.length + tasks.length) + ' registros cerrados anteriores a ' + days + ' días');
+  };
+
+  ACTIONS['load-example'] = async function () {
+    if (!can('system.configure')) return fail('Tu rol no puede cargar datos de ejemplo.');
+    if (state.entries.length > 0) return fail('Ya hay registros en el libro: los datos de ejemplo sólo se cargan en un sistema vacío.');
+    await loadExampleData();
+  };
 
   // ------------------------- Formularios en hoja --------------------------
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const checked = (id) => { const el = document.getElementById(id); return Boolean(el && el.checked); };
+
+  /** Los vencimientos se eligen en lenguaje de mesón, no con un calendario. */
+  const DUE_OPTIONS = [
+    ['', 'Sin fecha límite'], ['1', 'En 1 hora'], ['2', 'En 2 horas'],
+    ['4', 'En 4 horas'], ['8', 'Al final del turno (8 h)'], ['24', 'Mañana'], ['72', 'En 3 días']
+  ];
+  const dueFrom = (hours) => hours ? new Date(Date.now() + Number(hours) * 3600000).toISOString() : null;
+  const dueSelect = (id, selected) => '<select id="' + id + '">' + DUE_OPTIONS.map(function (o) {
+    return '<option value="' + o[0] + '"' + (o[0] === selected ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('') + '</select>';
+
   function closeSheet() { document.getElementById('modal-host').innerHTML = ''; }
 
   function openSheet(title, bodyHtml) {
@@ -1999,9 +2644,38 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     }).join('');
   }
 
+  const guestOptions = (selected) => '<option value="">Ninguno</option>' + state.guests.map(function (g) {
+    return '<option value="' + g.id + '"' + (g.id === selected ? ' selected' : '') + '>' + esc(g.name + (g.room ? ' · hab. ' + g.room : '')) + '</option>';
+  }).join('');
+
+  const reservationOptions = (selected) => '<option value="">Ninguna</option>' + state.reservations.map(function (r) {
+    const guest = state.guests.find((g) => g.id === r.guestId);
+    return '<option value="' + r.id + '"' + (r.id === selected ? ' selected' : '') + '>' + esc(r.code + (guest ? ' · ' + guest.name : '')) + '</option>';
+  }).join('');
+
+  const formFoot = (action, label) => '<div style="display:flex;justify-content:flex-end;gap:8px">' +
+    '<button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
+    '<button class="btn btn-gold" type="button" data-act="' + action + '">' + esc(label) + '</button></div>';
+
+  ACTIONS['new-entry'] = function () { openEntryForm('NOVEDAD'); };
+  ACTIONS['new-incident'] = function () { openEntryForm('INCIDENCIA'); };
+  ACTIONS['new-task'] = function (entryId) { openTaskForm(entryId || null); };
+  ACTIONS['new-followup'] = function (entryId) { openFollowUpForm(entryId || null); };
+  ACTIONS['new-alert'] = function () { openAlertForm(); };
+  ACTIONS['new-guest'] = function () { openGuestForm(null); };
+  ACTIONS['edit-guest'] = function (id) { openGuestForm(id); };
+  ACTIONS['new-reservation'] = function () { openReservationForm(null); };
+  ACTIONS['edit-reservation'] = function (id) { openReservationForm(id); };
+  ACTIONS['new-staff'] = function () { openStaffForm(null); };
+  ACTIONS['edit-staff'] = function (id) { openStaffForm(id); };
+  ACTIONS['open-entry'] = function (id) { openEntrySheet(id); };
+  ACTIONS['open-task'] = function (id) { openTaskSheet(id); };
+  ACTIONS['close-modal'] = function () { closeSheet(); };
+  ACTIONS.print = function () { window.print(); };
+
   function openEntryForm(type) {
     const isIncident = type === 'INCIDENCIA';
-    if (!can(isIncident ? 'incident.create' : 'entry.create')) return fail('Tu rol no tiene el permiso ' + (isIncident ? 'incident.create' : 'entry.create') + '.');
+    if (!can(isIncident ? 'incident.create' : 'entry.create')) return fail('Tu rol no puede crear este tipo de registro.');
     openSheet(isIncident ? 'Nueva incidencia' : 'Nueva novedad',
       '<div class="form-grid">' +
       '<div class="form-grid two">' +
@@ -2010,58 +2684,39 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>' +
       '<label class="field"><span class="field-label">Título</span><input type="text" id="f-title" maxlength="200" placeholder="Qué pasó, en una línea"></label>' +
       '<label class="field"><span class="field-label">Descripción</span><textarea id="f-description" placeholder="Detalle de lo ocurrido, qué se hizo y qué queda pendiente."></textarea></label>' +
+      (isIncident ?
+        '<div class="form-grid two">' +
+        '<label class="field"><span class="field-label">Gravedad</span><select id="f-severity">' + selectOptions(['BAJA', 'MEDIA', 'ALTA', 'CRITICA'], PRIORITY, 'ALTA') + '</select></label>' +
+        '<label class="field"><span class="field-label">Impacto</span><select id="f-impact">' + selectOptions(Object.keys(IMPACT), IMPACT, 'OPERACION') + '</select></label>' +
+        '</div>' +
+        '<label class="field"><span class="field-label">Acción inmediata</span><textarea id="f-immediate" placeholder="Qué se hizo en el momento para contener la situación."></textarea></label>'
+        : '') +
       '<div class="form-grid two">' +
       '<label class="field"><span class="field-label">Área</span><select id="f-department"><option value="">Sin área</option>' + selectOptions(DEPARTMENTS, null, 'Recepción') + '</select></label>' +
       '<label class="field"><span class="field-label">Responsable</span><select id="f-owner">' + peopleOptions(state.currentUserId) + '</select></label>' +
       '</div>' +
       '<div class="form-grid two">' +
-      '<label class="field"><span class="field-label">Huésped relacionado</span><select id="f-guest"><option value="">Ninguno</option>' +
-        state.guests.map((g) => '<option value="' + g.id + '">' + esc(g.name + (g.room ? ' · hab. ' + g.room : '')) + '</option>').join('') + '</select></label>' +
-      '<label class="field"><span class="field-label">Gravedad (sólo incidencias)</span><select id="f-severity">' + selectOptions(['BAJA', 'MEDIA', 'ALTA', 'CRITICA'], PRIORITY, 'ALTA') + '</select></label>' +
+      '<label class="field"><span class="field-label">Huésped relacionado</span><select id="f-guest">' + guestOptions(null) + '</select></label>' +
+      '<label class="field"><span class="field-label">Reserva relacionada</span><select id="f-reservation">' + reservationOptions(null) + '</select></label>' +
       '</div>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Vencimiento</span>' + dueSelect('f-due', '') + '</label>' +
       '<label class="field"><span class="field-label">Etiquetas</span><input type="text" id="f-tags" placeholder="climatizacion, vip"></label>' +
+      '</div>' +
       '<label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" id="f-followup" style="width:auto"> Requiere seguimiento</label>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn btn-gold" type="button" data-act="submit-entry">Guardar registro</button></div>' +
-      '</div>');
+      formFoot('submit-entry', 'Guardar registro') + '</div>');
   }
-
-  ACTIONS['submit-entry'] = function () {
-    const val = (id) => (document.getElementById(id) || {}).value || '';
-    const type = val('f-type');
-    const title = val('f-title').trim();
-    const description = val('f-description').trim();
-    if (title.length < 3) return fail('El título debe tener al menos 3 caracteres.');
-    if (description.length < 5) return fail('La descripción debe tener al menos 5 caracteres.');
-
-    const shift = myOpenShift();
-    const entry = {
-      id: 'e' + (++seq), seq: seq, type: type, title: title, description: description,
-      department: val('f-department') || null, priority: val('f-priority'), status: 'ABIERTO',
-      createdBy: state.currentUserId, ownerId: val('f-owner') || null,
-      shiftId: shift ? shift.id : null, occurredAt: new Date().toISOString(), dueAt: null,
-      tags: val('f-tags').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
-      followUp: (document.getElementById('f-followup') || {}).checked || false,
-      severity: type === 'INCIDENCIA' ? val('f-severity') : null,
-      impact: type === 'INCIDENCIA' ? 'OPERACION' : null,
-      guestId: val('f-guest') || null, reservationId: null,
-      comments: [], history: [], deleted: false
-    };
-    entry.history.push({ at: entry.occurredAt, action: 'CREAR', actor: state.currentUserId, summary: ENTRY_TYPE[type] + ' #' + entry.seq + ' registrada' });
-    state.entries.unshift(entry);
-    pushAudit('CREAR', 'Registro', ENTRY_TYPE[type] + ' #' + entry.seq + ': ' + title);
-    runAlertEngine();
-    closeSheet();
-    commit('Registro #' + entry.seq + ' creado' + (shift ? ' en tu turno.' : '.'));
-  };
 
   function openTaskForm(entryId) {
     if (!can('task.create')) return fail('Tu rol no tiene el permiso task.create.');
     const entry = entryId ? state.entries.find((e) => e.id === entryId) : null;
+    const open = state.entries.filter((e) => !e.deleted && ENTRY_OPEN.indexOf(e.status) >= 0);
     openSheet('Nueva tarea',
       '<div class="form-grid">' +
-      (entry ? '<p class="meta">Vinculada al registro <strong>#' + entry.seq + ' ' + esc(entry.title) + '</strong>. El origen queda registrado automáticamente.</p>' : '') +
-      '<input type="hidden" id="f-entry" value="' + esc(entryId || '') + '">' +
+      (entry ? '<p class="meta">Vinculada al registro <strong>#' + entry.seq + ' ' + esc(entry.title) + '</strong>. El origen queda registrado automáticamente.</p>' +
+        '<input type="hidden" id="f-entry" value="' + esc(entryId) + '">'
+        : '<label class="field"><span class="field-label">Registro de origen (opcional)</span><select id="f-entry"><option value="">Sin vínculo</option>' +
+          open.map((e) => '<option value="' + e.id + '">' + esc('#' + e.seq + ' · ' + e.title) + '</option>').join('') + '</select></label>') +
       '<label class="field"><span class="field-label">Qué hay que hacer</span><input type="text" id="f-title" maxlength="200" placeholder="Ej: Confirmar traslado al aeropuerto"></label>' +
       '<label class="field"><span class="field-label">Detalle</span><textarea id="f-description" placeholder="Instrucciones o contexto necesario."></textarea></label>' +
       '<div class="form-grid two">' +
@@ -2069,51 +2724,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '<label class="field"><span class="field-label">Prioridad</span><select id="f-priority">' + selectOptions(['BAJA', 'MEDIA', 'ALTA', 'CRITICA'], PRIORITY, 'MEDIA') + '</select></label>' +
       '</div>' +
       '<div class="form-grid two">' +
-      '<label class="field"><span class="field-label">Vence en</span><select id="f-due">' +
-        '<option value="2">En 2 horas</option><option value="6" selected>Hoy (6 horas)</option><option value="24">Mañana</option><option value="">Sin fecha límite</option>' +
-      '</select></label>' +
+      '<label class="field"><span class="field-label">Fecha límite</span>' + dueSelect('f-due', '8') + '</label>' +
       '<label class="field"><span class="field-label">Área</span><select id="f-department"><option value="">Sin área</option>' + selectOptions(DEPARTMENTS, null, entry ? entry.department : 'Recepción') + '</select></label>' +
       '</div>' +
       '<label class="field"><span class="field-label">Checklist (un paso por línea)</span><textarea id="f-checklist" placeholder="Llamar a la empresa&#10;Registrar patente&#10;Informar al huésped"></textarea></label>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn btn-gold" type="button" data-act="submit-task">Crear tarea</button></div>' +
-      '</div>');
+      formFoot('submit-task', 'Crear tarea') + '</div>');
   }
-
-  ACTIONS['submit-task'] = function () {
-    const val = (id) => (document.getElementById(id) || {}).value || '';
-    const title = val('f-title').trim();
-    if (title.length < 3) return fail('El título debe tener al menos 3 caracteres.');
-    const assignee = val('f-assignee');
-    if (assignee && assignee !== state.currentUserId && !can('task.assign')) return fail('Tu rol no tiene el permiso task.assign.');
-
-    const entryId = val('f-entry') || null;
-    const entry = entryId ? state.entries.find((e) => e.id === entryId) : null;
-    const hours = val('f-due');
-    const shift = myOpenShift();
-
-    const task = {
-      id: 't' + (++seq), seq: seq, title: title, description: val('f-description').trim() || null,
-      assigneeId: assignee || null, priority: val('f-priority'), status: 'PENDIENTE',
-      dueAt: hours ? new Date(Date.now() + Number(hours) * 3600000).toISOString() : null,
-      department: val('f-department') || null, entryId: entryId,
-      origin: entry ? (entry.type === 'INCIDENCIA' ? 'INCIDENCIA' : 'REGISTRO') : 'MANUAL',
-      createdBy: state.currentUserId, createdAt: new Date().toISOString(),
-      shiftId: shift ? shift.id : null,
-      checklist: val('f-checklist').split('\n').map((t) => t.trim()).filter(Boolean).map(function (text, i) { return { id: 'k' + seq + '-' + i, text: text, done: false }; }),
-      comments: [], history: [], deleted: false, blockedReason: null
-    };
-    task.history.push({ at: task.createdAt, action: 'CREAR', actor: state.currentUserId, summary: 'Tarea #' + task.seq + ' creada y asignada a ' + (assignee ? userName(assignee) : 'nadie') });
-    state.tasks.unshift(task);
-    pushAudit('CREAR', 'Tarea', 'Tarea #' + task.seq + ': ' + title);
-    runAlertEngine();
-    closeSheet();
-    commit('Tarea #' + task.seq + ' creada.');
-  };
 
   function openFollowUpForm(entryId) {
     if (!can('followup.create')) return fail('Tu rol no tiene el permiso followup.create.');
     const open = state.entries.filter((e) => !e.deleted && ENTRY_OPEN.indexOf(e.status) >= 0);
+    if (open.length === 0) return fail('No hay registros abiertos: un seguimiento debe colgar de un registro.');
     openSheet('Nuevo seguimiento',
       '<div class="form-grid">' +
       '<label class="field"><span class="field-label">Registro asociado</span><select id="f-entry">' +
@@ -2122,146 +2743,135 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '<label class="field"><span class="field-label">Resultado</span><textarea id="f-result" placeholder="Qué respondió o qué se logró."></textarea></label>' +
       '<label class="field"><span class="field-label">Próxima acción</span><input type="text" id="f-next" maxlength="300" placeholder="Ej: Reintentar contacto y escalar a Administración"></label>' +
       '<div class="form-grid two">' +
-      '<label class="field"><span class="field-label">Programado en</span><select id="f-when">' +
-        '<option value="2">En 2 horas</option><option value="8" selected>Al final del turno</option><option value="24">Mañana</option>' +
-      '</select></label>' +
+      '<label class="field"><span class="field-label">Programado</span>' + dueSelect('f-when', '8') + '</label>' +
       '<label class="field"><span class="field-label">Responsable</span><select id="f-owner">' + peopleOptions(state.currentUserId) + '</select></label>' +
       '</div>' +
-      '<p class="meta">Si llega la fecha programada y el seguimiento sigue abierto, el motor de alertas lo marca como vencido y avisa.</p>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn btn-gold" type="button" data-act="submit-followup">Registrar seguimiento</button></div>' +
-      '</div>');
+      '<p class="meta">Si llega la fecha programada y el seguimiento sigue abierto, el motor de alertas lo marca vencido y avisa.</p>' +
+      formFoot('submit-followup', 'Registrar seguimiento') + '</div>');
   }
-
-  ACTIONS['submit-followup'] = function () {
-    const val = (id) => (document.getElementById(id) || {}).value || '';
-    const action = val('f-action').trim();
-    if (action.length < 3) return fail('Describe la acción realizada (mínimo 3 caracteres).');
-    const entryId = val('f-entry');
-    if (!entryId) return fail('El seguimiento debe asociarse a un registro.');
-
-    const followUp = {
-      id: 'f' + (++seq), entryId: entryId, action: action,
-      result: val('f-result').trim() || null, nextAction: val('f-next').trim() || null,
-      scheduledAt: new Date(Date.now() + Number(val('f-when')) * 3600000).toISOString(),
-      ownerId: val('f-owner') || state.currentUserId, createdBy: state.currentUserId,
-      status: 'PENDIENTE', createdAt: new Date().toISOString(), comments: []
-    };
-    state.followups.unshift(followUp);
-    const entry = state.entries.find((e) => e.id === entryId);
-    if (entry) entry.followUp = true;
-    pushAudit('SEGUIMIENTO', 'Seguimiento', 'Seguimiento creado: ' + action);
-    closeSheet();
-    commit('Seguimiento registrado.');
-  };
 
   ACTIONS['close-followup'] = function (id) {
     const followUp = state.followups.find((f) => f.id === id);
+    if (!followUp) return;
     openSheet('Cerrar seguimiento',
-      '<div class="form-grid">' +
-      '<p class="meta">' + esc(followUp.action) + '</p>' +
+      '<div class="form-grid"><p class="meta">' + esc(followUp.action) + '</p>' +
       '<input type="hidden" id="f-id" value="' + esc(id) + '">' +
       '<label class="field"><span class="field-label">Resultado (obligatorio)</span><textarea id="f-result" placeholder="Qué se logró finalmente."></textarea></label>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn btn-gold" type="button" data-act="submit-close-followup">Cerrar seguimiento</button></div>' +
-      '</div>');
-  };
-
-  ACTIONS['submit-close-followup'] = function () {
-    const id = (document.getElementById('f-id') || {}).value;
-    const result = ((document.getElementById('f-result') || {}).value || '').trim();
-    if (!result) return fail('Para cerrar un seguimiento debes registrar el resultado.');
-    const followUp = state.followups.find((f) => f.id === id);
-    followUp.status = 'CUMPLIDO';
-    followUp.result = result;
-    followUp.completedAt = new Date().toISOString();
-    state.alerts.forEach(function (a) {
-      if (a.followUpId === id && a.auto && a.status !== 'RESUELTA') { a.status = 'RESUELTA'; a.resolvedAt = new Date().toISOString(); a.resolutionNote = 'Seguimiento cerrado.'; }
-    });
-    pushAudit('CERRAR', 'Seguimiento', 'Seguimiento cerrado: ' + followUp.action);
-    closeSheet();
-    commit('Seguimiento cerrado.');
-  };
-
-  ACTIONS['add-note'] = function (handoverId) {
-    const handover = state.handovers.find((h) => h.id === handoverId);
-    if (!handover || handover.status !== 'BORRADOR') return fail('La entrega ya fue enviada: no admite nuevas notas.');
-    const title = ((document.getElementById('note-title') || {}).value || '').trim();
-    const detail = ((document.getElementById('note-detail') || {}).value || '').trim();
-    const level = (document.getElementById('note-level') || {}).value || 'IMPORTANTE';
-    if (title.length < 3) return fail('Escribe la nota (mínimo 3 caracteres).');
-    handover.items.push({ level: level, section: 'Observaciones del turno', title: title, detail: detail || null, manual: true });
-    commit('Nota agregada a la entrega.');
-  };
-
-  ACTIONS['add-comment'] = function (args) {
-    const parts = args.split('|');
-    const collection = parts[0] === 'entry' ? state.entries : state.tasks;
-    const item = collection.find((x) => x.id === parts[1]);
-    const box = document.getElementById('comment-body');
-    const body = ((box || {}).value || '').trim();
-    if (!body) return fail('El comentario no puede estar vacío.');
-    item.comments.push({ id: 'c' + (++seq), authorId: state.currentUserId, body: body, at: new Date().toISOString() });
-    pushAudit('COMENTAR', parts[0] === 'entry' ? 'Registro' : 'Tarea', 'Comentario de ' + me().name);
-    save();
-    if (parts[0] === 'entry') openEntrySheet(parts[1]); else openTaskSheet(parts[1]);
-    render();
-    toast('Comentario publicado.', 'ok');
-  };
-
-  ACTIONS['entry-status'] = function (args) {
-    const parts = args.split('|');
-    const entry = state.entries.find((e) => e.id === parts[0]);
-    const next = parts[1];
-    const closing = next === 'CERRADO' || next === 'RESUELTO';
-    const reopening = (entry.status === 'CERRADO' || entry.status === 'RESUELTO') && ENTRY_OPEN.indexOf(next) >= 0;
-
-    if (closing && !can('entry.close') && !can('incident.close')) return fail('Tu rol no tiene permiso para cerrar registros.');
-    if (reopening && !can('entry.reopen')) return fail('Tu rol no tiene el permiso entry.reopen. Un supervisor puede reabrirlo.');
-
-    if (closing && next === 'CERRADO') {
-      if (entry.type === 'INCIDENCIA' && !entry.resolution) {
-        return fail('Para cerrar una incidencia debes registrar cómo se resolvió.');
-      }
-      const openFollowups = state.followups.filter((f) => f.entryId === entry.id && (f.status === 'PENDIENTE' || f.status === 'VENCIDO'));
-      if (openFollowups.length > 0) return fail('No puedes cerrar el registro: tiene ' + openFollowups.length + ' seguimiento(s) sin cerrar.');
-    }
-
-    entry.status = next;
-    entry.closedAt = next === 'CERRADO' ? new Date().toISOString() : null;
-    entry.history.push({ at: new Date().toISOString(), action: next === 'CERRADO' ? 'CERRAR' : reopening ? 'REABRIR' : 'CAMBIO_ESTADO', actor: state.currentUserId, summary: 'Estado: ' + ENTRY_STATUS[next] });
-    pushAudit(next === 'CERRADO' ? 'CERRAR' : 'CAMBIO_ESTADO', 'Registro', 'Registro #' + entry.seq + ' → ' + ENTRY_STATUS[next]);
-    runAlertEngine();
-    save();
-    openEntrySheet(entry.id);
-    render();
-    toast('Registro #' + entry.seq + ': ' + ENTRY_STATUS[next].toLowerCase() + '.', 'ok');
+      formFoot('submit-close-followup', 'Cerrar seguimiento') + '</div>');
   };
 
   ACTIONS['resolve-entry'] = function (id) {
     const entry = state.entries.find((e) => e.id === id);
+    if (!entry) return;
     openSheet('Cerrar ' + (entry.type === 'INCIDENCIA' ? 'incidencia' : 'registro') + ' #' + entry.seq,
-      '<div class="form-grid">' +
-      '<p class="meta">' + esc(entry.title) + '</p>' +
+      '<div class="form-grid"><p class="meta">' + esc(entry.title) + '</p>' +
       '<input type="hidden" id="f-id" value="' + esc(id) + '">' +
       (entry.type === 'INCIDENCIA' ? '<label class="field"><span class="field-label">Causa</span><textarea id="f-cause" placeholder="Por qué ocurrió. Ayuda a evitar que se repita.">' + esc(entry.rootCause || '') + '</textarea></label>' : '') +
       '<label class="field"><span class="field-label">Resolución' + (entry.type === 'INCIDENCIA' ? ' (obligatoria)' : '') + '</span><textarea id="f-resolution" placeholder="Cómo se resolvió.">' + esc(entry.resolution || '') + '</textarea></label>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn btn-gold" type="button" data-act="submit-resolve">Cerrar registro</button></div>' +
-      '</div>');
+      formFoot('submit-resolve', 'Cerrar registro') + '</div>');
   };
 
-  ACTIONS['submit-resolve'] = function () {
-    const id = (document.getElementById('f-id') || {}).value;
+  ACTIONS['ask-delete-entry'] = function (id) {
     const entry = state.entries.find((e) => e.id === id);
-    const resolution = ((document.getElementById('f-resolution') || {}).value || '').trim();
-    const cause = ((document.getElementById('f-cause') || {}).value || '').trim();
-    if (entry.type === 'INCIDENCIA' && !resolution) return fail('Para cerrar una incidencia debes registrar cómo se resolvió.');
-    entry.resolution = resolution || entry.resolution;
-    entry.rootCause = cause || entry.rootCause;
-    closeSheet();
-    ACTIONS['entry-status'](id + '|CERRADO');
+    if (!entry) return;
+    openSheet('Eliminar registro #' + entry.seq,
+      '<div class="form-grid">' +
+      '<p class="meta">La eliminación es lógica: el registro deja de verse en la operación, se conserva y puede restaurarse desde Administración.</p>' +
+      '<label class="field"><span class="field-label">Motivo de la eliminación</span><textarea id="f-reason" placeholder="Queda registrado en la auditoría junto a tu nombre."></textarea></label>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-quiet" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn btn-danger" type="button" data-act="delete-entry" data-args="' + esc(id) + '">Eliminar registro</button></div></div>');
   };
+
+  ACTIONS['ask-assign-task'] = function (id) {
+    const task = state.tasks.find((t) => t.id === id);
+    if (!task) return;
+    openSheet('Reasignar tarea',
+      '<div class="form-grid"><p class="meta">' + esc(task.title) + '</p>' +
+      '<input type="hidden" id="f-id" value="' + esc(id) + '">' +
+      '<label class="field"><span class="field-label">Responsable</span><select id="f-assignee">' + peopleOptions(task.assigneeId) + '</select></label>' +
+      formFoot('assign-task', 'Reasignar') + '</div>');
+  };
+
+  function openAlertForm() {
+    if (!can('alert.manage')) return fail('Tu rol no tiene el permiso alert.manage.');
+    const open = state.entries.filter((e) => !e.deleted && ENTRY_OPEN.indexOf(e.status) >= 0);
+    openSheet('Nueva alerta',
+      '<div class="form-grid">' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Tipo</span><select id="f-type">' + selectOptions(Object.keys(ALERT_TYPE), ALERT_TYPE, 'OTRO') + '</select></label>' +
+      '<label class="field"><span class="field-label">Nivel</span><select id="f-level">' + selectOptions(Object.keys(ALERT_LEVEL), ALERT_LEVEL, 'ATENCION') + '</select></label>' +
+      '</div>' +
+      '<label class="field"><span class="field-label">Título</span><input type="text" id="f-title" maxlength="200"></label>' +
+      '<label class="field"><span class="field-label">Mensaje</span><textarea id="f-message"></textarea></label>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Vence</span>' + dueSelect('f-due', '') + '</label>' +
+      '<label class="field"><span class="field-label">Registro relacionado</span><select id="f-entry"><option value="">Ninguno</option>' +
+        open.map((e) => '<option value="' + e.id + '">' + esc('#' + e.seq + ' · ' + e.title) + '</option>').join('') + '</select></label>' +
+      '</div>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Huésped</span><select id="f-guest">' + guestOptions(null) + '</select></label>' +
+      '<label class="field"><span class="field-label">Reserva</span><select id="f-reservation">' + reservationOptions(null) + '</select></label>' +
+      '</div>' +
+      formFoot('submit-alert', 'Crear alerta') + '</div>');
+  }
+
+  function openGuestForm(id) {
+    const guest = id ? state.guests.find((g) => g.id === id) : null;
+    openSheet(guest ? 'Editar huésped' : 'Nuevo huésped',
+      '<div class="form-grid">' +
+      '<input type="hidden" id="f-id" value="' + esc(id || '') + '">' +
+      '<label class="field"><span class="field-label">Nombre</span><input type="text" id="f-name" maxlength="150" value="' + esc(guest ? guest.name : '') + '"></label>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Habitación</span><input type="text" id="f-room" value="' + esc(guest && guest.room ? guest.room : '') + '"></label>' +
+      '<label class="field"><span class="field-label">Teléfono</span><input type="text" id="f-phone" value="' + esc(guest && guest.phone ? guest.phone : '') + '"></label>' +
+      '</div>' +
+      '<label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" id="f-vip" style="width:auto"' + (guest && guest.vip ? ' checked' : '') + '> Huésped VIP</label>' +
+      '<label class="field"><span class="field-label">Notas</span><textarea id="f-notes" placeholder="Preferencias, alergias, antecedentes relevantes.">' + esc(guest && guest.notes ? guest.notes : '') + '</textarea></label>' +
+      formFoot('submit-guest', 'Guardar huésped') + '</div>');
+  }
+
+  function openReservationForm(id) {
+    const r = id ? state.reservations.find((x) => x.id === id) : null;
+    const toInput = (iso) => { if (!iso) return ''; const d = new Date(iso); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+    openSheet(r ? 'Editar reserva' : 'Nueva reserva',
+      '<div class="form-grid">' +
+      '<input type="hidden" id="f-id" value="' + esc(id || '') + '">' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Código</span><input type="text" id="f-code" placeholder="RES-10241" value="' + esc(r ? r.code : '') + '"></label>' +
+      '<label class="field"><span class="field-label">Huésped</span><select id="f-guest">' + guestOptions(r ? r.guestId : null) + '</select></label>' +
+      '</div>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Habitación</span><input type="text" id="f-room" value="' + esc(r && r.room ? r.room : '') + '"></label>' +
+      '<label class="field"><span class="field-label">Canal</span><input type="text" id="f-channel" placeholder="Directo" value="' + esc(r && r.channel ? r.channel : '') + '"></label>' +
+      '</div>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Llegada</span><input type="datetime-local" id="f-checkin" value="' + toInput(r ? r.checkIn : null) + '"></label>' +
+      '<label class="field"><span class="field-label">Salida</span><input type="datetime-local" id="f-checkout" value="' + toInput(r ? r.checkOut : null) + '"></label>' +
+      '</div>' +
+      '<div class="form-grid two">' +
+      '<label class="field"><span class="field-label">Estado</span><select id="f-status">' + selectOptions(Object.keys(RESERVATION_STATUS), RESERVATION_STATUS, r ? r.status : 'PENDIENTE') + '</select></label>' +
+      '<label class="field"><span class="field-label">Garantía</span><select id="f-guarantee">' + selectOptions(Object.keys(GUARANTEE_STATUS), GUARANTEE_STATUS, r ? r.guarantee : 'NO_REQUIERE') + '</select></label>' +
+      '</div>' +
+      '<label class="field"><span class="field-label">Saldo pendiente</span><input type="number" min="0" step="1" id="f-balance" value="' + esc(r && r.balance != null ? r.balance : '') + '"></label>' +
+      '<label class="field"><span class="field-label">Acción que requiere recepción</span><input type="text" id="f-action" placeholder="Ej: Confirmar traslado al aeropuerto" value="' + esc(r && r.action ? r.action : '') + '"></label>' +
+      '<p class="meta">Garantía pendiente o rechazada, saldo mayor que cero, llegada sin confirmar y acción pendiente generan alerta automática.</p>' +
+      formFoot('submit-reservation', 'Guardar reserva') + '</div>');
+  }
+
+  function openStaffForm(id) {
+    if (!can('user.manage')) return fail('Tu rol no puede administrar el personal.');
+    const person = id ? state.staff.find((s) => s.id === id) : null;
+    openSheet(person ? 'Editar a ' + person.name : 'Agregar persona al equipo',
+      '<div class="form-grid">' +
+      '<input type="hidden" id="staff-id" value="' + esc(id || '') + '">' +
+      '<label class="field"><span class="field-label">Nombre completo</span><input type="text" id="staff-name" maxlength="120" value="' + esc(person ? person.name : '') + '" placeholder="Nombre y apellido"></label>' +
+      '<label class="field"><span class="field-label">Rol</span><select id="staff-role">' +
+        ROLE_ORDER.map(function (key) {
+          return '<option value="' + key + '"' + ((person ? person.role : 'RECEPCIONISTA') === key ? ' selected' : '') + '>' + esc(state.roles[key].name) + '</option>';
+        }).join('') + '</select></label>' +
+      '<p class="meta">El Administrador de sistema queda fuera de la operación de turnos: no aparece como responsable ni recibe tareas.</p>' +
+      formFoot('submit-staff', person ? 'Guardar cambios' : 'Agregar al equipo') + '</div>');
+  }
 
   // ------------------------------- Hojas de detalle -----------------------
   const initials = (name) => name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
@@ -2335,6 +2945,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
         (!open ? '<button class="btn btn-quiet btn-sm" type="button" data-act="entry-status" data-args="' + e.id + '|EN_CURSO">Reabrir</button>' : '') +
         (can('task.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-task" data-args="' + e.id + '">Crear tarea</button>' : '') +
         (can('followup.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-followup" data-args="' + e.id + '">Registrar seguimiento</button>' : '') +
+        (can('entry.delete') && !e.deleted ? '<button class="btn btn-quiet btn-sm" type="button" data-act="ask-delete-entry" data-args="' + e.id + '">Eliminar</button>' : '') +
       '</div>' +
 
       (followups.length ? '<h3 style="margin-top:18px">Seguimientos <span class="muted num">' + followups.length + '</span></h3>' +
@@ -2392,7 +3003,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:16px">' +
         (t.status === 'PENDIENTE' ? '<button class="btn btn-quiet btn-sm" type="button" data-act="task-status" data-args="' + t.id + '|EN_CURSO">Tomar tarea</button>' : '') +
         (open && can('task.close') ? '<button class="btn btn-gold btn-sm" type="button" data-act="task-status" data-args="' + t.id + '|COMPLETADA">Completar</button>' : '') +
-        (open ? '<button class="btn btn-quiet btn-sm" type="button" data-act="task-status" data-args="' + t.id + '|BLOQUEADA">Bloquear</button>' : '') +
+        (open ? '<button class="btn btn-quiet btn-sm" type="button" data-act="block-task" data-args="' + t.id + '">Bloquear</button>' : '') +
+        (open && can('task.assign') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="ask-assign-task" data-args="' + t.id + '">Reasignar</button>' : '') +
         (t.status === 'COMPLETADA' ? '<button class="btn btn-quiet btn-sm" type="button" data-act="task-status" data-args="' + t.id + '|EN_CURSO">Reabrir</button>' : '') +
         (can('followup.create') && entry ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-followup" data-args="' + entry.id + '">Registrar seguimiento</button>' : '') +
       '</div>' +
@@ -2409,6 +3021,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
 
     openSheet(t.title, body);
   }
+
 
   // --------------------------------- Vistas -------------------------------
   const panel = (title, count, bodyHtml, extraHead, className) =>
@@ -2627,6 +3240,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     );
   }
 
+
   // ------------------------------ Libro operativo -------------------------
   function bookItems() {
     const q = (state.filters.q || '').trim().toLowerCase();
@@ -2716,6 +3330,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>';
   }
 
+
   // --------------------------------- Turno --------------------------------
   function viewTurno() {
     const shift = myOpenShift();
@@ -2737,7 +3352,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
                 '<button class="btn btn-gold btn-sm" type="button" data-act="start-shift" data-args="' + s.id + '">Iniciar turno</button></li>';
             }).join('') + '</ul>'
             : emptyState(myRole().operational ? 'No hay turnos programados a tu nombre.' : 'El Administrador de sistema no participa en el ciclo de turnos.',
-              myRole().operational ? 'Solicita la programación a tu supervisor.' : 'Cambia a una cuenta operativa para operar turnos.')) +
+              myRole().operational ? 'Pídele a un supervisor que programe el día.' : 'Cambia a una cuenta operativa para operar turnos.') +
+              (can('shift.manage') ? '<div style="padding:0 14px 14px;text-align:center"><button class="btn btn-gold btn-sm" type="button" data-act="nav" data-args="admin">Programar turnos ahora</button></div>' : '')) +
         shiftHistoryPanel(mine) + legendPanel() + '</div>';
     }
 
@@ -2852,6 +3468,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '<span>Cada estado lleva texto y símbolo además del color.</span></div></section>';
   }
 
+
   // -------------------------------- Entrega -------------------------------
   function viewEntrega() {
     const handover = state.handovers.find((h) => h.id === state.openHandover);
@@ -2940,6 +3557,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>';
   }
 
+
   // ------------------------- Tareas / incidencias --------------------------
   function viewTareas() {
     const tab = state.tabs.tareas;
@@ -3017,7 +3635,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     return '<div class="stack">' +
       '<header class="page-head" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end">' +
       '<div><h1>Alertas</h1><p class="page-sub">Generadas por el motor de reglas o creadas a mano. Idempotentes: ejecutar el motor no duplica alertas, y se resuelven solas cuando la condición de origen desaparece.</p></div>' +
-      (can('alert.manage') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="run-engine">Revisar alertas ahora</button>' : '') +
+      (can('alert.manage') ? '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+        '<button class="btn btn-quiet btn-sm" type="button" data-act="run-engine">Revisar alertas ahora</button>' +
+        '<button class="btn btn-gold btn-sm" type="button" data-act="new-alert">Nueva alerta</button></div>' : '') +
       '</header>' +
       '<div class="tabs">' + [['activas', 'Activas'], ['pospuestas', 'Pospuestas'], ['resueltas', 'Resueltas'], ['todas', 'Todas']].map(function (t) {
         return '<button class="tab" type="button" aria-pressed="' + (tab === t[0]) + '" data-act="tab" data-args="alertas|' + t[0] + '">' + t[1] + '</button>';
@@ -3095,6 +3715,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>';
   }
 
+
   // ------------------------------ Indicadores -----------------------------
   function viewIndicadores() {
     const tasks = state.tasks.filter((t) => !t.deleted);
@@ -3170,145 +3791,277 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>';
   }
 
-  // ----------------------------- Administración ---------------------------
-  function viewAdmin() {
-    const roleKeys = ['ADMIN', 'SUPERVISOR', 'AUDITOR', 'RECEPCIONISTA'];
-    const editable = can('role.manage');
+
+  // -------------------------- Huéspedes y reservas ------------------------
+  const GUARANTEE_TONE = { NO_REQUIERE: 'neutro', PENDIENTE: 'atencion', VALIDADA: 'resuelto', RECHAZADA: 'critico' };
+  const RESERVATION_TONE = { PENDIENTE: 'pendiente', CONFIRMADA: 'curso', EN_CASA: 'resuelto', SALIDA: 'neutro', NO_SHOW: 'atencion', CANCELADA: 'neutro' };
+
+  function viewHuespedes() {
+    const canEdit = can('guest.manage');
+    const reservations = state.reservations.slice().sort(function (a, b) {
+      const actionA = a.action || a.guarantee === 'PENDIENTE' || a.guarantee === 'RECHAZADA' || a.balance > 0 ? 0 : 1;
+      const actionB = b.action || b.guarantee === 'PENDIENTE' || b.guarantee === 'RECHAZADA' || b.balance > 0 ? 0 : 1;
+      if (actionA !== actionB) return actionA - actionB;
+      return new Date(b.checkIn || 0) - new Date(a.checkIn || 0);
+    });
 
     return '<div class="stack">' +
-      '<header class="page-head"><h1>Administración</h1><p class="page-sub">Control técnico del sistema. El rol Administrador de sistema se mantiene fuera de la operación de turnos y de toda asignación operativa.</p></header>' +
+      '<header class="page-head"><h1>Huéspedes y reservas</h1>' +
+      '<p class="page-sub">Referencias ligeras para asociar registros operativos. No reemplazan al PMS: garantías, cobros y acciones pendientes alimentan el motor de alertas.</p></header>' +
 
-      panel('Usuarios', USERS.length, '<ul class="rows">' + USERS.map(function (u) {
-        const role = state.roles[u.role];
-        return '<li style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:11px 14px">' +
-          '<div><p style="margin:0;font-weight:500">' + esc(u.name) + '</p>' +
-          '<p class="meta">' + esc(role.name) + ' · ' + esc(u.tag) + (role.operational ? '' : ' · fuera de la operación') + '</p></div>' +
-          '<div class="row-tags">' + badge(role.operational ? 'resuelto' : 'neutro', role.operational ? 'Operativo' : 'No operativo') +
-          '<span class="meta num">' + role.permissions.length + ' permisos</span>' +
-          (u.id === state.currentUserId ? chip('Sesión actual') : '') + '</div></li>';
-      }).join('') + '</ul>') +
+      panel('Reservas', state.reservations.length,
+        state.reservations.length === 0 ? emptyState('Sin reservas registradas.', canEdit ? 'Agrega las que requieren atención de recepción.' : '') :
+        '<ul class="rows">' + reservations.map(function (r) {
+          const guest = state.guests.find((g) => g.id === r.guestId);
+          return '<li style="padding:11px 14px">' +
+            '<div class="row-tags"><span class="ref">' + esc(r.code) + '</span>' +
+            badge(RESERVATION_TONE[r.status] || 'neutro', RESERVATION_STATUS[r.status] || r.status) +
+            badge(GUARANTEE_TONE[r.guarantee] || 'neutro', 'Garantía ' + (GUARANTEE_STATUS[r.guarantee] || r.guarantee).toLowerCase()) +
+            (r.balance > 0 ? badge('critico', 'Saldo ' + money(r.balance)) : '') +
+            (guest && guest.vip ? badge('atencion', 'VIP') : '') + '</div>' +
+            '<p class="row-title">' + esc(guest ? guest.name : 'Sin huésped asociado') + (r.room ? ' · hab. ' + esc(r.room) : '') + '</p>' +
+            '<p class="row-meta"><span>Llegada <span class="num">' + fmtDT(r.checkIn) + '</span></span>' +
+            '<span>Salida <span class="num">' + fmtDT(r.checkOut) + '</span></span>' +
+            (r.channel ? '<span>' + esc(r.channel) + '</span>' : '') + '</p>' +
+            (r.action ? '<p class="meta" style="color:var(--atencion)">Acción: ' + esc(r.action) + '</p>' : '') +
+            (canEdit ? '<div style="margin-top:7px"><button class="btn btn-quiet btn-sm" type="button" data-act="edit-reservation" data-args="' + r.id + '">Editar</button></div>' : '') +
+            '</li>';
+        }).join('') + '</ul>',
+        canEdit ? '<button class="btn btn-gold btn-sm" type="button" data-act="new-reservation">' + icon('plus') + 'Nueva reserva</button>' : '') +
 
+      panel('Huéspedes', state.guests.length,
+        state.guests.length === 0 ? emptyState('Sin huéspedes registrados.') :
+        '<ul class="rows">' + state.guests.slice().sort((a, b) => (b.vip ? 1 : 0) - (a.vip ? 1 : 0) || String(a.name).localeCompare(String(b.name))).map(function (g) {
+          const linked = state.entries.filter((e) => e.guestId === g.id && !e.deleted).length;
+          return '<li style="padding:11px 14px">' +
+            '<div class="row-tags"><strong style="font-size:13.5px">' + esc(g.name) + '</strong>' +
+            (g.vip ? badge('atencion', 'VIP') : '') + (g.room ? chip('Hab. ' + g.room) : '') + '</div>' +
+            (g.notes ? '<p class="row-text">' + esc(g.notes) + '</p>' : '') +
+            '<p class="row-meta">' + (linked ? '<span>' + linked + ' registro(s) asociado(s)</span>' : '<span>Sin registros asociados</span>') +
+            (g.phone ? '<span>' + esc(g.phone) + '</span>' : '') + '</p>' +
+            (canEdit ? '<div style="margin-top:7px"><button class="btn btn-quiet btn-sm" type="button" data-act="edit-guest" data-args="' + g.id + '">Editar</button></div>' : '') +
+            '</li>';
+        }).join('') + '</ul>',
+        canEdit ? '<button class="btn btn-gold btn-sm" type="button" data-act="new-guest">' + icon('plus') + 'Nuevo huésped</button>' : '') +
+      '</div>';
+  }
+
+  // ----------------------------- Administración ---------------------------
+  function viewAdmin() {
+    const canStaff = can('user.manage');
+    const canRoles = can('role.manage');
+    const canShifts = can('shift.manage');
+    const canSystem = can('system.configure');
+    const canAudit = can('audit.view');
+    const deleted = state.entries.filter((e) => e.deleted);
+
+    const docCount = 2 + state.staff.length + state.shifts.length + state.handovers.length +
+      state.entries.length + state.tasks.length + state.followups.length + state.alerts.length +
+      state.guests.length + state.reservations.length;
+    const docPercent = Math.round(docCount / 5000 * 100);
+
+    const today = new Date();
+    const dateValue = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+
+    return '<div class="stack">' +
+      '<header class="page-head"><h1>Administración</h1>' +
+      '<p class="page-sub">Personal, roles, turnos y mantenimiento. El Administrador de sistema mantiene el control técnico y queda fuera de la operación de turnos.</p></header>' +
+
+      // ------------------------------ Personal ------------------------------
+      panel('Personal', state.staff.length,
+        '<ul class="rows">' + USERS.map(function (u) {
+          const role = state.roles[u.role] || { name: u.role, operational: false, permissions: [] };
+          const inactive = u.active === false;
+          return '<li style="padding:11px 14px">' +
+            '<div class="row-tags"><strong style="font-size:13.5px">' + esc(u.name) + '</strong>' +
+            chip(role.name) +
+            (inactive ? badge('neutro', 'Inactiva') : badge('resuelto', 'Activa')) +
+            (role.operational ? '' : chip('Fuera de la operación')) +
+            (u.id === state.currentUserId ? chip('Tú') : '') + '</div>' +
+            '<p class="row-meta"><span class="num">' + role.permissions.length + ' permisos</span>' +
+            '<span>En el equipo desde ' + fmtDate(u.createdAt) + '</span></p>' +
+            (canStaff ? '<div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">' +
+              '<button class="btn btn-quiet btn-sm" type="button" data-act="edit-staff" data-args="' + u.id + '">Editar</button>' +
+              (u.id === state.currentUserId ? '' : '<button class="btn btn-quiet btn-sm" type="button" data-act="toggle-staff" data-args="' + u.id + '">' + (inactive ? 'Reactivar' : 'Desactivar') + '</button>') +
+              '</div>' : '') +
+            '</li>';
+        }).join('') + '</ul>',
+        canStaff ? '<button class="btn btn-gold btn-sm" type="button" data-act="new-staff">' + icon('plus') + 'Agregar persona</button>' : '') +
+
+      // ------------------------------- Turnos -------------------------------
+      (canShifts ? panel('Programar turnos', null,
+        '<div class="panel-body form-grid">' +
+        '<p class="meta">Un turno por fecha y tipo. Sólo aparece el personal operativo.</p>' +
+        '<label class="field" style="max-width:220px"><span class="field-label">Fecha</span><input type="date" id="sched-date" value="' + dateValue + '"></label>' +
+        '<div class="form-grid" style="gap:10px">' +
+        ORDER.map(function (type) {
+          return '<label class="field"><span class="field-label">' + SHIFT_TYPE[type] + ' · ' + SHIFT_HOURS[type][0] + '–' + SHIFT_HOURS[type][1] + '</span>' +
+            '<select id="sched-' + type.toLowerCase() + '">' + peopleOptions(null) + '</select></label>';
+        }).join('') +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end"><button class="btn btn-gold btn-sm" type="button" data-act="schedule-shifts">Programar el día</button></div>' +
+        '</div>') : '') +
+
+      (canShifts ? panel('Turnos programados', state.shifts.length,
+        state.shifts.length === 0 ? emptyState('Todavía no hay turnos programados.', 'Programa el día actual para que el equipo pueda iniciar turno.') :
+        '<ul class="rows">' + state.shifts.slice().sort((a, b) => new Date(b.date) - new Date(a.date) || ORDER.indexOf(a.type) - ORDER.indexOf(b.type)).slice(0, 21).map(function (s) {
+          const handover = handoverFrom(s.id);
+          return '<li style="padding:10px 14px">' +
+            '<div class="row-tags"><strong style="font-size:13.5px">' + SHIFT_TYPE[s.type] + ' · ' + fmtDate(s.date) + '</strong>' +
+            badge(s.status === 'ACTIVO' || s.status === 'INICIADO' ? 'curso' : s.status === 'CERRADO' ? 'neutro' : s.status === 'PROGRAMADO' ? 'pendiente' : 'atencion', SHIFT_LABEL[s.status]) +
+            (handover ? chip('Entrega: ' + (handover.status === 'RECIBIDA' ? 'recibida' : handover.status === 'ENVIADA' ? 'enviada' : 'en preparación')) : '') + '</div>' +
+            '<p class="row-meta"><span>' + esc(s.staff.length ? s.staff.map(userName).join(', ') : 'sin personal asignado') + '</span>' +
+            (s.startedAt ? '<span>inicio <span class="num">' + fmtTime(s.startedAt) + '</span></span>' : '') +
+            (s.endedAt ? '<span>cierre <span class="num">' + fmtTime(s.endedAt) + '</span></span>' : '') + '</p></li>';
+        }).join('') + '</ul>') : '') +
+
+      // ------------------------------- Permisos -----------------------------
       panel('Matriz de permisos', null,
         '<div class="panel-body">' +
-        '<p class="meta" style="margin-bottom:12px">' + (editable
-          ? 'Marca o desmarca un permiso y cambia de usuario para comprobar el efecto: la interfaz y las acciones responden al instante, igual que en la aplicación real (donde además se validan en el servidor).'
-          : 'Sólo el Administrador de sistema puede modificar esta matriz. Cambia de usuario para editarla.') + '</p>' +
-        roleKeys.map(function (key) {
+        '<p class="meta" style="margin-bottom:12px">' + (canRoles
+          ? 'Los cambios se aplican de inmediato a todo el equipo.'
+          : 'Sólo el Administrador de sistema puede modificar esta matriz.') + '</p>' +
+        ROLE_ORDER.map(function (key) {
           const role = state.roles[key];
+          if (!role) return '';
+          const count = state.staff.filter((s) => s.role === key && s.active !== false).length;
           return '<div style="margin-bottom:16px">' +
             '<div class="row-tags" style="margin-bottom:6px"><strong style="font-size:13.5px">' + esc(role.name) + '</strong>' +
             (role.operational ? chip('Operativo') : chip('Fuera de la operación')) +
-            '<span class="meta num">' + role.permissions.length + '/' + ALL_PERMISSIONS.length + '</span></div>' +
+            '<span class="meta num">' + role.permissions.length + '/' + ALL_PERMISSIONS.length + '</span>' +
+            '<span class="meta">' + count + ' persona(s)</span></div>' +
             PERMISSION_GROUPS.map(function (g) {
               return '<p class="eyebrow" style="margin:9px 0 3px">' + esc(g.group) + '</p>' +
                 '<div style="display:flex;flex-wrap:wrap;gap:5px">' + g.items.map(function (item) {
                   const has = role.permissions.indexOf(item[0]) >= 0;
                   return '<button class="tab" type="button" aria-pressed="' + has + '"' +
-                    (editable ? ' data-act="toggle-permission" data-args="' + key + '|' + item[0] + '"' : ' disabled') +
+                    (canRoles ? ' data-act="toggle-permission" data-args="' + key + '|' + item[0] + '"' : ' disabled') +
                     ' title="' + esc(item[0]) + '">' + (has ? '✓ ' : '') + esc(item[1]) + '</button>';
                 }).join('') + '</div>';
             }).join('') + '</div>';
         }).join('') + '</div>') +
 
-      (can('audit.view') ? panel('Auditoría', state.audit.length, '<ul class="rows">' + state.audit.slice(0, 25).map(function (a) {
-        return '<li style="padding:10px 14px"><div class="row-tags"><span class="meta num">' + fmtDT(a.at) + '</span>' +
-          chip(AUDIT_LABEL[a.action] || a.action) + chip(a.entity) + '<span class="meta">' + esc(userName(a.actor)) + '</span></div>' +
-          '<p style="margin:4px 0 0;font-size:13.5px">' + esc(a.summary) + '</p></li>';
-      }).join('') + '</ul>') : '') +
+      // ------------------------------- Auditoría ----------------------------
+      (canAudit ? panel('Auditoría', state.audit.length,
+        state.audit.length === 0 ? emptyState('Sin movimientos registrados todavía.') :
+        '<ul class="rows">' + state.audit.slice(0, 40).map(function (a) {
+          return '<li style="padding:10px 14px"><div class="row-tags"><span class="meta num">' + fmtDT(a.at) + '</span>' +
+            chip(AUDIT_LABEL[a.action] || a.action) + chip(a.entity) + '<span class="meta">' + esc(userName(a.actor)) + '</span></div>' +
+            '<p style="margin:4px 0 0;font-size:13.5px">' + esc(a.summary) + '</p></li>';
+        }).join('') + '</ul>',
+        '<span class="meta">Últimos 60 días</span>') : '') +
 
-      panel('Áreas', DEPARTMENTS.length, '<div class="panel-body" style="display:flex;flex-wrap:wrap;gap:6px">' +
-        DEPARTMENTS.map((d) => chip(d)).join('') +
-        '<p class="meta" style="width:100%;margin-top:8px">En la aplicación el Administrador de sistema puede crear, renombrar y desactivar áreas.</p></div>') +
+      // -------------------------- Registros eliminados ----------------------
+      (can('entry.delete') ? panel('Registros eliminados', deleted.length,
+        deleted.length === 0 ? emptyState('No hay registros eliminados.') :
+        '<ul class="rows">' + deleted.map(function (e) {
+          return '<li style="padding:11px 14px">' +
+            '<div class="row-tags"><span class="ref">#' + e.seq + '</span>' + chip(ENTRY_TYPE[e.type]) + badge('neutro', 'Eliminado') + '</div>' +
+            '<p class="row-title">' + esc(e.title) + '</p>' +
+            '<p class="row-meta"><span>Eliminado <span class="num">' + fmtDT(e.deletedAt) + '</span> por ' + esc(userName(e.deletedBy)) + '</span></p>' +
+            (e.deletionReason ? '<p class="meta">Motivo: ' + esc(e.deletionReason) + '</p>' : '') +
+            '<div style="margin-top:7px"><button class="btn btn-quiet btn-sm" type="button" data-act="restore-entry" data-args="' + e.id + '">Restaurar</button></div>' +
+            '</li>';
+        }).join('') + '</ul>') : '') +
+
+      // ------------------------------ Sistema -------------------------------
+      (canSystem ? panel('Sistema', null,
+        '<div class="panel-body" style="display:flex;flex-direction:column;gap:16px">' +
+        '<div>' +
+        '<p class="eyebrow">Almacenamiento</p>' +
+        '<div class="bar-head"><span>' + docCount + ' de 5.000 documentos</span><span class="num muted">' + docPercent + '%</span></div>' +
+        '<div class="bar-track" style="margin-top:6px"><div class="bar-fill"' + (docPercent > 70 ? ' style="width:' + docPercent + '%;background:var(--critico-mark)"' : ' style="width:' + Math.max(2, docPercent) + '%"') + '></div></div>' +
+        '<p class="meta" style="margin-top:6px">' + (docPercent > 70
+          ? 'Conviene archivar registros cerrados para liberar espacio.'
+          : 'Espacio suficiente. Archiva periódicamente los registros cerrados antiguos.') + '</p>' +
+        '</div>' +
+        '<div>' +
+        '<p class="eyebrow">Archivar registros cerrados</p>' +
+        '<p class="meta">Los registros y tareas cerrados más antiguos que el plazo se agrupan en un documento por mes y dejan de ocupar espacio individual. La información se conserva.</p>' +
+        '<div style="display:flex;gap:8px;align-items:end;margin-top:8px;flex-wrap:wrap">' +
+        '<label class="field" style="max-width:190px"><span class="field-label">Anteriores a</span>' +
+        '<select id="archive-days"><option value="30">30 días</option><option value="90" selected>90 días</option><option value="180">180 días</option></select></label>' +
+        '<button class="btn btn-quiet btn-sm" type="button" data-act="archive-closed">Archivar ahora</button>' +
+        '</div></div>' +
+        '<div>' +
+        '<p class="eyebrow">Motor de alertas</p>' +
+        '<p class="meta">Se ejecuta al abrir la página, después de cada cambio y cada cuatro minutos. También puede forzarse.</p>' +
+        '<div style="margin-top:8px"><button class="btn btn-quiet btn-sm" type="button" data-act="run-engine">Revisar alertas ahora</button></div>' +
+        '</div>' +
+        (state.entries.length === 0 ? '<div>' +
+          '<p class="eyebrow">Datos de ejemplo</p>' +
+          '<p class="meta">El sistema está vacío. Puedes cargar un día de operación de ejemplo para practicar el ciclo completo; luego elimina los registros o archívalos.</p>' +
+          '<div style="margin-top:8px"><button class="btn btn-quiet btn-sm" type="button" data-act="load-example">Cargar ejemplo</button></div>' +
+          '</div>' : '') +
+        '</div>') : '') +
 
       '</div>';
   }
 
-
-  // --------------------------- Inicio de sesión ---------------------------
-  // Reproduce las reglas de la aplicación: mensaje genérico que no revela si
-  // el correo existe, y bloqueo temporal tras cinco intentos fallidos.
-  const DEMO_PASSWORD = 'Demo2024!';
-  const MAX_ATTEMPTS = 5;
-  const LOCK_MINUTES = 15;
-  const emailOf = (user) => ({ u1: 'recepcion.manana@hotel.local', u2: 'recepcion.tarde@hotel.local', u3: 'auditor.noche@hotel.local', u4: 'supervisor@hotel.local', u5: 'admin@hotel.local' })[user.id];
-
-  ACTIONS.login = function () {
-    const email = (((document.getElementById('auth-email') || {}).value) || '').trim().toLowerCase();
-    const password = ((document.getElementById('auth-password') || {}).value) || '';
-    const user = USERS.find((u) => emailOf(u) === email);
-
-    const lockedUntil = state.lockedUntil[email];
-    if (lockedUntil && new Date(lockedUntil).getTime() > Date.now()) {
-      const minutes = Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 60000);
-      state.loginError = 'Cuenta bloqueada temporalmente por intentos fallidos. Reintenta en ' + minutes + ' minuto(s).';
-      return commit();
-    }
-
-    if (!user || password !== DEMO_PASSWORD) {
-      const attempts = (state.failedAttempts[email] || 0) + 1;
-      state.failedAttempts[email] = attempts;
-      if (attempts >= MAX_ATTEMPTS) {
-        state.lockedUntil[email] = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
-        state.loginError = 'Cuenta bloqueada temporalmente tras ' + MAX_ATTEMPTS + ' intentos fallidos. Reintenta en ' + LOCK_MINUTES + ' minutos.';
-      } else {
-        state.loginError = 'Correo o contraseña incorrectos.';
-      }
-      return commit();
-    }
-
-    state.failedAttempts[email] = 0;
-    state.lockedUntil[email] = null;
-    state.authed = true;
-    state.loginError = null;
-    state.currentUserId = user.id;
-    state.view = 'inicio';
-    state.openHandover = null;
-    pushAudit('CREAR', 'Sesión', user.name + ' inició sesión');
-    commit('Sesión iniciada como ' + user.name + '.');
-  };
-
-  ACTIONS.logout = function () {
-    pushAudit('CREAR', 'Sesión', me().name + ' cerró sesión');
-    state.authed = false;
-    state.loginError = null;
-    closeSheet();
-    commit();
-  };
-
-  ACTIONS['fill-demo'] = function (userId) {
-    const user = userById(userId);
-    const email = document.getElementById('auth-email');
-    const password = document.getElementById('auth-password');
-    if (email) email.value = emailOf(user);
-    if (password) password.value = DEMO_PASSWORD;
-    if (password) password.focus();
-  };
-
-  function renderAuthScreen() {
-    document.getElementById('auth-screen').innerHTML =
-      '<div class="auth"><div class="auth-inner">' +
+  // ----------------------- Puesta en marcha e identidad -------------------
+  function screenShell(inner) {
+    return '<div class="auth"><div class="auth-inner">' +
       '<div class="auth-brand"><span class="brand-mark" style="width:42px;height:42px;font-size:23px" aria-hidden="true">L</span>' +
-      '<div><p class="brand-hotel">Hotel Costa Serena</p><p class="brand-name" style="font-size:19px">Libro Operativo de Recepción</p></div></div>' +
+      '<div><p class="brand-hotel">' + esc(state.hotel.name || 'Recepción') + '</p>' +
+      '<p class="brand-name" style="font-size:19px">Libro Operativo de Recepción</p></div></div>' +
+      inner + '</div></div>';
+  }
+
+  function renderStartScreen() {
+    const host = document.getElementById('auth-screen');
+
+    if (state.setupStep === 'cargando') {
+      host.innerHTML = screenShell('<div class="auth-card"><h1>Abriendo el libro…</h1>' +
+        '<p class="meta" style="margin-top:4px">Sincronizando con la base de datos del hotel.</p></div>');
+      return;
+    }
+
+    if (state.setupStep === 'sin-base') {
+      host.innerHTML = screenShell('<div class="auth-card"><h1>Esta vista no puede guardar datos</h1>' +
+        '<p class="meta" style="margin-top:6px">El libro necesita la base de datos compartida de la página y este visor no la está entregando. ' +
+        'Abre el enlace desde claude.ai con tu cuenta de la organización.</p></div>');
+      return;
+    }
+
+    if (state.setupStep === 'configuracion') {
+      host.innerHTML = screenShell(
+        '<div class="auth-card">' +
+        '<h1>Poner en marcha el libro</h1>' +
+        '<p class="meta" style="margin:4px 0 16px">Sólo se hace una vez. Quien configura queda como Administrador de sistema y luego agrega al equipo.</p>' +
+        '<div class="form-grid">' +
+        '<label class="field"><span class="field-label">Nombre del hotel</span>' +
+        '<input type="text" id="setup-hotel" placeholder="Hotel Costa Serena" maxlength="80"></label>' +
+        '<label class="field"><span class="field-label">Tu nombre completo</span>' +
+        '<input type="text" id="setup-name" placeholder="Nombre y apellido" maxlength="120"></label>' +
+        '<button class="btn btn-primary" type="button" data-act="submit-setup" style="width:100%;padding:9px">Crear el libro</button>' +
+        '</div></div>' +
+        '<div class="auth-demo"><p class="auth-demo-title">Qué pasa después</p>' +
+        '<p style="margin:0">Agregas a tu equipo con su rol, programas los turnos del día y el libro queda operativo. ' +
+        'Todo lo que registre el equipo se guarda y se sincroniza entre los dispositivos que tengan esta página abierta.</p></div>');
+      return;
+    }
+
+    // Identidad: en un mesón compartido cada persona indica quién es.
+    const active = USERS.filter((u) => u.active !== false);
+    host.innerHTML = screenShell(
       '<div class="auth-card">' +
-      '<h1>Iniciar sesión</h1>' +
-      '<p class="meta" style="margin:4px 0 16px">Accede con tu cuenta operativa para entrar a tu turno.</p>' +
-      (state.loginError ? '<p class="auth-error" role="alert">' + esc(state.loginError) + '</p>' : '') +
-      '<form id="auth-form" style="display:flex;flex-direction:column;gap:12px">' +
-      '<label class="field"><span class="field-label">Correo</span>' +
-      '<input type="email" id="auth-email" autocomplete="username" placeholder="nombre@hotel.com"></label>' +
-      '<label class="field"><span class="field-label">Contraseña</span>' +
-      '<input type="password" id="auth-password" autocomplete="current-password"></label>' +
-      '<button class="btn btn-primary" type="submit" style="width:100%;padding:9px">Entrar</button>' +
-      '</form></div>' +
-      '<div class="auth-demo">' +
-      '<p class="auth-demo-title">Cuentas de demostración · toca una para completarla</p>' +
-      '<ul>' + USERS.map(function (u) {
-        return '<li><button type="button" data-act="fill-demo" data-args="' + u.id + '" title="' + esc(emailOf(u)) + '">' +
-          '<span class="who">' + esc(u.name) + '</span>' +
-          '<span class="mail">' + esc(state.roles[u.role].name + ' · ' + u.tag) + '</span></button></li>';
-      }).join('') + '</ul>' +
-      '<p class="pass">Contraseña de todas: <code>' + DEMO_PASSWORD + '</code>. Prueba una incorrecta para ver el mensaje genérico y el bloqueo tras ' + MAX_ATTEMPTS + ' intentos.</p>' +
-      '</div></div></div>';
+      '<h1>¿Quién está en el mesón?</h1>' +
+      '<p class="meta" style="margin:4px 0 14px">Todo lo que registres quedará a tu nombre en el libro y en la auditoría. Este dispositivo lo recordará.</p>' +
+      (active.length === 0
+        ? '<p class="auth-error">Todavía no hay personal activo. Un Administrador de sistema debe agregar al equipo.</p>'
+        : '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">' +
+          active.map(function (u) {
+            const role = state.roles[u.role] || { name: u.role };
+            return '<li><button class="btn btn-quiet" type="button" data-act="pick-user" data-args="' + u.id + '" ' +
+              'style="width:100%;justify-content:flex-start;padding:10px 12px">' +
+              '<span class="avatar" aria-hidden="true">' + esc(initials(u.name)) + '</span>' +
+              '<span style="text-align:left"><span style="display:block;font-weight:600">' + esc(u.name) + '</span>' +
+              '<span style="display:block;font-size:11.5px;color:var(--ink-3)">' + esc(role.name) + '</span></span></button></li>';
+          }).join('') + '</ul>') +
+      '</div>' +
+      '<div class="auth-demo"><p class="auth-demo-title">Acceso</p>' +
+      '<p style="margin:0">Esta página es interna: sólo la abre quien pertenece a tu organización y a quien le compartan el enlace. ' +
+      'Dentro, cada persona se identifica para que el libro registre quién hizo cada cosa.</p></div>');
   }
 
   // ------------------------------ Navegación ------------------------------
@@ -3320,8 +4073,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     { view: 'incidencias', label: 'Incidencias', icon: 'incident' },
     { view: 'alertas', label: 'Alertas', icon: 'alert', mobile: true },
     { view: 'seguimientos', label: 'Seguimientos', icon: 'followup' },
+    { view: 'huespedes', label: 'Huéspedes y reservas', icon: 'guest', anyOf: ['guest.manage'] },
     { view: 'indicadores', label: 'Indicadores', icon: 'metrics', anyOf: ['metrics.view'] },
-    { view: 'admin', label: 'Administración', icon: 'admin', anyOf: ['user.manage', 'role.manage', 'audit.view', 'system.configure'] }
+    { view: 'admin', label: 'Administración', icon: 'admin', anyOf: ['user.manage', 'role.manage', 'audit.view', 'system.configure', 'shift.manage'] }
   ];
 
   const visibleNav = () => NAV.filter((n) => !n.anyOf || n.anyOf.some(can));
@@ -3331,6 +4085,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     const myTasks = state.tasks.filter((t) => !t.deleted && t.assigneeId === state.currentUserId && TASK_OPEN.indexOf(t.status) >= 0).length;
     const counts = { alertas: alerts, tareas: myTasks };
     const current = state.view === 'entrega' ? 'turno' : state.view;
+
+    const hotelLabel = document.getElementById('brand-hotel');
+    if (hotelLabel) hotelLabel.textContent = state.hotel.name || 'Recepción';
+    const hotelLabelMobile = document.getElementById('brand-hotel-mobile');
+    if (hotelLabelMobile) hotelLabelMobile.textContent = state.hotel.name || 'Recepción';
 
     document.getElementById('nav').innerHTML =
       '<p class="nav-group-label">Operación</p>' +
@@ -3349,10 +4108,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
         (count ? '<span class="dot" aria-hidden="true"></span>' : '') + '</button>';
     }).join('');
 
-    document.getElementById('role-select').innerHTML = USERS.map(function (u) {
-      return '<option value="' + u.id + '"' + (u.id === state.currentUserId ? ' selected' : '') + '>' +
-        esc(u.name + ' · ' + state.roles[u.role].name) + '</option>';
-    }).join('');
+    const user = me();
+    document.getElementById('whoami').innerHTML = user
+      ? '<span class="avatar" aria-hidden="true">' + esc(initials(user.name)) + '</span>' +
+        '<span style="min-width:0"><span style="display:block;font-size:13px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis">' + esc(user.name) + '</span>' +
+        '<span style="display:block;font-size:11px;color:var(--sidebar-ink-2)">' + esc(myRole().name) + '</span></span>'
+      : '';
 
     document.getElementById('quick-actions').innerHTML =
       (can('entry.create') ? '<button class="btn btn-gold btn-sm" type="button" data-act="new-entry">' + icon('plus') + 'Nueva novedad</button>' : '') +
@@ -3360,41 +4121,28 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       (can('task.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-task">' + icon('task') + 'Nueva tarea</button>' : '') +
       (can('followup.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-followup">' + icon('followup') + 'Nuevo seguimiento</button>' : '') +
       '<span style="flex:1"></span>' +
-      '<button class="btn btn-ghost btn-sm" type="button" data-act="reset">Reiniciar preview</button>' +
-      // La barra lateral se oculta en móvil: el cierre de sesión debe estar
-      // disponible en cualquier ancho de pantalla.
-      '<button class="btn btn-quiet btn-sm" type="button" data-act="logout">Cerrar sesión</button>';
+      (state.dbError ? '<span class="badge" data-tone="atencion" title="' + esc(describeDbError({ code: state.dbError })) + '">Sin sincronizar</span>' : '') +
+      '<button class="btn btn-quiet btn-sm" type="button" data-act="switch-user">Cambiar de usuario</button>';
   }
 
   const VIEWS = {
     inicio: viewInicio, libro: viewLibro, turno: viewTurno, entrega: viewEntrega,
     tareas: viewTareas, incidencias: viewIncidencias, alertas: viewAlertas,
-    seguimientos: viewSeguimientos, indicadores: viewIndicadores, admin: viewAdmin
+    seguimientos: viewSeguimientos, huespedes: viewHuespedes,
+    indicadores: viewIndicadores, admin: viewAdmin
   };
 
   function render() {
-    document.documentElement.dataset.auth = state.authed ? 'in' : 'out';
-    if (!state.authed) {
-      renderAuthScreen();
-      const email = document.getElementById('auth-email');
-      if (email && !email.value) email.focus();
-      return;
-    }
+    const inside = state.setupStep === 'listo';
+    document.documentElement.dataset.auth = inside ? 'in' : 'out';
+    if (!inside) { renderStartScreen(); return; }
 
     renderNav();
 
-    // Si el rol actual no puede ver la vista, se vuelve al inicio.
     const allowed = visibleNav().map((n) => n.view).concat(['entrega']);
     if (allowed.indexOf(state.view) < 0) state.view = 'inicio';
 
-    const note = '<div class="preview-note">' +
-      '<strong>Preview operativa</strong>' +
-      '<span>Turnos, entregas, alertas y permisos funcionan de verdad sobre datos de demostración guardados en este navegador.</span>' +
-      '<span class="spacer"></span>' +
-      '<span>Sesión: <strong>' + esc(me().name) + '</strong> · ' + esc(myRole().name) + '</span>' +
-      '</div>';
-
-    document.getElementById('view').innerHTML = note + (VIEWS[state.view] || viewInicio)();
+    document.getElementById('view').innerHTML = (VIEWS[state.view] || viewInicio)();
   }
 
   // --------------------------- Eventos delegados --------------------------
@@ -3404,17 +4152,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     if (!trigger) return;
     const act = trigger.dataset.act;
     const args = trigger.dataset.args || '';
-    if (ACTIONS[act]) {
-      event.preventDefault();
-      ACTIONS[act](args);
+    if (!ACTIONS[act]) return;
+    event.preventDefault();
+    if (trigger.tagName === 'BUTTON') {
+      // Evita dobles envíos mientras la escritura viaja a la base de datos.
+      trigger.disabled = true;
+      setTimeout(function () { trigger.disabled = false; }, 900);
     }
-  });
-
-  document.addEventListener('submit', function (event) {
-    if (event.target.id === 'auth-form') {
-      event.preventDefault();
-      ACTIONS.login();
-    }
+    Promise.resolve(ACTIONS[act](args)).catch(function (error) {
+      console.error('[acción]', act, error);
+      fail('No se pudo completar la acción.');
+    });
   });
 
   document.addEventListener('keydown', function (event) {
@@ -3422,60 +4170,116 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
   });
 
   document.addEventListener('change', function (event) {
-    if (event.target.id === 'role-select') {
-      state.currentUserId = event.target.value;
-      state.view = 'inicio';
-      state.openHandover = null;
-      commit('Ahora operas como ' + me().name + ' (' + myRole().name + ').');
-      return;
-    }
     if (event.target.dataset && event.target.dataset.filter) {
       state.filters[event.target.dataset.filter] = event.target.value;
-      commit();
+      render();
     }
   });
 
   let searchTimer = null;
   document.addEventListener('input', function (event) {
-    if (event.target.id === 'global-search') {
-      clearTimeout(searchTimer);
-      const value = event.target.value;
-      searchTimer = setTimeout(function () {
-        state.filters.q = value;
-        state.view = 'libro';
-        save();
-        render();
-      }, 260);
-      return;
-    }
-    if (event.target.dataset && event.target.dataset.filter === 'q') {
-      clearTimeout(searchTimer);
-      const value = event.target.value;
-      searchTimer = setTimeout(function () {
-        state.filters.q = value;
-        save();
-        render();
+    const isGlobal = event.target.id === 'global-search';
+    const isFilter = event.target.dataset && event.target.dataset.filter === 'q';
+    if (!isGlobal && !isFilter) return;
+    clearTimeout(searchTimer);
+    const value = event.target.value;
+    searchTimer = setTimeout(function () {
+      state.filters.q = value;
+      if (isGlobal) state.view = 'libro';
+      render();
+      if (isFilter) {
         const field = document.querySelector('[data-filter="q"]');
         if (field) { field.focus(); field.setSelectionRange(value.length, value.length); }
-      }, 320);
-    }
+      }
+    }, 300);
   });
 
-  // --------------------------------- Inicio -------------------------------
-  state = load();
-  if (!state) {
-    state = buildSeed();
-    runAlertEngine();
-    save();
-  } else {
-    runAlertEngine();
-    save();
-  }
-  render();
+  // ---------------------------- Datos de ejemplo --------------------------
+  /** Un día de operación realista, para practicar el ciclo completo. */
+  async function loadExampleData() {
+    const now = new Date();
+    const at = (hours, minutes) => { const d = new Date(now); d.setHours(hours, minutes || 0, 0, 0); return d.toISOString(); };
+    const person = state.currentUserId;
 
-  // Estado que sobrevive a una republicación de la página.
-  if (window.claude && window.claude.hot) {
-    window.claude.hot.snapshot(function () { return state; });
+    await write(async function () {
+      await setDoc('guests/ej-whitaker', { name: 'Helen Whitaker', room: '318', vip: true, notes: 'Alérgica a plumas: almohadas hipoalergénicas.', createdAt: at(8) });
+      await setDoc('guests/ej-bustamante', { name: 'Andrés Bustamante', room: '215', vip: false, notes: 'Viaje corporativo, requiere factura.', createdAt: at(8) });
+      await setDoc('reservations/ej-10255', { code: 'RES-10255', guestId: 'ej-bustamante', room: '215', checkIn: at(9), checkOut: null, channel: 'Booking', status: 'EN_CASA', guarantee: 'RECHAZADA', balance: 184500, action: 'Tarjeta rechazada en pre-autorización. Solicitar otro medio de pago.', createdAt: at(8) });
+      await setDoc('reservations/ej-10260', { code: 'RES-10260', guestId: 'ej-whitaker', room: '318', checkIn: at(14), checkOut: null, channel: 'Expedia', status: 'PENDIENTE', guarantee: 'PENDIENTE', balance: null, action: null, createdAt: at(8) });
+
+      await setDoc('entries/ej-aire', {
+        type: 'INCIDENCIA', title: 'Aire acondicionado sin enfriar en habitación 318',
+        description: 'La huésped reporta que el aire acondicionado no enfría desde las 22:00. Se ofreció ventilador de pie y cambio de habitación, que declinó por el equipaje ya desarmado.',
+        department: 'Mantenimiento', priority: 'ALTA', status: 'EN_CURSO', severity: 'ALTA', impact: 'HUESPED',
+        immediateAction: 'Se entregó ventilador y se ofreció upgrade sin costo.',
+        createdBy: person, ownerId: person, shiftId: null, occurredAt: at(7, 20),
+        dueAt: at(12), tags: ['climatizacion'], followUp: true, guestId: 'ej-whitaker', reservationId: 'ej-10260',
+        rootCause: null, resolution: null, closedAt: null, comments: [],
+        history: [{ at: at(7, 20), action: 'CREAR', actor: person, summary: 'Incidencia registrada' }],
+        deleted: false, createdAt: at(7, 20)
+      });
+      await setDoc('entries/ej-tarjeta', {
+        type: 'INCIDENCIA', title: 'Pre-autorización rechazada en habitación 215',
+        description: 'La tarjeta del huésped fue rechazada al pre-autorizar el consumo extra. Se informó al huésped, que indicó regularizar el pago al regresar.',
+        department: 'Recepción', priority: 'CRITICA', status: 'ABIERTO', severity: 'CRITICA', impact: 'ECONOMICO',
+        immediateAction: 'Se bloqueó el cargo a la habitación y se avisó a A&B.',
+        createdBy: person, ownerId: person, shiftId: null, occurredAt: at(8, 10),
+        dueAt: at(18), tags: ['garantia', 'cobro'], followUp: true, guestId: 'ej-bustamante', reservationId: 'ej-10255',
+        rootCause: null, resolution: null, closedAt: null, comments: [],
+        history: [{ at: at(8, 10), action: 'CREAR', actor: person, summary: 'Incidencia registrada' }],
+        deleted: false, createdAt: at(8, 10)
+      });
+      await setDoc('entries/ej-toallas', {
+        type: 'HOUSEKEEPING', title: 'Faltante de toallas de piscina en bodega de piso 1',
+        description: 'Quedan 14 toallas disponibles. Housekeeping solicita reposición desde lavandería antes del mediodía.',
+        department: 'Housekeeping', priority: 'BAJA', status: 'ABIERTO', severity: null, impact: null, immediateAction: null,
+        createdBy: person, ownerId: null, shiftId: null, occurredAt: at(9, 40), dueAt: at(12),
+        tags: ['insumos'], followUp: false, guestId: null, reservationId: null,
+        rootCause: null, resolution: null, closedAt: null, comments: [],
+        history: [{ at: at(9, 40), action: 'CREAR', actor: person, summary: 'Registro creado' }],
+        deleted: false, createdAt: at(9, 40)
+      });
+
+      await setDoc('tasks/ej-pago', {
+        title: 'Solicitar medio de pago alternativo a huésped de hab. 215',
+        description: 'La tarjeta fue rechazada. Coordinar transferencia o efectivo antes del check-out.',
+        assigneeId: person, priority: 'CRITICA', status: 'EN_CURSO', dueAt: at(13), department: 'Recepción',
+        entryId: 'ej-tarjeta', origin: 'INCIDENCIA', createdBy: person, createdAt: at(8, 15), shiftId: null,
+        checklist: [{ id: 'k1', text: 'Contactar al huésped', done: true }, { id: 'k2', text: 'Registrar nuevo medio de pago', done: false }],
+        comments: [], history: [{ at: at(8, 15), action: 'CREAR', actor: person, summary: 'Tarea creada' }],
+        deleted: false, blockedReason: null, completedAt: null
+      });
+      await setDoc('tasks/ej-aire', {
+        title: 'Reparar aire acondicionado de habitación 318',
+        description: 'Mantenimiento debe revisar el equipo y confirmar temperatura antes del mediodía.',
+        assigneeId: person, priority: 'ALTA', status: 'BLOQUEADA', dueAt: at(12), department: 'Mantenimiento',
+        entryId: 'ej-aire', origin: 'INCIDENCIA', createdBy: person, createdAt: at(7, 30), shiftId: null,
+        checklist: [], comments: [],
+        history: [{ at: at(7, 30), action: 'CREAR', actor: person, summary: 'Tarea creada' }],
+        deleted: false, blockedReason: 'Falta repuesto de condensador; llega con el proveedor a las 11:00.', completedAt: null
+      });
+
+      await setDoc('followups/ej-seg', {
+        entryId: 'ej-tarjeta', taskId: null,
+        action: 'Se contactó al huésped por teléfono para regularizar el medio de pago.',
+        result: 'No contesta. Se dejó mensaje en la habitación.',
+        nextAction: 'Reintentar contacto y, si no responde, escalar a Administración.',
+        scheduledAt: at(13, 30), ownerId: person, createdBy: person, status: 'PENDIENTE',
+        createdAt: at(8, 30), completedAt: null, comments: []
+      });
+    }, 'Datos de ejemplo cargados: 2 incidencias, 1 novedad, 2 tareas y 1 seguimiento.');
+
+    await pushAudit('CONFIGURAR', 'Sistema', 'Carga de datos de ejemplo');
+    runAlertEngine();
   }
+
+  // --------------------------------- Inicio -------------------------------
+  render();
+  connect().catch(function (error) {
+    console.error('[arranque]', error);
+    state.setupStep = 'sin-base';
+    render();
+  });
+
 })();
 </script>

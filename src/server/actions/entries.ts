@@ -22,6 +22,7 @@ import {
 function refreshOperationalViews(entryId?: string) {
   revalidatePath('/');
   revalidatePath('/libro');
+  revalidatePath('/supervision');
   revalidatePath('/incidencias');
   revalidatePath('/alertas');
   if (entryId) revalidatePath(`/libro/${entryId}`);

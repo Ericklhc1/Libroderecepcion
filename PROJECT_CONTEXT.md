@@ -1,0 +1,149 @@
+# Libro Operativo de Recepción — contexto técnico
+
+Memoria breve del proyecto. Sirve para no volver a analizar toda la aplicación
+en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.
+
+## Stack
+
+Next.js 15 (App Router, Server Components, Server Actions) · React 19 ·
+TypeScript estricto · Prisma 6 · PostgreSQL en **Neon** (`sa-east-1`) ·
+desplegado en **Vercel** (`gru1`) · Tailwind · Vitest contra PostgreSQL real.
+
+No cambiar de stack. No reconstruir. No crear otro proyecto.
+
+## Arquitectura
+
+```
+src/domain/    Lógica pura, sin base de datos ni React. Testeable sola.
+src/server/    services/ (consultas y reglas) · actions/ (acciones de
+               servidor) · auth/ (sesión, permisos). Todo marcado 'server-only'.
+src/app/       Rutas. (app)/ exige sesión; fuera de ahí, acceso e instalación.
+src/components/ ui/ (primitivas) · layout/ · operational/ · rooms/ · forms/
+```
+
+Regla: los permisos se comprueban **en el servidor**, en cada acción y cada
+página. La navegación sólo esconde; nunca autoriza.
+
+## Navegación (simplificada)
+
+Cinco destinos principales, uno por pregunta operativa:
+
+| Destino | Pregunta |
+|---|---|
+| `/` Inicio | ¿Qué ocurre ahora? |
+| `/libro` Libro operativo | ¿Qué tengo pendiente? |
+| `/habitaciones` | ¿Qué ocurre en cada habitación? |
+| `/turno` | ¿Qué debo entregar al siguiente turno? |
+| `/supervision` | ¿Qué debo revisar como Supervisor? |
+
+Más un grupo *Consulta* (`/llaves`, `/huespedes`, `/historial`,
+`/indicadores`) y *Sistema* (`/admin`).
+
+**Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
+**no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
+el libro (pestañas `?clase=`), Inicio, la ficha de la habitación y Supervisión.
+Sus páginas siguen existiendo como vista secundaria porque cada una aporta
+acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
+`tests/navigation.test.ts` falla si vuelven al menú.
+
+## Entidades principales
+
+`User`/`Role`/`Permission` · `Shift`/`ShiftHandover`/`HandoverItem` ·
+`OperationalEntry` (novedad, incidencia, mantenimiento…) · `Task` ·
+`FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
+`GuestReference`/`ReservationReference` · `AuditLog` · `SystemSetting`.
+
+El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
+`Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
+conserva su modelo y sus reglas.
+
+## Decisiones que no se revierten
+
+1. **El rol técnico superior se llama sólo «Administrador de sistema».** Nunca
+   *master*, *maestro*, *superusuario*. Queda **fuera de la operación
+   habitual**: no inicia, recibe ni entrega turno, no gestiona habitaciones,
+   no entrega llaves, no importa informes. Vive en `ROLE_PERMISSIONS`.
+2. **Nada se borra de verdad.** Eliminación lógica (`deletedAt`, `deletedBy`,
+   `deletionReason`); el administrador restaura.
+3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
+   de importación **se recalculan, nunca se almacenan**.
+4. **La regla de cola compara `reservationId`, nunca el nombre.** Una entrada
+   espera sin llave hasta que la salida previa se confirme.
+5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
+   501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
+6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y
+   color. Sin mayúsculas forzadas ni `letter-spacing` en etiquetas. Identidad
+   cromática azul petróleo + dorado.
+7. **El semáforo nunca depende sólo del color**: siempre lleva texto y símbolo
+   (`src/components/ui/tone.ts`).
+8. **Secretos sólo en variables de entorno.** El ejemplo vive en
+   `docs/entorno.example`, **no** en un `.env.example` de la raíz: las
+   plataformas de despliegue leen ese archivo como lista de variables
+   obligatorias y bloquean el despliegue.
+
+## Rendimiento: lo aprendido en producción
+
+La base está en `sa-east-1` y las funciones en `gru1` (`vercel.json`). **Antes
+estaban en `iad1` y cada consulta costaba ~120 ms.** De ahí vienen los tres
+errores que sólo aparecieron desplegados, y sus reglas:
+
+1. **Nunca una consulta por fila.** La siembra hacía 230 `upsert` y agotaba la
+   transacción de instalación (P2028). Va por lotes. Lo vigila
+   `tests/seed-performance.test.ts`, que cuenta consultas.
+2. **Nunca encadenar esperas independientes.** El libro consultaba sus cuatro
+   fuentes en serie; el panel encadenaba seis contadores. Todo va en
+   `Promise.all`. Lo vigila `tests/query-parallelism.test.ts`.
+4. **Nada pesado dentro del render.** El motor de alertas son 18 consultas y
+   corría dentro de Inicio: 18 esperas delante de la primera pantalla del
+   turno. Ahora corre con `after()`, ya enviada la respuesta, y el panel bajó
+   de 32 a 17 consultas. `after()` lanza fuera de una petición, así que va
+   envuelto: el motor es frescura, no corrección, y no puede tumbar la
+   pantalla. Presupuesto vigilado (≤20 consultas).
+3. **Ninguna pantalla que consulte la base antes de redirigir puede
+   pre-generarse.** `/login` quedó congelada durante la compilación con la base
+   vacía y provocó `ERR_TOO_MANY_REDIRECTS`. Lo vigila
+   `tests/page-rendering.test.ts`.
+
+Transacciones largas (instalación, importación) llevan
+`{ timeout: 30_000, maxWait: 10_000 }` y su página `maxDuration = 60`.
+
+Índices: se agregan **sólo** con un patrón de consulta real detrás. Los del
+libro (`createdAt` en `Task`, `FollowUp`, `Alert`) y `RoomStay.reservationId`
+están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva`.
+
+## Interfaz
+
+- **Barra lateral fija:** `sticky top-0 h-screen` en el `<aside>`. Sin altura
+  acotada su `overflow-y-auto` interno no puede activarse y el menú se va con
+  el scroll. Ningún ancestro puede llevar `overflow`. Lo vigila
+  `tests/navigation.test.ts`.
+- **Toda acción responde en el mismo clic:** `SubmitButton` usa
+  `useFormStatus`; los enlaces llevan estado `active:`.
+- **La navegación tiene pantalla de espera:** `(app)/loading.tsx` y
+  `habitaciones/loading.tsx`. Next las muestra al pulsar el enlace, sin
+  esperar al servidor. `useLinkStatus` existe en Next 15.5 pero **no está
+  exportado públicamente**: no se importa desde la ruta interna.
+- **Actualización optimista sólo donde es reversible y sin consecuencia
+  operativa:** pasos de una tarea y notificaciones leídas. El patrón es
+  `useFormStatus` dentro del formulario, mostrando el estado destino mientras
+  `pending`; si el servidor rechaza, la revalidación devuelve el estado real y
+  no queda nada inventado. **No** se aplica a confirmar salidas, entregar
+  llaves ni recibir turnos.
+- **`ActionForm` guarda lo escrito y lo devuelve si la validación falla.**
+  React 19 vacía el formulario en cuanto la acción termina; sin esto, quien
+  registra una novedad larga pierde el texto por olvidar un campo.
+
+## Pendientes conocidos
+
+- **SMTP sin configurar** (`SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM`): al crear un
+  usuario la clave se muestra en pantalla en vez de enviarse a
+  `recepcion@hoteleshw.com`. `src/server/mail.ts` lo informa, no falla en
+  silencio.
+- Los tres informes del PMS no se han importado todavía en producción.
+- Sin dominio propio del hotel.
+
+## Compuerta de calidad
+
+`npx tsc --noEmit` · `npx next lint` · `npm test` · `npm run build`.
+Las cuatro en verde antes de dar algo por terminado. Ningún error conocido
+queda sin documentar acá.

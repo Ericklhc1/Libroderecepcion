@@ -23,6 +23,7 @@ function refresh() {
   revalidatePath('/');
   revalidatePath('/alertas');
   revalidatePath('/libro');
+  revalidatePath('/supervision');
 }
 
 export async function createAlertAction(

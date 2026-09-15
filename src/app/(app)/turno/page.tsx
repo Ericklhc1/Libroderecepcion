@@ -292,7 +292,7 @@ export default async function ShiftPage() {
                 <CardHeader
                   title="Tareas vencidas"
                   count={briefing.overdueTasks.length}
-                  href="/tareas?estado=abiertos"
+                  href="/libro?clase=task&estado=abiertos"
                 />
                 {briefing.overdueTasks.length === 0 ? (
                   <EmptyState message="Sin tareas vencidas." />
@@ -323,7 +323,7 @@ export default async function ShiftPage() {
               </Card>
 
               <Card>
-                <CardHeader title="Alertas activas" count={briefing.alerts.length} href="/alertas" />
+                <CardHeader title="Alertas activas" count={briefing.alerts.length} href="/libro?clase=alert" />
                 {briefing.alerts.length === 0 ? (
                   <EmptyState message="Sin alertas activas." />
                 ) : (
@@ -344,7 +344,7 @@ export default async function ShiftPage() {
                 <CardHeader
                   title="Seguimientos"
                   count={briefing.followUps.length}
-                  href="/seguimientos"
+                  href="/libro?clase=followup"
                 />
                 {briefing.followUps.length === 0 ? (
                   <EmptyState message="Sin seguimientos pendientes." />

@@ -104,6 +104,14 @@ export default async function IncidentsPage({
           Registros del libro con estructura ampliada: gravedad, impacto, acción inmediata, causa y
           resolución.
         </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Vista especializada. Para ver las incidencias junto al resto de la operación,
+          abre el{' '}
+          <Link href="/libro?clase=entry&tipo=INCIDENCIA" className="font-medium text-petrol-600 hover:underline">
+            libro operativo
+          </Link>
+          .
+        </p>
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

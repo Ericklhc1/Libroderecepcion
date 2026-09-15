@@ -35,6 +35,7 @@ function refreshRooms(roomNumber?: string | null) {
   revalidatePath('/habitaciones');
   revalidatePath('/llaves');
   revalidatePath('/');
+  revalidatePath('/supervision');
   if (roomNumber) revalidatePath(`/habitaciones/${roomNumber}`);
 }
 

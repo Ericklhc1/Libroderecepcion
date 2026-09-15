@@ -560,6 +560,7 @@ model Task {
   alerts         Alert[]     @relation("taskAlerts")
 
   @@index([status, dueAt])
+  @@index([createdAt])
   @@index([assigneeId, status])
   @@index([entryId])
   @@index([deletedAt])
@@ -611,6 +612,7 @@ model FollowUp {
   tasks          Task[]         @relation("followUpTasks")
 
   @@index([status, scheduledAt])
+  @@index([createdAt])
   @@index([ownerId])
   @@index([entryId])
   @@index([deletedAt])
@@ -665,6 +667,7 @@ model Alert {
   tasks          Task[]      @relation("alertTasks")
 
   @@index([status, level])
+  @@index([createdAt])
   @@index([type])
   @@index([deletedAt])
 }
@@ -950,6 +953,7 @@ model RoomStay {
   @@unique([businessDate, reservationId, roomId, status])
   @@index([roomId, status])
   @@index([businessDate])
+  @@index([reservationId])
   @@index([stage])
   @@index([deletedAt])
 }

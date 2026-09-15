@@ -125,9 +125,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
         }
       : undefined;
 
-  const items: BookItem[] = [];
-
-  if (kinds.includes('entry')) {
+  async function entryItems(): Promise<BookItem[]> {
+    const items: BookItem[] = [];
     // Cada grupo de condiciones se acumula en AND: así ningún filtro
     // sobrescribe a otro y todos se aplican simultáneamente.
     const and: Prisma.OperationalEntryWhereInput[] = [];
@@ -223,9 +222,11 @@ export async function getBookItems(filters: BookFilters): Promise<{
         deleted: row.deletedAt !== null,
       });
     }
+    return items;
   }
 
-  if (kinds.includes('task')) {
+  async function taskItems(): Promise<BookItem[]> {
+    const items: BookItem[] = [];
     const and: Prisma.TaskWhereInput[] = [];
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { assigneeId: filters.userId }] });
@@ -320,9 +321,11 @@ export async function getBookItems(filters: BookFilters): Promise<{
         deleted: row.deletedAt !== null,
       });
     }
+    return items;
   }
 
-  if (kinds.includes('followup')) {
+  async function followUpItems(): Promise<BookItem[]> {
+    const items: BookItem[] = [];
     const and: Prisma.FollowUpWhereInput[] = [];
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });
@@ -407,9 +410,11 @@ export async function getBookItems(filters: BookFilters): Promise<{
         deleted: row.deletedAt !== null,
       });
     }
+    return items;
   }
 
-  if (kinds.includes('alert')) {
+  async function alertItems(): Promise<BookItem[]> {
+    const items: BookItem[] = [];
     const and: Prisma.AlertWhereInput[] = [];
     if (filters.onlyOpen) and.push(LIVE_ALERT_WHERE());
     if (filters.userId) {
@@ -491,8 +496,23 @@ export async function getBookItems(filters: BookFilters): Promise<{
         deleted: row.deletedAt !== null,
       });
     }
+    return items;
   }
 
+  /*
+    Las cuatro fuentes se consultan en paralelo. Antes corrían una detrás de
+    otra: con la base en otra región, cada espera costaba un viaje completo y
+    abrir el libro sumaba cuatro. Ahora el costo es el de la consulta más
+    lenta, no el de la suma.
+  */
+  const groups = await Promise.all([
+    kinds.includes('entry') ? entryItems() : [],
+    kinds.includes('task') ? taskItems() : [],
+    kinds.includes('followup') ? followUpItems() : [],
+    kinds.includes('alert') ? alertItems() : [],
+  ]);
+
+  const items = groups.flat();
   items.sort((a, b) => b.date.getTime() - a.date.getTime());
 
   const offset = (page - 1) * pageSize;

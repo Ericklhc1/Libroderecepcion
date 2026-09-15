@@ -6,7 +6,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { followUpInclude } from '@/server/services/followups';
 import { getFormOptions } from '@/server/services/options';
-import { refreshAlertsThrottled } from '@/server/services/dashboard';
+import { refreshAlertsInBackground } from '@/server/services/dashboard';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, EmptyState, StatTile } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -27,7 +27,7 @@ export default async function FollowUpsPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  await refreshAlertsThrottled();
+  refreshAlertsInBackground();
 
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';
@@ -71,6 +71,14 @@ export default async function FollowUpsPage({
           <p className="mt-0.5 text-sm text-slate-600">
             Qué se hizo, qué resultó y cuándo hay que volver a revisar. Si llega la fecha y sigue
             abierto, se genera una alerta.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Vista especializada. Para ver los seguimientos junto al resto de la operación,
+            abre el{' '}
+            <Link href="/libro?clase=followup" className="font-medium text-petrol-600 hover:underline">
+              libro operativo
+            </Link>
+            .
           </p>
         </div>
         <div className="flex gap-2 no-print">

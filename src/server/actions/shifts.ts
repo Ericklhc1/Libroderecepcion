@@ -29,6 +29,7 @@ import { assertAssignable } from '@/server/services/users';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
+  revalidatePath('/supervision');
   revalidatePath('/turno');
   revalidatePath('/indicadores');
   if (shiftId) revalidatePath(`/turno/${shiftId}`);

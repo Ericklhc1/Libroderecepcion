@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { alertInclude } from '@/server/services/alerts';
-import { refreshAlertsThrottled } from '@/server/services/dashboard';
+import { refreshAlertsInBackground } from '@/server/services/dashboard';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -39,7 +39,7 @@ export default async function AlertsPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  await refreshAlertsThrottled();
+  refreshAlertsInBackground();
 
   const estado = typeof params.estado === 'string' ? params.estado : 'activas';
   const now = new Date();
@@ -94,6 +94,14 @@ export default async function AlertsPage({
           <p className="mt-0.5 text-sm text-slate-600">
             Generadas automáticamente por el motor de reglas o creadas a mano. Se pueden marcar
             como vistas, posponer o resolver.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Vista especializada. Para ver las alertas junto al resto de la operación,
+            abre el{' '}
+            <Link href="/libro?clase=alert" className="font-medium text-petrol-600 hover:underline">
+              libro operativo
+            </Link>
+            .
           </p>
         </div>
         {canManage ? (

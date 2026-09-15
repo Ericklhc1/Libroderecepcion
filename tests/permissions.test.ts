@@ -1,0 +1,188 @@
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import {
+  ALL_PERMISSIONS,
+  ROLE_PERMISSIONS,
+  type PermissionKey,
+} from '@/lib/permissions';
+import { hasPermission } from '@/server/auth/current-user';
+import { assertAssignable, listOperationalUsers } from '@/server/services/users';
+import { createEntry } from '@/server/services/entries';
+import { createTask } from '@/server/services/tasks';
+import { startShift } from '@/server/services/shifts';
+import { createShift } from './helpers';
+import { ShiftType } from '@prisma/client';
+import { RuleError } from '@/server/errors';
+
+describe('matriz de roles y permisos', () => {
+  beforeAll(async () => {
+    await seedCatalog();
+  });
+
+  beforeEach(async () => {
+    await resetOperationalData();
+  });
+
+  it('persiste todos los permisos del catálogo', async () => {
+    const stored = await prisma.permission.findMany({ select: { key: true } });
+    expect(stored.map((p) => p.key).sort()).toEqual([...ALL_PERMISSIONS].sort());
+  });
+
+  it('el Administrador de sistema concentra el control técnico', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    for (const permission of [
+      'user.manage',
+      'role.manage',
+      'system.configure',
+      'audit.view',
+      'entry.restore',
+    ] as PermissionKey[]) {
+      expect(hasPermission(admin, permission)).toBe(true);
+    }
+  });
+
+  it('el Administrador de sistema queda fuera del ciclo de turnos', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    expect(admin.roleOperational).toBe(false);
+    expect(hasPermission(admin, 'shift.start')).toBe(false);
+    expect(hasPermission(admin, 'shift.receive')).toBe(false);
+    expect(hasPermission(admin, 'shift.handover')).toBe(false);
+  });
+
+  it('el recepcionista tiene lo necesario para operar y nada más', async () => {
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+
+    for (const permission of [
+      'entry.create',
+      'incident.create',
+      'task.create',
+      'followup.create',
+      'shift.start',
+      'shift.receive',
+      'shift.handover',
+      'shift.close',
+    ] as PermissionKey[]) {
+      expect(hasPermission(receptionist, permission)).toBe(true);
+    }
+
+    for (const permission of [
+      'user.manage',
+      'role.manage',
+      'system.configure',
+      'audit.view',
+      'entry.delete',
+      'entry.reopen',
+      'shift.manage',
+    ] as PermissionKey[]) {
+      expect(hasPermission(receptionist, permission)).toBe(false);
+    }
+  });
+
+  it('el supervisor puede reabrir, eliminar, auditar y programar turnos', async () => {
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+    for (const permission of [
+      'entry.reopen',
+      'entry.delete',
+      'incident.manage',
+      'incident.close',
+      'shift.manage',
+      'audit.view',
+      'metrics.view',
+    ] as PermissionKey[]) {
+      expect(hasPermission(supervisor, permission)).toBe(true);
+    }
+    // La administración de usuarios sigue siendo exclusiva del administrador.
+    expect(hasPermission(supervisor, 'user.manage')).toBe(false);
+    expect(hasPermission(supervisor, 'role.manage')).toBe(false);
+  });
+
+  it('el auditor nocturno suma sus controles a la operación normal', async () => {
+    const auditor = await createUser({ roleKey: ROLE_KEYS.NIGHT_AUDITOR });
+    expect(hasPermission(auditor, 'nightaudit.run')).toBe(true);
+    expect(hasPermission(auditor, 'incident.manage')).toBe(true);
+    expect(hasPermission(auditor, 'shift.start')).toBe(true);
+    expect(hasPermission(auditor, 'shift.close')).toBe(true);
+  });
+
+  it('la matriz declarada coincide con la persistida', async () => {
+    for (const [roleKey, permissions] of Object.entries(ROLE_PERMISSIONS)) {
+      const role = await prisma.role.findUniqueOrThrow({
+        where: { key: roleKey },
+        include: { permissions: { include: { permission: true } } },
+      });
+      expect(role.permissions.map((rp) => rp.permission.key).sort()).toEqual(
+        [...permissions].sort(),
+      );
+    }
+  });
+});
+
+describe('el Administrador de sistema no participa en la operación', () => {
+  beforeAll(async () => {
+    await seedCatalog();
+  });
+
+  beforeEach(async () => {
+    await resetOperationalData();
+  });
+
+  it('no aparece entre las personas asignables', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+
+    const assignable = await listOperationalUsers();
+    const ids = assignable.map((u) => u.id);
+
+    expect(ids).toContain(receptionist.id);
+    expect(ids).not.toContain(admin.id);
+  });
+
+  it('no puede figurar como responsable de un registro', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+
+    await expect(assertAssignable(admin.id)).rejects.toThrow(/fuera de la operación/);
+
+    await expect(
+      createEntry(supervisor, {
+        type: 'NOVEDAD',
+        title: 'Registro de prueba con responsable inválido',
+        description: 'El administrador no puede ser responsable operativo.',
+        priority: 'MEDIA',
+        tags: [],
+        requiresFollowUp: false,
+        ownerId: admin.id,
+      }),
+    ).rejects.toThrow(/fuera de la operación/);
+  });
+
+  it('no puede recibir tareas asignadas', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+
+    await expect(
+      createTask(supervisor, {
+        title: 'Tarea con asignado inválido',
+        priority: 'MEDIA',
+        tags: [],
+        checklist: [],
+        assigneeId: admin.id,
+      }),
+    ).rejects.toThrow(/fuera de la operación/);
+  });
+
+  it('no puede iniciar un turno aunque esté asignado', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const shift = await createShift({ userId: admin.id, type: ShiftType.MANANA });
+
+    await expect(startShift(admin, shift.id)).rejects.toThrow(RuleError);
+    await expect(startShift(admin, shift.id)).rejects.toThrow(
+      /no participa en la operación de turnos/,
+    );
+  });
+
+  it('un usuario inactivo no puede recibir asignaciones', async () => {
+    const inactive = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, active: false });
+    await expect(assertAssignable(inactive.id)).rejects.toThrow(/inactivo/);
+  });
+});

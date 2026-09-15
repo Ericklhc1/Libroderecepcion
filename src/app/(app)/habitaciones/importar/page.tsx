@@ -35,6 +35,14 @@ export default async function ImportPage({
   await requirePagePermission('pms.import');
   const params = await searchParams;
   const batchId = typeof params.revision === 'string' ? params.revision : undefined;
+  /*
+    Destino de vuelta. Sólo se acepta una de las dos claves conocidas; el
+    servidor la vuelve a validar antes de redirigir.
+  */
+  const returnTo =
+    params.volverA === 'turno' || params.volverA === 'habitaciones'
+      ? params.volverA
+      : undefined;
 
   const [preview, batches] = await Promise.all([
     batchId ? getImportPreview(batchId).catch(() => null) : Promise.resolve(null),
@@ -45,11 +53,11 @@ export default async function ImportPage({
     <div className="space-y-5">
       <div className="no-print">
         <Link
-          href="/habitaciones"
+          href={returnTo === 'turno' ? '/turno' : '/habitaciones'}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-petrol-600 hover:underline"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Habitaciones
+          {returnTo === 'turno' ? 'Mi turno' : 'Habitaciones'}
         </Link>
       </div>
 
@@ -64,7 +72,7 @@ export default async function ImportPage({
       {!preview ? (
         <>
           <Card className="p-4">
-            <ImportForm />
+            <ImportForm returnTo={returnTo} />
           </Card>
 
           <Card>
@@ -286,7 +294,7 @@ export default async function ImportPage({
             </div>
           </Card>
 
-          <ReviewDecision batchId={preview.batchId} />
+          <ReviewDecision batchId={preview.batchId} returnTo={returnTo} />
         </>
       )}
     </div>

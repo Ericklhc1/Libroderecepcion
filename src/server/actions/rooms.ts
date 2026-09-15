@@ -183,11 +183,28 @@ export async function createKeyAction(
 
 // ------------------------------ Importación -------------------------------
 
+/**
+ * A dónde volver después de importar.
+ *
+ * Los informes se cargan desde el inicio de turno o desde Habitaciones, y hay
+ * que volver al sitio del que se vino. El destino llega en el formulario, así
+ * que **no se usa tal cual**: se compara contra una lista de destinos válidos.
+ * Un parámetro de la petición no decide a dónde se manda al usuario.
+ */
+const RETURN_TO = { turno: '/turno', habitaciones: '/habitaciones' } as const;
+type ReturnKey = keyof typeof RETURN_TO;
+
+function returnKeyOf(formData: FormData): ReturnKey | null {
+  const raw = formData.get('volverA');
+  return typeof raw === 'string' && raw in RETURN_TO ? (raw as ReturnKey) : null;
+}
+
 export async function prepareImportAction(
   _state: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
   let batchId: string | null = null;
+  const back = returnKeyOf(formData);
 
   const result = await runAction(async () => {
     const user = await requirePermission('pms.import');
@@ -221,7 +238,10 @@ export async function prepareImportAction(
     };
   });
 
-  if (batchId) redirect(`/habitaciones/importar?revision=${batchId}`);
+  if (batchId) {
+    const query = back ? `?revision=${batchId}&volverA=${back}` : `?revision=${batchId}`;
+    redirect(`/habitaciones/importar${query}`);
+  }
   return result;
 }
 
@@ -231,22 +251,33 @@ export async function applyImportAction(
   _state: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
-  return runAction(async () => {
+  const back = returnKeyOf(formData);
+  let applied = false;
+
+  const result = await runAction(async () => {
     const user = await requirePermission('pms.import');
     const input = parseOrThrow(batchSchema, formDataToObject(formData));
-    const result = await applyImport(user, input.batchId);
+    const outcome = await applyImport(user, input.batchId);
     refreshRooms();
     revalidatePath('/habitaciones/importar');
+    revalidatePath('/turno');
+    applied = true;
     return {
       ok: true as const,
       message:
-        `Listo: ${result.created} estadías nuevas, ${result.updated} actualizadas, ` +
-        `${result.preserved} conservadas por decisión manual` +
-        (result.skipped ? `, ${result.skipped} sin habitación` : '') +
-        (result.keysFlagged ? `, ${result.keysFlagged} llave(s) por devolver` : '') +
+        `Listo: ${outcome.created} estadías nuevas, ${outcome.updated} actualizadas, ` +
+        `${outcome.preserved} conservadas por decisión manual` +
+        (outcome.skipped ? `, ${outcome.skipped} sin habitación` : '') +
+        (outcome.keysFlagged ? `, ${outcome.keysFlagged} llave(s) por devolver` : '') +
         '.',
     };
   });
+
+  // Aplicado desde el inicio de turno: se vuelve al turno, que es donde la
+  // persona estaba trabajando. El `redirect` va fuera de `runAction` porque
+  // lanza por diseño y no debe leerse como un fallo de la acción.
+  if (applied && back) redirect(RETURN_TO[back]);
+  return result;
 }
 
 export async function discardImportAction(

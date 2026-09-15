@@ -67,6 +67,18 @@ conserva su modelo y sus reglas.
    `deletionReason`); el administrador restaura.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
    de importación **se recalculan, nunca se almacenan**.
+   **Los tres informes se cargan desde el inicio de turno** (`/turno`, primera
+   tarjeta): es el primer gesto de la jornada y de ahí sale el estado de las
+   89 habitaciones, la regla de cola y el inventario de llaves. No bloquea el
+   inicio del turno —si el PMS no responde, la recepción tiene que poder
+   operar— pero deja visible que falta. La fecha de un lote sale **del propio
+   informe**, no del reloj, así que el estado compara esa fecha con el día
+   operativo: cargar los de ayer no da el día por cubierto.
+   Se conserva la **pantalla de revisión**: nada sobrescribe lo que una
+   persona decidió sin que alguien vea antes qué va a cambiar. El destino al
+   que volver tras aplicar viaja en el formulario, así que se traduce contra
+   una **lista cerrada** (`RETURN_TO` en `actions/rooms.ts`) — nunca se
+   redirige al valor recibido.
 4. **La regla de cola compara `reservationId`, nunca el nombre.** Una entrada
    espera sin llave hasta que la salida previa se confirme.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,

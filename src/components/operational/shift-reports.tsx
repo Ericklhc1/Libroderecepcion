@@ -54,7 +54,11 @@ export function ShiftReports({
             </Link>
           ) : (
             <p className="text-xs text-slate-500">
-              No tienes permiso para aplicar informes: pídelo a quien opera la recepción.
+              Tu rol no incluye el permiso para aplicar informes. Se concede en{' '}
+              <Link href="/admin/roles" className="font-medium text-petrol-600 hover:underline">
+                Administración → Roles
+              </Link>
+              .
             </p>
           )}
         </div>
@@ -150,7 +154,12 @@ export function ShiftReports({
 
         {!canImport && !coveredToday ? (
           <p className="text-xs text-slate-500">
-            No tienes permiso para importar informes. Avisa a quien opera la recepción.
+            Tu rol no incluye el permiso «Importar informes del PMS», así que aquí no aparece
+            el campo para adjuntarlos. Se concede en{' '}
+            <Link href="/admin/roles" className="font-medium text-petrol-600 hover:underline">
+              Administración → Roles
+            </Link>
+            .
           </p>
         ) : null}
       </div>

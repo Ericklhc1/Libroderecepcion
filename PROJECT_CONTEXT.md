@@ -61,8 +61,21 @@ conserva su modelo y sus reglas.
 
 1. **El rol técnico superior se llama sólo «Administrador de sistema».** Nunca
    *master*, *maestro*, *superusuario*. Queda **fuera de la operación
-   habitual**: no inicia, recibe ni entrega turno, no gestiona habitaciones,
-   no entrega llaves, no importa informes. Vive en `ROLE_PERMISSIONS`.
+   habitual**: no inicia, recibe ni entrega turno, no confirma salidas ni
+   entradas, no entrega llaves. Ésas son las acciones en que aparecería como
+   responsable operativo.
+   **Sí importa los informes del PMS.** Cargar los tres informes no es
+   operar: es alimentar el sistema con su fuente de datos y no asigna a nadie
+   como responsable. Excluirlo dejaba un callejón sin salida —en un hotel
+   recién instalado la única cuenta es la suya y no podía cargar el primer
+   día de datos—. Vive en `ROLE_PERMISSIONS`.
+   ⚠️ **La matriz se siembra al instalar.** Cambiar `ROLE_PERMISSIONS` no
+   altera una base ya instalada: todo cambio necesita su migración, uniendo
+   por clave y sin tocar otras filas (el administrador puede ajustar permisos
+   a mano desde `/admin/roles` y eso debe conservarse). Ejemplo:
+   `20260915220000_admin_importa_informes`. Lo vigila
+   `tests/permissions.test.ts`, que compara la matriz de la base con la del
+   código.
 2. **Nada se borra de verdad.** Eliminación lógica (`deletedAt`, `deletedBy`,
    `deletionReason`); el administrador restaura.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos

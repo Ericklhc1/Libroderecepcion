@@ -49,6 +49,41 @@ describe('matriz de roles y permisos', () => {
     expect(hasPermission(admin, 'shift.handover')).toBe(false);
   });
 
+  it('el Administrador de sistema no opera el mesón pero sí carga los informes', async () => {
+    /*
+      La regla del proyecto es que no aparezca como responsable operativo de
+      nada: no inicia, recibe ni entrega turno, no confirma salidas ni
+      entradas, no entrega llaves.
+
+      Importar los tres informes del PMS no es eso: es alimentar el sistema
+      con su fuente de datos y no asigna a nadie. Excluirlo dejaba un
+      callejón sin salida —en un hotel recién instalado la única cuenta es la
+      suya y no podía cargar el primer día— sin proteger nada.
+    */
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+
+    expect(hasPermission(admin, 'pms.import')).toBe(true);
+    expect(hasPermission(admin, 'room.view')).toBe(true);
+
+    for (const operational of ['room.manage', 'key.assign'] as PermissionKey[]) {
+      expect(hasPermission(admin, operational)).toBe(false);
+    }
+  });
+
+  it('la matriz sembrada en la base coincide con la del código', async () => {
+    /*
+      La matriz se siembra al instalar, así que una base ya instalada no se
+      actualiza al cambiar el código: cada cambio necesita su migración. Esta
+      prueba compara ambas para que la diferencia no pase desapercibida.
+    */
+    const role = await prisma.role.findUniqueOrThrow({
+      where: { key: ROLE_KEYS.SYSTEM_ADMIN },
+      include: { permissions: { include: { permission: true } } },
+    });
+    const stored = role.permissions.map((rp) => rp.permission.key).sort();
+    expect(stored).toEqual([...ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN]].sort());
+  });
+
   it('el recepcionista tiene lo necesario para operar y nada más', async () => {
     const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
 

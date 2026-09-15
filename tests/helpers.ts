@@ -20,8 +20,25 @@ export async function seedCatalog() {
   await domainSeedCatalog(prisma);
 }
 
+/**
+ * Borra los datos que genera la operación y deja el catálogo intacto.
+ *
+ * Las estadías y los lotes de importación entran acá aunque hablen de
+ * habitaciones: los crea la operación, no la siembra, y **referencian al
+ * usuario que los creó**. Sin borrarlos, `user.deleteMany()` choca contra la
+ * clave ajena de `PmsImportBatch` y revienta cualquier archivo de pruebas que
+ * corra después de uno que haya importado algo.
+ *
+ * El orden importa: los movimientos de llave y las estadías antes que los
+ * lotes, y las llaves se desligan de la estadía en lugar de borrarse, porque
+ * son catálogo.
+ */
 export async function resetOperationalData() {
   await prisma.$transaction([
+    prisma.keyMovement.deleteMany(),
+    prisma.roomKey.updateMany({ data: { stayId: null } }),
+    prisma.roomStay.deleteMany(),
+    prisma.pmsImportBatch.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.auditLog.deleteMany(),
     prisma.attachment.deleteMany(),
@@ -46,11 +63,13 @@ export async function resetOperationalData() {
 /**
  * Devuelve el inventario de habitaciones y llaves a su estado sembrado.
  *
- * `resetOperationalData` no lo toca porque habitaciones y llaves son
- * catálogo, no operación. Pero una prueba que agrega una llave extra —para
- * provocar el conflicto de dos principales, por ejemplo— la deja ahí para
- * todos los archivos que corran después, sobre la misma base. Este reinicio
- * lo evita, y se comparte en lugar de repetirse en cada archivo.
+ * Habitaciones y llaves son catálogo, así que `resetOperationalData` no las
+ * borra. Pero una prueba que agrega una llave extra —para provocar el
+ * conflicto de dos principales, por ejemplo— la deja ahí para todos los
+ * archivos que corran después, sobre la misma base. Este reinicio lo evita, y
+ * se comparte en lugar de repetirse en cada archivo.
+ *
+ * Hay que llamarlo **antes** de volver a sembrar.
  */
 export async function resetRoomsAndKeys() {
   await prisma.keyMovement.deleteMany();

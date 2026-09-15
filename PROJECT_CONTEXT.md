@@ -94,6 +94,15 @@ conserva su modelo y sus reglas.
    redirige al valor recibido.
 4. **La regla de cola compara `reservationId`, nunca el nombre.** Una entrada
    espera sin llave hasta que la salida previa se confirme.
+   **La llave principal la tiene quien está dentro**, y eso lo decide
+   `principalKeyHolder` en el dominio: salida sin confirmar →
+   `PENDIENTE_DEVOLUCION`; in house → `ASIGNADA`; entrada sin confirmar →
+   nadie. La importación lo escribe y la pantalla de revisión lo simula con
+   **la misma función**, para que no puedan divergir. Nunca se le quita la
+   llave a otra estadía, ni se asigna una extraviada o fuera de servicio: ahí
+   el conflicto es real y se conserva. Decisión revisada: la primera versión
+   no entregaba ninguna llave al importar y dejaba treinta avisos no
+   accionables por importación.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y

@@ -3,12 +3,15 @@ import {
   AuditAction,
   KeyAction,
   KeyStatus,
+  KeyType,
   PmsImportStatus,
+  // `Prisma` se importa como valor, no sólo como tipo: se usa `Prisma.sql` y
+  // `Prisma.join` para parametrizar el UPDATE por lotes de las llaves.
+  Prisma,
   RoomStayStage,
   RoomStayStatus,
 } from '@prisma/client';
-import type { Prisma ,
-  PmsReportKind} from '@prisma/client';
+import type { PmsReportKind } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -17,7 +20,13 @@ import { readPdfFragments } from '@/server/pms/read-pdf';
 import { readStructuredReport } from '@/domain/pms/layout';
 import { normalizeReport, REPORT_LABELS, type NormalizedStay } from '@/domain/pms/normalize';
 import { detectConflicts, type Conflict } from '@/domain/pms/conflicts';
-import { buildRoomSnapshot, type KeyFacts, type StayFacts } from '@/domain/rooms';
+import {
+  buildRoomSnapshot,
+  principalKeyHolder,
+  type KeyFacts,
+  type KeyHolderCandidate,
+  type StayFacts,
+} from '@/domain/rooms';
 
 /**
  * Importación de los informes del PMS.
@@ -338,11 +347,33 @@ async function analyseDraft(
     projected.set(room.number, list);
   }
 
+  /*
+    La previsión simula la entrega de la llave principal con la misma regla
+    que aplica la importación. Sin esto, la pantalla de revisión avisaba de
+    treinta «habitación in house sin llave» que el propio botón «Aplicar»
+    resolvía acto seguido: un aviso que no había que atender.
+  */
+  const projectedKeys = (room: (typeof rooms)[number]): KeyFacts[] => {
+    const holder = principalKeyHolder(projected.get(room.number) ?? []);
+    if (!holder) return room.keys as KeyFacts[];
+
+    return (room.keys as KeyFacts[]).map((key) => {
+      if (key.type !== 'PRINCIPAL') return key;
+      // No se simula lo que la importación tampoco haría: una llave en manos
+      // de otra estadía, extraviada o fuera de servicio se queda como está.
+      const suya = key.stayId === null || key.stayId === holder.stayId;
+      if (!suya || key.status === 'EXTRAVIADA' || key.status === 'FUERA_DE_SERVICIO') {
+        return key;
+      }
+      return { ...key, status: holder.status, stayId: holder.stayId };
+    });
+  };
+
   const conflicts = detectConflicts({
     rooms: rooms.map((room) => ({
       number: room.number,
       stays: projected.get(room.number) ?? [],
-      keys: room.keys as KeyFacts[],
+      keys: projectedKeys(room),
     })),
     orphanStays: orphans.map((orphan) => ({
       reservationId: orphan.reservationId,
@@ -378,6 +409,8 @@ export type ImportResult = {
   updated: number;
   preserved: number;
   skipped: number;
+  /** Llaves principales que la importación entregó a su ocupante. */
+  keysAssigned: number;
   keysFlagged: number;
 };
 
@@ -407,6 +440,7 @@ export async function applyImport(
       updated: 0,
       preserved: 0,
       skipped: 0,
+      keysAssigned: 0,
       keysFlagged: 0,
     };
 
@@ -507,10 +541,158 @@ export async function applyImport(
     }
 
     /*
-      Las salidas informadas dejan la llave marcada como pendiente de
-      devolución: el huésped todavía la tiene, pero el mesón ya sabe que hay que
-      recuperarla. La llave se reasigna a la estadía de salida para que
-      confirmar esa salida la devuelva al inventario.
+      Cruce de los informes con el inventario de llaves.
+      ------------------------------------------------------------------
+      Quien está dentro de la habitación tiene su llave: es un hecho físico,
+      no una decisión del mesón. Antes el sistema no lo daba por supuesto y
+      cada importación dejaba treinta avisos de «habitación in house sin
+      llave», que no eran accionables: nadie había registrado la entrega
+      porque el huésped entró antes de que el sistema existiera.
+
+      La regla ya estaba escrita en `expectedKeys`: IN_HOUSE y CHECK_OUT sin
+      finalizar exigen al menos la principal; CHECK_IN no puede tener ninguna.
+      Eso último es la regla de cola y no se toca: una entrada en cola sigue
+      sin llave hasta que alguien confirme la salida anterior.
+
+      Un check-in ya realizado no necesita caso propio: al confirmarlo, la
+      estadía pasa a IN_HOUSE y `confirmCheckIn` ya entrega la llave.
+
+      Por habitación manda una sola estadía, y su estado decide el de la
+      llave:
+        · salida sin confirmar → PENDIENTE_DEVOLUCION (hay que recuperarla)
+        · in house             → ASIGNADA
+
+      Nunca se le quita la llave a otra estadía: si la principal está en
+      manos de alguien distinto, o extraviada, o fuera de servicio, no se
+      toca y el conflicto sigue a la vista, que es lo correcto.
+    */
+    const occupants = await tx.roomStay.findMany({
+      where: {
+        businessDate,
+        deletedAt: null,
+        roomId: { not: null },
+        stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
+        status: { in: [RoomStayStatus.IN_HOUSE, RoomStayStatus.CHECK_OUT] },
+      },
+      select: { id: true, roomId: true, status: true, stage: true },
+    });
+
+    // Quién debe tenerla lo decide `principalKeyHolder`, en el dominio: la
+    // misma función que usa la pantalla de revisión para anunciarlo.
+    const byRoom = new Map<string, KeyHolderCandidate[]>();
+    for (const stay of occupants) {
+      if (!stay.roomId) continue;
+      const list = byRoom.get(stay.roomId) ?? [];
+      list.push({ id: stay.id, status: stay.status, stage: stay.stage });
+      byRoom.set(stay.roomId, list);
+    }
+
+    const holderByRoom = new Map<string, { stayId: string; status: KeyStatus }>();
+    for (const [roomId, stays] of byRoom) {
+      const holder = principalKeyHolder(stays);
+      if (holder) {
+        holderByRoom.set(roomId, {
+          stayId: holder.stayId,
+          status: KeyStatus[holder.status],
+        });
+      }
+    }
+
+    if (holderByRoom.size) {
+      const principals = await tx.roomKey.findMany({
+        where: { roomId: { in: [...holderByRoom.keys()] }, type: KeyType.PRINCIPAL },
+        select: { id: true, roomId: true, status: true, stayId: true },
+      });
+
+      type Assignment = {
+        keyId: string;
+        roomId: string;
+        stayId: string;
+        from: KeyStatus;
+        to: KeyStatus;
+      };
+      const assignments: Assignment[] = [];
+
+      for (const key of principals) {
+        if (!key.roomId) continue;
+        const holder = holderByRoom.get(key.roomId);
+        if (!holder) continue;
+
+        const target = holder.status;
+
+        // Ya está donde debe: no se escribe ni se registra movimiento.
+        if (key.stayId === holder.stayId && key.status === target) continue;
+
+        // En manos de otra estadía: no se le quita a nadie.
+        const enManos: KeyStatus[] = [
+          KeyStatus.ASIGNADA,
+          KeyStatus.PENDIENTE_DEVOLUCION,
+          KeyStatus.COPIA_ADICIONAL,
+        ];
+        const heldByOther =
+          key.stayId !== null && key.stayId !== holder.stayId && enManos.includes(key.status);
+        if (heldByOther) continue;
+
+        // Extraviada o fuera de servicio: el conflicto es real y se conserva.
+        if (key.status === KeyStatus.EXTRAVIADA || key.status === KeyStatus.FUERA_DE_SERVICIO) {
+          continue;
+        }
+
+        assignments.push({
+          keyId: key.id,
+          roomId: key.roomId,
+          stayId: holder.stayId,
+          from: key.status,
+          to: target,
+        });
+      }
+
+      if (assignments.length) {
+        /*
+          Cada llave va a una estadía distinta, así que `updateMany` no sirve:
+          serían tantas consultas como habitaciones ocupadas. Un solo UPDATE
+          contra una lista de valores deja el costo en un viaje, que es lo que
+          importa con la base en otra región. Los valores van parametrizados.
+        */
+        await tx.$executeRaw`
+          UPDATE "RoomKey" AS k
+          SET "status" = v."status"::"KeyStatus", "stayId" = v."stayId"
+          FROM (
+            SELECT * FROM (VALUES ${Prisma.join(
+              assignments.map(
+                (a) => Prisma.sql`(${a.keyId}, ${a.stayId}, ${a.to}::text)`,
+              ),
+            )}) AS t("id", "stayId", "status")
+          ) AS v
+          WHERE k."id" = v."id"
+        `;
+
+        await tx.keyMovement.createMany({
+          data: assignments.map((a) => ({
+            keyId: a.keyId,
+            action:
+              a.to === KeyStatus.PENDIENTE_DEVOLUCION
+                ? KeyAction.MARCADA_PENDIENTE_DEVOLUCION
+                : KeyAction.ASIGNADA,
+            fromStatus: a.from,
+            toStatus: a.to,
+            roomId: a.roomId,
+            stayId: a.stayId,
+            userId: user.id,
+            note:
+              a.to === KeyStatus.PENDIENTE_DEVOLUCION
+                ? 'Salida informada por el PMS: llave por recuperar'
+                : 'Huésped in house según el informe del PMS',
+          })),
+        });
+        summary.keysAssigned = assignments.length;
+      }
+    }
+
+    /*
+      Copias adicionales en habitaciones con salida informada. La principal ya
+      quedó pendiente de devolución en el paso anterior; esto recoge las
+      copias, que también hay que recuperar.
     */
     const departures = await tx.roomStay.findMany({
       where: {
@@ -590,7 +772,8 @@ export async function applyImport(
     summary:
       `Informes del PMS aplicados: ${result.created} estadías nuevas, ` +
       `${result.updated} actualizadas, ${result.preserved} conservadas por decisión manual, ` +
-      `${result.skipped} sin habitación, ${result.keysFlagged} llave(s) por devolver`,
+      `${result.skipped} sin habitación, ${result.keysAssigned} llave(s) entregada(s), ` +
+      `${result.keysFlagged} copia(s) por devolver`,
     after: result,
   });
 

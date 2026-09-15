@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { Bell, BookOpen, LogOut, Search, UserRound } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
+import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countLiveAlerts } from '@/server/services/alert-engine';
 import { visibleNavItems } from '@/components/layout/nav-items';
@@ -14,7 +15,10 @@ import { initials } from '@/lib/format';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-  if (!user) redirect('/login');
+  if (!user) {
+    if (await needsInstall()) redirect('/instalacion');
+    redirect('/login');
+  }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
 
   const [hotelName, alerts, unreadNotifications, myOpenTasks] = await Promise.all([

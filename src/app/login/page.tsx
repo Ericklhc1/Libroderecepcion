@@ -1,12 +1,16 @@
 import { redirect } from 'next/navigation';
 import { BookOpen } from 'lucide-react';
 import { getCurrentUser } from '@/server/auth/current-user';
+import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { LoginForm } from './login-form';
 
 export const metadata = { title: 'Iniciar sesión' };
 
 export default async function LoginPage() {
+  // Despliegue nuevo, sin ninguna cuenta todavía: se instala primero.
+  if (await needsInstall()) redirect('/instalacion');
+
   const user = await getCurrentUser();
   if (user) redirect('/');
 

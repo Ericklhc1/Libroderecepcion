@@ -169,9 +169,22 @@ mensajes de error con `role="alert"`.
 Responsive con barra inferior en móvil para las acciones de mesón. La entrega
 de turno tiene hoja de impresión.
 
+### Decisión: el formulario no pierde lo escrito
+
+React vacía un formulario en cuanto la acción de servidor termina. Para un
+registro guardado eso es lo correcto, pero cuando la validación falla deja a la
+persona escribiendo de nuevo una novedad larga por haber olvidado un campo, que
+es justo el momento en que menos tiempo hay en el mesón.
+
+`ActionForm` (`src/components/ui/form.tsx`) guarda el contenido de los campos
+al enviar y lo devuelve a la pantalla si la respuesta trae error, incluidas las
+casillas y los selectores. La corrección vive en el componente común, así que
+vale para todos los formularios del sistema sin repetir nada. La validación
+sigue ocurriendo únicamente en el servidor.
+
 ## Pruebas
 
-131 pruebas en 9 archivos, sobre PostgreSQL real:
+136 pruebas en 10 archivos, sobre PostgreSQL real:
 
 | Archivo | Cubre |
 | --- | --- |
@@ -184,6 +197,7 @@ de turno tiene hoja de impresión.
 | `alerts.test.ts` | Motor idempotente, autorresolución, gestión |
 | `handover-snapshot.test.ts` | Contenido, clasificación y no duplicación |
 | `book-search.test.ts` | Búsqueda, filtros combinados, paginación, indicadores |
+| `install.test.ts` | Instalación inicial, catálogo sembrado, segunda instalación rechazada |
 
 `tests/global-setup.ts` aplica migraciones con `migrate deploy` sobre
 `TEST_DATABASE_URL` y siembra el catálogo; cada archivo limpia los datos
@@ -191,6 +205,25 @@ operativos. Se exige que `TEST_DATABASE_URL` sea distinta de `DATABASE_URL`.
 
 `server-only` y `next/headers` se sustituyen por stubs (`tests/stubs/`), ya que
 sólo existen dentro del runtime de Next.js.
+
+## Instalación de un despliegue nuevo
+
+Un servidor recién creado no tiene usuarios. En lugar de exigir una consola,
+`/instalacion` crea el hotel y la primera cuenta de Administrador de sistema
+desde el navegador (`src/server/services/install.ts`).
+
+`needsInstall()` es la única condición: cero usuarios. Mientras se cumple,
+`/login` y el área privada redirigen a la instalación; en cuanto existe una
+cuenta, la pantalla de instalación redirige al inicio de sesión y queda inerte.
+
+La comprobación se repite **dentro** de la transacción que crea la cuenta, de
+modo que dos personas abriendo la instalación al mismo tiempo no puedan crear
+dos administradores. El catálogo base (permisos, roles con su matriz, áreas y
+nombre del hotel) lo siembra `seedCatalog()` en `src/domain/catalog.ts`, el
+mismo código que usa la semilla de desarrollo: hay una sola definición del
+catálogo y es idempotente.
+
+No se cargan datos de demostración: el sistema arranca vacío.
 
 ## Limitaciones conocidas
 

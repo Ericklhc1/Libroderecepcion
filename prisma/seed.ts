@@ -31,29 +31,11 @@ import {
   TaskStatus,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import {
-  ALL_PERMISSIONS,
-  PERMISSIONS,
-  ROLE_DEFINITIONS,
-  ROLE_KEYS,
-  ROLE_PERMISSIONS,
-} from '../src/lib/permissions';
+import { ROLE_KEYS } from '../src/lib/permissions';
+import { seedCatalog as seedBaseCatalog } from '../src/domain/catalog';
 import { plannedWindow } from '../src/domain/shift';
 
 const prisma = new PrismaClient();
-
-const DEPARTMENTS = [
-  { key: 'RECEPCION', name: 'Recepción', order: 1 },
-  { key: 'RESERVAS', name: 'Reservas', order: 2 },
-  { key: 'HOUSEKEEPING', name: 'Housekeeping', order: 3 },
-  { key: 'MANTENIMIENTO', name: 'Mantenimiento', order: 4 },
-  { key: 'SEGURIDAD', name: 'Seguridad', order: 5 },
-  { key: 'AYB', name: 'A&B', order: 6 },
-  { key: 'ADMINISTRACION', name: 'Administración', order: 7 },
-  { key: 'VENTAS', name: 'Ventas', order: 8 },
-  { key: 'SISTEMAS', name: 'Sistemas', order: 9 },
-  { key: 'OTRO', name: 'Otro', order: 99 },
-];
 
 function day(offset: number): Date {
   const date = new Date();
@@ -69,66 +51,7 @@ function at(offset: number, hour: number, minute = 0): Date {
 }
 
 async function seedCatalog() {
-  for (const key of ALL_PERMISSIONS) {
-    const meta = PERMISSIONS[key];
-    await prisma.permission.upsert({
-      where: { key },
-      update: { name: meta.name, group: meta.group },
-      create: { key, name: meta.name, group: meta.group },
-    });
-  }
-
-  for (const definition of ROLE_DEFINITIONS) {
-    const role = await prisma.role.upsert({
-      where: { key: definition.key },
-      update: {
-        name: definition.name,
-        description: definition.description,
-        level: definition.level,
-        operational: definition.operational,
-        isSystem: true,
-      },
-      create: {
-        key: definition.key,
-        name: definition.name,
-        description: definition.description,
-        level: definition.level,
-        operational: definition.operational,
-        isSystem: true,
-      },
-    });
-
-    const keys = ROLE_PERMISSIONS[definition.key];
-    const permissions = await prisma.permission.findMany({
-      where: { key: { in: [...keys] } },
-      select: { id: true },
-    });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
-    await prisma.rolePermission.createMany({
-      data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
-      skipDuplicates: true,
-    });
-  }
-
-  for (const department of DEPARTMENTS) {
-    await prisma.department.upsert({
-      where: { key: department.key },
-      update: { name: department.name, order: department.order },
-      create: department,
-    });
-  }
-
-  await prisma.systemSetting.upsert({
-    where: { key: 'hotel.name' },
-    update: {},
-    create: {
-      key: 'hotel.name',
-      value: 'Hotel Costa Serena',
-      category: 'general',
-      description: 'Nombre del hotel que se muestra en la cabecera.',
-    },
-  });
-
+  await seedBaseCatalog(prisma, { hotelName: 'Hotel Costa Serena' });
   console.log('✔ Catálogo base: permisos, roles, áreas y parámetros');
 }
 

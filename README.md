@@ -47,6 +47,14 @@ completo.
 
 ### Paso a producción
 
+Un despliegue nuevo no necesita consola: en la primera visita el sistema abre
+`/instalacion`, donde se crea el hotel y la cuenta de Administrador de sistema.
+Esa pantalla se desactiva en cuanto existe una cuenta. El paso a paso está en
+[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md).
+
+Si en cambio partiste del entorno de desarrollo con datos demo, la transición
+al uso real es:
+
 ```bash
 npx tsx scripts/create-admin.ts "Nombre Apellido" correo@hotel.com "ContraseñaSegura1"
 npm run demo:purge
@@ -112,11 +120,13 @@ parámetros) se conserva.
 
 ## Documentación
 
+- [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md) — cómo dejar el sistema en línea,
+  con dominio y base de datos, sin usar la consola.
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — decisiones técnicas, modelo
   de datos, seguridad, y limitaciones conocidas.
 
 ## Estado de calidad
 
-`npm run verify` ejecuta lint, typecheck, las 131 pruebas automatizadas y la
+`npm run verify` ejecuta lint, typecheck, las 136 pruebas automatizadas y la
 compilación de producción. Las limitaciones conocidas están documentadas en
 `docs/ARQUITECTURA.md`.

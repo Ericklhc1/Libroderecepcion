@@ -9,7 +9,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Conexión de la aplicación. En proveedores con agrupador de conexiones
+  // (Neon, Supabase) es la URL agrupada.
+  url       = env("DATABASE_URL")
+  // Conexión directa, sin agrupador: la exigen las migraciones. En desarrollo
+  // puede ser la misma que DATABASE_URL.
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ============================== ENUMERACIONES ==============================

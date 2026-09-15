@@ -666,4 +666,95 @@ export async function listImportBatches(limit = 20) {
   });
 }
 
+/**
+ * Estado de los informes para el inicio de turno.
+ *
+ * Responde una sola pregunta: ¿están cargados los informes del día que se va
+ * a operar? De ahí salen los tres casos —sin cargar, con un borrador
+ * esperando revisión, o ya aplicados— y nada más.
+ *
+ * Importante: la fecha de un lote sale **del propio informe**, no del reloj.
+ * Por eso no se filtra por la fecha de hoy: se toma el último lote y se
+ * compara su fecha con el día operativo. Así, si alguien carga los informes
+ * de ayer, la pantalla lo dice en lugar de dar el día por cubierto.
+ */
+export type ShiftReportsState = {
+  /** Día operativo en curso, para comparar con la fecha del último lote. */
+  today: Date;
+  /** Último lote aplicado, sea de hoy o no. */
+  applied: {
+    id: string;
+    businessDate: Date;
+    appliedAt: Date | null;
+    appliedByName: string | null;
+    counts: { checkIn: number; inHouse: number; checkOut: number };
+    /** `false` cuando el informe aplicado es de otro día. */
+    isToday: boolean;
+  } | null;
+  /** Borrador leído y pendiente de revisar, si hay alguno. */
+  draft: {
+    id: string;
+    businessDate: Date;
+    createdAt: Date;
+    createdByName: string;
+  } | null;
+};
+
+export async function getShiftReportsState(now = new Date()): Promise<ShiftReportsState> {
+  const today = midnight(now);
+
+  // Un solo viaje: los últimos lotes, de los que se toma el primero aplicado
+  // y el primer borrador. Ordena por el índice de `createdAt`.
+  const batches = await prisma.pmsImportBatch.findMany({
+    where: { status: { in: [PmsImportStatus.APLICADO, PmsImportStatus.BORRADOR] } },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    select: {
+      id: true,
+      status: true,
+      businessDate: true,
+      createdAt: true,
+      appliedAt: true,
+      summary: true,
+      createdBy: { select: { name: true } },
+      appliedBy: { select: { name: true } },
+    },
+  });
+
+  const applied = batches.find((batch) => batch.status === PmsImportStatus.APLICADO);
+  const draft = batches.find((batch) => batch.status === PmsImportStatus.BORRADOR);
+
+  /*
+    El resumen quedó guardado como JSON al leer los informes. Se lee con
+    cuidado: un lote antiguo puede no traer todas las claves.
+  */
+  const countsOf = (summary: unknown) => {
+    const raw = ((summary ?? {}) as { counts?: Record<string, unknown> }).counts ?? {};
+    const num = (key: string) => (typeof raw[key] === 'number' ? raw[key] : 0);
+    return { checkIn: num('checkIn'), inHouse: num('inHouse'), checkOut: num('checkOut') };
+  };
+
+  return {
+    today,
+    applied: applied
+      ? {
+          id: applied.id,
+          businessDate: applied.businessDate,
+          appliedAt: applied.appliedAt,
+          appliedByName: applied.appliedBy?.name ?? null,
+          counts: countsOf(applied.summary),
+          isToday: midnight(applied.businessDate).getTime() === today.getTime(),
+        }
+      : null,
+    draft: draft
+      ? {
+          id: draft.id,
+          businessDate: draft.businessDate,
+          createdAt: draft.createdAt,
+          createdByName: draft.createdBy.name,
+        }
+      : null,
+  };
+}
+
 export { REPORT_LABELS, buildRoomSnapshot };

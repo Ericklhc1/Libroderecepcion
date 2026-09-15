@@ -11,9 +11,11 @@ import {
   getStartableShifts,
 } from '@/server/services/shifts';
 import { getShiftMetrics } from '@/server/services/metrics';
+import { getShiftReportsState } from '@/server/services/pms-import';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
+import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   CancelPreparationForm,
   CloseShiftForm,
@@ -45,12 +47,20 @@ import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/form
 export const metadata = { title: 'Turno' };
 export const dynamic = 'force-dynamic';
 
+/*
+  El inicio de turno aloja la carga de los tres informes del PMS: leer tres
+  PDF y aplicarlos toma más que los diez segundos que la plataforma concede
+  por omisión a una función.
+*/
+export const maxDuration = 60;
+
 export default async function ShiftPage() {
   const user = await requirePageUser();
   const shift = await getMyOpenShift(user.id);
 
-  const [startable, recentShifts] = await Promise.all([
+  const [startable, reportsState, recentShifts] = await Promise.all([
     shift ? Promise.resolve([]) : getStartableShifts(user.id),
+    getShiftReportsState(),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
       include: {
@@ -89,6 +99,17 @@ export default async function ShiftPage() {
           </Link>
         ) : null}
       </header>
+
+      {/*
+        Los tres informes del PMS son el primer gesto del turno: de ellos sale
+        el estado de las 89 habitaciones, la regla de cola y el inventario de
+        llaves. Se muestra tanto antes de iniciar el turno como durante él,
+        porque el PMS puede emitir informes nuevos a media jornada.
+      */}
+      <ShiftReports
+        state={reportsState}
+        canImport={user.permissions.includes('pms.import')}
+      />
 
       {!shift ? (
         <Card>

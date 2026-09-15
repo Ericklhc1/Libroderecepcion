@@ -10,10 +10,15 @@ import { prepareImportAction } from '@/server/actions/rooms';
  *
  * No aplica nada: deja un borrador y lleva a la revisión. El sistema jamás
  * cambia el estado del mesón sin que alguien vea antes lo que va a cambiar.
+ *
+ * `returnTo` es la clave del destino al que volver tras aplicar —el servidor
+ * la traduce contra su propia lista— porque este formulario vive tanto en el
+ * inicio de turno como en Habitaciones.
  */
-export function ImportForm() {
+export function ImportForm({ returnTo }: { returnTo?: 'turno' | 'habitaciones' }) {
   return (
     <ActionForm action={prepareImportAction} hideSuccess>
+      {returnTo ? <input type="hidden" name="volverA" value={returnTo} /> : null}
       <Field
         label="Informes del PMS en PDF"
         name="reports"

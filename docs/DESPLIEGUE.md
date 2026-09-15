@@ -22,21 +22,37 @@ migraciones por sí solo y la primera cuenta se crea desde el navegador.
 
 ### 1. Crear la base de datos
 
-1. Entra a <https://neon.com> y crea una cuenta (el plan gratuito alcanza para
-   una recepción).
-2. Crea un proyecto. Al terminar, Neon muestra las cadenas de conexión.
-3. Copia dos valores:
-   - **Pooled connection** → será `DATABASE_URL`
-   - **Direct connection** (sin *pooler*) → será `DIRECT_DATABASE_URL`
+1. Entra a <https://neon.com> y pulsa **Sign up**. Puedes entrar con la misma
+   cuenta de GitHub. El plan gratuito alcanza para una recepción.
+2. **Create project**. Ponle un nombre (por ejemplo `hotel-hw-libertad`) y
+   elige la región más cercana; para Chile, São Paulo (`sa-east-1`) es la mejor
+   opción de las disponibles.
+3. Al terminar, Neon muestra un panel **Connection string**. Ahí hay un
+   interruptor llamado **Connection pooling**. Necesitas copiar la cadena dos
+   veces:
+   - Con *Connection pooling* **activado** → es la agrupada, y va en
+     `DATABASE_URL`. Se reconoce porque el servidor lleva `-pooler` en el
+     nombre.
+   - Con *Connection pooling* **desactivado** → es la directa, y va en
+     `DIRECT_DATABASE_URL`. No lleva `-pooler`.
 
-   Prisma necesita la conexión directa para aplicar migraciones; la agrupada es
-   la que usa la aplicación en marcha.
+   Las dos terminan en `?sslmode=require`: déjalo tal cual. Prisma necesita la
+   directa para crear las tablas, y la agrupada es la que usa la aplicación
+   mientras opera.
+
+   > En el plan gratuito la base se duerme si nadie la usa. La primera visita
+   > del día puede tardar unos segundos; después va normal.
 
 ### 2. Desplegar
 
 1. Entra a <https://vercel.com> con tu cuenta de GitHub.
 2. **Add New → Project** e importa el repositorio `libroderecepcion`.
-3. En **Environment Variables** agrega:
+3. **Importante: elige la rama.** Vercel propone la rama principal del
+   repositorio. Si el trabajo todavía vive en la rama de desarrollo
+   (`claude/libro-operativo-recepcion-eshapj`), abre **Settings → Git →
+   Production Branch** y escribe ese nombre; si el trabajo ya está fusionado en
+   la rama principal, no hay nada que cambiar.
+4. En **Environment Variables** agrega:
 
    | Nombre | Valor |
    | --- | --- |
@@ -44,12 +60,22 @@ migraciones por sí solo y la primera cuenta se crea desde el navegador.
    | `DIRECT_DATABASE_URL` | la cadena *direct* de Neon |
    | `AUTH_SECRET` | una cadena aleatoria de 48 caracteres o más |
    | `SESSION_TTL_HOURS` | `12` |
+   | `CREDENTIALS_MAIL_TO` | `recepcion@hoteleshw.com` |
 
    Para `AUTH_SECRET` sirve cualquier texto largo e impredecible; no se
    comparte con nadie y puede cambiarse después (al cambiarlo se cierran las
-   sesiones abiertas).
+   sesiones abiertas). Si tienes Node a mano, una forma de generarlo es:
 
-4. **Deploy**. El primer despliegue crea las tablas.
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+   ```
+
+   Las variables de correo (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+   `SMTP_PASSWORD`, `MAIL_FROM`) son opcionales. Sin ellas el sistema funciona
+   igual, pero al crear un usuario muestra la clave en pantalla en lugar de
+   enviarla por correo, y lo avisa.
+
+5. **Deploy**. Tarda unos minutos. El primer despliegue crea las tablas solo.
 
 ### 3. Crear la primera cuenta
 

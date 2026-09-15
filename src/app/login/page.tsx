@@ -7,6 +7,14 @@ import { LoginForm } from './login-form';
 
 export const metadata = { title: 'Iniciar sesión' };
 
+/*
+  Nunca pre-generar esta página. Su respuesta depende de si la base tiene
+  cuentas: pre-generada durante la compilación —cuando la base está vacía—
+  queda congelada redirigiendo a la instalación, y en cuanto existe la primera
+  cuenta se forma un bucle con /instalacion, que redirige de vuelta aquí.
+*/
+export const dynamic = 'force-dynamic';
+
 export default async function LoginPage() {
   // Despliegue nuevo, sin ninguna cuenta todavía: se instala primero.
   if (await needsInstall()) redirect('/instalacion');

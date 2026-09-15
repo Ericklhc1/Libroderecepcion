@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.log
+npm-debug.log*
+
+# Entorno y secretos - NUNCA versionar
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Sistema
+.DS_Store
+*.pem
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
+.vitest/
+/uploads/

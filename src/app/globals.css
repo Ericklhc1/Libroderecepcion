@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-petrol-900 antialiased;
+  /* Texto normal en 400; la jerarquía sube a 500 y 600 donde corresponde. */
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  @apply font-semibold;
+}
+
+/* Foco visible y consistente: la operación se usa mucho con teclado. */
+*:focus-visible {
+  @apply outline-none ring-2 ring-gold-500 ring-offset-2 ring-offset-white;
+}
+
+/* Tipografía de datos tabulares para horas y contadores. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .input-base {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-petrol-900
+      placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500;
+  }
+
+  /*
+    Etiqueta de formulario. Sin mayúsculas ni espaciado forzado: la jerarquía
+    la dan el tamaño, el peso y el color, que es lo que hace que la pantalla
+    se lea como software de hotelería y no como una terminal.
+  */
+  .label-base {
+    @apply mb-1 block text-sm font-medium text-petrol-800;
+  }
+
+  /* Metadato o etiqueta menor: peso medio, caja normal. */
+  .meta-label {
+    @apply text-xs font-medium text-slate-500;
+  }
+
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+  }
+
+  .card-header {
+    @apply flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3;
+  }
+
+  .card-title {
+    @apply text-sm font-semibold text-petrol-900;
+  }
+}
+
+/* Impresión: la entrega de turno se imprime en algunas recepciones. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    @apply bg-white;
+  }
+}

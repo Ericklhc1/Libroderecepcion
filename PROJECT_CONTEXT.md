@@ -157,6 +157,13 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
 - **`ActionForm` guarda lo escrito y lo devuelve si la validación falla.**
   React 19 vacía el formulario en cuanto la acción termina; sin esto, quien
   registra una novedad larga pierde el texto por olvidar un campo.
+- **Las credenciales viajan como dato (`ActionState.credentials`), nunca
+  dentro del texto del mensaje.** Su presencia impide que `ActionForm` cierre
+  o vacíe el formulario: se muestran en un panel con copia al portapapeles y
+  una salida deliberada. Error real: la clave generada iba en el mensaje y el
+  diálogo se cerraba al tener éxito, así que desaparecía antes de poder
+  leerla —no se guarda en claro y no se recupera— y el usuario quedaba creado
+  sin forma de entrar. Lo vigila `tests/credenciales.test.ts`.
 
 ## Pendientes conocidos
 

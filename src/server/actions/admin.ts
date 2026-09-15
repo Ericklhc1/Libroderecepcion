@@ -99,12 +99,25 @@ export async function createUserAction(
     });
 
     revalidatePath('/admin/usuarios');
+    /*
+      La clave va en `credentials`, no dentro del mensaje. Antes iba en el
+      texto y el diálogo se cerraba al tener éxito, así que la clave —que no
+      se puede recuperar— desaparecía antes de que nadie pudiera leerla: el
+      usuario quedaba creado y sin forma de entrar.
+    */
     return {
       ok: true as const,
-      message: delivery.sent
-        ? `Usuario @${username} creado. Las credenciales se enviaron a ${delivery.recipient} y deberá cambiar la clave al primer ingreso.`
-        : `Usuario @${username} creado con la clave temporal ${password}. No se pudo enviar el correo a ${delivery.recipient}: ${delivery.reason} Entrégala en persona.`,
+      message: `Usuario @${username} creado.`,
       id: user.id,
+      credentials: {
+        name: user.name,
+        username,
+        email: user.email,
+        password,
+        recipient: delivery.recipient,
+        sent: delivery.sent,
+        reason: delivery.reason,
+      },
     };
   });
 }

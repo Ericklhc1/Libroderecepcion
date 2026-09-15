@@ -41,15 +41,27 @@ export function EntryForm({
   defaultType = EntryType.NOVEDAD,
   lockType = false,
   closeOnSuccess = true,
+  defaultRoomId = '',
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
   options: FormOptions;
   defaultType?: EntryType;
   lockType?: boolean;
   closeOnSuccess?: boolean;
+  /** Habitación ya conocida, cuando se registra desde su propia ficha. */
+  defaultRoomId?: string;
 }) {
   const [type, setType] = useState<EntryType>(defaultType);
   const isIncident = type === EntryType.INCIDENCIA;
+  /*
+    Una incidencia siempre ocurre en algún sitio. Se exige habitación o área
+    —una de las dos, no las dos— para que nadie tenga que adivinar dónde ir.
+    La validación real ocurre en el servidor; esto sólo lo hace visible.
+  */
+  const needsContext = isIncident || type === EntryType.MANTENIMIENTO;
+  const [roomId, setRoomId] = useState(defaultRoomId);
+  const [departmentId, setDepartmentId] = useState('');
+  const contextMissing = needsContext && !roomId && !departmentId;
 
   return (
     <ActionForm action={action} closeOnSuccess={closeOnSuccess} resetOnSuccess>
@@ -84,14 +96,58 @@ export function EntryForm({
         />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Área" name="departmentId">
-          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
-        </Field>
-        <Field label="Responsable" name="ownerId" hint="Opcional. Sólo personal operativo.">
-          <Select name="ownerId" placeholder="Sin responsable" options={options.users} />
-        </Field>
+      <div
+        className={
+          needsContext
+            ? 'space-y-3 rounded-lg bg-petrol-50/70 p-3 ring-1 ring-petrol-100'
+            : 'space-y-3'
+        }
+      >
+        {needsContext ? (
+          <p className="text-xs font-medium text-petrol-800">
+            Dónde ocurre · indica la habitación o el área
+          </p>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Habitación"
+            name="roomId"
+            required={needsContext && !departmentId}
+            hint={needsContext ? 'Si es en una habitación, elígela aquí.' : undefined}
+          >
+            <Select
+              name="roomId"
+              placeholder="Sin habitación"
+              options={options.rooms}
+              value={roomId}
+              onChange={(event) => setRoomId(event.target.value)}
+            />
+          </Field>
+          <Field
+            label="Área"
+            name="departmentId"
+            required={needsContext && !roomId}
+            hint={needsContext ? 'Si es en un área común o de servicio, elígela aquí.' : undefined}
+          >
+            <Select
+              name="departmentId"
+              placeholder="Sin área"
+              options={options.departments}
+              value={departmentId}
+              onChange={(event) => setDepartmentId(event.target.value)}
+            />
+          </Field>
+        </div>
+        {contextMissing ? (
+          <p className="text-xs text-petrol-700" role="status">
+            Elige una habitación o un área para poder registrar la incidencia.
+          </p>
+        ) : null}
       </div>
+
+      <Field label="Responsable" name="ownerId" hint="Opcional. Sólo personal operativo.">
+        <Select name="ownerId" placeholder="Sin responsable" options={options.users} />
+      </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Huésped relacionado" name="guestId">
@@ -104,7 +160,7 @@ export function EntryForm({
 
       {isIncident ? (
         <div className="space-y-4 rounded-lg bg-red-50/60 p-3 ring-1 ring-red-100">
-          <p className="text-xs font-semibold uppercase tracking-wide text-red-800">
+          <p className="text-xs font-semibold text-red-800">
             Datos de la incidencia
           </p>
           <div className="grid gap-4 sm:grid-cols-2">

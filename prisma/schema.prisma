@@ -250,6 +250,9 @@ model RolePermission {
 model User {
   id                 String    @id @default(cuid())
   email              String    @unique
+  /// Nombre de usuario corto, del estilo @EHerrera. Sirve para identificar a
+  /// la persona en el mesón sin escribir el correo completo.
+  username           String    @unique
   name               String
   passwordHash       String
   roleId             String
@@ -290,6 +293,11 @@ model User {
   notifications      Notification[]
   settingsUpdated    SystemSetting[]
   checklistDone      TaskChecklistItem[]
+  staysConfirmed     RoomStay[]         @relation("stayConfirmedBy")
+  keysAssigned       RoomKey[]          @relation("keyAssignedBy")
+  keyMovements       KeyMovement[]      @relation("keyMovementBy")
+  batchesCreated     PmsImportBatch[]   @relation("batchCreatedBy")
+  batchesApplied     PmsImportBatch[]   @relation("batchAppliedBy")
 
   @@index([roleId])
   @@index([active])
@@ -459,6 +467,12 @@ model OperationalEntry {
   shiftId        String?
   shift          Shift?      @relation(fields: [shiftId], references: [id])
 
+  // Una incidencia debe tener contexto: habitación o área. Se valida en
+  // servidor; el esquema deja ambos campos opcionales porque los demás tipos
+  // de registro no lo exigen.
+  roomId         String?
+  room           Room?       @relation(fields: [roomId], references: [id])
+
   guestId        String?
   guest          GuestReference? @relation(fields: [guestId], references: [id])
   reservationId  String?
@@ -496,6 +510,7 @@ model OperationalEntry {
   @@index([shiftId])
   @@index([deletedAt])
   @@index([departmentId])
+  @@index([roomId])
 }
 
 model Task {
@@ -812,4 +827,208 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 
   @@index([category])
+}
+
+// ==================== HABITACIONES, ESTADÍAS Y LLAVES =====================
+//
+// Módulo que interpreta los informes del PMS y los convierte en estado
+// operativo. El PMS sigue siendo la fuente principal: aquí no se administran
+// reservas, se leen y se les da seguimiento en recepción.
+
+/// Estado operativo que aporta cada informe del PMS.
+enum RoomStayStatus {
+  CHECK_IN
+  IN_HOUSE
+  CHECK_OUT
+}
+
+/// Avance de la estadía dentro del sistema, confirmado por una persona.
+enum RoomStayStage {
+  PENDIENTE
+  CONFIRMADO
+  FINALIZADO
+}
+
+enum PmsReportKind {
+  ENTRADAS
+  IN_HOUSE
+  SALIDAS
+}
+
+enum KeyType {
+  PRINCIPAL
+  COPIA
+  MAESTRA
+}
+
+enum KeyStatus {
+  DISPONIBLE
+  ASIGNADA
+  COPIA_ADICIONAL
+  PENDIENTE_DEVOLUCION
+  EXTRAVIADA
+  FUERA_DE_SERVICIO
+}
+
+enum KeyAction {
+  CREADA
+  ASIGNADA
+  DEVUELTA
+  COPIA_ENTREGADA
+  COPIA_RECUPERADA
+  MARCADA_PENDIENTE_DEVOLUCION
+  MARCADA_EXTRAVIADA
+  MARCADA_FUERA_DE_SERVICIO
+  REINTEGRADA
+}
+
+enum PmsImportStatus {
+  BORRADOR
+  APLICADO
+  DESCARTADO
+}
+
+model Room {
+  id       String  @id @default(cuid())
+  number   String  @unique
+  floor    Int?
+  kind     String?
+  notes    String?
+  active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stays   RoomStay[]
+  keys    RoomKey[]
+  entries OperationalEntry[]
+  movements KeyMovement[]
+
+  @@index([active])
+}
+
+/// Estadía normalizada: una fila de un informe del PMS, ya interpretada.
+model RoomStay {
+  id            String         @id @default(cuid())
+  reservationId String
+  roomId        String?
+  room          Room?          @relation(fields: [roomId], references: [id])
+  guestNames    String[]       @default([])
+  channel       String?
+  arrivalDate   DateTime?      @db.Date
+  departureDate DateTime?      @db.Date
+  pmsStatus     String?
+  sourceReport  PmsReportKind
+  status        RoomStayStatus
+  stage         RoomStayStage  @default(PENDIENTE)
+  /// Fecha de operación del informe que originó la estadía.
+  businessDate  DateTime       @db.Date
+
+  batchId String?
+  batch   PmsImportBatch? @relation(fields: [batchId], references: [id])
+
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?     @relation("stayConfirmedBy", fields: [confirmedById], references: [id])
+  note          String?
+  /// Marca que alguien intervino la estadía a mano: una importación posterior
+  /// no puede deshacer esa decisión sin avisar.
+  touchedManually Boolean @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletionReason String?
+  isDemo         Boolean   @default(false)
+
+  keys      RoomKey[]
+  movements KeyMovement[]
+
+  // Un mismo informe no puede dejar dos veces la misma reserva en la misma
+  // habitación y estado para un día de operación: la importación es idempotente.
+  @@unique([businessDate, reservationId, roomId, status])
+  @@index([roomId, status])
+  @@index([businessDate])
+  @@index([stage])
+  @@index([deletedAt])
+}
+
+model RoomKey {
+  id     String    @id @default(cuid())
+  code   String    @unique
+  type   KeyType   @default(PRINCIPAL)
+  status KeyStatus @default(DISPONIBLE)
+
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
+  stayId String?
+  stay   RoomStay? @relation(fields: [stayId], references: [id])
+
+  assignedAt   DateTime?
+  assignedById String?
+  assignedBy   User?     @relation("keyAssignedBy", fields: [assignedById], references: [id])
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements KeyMovement[]
+
+  @@index([status])
+  @@index([roomId, type])
+}
+
+/// Historial de movimientos de llaves. Nunca se borra ni se edita.
+model KeyMovement {
+  id     String    @id @default(cuid())
+  keyId  String
+  key    RoomKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
+  action KeyAction
+
+  fromStatus KeyStatus?
+  toStatus   KeyStatus
+
+  roomId String?
+  room   Room?     @relation(fields: [roomId], references: [id])
+  stayId String?
+  stay   RoomStay? @relation(fields: [stayId], references: [id])
+
+  userId String
+  user   User   @relation("keyMovementBy", fields: [userId], references: [id])
+  note   String?
+  at     DateTime @default(now())
+
+  @@index([keyId, at])
+  @@index([at])
+}
+
+/// Carga de informes del PMS. Se revisa antes de aplicarse.
+model PmsImportBatch {
+  id           String          @id @default(cuid())
+  businessDate DateTime        @db.Date
+  status       PmsImportStatus @default(BORRADOR)
+
+  /// Metadatos por informe: tipo detectado, columnas, totales, nombre de archivo.
+  reports Json
+  /// Estadías normalizadas pendientes de aplicar.
+  payload Json
+  /// Recuentos y advertencias calculados al leer.
+  summary Json
+
+  createdById String
+  createdBy   User   @relation("batchCreatedBy", fields: [createdById], references: [id])
+  appliedAt   DateTime?
+  appliedById String?
+  appliedBy   User?  @relation("batchAppliedBy", fields: [appliedById], references: [id])
+  discardedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isDemo    Boolean  @default(false)
+
+  stays RoomStay[]
+
+  @@index([businessDate])
+  @@index([status])
 }

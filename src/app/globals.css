@@ -13,6 +13,15 @@ body {
 
 body {
   @apply bg-slate-100 text-petrol-900 antialiased;
+  /* Texto normal en 400; la jerarquía sube a 500 y 600 donde corresponde. */
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  @apply font-semibold;
 }
 
 /* Foco visible y consistente: la operación se usa mucho con teclado. */
@@ -31,8 +40,18 @@ body {
       placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500;
   }
 
+  /*
+    Etiqueta de formulario. Sin mayúsculas ni espaciado forzado: la jerarquía
+    la dan el tamaño, el peso y el color, que es lo que hace que la pantalla
+    se lea como software de hotelería y no como una terminal.
+  */
   .label-base {
-    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-petrol-700;
+    @apply mb-1 block text-sm font-medium text-petrol-800;
+  }
+
+  /* Metadato o etiqueta menor: peso medio, caja normal. */
+  .meta-label {
+    @apply text-xs font-medium text-slate-500;
   }
 
   .card {
@@ -44,7 +63,7 @@ body {
   }
 
   .card-title {
-    @apply text-sm font-semibold uppercase tracking-wide text-petrol-800;
+    @apply text-sm font-semibold text-petrol-900;
   }
 }
 

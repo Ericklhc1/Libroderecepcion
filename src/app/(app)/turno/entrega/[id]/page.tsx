@@ -145,22 +145,22 @@ export default async function HandoverPage({
             <div className="flex flex-wrap gap-2 text-center">
               <div className="rounded-lg bg-red-50 px-3 py-2 ring-1 ring-red-200">
                 <p className="text-lg font-semibold tabular text-red-700">{counts.urgente}</p>
-                <p className="text-[0.65rem] uppercase text-red-700">Urgente</p>
+                <p className="text-[0.65rem] font-medium text-red-700">Urgente</p>
               </div>
               <div className="rounded-lg bg-orange-50 px-3 py-2 ring-1 ring-orange-200">
                 <p className="text-lg font-semibold tabular text-orange-700">{counts.importante}</p>
-                <p className="text-[0.65rem] uppercase text-orange-700">Importante</p>
+                <p className="text-[0.65rem] font-medium text-orange-700">Importante</p>
               </div>
               <div className="rounded-lg bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
                 <p className="text-lg font-semibold tabular text-slate-700">{counts.informativo}</p>
-                <p className="text-[0.65rem] uppercase text-slate-600">Informativo</p>
+                <p className="text-[0.65rem] font-medium text-slate-600">Informativo</p>
               </div>
             </div>
           </div>
 
           {handover.notes ? (
             <div className="mt-4 rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-200">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gold-800">
+              <p className="text-xs font-semibold text-gold-800">
                 Nota del turno saliente
               </p>
               <p className="mt-1 whitespace-pre-line text-sm text-petrol-900">{handover.notes}</p>
@@ -169,7 +169,7 @@ export default async function HandoverPage({
 
           {handover.receiverObservations ? (
             <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-3 ring-1 ring-emerald-200">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+              <p className="text-xs font-semibold text-emerald-800">
                 Observaciones de recepción
               </p>
               <p className="mt-1 whitespace-pre-line text-sm text-petrol-900">

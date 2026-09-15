@@ -6,6 +6,7 @@
  * Si se omite la contraseña se genera una aleatoria y se imprime una sola vez.
  */
 import 'dotenv/config';
+import { suggestUsername } from '../src/domain/username';
 import crypto from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -57,6 +58,7 @@ async function main() {
     },
     create: {
       name,
+      username: suggestUsername(name),
       email: email.toLowerCase(),
       roleId: role.id,
       passwordHash: await bcrypt.hash(password, 12),

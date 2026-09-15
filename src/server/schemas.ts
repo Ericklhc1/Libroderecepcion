@@ -34,6 +34,7 @@ export const entryCreateSchema = z.object({
     .max(8000),
   category: zOptionalString,
   departmentId: zOptionalCuid,
+  roomId: zOptionalCuid,
   priority: z.nativeEnum(Priority).default(Priority.MEDIA),
   ownerId: zOptionalCuid,
   occurredAt: zOptionalDate,
@@ -48,11 +49,41 @@ export const entryCreateSchema = z.object({
   immediateAction: zOptionalString,
 });
 
+/**
+ * Una incidencia sin contexto no sirve: nadie sabe dónde ir. Se exige
+ * habitación o área, y la comprobación vive en el esquema para que valga tanto
+ * en el formulario como en cualquier otra vía de creación.
+ */
+const REQUIRES_CONTEXT: EntryType[] = [EntryType.INCIDENCIA, EntryType.MANTENIMIENTO];
+
+function hasContext(data: { type?: EntryType; roomId?: unknown; departmentId?: unknown }): boolean {
+  if (!data.type || !REQUIRES_CONTEXT.includes(data.type)) return true;
+  return Boolean(data.roomId) || Boolean(data.departmentId);
+}
+
+const CONTEXT_MESSAGE =
+  'Indica la habitación o el área a la que corresponde: una incidencia sin contexto no puede atenderse.';
+
+export const entryCreateWithContextSchema = entryCreateSchema.superRefine((data, ctx) => {
+  if (hasContext(data)) return;
+  for (const path of ['roomId', 'departmentId'] as const) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: CONTEXT_MESSAGE });
+  }
+});
+
 export const entryUpdateSchema = entryCreateSchema.partial().extend({
   id: z.string().min(1),
   status: z.nativeEnum(EntryStatus).optional(),
   rootCause: zOptionalString,
   resolution: zOptionalString,
+});
+
+export const entryUpdateWithContextSchema = entryUpdateSchema.superRefine((data, ctx) => {
+  // En la edición sólo se exige contexto si el tipo viene en el formulario.
+  if (!data.type || hasContext(data)) return;
+  for (const path of ['roomId', 'departmentId'] as const) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: CONTEXT_MESSAGE });
+  }
 });
 
 export const entryStatusSchema = z.object({
@@ -214,10 +245,22 @@ export const reservationSchema = z.object({
 export const userCreateSchema = z.object({
   name: zRequiredString(120, 'El nombre'),
   email: z.string().trim().toLowerCase().email('Correo inválido'),
+  /**
+   * Opcional: si no se escribe, el sistema lo propone a partir del nombre
+   * (inicial más apellido, del estilo EHerrera).
+   */
+  username: z
+    .string()
+    .trim()
+    .transform((value) => value.replace(/^@+/, '').replace(/\s+/g, ''))
+    .refine(
+      (value) => value === '' || /^[A-Za-z][A-Za-z0-9._-]{2,29}$/.test(value),
+      'El usuario empieza con letra y usa entre 3 y 30 caracteres, sin espacios',
+    )
+    .optional(),
   roleId: z.string().min(1, 'Selecciona un rol'),
   departmentId: zOptionalCuid,
   phone: zOptionalString,
-  password: z.string().min(1),
 });
 
 export const userUpdateSchema = z.object({

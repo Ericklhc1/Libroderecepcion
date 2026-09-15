@@ -86,7 +86,7 @@ export function StatTile({
             : 'border-slate-200',
       )}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
       <p
         className={cn(
           'mt-1 text-2xl font-semibold tabular',

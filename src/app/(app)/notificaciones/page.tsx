@@ -63,7 +63,7 @@ export default async function NotificationsPage() {
                       {formatDateTime(notification.createdAt)}
                     </time>
                     {notification.readAt === null ? (
-                      <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[0.6rem] font-bold uppercase text-petrol-950">
+                      <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[0.6rem] font-semibold text-petrol-950">
                         Nueva
                       </span>
                     ) : null}

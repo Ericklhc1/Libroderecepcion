@@ -184,7 +184,7 @@ sigue ocurriendo únicamente en el servidor.
 
 ## Pruebas
 
-136 pruebas en 10 archivos, sobre PostgreSQL real:
+182 pruebas en 12 archivos, sobre PostgreSQL real:
 
 | Archivo | Cubre |
 | --- | --- |
@@ -198,6 +198,8 @@ sigue ocurriendo únicamente en el servidor.
 | `handover-snapshot.test.ts` | Contenido, clasificación y no duplicación |
 | `book-search.test.ts` | Búsqueda, filtros combinados, paginación, indicadores |
 | `install.test.ts` | Instalación inicial, catálogo sembrado, segunda instalación rechazada |
+| `pms-reports.test.ts` | Detección de columnas y normalización de los tres informes |
+| `rooms-keys.test.ts` | Regla de cola (408, 414, 515, 610), llaves, stock, conflictos, importación idempotente |
 
 `tests/global-setup.ts` aplica migraciones con `migrate deploy` sobre
 `TEST_DATABASE_URL` y siembra el catálogo; cada archivo limpia los datos
@@ -205,6 +207,12 @@ operativos. Se exige que `TEST_DATABASE_URL` sea distinta de `DATABASE_URL`.
 
 `server-only` y `next/headers` se sustituyen por stubs (`tests/stubs/`), ya que
 sólo existen dentro del runtime de Next.js.
+
+Los fixtures de `tests/fixtures/` son los informes reales del hotel: conservan
+coordenadas, encabezados, identificadores de reserva y números de habitación,
+con los nombres de los huéspedes sustituidos palabra por palabra. Así las
+pruebas ejercitan la estructura verdadera —incluidos los glifos invisibles y el
+pie que cae bajo la última columna— sin versionar datos de huéspedes.
 
 ## Instalación de un despliegue nuevo
 
@@ -224,6 +232,127 @@ mismo código que usa la semilla de desarrollo: hay una sola definición del
 catálogo y es idempotente.
 
 No se cargan datos de demostración: el sistema arranca vacío.
+
+## Habitaciones, llaves e informes del PMS
+
+Módulo experimental que convierte los informes del PMS en estado operativo. El
+PMS sigue siendo la fuente: aquí no se administran reservas, se leen y se les
+da seguimiento en el mesón.
+
+### Lectura de los informes
+
+Tres capas, cada una probable por separado:
+
+1. `src/server/pms/read-pdf.ts` es lo único que sabe que existe un PDF.
+   Devuelve fragmentos de texto con su coordenada.
+2. `src/domain/pms/layout.ts` reconstruye la tabla: agrupa fragmentos en
+   líneas, localiza la línea de encabezados, deduce los límites de columna como
+   el punto medio entre encabezados consecutivos y reparte las celdas. **No hay
+   posiciones fijas en ninguna parte**: si el PMS mueve una columna, sigue
+   funcionando.
+3. `src/domain/pms/normalize.ts` reduce los tres informes a una sola estructura.
+
+`src/domain/pms/columns.ts` es el diccionario: traduce el encabezado impreso al
+campo canónico. Para soportar otra plantilla se agrega el sinónimo ahí y no
+cambia nada más.
+
+Tres particularidades del PMS del hotel que obligaron a decisiones concretas:
+
+- **La habitación se imprime 1,5 puntos más abajo que el resto de la fila.** La
+  tolerancia vertical al agrupar líneas es de 5 puntos: suficiente para unir la
+  habitación con su fila y no tanto como para absorber la línea de continuación
+  de huéspedes, que está a 9 puntos o más.
+- **La plantilla intercala glifos de una fuente de iconos** (área de uso
+  privado, U+E000–U+F8FF). Si no se descartan, uno se pega al encabezado
+  siguiente y la columna queda sin reconocer.
+- **El pie del informe cae bajo la última columna.** "In-house 51" se
+  reconocería como un huésped más de la última habitación, así que el pie se
+  evalúa antes que cualquier otra cosa.
+
+El in house imprime la llegada sin año (`28/08`). Se resuelve contra la fecha
+del informe, y si la fecha resultante quedara muy en el futuro se toma el año
+anterior: pasa con huéspedes que cruzan el fin de año.
+
+### Estado operativo y regla de cola
+
+`src/domain/rooms.ts` deduce el estado de la habitación a partir de sus tres
+capas —saliente, actual, entrante— y de sus llaves. **No se guarda**: se
+calcula, así que el tablero no puede quedar desfasado respecto de los datos.
+
+La comparación es **por identificador de reserva, nunca por nombre**. En los
+informes reales del hotel el mismo huésped sale con una reserva y entra con
+otra en la misma habitación (el caso de la 515): son dos hechos distintos y la
+entrada queda en cola.
+
+Cuando la salida y la entrada son la misma reserva (la 610: entra y sale el
+mismo día) no hay cola, porque nada bloquea su entrada; el estado pasa a
+"Check-in listo", que es la acción que corresponde.
+
+Dos decisiones que los datos reales dejaron a la vista:
+
+1. **Confirmar una salida cierra también la estadía in house de esa misma
+   reserva en esa habitación.** Sin eso, la habitación seguiría mostrando a
+   alguien dentro después de haberse ido y la entrada no podría pasar nunca. Las
+   demás habitaciones de una reserva de grupo no se tocan.
+2. **La llave principal nace ligada a su habitación.** Es la llave de esa
+   puerta; el stock del Supervisor son las copias.
+
+### Llaves
+
+Las llaves son objetos, no un contador: cada una existe, tiene código y estado,
+y cada movimiento queda en `KeyMovement`. El stock disponible **se cuenta**, no
+se guarda, así que no puede descuadrarse respecto de las llaves del mesón.
+
+Reglas por estado, verificadas con pruebas: `CHECK_IN` no tiene llave;
+`IN_HOUSE` tiene al menos la principal; una salida pendiente conserva su llave
+hasta que se confirme; una salida confirmada la devuelve al inventario. Nunca se
+reasigna automáticamente la llave del huésped saliente al entrante: hace falta
+confirmar el check-in.
+
+### Conflictos
+
+`src/domain/pms/conflicts.ts` trabaja sobre una fotografía del estado, así que
+sirve tanto para revisar una importación antes de aplicarla como para vigilar el
+estado vigente. **No se guardan**: se recalculan, de modo que no quedan
+advertencias viejas colgando.
+
+Decisión relacionada: "más de una llave principal" se detecta en lugar de
+prohibirse con una restricción del esquema. Una restricción haría el aviso
+imposible y, con él, inútil el control; el servicio de creación ya lo rechaza en
+la operación normal.
+
+### Importación en dos pasos
+
+`prepareImport` lee y deja un borrador; `applyImport` lo aplica cuando alguien
+lo revisó. La clave de una estadía es fecha de operación + reserva + habitación
++ estado, de modo que **volver a importar el mismo informe no duplica nada**.
+
+Lo que ya decidió una persona no se deshace: una estadía confirmada o editada a
+mano sólo recibe datos descriptivos, nunca un retroceso de etapa, y la pantalla
+de revisión lo dice antes de aplicar.
+
+### Incidencias con contexto
+
+Toda incidencia (y todo registro de mantenimiento) exige habitación **o** área.
+Se valida en el servidor con `superRefine`, de modo que vale para el formulario
+y para cualquier otra vía de creación. La ficha de la habitación muestra sus
+incidencias con el huésped, la reserva, el estado y las llaves del momento.
+
+## Usuarios, nombres de usuario y credenciales
+
+Cada persona tiene un nombre de usuario corto, del estilo `@EHerrera`: inicial
+del nombre más el primer apellido, con un número al final si ya existe.
+
+La clave de un usuario nuevo **la genera el sistema**, no la escribe nadie: 14
+caracteres con mayúscula, minúscula, número y símbolo, sin caracteres que se
+confundan al dictar por teléfono. Viaja una sola vez al correo de recepción
+(`CREDENTIALS_MAIL_TO`, por omisión `recepcion@hoteleshw.com`) y se exige
+cambiarla en el primer ingreso. La clave en claro no se guarda en la base ni en
+la auditoría, que redacta ese campo.
+
+Si el servidor no tiene correo configurado, el sistema **lo dice** y muestra la
+clave en pantalla una sola vez para entregarla en persona, en lugar de fallar en
+silencio.
 
 ## Limitaciones conocidas
 
@@ -246,3 +375,13 @@ No se cargan datos de demostración: el sistema arranca vacío.
 6. **Motor de alertas sin cron**: se apoya en las visitas al panel. Un hotel
    sin actividad nocturna en el sistema vería las alertas recalculadas al
    siguiente ingreso.
+7. **Los informes del PMS se cargan a mano**: no hay integración automática. El
+   módulo interpreta el PDF que exporta el PMS; si más adelante el PMS ofrece
+   una API, el lector se reemplaza sin tocar el resto del módulo.
+8. **El diccionario de columnas cubre la plantilla del Hotel HW Libertad** y las
+   variantes habituales. Otra plantilla puede exigir agregar sinónimos en
+   `src/domain/pms/columns.ts`; la pantalla de revisión muestra qué columnas no
+   reconoció, así que el hueco se ve antes de aplicar nada.
+9. **El envío de correo necesita SMTP**: sin `SMTP_HOST`, `SMTP_PORT` y
+   `MAIL_FROM` el sistema no puede enviar las credenciales y las muestra en
+   pantalla. Es una configuración del servidor, no del código.

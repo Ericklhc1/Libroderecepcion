@@ -23,12 +23,18 @@ export default async function globalSetup() {
     );
   }
 
+  /*
+    Prisma aplica las migraciones por la conexión directa cuando el esquema
+    declara `directUrl`. Hay que redirigir las dos variables, o las migraciones
+    de las pruebas terminarían aplicándose a la base de desarrollo.
+  */
   execSync('npx prisma migrate deploy', {
-    env: { ...process.env, DATABASE_URL: url },
+    env: { ...process.env, DATABASE_URL: url, DIRECT_DATABASE_URL: url },
     stdio: 'pipe',
   });
 
   process.env.DATABASE_URL = url;
+  process.env.DIRECT_DATABASE_URL = url;
   const { seedCatalog, prisma } = await import('./helpers');
   await seedCatalog();
   await prisma.$disconnect();

@@ -42,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <BookOpen className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[0.65rem] uppercase tracking-[0.18em] text-gold-300">
+            <p className="truncate text-[0.65rem] font-medium text-gold-300">
               {hotelName}
             </p>
             <p className="truncate text-sm font-semibold text-white">Libro Operativo</p>
@@ -110,7 +110,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               >
                 <Bell className="h-5 w-5" aria-hidden="true" />
                 {unreadNotifications > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[0.6rem] font-bold tabular text-white">
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[0.6rem] font-semibold tabular text-white">
                     {unreadNotifications > 9 ? '9+' : unreadNotifications}
                   </span>
                 ) : null}

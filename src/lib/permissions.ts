@@ -42,6 +42,12 @@ export const PERMISSIONS = {
 
   'guest.manage': { group: 'Huéspedes y reservas', name: 'Gestionar referencias de huésped y reserva' },
 
+  'room.view': { group: 'Habitaciones y llaves', name: 'Ver el estado de habitaciones' },
+  'room.manage': { group: 'Habitaciones y llaves', name: 'Confirmar salidas y check-in' },
+  'key.assign': { group: 'Habitaciones y llaves', name: 'Entregar y recibir llaves' },
+  'key.stock': { group: 'Habitaciones y llaves', name: 'Administrar el stock de llaves' },
+  'pms.import': { group: 'Habitaciones y llaves', name: 'Importar informes del PMS' },
+
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },
   'system.configure': { group: 'Administración', name: 'Configurar el sistema' },
@@ -78,6 +84,10 @@ const OPERATIONAL_BASE: PermissionKey[] = [
   'shift.close',
   'guest.manage',
   'metrics.view',
+  'room.view',
+  'room.manage',
+  'key.assign',
+  'pms.import',
 ];
 
 /**
@@ -88,8 +98,19 @@ const OPERATIONAL_BASE: PermissionKey[] = [
  * el ciclo operativo (ver `operational: false` en el rol).
  */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
+  // El Administrador de sistema queda fuera de la operación habitual: puede
+  // ver el estado y configurar el inventario, pero no confirma salidas, no
+  // entrega llaves ni importa los informes del día.
   [ROLE_KEYS.SYSTEM_ADMIN]: ALL_PERMISSIONS.filter(
-    (p) => !['shift.start', 'shift.receive', 'shift.handover'].includes(p),
+    (p) =>
+      ![
+        'shift.start',
+        'shift.receive',
+        'shift.handover',
+        'room.manage',
+        'key.assign',
+        'pms.import',
+      ].includes(p),
   ),
   [ROLE_KEYS.SUPERVISOR]: [
     ...OPERATIONAL_BASE,
@@ -99,6 +120,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'incident.close',
     'shift.manage',
     'audit.view',
+    'key.stock',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   [ROLE_KEYS.NIGHT_AUDITOR]: [

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { ActionForm, Checkbox, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -16,6 +17,7 @@ import {
 } from '@/server/actions/admin';
 import { scheduleShiftAction } from '@/server/actions/shifts';
 import type { Option } from '@/server/services/options';
+import { suggestUsername } from '@/domain/username';
 
 export function RunMaintenanceForm() {
   return (
@@ -32,25 +34,43 @@ const PASSWORD_HINT = 'Mínimo 10 caracteres, con mayúscula, minúscula y núme
 export function CreateUserDialog({
   roles,
   departments,
+  credentialsMailTo,
 }: {
   roles: Option[];
   departments: Option[];
+  credentialsMailTo: string;
 }) {
+  const [suggested, setSuggested] = useState('');
+
   return (
     <Dialog
       title="Nuevo usuario"
-      description="El usuario deberá cambiar su contraseña en el primer ingreso."
+      description="El sistema genera la clave y la envía al correo de recepción. El usuario deberá cambiarla en el primer ingreso."
       triggerVariant="gold"
       triggerSize="sm"
       trigger="Nuevo usuario"
     >
       <ActionForm action={createUserAction} closeOnSuccess resetOnSuccess>
         <Field label="Nombre" name="name" required>
-          <Input name="name" required maxLength={120} />
+          <Input
+            name="name"
+            required
+            maxLength={120}
+            onChange={(event) => setSuggested(suggestUsername(event.target.value))}
+          />
         </Field>
-        <Field label="Correo" name="email" required>
-          <Input name="email" type="email" required />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Usuario"
+            name="username"
+            hint={suggested ? `Si lo dejas vacío será @${suggested}.` : 'Se propone a partir del nombre.'}
+          >
+            <Input name="username" placeholder={suggested ? `@${suggested}` : '@EHerrera'} maxLength={30} />
+          </Field>
+          <Field label="Correo" name="email" required>
+            <Input name="email" type="email" required placeholder="nombre@hoteleshw.com" />
+          </Field>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Rol" name="roleId" required>
             <Select name="roleId" placeholder="Selecciona un rol" options={roles} required />
@@ -62,11 +82,12 @@ export function CreateUserDialog({
         <Field label="Teléfono" name="phone">
           <Input name="phone" />
         </Field>
-        <Field label="Contraseña inicial" name="password" required hint={PASSWORD_HINT}>
-          <Input name="password" type="password" required autoComplete="new-password" />
-        </Field>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          La clave la genera el sistema y se envía a <strong>{credentialsMailTo}</strong>. Nadie la
+          escribe aquí, y no queda guardada en claro en ninguna parte.
+        </p>
         <div className="flex justify-end">
-          <SubmitButton pendingLabel="Creando…">Crear usuario</SubmitButton>
+          <SubmitButton pendingLabel="Creando…">Crear usuario y enviar clave</SubmitButton>
         </div>
       </ActionForm>
     </Dialog>
@@ -208,7 +229,7 @@ export function RolePermissionsForm({
       <div className="space-y-4">
         {groups.map((group) => (
           <fieldset key={group.group}>
-            <legend className="text-xs font-semibold uppercase tracking-wide text-petrol-700">
+            <legend className="text-xs font-semibold text-petrol-700">
               {group.group}
             </legend>
             <div className="mt-1 grid gap-1 sm:grid-cols-2">

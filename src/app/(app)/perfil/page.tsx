@@ -47,27 +47,27 @@ export default async function ProfilePage() {
         <CardHeader title="Datos de la cuenta" />
         <dl className="grid gap-x-6 gap-y-3 px-4 py-4 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Nombre</dt>
+            <dt className="text-xs font-medium text-slate-500">Nombre</dt>
             <dd className="text-petrol-900">{record.name}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Correo</dt>
+            <dt className="text-xs font-medium text-slate-500">Correo</dt>
             <dd className="text-petrol-900">{record.email}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Rol</dt>
+            <dt className="text-xs font-medium text-slate-500">Rol</dt>
             <dd className="text-petrol-900">{record.role.name}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Área</dt>
+            <dt className="text-xs font-medium text-slate-500">Área</dt>
             <dd className="text-petrol-900">{record.department?.name ?? 'Sin área'}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">Último ingreso</dt>
+            <dt className="text-xs font-medium text-slate-500">Último ingreso</dt>
             <dd className="text-petrol-900">{formatDateTime(record.lastLoginAt)}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">
+            <dt className="text-xs font-medium text-slate-500">
               Participa en turnos
             </dt>
             <dd className="text-petrol-900">
@@ -93,7 +93,7 @@ export default async function ProfilePage() {
         <div className="space-y-3 px-4 py-4">
           {Array.from(groups.entries()).map(([group, names]) => (
             <div key={group}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
                 {group}
               </p>

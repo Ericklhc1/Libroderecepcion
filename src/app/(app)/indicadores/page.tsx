@@ -79,7 +79,7 @@ export default async function MetricsPage({
       </header>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">
           Tareas
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -108,7 +108,7 @@ export default async function MetricsPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">
           Incidencias y alertas
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -136,7 +136,7 @@ export default async function MetricsPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">
           Turnos y entregas
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

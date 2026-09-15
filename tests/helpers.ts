@@ -1,14 +1,7 @@
 import { AssignmentRole, PrismaClient, ShiftStatus, ShiftType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import {
-  ALL_PERMISSIONS,
-  PERMISSIONS,
-  ROLE_DEFINITIONS,
-  ROLE_PERMISSIONS,
-  ROLE_KEYS,
-  type PermissionKey,
-  type RoleKey,
-} from '@/lib/permissions';
+import { ROLE_KEYS, type PermissionKey, type RoleKey } from '@/lib/permissions';
+import { seedCatalog as domainSeedCatalog } from '@/domain/catalog';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { plannedWindow } from '@/domain/shift';
 
@@ -16,61 +9,17 @@ export const prisma = new PrismaClient();
 
 export const TEST_PASSWORD = 'PruebaSegura1';
 
-const DEPARTMENTS = [
-  { key: 'RECEPCION', name: 'Recepción', order: 1 },
-  { key: 'MANTENIMIENTO', name: 'Mantenimiento', order: 2 },
-  { key: 'HOUSEKEEPING', name: 'Housekeeping', order: 3 },
-];
-
-/** Catálogo base: permisos, roles y áreas. Idempotente. */
+/**
+ * Catálogo base para las pruebas.
+ *
+ * Reutiliza la misma siembra que usan la instalación real y la semilla de
+ * desarrollo: si hubiera una copia aparte, las pruebas podrían pasar contra un
+ * catálogo que no existe en producción.
+ */
 export async function seedCatalog() {
-  for (const key of ALL_PERMISSIONS) {
-    const meta = PERMISSIONS[key];
-    await prisma.permission.upsert({
-      where: { key },
-      update: { name: meta.name, group: meta.group },
-      create: { key, name: meta.name, group: meta.group },
-    });
-  }
-
-  for (const definition of ROLE_DEFINITIONS) {
-    const role = await prisma.role.upsert({
-      where: { key: definition.key },
-      update: {
-        name: definition.name,
-        level: definition.level,
-        operational: definition.operational,
-      },
-      create: {
-        key: definition.key,
-        name: definition.name,
-        description: definition.description,
-        level: definition.level,
-        operational: definition.operational,
-        isSystem: true,
-      },
-    });
-    const permissions = await prisma.permission.findMany({
-      where: { key: { in: [...ROLE_PERMISSIONS[definition.key]] } },
-      select: { id: true },
-    });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
-    await prisma.rolePermission.createMany({
-      data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
-      skipDuplicates: true,
-    });
-  }
-
-  for (const department of DEPARTMENTS) {
-    await prisma.department.upsert({
-      where: { key: department.key },
-      update: {},
-      create: department,
-    });
-  }
+  await domainSeedCatalog(prisma);
 }
 
-/** Borra los datos operativos y de usuarios, conservando el catálogo base. */
 export async function resetOperationalData() {
   await prisma.$transaction([
     prisma.notification.deleteMany(),
@@ -112,6 +61,7 @@ export async function createUser(options: {
     data: {
       email,
       name: options.name ?? `Usuario ${role.name}`,
+      username: `U${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
       passwordHash: await bcrypt.hash(password, 4),
       roleId: role.id,
       active: options.active ?? true,

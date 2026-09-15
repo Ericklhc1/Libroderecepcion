@@ -12,6 +12,8 @@ import {
   RestoreUserForm,
 } from '../admin-forms';
 import { formatDateTime } from '@/lib/format';
+import { displayUsername } from '@/domain/username';
+import { credentialsRecipient } from '@/server/mail';
 
 export const metadata = { title: 'Usuarios' };
 export const dynamic = 'force-dynamic';
@@ -48,7 +50,11 @@ export default async function UsersPage() {
             Al desactivar o cambiar el rol de un usuario se revocan sus sesiones activas.
           </p>
         </div>
-        <CreateUserDialog roles={roleOptions} departments={departmentOptions} />
+        <CreateUserDialog
+          roles={roleOptions}
+          departments={departmentOptions}
+          credentialsMailTo={credentialsRecipient()}
+        />
       </header>
 
       <Card>
@@ -67,6 +73,9 @@ export default async function UsersPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-petrol-900">{user.name}</p>
+                    <span className="text-sm font-medium text-petrol-600">
+                      {displayUsername(user.username)}
+                    </span>
                     <Chip>{user.role.name}</Chip>
                     {!user.role.operational ? <Chip>Fuera de operación</Chip> : null}
                     {user.active ? (

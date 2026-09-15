@@ -8,8 +8,10 @@ import {
   BedDouble,
   BookOpen,
   CalendarClock,
+  DoorClosed,
   History,
   Home,
+  KeyRound,
   ListChecks,
   Repeat,
   Settings,
@@ -29,6 +31,8 @@ const ICONS = {
   guest: BedDouble,
   history: History,
   metrics: BarChart3,
+  room: DoorClosed,
+  key: KeyRound,
   admin: Settings,
 } as const;
 
@@ -57,7 +61,7 @@ export function SidebarNav({
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               active
                 ? 'bg-petrol-800 font-semibold text-white'
                 : 'text-petrol-100 hover:bg-petrol-800/60',
@@ -66,7 +70,7 @@ export function SidebarNav({
             <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="flex-1 truncate">{item.label}</span>
             {badge && badge > 0 ? (
-              <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-bold tabular text-petrol-950">
+              <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-semibold tabular text-petrol-950">
                 {badge > 99 ? '99+' : badge}
               </span>
             ) : null}

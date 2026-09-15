@@ -22,6 +22,7 @@ export const entryInclude = {
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true, key: true } },
+  room: { select: { id: true, number: true, floor: true } },
   shift: { select: { id: true, type: true, date: true } },
   guest: { select: { id: true, fullName: true, roomNumber: true, vip: true } },
   reservation: { select: { id: true, code: true, roomNumber: true, status: true } },
@@ -38,6 +39,7 @@ type EntryCreateInput = {
   description: string;
   category?: string | null;
   departmentId?: string | null;
+  roomId?: string | null;
   priority: Prisma.OperationalEntryCreateInput['priority'];
   ownerId?: string | null;
   occurredAt?: Date | null;
@@ -76,6 +78,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         description: input.description,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
+        roomId: input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         shiftId: shift?.id ?? null,
@@ -157,6 +160,7 @@ const EDITABLE_FIELDS = [
   'description',
   'category',
   'departmentId',
+  'roomId',
   'priority',
   'ownerId',
   'dueAt',

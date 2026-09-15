@@ -56,7 +56,7 @@ export default async function DashboardPage() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <p className="text-xs font-semibold text-slate-500">
               Turno actual
             </p>
             {shift ? (
@@ -497,7 +497,7 @@ export default async function DashboardPage() {
           <CardHeader title="Entregas de turno" href="/turno" hrefLabel="Ir al turno" />
           <div className="space-y-3 px-4 py-3">
             <div>
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                 <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
                 Entrega anterior
               </p>
@@ -527,7 +527,7 @@ export default async function DashboardPage() {
             </div>
 
             <div>
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                 <Send className="h-3.5 w-3.5" aria-hidden="true" />
                 Próxima entrega
               </p>

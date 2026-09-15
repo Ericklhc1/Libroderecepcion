@@ -167,13 +167,13 @@ export default async function FollowUpsPage({
                 <p className="mt-1 font-medium text-petrol-900">{followUp.action}</p>
                 {followUp.result ? (
                   <p className="mt-0.5 text-sm text-slate-700">
-                    <span className="text-xs uppercase text-slate-500">Resultado: </span>
+                    <span className="text-xs font-medium text-slate-500">Resultado: </span>
                     {followUp.result}
                   </p>
                 ) : null}
                 {followUp.nextAction ? (
                   <p className="mt-0.5 text-sm text-slate-700">
-                    <span className="text-xs uppercase text-slate-500">Próxima acción: </span>
+                    <span className="text-xs font-medium text-slate-500">Próxima acción: </span>
                     {followUp.nextAction}
                   </p>
                 ) : null}

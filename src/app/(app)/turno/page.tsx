@@ -462,7 +462,7 @@ export default async function ShiftPage() {
 
       {/* Leyenda del semáforo: el color nunca va solo */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 text-xs text-slate-500 shadow-card">
-        <span className="font-semibold uppercase tracking-wide">Semáforo</span>
+        <span className="font-semibold">Semáforo</span>
         {(
           [
             ['critico', 'Crítico o vencido'],

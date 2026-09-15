@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { EntryType } from '@prisma/client';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import {
-  entryCreateSchema,
+  entryCreateWithContextSchema,
   entryStatusSchema,
-  entryUpdateSchema,
+  entryUpdateWithContextSchema,
   restoreSchema,
   softDeleteSchema,
 } from '@/server/schemas';
@@ -33,7 +33,7 @@ export async function createEntryAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const raw = formDataToObject(formData);
-    const input = parseOrThrow(entryCreateSchema, raw);
+    const input = parseOrThrow(entryCreateWithContextSchema, raw);
     const permission =
       input.type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create';
     const user = await requirePermission(permission);
@@ -54,7 +54,7 @@ export async function updateEntryAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('entry.edit');
-    const input = parseOrThrow(entryUpdateSchema, formDataToObject(formData));
+    const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
     const entry = await updateEntry(user, input);
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Registro actualizado.', id: entry.id };

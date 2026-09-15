@@ -17,8 +17,35 @@ export const DEPARTMENTS = [
   { key: 'ADMINISTRACION', name: 'Administración', order: 7 },
   { key: 'VENTAS', name: 'Ventas', order: 8 },
   { key: 'SISTEMAS', name: 'Sistemas', order: 9 },
+  { key: 'AREAS_PUBLICAS', name: 'Áreas públicas', order: 10 },
   { key: 'OTRO', name: 'Otro', order: 99 },
 ];
+
+/**
+ * Inventario de habitaciones del hotel: pisos 4, 5 y 6.
+ *
+ * Es el catálogo real del Hotel HW Libertad. Las habitaciones son la entidad
+ * central del módulo operativo, así que existen desde la instalación y no
+ * dependen de que un informe del PMS las mencione.
+ */
+export const ROOM_RANGES = [
+  { floor: 4, from: 401, to: 429 },
+  { floor: 5, from: 501, to: 530 },
+  { floor: 6, from: 601, to: 630 },
+];
+
+export function roomNumbers(): Array<{ number: string; floor: number }> {
+  const rooms: Array<{ number: string; floor: number }> = [];
+  for (const range of ROOM_RANGES) {
+    for (let number = range.from; number <= range.to; number += 1) {
+      rooms.push({ number: String(number), floor: range.floor });
+    }
+  }
+  return rooms;
+}
+
+/** Copias de llave sin asignar con las que arranca el stock del Supervisor. */
+const SPARE_KEYS = 12;
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
@@ -77,6 +104,40 @@ export async function seedCatalog(
       where: { key: department.key },
       update: { name: department.name, order: department.order },
       create: department,
+    });
+  }
+
+  /*
+    Habitaciones y llaves. Cada habitación nace con su llave principal en el
+    inventario (disponible, no asignada: nadie ha hecho check-in todavía) y el
+    stock del Supervisor arranca con un puñado de copias sin destino.
+  */
+  for (const room of roomNumbers()) {
+    const created = await client.room.upsert({
+      where: { number: room.number },
+      update: { floor: room.floor },
+      create: { number: room.number, floor: room.floor },
+    });
+    // La llave principal pertenece a la habitación desde el primer día: queda
+    // ligada a ella aunque todavía no se haya entregado a nadie.
+    await client.roomKey.upsert({
+      where: { code: `P-${room.number}` },
+      update: { roomId: created.id },
+      create: {
+        code: `P-${room.number}`,
+        type: 'PRINCIPAL',
+        status: 'DISPONIBLE',
+        roomId: created.id,
+      },
+    });
+  }
+
+  for (let index = 1; index <= SPARE_KEYS; index += 1) {
+    const code = `C-${String(index).padStart(2, '0')}`;
+    await client.roomKey.upsert({
+      where: { code },
+      update: {},
+      create: { code, type: 'COPIA', status: 'DISPONIBLE' },
     });
   }
 

@@ -117,6 +117,14 @@ parámetros) se conserva.
   cumplimiento de entregas e incidencias por área.
 - **Centro de notificaciones** interno, con la arquitectura lista para agregar
   correo o WhatsApp sin tocar los módulos operativos.
+- **Habitaciones e inventario de llaves** alimentados por los informes del PMS
+  (entradas, in house, salidas). El sistema reconoce el tipo de informe y sus
+  columnas por los encabezados, normaliza los datos y arma la ficha de cada
+  habitación con tres capas: quién sale, quién está dentro y quién entra. Una
+  entrada queda **en cola** mientras la salida anterior no se confirme, y sólo
+  al confirmar el check-in se entrega la llave. Incluye stock de copias del
+  Supervisor, historial de movimientos y detección de conflictos para revisión
+  humana. El PMS sigue siendo la fuente: esto interpreta sus informes.
 
 ## Documentación
 
@@ -127,6 +135,6 @@ parámetros) se conserva.
 
 ## Estado de calidad
 
-`npm run verify` ejecuta lint, typecheck, las 136 pruebas automatizadas y la
+`npm run verify` ejecuta lint, typecheck, las 182 pruebas automatizadas y la
 compilación de producción. Las limitaciones conocidas están documentadas en
 `docs/ARQUITECTURA.md`.

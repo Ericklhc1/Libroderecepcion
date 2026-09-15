@@ -21,6 +21,7 @@ export default defineConfig({
     hookTimeout: 120_000,
     env: {
       DATABASE_URL: testDatabaseUrl,
+      DIRECT_DATABASE_URL: testDatabaseUrl,
       NODE_ENV: 'test',
       AUTH_SECRET: 'secreto-de-pruebas-suficientemente-largo-para-hs256-0001',
       SESSION_TTL_HOURS: '12',

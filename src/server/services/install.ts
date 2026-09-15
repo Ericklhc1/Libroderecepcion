@@ -5,6 +5,7 @@ import { AppError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { hashPassword } from '@/server/auth/password';
 import { seedCatalog } from '@/domain/catalog';
+import { suggestUsername } from '@/domain/username';
 import { ROLE_KEYS } from '@/lib/permissions';
 
 /**
@@ -53,6 +54,7 @@ export async function runInstall(input: {
     return tx.user.create({
       data: {
         name: input.name.trim(),
+        username: suggestUsername(input.name),
         email,
         passwordHash,
         roleId: role.id,

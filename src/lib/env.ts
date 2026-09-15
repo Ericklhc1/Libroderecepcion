@@ -12,6 +12,16 @@ const schema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().positive().max(168).default(12),
   SEED_DEMO_PASSWORD: z.string().min(8).default('Demo2024!'),
   HOTEL_TIMEZONE: z.string().default('America/Santiago'),
+
+  // Correo saliente. Opcional: si falta, el sistema muestra la clave en
+  // pantalla en lugar de enviarla, y lo dice.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
+  /// Casilla que recibe las credenciales de los usuarios nuevos.
+  CREDENTIALS_MAIL_TO: z.string().email().default('recepcion@hoteleshw.com'),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),

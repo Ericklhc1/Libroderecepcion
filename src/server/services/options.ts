@@ -12,6 +12,8 @@ export type FormOptions = {
   reservations: Option[];
   openEntries: Option[];
   openTasks: Option[];
+  /** Habitaciones del hotel, con su ocupante actual cuando lo hay. */
+  rooms: Option[];
 };
 
 /**
@@ -21,7 +23,7 @@ export type FormOptions = {
  * (ver `listOperationalUsers`), de modo que no puede quedar como responsable.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, guests, reservations, entries, tasks] = await Promise.all([
+  const [users, departments, guests, reservations, entries, tasks, rooms] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
@@ -52,6 +54,19 @@ export async function getFormOptions(): Promise<FormOptions> {
       select: { id: true, seq: true, title: true },
       take: 100,
     }),
+    prisma.room.findMany({
+      where: { active: true },
+      orderBy: { number: 'asc' },
+      select: {
+        id: true,
+        number: true,
+        stays: {
+          where: { deletedAt: null, status: 'IN_HOUSE', stage: { not: 'FINALIZADO' } },
+          select: { guestNames: true },
+          take: 1,
+        },
+      },
+    }),
   ]);
 
   return {
@@ -70,5 +85,12 @@ export async function getFormOptions(): Promise<FormOptions> {
       label: `#${e.seq} · ${ENTRY_TYPE_LABEL[e.type]} · ${e.title}`,
     })),
     openTasks: tasks.map((t) => ({ value: t.id, label: `T#${t.seq} · ${t.title}` })),
+    rooms: rooms.map((room) => {
+      const guest = room.stays[0]?.guestNames[0];
+      return {
+        value: room.id,
+        label: guest ? `${room.number} · ${guest}` : room.number,
+      };
+    }),
   };
 }

@@ -14,6 +14,8 @@ export type NavItem = {
     | 'guest'
     | 'history'
     | 'metrics'
+    | 'room'
+    | 'key'
     | 'admin';
   /** Se muestra si el usuario tiene al menos uno de estos permisos. */
   anyOf?: PermissionKey[];
@@ -31,7 +33,15 @@ export const NAV_ITEMS: NavItem[] = [
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
     mobile: true,
   },
-  { href: '/tareas', label: 'Tareas', icon: 'task', mobile: true },
+  {
+    href: '/habitaciones',
+    label: 'Habitaciones',
+    icon: 'room',
+    anyOf: ['room.view'],
+    mobile: true,
+  },
+  { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'] },
+  { href: '/tareas', label: 'Tareas', icon: 'task' },
   { href: '/incidencias', label: 'Incidencias', icon: 'incident' },
   { href: '/alertas', label: 'Alertas', icon: 'alert', mobile: true },
   { href: '/seguimientos', label: 'Seguimientos', icon: 'followup' },

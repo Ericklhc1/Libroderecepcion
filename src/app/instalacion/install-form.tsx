@@ -12,10 +12,23 @@ export function InstallForm() {
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Tu nombre" name="name" required>
-          <Input name="name" required placeholder="Nombre y apellido" maxLength={120} />
+          <Input
+            name="name"
+            required
+            defaultValue="Erick Herrera"
+            placeholder="Nombre y apellido"
+            maxLength={120}
+          />
         </Field>
         <Field label="Tu correo" name="email" required>
-          <Input name="email" type="email" required autoComplete="username" placeholder="nombre@hotel.com" />
+          <Input
+            name="email"
+            type="email"
+            required
+            autoComplete="username"
+            defaultValue="eherrera@hoteleshw.com"
+            placeholder="nombre@hoteleshw.com"
+          />
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

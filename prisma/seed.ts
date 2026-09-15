@@ -33,6 +33,7 @@ import {
 import bcrypt from 'bcryptjs';
 import { ROLE_KEYS } from '../src/lib/permissions';
 import { seedCatalog as seedBaseCatalog } from '../src/domain/catalog';
+import { suggestUsername } from '../src/domain/username';
 import { plannedWindow } from '../src/domain/shift';
 
 const prisma = new PrismaClient();
@@ -107,6 +108,7 @@ async function seedDemo() {
       create: {
         email: person.email,
         name: person.name,
+        username: suggestUsername(person.name),
         passwordHash,
         roleId: role.id,
         departmentId: dept(person.departmentKey),

@@ -50,7 +50,7 @@ export function HistoryTimeline({ events }: { events: HistoryEvent[] }) {
             aria-hidden="true"
           />
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-petrol-700">
+            <span className="text-xs font-semibold text-petrol-700">
               {event.actionLabel}
             </span>
             <time className="text-xs tabular text-slate-400">{formatDateTime(event.at)}</time>

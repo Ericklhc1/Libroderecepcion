@@ -19,7 +19,8 @@ import { revokeAllUserSessions } from '@/server/auth/session';
 import { recordAudit, diffFields } from '@/server/audit';
 import { AppError, NotFoundError, RuleError } from '@/server/errors';
 import { ROLE_KEYS } from '@/lib/permissions';
-import { DEFAULT_SETTINGS, type SettingKey } from '@/server/services/settings';
+import { DEFAULT_SETTINGS, getSettingString, type SettingKey } from '@/server/services/settings';
+import { allocateUsername, deliverCredentials, generatePassword } from '@/server/services/credentials';
 import { runAlertEngine } from '@/server/services/alert-engine';
 
 /** Impide quedarse sin administradores activos. */
@@ -46,7 +47,6 @@ export async function createUserAction(
   return runAction(async () => {
     const actor = await requirePermission('user.manage');
     const input = parseOrThrow(userCreateSchema, formDataToObject(formData));
-    const password = parseOrThrow(passwordSchema, input.password);
 
     const exists = await prisma.user.findUnique({ where: { email: input.email } });
     if (exists) throw new AppError('Ya existe un usuario con ese correo.', 'DUPLICATE');
@@ -54,10 +54,19 @@ export async function createUserAction(
     const role = await prisma.role.findUnique({ where: { id: input.roleId } });
     if (!role) throw new NotFoundError('El rol indicado no existe.');
 
+    /*
+      La clave la genera el sistema, no la escribe nadie: así ninguna cuenta
+      nace con una contraseña débil ni reutilizada. Viaja una sola vez al
+      correo de recepción y se pide cambiarla en el primer ingreso.
+    */
+    const password = generatePassword();
+    const username = await allocateUsername(input.name, input.username ?? null);
+
     const user = await prisma.user.create({
       data: {
         name: input.name,
         email: input.email,
+        username,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -66,19 +75,35 @@ export async function createUserAction(
       },
     });
 
+    const hotelName = await getSettingString('hotel.name', 'el hotel');
+    const delivery = await deliverCredentials({
+      name: user.name,
+      username,
+      email: user.email,
+      password,
+      roleName: role.name,
+      hotelName,
+    });
+
     await recordAudit({
       entity: 'User',
       entityId: user.id,
       action: AuditAction.CREAR,
-      summary: `Usuario creado: ${user.name} <${user.email}> con rol ${role.name}`,
+      summary:
+        `Usuario creado: ${user.name} (@${username}) <${user.email}> con rol ${role.name}. ` +
+        (delivery.sent
+          ? `Credenciales enviadas a ${delivery.recipient}.`
+          : 'No se pudo enviar el correo con las credenciales.'),
       user: actor,
-      after: { name: user.name, email: user.email, roleId: role.id, role: role.name },
+      after: { name: user.name, email: user.email, username, roleId: role.id, role: role.name },
     });
 
     revalidatePath('/admin/usuarios');
     return {
       ok: true as const,
-      message: `Usuario creado. Deberá cambiar su contraseña al primer ingreso.`,
+      message: delivery.sent
+        ? `Usuario @${username} creado. Las credenciales se enviaron a ${delivery.recipient} y deberá cambiar la clave al primer ingreso.`
+        : `Usuario @${username} creado con la clave temporal ${password}. No se pudo enviar el correo a ${delivery.recipient}: ${delivery.reason} Entrégala en persona.`,
       id: user.id,
     };
   });

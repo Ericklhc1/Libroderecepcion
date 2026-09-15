@@ -99,21 +99,21 @@ export default async function TaskDetailPage({
 
           <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Asignada a</dt>
+              <dt className="text-xs font-medium text-slate-500">Asignada a</dt>
               <dd className="text-petrol-900">{task.assignee?.name ?? 'Sin asignar'}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Creada por</dt>
+              <dt className="text-xs font-medium text-slate-500">Creada por</dt>
               <dd className="text-petrol-900">
                 {task.createdBy.name} · {formatDateTime(task.createdAt)}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Área</dt>
+              <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{task.department?.name ?? 'Sin área'}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Fecha límite</dt>
+              <dt className="text-xs font-medium text-slate-500">Fecha límite</dt>
               <dd className={overdue ? 'font-semibold text-red-700' : 'text-petrol-900'}>
                 {task.dueAt
                   ? `${formatDateTime(task.dueAt)} (${relativeTime(task.dueAt)})`
@@ -122,13 +122,13 @@ export default async function TaskDetailPage({
             </div>
             {task.completedAt ? (
               <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-500">Completada</dt>
+                <dt className="text-xs font-medium text-slate-500">Completada</dt>
                 <dd className="text-petrol-900">{formatDateTime(task.completedAt)}</dd>
               </div>
             ) : null}
             {task.entry ? (
               <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-500">Registro origen</dt>
+                <dt className="text-xs font-medium text-slate-500">Registro origen</dt>
                 <dd>
                   <Link
                     href={`/libro/${task.entry.id}`}

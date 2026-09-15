@@ -121,25 +121,25 @@ export default async function EntryDetailPage({
 
           <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Registró</dt>
+              <dt className="text-xs font-medium text-slate-500">Registró</dt>
               <dd className="text-petrol-900">
                 {entry.createdBy.name} · {formatDateTime(entry.createdAt)}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Responsable</dt>
+              <dt className="text-xs font-medium text-slate-500">Responsable</dt>
               <dd className="text-petrol-900">{entry.owner?.name ?? 'Sin asignar'}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Área</dt>
+              <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{entry.department?.name ?? 'Sin área'}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Fecha del hecho</dt>
+              <dt className="text-xs font-medium text-slate-500">Fecha del hecho</dt>
               <dd className="text-petrol-900">{formatDateTime(entry.occurredAt)}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Turno</dt>
+              <dt className="text-xs font-medium text-slate-500">Turno</dt>
               <dd className="text-petrol-900">
                 {entry.shift
                   ? `${SHIFT_TYPE_LABEL[entry.shift.type]} · ${formatDate(entry.shift.date)}`
@@ -147,7 +147,7 @@ export default async function EntryDetailPage({
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Vencimiento</dt>
+              <dt className="text-xs font-medium text-slate-500">Vencimiento</dt>
               <dd className={overdue ? 'font-semibold text-red-700' : 'text-petrol-900'}>
                 {entry.dueAt
                   ? `${formatDateTime(entry.dueAt)} (${relativeTime(entry.dueAt)})`
@@ -252,13 +252,13 @@ export default async function EntryDetailPage({
               {isIncident ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Impacto</p>
+                    <p className="text-xs font-medium text-slate-500">Impacto</p>
                     <p className="text-sm text-petrol-900">
                       {entry.impact ? IMPACT_LABEL[entry.impact] : 'No registrado'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                    <p className="text-xs font-medium text-slate-500">
                       Acción inmediata
                     </p>
                     <p className="whitespace-pre-line text-sm text-petrol-900">
@@ -266,13 +266,13 @@ export default async function EntryDetailPage({
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Causa</p>
+                    <p className="text-xs font-medium text-slate-500">Causa</p>
                     <p className="whitespace-pre-line text-sm text-petrol-900">
                       {entry.rootCause ?? 'Por determinar'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Resolución</p>
+                    <p className="text-xs font-medium text-slate-500">Resolución</p>
                     <p className="whitespace-pre-line text-sm text-petrol-900">
                       {entry.resolution ?? 'Pendiente'}
                     </p>
@@ -280,7 +280,7 @@ export default async function EntryDetailPage({
                 </div>
               ) : entry.resolution ? (
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Resolución</p>
+                  <p className="text-xs font-medium text-slate-500">Resolución</p>
                   <p className="whitespace-pre-line text-sm text-petrol-900">{entry.resolution}</p>
                 </div>
               ) : null}
@@ -314,13 +314,13 @@ export default async function EntryDetailPage({
                     <p className="mt-1 text-sm font-medium text-petrol-900">{followUp.action}</p>
                     {followUp.result ? (
                       <p className="mt-0.5 text-sm text-slate-700">
-                        <span className="text-xs uppercase text-slate-500">Resultado: </span>
+                        <span className="text-xs font-medium text-slate-500">Resultado: </span>
                         {followUp.result}
                       </p>
                     ) : null}
                     {followUp.nextAction ? (
                       <p className="mt-0.5 text-sm text-slate-700">
-                        <span className="text-xs uppercase text-slate-500">Próxima acción: </span>
+                        <span className="text-xs font-medium text-slate-500">Próxima acción: </span>
                         {followUp.nextAction}
                       </p>
                     ) : null}
@@ -385,7 +385,7 @@ export default async function EntryDetailPage({
               <div className="space-y-3 px-4 py-4 text-sm">
                 {entry.guest ? (
                   <div>
-                    <p className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                    <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
                       <User className="h-3.5 w-3.5" aria-hidden="true" />
                       Huésped
                     </p>
@@ -400,7 +400,7 @@ export default async function EntryDetailPage({
                 ) : null}
                 {entry.reservation ? (
                   <div>
-                    <p className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                    <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
                       <BedDouble className="h-3.5 w-3.5" aria-hidden="true" />
                       Reserva
                     </p>

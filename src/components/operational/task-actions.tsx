@@ -1,5 +1,7 @@
 'use client';
 
+import { useFormStatus } from 'react-dom';
+
 import { TaskStatus } from '@prisma/client';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -180,6 +182,46 @@ export function EditTaskDialog({
   );
 }
 
+/**
+ * Paso de la lista de una tarea.
+ *
+ * Marcar un paso es reversible y no tiene consecuencia operativa, así que la
+ * casilla cambia en el mismo clic, antes de que el servidor responda. Si el
+ * servidor rechaza el cambio, la página se revalida con el estado real y la
+ * casilla vuelve sola: no hay estado inventado que quede pegado.
+ *
+ * El botón queda deshabilitado mientras la acción viaja, para que dos clics
+ * seguidos no cancelen el cambio.
+ */
+function ChecklistToggleButton({ done, text }: { done: boolean; text: string }) {
+  const { pending } = useFormStatus();
+  const shown = pending ? !done : done;
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left text-sm transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:cursor-wait"
+    >
+      <span
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[0.6rem] transition-colors ${
+          shown
+            ? 'border-emerald-600 bg-emerald-600 text-white'
+            : 'border-slate-300 bg-white text-transparent'
+        }`}
+        aria-hidden="true"
+      >
+        ✓
+      </span>
+      <span className={shown ? 'text-slate-400 line-through' : 'text-petrol-900'}>{text}</span>
+      <span className="sr-only">
+        {shown ? `Desmarcar ${text}` : `Marcar ${text} como hecho`}
+      </span>
+    </button>
+  );
+}
+
 export function ChecklistToggleForm({
   itemId,
   done,
@@ -193,25 +235,7 @@ export function ChecklistToggleForm({
     <ActionForm action={toggleChecklistAction} hideSuccess className="space-y-0">
       <input type="hidden" name="itemId" value={itemId} />
       <input type="hidden" name="done" value={done ? 'false' : 'true'} />
-      <button
-        type="submit"
-        className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left text-sm hover:bg-slate-50"
-      >
-        <span
-          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[0.6rem] ${
-            done
-              ? 'border-emerald-600 bg-emerald-600 text-white'
-              : 'border-slate-300 bg-white text-transparent'
-          }`}
-          aria-hidden="true"
-        >
-          ✓
-        </span>
-        <span className={done ? 'text-slate-400 line-through' : 'text-petrol-900'}>{text}</span>
-        <span className="sr-only">
-          {done ? `Desmarcar ${text}` : `Marcar ${text} como hecho`}
-        </span>
-      </button>
+      <ChecklistToggleButton done={done} text={text} />
     </ActionForm>
   );
 }

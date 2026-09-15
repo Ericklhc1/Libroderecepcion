@@ -6,7 +6,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { followUpInclude } from '@/server/services/followups';
 import { getFormOptions } from '@/server/services/options';
-import { refreshAlertsThrottled } from '@/server/services/dashboard';
+import { refreshAlertsInBackground } from '@/server/services/dashboard';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, EmptyState, StatTile } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -27,7 +27,7 @@ export default async function FollowUpsPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  await refreshAlertsThrottled();
+  refreshAlertsInBackground();
 
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';

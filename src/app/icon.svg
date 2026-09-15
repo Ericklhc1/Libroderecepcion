@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Libro Operativo de Recepción">
+  <!-- Azul petróleo y dorado: la misma identidad de la aplicación. -->
+  <rect width="32" height="32" rx="7" fill="#173442"/>
+  <path d="M16 8.5v15" stroke="#D8A93B" stroke-width="2" stroke-linecap="round"/>
+  <path d="M16 8.5a5.5 5.5 0 0 0-4.4-2.2H7.8a1.3 1.3 0 0 0-1.3 1.3v13a1.3 1.3 0 0 0 1.3 1.3h3.8A5.5 5.5 0 0 1 16 23.5a5.5 5.5 0 0 1 4.4-2.2h3.8a1.3 1.3 0 0 0 1.3-1.3v-13a1.3 1.3 0 0 0-1.3-1.3h-3.8A5.5 5.5 0 0 0 16 8.5Z" fill="none" stroke="#D8A93B" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -9,6 +9,7 @@ import {
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
+import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -21,28 +22,50 @@ import {
   operationalDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
+import { listRoomsWithState } from './rooms';
+import type { RoomState } from '@/domain/rooms';
 
 let lastEngineRun = 0;
 const ENGINE_THROTTLE_MS = 60_000;
 
 /**
- * El motor de alertas se ejecuta al abrir el panel, con un límite de una vez
- * por minuto por instancia: mantiene las alertas al día sin necesidad de un
- * proceso programado externo en la primera versión.
+ * Mantiene las alertas al día sin un proceso programado externo.
+ *
+ * El motor son 18 consultas. Ejecutarlo dentro del render dejaba esas 18
+ * esperas delante de la primera pantalla que ve el recepcionista, y con la
+ * base en otra región eso se siente. `after()` corre el motor **después** de
+ * enviar la respuesta: la pantalla sale con los datos que ya hay y el motor
+ * deja las alertas listas para la siguiente carga.
+ *
+ * El límite de una vez por minuto por instancia se mantiene: evita que cada
+ * navegación lo dispare.
  */
-export async function refreshAlertsThrottled(): Promise<void> {
+export function refreshAlertsInBackground(): void {
   const now = Date.now();
   if (now - lastEngineRun < ENGINE_THROTTLE_MS) return;
   lastEngineRun = now;
   try {
-    await runAlertEngine();
+    after(async () => {
+      try {
+        await runAlertEngine();
+      } catch (error) {
+        console.error('[alertas] el motor falló', error);
+      }
+    });
   } catch (error) {
-    console.error('[alertas] el motor falló', error);
+    /*
+      `after` sólo existe dentro de una petición: si a este servicio lo llama
+      un script o una prueba, lanza. El motor es frescura, no corrección, así
+      que no puede tumbar la pantalla. Se deja el turno libre para que la
+      siguiente petición real lo vuelva a intentar.
+    */
+    lastEngineRun = 0;
+    console.warn('[alertas] el motor no se pudo programar en segundo plano', error);
   }
 }
 
 export async function getDashboardData(user: CurrentUser) {
-  await refreshAlertsThrottled();
+  refreshAlertsInBackground();
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
@@ -158,10 +181,20 @@ export async function getDashboardData(user: CurrentUser) {
     con `await` sucesivos costaba seis viajes a la base uno detrás de otro,
     que es lo que se percibía como demora al abrir Inicio tras cada acción.
   */
-  const [nextShift, shiftMetrics, openEntries, openTasks, liveAlerts, criticalAlerts] =
+  const [
+    nextShift,
+    shiftMetrics,
+    allRooms,
+    openEntries,
+    openTasks,
+    liveAlerts,
+    criticalAlerts,
+  ] =
     await Promise.all([
       myShift ? getNextShift(myShift) : null,
       myShift ? getShiftMetrics(myShift.id) : null,
+      // Sólo a quien puede ver el tablero: el panel no salta el permiso.
+      user.permissions.includes('room.view') ? listRoomsWithState() : [],
       prisma.operationalEntry.count({
         where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
       }),
@@ -172,7 +205,37 @@ export async function getDashboardData(user: CurrentUser) {
       prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
     ]);
 
-  const counters = { openEntries, openTasks, liveAlerts, criticalAlerts };
+  /*
+    Habitaciones que piden una acción concreta del turno. El estado ya lo
+    calcula el tablero: acá sólo se filtra, no se vuelve a derivar.
+  */
+  const ATTENTION_STATES: RoomState[] = [
+    'CHECK_OUT_PENDIENTE',
+    'PENDIENTE_LIBERACION',
+    'CHECK_IN_EN_COLA',
+    'CHECK_IN_LISTO',
+  ];
+  const roomsNeedingAction = allRooms
+    .filter(
+      (room) =>
+        ATTENTION_STATES.includes(room.snapshot.state) ||
+        room.openIncidents > 0 ||
+        room.snapshot.keysOut.length > 0,
+    )
+    // El orden es el de urgencia: primero lo que bloquea una entrada.
+    .sort(
+      (a, b) =>
+        ATTENTION_STATES.indexOf(a.snapshot.state) - ATTENTION_STATES.indexOf(b.snapshot.state),
+    )
+    .slice(0, 8);
+
+  const counters = {
+    openEntries,
+    openTasks,
+    liveAlerts,
+    criticalAlerts,
+    roomsNeedingAction: roomsNeedingAction.length,
+  };
 
   return {
     now,
@@ -189,6 +252,7 @@ export async function getDashboardData(user: CurrentUser) {
     followUps,
     latestEntries,
     lastReceivedHandover,
+    roomsNeedingAction,
     counters,
     today: operationalDate(now),
   };

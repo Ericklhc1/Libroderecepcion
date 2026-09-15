@@ -93,6 +93,12 @@ errores que sólo aparecieron desplegados, y sus reglas:
 2. **Nunca encadenar esperas independientes.** El libro consultaba sus cuatro
    fuentes en serie; el panel encadenaba seis contadores. Todo va en
    `Promise.all`. Lo vigila `tests/query-parallelism.test.ts`.
+4. **Nada pesado dentro del render.** El motor de alertas son 18 consultas y
+   corría dentro de Inicio: 18 esperas delante de la primera pantalla del
+   turno. Ahora corre con `after()`, ya enviada la respuesta, y el panel bajó
+   de 32 a 17 consultas. `after()` lanza fuera de una petición, así que va
+   envuelto: el motor es frescura, no corrección, y no puede tumbar la
+   pantalla. Presupuesto vigilado (≤20 consultas).
 3. **Ninguna pantalla que consulte la base antes de redirigir puede
    pre-generarse.** `/login` quedó congelada durante la compilación con la base
    vacía y provocó `ERR_TOO_MANY_REDIRECTS`. Lo vigila
@@ -113,6 +119,16 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
   `tests/navigation.test.ts`.
 - **Toda acción responde en el mismo clic:** `SubmitButton` usa
   `useFormStatus`; los enlaces llevan estado `active:`.
+- **La navegación tiene pantalla de espera:** `(app)/loading.tsx` y
+  `habitaciones/loading.tsx`. Next las muestra al pulsar el enlace, sin
+  esperar al servidor. `useLinkStatus` existe en Next 15.5 pero **no está
+  exportado públicamente**: no se importa desde la ruta interna.
+- **Actualización optimista sólo donde es reversible y sin consecuencia
+  operativa:** pasos de una tarea y notificaciones leídas. El patrón es
+  `useFormStatus` dentro del formulario, mostrando el estado destino mientras
+  `pending`; si el servidor rechaza, la revalidación devuelve el estado real y
+  no queda nada inventado. **No** se aplica a confirmar salidas, entregar
+  llaves ni recibir turnos.
 - **`ActionForm` guarda lo escrito y lo devuelve si la validación falla.**
   React 19 vacía el formulario en cuanto la acción termina; sin esto, quien
   registra una novedad larga pierde el texto por olvidar un campo.

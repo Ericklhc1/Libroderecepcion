@@ -33,6 +33,11 @@ import {
   isOverdue,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import {
+  ROOM_STATE_ACTIONS,
+  ROOM_STATE_LABELS,
+  ROOM_STATE_TONE,
+} from '@/domain/rooms';
 import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import {
@@ -311,7 +316,7 @@ export default async function DashboardPage() {
 
         {/* ------------------------------- Tareas mías ------------------------------- */}
         <Card>
-          <CardHeader title="Tareas para mí" count={data.myTasks.length} href="/tareas?mias=1" />
+          <CardHeader title="Tareas para mí" count={data.myTasks.length} href="/libro?clase=task" />
           {data.myTasks.length === 0 ? (
             <EmptyState message="No tienes tareas abiertas asignadas." />
           ) : (
@@ -342,9 +347,55 @@ export default async function DashboardPage() {
           )}
         </Card>
 
+        {/* ------------------------- Habitaciones con pendientes ------------------------- */}
+        {user.permissions.includes('room.view') ? (
+          <Card>
+            <CardHeader
+              title="Habitaciones que requieren acción"
+              count={data.roomsNeedingAction.length}
+              href="/habitaciones"
+              hrefLabel="Ver el tablero"
+            />
+            {data.roomsNeedingAction.length === 0 ? (
+              <EmptyState message="Ninguna habitación tiene pendientes." />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {data.roomsNeedingAction.map((room) => (
+                  <li key={room.number}>
+                    <Link
+                      href={`/habitaciones/${room.number}`}
+                      className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      <span className="w-10 shrink-0 text-base font-semibold tabular text-petrol-900">
+                        {room.number}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <Badge tone={ROOM_STATE_TONE[room.snapshot.state]}>
+                          {ROOM_STATE_LABELS[room.snapshot.state]}
+                        </Badge>
+                        <span className="mt-1 block text-xs text-slate-600">
+                          {ROOM_STATE_ACTIONS[room.snapshot.state]}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          {room.snapshot.keysOut.length > 0
+                            ? `${room.snapshot.keysOut.length} llave(s) fuera`
+                            : 'Sin llaves fuera'}
+                          {room.openIncidents > 0
+                            ? ` · ${room.openIncidents} incidencia(s) abierta(s)`
+                            : ''}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        ) : null}
+
         {/* --------------------------------- Alertas --------------------------------- */}
         <Card>
-          <CardHeader title="Alertas" count={data.alerts.length} href="/alertas" />
+          <CardHeader title="Alertas" count={data.alerts.length} href="/libro?clase=alert" />
           {data.alerts.length === 0 ? (
             <EmptyState message="Sin alertas activas." />
           ) : (
@@ -362,7 +413,7 @@ export default async function DashboardPage() {
                     <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{alert.message}</p>
                   ) : null}
                   <Link
-                    href="/alertas"
+                    href="/libro?clase=alert"
                     className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline"
                   >
                     Gestionar
@@ -378,7 +429,7 @@ export default async function DashboardPage() {
           <CardHeader
             title="Incidencias abiertas"
             count={data.openIncidents.length}
-            href="/incidencias"
+            href="/libro?clase=entry&tipo=INCIDENCIA"
           />
           {data.openIncidents.length === 0 ? (
             <EmptyState message="Sin incidencias abiertas." />
@@ -418,7 +469,7 @@ export default async function DashboardPage() {
           <CardHeader
             title="Próximos seguimientos"
             count={data.followUps.length}
-            href="/seguimientos"
+            href="/libro?clase=followup"
           />
           {data.followUps.length === 0 ? (
             <EmptyState message="Sin seguimientos pendientes." />
@@ -575,7 +626,7 @@ export default async function DashboardPage() {
           <CardHeader
             title="Tareas vencidas de la operación"
             count={data.overdueTasks.length}
-            href="/tareas?estado=abiertos"
+            href="/libro?clase=task&estado=abiertos"
           />
           <ul className="divide-y divide-slate-100">
             {data.overdueTasks.map((task) => (

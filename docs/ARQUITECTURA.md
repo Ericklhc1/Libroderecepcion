@@ -184,7 +184,7 @@ sigue ocurriendo únicamente en el servidor.
 
 ## Pruebas
 
-188 pruebas en 13 archivos, sobre PostgreSQL real:
+192 pruebas en 14 archivos, sobre PostgreSQL real:
 
 | Archivo | Cubre |
 | --- | --- |
@@ -201,6 +201,7 @@ sigue ocurriendo únicamente en el servidor.
 | `pms-reports.test.ts` | Detección de columnas y normalización de los tres informes |
 | `rooms-keys.test.ts` | Regla de cola (408, 414, 515, 610), llaves, stock, conflictos, importación idempotente |
 | `env-resolution.test.ts` | Nombres de las variables de conexión de cada proveedor |
+| `seed-performance.test.ts` | Coste de la siembra en consultas, idempotencia, llave por habitación |
 
 `tests/global-setup.ts` aplica migraciones con `migrate deploy` sobre
 `TEST_DATABASE_URL` y siembra el catálogo; cada archivo limpia los datos
@@ -354,6 +355,29 @@ la auditoría, que redacta ese campo.
 Si el servidor no tiene correo configurado, el sistema **lo dice** y muestra la
 clave en pantalla una sola vez para entregarla en persona, en lugar de fallar en
 silencio.
+
+### Decisión: la siembra y la importación trabajan por lotes
+
+Un error real del primer despliegue dejó esta lección escrita en el código. La
+siembra del catálogo hacía un `upsert` por fila —más de doscientas consultas— y
+la importación una consulta por estadía. Contra una base local eso toma
+milisegundos y las pruebas pasaban. En producción, con la función en Washington
+y la base en São Paulo, cada consulta cuesta unos 120 ms: la transacción de la
+instalación se agotaba a los 5 segundos (`P2028`) y el sistema no se podía
+instalar.
+
+Ahora ambas rutinas leen el estado de una vez, deciden en memoria y escriben
+agrupado: una decena de consultas en lugar de doscientas, sin que ese número
+crezca con las filas. `tests/seed-performance.test.ts` cuenta las consultas
+para que el patrón no vuelva.
+
+Las transacciones de instalación e importación llevan además un plazo explícito
+de 30 segundos, y sus páginas declaran `maxDuration = 60`: el plazo por omisión
+de la plataforma son 10 segundos, que no alcanzan para sembrar el catálogo
+completo a través de un océano.
+
+La lección general: **el número de viajes a la base importa más que el número
+de filas**, y sólo se nota cuando la base está lejos.
 
 ## Limitaciones conocidas
 

@@ -128,6 +128,15 @@ errores que sólo aparecieron desplegados, y sus reglas:
    pre-generarse.** `/login` quedó congelada durante la compilación con la base
    vacía y provocó `ERR_TOO_MANY_REDIRECTS`. Lo vigila
    `tests/page-rendering.test.ts`.
+5. **Lo que se carga en tiempo de ejecución hay que declararlo para que
+   viaje.** El worker de pdf.js no se importa de forma estática, así que el
+   trazador de Next no lo copiaba a la función: en local funcionaba y en
+   producción los tres informes fallaban con «Setting up fake worker failed».
+   Va en `outputFileTracingIncludes` para `/turno` y `/habitaciones/importar`,
+   y `read-pdf.ts` fija `GlobalWorkerOptions.workerSrc` en vez de dejar que
+   pdf.js deduzca la ruta. Lo vigila `tests/empaquetado-pdf.test.ts`, que lee
+   el manifiesto `*.nft.json` —la lista real de archivos desplegados— de modo
+   que comprueba el empaquetado sin desplegar.
 
 Transacciones largas (instalación, importación) llevan
 `{ timeout: 30_000, maxWait: 10_000 }` y su página `maxDuration = 60`.

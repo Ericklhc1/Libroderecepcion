@@ -14,7 +14,7 @@ export default async function globalSetup() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) {
     throw new Error(
-      'Falta TEST_DATABASE_URL. Copia .env.example a .env y define la base de pruebas.',
+      'Falta TEST_DATABASE_URL. Copia docs/entorno.example a .env y define la base de pruebas.',
     );
   }
   if (url === process.env.DATABASE_URL) {

@@ -17,7 +17,7 @@ Requisitos: Node.js 22+, PostgreSQL 14+.
 npm install
 
 # 2. Entorno (copiar y completar; nunca se versiona el .env real)
-cp .env.example .env
+cp docs/entorno.example .env
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"  # AUTH_SECRET
 
 # 3. Base de datos

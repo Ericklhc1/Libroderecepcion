@@ -1,8 +1,17 @@
 # ---------------------------------------------------------------------------
 # Libro Operativo de Recepción - variables de entorno
-# Copiar a .env y completar. NUNCA versionar el archivo .env real.
+#
+# Copiar a .env en la raíz del proyecto y completar. NUNCA versionar el .env real.
+#
+# Este archivo vive en docs/ a propósito: al estar en la raíz con el nombre
+# .env.example, las plataformas de despliegue lo leen como la lista de
+# variables que hay que rellenar antes de desplegar, y obligan a completar
+# catorce campos cuando en un despliegue real sólo hacen falta dos.
+#
+# En un despliegue sólo son imprescindibles:
+#   - la conexión a la base de datos (la publica el proveedor al conectarla)
+#   - AUTH_SECRET
 # ---------------------------------------------------------------------------
-
 # Conexión PostgreSQL usada por la aplicación.
 # En proveedores con agrupador de conexiones (Neon, Supabase) es la URL agrupada.
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/libro_recepcion?schema=public"

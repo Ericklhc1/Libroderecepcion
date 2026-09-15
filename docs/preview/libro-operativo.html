@@ -1000,6 +1000,85 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
 .role-switch { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; padding: 11px 14px; font-size: 11.5px; color: var(--ink-3); }
+
+/* ------------------------------ Inicio de sesión ------------------------- */
+
+:root[data-auth="out"] .app,
+:root[data-auth="out"] .bottomnav { display: none; }
+:root[data-auth="in"] #auth-screen { display: none; }
+
+.auth {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sidebar);
+  padding: 32px 16px calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
+.auth-inner { width: 100%; max-width: 396px; }
+
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+
+.auth-card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: var(--shadow-lift);
+}
+
+.auth-card h1 { font-size: 17px; font-family: var(--sans); font-weight: 600; letter-spacing: 0; }
+
+.auth-demo {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
+  font-size: 12px;
+}
+
+.auth-demo-title {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  margin: 0 0 8px;
+}
+
+.auth-demo ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.auth-demo button {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sidebar-ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.auth-demo button:hover { background: color-mix(in srgb, var(--sidebar-ink) 12%, transparent); }
+.auth-demo .who { font-weight: 600; white-space: nowrap; }
+.auth-demo .mail { font-family: var(--mono); font-size: 10.5px; color: var(--sidebar-ink-2); overflow: hidden; text-overflow: ellipsis; }
+.auth-demo .pass { margin: 9px 0 0; color: var(--sidebar-ink-2); }
+.auth-demo .pass code { font-family: var(--mono); color: var(--gold-bright); }
+
+.auth-error {
+  margin: 0 0 12px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  background: var(--critico-bg);
+  color: var(--critico);
+  font-size: 12.5px;
+}
 </style>
 
 <div class="app">
@@ -1013,8 +1092,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     </div>
     <nav class="nav" id="nav" aria-label="Navegación principal"></nav>
     <div class="whoami">
-      <p class="whoami-label">Sesión de prueba</p>
-      <select id="role-select" aria-label="Cambiar de usuario"></select>
+      <p class="whoami-label">Sesión</p>
+      <select id="role-select" aria-label="Cambiar de usuario sin volver a iniciar sesión"></select>
+      <button class="nav-item" type="button" data-act="logout" style="margin-top:6px;font-size:12.5px">Cerrar sesión</button>
     </div>
   </aside>
 
@@ -1036,6 +1116,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     <main class="content" id="view" tabindex="-1"></main>
   </div>
 </div>
+
+<div id="auth-screen"></div>
 
 <nav class="bottomnav" id="bottomnav" aria-label="Navegación rápida"></nav>
 <div class="toast-host" id="toasts" aria-live="polite"></div>
@@ -1348,7 +1430,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     ];
 
     return {
-      version: 4,
+      version: 5,
+      authed: false,
+      loginError: null,
+      failedAttempts: {},
+      lockedUntil: {},
       currentUserId: 'u2',
       view: 'inicio',
       guests: guests, reservations: reservations, shifts: shifts, entries: entries,
@@ -1362,7 +1448,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
   }
 
   // ------------------------------- Estado ---------------------------------
-  const STORAGE_KEY = 'libro-operativo-preview-v4';
+  const STORAGE_KEY = 'libro-operativo-preview-v5';
   let state;
 
   function load() {
@@ -1370,7 +1456,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed || parsed.version !== 4) return null;
+      if (!parsed || parsed.version !== 5) return null;
       seq = parsed.seq || 100;
       return parsed;
     } catch (_) { return null; }
@@ -3137,6 +3223,94 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       '</div>';
   }
 
+
+  // --------------------------- Inicio de sesión ---------------------------
+  // Reproduce las reglas de la aplicación: mensaje genérico que no revela si
+  // el correo existe, y bloqueo temporal tras cinco intentos fallidos.
+  const DEMO_PASSWORD = 'Demo2024!';
+  const MAX_ATTEMPTS = 5;
+  const LOCK_MINUTES = 15;
+  const emailOf = (user) => ({ u1: 'recepcion.manana@hotel.local', u2: 'recepcion.tarde@hotel.local', u3: 'auditor.noche@hotel.local', u4: 'supervisor@hotel.local', u5: 'admin@hotel.local' })[user.id];
+
+  ACTIONS.login = function () {
+    const email = (((document.getElementById('auth-email') || {}).value) || '').trim().toLowerCase();
+    const password = ((document.getElementById('auth-password') || {}).value) || '';
+    const user = USERS.find((u) => emailOf(u) === email);
+
+    const lockedUntil = state.lockedUntil[email];
+    if (lockedUntil && new Date(lockedUntil).getTime() > Date.now()) {
+      const minutes = Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 60000);
+      state.loginError = 'Cuenta bloqueada temporalmente por intentos fallidos. Reintenta en ' + minutes + ' minuto(s).';
+      return commit();
+    }
+
+    if (!user || password !== DEMO_PASSWORD) {
+      const attempts = (state.failedAttempts[email] || 0) + 1;
+      state.failedAttempts[email] = attempts;
+      if (attempts >= MAX_ATTEMPTS) {
+        state.lockedUntil[email] = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
+        state.loginError = 'Cuenta bloqueada temporalmente tras ' + MAX_ATTEMPTS + ' intentos fallidos. Reintenta en ' + LOCK_MINUTES + ' minutos.';
+      } else {
+        state.loginError = 'Correo o contraseña incorrectos.';
+      }
+      return commit();
+    }
+
+    state.failedAttempts[email] = 0;
+    state.lockedUntil[email] = null;
+    state.authed = true;
+    state.loginError = null;
+    state.currentUserId = user.id;
+    state.view = 'inicio';
+    state.openHandover = null;
+    pushAudit('CREAR', 'Sesión', user.name + ' inició sesión');
+    commit('Sesión iniciada como ' + user.name + '.');
+  };
+
+  ACTIONS.logout = function () {
+    pushAudit('CREAR', 'Sesión', me().name + ' cerró sesión');
+    state.authed = false;
+    state.loginError = null;
+    closeSheet();
+    commit();
+  };
+
+  ACTIONS['fill-demo'] = function (userId) {
+    const user = userById(userId);
+    const email = document.getElementById('auth-email');
+    const password = document.getElementById('auth-password');
+    if (email) email.value = emailOf(user);
+    if (password) password.value = DEMO_PASSWORD;
+    if (password) password.focus();
+  };
+
+  function renderAuthScreen() {
+    document.getElementById('auth-screen').innerHTML =
+      '<div class="auth"><div class="auth-inner">' +
+      '<div class="auth-brand"><span class="brand-mark" style="width:42px;height:42px;font-size:23px" aria-hidden="true">L</span>' +
+      '<div><p class="brand-hotel">Hotel Costa Serena</p><p class="brand-name" style="font-size:19px">Libro Operativo de Recepción</p></div></div>' +
+      '<div class="auth-card">' +
+      '<h1>Iniciar sesión</h1>' +
+      '<p class="meta" style="margin:4px 0 16px">Accede con tu cuenta operativa para entrar a tu turno.</p>' +
+      (state.loginError ? '<p class="auth-error" role="alert">' + esc(state.loginError) + '</p>' : '') +
+      '<form id="auth-form" style="display:flex;flex-direction:column;gap:12px">' +
+      '<label class="field"><span class="field-label">Correo</span>' +
+      '<input type="email" id="auth-email" autocomplete="username" placeholder="nombre@hotel.com"></label>' +
+      '<label class="field"><span class="field-label">Contraseña</span>' +
+      '<input type="password" id="auth-password" autocomplete="current-password"></label>' +
+      '<button class="btn btn-primary" type="submit" style="width:100%;padding:9px">Entrar</button>' +
+      '</form></div>' +
+      '<div class="auth-demo">' +
+      '<p class="auth-demo-title">Cuentas de demostración · toca una para completarla</p>' +
+      '<ul>' + USERS.map(function (u) {
+        return '<li><button type="button" data-act="fill-demo" data-args="' + u.id + '" title="' + esc(emailOf(u)) + '">' +
+          '<span class="who">' + esc(u.name) + '</span>' +
+          '<span class="mail">' + esc(state.roles[u.role].name + ' · ' + u.tag) + '</span></button></li>';
+      }).join('') + '</ul>' +
+      '<p class="pass">Contraseña de todas: <code>' + DEMO_PASSWORD + '</code>. Prueba una incorrecta para ver el mensaje genérico y el bloqueo tras ' + MAX_ATTEMPTS + ' intentos.</p>' +
+      '</div></div></div>';
+  }
+
   // ------------------------------ Navegación ------------------------------
   const NAV = [
     { view: 'inicio', label: 'Inicio', icon: 'home', mobile: true },
@@ -3186,7 +3360,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
       (can('task.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-task">' + icon('task') + 'Nueva tarea</button>' : '') +
       (can('followup.create') ? '<button class="btn btn-quiet btn-sm" type="button" data-act="new-followup">' + icon('followup') + 'Nuevo seguimiento</button>' : '') +
       '<span style="flex:1"></span>' +
-      '<button class="btn btn-ghost btn-sm" type="button" data-act="reset">Reiniciar preview</button>';
+      '<button class="btn btn-ghost btn-sm" type="button" data-act="reset">Reiniciar preview</button>' +
+      // La barra lateral se oculta en móvil: el cierre de sesión debe estar
+      // disponible en cualquier ancho de pantalla.
+      '<button class="btn btn-quiet btn-sm" type="button" data-act="logout">Cerrar sesión</button>';
   }
 
   const VIEWS = {
@@ -3196,6 +3373,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
   };
 
   function render() {
+    document.documentElement.dataset.auth = state.authed ? 'in' : 'out';
+    if (!state.authed) {
+      renderAuthScreen();
+      const email = document.getElementById('auth-email');
+      if (email && !email.value) email.focus();
+      return;
+    }
+
     renderNav();
 
     // Si el rol actual no puede ver la vista, se vuelve al inicio.
@@ -3222,6 +3407,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--petrol-mid); }
     if (ACTIONS[act]) {
       event.preventDefault();
       ACTIONS[act](args);
+    }
+  });
+
+  document.addEventListener('submit', function (event) {
+    if (event.target.id === 'auth-form') {
+      event.preventDefault();
+      ACTIONS.login();
     }
   });
 

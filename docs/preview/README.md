@@ -10,6 +10,9 @@ levantar la base de datos: abrir el archivo en cualquier navegador basta.
 
 Qué se puede hacer en ella:
 
+- Iniciar sesión con cualquiera de las cinco cuentas de demostración, con las
+  mismas reglas que la aplicación: mensaje de error genérico que no revela si
+  el correo existe, y bloqueo temporal tras cinco intentos fallidos.
 - Recorrer el ciclo completo del turno: iniciar, recibir la entrega anterior,
   registrar novedades, preparar la entrega (con resumen automático), agregar
   notas manuales, enviarla y cerrar el turno.

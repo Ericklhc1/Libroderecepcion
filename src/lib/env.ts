@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeDatabaseEnv } from './database-url';
 
 /**
  * Validación de variables de entorno. Falla temprano y con mensaje claro si
@@ -31,12 +32,16 @@ let cached: z.infer<typeof schema> | null = null;
 
 export function env(): z.infer<typeof schema> {
   if (cached) return cached;
+  normalizeDatabaseEnv();
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) {
     const detail = parsed.error.issues
       .map((i) => `${i.path.join('.')}: ${i.message}`)
       .join('; ');
-    throw new Error(`Configuración de entorno inválida -> ${detail}`);
+    throw new Error(
+      `Configuración de entorno inválida -> ${detail}. ` +
+        'Revisa las variables del proyecto en el panel de despliegue.',
+    );
   }
   cached = parsed.data;
   return cached;

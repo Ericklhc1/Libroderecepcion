@@ -135,6 +135,6 @@ parámetros) se conserva.
 
 ## Estado de calidad
 
-`npm run verify` ejecuta lint, typecheck, las 182 pruebas automatizadas y la
+`npm run verify` ejecuta lint, typecheck, las 188 pruebas automatizadas y la
 compilación de producción. Las limitaciones conocidas están documentadas en
 `docs/ARQUITECTURA.md`.

@@ -184,7 +184,7 @@ sigue ocurriendo únicamente en el servidor.
 
 ## Pruebas
 
-182 pruebas en 12 archivos, sobre PostgreSQL real:
+188 pruebas en 13 archivos, sobre PostgreSQL real:
 
 | Archivo | Cubre |
 | --- | --- |
@@ -200,6 +200,7 @@ sigue ocurriendo únicamente en el servidor.
 | `install.test.ts` | Instalación inicial, catálogo sembrado, segunda instalación rechazada |
 | `pms-reports.test.ts` | Detección de columnas y normalización de los tres informes |
 | `rooms-keys.test.ts` | Regla de cola (408, 414, 515, 610), llaves, stock, conflictos, importación idempotente |
+| `env-resolution.test.ts` | Nombres de las variables de conexión de cada proveedor |
 
 `tests/global-setup.ts` aplica migraciones con `migrate deploy` sobre
 `TEST_DATABASE_URL` y siembra el catálogo; cada archivo limpia los datos

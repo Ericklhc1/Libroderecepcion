@@ -18,7 +18,25 @@ migraciones por sí solo y la primera cuenta se crea desde el navegador.
 - No se cargan datos de demostración: el sistema arranca vacío y listo para
   operar.
 
-## Camino recomendado: Vercel + Neon (unos diez minutos, sin consola)
+## El camino más corto: conectar la base desde Vercel
+
+Si el proyecto de Vercel ya existe, la vía con menos pasos es no copiar ninguna
+cadena de conexión:
+
+1. En el proyecto de Vercel, pestaña **Storage** (o **Integrations**), busca
+   **Neon** y conéctalo al proyecto. Vercel publica por su cuenta las variables
+   de conexión (`DATABASE_URL` y `DATABASE_URL_UNPOOLED`).
+2. Agrega **una sola** variable a mano, en *Settings → Environment Variables*:
+   `AUTH_SECRET`, con un texto largo y aleatorio.
+3. Vuelve a desplegar.
+
+La aplicación reconoce los nombres que publica cada integración —los propios,
+los de Neon en Vercel y los de Postgres en Vercel— y no exige que coincidan con
+los suyos (ver `src/lib/database-url.ts`). `AUTH_SECRET` se mantiene manual a
+propósito: es el secreto que firma las sesiones y ningún proveedor lo puede
+inventar por ti.
+
+## Camino manual: Vercel + Neon copiando las cadenas
 
 ### 1. Crear la base de datos
 

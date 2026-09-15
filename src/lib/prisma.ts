@@ -1,4 +1,12 @@
 import { PrismaClient } from '@prisma/client';
+import { normalizeDatabaseEnv } from './database-url';
+
+/*
+  Se resuelven los nombres de las variables de conexión antes de crear el
+  cliente: según cómo se haya conectado la base, el proveedor las publica con
+  nombres distintos y el esquema de Prisma sólo conoce dos.
+*/
+normalizeDatabaseEnv();
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

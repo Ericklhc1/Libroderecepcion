@@ -184,7 +184,7 @@ sigue ocurriendo únicamente en el servidor.
 
 ## Pruebas
 
-192 pruebas en 14 archivos, sobre PostgreSQL real:
+196 pruebas en 15 archivos, sobre PostgreSQL real:
 
 | Archivo | Cubre |
 | --- | --- |
@@ -202,6 +202,7 @@ sigue ocurriendo únicamente en el servidor.
 | `rooms-keys.test.ts` | Regla de cola (408, 414, 515, 610), llaves, stock, conflictos, importación idempotente |
 | `env-resolution.test.ts` | Nombres de las variables de conexión de cada proveedor |
 | `seed-performance.test.ts` | Coste de la siembra en consultas, idempotencia, llave por habitación |
+| `page-rendering.test.ts` | Las pantallas de acceso no se pre-generan |
 
 `tests/global-setup.ts` aplica migraciones con `migrate deploy` sobre
 `TEST_DATABASE_URL` y siembra el catálogo; cada archivo limpia los datos
@@ -378,6 +379,25 @@ completo a través de un océano.
 
 La lección general: **el número de viajes a la base importa más que el número
 de filas**, y sólo se nota cuando la base está lejos.
+
+### Decisión: las pantallas de acceso nunca se pre-generan
+
+Segundo error real del despliegue, y el más engañoso. La pantalla de inicio de
+sesión decide según el estado de la base: si no hay ninguna cuenta, redirige a
+la instalación. Al compilar, la base estaba vacía y esa decisión quedó
+congelada en el archivo generado. En cuanto se creó la primera cuenta,
+`/instalacion` mandaba a `/login` y `/login` —ya congelada— mandaba de vuelta:
+`ERR_TOO_MANY_REDIRECTS`.
+
+Leer la cookie de sesión fuerza el renderizado dinámico, pero aquí la consulta
+a la base ocurría **antes** de tocar la cookie, así que la página se pre-generó
+igual. Ahora `/login` declara `dynamic = 'force-dynamic'` de forma explícita, y
+`tests/page-rendering.test.ts` verifica que las tres pantallas de acceso fuera
+de `(app)` no se puedan pre-generar.
+
+La lección general: **una página que consulta la base antes de redirigir no
+puede pre-generarse**, y el compilador no lo advierte porque en ese momento la
+respuesta es válida.
 
 ## Limitaciones conocidas
 

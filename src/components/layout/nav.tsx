@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  AlertTriangle,
   BarChart3,
   BedDouble,
   BookOpen,
@@ -12,22 +11,17 @@ import {
   History,
   Home,
   KeyRound,
-  ListChecks,
-  Repeat,
   Settings,
-  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import type { NavItem } from './nav-items';
+import type { NavGroup, NavItem } from './nav-items';
 
 const ICONS = {
   home: Home,
   book: BookOpen,
   shift: CalendarClock,
-  task: ListChecks,
-  incident: ShieldAlert,
-  alert: AlertTriangle,
-  followup: Repeat,
+  supervision: ShieldCheck,
   guest: BedDouble,
   history: History,
   metrics: BarChart3,
@@ -41,42 +35,61 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function Badge({ value }: { value: number }) {
+  return (
+    <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-semibold tabular text-petrol-950">
+      {value > 99 ? '99+' : value}
+    </span>
+  );
+}
+
 export function SidebarNav({
-  items,
+  groups,
   badges,
 }: {
-  items: NavItem[];
+  groups: NavGroup[];
   badges?: Partial<Record<string, number>>;
 }) {
   const pathname = usePathname();
   return (
-    <nav className="space-y-1" aria-label="Navegación principal">
-      {items.map((item) => {
-        const Icon = ICONS[item.icon];
-        const active = isActive(pathname, item.href);
-        const badge = badges?.[item.href];
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? 'page' : undefined}
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              active
-                ? 'bg-petrol-800 font-semibold text-white'
-                : 'text-petrol-100 hover:bg-petrol-800/60',
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="flex-1 truncate">{item.label}</span>
-            {badge && badge > 0 ? (
-              <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-semibold tabular text-petrol-950">
-                {badge > 99 ? '99+' : badge}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
+    <nav aria-label="Navegación principal" className="space-y-5">
+      {groups.map((group, index) => (
+        <div key={group.title ?? 'principal'} className="space-y-1">
+          {group.title ? (
+            <p className="px-3 pb-1 text-xs font-medium text-petrol-300">{group.title}</p>
+          ) : null}
+          {index > 0 && !group.title ? (
+            <hr className="mx-3 border-petrol-800" aria-hidden="true" />
+          ) : null}
+          {group.items.map((item) => {
+            const Icon = ICONS[item.icon];
+            const active = isActive(pathname, item.href);
+            const badge = badges?.[item.href];
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                /*
+                  `active:` da el cambio de estado en el mismo clic, antes de
+                  que llegue la respuesta del servidor: quien está en el mesón
+                  no se queda dudando si el toque quedó registrado.
+                */
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-700',
+                  active
+                    ? 'bg-petrol-800 font-semibold text-white'
+                    : 'text-petrol-100 hover:bg-petrol-800/60',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{item.label}</span>
+                {badge && badge > 0 ? <Badge value={badge} /> : null}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
@@ -106,7 +119,7 @@ export function MobileNav({
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium',
+              'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
               active ? 'text-petrol-800' : 'text-slate-500',
             )}
           >

@@ -95,6 +95,14 @@ export default async function AlertsPage({
             Generadas automáticamente por el motor de reglas o creadas a mano. Se pueden marcar
             como vistas, posponer o resolver.
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Vista especializada. Para ver las alertas junto al resto de la operación,
+            abre el{' '}
+            <Link href="/libro?clase=alert" className="font-medium text-petrol-600 hover:underline">
+              libro operativo
+            </Link>
+            .
+          </p>
         </div>
         {canManage ? (
           <div className="flex gap-2 no-print">

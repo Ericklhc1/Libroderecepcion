@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countLiveAlerts } from '@/server/services/alert-engine';
-import { visibleNavItems } from '@/components/layout/nav-items';
+import { visibleNavGroups } from '@/components/layout/nav-items';
 import { MobileNav, SidebarNav } from '@/components/layout/nav';
 import { QuickActions } from '@/components/layout/quick-actions';
 import { logoutAction } from '@/server/actions/auth';
@@ -30,13 +30,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }),
   ]);
 
-  const items = visibleNavItems(user.permissions);
-  const badges = { '/alertas': alerts, '/tareas': myOpenTasks };
+  const groups = visibleNavGroups(user.permissions);
+  const items = groups.flatMap((group) => group.items);
+  const badges = { '/supervision': alerts, '/libro': myOpenTasks };
 
   return (
     <div className="flex min-h-screen bg-slate-100">
       {/* Barra lateral (escritorio) */}
-      <aside className="hidden w-64 shrink-0 flex-col bg-petrol-900 lg:flex no-print">
+      {/*
+        El aside se fija a la ventana (`sticky top-0` + `h-screen`). Antes sólo
+        era una columna flex sin altura: crecía con el contenido, su
+        `overflow-y-auto` interno no tenía nada que recortar y el menú
+        desaparecía al desplazarse. Ningún ancestro lleva `overflow`, que es
+        lo que permite que `sticky` funcione aquí.
+      */}
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-petrol-900 lg:flex no-print">
         <div className="flex items-center gap-3 border-b border-petrol-800 px-4 py-4">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
             <BookOpen className="h-5 w-5" aria-hidden="true" />
@@ -49,8 +57,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-4">
-          <SidebarNav items={items} badges={badges} />
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+          <SidebarNav groups={groups} badges={badges} />
         </div>
 
         <div className="border-t border-petrol-800 px-3 py-3">

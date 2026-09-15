@@ -7,6 +7,7 @@ import { getShiftOptions } from '@/server/services/shift-options';
 import { Card, EmptyState } from '@/components/ui/card';
 import { BookList } from '@/components/operational/book-row';
 import { Filters } from '@/components/operational/filters';
+import { ViewTabs } from '@/components/layout/view-tabs';
 import {
   filterValues,
   pageHref,
@@ -16,6 +17,15 @@ import {
 
 export const metadata = { title: 'Libro operativo' };
 export const dynamic = 'force-dynamic';
+
+const TABS = [
+  { label: 'Todo', href: '/libro' },
+  { label: 'Registros', href: '/libro?clase=entry' },
+  { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
+  { label: 'Tareas', href: '/libro?clase=task' },
+  { label: 'Seguimientos', href: '/libro?clase=followup' },
+  { label: 'Alertas', href: '/libro?clase=alert' },
+];
 
 export default async function BookPage({
   searchParams,
@@ -32,14 +42,60 @@ export default async function BookPage({
     getShiftOptions(),
   ]);
 
+  // La pestaña activa se deduce de los mismos parámetros que ya filtran.
+  const clase = typeof params.clase === 'string' ? params.clase : undefined;
+  const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
+  const activeTab =
+    clase === 'entry' && tipo === 'INCIDENCIA'
+      ? '/libro?clase=entry&tipo=INCIDENCIA'
+      : clase
+        ? `/libro?clase=${clase}`
+        : '/libro';
+
+  /*
+    Vistas especializadas. No se duplican acá: cada una aporta acciones que el
+    listado cronológico no tiene (reconocer una alerta, cerrar un seguimiento
+    con su resultado, el avance de la lista de una tarea).
+  */
+  const SPECIALIZED: Record<string, { href: string; label: string }> = {
+    task: { href: '/tareas', label: 'Abrir vista de tareas' },
+    followup: { href: '/seguimientos', label: 'Abrir vista de seguimientos' },
+    alert: { href: '/alertas', label: 'Abrir vista de alertas' },
+  };
+  const specialized =
+    clase === 'entry' && tipo === 'INCIDENCIA'
+      ? { href: '/incidencias', label: 'Abrir vista de incidencias' }
+      : clase
+        ? SPECIALIZED[clase]
+        : undefined;
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Libro operativo</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Vista cronológica única de registros, tareas, seguimientos y alertas.
+          Todo lo que ocurre en la operación, en una sola línea temporal. Las
+          pestañas acotan la clase; los filtros, el resto.
         </p>
       </header>
+
+      {/*
+        Cada pestaña es un filtro de esta misma vista, no otro módulo: cambia
+        el parámetro `clase` de la URL. Las clases que tienen acciones propias
+        —alertas y seguimientos— ofrecen además el enlace a su pantalla
+        especializada, que sigue existiendo como vista secundaria.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ViewTabs label="Clase de registro" activeHref={activeTab} tabs={TABS} />
+        {specialized ? (
+          <Link
+            href={specialized.href}
+            className="text-xs font-medium text-petrol-600 underline-offset-2 hover:underline"
+          >
+            {specialized.label}
+          </Link>
+        ) : null}
+      </div>
 
       <Filters
         action="/libro"

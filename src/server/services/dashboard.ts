@@ -153,21 +153,26 @@ export async function getDashboardData(user: CurrentUser) {
     }),
   ]);
 
-  const nextShift = myShift ? await getNextShift(myShift) : null;
-  const shiftMetrics = myShift ? await getShiftMetrics(myShift.id) : null;
+  /*
+    Los contadores y el resumen del turno no dependen entre sí. Encadenarlos
+    con `await` sucesivos costaba seis viajes a la base uno detrás de otro,
+    que es lo que se percibía como demora al abrir Inicio tras cada acción.
+  */
+  const [nextShift, shiftMetrics, openEntries, openTasks, liveAlerts, criticalAlerts] =
+    await Promise.all([
+      myShift ? getNextShift(myShift) : null,
+      myShift ? getShiftMetrics(myShift.id) : null,
+      prisma.operationalEntry.count({
+        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+      }),
+      prisma.task.count({
+        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      }),
+      prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
+      prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
+    ]);
 
-  const counters = {
-    openEntries: await prisma.operationalEntry.count({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
-    }),
-    openTasks: await prisma.task.count({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
-    }),
-    liveAlerts: await prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
-    criticalAlerts: await prisma.alert.count({
-      where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' },
-    }),
-  };
+  const counters = { openEntries, openTasks, liveAlerts, criticalAlerts };
 
   return {
     now,

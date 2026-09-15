@@ -20,6 +20,7 @@ function refresh(entryId?: string | null) {
   revalidatePath('/');
   revalidatePath('/seguimientos');
   revalidatePath('/libro');
+  revalidatePath('/supervision');
   if (entryId) revalidatePath(`/libro/${entryId}`);
 }
 

@@ -72,6 +72,14 @@ export default async function FollowUpsPage({
             Qué se hizo, qué resultó y cuándo hay que volver a revisar. Si llega la fecha y sigue
             abierto, se genera una alerta.
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Vista especializada. Para ver los seguimientos junto al resto de la operación,
+            abre el{' '}
+            <Link href="/libro?clase=followup" className="font-medium text-petrol-600 hover:underline">
+              libro operativo
+            </Link>
+            .
+          </p>
         </div>
         <div className="flex gap-2 no-print">
           <Link

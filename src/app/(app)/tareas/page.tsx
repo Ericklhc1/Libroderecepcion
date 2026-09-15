@@ -87,6 +87,14 @@ export default async function TasksPage({
           <p className="mt-0.5 text-sm text-slate-600">
             Lo que hay que hacer, con responsable y fecha límite.
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Vista especializada. Para ver las tareas junto al resto de la operación,
+            abre el{' '}
+            <Link href="/libro?clase=task" className="font-medium text-petrol-600 hover:underline">
+              libro operativo
+            </Link>
+            .
+          </p>
         </div>
         <div className="flex gap-2">
           <Link

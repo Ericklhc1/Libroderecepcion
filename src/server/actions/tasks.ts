@@ -26,6 +26,7 @@ function refresh(taskId?: string) {
   revalidatePath('/');
   revalidatePath('/tareas');
   revalidatePath('/libro');
+  revalidatePath('/supervision');
   if (taskId) revalidatePath(`/tareas/${taskId}`);
 }
 

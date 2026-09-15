@@ -43,6 +43,24 @@ export async function resetOperationalData() {
   ]);
 }
 
+/**
+ * Devuelve el inventario de habitaciones y llaves a su estado sembrado.
+ *
+ * `resetOperationalData` no lo toca porque habitaciones y llaves son
+ * catálogo, no operación. Pero una prueba que agrega una llave extra —para
+ * provocar el conflicto de dos principales, por ejemplo— la deja ahí para
+ * todos los archivos que corran después, sobre la misma base. Este reinicio
+ * lo evita, y se comparte en lugar de repetirse en cada archivo.
+ */
+export async function resetRoomsAndKeys() {
+  await prisma.keyMovement.deleteMany();
+  await prisma.roomKey.updateMany({ data: { stayId: null } });
+  await prisma.roomStay.deleteMany();
+  await prisma.pmsImportBatch.deleteMany();
+  await prisma.roomKey.deleteMany();
+  await prisma.room.deleteMany();
+}
+
 export async function createUser(options: {
   roleKey: RoleKey;
   email?: string;

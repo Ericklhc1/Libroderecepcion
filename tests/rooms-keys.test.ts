@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { KeyStatus, RoomStayStage, RoomStayStatus } from '@prisma/client';
-import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import {
+  ROLE_KEYS,
+  createUser,
+  prisma,
+  resetOperationalData,
+  resetRoomsAndKeys,
+  seedCatalog,
+} from './helpers';
 import { readStructuredReport, type TextFragment } from '@/domain/pms/layout';
 import { normalizeReport } from '@/domain/pms/normalize';
 import { applyImport, getImportPreview, prepareImport } from '@/server/services/pms-import';
@@ -77,12 +84,7 @@ describe('habitaciones y llaves', () => {
   });
 
   beforeEach(async () => {
-    await prisma.keyMovement.deleteMany();
-    await prisma.roomKey.updateMany({ data: { stayId: null } });
-    await prisma.roomStay.deleteMany();
-    await prisma.pmsImportBatch.deleteMany();
-    await prisma.roomKey.deleteMany();
-    await prisma.room.deleteMany();
+    await resetRoomsAndKeys();
     await resetOperationalData();
     await seedCatalog();
     receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });

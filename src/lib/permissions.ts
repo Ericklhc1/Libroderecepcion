@@ -53,6 +53,13 @@ export const PERMISSIONS = {
     deja como responsable de ninguna llegada ni salida.
   */
   'stay.delete': { group: 'Habitaciones y llaves', name: 'Eliminar una estadía para resolver conflictos' },
+  /*
+    Reparación también, pero de la habitación entera: colapsa las estadías
+    duplicadas que impiden confirmar un check-in o un check-out. La tienen el
+    Administrador de sistema y el Supervisor, porque el atasco ocurre en el
+    mesón y hay que poder resolverlo sin esperar al administrador.
+  */
+  'room.reset': { group: 'Habitaciones y llaves', name: 'Resetear una habitación atascada' },
 
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },
@@ -135,6 +142,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'shift.manage',
     'audit.view',
     'key.stock',
+    'room.reset',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   [ROLE_KEYS.NIGHT_AUDITOR]: [

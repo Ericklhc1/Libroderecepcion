@@ -39,6 +39,14 @@ Cinco destinos principales, uno por pregunta operativa:
 Más un grupo *Consulta* (`/llaves`, `/huespedes`, `/historial`,
 `/indicadores`) y *Sistema* (`/admin`).
 
+En **móvil** la barra inferior muestra los cuatro primeros y **«Más»** abre el
+resto. Ese botón no es un adorno: el menú lateral está oculto por debajo de
+`lg`, así que sin él Llaves, Huéspedes, Historial, Indicadores y
+Administración eran **inalcanzables desde el teléfono**. «Más» lleva aviso
+rojo cuando algo detrás tiene pendientes, de modo que las alertas de
+Supervisión siguen viéndose. Lo vigila `tests/navigation.test.ts`, que
+comprueba rol por rol que ningún destino visible quede sin puerta.
+
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
 el libro (pestañas `?clase=`), Inicio, la ficha de la habitación y Supervisión.
@@ -103,6 +111,14 @@ conserva su modelo y sus reglas.
    que crea la fila de `Permission` además de la de `RolePermission`, porque
    el catálogo también se siembra al instalar. Lo vigila
    `tests/eliminar-estadia.test.ts`.
+   **Y la habitación entera se puede resetear** (`room.reset`, `resetRoom`,
+   botón en la cabecera de la ficha), que lo tienen el administrador **y el
+   Supervisor**: el atasco ocurre en el mesón y no puede esperar. Conserva una
+   estadía por reserva y **fase** —la de estado más avanzado—, elimina el
+   resto, libera las llaves huérfanas y vuelve a llamar a
+   `reconcilePrincipalKeys`, que sigue siendo la única lógica de llaves. Una
+   salida y una llegada de la misma reserva **no son duplicidad**: son el caso
+   de la 610 y se conservan las dos. Sin duplicidad no toca nada y lo dice.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
    de importación **se recalculan, nunca se almacenan**.
    **Los tres informes se cargan desde el inicio de turno** (`/turno`, primera

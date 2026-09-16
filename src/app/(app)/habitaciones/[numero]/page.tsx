@@ -12,7 +12,7 @@ import { NotFoundError } from '@/server/errors';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
-import { DeleteStayDialog } from '@/components/rooms/delete-stay';
+import { DeleteStayDialog, ResetRoomDialog } from '@/components/rooms/delete-stay';
 import { EntryForm } from '@/components/forms/entry-form';
 import { createEntryAction } from '@/server/actions/entries';
 import { StayActions } from '@/components/rooms/stay-actions';
@@ -154,6 +154,11 @@ export default async function RoomDetailPage({
     duplicada suele quedar como «Entrante» junto a la «Actual» real—.
   */
   const canDeleteStay = hasPermission(user, 'stay.delete');
+  /*
+    El reseteo lo tienen también los supervisores: el atasco ocurre en el
+    mesón y no puede esperar al administrador.
+  */
+  const canResetRoom = hasPermission(user, 'room.reset');
   const canKeys = hasPermission(user, 'key.assign');
   const openEntries = entries.filter((entry) => ENTRY_OPEN_STATUSES.includes(entry.status));
 
@@ -183,6 +188,12 @@ export default async function RoomDetailPage({
             Piso {room.floor ?? '—'} · {ROOM_STATE_ACTIONS[snapshot.state]}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {/*
+          El reseteo vive en la cabecera, no junto a una estadía concreta: lo
+          que se repara es la habitación entera, no una fila.
+        */}
+        {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
         <Dialog
           title="Nueva incidencia en esta habitación"
           description="Queda con la habitación como contexto, junto al huésped y la reserva del momento."
@@ -202,6 +213,7 @@ export default async function RoomDetailPage({
             defaultRoomId={room.id}
           />
         </Dialog>
+        </div>
       </header>
 
       <div className="grid gap-3 lg:grid-cols-3">

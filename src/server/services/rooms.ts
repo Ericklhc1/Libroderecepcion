@@ -7,12 +7,20 @@ import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import {
   buildRoomSnapshot,
+  mostAdvancedStayStatus,
+  stayPhase,
   type KeyFacts,
   type RoomSnapshot,
   type StayFacts,
+  type StayStatus,
 } from '@/domain/rooms';
 import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
-import { assignMainKey, releaseStayKeys, markKeysPendingReturn } from './keys';
+import {
+  assignMainKey,
+  releaseStayKeys,
+  markKeysPendingReturn,
+  reconcilePrincipalKeys,
+} from './keys';
 
 /**
  * Estado operativo de habitaciones.
@@ -513,6 +521,142 @@ export async function softDeleteStay(
       `Estadía ${result.stay.reservationId} de la habitación ${result.stay.room?.number ?? 's/n'} ` +
       `eliminada (${result.releasedKeys} llave(s) liberada(s)): ${input.reason}`,
     before: { status: result.stay.status, stage: result.stay.stage },
+  });
+
+  return result;
+}
+
+/**
+ * Resetea una habitación atascada por duplicidad.
+ *
+ * El caso real: dos estadías de la misma reserva y la misma fase conviven en
+ * la habitación —una llegó por el informe de in house y otra por el de
+ * entradas—, la ficha muestra al mismo huésped como «Actual» y «Entrante», y
+ * el mesón no puede confirmar ni el check-in ni el check-out porque la regla
+ * de cola ve un conflicto que en la realidad no existe.
+ *
+ * NO borra la habitación ni sus estadías. Colapsa las duplicadas:
+ *
+ *   1. Agrupa las estadías vivas por reserva y **fase** (`stayPhase`), que es
+ *      la misma noción que usa la importación. Dentro de cada grupo conserva
+ *      la de estado más avanzado y elimina lógicamente el resto, con motivo.
+ *   2. Libera las llaves que quedaron apuntando a una estadía eliminada.
+ *   3. Vuelve a aplicar la regla de la llave principal llamando a
+ *      `reconcilePrincipalKeys`, que es **la única implementación** que decide
+ *      quién tiene la llave. No se escribe una segunda acá.
+ *
+ * Si no había duplicados, no toca nada y lo dice: un reseteo que "arregla"
+ * algo que estaba bien es un reseteo que destruye datos.
+ *
+ * Lo pueden hacer el Administrador de sistema y el Supervisor: es reparación
+ * del sistema, no operación del mesón, y por eso no entra en la exclusión del
+ * administrador.
+ */
+export async function resetRoom(
+  user: CurrentUser,
+  input: { roomNumber: string; reason: string },
+) {
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const room = await tx.room.findUnique({
+        where: { number: input.roomNumber },
+        select: { id: true, number: true },
+      });
+      if (!room) throw new NotFoundError('Esa habitación no existe en el inventario.');
+
+      const stays = await tx.roomStay.findMany({
+        where: { roomId: room.id, deletedAt: null, stage: { in: ACTIVE_STAGES } },
+        select: {
+          id: true,
+          reservationId: true,
+          status: true,
+          stage: true,
+          touchedManually: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      /*
+        Se conserva UNA estadía por reserva y fase: la de estado más avanzado.
+        Con empate de estado gana la más antigua, que es la que ya tiene
+        historia colgando (comentarios, movimientos de llave).
+      */
+      const keep = new Map<string, (typeof stays)[number]>();
+      for (const stay of stays) {
+        const key = `${stay.reservationId}|${stayPhase(stay.status as StayStatus)}`;
+        const previous = keep.get(key);
+        if (!previous) {
+          keep.set(key, stay);
+          continue;
+        }
+        const winner =
+          mostAdvancedStayStatus(
+            previous.status as StayStatus,
+            stay.status as StayStatus,
+          ) === (stay.status as StayStatus) && previous.status !== stay.status
+            ? stay
+            : previous;
+        keep.set(key, winner);
+      }
+
+      const keptIds = new Set([...keep.values()].map((stay) => stay.id));
+      const redundant = stays.filter((stay) => !keptIds.has(stay.id));
+
+      if (redundant.length > 0) {
+        await tx.roomStay.updateMany({
+          where: { id: { in: redundant.map((stay) => stay.id) } },
+          data: {
+            deletedAt: new Date(),
+            deletedById: user.id,
+            deletionReason: `Reseteo de la habitación ${room.number}: ${input.reason}`,
+          },
+        });
+      }
+
+      /*
+        Toda llave de esta habitación que apunte a una estadía que ya no está
+        viva queda huérfana. Se sueltan aquí y `reconcilePrincipalKeys` decide
+        a continuación quién debe tenerla.
+      */
+      const orphaned = await tx.roomKey.updateMany({
+        where: {
+          roomId: room.id,
+          stayId: { not: null },
+          OR: [
+            { stay: { deletedAt: { not: null } } },
+            { stay: { stage: { notIn: ACTIVE_STAGES } } },
+          ],
+        },
+        data: { stayId: null, status: KeyStatus.DISPONIBLE },
+      });
+
+      const reassigned = await reconcilePrincipalKeys(tx, user, {
+        note: `reseteo de la habitación ${room.number}`,
+      });
+
+      return {
+        room,
+        collapsed: redundant.length,
+        releasedKeys: orphaned.count,
+        reassignedKeys: reassigned,
+        remaining: keptIds.size,
+      };
+    },
+    // El cruce de llaves recorre todas las estadías activas: con la base en
+    // otra región, el plazo por omisión de cinco segundos no alcanza.
+    { timeout: 30_000, maxWait: 10_000 },
+  );
+
+  await recordAudit({
+    entity: 'Room',
+    entityId: result.room.id,
+    action: AuditAction.CONFIGURAR,
+    user,
+    summary:
+      `Habitación ${result.room.number} reseteada: ${result.collapsed} estadía(s) duplicada(s) ` +
+      `eliminada(s), ${result.remaining} conservada(s), ${result.releasedKeys} llave(s) liberada(s), ` +
+      `${result.reassignedKeys} reasignada(s). Motivo: ${input.reason}`,
   });
 
   return result;

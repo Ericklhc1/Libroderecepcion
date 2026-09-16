@@ -35,8 +35,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       prisma.task.count({
         where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
       }),
-      // Comunicados obligatorios sin confirmar. Va en el mismo Promise.all:
-      // es una consulta más, no una espera más.
       getBlockingAnnouncements(user.id),
       prisma.user.findUnique({
         where: { id: user.id },
@@ -52,14 +50,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen bg-slate-100">
-      {/* Barra lateral (escritorio) */}
-      {/*
-        El aside se fija a la ventana (`sticky top-0` + `h-screen`). Antes sólo
-        era una columna flex sin altura: crecía con el contenido, su
-        `overflow-y-auto` interno no tenía nada que recortar y el menú
-        desaparecía al desplazarse. Ningún ancestro lleva `overflow`, que es
-        lo que permite que `sticky` funcione aquí.
-      */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-petrol-900 lg:flex no-print">
         <div className="flex items-center gap-3 border-b border-petrol-800 px-4 py-4">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
@@ -103,7 +93,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Cabecera */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur no-print">
           <div className="flex items-center gap-3 px-4 py-3">
             <Link href="/" className="flex items-center gap-2 lg:hidden">
@@ -112,7 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </Link>
 
-            <form action="/historial" className="relative min-w-0 flex-1 max-w-xl">
+            <form action="/libro" className="relative min-w-0 flex-1 max-w-xl">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"
@@ -120,19 +109,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <input
                 type="search"
                 name="q"
-                placeholder="Buscar en el libro: título, huésped, habitación, reserva, etiqueta…"
+                placeholder="Buscar: @habitación, #registro, T#tarea, huésped, reserva, usuario…"
                 aria-label="Búsqueda global"
                 className="input-base pl-9"
               />
             </form>
 
             <div className="ml-auto flex items-center gap-2">
-              {/*
-                El aviso sonoro. Va pegado a la campana porque habla de lo
-                mismo: la campana dice cuántas hay, esto avisa cuando llega
-                una. Sin sonido, un recordatorio sólo cambia un número en una
-                esquina que nadie está mirando.
-              */}
               <NotificationChime
                 initialNotifications={unreadNotifications}
                 initialAlerts={alerts}
@@ -149,12 +132,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   </span>
                 ) : null}
               </Link>
-              {/*
-                La ayuda vive en la cabecera, al lado de las notificaciones:
-                se necesita desde cualquier pantalla y no es un destino del
-                menú. Filtra por permisos, así que nadie ve el procedimiento
-                de algo que no puede hacer.
-              */}
               <HelpCenter permissions={user.permissions} />
               <Link
                 href="/perfil"
@@ -176,26 +153,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <MobileNav items={items} badges={badges} />
 
-      {/*
-        El comunicado obligatorio se monta al final y por encima de todo
-        (`z-[60]`, sobre el menú móvil que va en `z-40`). Se renderiza DENTRO
-        del layout, no en lugar de él: así la pantalla de abajo sigue cargada y
-        al confirmar no hay que volver a montarla.
-
-        El bloqueo es de interfaz, no de seguridad: quien sepa usar la consola
-        puede saltárselo. Lo que el sistema garantiza es que sin confirmar no
-        queda registro de lectura, y eso es lo que el Supervisor necesita.
-      */}
       {blocking.length > 0 ? (
         <AnnouncementGate announcements={blocking} userName={user.name} />
       ) : null}
 
-      {/*
-        Recorrido guiado del primer ingreso. No se muestra junto al comunicado
-        obligatorio: si alguien entra por primera vez y además tiene un aviso
-        que bloquea, primero lo urgente. El recorrido espera a la próxima
-        pantalla, y sigue esperando hasta que lo termine o lo salte.
-      */}
       {!tutorialDone && blocking.length === 0 ? (
         <TutorialTour steps={tutorialSteps(user.permissions)} userName={user.name} />
       ) : null}

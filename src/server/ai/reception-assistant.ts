@@ -773,10 +773,31 @@ async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenA
   return payload;
 }
 
+/**
+ * Convierte el historial en la entrada que espera la API de respuestas.
+ *
+ * El tipo de la parte de contenido DEPENDE DEL ROL, y ahí estaba el fallo:
+ * todos los mensajes salían como `input_text`, también los del asistente, y
+ * para ésos la API sólo acepta `output_text`. La respuesta era un 400 con
+ * «Invalid value: 'input_text'. Supported values are: 'output_text' and
+ * 'refusal'.», que el pop-up pintaba tal cual en el chat del mesón.
+ *
+ * No era un caso raro: el saludo de Fronti es un mensaje de asistente y viaja
+ * en el historial, así que la conversación fallaba desde la PRIMERA pregunta.
+ * Fronti nunca contestó nada en producción.
+ *
+ * `responseText` ya leía `output_text` al interpretar la respuesta, de modo que
+ * el archivo conocía la regla en un sentido y no en el otro.
+ */
 function messagesAsInput(messages: AssistantMessage[], limit: number): unknown[] {
   return messages.slice(-limit).map((message) => ({
     role: message.role,
-    content: [{ type: 'input_text', text: message.content }],
+    content: [
+      {
+        type: message.role === 'assistant' ? 'output_text' : 'input_text',
+        text: message.content,
+      },
+    ],
   }));
 }
 

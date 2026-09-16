@@ -75,11 +75,35 @@ describe('clasificación de fallos del asistente', () => {
     ).toBe('MODELO_DESCONOCIDO');
   });
 
-  it('un 400 que no nombra el modelo no se le atribuye', () => {
-    // No sabemos qué pasó, y decir «el modelo no existe» sería inventar.
+  /*
+    El fallo real que Fronti mostró en producción, palabra por palabra.
+
+    El historial mandaba los mensajes del asistente como `input_text`, que la
+    API sólo acepta para lo que ENTRA; para lo que sale exige `output_text`. Y
+    como el saludo de Fronti es un mensaje de asistente y viaja en el
+    historial, la conversación fallaba desde la primera pregunta: Fronti nunca
+    contestó nada.
+
+    Lo que se prueba acá es la CLASIFICACIÓN, que es la otra mitad del
+    problema: un 400 así no es una caída de OpenAI —entendió la petición y la
+    rechazó con razón— sino un error del Libro. Si se llamara caída, el mesón
+    leería «vuelve a intentarlo en un rato» para algo que no se arregla nunca
+    solo.
+  */
+  it('el error real de input_text se atribuye al Libro, no a OpenAI', () => {
+    expect(
+      classifyAssistantFailure({
+        status: 400,
+        message: "Invalid value: 'input_text'. Supported values are: 'output_text' and 'refusal'.",
+      }),
+    ).toBe('PETICION_INVALIDA');
+  });
+
+  it('un 400 nuestro no se disfraza de caída del proveedor', () => {
     expect(
       classifyAssistantFailure({ status: 400, message: 'Invalid value for parameter input.' }),
-    ).toBe('CAIDO');
+    ).toBe('PETICION_INVALIDA');
+    expect(classifyAssistantFailure({ status: 422 })).toBe('PETICION_INVALIDA');
   });
 
   it('los 5xx son caída del proveedor', () => {
@@ -202,6 +226,29 @@ describe('el modelo y el plazo están declarados', () => {
     expect(source).toContain('AbortSignal.timeout(ASSISTANT_TIMEOUT_MS)');
     expect(ASSISTANT_TIMEOUT_MS).toBeGreaterThan(0);
     expect(ASSISTANT_TIMEOUT_MS).toBeLessThanOrEqual(60_000);
+  });
+
+  /*
+    La causa raíz, comprobada sobre el código.
+
+    `messagesAsInput` no se exporta —es interno del servicio— así que se
+    inspecciona la fuente. Vale la pena aunque sea indirecto: es el fallo que
+    dejó a Fronti sin contestar NADA en producción, y su forma es fácil de
+    reintroducir, porque «input» suena a lo correcto para todo lo que se
+    manda.
+  */
+  it('el historial manda output_text para el asistente e input_text para el resto', () => {
+    const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf-8');
+    const fn = source.slice(
+      source.indexOf('function messagesAsInput'),
+      source.indexOf('export async function runReceptionAssistant'),
+    );
+
+    expect(fn, 'no se encontró messagesAsInput').toContain('messagesAsInput');
+    // El tipo tiene que DEPENDER del rol, no ser una constante.
+    expect(fn).toContain("'output_text'");
+    expect(fn).toContain("'input_text'");
+    expect(fn).toMatch(/role === 'assistant'/);
   });
 
   it('el endpoint de conversación responde con el estado de la causa', () => {

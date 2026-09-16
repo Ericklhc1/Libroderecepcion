@@ -53,6 +53,17 @@ export type AssistantFailure =
   | 'CAIDO'
   /** No contestó dentro del plazo, o no hubo red. */
   | 'SIN_RESPUESTA'
+  /**
+   * La API rechazó NUESTRA petición: el fallo es del Libro, no de OpenAI.
+   *
+   * Existe porque un caso real lo pedía. Fronti respondía «Invalid value:
+   * 'input_text'. Supported values are: 'output_text' and 'refusal'.» a toda
+   * pregunta: el historial mandaba los mensajes del asistente con el tipo de
+   * contenido equivocado. Sin esta causa, el sistema lo habría clasificado
+   * como caída del proveedor y le habría dicho al mesón «vuelve a intentarlo
+   * en un rato» para un error que no se iba a arreglar solo nunca.
+   */
+  | 'PETICION_INVALIDA'
   /** El Administrador de sistema lo apagó a propósito. */
   | 'DESACTIVADO';
 
@@ -76,6 +87,8 @@ export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
     'OpenAI está con problemas en este momento. Vuelve a intentarlo en un rato; el Libro no depende de Fronti.',
   SIN_RESPUESTA:
     'Fronti tardó demasiado en responder. Vuelve a preguntar; si sigue igual, sigue trabajando sin él.',
+  PETICION_INVALIDA:
+    'Fronti no pudo armar la consulta. Es un error del Libro, no de OpenAI, así que insistir no lo arregla: avisa al Administrador de sistema. El Libro funciona igual sin él.',
   DESACTIVADO: 'Fronti está desactivado por el Administrador de sistema.',
 };
 
@@ -93,6 +106,8 @@ export const ASSISTANT_FAILURE_IS_TEMPORARY: Record<AssistantFailure, boolean> =
   SATURADO: true,
   CAIDO: true,
   SIN_RESPUESTA: true,
+  // Nuestro propio error: insistir no lo arregla.
+  PETICION_INVALIDA: false,
   DESACTIVADO: false,
 };
 
@@ -111,6 +126,12 @@ export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
   SATURADO: 429,
   CAIDO: 502,
   SIN_RESPUESTA: 504,
+  /*
+    500 y no 400: el 400 lo devolvió OpenAI porque NUESTRA petición estaba
+    mal, así que hacia quien pregunta esto es un error del servidor. Decirle
+    400 al mesón sería culparlo de un fallo del Libro.
+  */
+  PETICION_INVALIDA: 500,
   DESACTIVADO: 503,
 };
 
@@ -156,11 +177,18 @@ export function classifyAssistantFailure(signal: OpenAIFailureSignal): Assistant
   if (status === 408 || status === 504) return 'SIN_RESPUESTA';
 
   /*
-    Un 400 puede ser culpa nuestra (una petición mal armada) o del modelo
-    inexistente. Sólo se atribuye al modelo si el mensaje lo nombra; si no, se
-    trata como caída, que es lo honesto: no sabemos.
+    Un 400 puede ser por el modelo inexistente o por una petición mal armada
+    por nosotros. Sólo se atribuye al modelo si el mensaje lo nombra.
+
+    Lo demás es NUESTRO error, y eso hay que decirlo: un 400 significa que
+    OpenAI entendió la petición y la rechazó, así que el proveedor está
+    perfectamente. Llamarlo caída mandaría a esperar un arreglo que no va a
+    llegar solo. Fue exactamente lo que pasó con `input_text`.
   */
-  if (status === 400 && /\bmodel\b/.test(message)) return 'MODELO_DESCONOCIDO';
+  if (status === 400) {
+    return /\bmodel\b/.test(message) ? 'MODELO_DESCONOCIDO' : 'PETICION_INVALIDA';
+  }
+  if (status === 422) return 'PETICION_INVALIDA';
 
   return 'CAIDO';
 }

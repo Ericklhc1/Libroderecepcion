@@ -8,6 +8,8 @@ import { prisma } from '@/lib/prisma';
 import { getRoomDetail } from '@/server/services/rooms';
 import { listAvailableKeys } from '@/server/services/keys';
 import { getFormOptions } from '@/server/services/options';
+import { getGymPassContextForRoom } from '@/server/services/gym-pass';
+import { gymPrices } from '@/server/services/live-cash';
 import { NotFoundError } from '@/server/errors';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -18,6 +20,7 @@ import {
   FineDialog,
   FineStatusDialog,
 } from '@/components/rooms/fine-form';
+import { GymPassDialog } from '@/components/cash/gym-pass-dialog';
 import { fineContextForRoom, listFinesForRoom } from '@/server/services/fines';
 import { fineSummary, type FineStatusValue } from '@/domain/fines';
 import { EntryForm } from '@/components/forms/entry-form';
@@ -133,7 +136,15 @@ export default async function RoomDetailPage({
     throw error;
   }
 
-  const [availableKeys, options, entries, fineContext, fines] = await Promise.all([
+  const [
+    availableKeys,
+    options,
+    entries,
+    fineContext,
+    fines,
+    gymContext,
+    gymPriceConfig,
+  ] = await Promise.all([
     listAvailableKeys(),
     getFormOptions(),
     prisma.operationalEntry.findMany({
@@ -151,9 +162,10 @@ export default async function RoomDetailPage({
         _count: { select: { tasks: true, followUps: true } },
       },
     }),
-    // Contexto para rellenar el formulario de multa y las multas ya puestas.
     fineContextForRoom(numero),
     listFinesForRoom(numero),
+    getGymPassContextForRoom(numero),
+    gymPrices(),
   ]);
 
   const { snapshot } = room;
@@ -204,31 +216,34 @@ export default async function RoomDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-        {/*
-          El reseteo vive en la cabecera, no junto a una estadía concreta: lo
-          que se repara es la habitación entera, no una fila.
-        */}
-        {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
-        {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
-        <Dialog
-          title="Nueva incidencia en esta habitación"
-          description="Queda con la habitación como contexto, junto al huésped y la reserva del momento."
-          triggerVariant="secondary"
-          trigger={
-            <>
-              <DoorOpen className="h-4 w-4" aria-hidden="true" />
-              Registrar incidencia
-            </>
-          }
-        >
-          <EntryForm
-            action={createEntryAction}
-            options={options}
-            defaultType={EntryType.INCIDENCIA}
-            lockType
-            defaultRoomId={room.id}
-          />
-        </Dialog>
+          {/*
+            El reseteo vive en la cabecera, no junto a una estadía concreta: lo
+            que se repara es la habitación entera, no una fila.
+          */}
+          {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
+          {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
+          {canManage && gymContext ? (
+            <GymPassDialog context={gymContext} prices={gymPriceConfig} />
+          ) : null}
+          <Dialog
+            title="Nueva incidencia en esta habitación"
+            description="Queda con la habitación como contexto, junto al huésped y la reserva del momento."
+            triggerVariant="secondary"
+            trigger={
+              <>
+                <DoorOpen className="h-4 w-4" aria-hidden="true" />
+                Registrar incidencia
+              </>
+            }
+          >
+            <EntryForm
+              action={createEntryAction}
+              options={options}
+              defaultType={EntryType.INCIDENCIA}
+              lockType
+              defaultRoomId={room.id}
+            />
+          </Dialog>
         </div>
       </header>
 

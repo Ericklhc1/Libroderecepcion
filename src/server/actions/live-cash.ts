@@ -9,6 +9,7 @@ import {
   saveLiveCashAudit,
   voidGymPass,
 } from '@/server/services/live-cash';
+import { assertGymPassEligibleReservation } from '@/server/services/gym-pass';
 
 const gymPassSchema = z.object({
   reservationReferenceId: z.string().min(1),
@@ -23,6 +24,7 @@ export async function createGymPassAction(
   return runAction(async () => {
     const user = await requirePermission('room.manage');
     const input = parseOrThrow(gymPassSchema, formDataToObject(formData));
+    await assertGymPassEligibleReservation(input.reservationReferenceId);
     const pass = await createGymPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/libro');

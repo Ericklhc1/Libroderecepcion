@@ -47,6 +47,27 @@ export async function resetOperationalData() {
     prisma.alert.deleteMany(),
     prisma.followUp.deleteMany(),
     prisma.task.deleteMany(),
+    /*
+      Caja viva, folios de gimnasio y memoria del asistente.
+
+      Van ACÁ, antes del registro del libro, y el orden entre ellas tampoco es
+      libre: el movimiento de caja apunta al folio, y el folio apunta al
+      registro del libro, a la reserva, a la habitación y al recepcionista con
+      clave ajena RESTRICT. Faltaban por completo, y eso no hacía fallar una
+      prueba: hacía fallar VEINTIÚN archivos enteros en su `beforeAll`, porque
+      `user.deleteMany()` chocaba contra `CashMovement_createdById_fkey` y el
+      fallo real quedaba tapado por un error de clave ajena.
+
+      Las tres del asistente se borran en cascada desde la conversación, pero
+      se nombran igual: si mañana alguien quita la cascada, esta prueba avisa
+      en lugar de dejar memoria de un turno viva entre archivos.
+    */
+    prisma.cashMovement.deleteMany(),
+    prisma.cashAudit.deleteMany(),
+    prisma.gymPass.deleteMany(),
+    prisma.ai_message.deleteMany(),
+    prisma.ai_memory.deleteMany(),
+    prisma.ai_conversation.deleteMany(),
     prisma.operationalEntry.deleteMany(),
     // Las multas referencian la habitación, la estadía y al usuario que las
     // creó, con clave ajena RESTRICT: van antes que todos ellos.
@@ -92,6 +113,20 @@ export async function resetOperationalData() {
     prisma.handoverElement.deleteMany(),
     prisma.cashFund.deleteMany(),
     prisma.handoverElementType.deleteMany(),
+    /*
+      `SystemSetting` entra por la MISMA razón que `CashFund`: parece catálogo
+      y es configuración. Un ajuste del sistema —el precio del pase de
+      gimnasio, por ejemplo— cambia el resultado de la prueba que lo cobra, y
+      dejarlo vivo hace que el conjunto dependa del orden de los archivos, que
+      es el error más difícil de encontrar.
+
+      `CashDenomination` NO entra, y la distinción importa: las denominaciones
+      son los billetes y monedas que existen en Chile, no una decisión del
+      hotel. Se sembraron acá por error al arreglar esto y nueve pruebas de
+      caja se cayeron, porque sin denominaciones no se puede armar un arqueo.
+      `caja-turno.test.ts` lo deja escrito.
+    */
+    prisma.systemSetting.deleteMany(),
     prisma.shiftHandover.deleteMany(),
     prisma.shiftAssignment.deleteMany(),
     prisma.shift.deleteMany(),
@@ -119,6 +154,13 @@ export async function resetOperationalData() {
 export async function resetRoomsAndKeys() {
   // Las multas cuelgan de la habitación: sin borrarlas, no se puede borrar.
   await prisma.fine.deleteMany();
+  /*
+    Y los folios de gimnasio y los movimientos de caja también apuntan a la
+    habitación, el folio con RESTRICT. Van antes, y el movimiento antes que el
+    folio.
+  */
+  await prisma.cashMovement.deleteMany();
+  await prisma.gymPass.deleteMany();
   await prisma.keyMovement.deleteMany();
   await prisma.roomKey.updateMany({ data: { stayId: null } });
   await prisma.roomStay.deleteMany();

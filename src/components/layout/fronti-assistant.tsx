@@ -42,7 +42,31 @@ type FrontiResponse = {
   config?: ClientConfig;
   reset?: boolean;
   error?: string;
+  /** Causa del fallo, cuando el servidor la supo nombrar. */
+  causa?: string;
+  /** Si insistir tiene alguna posibilidad de servir. */
+  reintentable?: boolean;
 };
+
+/**
+ * Un fallo que ya viene clasificado por el servidor.
+ *
+ * Se envuelve en una clase propia para que el `catch` pueda saber si el fallo
+ * es temporal sin tener que leer el texto del mensaje. El mensaje ya llega en
+ * español y operativo —lo arma `@/domain/assistant-status`— así que la
+ * pantalla no tiene que redactar nada: sólo decide cuántas veces lo repite.
+ */
+class FrontiFailure extends Error {
+  readonly causa: string;
+  readonly reintentable: boolean;
+
+  constructor(message: string, causa: string, reintentable: boolean) {
+    super(message);
+    this.name = 'FrontiFailure';
+    this.causa = causa;
+    this.reintentable = reintentable;
+  }
+}
 
 const API = '/api/fronti';
 const OPEN_KEY = 'fronti-open';
@@ -75,6 +99,8 @@ export function FrontiAssistant() {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const lastActivityRef = useRef(Date.now());
+  /** Última causa de fallo contada, para no repetir el mismo aviso. */
+  const lastFailureRef = useRef<string | null>(null);
 
   useEffect(() => {
     setHydrated(true);
@@ -156,6 +182,29 @@ export function FrontiAssistant() {
     setMessages((current) => [...current, { id: localId(), role: 'assistant', content }]);
   }
 
+  /**
+   * Cuenta un fallo en el chat, sin volverse repetitivo.
+   *
+   * Un fallo definitivo —clave rechazada, modelo inexistente, sin saldo— no se
+   * arregla insistiendo, y el recepcionista sí insiste: es lo natural. Sin
+   * esto, el hilo se llenaba del mismo párrafo una vez por intento y tapaba la
+   * conversación de trabajo. Se dice una vez por causa: si la causa cambia, se
+   * vuelve a decir, porque es información nueva.
+   */
+  function reportFailure(error: unknown) {
+    const fallback = `${config.displayName} no pudo procesar la solicitud.`;
+
+    if (!(error instanceof FrontiFailure)) {
+      addFronti(error instanceof Error ? error.message : fallback);
+      lastFailureRef.current = null;
+      return;
+    }
+
+    const repetido = !error.reintentable && lastFailureRef.current === error.causa;
+    lastFailureRef.current = error.causa;
+    if (!repetido) addFronti(error.message);
+  }
+
   function mergeConfirmations(incoming: Confirmation[]) {
     setConfirmations((current) => {
       const byToken = new Map(current.map((item) => [item.token, item]));
@@ -175,8 +224,17 @@ export function FrontiAssistant() {
       window.location.assign('/login');
       throw new Error('Tu sesión venció.');
     }
-    if (!response.ok) throw new Error(data.error || `${config.displayName} no pudo procesar la solicitud.`);
+    if (!response.ok) {
+      throw new FrontiFailure(
+        data.error || `${config.displayName} no pudo procesar la solicitud.`,
+        data.causa ?? 'DESCONOCIDA',
+        data.reintentable ?? true,
+      );
+    }
     if (data.config) setConfig(data.config);
+    // Una respuesta buena borra la memoria del último fallo: si vuelve a
+    // fallar después, es información nueva y hay que contarla otra vez.
+    lastFailureRef.current = null;
     return data;
   }
 
@@ -204,7 +262,7 @@ export function FrontiAssistant() {
         if (payload.confirmations?.length) mergeConfirmations(payload.confirmations);
       }
     } catch (error) {
-      addFronti(error instanceof Error ? error.message : `${config.displayName} no pudo procesar la solicitud.`);
+      reportFailure(error);
     } finally {
       setBusy(false);
       requestAnimationFrame(() => inputRef.current?.focus());

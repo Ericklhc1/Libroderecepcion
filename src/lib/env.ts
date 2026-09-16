@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeDatabaseEnv } from './database-url';
+import { DEFAULT_ASSISTANT_MODEL } from '@/domain/assistant-status';
 
 /**
  * Validación de variables de entorno. Falla temprano y con mensaje claro si
@@ -18,7 +19,14 @@ const schema = z.object({
   // IA; el endpoint informa claramente si todavía no fue configurada.
   // Nunca se expone al cliente: sólo la consume el servidor.
   OPENAI_API_KEY: z.string().min(1).optional(),
-  OPENAI_MODEL: z.string().min(1).default('gpt-5.6-luna'),
+  /*
+    El valor por omisión sale de una constante declarada en el dominio y no de
+    un literal acá: si el identificador del modelo deja de ser válido, se
+    cambia en un solo lugar. `/api/health/asistente` avisa si OpenAI no lo
+    reconoce, así que un identificador equivocado se detecta en una petición y
+    no cuando alguien le pregunta algo a Fronti.
+  */
+  OPENAI_MODEL: z.string().min(1).default(DEFAULT_ASSISTANT_MODEL),
 
   // Correo saliente. Opcional: si falta, el sistema muestra la clave en
   // pantalla en lugar de enviarla, y lo dice.

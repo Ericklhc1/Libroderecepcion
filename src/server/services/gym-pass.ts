@@ -103,7 +103,16 @@ export async function createGymPass(
       'El pase de gimnasio sólo se puede vender a huéspedes IN_HOUSE o CHECK_OUT cuya salida todavía no haya sido confirmada.',
     );
   }
-  if (!stay.room) throw new NotFoundError('La estadía no tiene habitación asociada.');
+  /*
+    La habitación se saca a una constante propia, y no es estilo: el guard no
+    basta. `stay.room` es opcional, y el estrechamiento que produce este `if`
+    se pierde al entrar en el `$transaction` de más abajo, porque es otra
+    función. `tsc --noEmit` daba cinco «'stay.room' is possibly null» por eso,
+    y el `next build` no los mostraba. Con la constante el estrechamiento
+    sobrevive y el fallo sería visible acá, antes de abrir la transacción.
+  */
+  const room = stay.room;
+  if (!room) throw new NotFoundError('La estadía no tiene habitación asociada.');
   if (!shift) throw new RuleError('Debes estar asignado al turno vigente para vender un pase.');
 
   const guestName = stay.guestNames[0]?.trim() || 'Huésped';
@@ -128,10 +137,10 @@ export async function createGymPass(
         description:
           `Pase de gimnasio emitido. Folio ${formattedFolio}. ` +
           `Reserva ${stay.reservationId}. Huésped ${guestName}. ` +
-          `Habitación ${stay.room.number}. ${params.currency} ${amount}. ` +
+          `Habitación ${room.number}. ${params.currency} ${amount}. ` +
           `Pago: ${params.paymentMethod.toLowerCase()}.`,
         category: 'PASE_GIMNASIO',
-        roomId: stay.room.id,
+        roomId: room.id,
         reservationId: stay.reservationRefId,
         priority: Priority.BAJA,
         ownerId: user.id,
@@ -161,7 +170,7 @@ export async function createGymPass(
         currency: params.currency,
         amount,
         shiftId: shift.id,
-        roomId: stay.room.id,
+        roomId: room.id,
         reservationReferenceId: stay.reservationRefId,
         reference: `Folio ${formattedFolio} · reserva ${stay.reservationId}`,
         notes: `Pase de gimnasio · ${guestName} · registro ${entry.id}`,
@@ -174,11 +183,11 @@ export async function createGymPass(
         entityId: entry.id,
         action: AuditAction.CREAR,
         user,
-        summary: `Pase de gimnasio ${formattedFolio} · hab. ${stay.room.number} · reserva ${stay.reservationId} · ${params.currency} ${amount}`,
+        summary: `Pase de gimnasio ${formattedFolio} · hab. ${room.number} · reserva ${stay.reservationId} · ${params.currency} ${amount}`,
         after: {
           folio: formattedFolio,
           stayId: stay.id,
-          roomNumber: stay.room.number,
+          roomNumber: room.number,
           reservationCode: stay.reservationId,
           guestName,
           currency: params.currency,

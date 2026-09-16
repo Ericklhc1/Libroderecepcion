@@ -10,10 +10,17 @@ import { Button } from './button';
 /**
  * Modal simple y accesible para las acciones rápidas del Libro.
  *
- * El panel siempre se monta en `document.body` y se centra contra el viewport,
- * no contra el contenedor donde vive el botón. El alto máximo usa `dvh` para
- * respetar la ventana visible real; cuando el formulario es largo, sólo se
- * desplaza el cuerpo del diálogo y la cabecera permanece visible.
+ * El panel se monta en `document.body`, pero su centro NO se calcula a partir
+ * del contenedor de la aplicación. El Libro tiene una barra lateral fija en
+ * escritorio y un centrado por flex podía terminar tomando como referencia la
+ * columna de contenido, dejando la ventana corrida hacia la derecha.
+ *
+ * Por eso el panel se posiciona explícitamente en 50vw / 50dvh: son unidades
+ * del viewport real. La barra lateral, el ancho del contenido y cualquier
+ * wrapper de la página dejan de participar en el cálculo.
+ *
+ * Cuando el formulario es largo, sólo se desplaza el cuerpo del diálogo y la
+ * cabecera permanece visible.
  */
 export function Dialog({
   trigger,
@@ -42,6 +49,7 @@ export function Dialog({
 
   useEffect(() => {
     if (!open) return;
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
@@ -59,7 +67,7 @@ export function Dialog({
 
   const overlay = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-petrol-950/40 p-4 overscroll-contain"
+      className="fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) setOpen(false);
       }}
@@ -71,7 +79,15 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-2xl bg-white shadow-xl outline-none animate-fade-in',
+          /*
+            `vw` / `dvh` fuerzan el centro de la pantalla completa. No usar
+            `items-center` acá: el diálogo no debe poder heredar el ancho útil
+            de la columna principal del shell.
+
+            Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
+            `transform` y pisaría el `translate` que hace el centrado.
+          */
+          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-xl outline-none',
           width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
         )}
       >
@@ -91,6 +107,7 @@ export function Dialog({
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <DialogProvider close={() => setOpen(false)}>{children}</DialogProvider>
         </div>

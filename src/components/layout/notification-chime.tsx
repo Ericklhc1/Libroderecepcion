@@ -24,6 +24,8 @@ import { getUnreadCounts } from '@/server/actions/notifications';
 
 /** Intervalo de consulta. 20 s: el mesón no necesita más, la base tampoco. */
 const POLL_MS = 20_000;
+const KEEP_ALIVE_MS = 4 * 60_000;
+const RECENT_ACTIVITY_MS = 10 * 60_000;
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 
 type Counts = { notifications: number; alerts: number };
@@ -122,6 +124,8 @@ export function NotificationChime({
     notifications: initialNotifications,
     alerts: initialAlerts,
   });
+  const lastActivityAt = useRef(Date.now());
+  const lastKeepAliveAt = useRef(0);
   const [muted, setMuted] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -147,6 +151,55 @@ export function NotificationChime({
     return () => {
       window.removeEventListener('pointerdown', prime);
       window.removeEventListener('keydown', prime);
+    };
+  }, []);
+
+  /*
+    La sesión se mantiene viva mientras el recepcionista realmente está usando
+    el Libro. Una pestaña visible pero abandonada NO renueva por sí sola la
+    sesión: hace falta actividad reciente de teclado, puntero, toque o scroll.
+  */
+  useEffect(() => {
+    const keepAlive = async () => {
+      const now = Date.now();
+      if (document.visibilityState !== 'visible') return;
+      if (now - lastActivityAt.current > RECENT_ACTIVITY_MS) return;
+      if (now - lastKeepAliveAt.current < KEEP_ALIVE_MS - 10_000) return;
+
+      lastKeepAliveAt.current = now;
+      try {
+        const response = await fetch('/api/asistente?heartbeat=1&active=1', {
+          cache: 'no-store',
+        });
+        if (response.status === 401) window.location.assign('/login');
+      } catch {
+        // La red puede fallar momentáneamente; el siguiente pulso reintentará.
+      }
+    };
+
+    const markActivity = () => {
+      lastActivityAt.current = Date.now();
+      void keepAlive();
+    };
+
+    const interval = window.setInterval(() => void keepAlive(), KEEP_ALIVE_MS);
+    window.addEventListener('pointerdown', markActivity, { passive: true });
+    window.addEventListener('keydown', markActivity);
+    window.addEventListener('touchstart', markActivity, { passive: true });
+    window.addEventListener('scroll', markActivity, { passive: true });
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') markActivity();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('pointerdown', markActivity);
+      window.removeEventListener('keydown', markActivity);
+      window.removeEventListener('touchstart', markActivity);
+      window.removeEventListener('scroll', markActivity);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 

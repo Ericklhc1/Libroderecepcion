@@ -13,7 +13,6 @@ export type NavItem = {
     | 'metrics'
     | 'room'
     | 'key'
-    | 'cash'
     | 'admin';
   /** Se muestra si el usuario tiene al menos uno de estos permisos. */
   anyOf?: PermissionKey[];
@@ -46,7 +45,7 @@ const PRIMARY: NavItem[] = [
   {
     href: '/caja',
     label: 'Caja',
-    icon: 'cash',
+    icon: 'key',
     anyOf: ['room.view'],
     mobile: true,
   },

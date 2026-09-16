@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, Clock, Send, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getHistory } from '@/server/services/history';
+import { getMyOpenShift } from '@/server/services/shifts';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { CashBox } from '@/components/operational/cash-box';
@@ -62,14 +63,31 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const [history, cashState, denominations] = await Promise.all([
+  const [history, cashState, denominations, myOpenShift] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
+    getMyOpenShift(user.id),
   ]);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
-  const isReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
+  const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
+  /*
+    Una entrega se envía a la bandeja con `toShiftId = null`: el turno entrante
+    todavía no existe en ese momento. Por eso el receptor no puede depender de
+    `toShift`; basta con que tenga un turno abierto distinto del saliente y que
+    la entrega siga ENVIADA. `receiveHandover` fijará el destino definitivo al
+    confirmar. Sin esta regla el receptor nunca podía contar la caja, y la
+    recepción exigía precisamente ese recuento: un bloqueo circular.
+  */
+  const inboxReceiver = Boolean(
+    handover.status === HandoverStatus.ENVIADA &&
+      !handover.toShiftId &&
+      myOpenShift &&
+      myOpenShift.id !== handover.fromShiftId &&
+      myOpenShift.assignments.some((a) => a.userId === user.id),
+  );
+  const isReceiver = linkedReceiver || inboxReceiver;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
 
@@ -146,7 +164,7 @@ export default async function HandoverPage({
                     {formatDate(handover.toShift.date)}
                   </Chip>
                 ) : (
-                  <Chip>Sin turno siguiente programado</Chip>
+                  <Chip>En bandeja · sin receptor confirmado</Chip>
                 )}
               </div>
               <h1 className="mt-2 text-xl font-semibold text-petrol-900">Entrega de turno</h1>
@@ -328,7 +346,7 @@ export default async function HandoverPage({
                 confirmarla.
                 {handover.toShift
                   ? ` Destinatario: turno ${SHIFT_TYPE_LABEL[handover.toShift.type]} (${handover.toShift.assignments.map((a) => a.user.name).join(', ') || 'sin personal asignado'}).`
-                  : ' No hay turno siguiente programado: quedará disponible para quien lo inicie.'}
+                  : ' Quedará en la bandeja para que el próximo turno la revise y la reciba.'}
               </p>
               <SendHandoverForm shiftId={handover.fromShiftId} />
             </div>
@@ -340,7 +358,7 @@ export default async function HandoverPage({
         <Card className="no-print">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
             <p className="text-sm text-slate-700">
-              Esta entrega está dirigida a tu turno. Confírmala desde tu turno para activarlo.
+              Esta entrega está disponible para tu turno. Recuenta la caja y los elementos y luego confírmala desde Mi turno.
             </p>
             <Link
               href="/turno"

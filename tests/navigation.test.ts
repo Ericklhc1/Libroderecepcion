@@ -179,3 +179,73 @@ describe('todo el menú es alcanzable en móvil', () => {
     expect(visibles.map((item) => item.href)).toContain('/llaves');
   });
 });
+
+/**
+ * Cerrar sesión, en cualquier pantalla.
+ *
+ * Fallo real reportado: «no hay botón de cerrar sesión». Existía, pero vivía
+ * **sólo** dentro del `<aside>`, que es `hidden lg:flex`, así que por debajo de
+ * 1024 px no había ninguna forma de salir —ni el perfil la ofrecía—.
+ *
+ * Es el mismo descuido que dejó cinco destinos inalcanzables en el teléfono, y
+ * en un mesón que se comparte entre turnos es más grave: si el que entra no
+ * puede cerrar la sesión del que sale, opera con la cuenta ajena y el libro
+ * atribuye sus actos a otra persona.
+ *
+ * Se comprueba sobre el código fuente porque lo que falla acá no es una regla
+ * de dominio, es **dónde está el botón**: fuera del `lg:` del aside.
+ */
+describe('cerrar sesión es alcanzable en cualquier pantalla', () => {
+  const LOGOUT = 'logoutAction';
+
+  it('el menú móvil ofrece cerrar sesión', () => {
+    const source = readFileSync('src/components/layout/nav.tsx', 'utf-8');
+    expect(source).toContain(LOGOUT);
+    expect(source).toContain('Cerrar sesión');
+  });
+
+  it('el perfil ofrece cerrar sesión', () => {
+    // La casa natural: es la página de mi cuenta.
+    const source = readFileSync('src/app/(app)/perfil/page.tsx', 'utf-8');
+    expect(source).toContain(LOGOUT);
+    expect(source).toContain('Cerrar sesión');
+  });
+
+  it('y el perfil es alcanzable desde el teléfono', () => {
+    /*
+      Sin esto, tener el botón en el perfil no serviría de nada: la cadena
+      completa es cabecera móvil → perfil → cerrar sesión.
+    */
+    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
+    expect(layout).toMatch(/href="\/perfil"[\s\S]{0,200}lg:hidden/);
+  });
+
+  /*
+    La prueba que habría cazado el fallo: si el ÚNICO `logoutAction` del layout
+    está dentro del aside oculto, no hay salida en móvil. Se exige que exista
+    en otro sitio además del aside.
+  */
+  it('no depende sólo de la barra lateral, que se oculta en móvil', () => {
+    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
+    const asideStart = layout.indexOf('<aside');
+    const asideEnd = layout.indexOf('</aside>');
+    expect(asideStart).toBeGreaterThan(-1);
+
+    const dentroDelAside = layout.slice(asideStart, asideEnd);
+    // El aside sigue teniéndolo, que es lo cómodo en escritorio.
+    expect(dentroDelAside).toContain(LOGOUT);
+    // Y el aside sigue oculto bajo `lg`, así que no puede ser el único camino.
+    expect(dentroDelAside).toContain('lg:flex');
+
+    const fueraDelAside =
+      layout.slice(0, asideStart) + layout.slice(asideEnd);
+    const hayOtraPuerta =
+      fueraDelAside.includes(LOGOUT) ||
+      readFileSync('src/components/layout/nav.tsx', 'utf-8').includes(LOGOUT) ||
+      readFileSync('src/app/(app)/perfil/page.tsx', 'utf-8').includes(LOGOUT);
+    expect(
+      hayOtraPuerta,
+      'cerrar sesión sólo existe dentro del aside oculto: en móvil no hay salida',
+    ).toBe(true);
+  });
+});

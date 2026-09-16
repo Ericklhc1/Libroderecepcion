@@ -12,12 +12,15 @@ import {
   History,
   Home,
   KeyRound,
+  LogOut,
   Settings,
   ShieldCheck,
   Menu,
+  UserRound,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { logoutAction } from '@/server/actions/auth';
 import type { NavGroup, NavItem } from './nav-items';
 
 const ICONS = {
@@ -106,6 +109,12 @@ export function SidebarNav({
  * así que sin él Llaves, Huéspedes, Historial, Indicadores y Administración
  * quedaban **inalcanzables desde el teléfono**. La barra sólo pintaba cinco
  * elementos y los demás no tenían ninguna otra puerta.
+ *
+ * El panel cierra con **mi perfil y cerrar sesión**, por el mismo motivo y
+ * corrigiendo el mismo descuido: el único botón de cerrar sesión vivía dentro
+ * del `<aside>` oculto, así que **desde el teléfono no había forma de salir**.
+ * En un mesón que se comparte entre turnos, no poder cerrar sesión no es una
+ * incomodidad: es que el siguiente opera con la cuenta del anterior.
  */
 export function MobileNav({
   items,
@@ -186,6 +195,29 @@ export function MobileNav({
                 );
               })}
             </ul>
+
+            {/*
+              La cuenta, separada del menú por una línea: no es un destino
+              operativo, es de quién es esta sesión.
+            */}
+            <div className="mt-2 border-t border-slate-200 pt-2">
+              <Link
+                href="/perfil"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 active:bg-slate-100"
+              >
+                <UserRound className="h-5 w-5 shrink-0 text-petrol-600" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">Mi perfil</span>
+              </Link>
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-700 active:bg-red-50"
+                >
+                  <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate text-left">Cerrar sesión</span>
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       ) : null}

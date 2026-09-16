@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
+import { KeyRound, LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Chip } from '@/components/ui/badge';
 import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
 import { displayUsername } from '@/domain/username';
+import { logoutAction } from '@/server/actions/auth';
 
 export const metadata = { title: 'Mi perfil' };
 export const dynamic = 'force-dynamic';
@@ -79,7 +80,7 @@ export default async function ProfilePage() {
             </dd>
           </div>
         </dl>
-        <div className="border-t border-slate-200 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3">
           <Link
             href="/cambiar-contrasena"
             className="inline-flex items-center gap-2 rounded-lg bg-petrol-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-petrol-800"
@@ -87,6 +88,23 @@ export default async function ProfilePage() {
             <KeyRound className="h-4 w-4" aria-hidden="true" />
             Cambiar contraseña
           </Link>
+          {/*
+            Cerrar sesión vive acá además de en el menú, y es la casa natural:
+            es la página de MI cuenta, así que es donde cualquiera lo busca.
+            Estaba sólo en la barra lateral, que se oculta por debajo de `lg`:
+            desde el teléfono no había ninguna forma de salir, y en un mesón que
+            se comparte entre turnos eso significa que el siguiente opera con la
+            cuenta del anterior.
+          */}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-red-700 ring-1 ring-red-200 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              Cerrar sesión
+            </button>
+          </form>
         </div>
       </Card>
 

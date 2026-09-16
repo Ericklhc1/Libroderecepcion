@@ -221,7 +221,7 @@ describe('resumen automático de la entrega', () => {
       requiresFollowUp: false,
     });
 
-    await startShift(user, shiftA.id);
+    await startShift(user, shiftA);
     await receiveHandover(user, { shiftId: shiftA.id });
     await prepareHandover(user, shiftA.id);
     const sent = await sendHandover(user, { shiftId: shiftA.id });

@@ -40,9 +40,16 @@ HOTEL_TIMEZONE="America/Santiago"
 # Correo saliente (opcional).
 # Se usa para enviar la clave temporal de cada usuario nuevo. Si no está
 # configurado, el sistema muestra la clave en pantalla una sola vez y lo avisa.
+#
+# El puerto decide el cifrado, y lo decide el código, no una variable aparte:
+# 465 = TLS directo (SSL); 587 = STARTTLS. Ver `src/server/mail.ts`.
+#
+# NINGÚN valor real va acá. El servidor de correo del hotel se configura
+# exclusivamente en las variables de entorno de la plataforma de despliegue,
+# donde quedan cifradas. Este archivo sólo dice QUÉ hay que rellenar.
 # ---------------------------------------------------------------------------
 SMTP_HOST=""
-SMTP_PORT="587"
+SMTP_PORT="465"
 SMTP_USER=""
 SMTP_PASSWORD=""
 MAIL_FROM="Libro Operativo <no-reply@hoteleshw.com>"

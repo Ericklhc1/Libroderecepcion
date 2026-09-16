@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // Conexión de la aplicación. En proveedores con agrupador de conexiones
   // (Neon, Supabase) es la URL agrupada.
   url       = env("DATABASE_URL")
@@ -275,88 +275,95 @@ model RolePermission {
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  email              String    @unique
-  /// Nombre de usuario corto, del estilo @EHerrera. Sirve para identificar a
-  /// la persona en el mesón sin escribir el correo completo.
-  username           String    @unique
+  id                 String      @id @default(cuid())
+  /// Correo de contacto, NO identificador: varias cuentas pueden compartirlo
+  /// (todo el mesón usa la casilla de recepción). Por eso no es único.
+  email              String
+  /// Nombre de usuario corto, del estilo @EHerrera. Es la identidad de la
+  /// cuenta: con esto se inicia sesión y esto decide qué permisos aplican.
+  username           String      @unique
   name               String
   passwordHash       String
   roleId             String
-  role               Role      @relation(fields: [roleId], references: [id])
+  role               Role        @relation(fields: [roleId], references: [id])
   departmentId       String?
   department         Department? @relation(fields: [departmentId], references: [id])
   phone              String?
-  active             Boolean   @default(true)
-  mustChangePassword Boolean   @default(false)
+  active             Boolean     @default(true)
+  mustChangePassword Boolean     @default(false)
   lastLoginAt        DateTime?
-  failedAttempts     Int       @default(0)
+  failedAttempts     Int         @default(0)
   lockedUntil        DateTime?
-  isDemo             Boolean   @default(false)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  isDemo             Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
   deletedAt          DateTime?
   deletedById        String?
   deletionReason     String?
 
   sessions           Session[]
   assignments        ShiftAssignment[]
-  shiftsCreated      Shift[]            @relation("shiftCreatedBy")
-  handoversIssued    ShiftHandover[]    @relation("handoverIssuedBy")
-  handoversReceived  ShiftHandover[]    @relation("handoverReceivedBy")
-  entriesCreated     OperationalEntry[] @relation("entryCreatedBy")
-  entriesOwned       OperationalEntry[] @relation("entryOwner")
-  entriesClosed      OperationalEntry[] @relation("entryClosedBy")
-  tasksCreated       Task[]             @relation("taskCreatedBy")
-  tasksAssigned      Task[]             @relation("taskAssignee")
-  followUpsOwned     FollowUp[]         @relation("followUpOwner")
-  followUpsCreated   FollowUp[]         @relation("followUpCreatedBy")
+  shiftsCreated      Shift[]             @relation("shiftCreatedBy")
+  handoversIssued    ShiftHandover[]     @relation("handoverIssuedBy")
+  handoversReceived  ShiftHandover[]     @relation("handoverReceivedBy")
+  entriesCreated     OperationalEntry[]  @relation("entryCreatedBy")
+  entriesOwned       OperationalEntry[]  @relation("entryOwner")
+  entriesClosed      OperationalEntry[]  @relation("entryClosedBy")
+  tasksCreated       Task[]              @relation("taskCreatedBy")
+  tasksAssigned      Task[]              @relation("taskAssignee")
+  followUpsOwned     FollowUp[]          @relation("followUpOwner")
+  followUpsCreated   FollowUp[]          @relation("followUpCreatedBy")
   comments           Comment[]
   attachments        Attachment[]
-  alertsCreated      Alert[]            @relation("alertCreatedBy")
-  alertsAcknowledged Alert[]            @relation("alertAckBy")
-  alertsResolved     Alert[]            @relation("alertResolvedBy")
+  alertsCreated      Alert[]             @relation("alertCreatedBy")
+  alertsAcknowledged Alert[]             @relation("alertAckBy")
+  alertsResolved     Alert[]             @relation("alertResolvedBy")
   auditLogs          AuditLog[]
   notifications      Notification[]
   settingsUpdated    SystemSetting[]
   checklistDone      TaskChecklistItem[]
-  staysConfirmed     RoomStay[]         @relation("stayConfirmedBy")
-  keysAssigned       RoomKey[]          @relation("keyAssignedBy")
-  keyMovements       KeyMovement[]      @relation("keyMovementBy")
-  batchesCreated     PmsImportBatch[]   @relation("batchCreatedBy")
-  batchesApplied     PmsImportBatch[]   @relation("batchAppliedBy")
-  guaranteesCreated  Guarantee[] @relation("guaranteeCreatedBy")
-  guaranteesReturned Guarantee[] @relation("guaranteeReturnedBy")
-  guaranteesDeleted  Guarantee[] @relation("guaranteeDeletedBy")
+  staysConfirmed     RoomStay[]          @relation("stayConfirmedBy")
+  keysAssigned       RoomKey[]           @relation("keyAssignedBy")
+  keyMovements       KeyMovement[]       @relation("keyMovementBy")
+  batchesCreated     PmsImportBatch[]    @relation("batchCreatedBy")
+  batchesApplied     PmsImportBatch[]    @relation("batchAppliedBy")
+  guaranteesCreated  Guarantee[]         @relation("guaranteeCreatedBy")
+  guaranteesReturned Guarantee[]         @relation("guaranteeReturnedBy")
+  guaranteesDeleted  Guarantee[]         @relation("guaranteeDeletedBy")
 
   @@index([roleId])
   @@index([active])
   @@index([deletedAt])
+  // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
+  // usan esta casilla?), así que conserva índice propio.
+  @@index([email])
 }
 
 model Session {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
-  expiresAt DateTime
-  revokedAt DateTime?
-  lastSeenAt DateTime @default(now())
-  ip        String?
-  userAgent String?
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastSeenAt DateTime  @default(now())
+  ip         String?
+  userAgent  String?
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model LoginAttempt {
-  id        String   @id @default(cuid())
-  email     String
-  ip        String?
-  success   Boolean
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  /// Lo que escribió quien intentó entrar: ahora un nombre de usuario, no un
+  /// correo. Se guarda tal cual se recibió, exista la cuenta o no.
+  identifier String
+  ip         String?
+  success    Boolean
+  createdAt  DateTime @default(now())
 
-  @@index([email, createdAt])
+  @@index([identifier, createdAt])
 }
 
 // ================================= ÁREAS ==================================
@@ -371,37 +378,37 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  entries   OperationalEntry[]
-  tasks     Task[]
-  alerts    Alert[]
+  users   User[]
+  entries OperationalEntry[]
+  tasks   Task[]
+  alerts  Alert[]
 }
 
 // ================================= TURNOS =================================
 
 model Shift {
-  id            String      @id @default(cuid())
-  date          DateTime    @db.Date
-  type          ShiftType
-  status        ShiftStatus @default(PROGRAMADO)
-  plannedStart  DateTime
-  plannedEnd    DateTime
-  actualStart   DateTime?
-  actualEnd     DateTime?
-  notes         String?
-  createdById   String?
-  createdBy     User?       @relation("shiftCreatedBy", fields: [createdById], references: [id])
-  startedById   String?
-  closedById    String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  isDemo        Boolean     @default(false)
+  id           String      @id @default(cuid())
+  date         DateTime    @db.Date
+  type         ShiftType
+  status       ShiftStatus @default(PROGRAMADO)
+  plannedStart DateTime
+  plannedEnd   DateTime
+  actualStart  DateTime?
+  actualEnd    DateTime?
+  notes        String?
+  createdById  String?
+  createdBy    User?       @relation("shiftCreatedBy", fields: [createdById], references: [id])
+  startedById  String?
+  closedById   String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  isDemo       Boolean     @default(false)
 
-  assignments   ShiftAssignment[]
-  handoverOut   ShiftHandover?  @relation("handoverFromShift")
-  handoverIn    ShiftHandover[] @relation("handoverToShift")
-  entries       OperationalEntry[]
-  tasks         Task[]
+  assignments ShiftAssignment[]
+  handoverOut ShiftHandover?     @relation("handoverFromShift")
+  handoverIn  ShiftHandover[]    @relation("handoverToShift")
+  entries     OperationalEntry[]
+  tasks       Task[]
 
   @@unique([date, type])
   @@index([status])
@@ -445,10 +452,10 @@ model ShiftHandover {
   updatedAt            DateTime       @updatedAt
   isDemo               Boolean        @default(false)
 
-  items                HandoverItem[]
-  comments             Comment[]
-  tasks                Task[]
-  alerts               Alert[]
+  items    HandoverItem[]
+  comments Comment[]
+  tasks    Task[]
+  alerts   Alert[]
 
   @@index([status])
 }
@@ -475,38 +482,38 @@ model HandoverItem {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
-  id             String      @id @default(cuid())
-  seq            Int         @unique @default(autoincrement())
-  type           EntryType
-  title          String
-  description    String
-  category       String?
-  departmentId   String?
-  department     Department? @relation(fields: [departmentId], references: [id])
-  priority       Priority    @default(MEDIA)
-  status         EntryStatus @default(ABIERTO)
-  occurredAt     DateTime    @default(now())
-  dueAt          DateTime?
-  tags           String[]    @default([])
-  requiresFollowUp Boolean   @default(false)
+  id               String      @id @default(cuid())
+  seq              Int         @unique @default(autoincrement())
+  type             EntryType
+  title            String
+  description      String
+  category         String?
+  departmentId     String?
+  department       Department? @relation(fields: [departmentId], references: [id])
+  priority         Priority    @default(MEDIA)
+  status           EntryStatus @default(ABIERTO)
+  occurredAt       DateTime    @default(now())
+  dueAt            DateTime?
+  tags             String[]    @default([])
+  requiresFollowUp Boolean     @default(false)
 
-  createdById    String
-  createdBy      User        @relation("entryCreatedBy", fields: [createdById], references: [id])
-  ownerId        String?
-  owner          User?       @relation("entryOwner", fields: [ownerId], references: [id])
-  shiftId        String?
-  shift          Shift?      @relation(fields: [shiftId], references: [id])
+  createdById String
+  createdBy   User    @relation("entryCreatedBy", fields: [createdById], references: [id])
+  ownerId     String?
+  owner       User?   @relation("entryOwner", fields: [ownerId], references: [id])
+  shiftId     String?
+  shift       Shift?  @relation(fields: [shiftId], references: [id])
 
   // Una incidencia debe tener contexto: habitación o área. Se valida en
   // servidor; el esquema deja ambos campos opcionales porque los demás tipos
   // de registro no lo exigen.
-  roomId         String?
-  room           Room?       @relation(fields: [roomId], references: [id])
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
 
-  guestId        String?
-  guest          GuestReference? @relation(fields: [guestId], references: [id])
-  reservationId  String?
-  reservation    ReservationReference? @relation(fields: [reservationId], references: [id])
+  guestId       String?
+  guest         GuestReference?       @relation(fields: [guestId], references: [id])
+  reservationId String?
+  reservation   ReservationReference? @relation(fields: [reservationId], references: [id])
 
   // --- Campos específicos de incidencia (nulos en otros tipos) ---
   severity        Severity?
@@ -515,23 +522,23 @@ model OperationalEntry {
   rootCause       String?
   resolution      String?
 
-  closedAt       DateTime?
-  closedById     String?
-  closedBy       User?       @relation("entryClosedBy", fields: [closedById], references: [id])
-  reopenedAt     DateTime?
+  closedAt   DateTime?
+  closedById String?
+  closedBy   User?     @relation("entryClosedBy", fields: [closedById], references: [id])
+  reopenedAt DateTime?
 
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
   deletedById    String?
   deletionReason String?
-  isDemo         Boolean     @default(false)
+  isDemo         Boolean   @default(false)
 
-  tasks          Task[]
-  followUps      FollowUp[]
-  comments       Comment[]
-  attachments    Attachment[]
-  alerts         Alert[]
+  tasks       Task[]
+  followUps   FollowUp[]
+  comments    Comment[]
+  attachments Attachment[]
+  alerts      Alert[]
 
   @@index([type, status])
   @@index([status, priority])
@@ -544,50 +551,50 @@ model OperationalEntry {
 }
 
 model Task {
-  id             String     @id @default(cuid())
-  seq            Int        @unique @default(autoincrement())
-  title          String
-  description    String?
-  status         TaskStatus @default(PENDIENTE)
-  priority       Priority   @default(MEDIA)
-  origin         TaskOrigin @default(MANUAL)
-  dueAt          DateTime?
-  tags           String[]   @default([])
-  blockedReason  String?
+  id            String     @id @default(cuid())
+  seq           Int        @unique @default(autoincrement())
+  title         String
+  description   String?
+  status        TaskStatus @default(PENDIENTE)
+  priority      Priority   @default(MEDIA)
+  origin        TaskOrigin @default(MANUAL)
+  dueAt         DateTime?
+  tags          String[]   @default([])
+  blockedReason String?
 
-  assigneeId     String?
-  assignee       User?      @relation("taskAssignee", fields: [assigneeId], references: [id])
-  createdById    String
-  createdBy      User       @relation("taskCreatedBy", fields: [createdById], references: [id])
-  departmentId   String?
-  department     Department? @relation(fields: [departmentId], references: [id])
-  shiftId        String?
-  shift          Shift?     @relation(fields: [shiftId], references: [id])
+  assigneeId   String?
+  assignee     User?       @relation("taskAssignee", fields: [assigneeId], references: [id])
+  createdById  String
+  createdBy    User        @relation("taskCreatedBy", fields: [createdById], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  shiftId      String?
+  shift        Shift?      @relation(fields: [shiftId], references: [id])
 
-  entryId        String?
-  entry          OperationalEntry? @relation(fields: [entryId], references: [id])
-  handoverId     String?
-  handover       ShiftHandover?    @relation(fields: [handoverId], references: [id])
-  followUpId     String?
-  followUp       FollowUp?         @relation("followUpTasks", fields: [followUpId], references: [id])
-  alertId        String?
-  sourceAlert    Alert?            @relation("alertTasks", fields: [alertId], references: [id])
+  entryId     String?
+  entry       OperationalEntry? @relation(fields: [entryId], references: [id])
+  handoverId  String?
+  handover    ShiftHandover?    @relation(fields: [handoverId], references: [id])
+  followUpId  String?
+  followUp    FollowUp?         @relation("followUpTasks", fields: [followUpId], references: [id])
+  alertId     String?
+  sourceAlert Alert?            @relation("alertTasks", fields: [alertId], references: [id])
 
-  completedAt    DateTime?
-  completedById  String?
+  completedAt   DateTime?
+  completedById String?
 
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
   deletedById    String?
   deletionReason String?
-  isDemo         Boolean    @default(false)
+  isDemo         Boolean   @default(false)
 
-  checklist      TaskChecklistItem[]
-  comments       Comment[]
-  attachments    Attachment[]
-  followUps      FollowUp[]  @relation("taskFollowUps")
-  alerts         Alert[]     @relation("taskAlerts")
+  checklist   TaskChecklistItem[]
+  comments    Comment[]
+  attachments Attachment[]
+  followUps   FollowUp[]          @relation("taskFollowUps")
+  alerts      Alert[]             @relation("taskAlerts")
 
   @@index([status, dueAt])
   @@index([createdAt])
@@ -597,49 +604,49 @@ model Task {
 }
 
 model TaskChecklistItem {
-  id       String   @id @default(cuid())
+  id       String    @id @default(cuid())
   taskId   String
-  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   text     String
-  done     Boolean  @default(false)
-  order    Int      @default(0)
+  done     Boolean   @default(false)
+  order    Int       @default(0)
   doneAt   DateTime?
   doneById String?
-  doneBy   User?    @relation(fields: [doneById], references: [id])
+  doneBy   User?     @relation(fields: [doneById], references: [id])
 
   @@index([taskId])
 }
 
 model FollowUp {
-  id             String         @id @default(cuid())
-  action         String
-  result         String?
-  nextAction     String?
-  scheduledAt    DateTime?
-  notes          String?
-  status         FollowUpStatus @default(PENDIENTE)
+  id          String         @id @default(cuid())
+  action      String
+  result      String?
+  nextAction  String?
+  scheduledAt DateTime?
+  notes       String?
+  status      FollowUpStatus @default(PENDIENTE)
 
-  ownerId        String
-  owner          User           @relation("followUpOwner", fields: [ownerId], references: [id])
-  createdById    String
-  createdBy      User           @relation("followUpCreatedBy", fields: [createdById], references: [id])
+  ownerId     String
+  owner       User   @relation("followUpOwner", fields: [ownerId], references: [id])
+  createdById String
+  createdBy   User   @relation("followUpCreatedBy", fields: [createdById], references: [id])
 
-  entryId        String?
-  entry          OperationalEntry? @relation(fields: [entryId], references: [id])
-  taskId         String?
-  task           Task?          @relation("taskFollowUps", fields: [taskId], references: [id])
+  entryId String?
+  entry   OperationalEntry? @relation(fields: [entryId], references: [id])
+  taskId  String?
+  task    Task?             @relation("taskFollowUps", fields: [taskId], references: [id])
 
   completedAt    DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
   deletedById    String?
   deletionReason String?
-  isDemo         Boolean        @default(false)
+  isDemo         Boolean   @default(false)
 
-  comments       Comment[]
-  alerts         Alert[]        @relation("followUpAlerts")
-  tasks          Task[]         @relation("followUpTasks")
+  comments Comment[]
+  alerts   Alert[]   @relation("followUpAlerts")
+  tasks    Task[]    @relation("followUpTasks")
 
   @@index([status, scheduledAt])
   @@index([createdAt])
@@ -649,54 +656,54 @@ model FollowUp {
 }
 
 model Alert {
-  id             String      @id @default(cuid())
-  type           AlertType
-  level          AlertLevel  @default(ATENCION)
-  title          String
-  message        String?
-  status         AlertStatus @default(NUEVA)
-  dueAt          DateTime?
-  snoozedUntil   DateTime?
+  id           String      @id @default(cuid())
+  type         AlertType
+  level        AlertLevel  @default(ATENCION)
+  title        String
+  message      String?
+  status       AlertStatus @default(NUEVA)
+  dueAt        DateTime?
+  snoozedUntil DateTime?
   /// Clave de deduplicación del motor automático (una alerta viva por origen).
-  dedupeKey      String?     @unique
-  auto           Boolean     @default(false)
+  dedupeKey    String?     @unique
+  auto         Boolean     @default(false)
 
-  entryId        String?
-  entry          OperationalEntry? @relation(fields: [entryId], references: [id])
-  taskId         String?
-  task           Task?       @relation("taskAlerts", fields: [taskId], references: [id])
-  followUpId     String?
-  followUp       FollowUp?   @relation("followUpAlerts", fields: [followUpId], references: [id])
-  handoverId     String?
-  handover       ShiftHandover? @relation(fields: [handoverId], references: [id])
-  guestId        String?
-  guest          GuestReference? @relation(fields: [guestId], references: [id])
-  reservationId  String?
-  reservation    ReservationReference? @relation(fields: [reservationId], references: [id])
-  departmentId   String?
-  department     Department? @relation(fields: [departmentId], references: [id])
+  entryId       String?
+  entry         OperationalEntry?     @relation(fields: [entryId], references: [id])
+  taskId        String?
+  task          Task?                 @relation("taskAlerts", fields: [taskId], references: [id])
+  followUpId    String?
+  followUp      FollowUp?             @relation("followUpAlerts", fields: [followUpId], references: [id])
+  handoverId    String?
+  handover      ShiftHandover?        @relation(fields: [handoverId], references: [id])
+  guestId       String?
+  guest         GuestReference?       @relation(fields: [guestId], references: [id])
+  reservationId String?
+  reservation   ReservationReference? @relation(fields: [reservationId], references: [id])
+  departmentId  String?
+  department    Department?           @relation(fields: [departmentId], references: [id])
 
-  createdById    String?
-  createdBy      User?       @relation("alertCreatedBy", fields: [createdById], references: [id])
+  createdById      String?
+  createdBy        User?     @relation("alertCreatedBy", fields: [createdById], references: [id])
   acknowledgedById String?
-  acknowledgedBy User?       @relation("alertAckBy", fields: [acknowledgedById], references: [id])
-  acknowledgedAt DateTime?
-  resolvedById   String?
-  resolvedBy     User?       @relation("alertResolvedBy", fields: [resolvedById], references: [id])
-  resolvedAt     DateTime?
-  resolutionNote String?
+  acknowledgedBy   User?     @relation("alertAckBy", fields: [acknowledgedById], references: [id])
+  acknowledgedAt   DateTime?
+  resolvedById     String?
+  resolvedBy       User?     @relation("alertResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt       DateTime?
+  resolutionNote   String?
 
   guaranteeId    String?
-  guarantee      Guarantee?  @relation(fields: [guaranteeId], references: [id])
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  guarantee      Guarantee? @relation(fields: [guaranteeId], references: [id])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
   deletedById    String?
   deletionReason String?
-  isDemo         Boolean     @default(false)
+  isDemo         Boolean    @default(false)
 
-  comments       Comment[]
-  tasks          Task[]      @relation("alertTasks")
+  comments Comment[]
+  tasks    Task[]    @relation("alertTasks")
 
   @@index([status, level])
   @@index([createdAt])
@@ -706,26 +713,26 @@ model Alert {
 }
 
 model Comment {
-  id             String    @id @default(cuid())
+  id             String            @id @default(cuid())
   body           String
   authorId       String
-  author         User      @relation(fields: [authorId], references: [id])
+  author         User              @relation(fields: [authorId], references: [id])
   entryId        String?
   entry          OperationalEntry? @relation(fields: [entryId], references: [id], onDelete: Cascade)
   taskId         String?
-  task           Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task           Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
   followUpId     String?
-  followUp       FollowUp? @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+  followUp       FollowUp?         @relation(fields: [followUpId], references: [id], onDelete: Cascade)
   alertId        String?
-  alert          Alert?    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  alert          Alert?            @relation(fields: [alertId], references: [id], onDelete: Cascade)
   handoverId     String?
-  handover       ShiftHandover? @relation(fields: [handoverId], references: [id], onDelete: Cascade)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  handover       ShiftHandover?    @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?
   deletedById    String?
   deletionReason String?
-  isDemo         Boolean   @default(false)
+  isDemo         Boolean           @default(false)
 
   @@index([entryId])
   @@index([taskId])
@@ -733,21 +740,21 @@ model Comment {
 }
 
 model Attachment {
-  id           String   @id @default(cuid())
+  id           String            @id @default(cuid())
   fileName     String
   mimeType     String
   size         Int
   storageKey   String
   uploadedById String
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  uploadedBy   User              @relation(fields: [uploadedById], references: [id])
   entryId      String?
   entry        OperationalEntry? @relation(fields: [entryId], references: [id], onDelete: Cascade)
   taskId       String?
-  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  task         Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
   deletedAt    DateTime?
   deletedById  String?
-  isDemo       Boolean  @default(false)
+  isDemo       Boolean           @default(false)
 
   @@index([entryId])
   @@index([taskId])
@@ -758,20 +765,20 @@ model Attachment {
 // quedan listas para sincronizarse mediante `externalId`.
 
 model GuestReference {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   fullName   String
   roomNumber String?
   documentId String?
   email      String?
   phone      String?
   language   String?
-  vip        Boolean  @default(false)
+  vip        Boolean   @default(false)
   notes      String?
-  externalId String?  @unique
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  externalId String?   @unique
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
-  isDemo     Boolean  @default(false)
+  isDemo     Boolean   @default(false)
 
   reservations ReservationReference[]
   entries      OperationalEntry[]
@@ -802,11 +809,11 @@ model ReservationReference {
   deletedAt       DateTime?
   isDemo          Boolean           @default(false)
 
-  entries         OperationalEntry[]
-  alerts          Alert[]
-  guarantees      Guarantee[]
+  entries    OperationalEntry[]
+  alerts     Alert[]
+  guarantees Guarantee[]
   /// Estadías del PMS que se pudieron vincular a esta reserva por su código.
-  stays           RoomStay[]
+  stays      RoomStay[]
 
   @@index([status])
   @@index([requiresAction])
@@ -928,19 +935,19 @@ enum PmsImportStatus {
 }
 
 model Room {
-  id       String  @id @default(cuid())
-  number   String  @unique
-  floor    Int?
-  kind     String?
-  notes    String?
-  active   Boolean @default(true)
+  id     String  @id @default(cuid())
+  number String  @unique
+  floor  Int?
+  kind   String?
+  notes  String?
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stays   RoomStay[]
-  keys    RoomKey[]
-  entries OperationalEntry[]
+  stays     RoomStay[]
+  keys      RoomKey[]
+  entries   OperationalEntry[]
   movements KeyMovement[]
 
   @@index([active])
@@ -948,41 +955,41 @@ model Room {
 
 /// Estadía normalizada: una fila de un informe del PMS, ya interpretada.
 model RoomStay {
-  id            String         @id @default(cuid())
+  id               String                @id @default(cuid())
   /// Código de reserva TAL COMO lo entrega el PMS. Es la fotografía de lo
   /// recibido y no se toca nunca: es la clave con la que se reconcilia.
-  reservationId String
+  reservationId    String
   /// Vínculo OPCIONAL a la reserva interna, resuelto por código.
   ///
   /// Opcional a propósito: el PMS es la fuente y una estadía existe aunque
   /// nadie haya creado su reserva en el sistema. Nunca se asocia por nombre.
   reservationRefId String?
   reservationRef   ReservationReference? @relation(fields: [reservationRefId], references: [id])
-  roomId        String?
-  room          Room?          @relation(fields: [roomId], references: [id])
+  roomId           String?
+  room             Room?                 @relation(fields: [roomId], references: [id])
   /// Nombres tal como los entrega el PMS. Se conservan como histórico aunque
   /// exista `reservationRef`.
-  guestNames    String[]       @default([])
-  channel       String?
-  arrivalDate   DateTime?      @db.Date
-  departureDate DateTime?      @db.Date
-  pmsStatus     String?
-  sourceReport  PmsReportKind
-  status        RoomStayStatus
-  stage         RoomStayStage  @default(PENDIENTE)
+  guestNames       String[]              @default([])
+  channel          String?
+  arrivalDate      DateTime?             @db.Date
+  departureDate    DateTime?             @db.Date
+  pmsStatus        String?
+  sourceReport     PmsReportKind
+  status           RoomStayStatus
+  stage            RoomStayStage         @default(PENDIENTE)
   /// Fecha de operación del informe que originó la estadía.
-  businessDate  DateTime       @db.Date
+  businessDate     DateTime              @db.Date
 
   batchId String?
   batch   PmsImportBatch? @relation(fields: [batchId], references: [id])
 
-  confirmedAt   DateTime?
-  confirmedById String?
-  confirmedBy   User?     @relation("stayConfirmedBy", fields: [confirmedById], references: [id])
-  note          String?
+  confirmedAt     DateTime?
+  confirmedById   String?
+  confirmedBy     User?     @relation("stayConfirmedBy", fields: [confirmedById], references: [id])
+  note            String?
   /// Marca que alguien intervino la estadía a mano: una importación posterior
   /// no puede deshacer esa decisión sin avisar.
-  touchedManually Boolean @default(false)
+  touchedManually Boolean   @default(false)
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1012,7 +1019,7 @@ model RoomKey {
   status KeyStatus @default(DISPONIBLE)
 
   roomId String?
-  room   Room?   @relation(fields: [roomId], references: [id])
+  room   Room?     @relation(fields: [roomId], references: [id])
   stayId String?
   stay   RoomStay? @relation(fields: [stayId], references: [id])
 
@@ -1046,7 +1053,7 @@ model KeyMovement {
   stay   RoomStay? @relation(fields: [stayId], references: [id])
 
   userId String
-  user   User   @relation("keyMovementBy", fields: [userId], references: [id])
+  user   User     @relation("keyMovementBy", fields: [userId], references: [id])
   note   String?
   at     DateTime @default(now())
 
@@ -1068,10 +1075,10 @@ model PmsImportBatch {
   summary Json
 
   createdById String
-  createdBy   User   @relation("batchCreatedBy", fields: [createdById], references: [id])
+  createdBy   User      @relation("batchCreatedBy", fields: [createdById], references: [id])
   appliedAt   DateTime?
   appliedById String?
-  appliedBy   User?  @relation("batchAppliedBy", fields: [appliedById], references: [id])
+  appliedBy   User?     @relation("batchAppliedBy", fields: [appliedById], references: [id])
   discardedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -1092,7 +1099,7 @@ model PmsImportBatch {
 /// No tiene tabla de historial propia: cada cambio queda en `AuditLog` con su
 /// antes y su después, igual que el resto del sistema.
 model Guarantee {
-  id                     String          @id @default(cuid())
+  id                     String               @id @default(cuid())
   reservationReferenceId String
   reservationReference   ReservationReference @relation(fields: [reservationReferenceId], references: [id], onDelete: Cascade)
 
@@ -1105,13 +1112,13 @@ model Guarantee {
   currency String         @default("CLP") @db.VarChar(3)
 
   /// Monto efectivamente aplicado al consumo o a daños.
-  appliedAmount    Decimal?  @db.Decimal(12, 2)
+  appliedAmount     Decimal?  @db.Decimal(12, 2)
   applicationReason String?
   /// Multa cobrada, distinta de lo aplicado al consumo.
-  penaltyAmount    Decimal?  @db.Decimal(12, 2)
-  returnedAt       DateTime?
-  returnedById     String?
-  returnedBy       User?     @relation("guaranteeReturnedBy", fields: [returnedById], references: [id])
+  penaltyAmount     Decimal?  @db.Decimal(12, 2)
+  returnedAt        DateTime?
+  returnedById      String?
+  returnedBy        User?     @relation("guaranteeReturnedBy", fields: [returnedById], references: [id])
 
   notes String?
 
@@ -1121,11 +1128,11 @@ model Guarantee {
   updatedAt   DateTime @updatedAt
 
   /// Eliminación lógica: nada operativo se borra de verdad.
-  deletedAt       DateTime?
-  deletedById     String?
-  deletedBy       User?     @relation("guaranteeDeletedBy", fields: [deletedById], references: [id])
-  deletionReason  String?
-  isDemo          Boolean   @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?     @relation("guaranteeDeletedBy", fields: [deletedById], references: [id])
+  deletionReason String?
+  isDemo         Boolean   @default(false)
 
   alerts Alert[]
 

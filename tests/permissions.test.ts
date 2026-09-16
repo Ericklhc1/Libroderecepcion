@@ -210,8 +210,8 @@ describe('el Administrador de sistema no participa en la operación', () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     const shift = await createShift({ userId: admin.id, type: ShiftType.MANANA });
 
-    await expect(startShift(admin, shift.id)).rejects.toThrow(RuleError);
-    await expect(startShift(admin, shift.id)).rejects.toThrow(
+    await expect(startShift(admin, shift)).rejects.toThrow(RuleError);
+    await expect(startShift(admin, shift)).rejects.toThrow(
       /no participa en la operación de turnos/,
     );
   });

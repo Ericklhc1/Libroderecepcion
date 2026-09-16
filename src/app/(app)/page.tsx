@@ -104,9 +104,11 @@ export default async function DashboardPage() {
                 </h1>
                 <p className="mt-1 text-sm text-slate-600">
                   {data.startableShifts.length > 0
-                    ? 'Tienes turnos asignados listos para iniciar.'
+                    ? data.startableShifts.some((slot) => slot.pendingClosure)
+                      ? 'Hay un cierre esperando confirmación: toma el turno para revisarlo y recibir la caja.'
+                      : 'Puedes tomar el turno que corresponde ahora.'
                     : user.roleOperational
-                      ? 'No hay turnos asignados a tu nombre. Solicita la programación a tu supervisor.'
+                      ? 'No hay turnos por tomar en este momento.'
                       : 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'}
                 </p>
               </>
@@ -119,9 +121,9 @@ export default async function DashboardPage() {
                   .slice(0, 2)
                   .map((startable) => (
                     <StartShiftForm
-                      key={startable.id}
-                      shiftId={startable.id}
-                      label={`Iniciar turno ${SHIFT_TYPE_LABEL[startable.type]} · ${formatDate(startable.date)}`}
+                      key={startable.key}
+                      slot={startable.key}
+                      label={`${startable.pendingClosure ? 'Tomar y revisar cierre' : 'Tomar turno'} ${SHIFT_TYPE_LABEL[startable.type]} · ${formatDate(startable.date)}`}
                     />
                   ))
               : null}

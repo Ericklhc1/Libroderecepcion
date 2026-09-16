@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   AlertStatus,
+  AssignmentRole,
   AuditAction,
   HandoverLevel,
   HandoverStatus,
@@ -100,19 +101,182 @@ export async function getMyOpenShift(userId: string) {
   });
 }
 
-/** Turnos que el usuario puede iniciar: asignados y aún programados. */
-export async function getStartableShifts(userId: string) {
-  const from = addDays(operationalDate(), -1);
-  return prisma.shift.findMany({
+/** Clave estable de una franja de turno. No es un id de fila. */
+export function slotKey(date: Date, type: ShiftType): string {
+  const day = operationalDate(date);
+  const month = String(day.getMonth() + 1).padStart(2, '0');
+  const dayOfMonth = String(day.getDate()).padStart(2, '0');
+  return `${day.getFullYear()}-${month}-${dayOfMonth}:${type}`;
+}
+
+/**
+ * Interpreta una clave de franja recibida en un formulario.
+ *
+ * El valor llega del cliente, así que se valida entero. No basta el patrón:
+ * `new Date(2026, 12, 1)` no falla, desborda en silencio a enero de 2027, de
+ * modo que un mes 13 crearía un turno en una fecha que nadie pidió. Por eso se
+ * comprueba que la fecha construida coincida componente a componente con lo
+ * recibido.
+ */
+export function parseSlotKey(raw: string): { date: Date; type: ShiftType } {
+  const match = /^(\d{4})-(\d{2})-(\d{2}):(MANANA|TARDE|NOCHE)$/.exec(raw.trim());
+  if (!match) throw new RuleError('La franja de turno indicada no es válida.');
+
+  const [, year, month, day, type] = match;
+  const [y, m, d] = [Number(year), Number(month), Number(day)];
+  const date = new Date(y, m - 1, d);
+  date.setHours(0, 0, 0, 0);
+
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+    throw new RuleError('La franja de turno indicada no es válida.');
+  }
+  return { date, type: type as ShiftType };
+}
+
+export type TakeableSlot = {
+  key: string;
+  /** Nulo cuando la franja todavía no tiene fila: se crea al tomarla. */
+  shiftId: string | null;
+  date: Date;
+  type: ShiftType;
+  plannedStart: Date;
+  plannedEnd: Date;
+  /** Cierre del turno anterior esperando confirmación. Es lo primero que verá quien tome esta franja. */
+  pendingClosure: {
+    handoverId: string;
+    fromType: ShiftType;
+    fromDate: Date;
+    issuedByName: string;
+    issuedAt: Date | null;
+  } | null;
+};
+
+/**
+ * Franjas de turno que se pueden tomar ahora.
+ *
+ * NO hay asignación previa: nadie reparte los turnos de antemano, porque en el
+ * mesón quien llega es quien llega. Lo que habilita a tomar una franja es que
+ * esté sin tomar, y lo que la hace urgente es que el turno anterior haya
+ * dejado un cierre esperando confirmación.
+ *
+ * Se ofrecen tres cosas, sin repetir ninguna franja:
+ *   · la franja que corresponde al reloj;
+ *   · las franjas que siguen a un turno con entrega enviada y sin recibir,
+ *     que son los cierres por confirmar;
+ *   · los turnos que alguien haya programado a mano, que siguen valiendo.
+ *
+ * `ShiftAssignment` no desaparece: deja de ser un requisito y pasa a ser el
+ * registro de quién tomó el turno, que es lo que consulta `getMyOpenShift`.
+ */
+export async function getStartableShifts(): Promise<TakeableSlot[]> {
+  const today = operationalDate();
+  const from = addDays(today, -1);
+
+  const [programmed, awaitingReceipt] = await Promise.all([
+    prisma.shift.findMany({
+      where: { status: ShiftStatus.PROGRAMADO, date: { gte: from } },
+      orderBy: [{ date: 'asc' }, { type: 'asc' }],
+      take: 10,
+    }),
+    prisma.shiftHandover.findMany({
+      where: { status: HandoverStatus.ENVIADA, receivedAt: null },
+      include: {
+        fromShift: { select: { id: true, date: true, type: true } },
+        issuedBy: { select: { name: true } },
+      },
+      orderBy: { issuedAt: 'asc' },
+      take: 10,
+    }),
+  ]);
+
+  const candidates = new Map<string, { date: Date; type: ShiftType }>();
+  const add = (date: Date, type: ShiftType) => {
+    const key = slotKey(date, type);
+    if (!candidates.has(key)) candidates.set(key, { date: operationalDate(date), type });
+  };
+
+  add(today, currentShiftType());
+  for (const handover of awaitingReceipt) {
+    const slot = nextShiftSlot(handover.fromShift.type);
+    add(addDays(operationalDate(handover.fromShift.date), slot.dayOffset), slot.type);
+  }
+  for (const shift of programmed) add(shift.date, shift.type);
+
+  // Una sola consulta para saber cuáles de esas franjas ya tienen fila.
+  const existing = await prisma.shift.findMany({
     where: {
-      status: ShiftStatus.PROGRAMADO,
-      date: { gte: from },
-      assignments: { some: { userId } },
+      OR: [...candidates.values()].map(({ date, type }) => ({ date, type })),
     },
-    include: shiftInclude,
-    orderBy: [{ date: 'asc' }, { type: 'asc' }],
-    take: 10,
+    select: { id: true, date: true, type: true, status: true },
   });
+  const rows = new Map(existing.map((row) => [slotKey(row.date, row.type), row]));
+
+  // Una sola consulta para los cierres pendientes de los turnos anteriores.
+  const previousOf = new Map<string, { date: Date; type: ShiftType }>();
+  for (const [key, slot] of candidates) {
+    const previous = previousShiftSlot(slot.type);
+    previousOf.set(key, {
+      date: addDays(slot.date, previous.dayOffset),
+      type: previous.type,
+    });
+  }
+  const pending = await prisma.shiftHandover.findMany({
+    where: {
+      status: HandoverStatus.ENVIADA,
+      receivedAt: null,
+      fromShift: { OR: [...previousOf.values()].map(({ date, type }) => ({ date, type })) },
+    },
+    include: {
+      fromShift: { select: { date: true, type: true } },
+      issuedBy: { select: { name: true } },
+    },
+  });
+  const pendingByPrevious = new Map(
+    pending.map((handover) => [
+      slotKey(handover.fromShift.date, handover.fromShift.type),
+      handover,
+    ]),
+  );
+
+  const slots: TakeableSlot[] = [];
+  for (const [key, slot] of candidates) {
+    const row = rows.get(key);
+    // Una franja ya tomada, cerrada o anulada no se vuelve a ofrecer.
+    if (row && row.status !== ShiftStatus.PROGRAMADO) continue;
+
+    const window = plannedWindow(slot.date, slot.type);
+    const previous = previousOf.get(key);
+    const handover = previous
+      ? pendingByPrevious.get(slotKey(previous.date, previous.type))
+      : undefined;
+
+    slots.push({
+      key,
+      shiftId: row?.id ?? null,
+      date: slot.date,
+      type: slot.type,
+      plannedStart: window.start,
+      plannedEnd: window.end,
+      pendingClosure: handover
+        ? {
+            handoverId: handover.id,
+            fromType: handover.fromShift.type,
+            fromDate: handover.fromShift.date,
+            issuedByName: handover.issuedBy.name,
+            issuedAt: handover.issuedAt,
+          }
+        : null,
+    });
+  }
+
+  // Primero lo que tiene un cierre esperando, después por orden cronológico.
+  slots.sort((a, b) => {
+    if (Boolean(a.pendingClosure) !== Boolean(b.pendingClosure)) {
+      return a.pendingClosure ? -1 : 1;
+    }
+    return a.date.getTime() - b.date.getTime() || a.key.localeCompare(b.key);
+  });
+  return slots;
 }
 
 export async function getShiftById(shiftId: string): Promise<ShiftWithDetail> {
@@ -285,34 +449,57 @@ async function assertUserFree(userId: string, exceptShiftId?: string) {
 }
 
 /** Paso 1: iniciar turno. Deja el turno en INICIADO (pendiente de confirmar recepción). */
-export async function startShift(user: CurrentUser, shiftId: string) {
+/**
+ * Toma una franja de turno.
+ *
+ * No se exige asignación previa: quien llega al mesón toma el turno y por eso
+ * mismo la asignación se ESCRIBE aquí, como registro de quién lo tomó. La
+ * franja puede no tener fila todavía, así que se crea dentro de la misma
+ * transacción; `ensureShift` es idempotente, de modo que dos personas pulsando
+ * a la vez no crean dos turnos, y la segunda choca contra el filtro de estado
+ * PROGRAMADO y recibe un error en lugar de robarle el turno a la primera.
+ */
+export async function startShift(
+  user: CurrentUser,
+  slot: { date: Date; type: ShiftType },
+) {
   if (!user.roleOperational) {
     throw new RuleError(
       'El Administrador de sistema no participa en la operación de turnos. Usa una cuenta operativa.',
     );
   }
-  await assertUserFree(user.id, shiftId);
+  await assertUserFree(user.id);
 
-  const shift = await getShiftById(shiftId);
-  const assigned = shift.assignments.some((a) => a.userId === user.id);
-  if (!assigned) {
-    throw new RuleError('No estás asignado a este turno.');
-  }
-  assertTransition(shift.status, ShiftStatus.INICIADO);
+  return prisma.$transaction(async (tx) => {
+    const shift = await ensureShift(slot.date, slot.type, user.id, tx);
+    assertTransition(shift.status, ShiftStatus.INICIADO);
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.shift.update({
-      where: { id: shiftId, status: ShiftStatus.PROGRAMADO },
-      data: {
-        status: ShiftStatus.INICIADO,
-        actualStart: new Date(),
-        startedById: user.id,
-      },
+    const result = await tx.shift
+      .update({
+        where: { id: shift.id, status: ShiftStatus.PROGRAMADO },
+        data: {
+          status: ShiftStatus.INICIADO,
+          actualStart: new Date(),
+          startedById: user.id,
+        },
+      })
+      .catch(() => {
+        throw new RuleError(
+          'Otra persona tomó este turno hace un instante. Actualiza la pantalla para ver el estado real.',
+        );
+      });
+
+    // La asignación pasa a ser consecuencia de tomar el turno, no requisito.
+    await tx.shiftAssignment.upsert({
+      where: { shiftId_userId: { shiftId: shift.id, userId: user.id } },
+      create: { shiftId: shift.id, userId: user.id, role: AssignmentRole.TITULAR },
+      update: {},
     });
+
     await recordAudit(
       {
         entity: 'Shift',
-        entityId: shiftId,
+        entityId: shift.id,
         action: AuditAction.TURNO_INICIAR,
         summary: `Inicio de turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')}`,
         user,
@@ -323,8 +510,6 @@ export async function startShift(user: CurrentUser, shiftId: string) {
     );
     return result;
   });
-
-  return updated;
 }
 
 /**

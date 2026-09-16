@@ -54,8 +54,19 @@ export async function allocateUsername(
   let candidate = base;
   let suffix = 1;
 
+  /*
+    La colisión se mide SIN distinguir mayúsculas, aunque el índice único de la
+    base sí las distinga. Es lo que hace que entrar por usuario no tenga
+    ambigüedad: si existiera «EHerrera» y además «eherrera», quien escribiera
+    cualquiera de los dos podría caer en la cuenta equivocada.
+  */
   // El bucle termina: cada intento prueba un nombre distinto.
-  while (await prisma.user.findUnique({ where: { username: candidate }, select: { id: true } })) {
+  while (
+    await prisma.user.findFirst({
+      where: { username: { equals: candidate, mode: 'insensitive' } },
+      select: { id: true },
+    })
+  ) {
     suffix += 1;
     candidate = `${base}${suffix}`;
   }

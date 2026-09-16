@@ -19,7 +19,15 @@ export type ColumnField =
   | 'arrival'
   | 'departure'
   | 'pmsStatus'
-  | 'guestCount';
+  | 'guestCount'
+  /*
+    Los tres campos que aporta «Habitaciones con actividad». El importe total y
+    el pendiente viajan con su moneda dentro del texto —«CL$ 64.511»— y se
+    interpretan en `money.ts`: acá sólo se reconoce la columna.
+  */
+  | 'totalAmount'
+  | 'pendingAmount'
+  | 'paymentType';
 
 export const COLUMN_LABELS: Record<ColumnField, string> = {
   reservationId: 'ID de reserva',
@@ -32,6 +40,9 @@ export const COLUMN_LABELS: Record<ColumnField, string> = {
   departure: 'Salida',
   pmsStatus: 'Estado o tipo',
   guestCount: 'Cantidad de huéspedes',
+  totalAmount: 'Importe total',
+  pendingAmount: 'Importe pendiente',
+  paymentType: 'Tipo de pago',
 };
 
 /**
@@ -97,7 +108,50 @@ const SYNONYMS: Record<ColumnField, string[]> = {
     'hasta',
   ],
   pmsStatus: ['tipo', 'estado', 'estado habitacion', 'tipo habitacion', 'situacion'],
-  guestCount: ['pax', 'nro pax', 'adultos', 'cantidad huespedes', 'total huespedes'],
+  guestCount: [
+    'pax',
+    'nro pax',
+    'adultos',
+    'cantidad huespedes',
+    'total huespedes',
+    // «Habitaciones con actividad» abrevia la columna a «Hué».
+    'hue',
+    'hues',
+  ],
+  /*
+    Los encabezados de importe vienen abreviados —«Imp. tot», «Imp. pte»— y el
+    diccionario normaliza el punto a espacio, así que llegan como «imp tot» e
+    «imp pte». Se registran las dos formas, la abreviada y la completa.
+
+    El orden dentro de cada lista no importa, pero el orden de los CAMPOS sí:
+    `totalAmount` va antes que `pendingAmount` y los dos antes que
+    `paymentType`, porque el primer campo que reclama un sinónimo lo conserva.
+  */
+  totalAmount: [
+    'imp tot',
+    'imp total',
+    'importe total',
+    'total',
+    'precio total',
+    'importe',
+  ],
+  pendingAmount: [
+    'imp pte',
+    'imp pend',
+    'importe pendiente',
+    'pendiente',
+    'saldo',
+    'saldo pendiente',
+  ],
+  /*
+    «Tipo de pago» se imprime en DOS líneas en el informe de actividad: «Tipo
+    de» encima y «pago» en la línea de encabezados. Por eso el sinónimo suelto
+    «pago» tiene que existir: es lo único que aparece en la línea que se lee.
+
+    Y tiene que resolverse a `paymentType` y no a `pmsStatus`, que reclama
+    «tipo»: son columnas distintas y en este informe conviven.
+  */
+  paymentType: ['pago', 'tipo de pago', 'forma de pago', 'forma pago', 'tipo pago'],
 };
 
 /** Quita acentos, puntuación y mayúsculas para comparar encabezados. */

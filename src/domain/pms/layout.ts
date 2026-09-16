@@ -11,7 +11,15 @@
  */
 import { matchColumn, type ColumnField } from './columns';
 
-export type ReportKind = 'ENTRADAS' | 'IN_HOUSE' | 'SALIDAS';
+/**
+ * `ACTIVIDAD` es «Habitaciones con actividad», y es el informe PRINCIPAL: trae
+ * en un solo documento las ocupadas, las salidas y las entradas del día, de
+ * modo que ya no hace falta subir tres archivos para armar la foto operativa.
+ *
+ * Se diferencia de los otros tres en algo estructural: el estado no lo define
+ * el informe, lo define CADA FILA en su columna «Tipo».
+ */
+export type ReportKind = 'ENTRADAS' | 'IN_HOUSE' | 'SALIDAS' | 'ACTIVIDAD';
 
 /** Un trozo de texto tal como lo entrega el PDF, con su posición. */
 export type TextFragment = { page: number; x: number; y: number; text: string };
@@ -57,6 +65,54 @@ const LINE_TOLERANCE = 5;
 const RESERVATION_ID = /^\d{3,}$/;
 
 const NAME_FIELDS: ColumnField[] = ['guestName', 'firstName', 'lastName'];
+
+/**
+ * Campos que una línea de continuación puede COMPLETAR.
+ *
+ * Los tres informes antiguos sólo parten los nombres, y por eso la primera
+ * versión sólo aceptaba continuaciones de nombre. «Habitaciones con actividad»
+ * parte además otras dos cosas, y las dos importan:
+ *
+ *   407 · …  Andrea | Bustamante    ← fila
+ *            Denisse | Nuñez        ← continuación: nombre
+ *
+ *   405 · …  US$ 204.12 | Prepago   ← fila
+ *            Mota | Comision        ← continuación: nombre Y forma de pago
+ *
+ *   517 · …  CL$ 117.622 | CL$      ← fila: el importe pendiente se corta
+ *            117.622                ← continuación: el resto del importe
+ *
+ * Sin esto, la línea `Mota | Comision` no era «sólo nombres», así que se
+ * descartaba entera —perdiendo el apellido y el tipo de pago— y además cortaba
+ * el hilo del registro. Y el importe pendiente de la 517 quedaba en «CL$», sin
+ * cifra: un saldo de ciento diecisiete mil pesos leído como ilegible.
+ */
+const CONTINUABLE_FIELDS: ColumnField[] = [
+  ...NAME_FIELDS,
+  'totalAmount',
+  'pendingAmount',
+  'paymentType',
+];
+
+/**
+ * Marca de moneda suelta, para reconocer el pie de totales.
+ *
+ * El pie del informe de actividad imprime los totales bajo las mismas columnas
+ * que los importes de las filas:
+ *
+ *   US$ 2435.34 | US$
+ *   284.14
+ *   CL$ | CL$
+ *   11.301.339 | 531.896
+ *
+ * Caen exactamente donde caería una continuación de importe, así que sin una
+ * guarda se sumarían al último registro leído y la habitación 630 acabaría con
+ * un saldo de dos mil cuatrocientos dólares que no existe.
+ *
+ * Lo que los distingue: el pie trae DOS marcas de moneda en la misma línea
+ * —una por columna— y una continuación real trae sólo la cifra.
+ */
+const CURRENCY_MARK = /(?:CL\$|US\$|USD|CLP)/gi;
 
 /**
  * Caracteres de control, invisibles y de fuentes de iconos que el PMS
@@ -184,6 +240,14 @@ function detectKindFromTitle(title: string | null): ReportKind | null {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
+  /*
+    La actividad se comprueba PRIMERO. Su título es «Habitaciones con
+    actividad» y no contiene ninguna de las palabras de los otros tres, pero el
+    orden importa igual: si mañana el PMS lo titulara «Actividad de entradas y
+    salidas», la primera coincidencia mandaría y el informe principal se leería
+    como uno de los secundarios.
+  */
+  if (/actividad/.test(text)) return 'ACTIVIDAD';
   if (/in[\s-]?house|en casa/.test(text)) return 'IN_HOUSE';
   if (/salida|check[\s-]?out|departure/.test(text)) return 'SALIDAS';
   if (/entrada|llegada|check[\s-]?in|arrival/.test(text)) return 'ENTRADAS';
@@ -197,6 +261,12 @@ function detectKindFromTitle(title: string | null): ReportKind | null {
  */
 function detectKindFromColumns(columns: DetectedColumn[]): ReportKind | null {
   const fields = new Set(columns.map((column) => column.field));
+  /*
+    La actividad es el único informe con importes y forma de pago, y va antes
+    que las salidas porque también separa nombre y apellidos: sin esta línea se
+    identificaría como el informe de salidas y se perdería el estado por fila.
+  */
+  if (fields.has('paymentType') || fields.has('pendingAmount')) return 'ACTIVIDAD';
   if (fields.has('lastName') && fields.has('firstName')) return 'SALIDAS';
   if (fields.has('pmsStatus') && fields.has('roomNumber')) return 'IN_HOUSE';
   if (fields.has('guestName') && fields.has('roomNumber')) return 'ENTRADAS';
@@ -220,7 +290,17 @@ function findReportDate(lines: Line[]): string | null {
 function readSummary(line: Line): ReportSummary | null {
   const first = line.fragments[0];
   if (!first) return null;
-  if (!/^(check[\s-]?in|check[\s-]?out|in[\s-]?house|total)/i.test(first.text)) return null;
+  /*
+    «Ocupada» entra por el informe de actividad, cuyo pie declara las tres
+    cifras que el preview contrasta con lo leído:
+
+      Check-in  10 …
+      Check-out 24 …
+      Ocupada   19 …
+  */
+  if (!/^(check[\s-]?in|check[\s-]?out|in[\s-]?house|ocupada|total)/i.test(first.text)) {
+    return null;
+  }
   const numbers = line.fragments
     .slice(1)
     .filter((fragment) => /^\d+$/.test(fragment.text.trim()))
@@ -234,7 +314,24 @@ function readSummary(line: Line): ReportSummary | null {
  */
 export function readStructuredReport(fragments: TextFragment[]): StructuredReport {
   const lines = groupIntoLines(fragments);
-  const title = lines[0] ? lineText(lines[0]) : null;
+
+  /*
+    El título es la primera línea que NO sea la de encabezados.
+
+    Tomar `lines[0]` a ciegas fallaba cuando el informe llega sin título: la
+    línea de encabezados pasaba por título, y como contiene la palabra
+    «Salida» —es el nombre de una columna— el informe de actividad se
+    identificaba como el de salidas. Con eso el estado por fila se perdía y
+    las cincuenta y tres filas quedaban marcadas como salidas.
+  */
+  const titleLine = lines.find((line) => {
+    const candidate = readHeaderLine(line);
+    const looksLikeHeader =
+      candidate.columns.length >= 3 &&
+      candidate.columns.some((column) => column.field === 'reservationId');
+    return !looksLikeHeader;
+  });
+  const title = titleLine ? lineText(titleLine) : null;
   const reportDate = findReportDate(lines);
 
   let columns: DetectedColumn[] = [];
@@ -248,9 +345,18 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
 
   for (const line of lines) {
     const candidate = readHeaderLine(line);
-    // El encabezado se repite en cada página del informe: se vuelve a leer,
-    // porque los límites de columna pueden variar entre páginas.
-    if (candidate.columns.length >= 3) {
+    /*
+      El encabezado se repite en cada página del informe: se vuelve a leer,
+      porque los límites de columna pueden variar entre páginas.
+
+      Se exige además la columna de ID, y no es un adorno: el pie del informe
+      de actividad imprime la línea «Habitaciones | Pasajeros | Huéspedes», que
+      mapea tres columnas del diccionario y sin esta condición se tomaría por
+      un encabezado nuevo, reemplazando los límites reales al final del
+      documento. Todo encabezado de verdad trae identificador de reserva.
+    */
+    const hasId = candidate.columns.some((column) => column.field === 'reservationId');
+    if (candidate.columns.length >= 3 && hasId) {
       columns = candidate.columns;
       unmapped = candidate.unmapped;
       bounds = columnBounds(candidate.columns);
@@ -282,16 +388,54 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
       continue;
     }
 
-    // Línea de continuación: sólo trae nombres y pertenece al registro previo.
-    const onlyNames =
-      Object.keys(cells).length > 0 &&
-      Object.keys(cells).every((field) => NAME_FIELDS.includes(field as ColumnField));
-    if (current && onlyNames) {
+    /*
+      Pie de totales del informe de actividad. Se reconoce ANTES que la
+      continuación porque cae bajo las mismas columnas de importe:
+
+        US$ 2435.34 | US$      ← dos marcas de moneda: es el pie
+        284.14                 ← cifra suelta: parece una continuación
+
+      Dos marcas de moneda en una línea sin identificador de reserva sólo
+      ocurren en el pie. Sin esta guarda, esas cifras se sumaban al último
+      registro leído y la habitación 630 acabaría con un saldo de dos mil
+      cuatrocientos dólares inexistente.
+    */
+    const currencyMarks = lineText(line).match(CURRENCY_MARK)?.length ?? 0;
+    if (currencyMarks >= 2) {
+      current = null;
+      continue;
+    }
+
+    /*
+      Línea de continuación: completa el registro previo.
+
+      Antes sólo se aceptaban continuaciones de NOMBRE, porque es lo único que
+      parten los tres informes antiguos. La actividad parte además la forma de
+      pago —«Prepago» arriba, «Comision» abajo— y el importe —«CL$» arriba,
+      «117.622» abajo—, así que una línea como `Mota | Comision` no era «sólo
+      nombres»: se descartaba entera, perdiendo el apellido Y el tipo de pago,
+      y además cortaba el hilo del registro.
+
+      Los nombres siguen yendo a `extraGuests`, que es donde los espera el
+      normalizador; los demás campos se concatenan a su celda.
+    */
+    const fields = Object.keys(cells) as ColumnField[];
+    const continuable =
+      fields.length > 0 && fields.every((field) => CONTINUABLE_FIELDS.includes(field));
+    if (current && continuable) {
       const name = NAME_FIELDS.map((field) => cells[field])
         .filter((value): value is string => Boolean(value?.trim()))
         .join(' ')
         .trim();
       if (name) current.extraGuests.push(name);
+
+      for (const field of fields) {
+        if (NAME_FIELDS.includes(field)) continue;
+        const addition = cells[field]?.trim();
+        if (!addition) continue;
+        const previous = current.cells[field];
+        current.cells[field] = previous ? `${previous} ${addition}` : addition;
+      }
       continue;
     }
 

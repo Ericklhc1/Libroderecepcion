@@ -20,16 +20,6 @@ export function InstallForm() {
             maxLength={120}
           />
         </Field>
-        <Field label="Tu correo" name="email" required>
-          <Input
-            name="email"
-            type="email"
-            required
-            autoComplete="username"
-            defaultValue="eherrera@hoteleshw.com"
-            placeholder="nombre@hoteleshw.com"
-          />
-        </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Contraseña" name="password" required>

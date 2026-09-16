@@ -13,7 +13,6 @@ import { normalizeTags } from '@/domain/tags';
 export type RevealedCredentials = {
   name: string;
   username: string;
-  email: string;
   password: string;
   /** A dónde se envió, si el correo está configurado. */
   recipient: string;

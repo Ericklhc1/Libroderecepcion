@@ -5,6 +5,32 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requireUser } from '@/server/auth/guard';
+import { countLiveAlerts } from '@/server/services/alert-engine';
+
+/**
+ * Cuántas cosas sin leer hay ahora mismo.
+ *
+ * La cabecera renderiza el contador en el servidor, así que sólo cambia al
+ * navegar. Para que una notificación **suene** cuando llega hay que saberlo sin
+ * que nadie navegue, y de eso se encarga esta consulta: dos `count`, en
+ * paralelo, sin `revalidatePath`. No es una acción que cambie nada, así que no
+ * invalida caché ni escribe nada.
+ *
+ * Devuelve también las alertas vivas porque el hotel pidió que **los
+ * recordatorios y los seguimientos** sonaran, y ésos llegan como alerta, no
+ * como notificación.
+ */
+export async function getUnreadCounts(): Promise<{
+  notifications: number;
+  alerts: number;
+}> {
+  const user = await requireUser();
+  const [notifications, alerts] = await Promise.all([
+    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+    countLiveAlerts(),
+  ]);
+  return { notifications, alerts };
+}
 
 const markSchema = z.object({ id: z.string().min(1).optional() });
 

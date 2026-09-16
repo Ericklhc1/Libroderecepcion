@@ -59,18 +59,18 @@ export function CreateUserDialog({
             onChange={(event) => setSuggested(suggestUsername(event.target.value))}
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Usuario"
-            name="username"
-            hint={suggested ? `Si lo dejas vacío será @${suggested}.` : 'Se propone a partir del nombre.'}
-          >
-            <Input name="username" placeholder={suggested ? `@${suggested}` : '@EHerrera'} maxLength={30} />
-          </Field>
-          <Field label="Correo" name="email" required>
-            <Input name="email" type="email" required placeholder="nombre@hoteleshw.com" />
-          </Field>
-        </div>
+        {/*
+          Una cuenta es nombre, usuario y contraseña. El correo se quitó: en el
+          mesón nadie usaba el suyo, no servía para entrar y era un campo más
+          que alguien tenía que inventar. La clave la genera el sistema.
+        */}
+        <Field
+          label="Usuario"
+          name="username"
+          hint={suggested ? `Si lo dejas vacío será @${suggested}.` : 'Se propone a partir del nombre.'}
+        >
+          <Input name="username" placeholder={suggested ? `@${suggested}` : '@EHerrera'} maxLength={30} />
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Rol" name="roleId" required>
             <Select name="roleId" placeholder="Selecciona un rol" options={roles} required />
@@ -102,7 +102,6 @@ export function EditUserDialog({
   user: {
     id: string;
     name: string;
-    email: string;
     roleId: string;
     departmentId: string | null;
     phone: string | null;
@@ -117,9 +116,6 @@ export function EditUserDialog({
         <input type="hidden" name="id" value={user.id} />
         <Field label="Nombre" name="name" required>
           <Input name="name" defaultValue={user.name} required maxLength={120} />
-        </Field>
-        <Field label="Correo" name="email" required>
-          <Input name="email" type="email" defaultValue={user.email} required />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field

@@ -36,6 +36,14 @@ Cinco destinos principales, uno por pregunta operativa:
 | `/turno` | ¿Qué debo entregar al siguiente turno? |
 | `/supervision` | ¿Qué debo revisar como Supervisor? |
 
+**Supervisión no es una pantalla del mesón.** Su `anyOf` es
+`['supervision.view', 'shift.manage']`. Llevaba `incident.manage`, y ése lo
+tiene la recepción —de noche hay que poder mover una incidencia—, así que la
+pestaña le aparecía al Auditor nocturno, que es un perfil de recepción. Se
+corrigieron las dos causas: el permiso del auditor
+(`20260916180000_supervision_no_es_del_meson`) y el `anyOf` del menú. Lo vigila
+`tests/navigation.test.ts`.
+
 Más un grupo *Consulta* (`/llaves`, `/huespedes`, `/historial`,
 `/indicadores`) y *Sistema* (`/admin`).
 
@@ -60,7 +68,7 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `OperationalEntry` (novedad, incidencia, mantenimiento…) · `Task` ·
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
 `GuestReference`/`ReservationReference`/`Guarantee` ·
-`CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` ·
+`CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` · `MailSettings` ·
 `HandoverElementType`/`HandoverElement` · `Announcement`/`AnnouncementRead` ·
 `Fine` · `ChecklistTemplate`/`ChecklistRun` · `AuditLog` · `SystemSetting`.
 
@@ -70,17 +78,22 @@ conserva su modelo y sus reglas.
 
 ## Decisiones que no se revierten
 
-0. **La identidad de una cuenta es su usuario, no su correo.** En el hotel
-   varias cuentas comparten la casilla de recepción, así que el correo **no
-   identifica a nadie y puede repetirse**: `User.email` no es único. El que sí
-   lo es —y con el que se inicia sesión— es `username` (`@EHerrera`): se
-   muestra con arroba y se guarda sin ella. La comparación al entrar **ignora
-   mayúsculas**, porque en el mesón nadie recuerda si se escribió `EHerrera` o
-   `eherrera`; por eso `allocateUsername` mide la colisión también sin
-   distinguirlas, aunque el índice único de PostgreSQL sí las distinga: si
-   coexistieran las dos, entrar sería ambiguo. `LoginAttempt.identifier`
-   guarda lo que se escribió, exista la cuenta o no. Lo vigila
-   `tests/identidad-usuario.test.ts`.
+0. **Una cuenta es nombre, usuario y contraseña. Nada más.**
+   `User.email` **ya no existe** (`20260916190000_cuenta_sin_correo`). Primero
+   dejó de ser identificador —en el hotel todo el mesón comparte la casilla de
+   recepción, así que no distinguía a nadie— y después se eliminó: un campo que
+   no identifica, no sirve para entrar y hay que inventar al crear la cuenta es
+   un campo que sobra. La casilla que recibe las credenciales es del HOTEL y
+   vive en `MailSettings.credentialsMailTo`, no en cada persona.
+   `GuestReference.email` **sí se conserva**: ése es el correo del huésped y es
+   un dato real.
+   La identidad es `username` (`@EHerrera`): se muestra con arroba y se guarda
+   sin ella. La comparación al entrar **ignora mayúsculas**, porque en el mesón
+   nadie recuerda si se escribió `EHerrera` o `eherrera`; por eso
+   `allocateUsername` mide la colisión también sin distinguirlas, aunque el
+   índice único de PostgreSQL sí las distinga: si coexistieran las dos, entrar
+   sería ambiguo. `LoginAttempt.identifier` guarda lo que se escribió, exista
+   la cuenta o no. Lo vigila `tests/identidad-usuario.test.ts`.
 1. **El rol técnico superior se llama sólo «Administrador de sistema».** Nunca
    *master*, *maestro*, *superusuario*. Queda **fuera de la operación
    habitual**: no inicia, recibe ni entrega turno, no confirma salidas ni
@@ -145,6 +158,16 @@ conserva su modelo y sus reglas.
    el conflicto es real y se conserva. Decisión revisada: la primera versión
    no entregaba ninguna llave al importar y dejaba treinta avisos no
    accionables por importación.
+   **La llave se puede entregar a mano** (`handMainKey`, botón «Entregar la
+   llave» en la ficha, permiso `key.assign`). Faltaba, y era un agujero que
+   dejaba al mesón sin poder trabajar: la principal sólo se asignaba como
+   efecto de confirmar un check-in, así que una estadía que entra al sistema
+   ya como `IN_HOUSE` —como la trae el informe de in house— dejaba al
+   recepcionista viendo al huésped dentro, la llave «disponible» y **ningún
+   botón**. Encima el único gesto de llaves de la ficha exigía `key.stock`,
+   que es del Supervisor. No inventa lógica: llama a `assignMainKey`, la
+   misma del check-in. Cuando no hay nada que pulsar, la ficha **dice por
+   qué**. Lo vigila `tests/rooms-keys.test.ts`.
    **Una sola implementación:** `services/keys.ts::reconcilePrincipalKeys(tx,
    user, {businessDate?})`. La importación la llama acotada al día de su lote;
    la **reconciliación explícita** del inventario (botón en `/llaves`, permiso
@@ -166,19 +189,15 @@ conserva su modelo y sus reglas.
    a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
    vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
    `tests/rooms-keys.test.ts`.
-4bis. **Un turno dura lo que haga falta, hasta 12 h, y se puede archivar.**
-   El horario nominal (`SHIFT_SCHEDULE`, 8 h) cubre el caso normal y sigue
-   siendo el valor por omisión. Para lo que no encaja, el administrador escribe
-   hora de inicio y duración: las dos juntas o ninguna, porque una hora sin
-   duración es una ventana a medias. El límite lo impone `customWindow` en el
-   **dominio**, no el formulario, y rechaza fracciones más finas que la media
-   hora. No necesitó migración: `plannedStart`/`plannedEnd` ya admitían
-   cualquier ventana.
-   **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale antes
-   de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno de
-   las listas conservando su historia, sus registros y su entrega
+4bis. **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale
+   antes de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno
+   de las listas conservando su historia, sus registros y su entrega
    (`archivedAt`). El servidor **rechaza archivar un turno en curso**: eso se
-   cierra, no se esconde. Lo vigila `tests/turno-duracion.test.ts`.
+   cierra, no se esconde. Un turno archivado tampoco se reutiliza al abrir uno
+   nuevo. Lo vigila `tests/turnos.test.ts`.
+   Decisión revertida: las ventanas de duración libre hasta 12 h se
+   eliminaron. El hotel tiene dos ventanas y son fijas (ver 11); una ventana
+   libre era complejidad que nadie pedía y permitía solapar dos turnos.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y
@@ -209,24 +228,38 @@ conserva su modelo y sus reglas.
     **código** de reserva (`linkStaysToReservations`), nunca por nombre, y
     queda nulo cuando la reserva no existe en el sistema. Una estadía sin
     vínculo sigue siendo válida y operable.
-11. **Los turnos no se asignan de antemano.** Nadie reparte los turnos: quien
-    llega al mesón toma el que corresponde. Lo que habilita a tomar una franja
-    es que esté libre, y lo que la pone primera en la lista es que el turno
-    anterior haya dejado **un cierre esperando confirmación**. `/turno` ofrece
-    la franja del reloj, las que siguen a una entrega enviada y sin recibir, y
-    los turnos que alguien haya programado a mano, que siguen valiendo.
-    La franja viaja como `AAAA-MM-DD:TIPO` (`slotKey`), no como id de fila,
-    porque puede no existir todavía: la crea el propio inicio, dentro de la
-    transacción, con `ensureShift`, que es idempotente. `parseSlotKey` valida
-    la fecha **componente a componente**: `new Date(2026, 12, 1)` no falla,
-    desborda en silencio a enero de 2027, y un mes 13 crearía un turno en una
-    fecha que nadie pidió.
-    `ShiftAssignment` **no desaparece**: deja de ser requisito y pasa a ser el
-    registro de quién tomó el turno, que es lo que consulta `getMyOpenShift`.
-    Decisión revisada: la prueba «no permite iniciar un turno al que no estás
-    asignado» se eliminó a propósito y se reemplazó por la invariante que sí
-    sobrevive —un turno ya tomado no se le quita a quien lo tomó—. Lo vigila
-    `tests/turno-sin-asignacion.test.ts`.
+11. **DOS ventanas fijas, turnos creados a voluntad, UNO en curso a la vez.**
+    Día **07:00–19:59** y noche **20:00–07:59** (`SHIFT_SCHEDULE`). No hay un
+    tercer turno ni ventanas a medida.
+    Los turnos **no se programan de antemano**: `openShift` es un solo gesto
+    que crea el turno si no hay ninguno en curso, o **suma** a quien llega al
+    que ya está abierto. Si hay un turno abierto se trabaja sobre ése.
+    La invariante «un solo turno en curso» la garantiza un **índice único
+    parcial** que Prisma no sabe expresar (`Shift_un_solo_turno_en_curso`, en
+    `20260916170000_turnos_dia_noche`); el servicio la comprueba además para
+    dar un mensaje legible, no para garantizarla. `ENTREGA_ENVIADA` queda
+    FUERA del predicado: quien entregó espera en la bandeja y el relevo
+    necesita abrir el suyo para recibirlo.
+    El titular es quien abrió el turno; quien se suma es apoyo. Pueden sumar
+    gente quien está en el turno y quien lo supervisa (`addShiftMember`).
+    ⚠️ **ESTO CORRIGIÓ UN FALLO QUE BLOQUEABA LA OPERACIÓN.** Antes había tres
+    franjas de ocho horas y una unicidad `(date, type)`, y de ahí salía la
+    necesidad de programar. Para recibir una entrega el sistema buscaba «el
+    turno de la franja anterior» por `(date, type)`: si esa fila no existía
+    —porque nadie la programó— no encontraba nada que recibir, y cerrar exigía
+    que existiera «el turno siguiente», que tampoco existía. En producción
+    había un turno ACTIVO del 14 de septiembre con la cadena cortada. La
+    **adyacencia se eliminó**: `nextShiftSlot`, `previousShiftSlot`,
+    `shiftOrder`, `slotKey`, `parseSlotKey`, `getStartableShifts`,
+    `currentShiftType`, `ensureShift` y `customWindow` **ya no existen**.
+    Ahora la entrega pendiente es **única y no se deduce**: la que está
+    ENVIADA y sin recibir (`getPendingHandover`). `toShiftId` queda **nulo**
+    al entregar y lo escribe quien recibe: cuando alguien entrega, el turno
+    que recibirá todavía no existe.
+    `ShiftAssignment` es el registro de quién estuvo, no un requisito.
+    Lo vigilan `tests/turnos.test.ts` y `tests/shift-state.test.ts`. Las
+    pruebas `turno-sin-asignacion` y `turno-duracion` se eliminaron: probaban
+    las franjas tomables y las duraciones libres, que ya no existen.
 12. **La caja se traspasa con fondo fijo, y la exigencia la activa el fondo.**
     `CashFund` define cuánto debe quedar SIEMPRE en el cajón por divisa (en
     este hotel **CLP 100.000 y USD 150**). Lo que excede es recaudación del
@@ -350,6 +383,51 @@ conserva su modelo y sus reglas.
     `resetOperationalData` la limpia. Lo vigila
     `tests/supervision-tablero.test.ts`.
 
+20. **Las notificaciones suenan.** Un recordatorio que sólo cambia un número
+    en una esquina no avisa de nada: en el mesón nadie mira la campana.
+    `components/layout/notification-chime.tsx` consulta cada 20 s
+    (`getUnreadCounts`, dos `count` en paralelo, sin `revalidatePath`) y suena
+    **cuando el número SUBE**, no cuando es distinto de cero: si sonara con
+    cualquier valor, sonaría en cada consulta mientras quedara algo sin leer,
+    que es la forma más rápida de que alguien apague el sonido para siempre.
+    El contador de la cabecera se renderiza en el servidor y sólo cambia al
+    navegar; de ahí que haga falta la consulta.
+    **El tono se sintetiza con Web Audio, no es un archivo**: nada que
+    descargar, ningún `.mp3` en el repositorio, y el primer aviso no llega
+    tarde porque el audio se estuviera bajando. Dos notas ascendentes con
+    envolvente suave —un oscilador que arranca y se corta en seco chasquea y
+    suena a falla—. Una **alerta** suena distinto de una notificación (tres
+    notas más agudas): si sonaran igual, dejaría de distinguirse lo que hay que
+    atender ya. Incluye alertas además de notificaciones porque los
+    recordatorios y seguimientos llegan como alerta.
+    Los navegadores no permiten audio antes de un gesto, así que el contexto se
+    prepara con el primer clic y, si el navegador se niega, no pasa nada: el
+    contador rojo sigue estando. El silencio se guarda en `localStorage` y se
+    contempla que el almacenamiento falle.
+
+21. **«Dejar el sistema en cero» es lo ÚNICO que borra de verdad.**
+    `/admin/puesta-en-cero`, sólo el Administrador de sistema
+    (`isSystemAdmin`, no sólo el permiso) y hay que **escribir la frase**
+    «DEJAR EN CERO»: lo que protege de un borrado accidental no es un diálogo
+    que se cierra con Enter, es tener que escribir algo.
+    No contradice la regla 2 (nada se borra): eso vale para la OPERACIÓN, y
+    esto es un gesto de INSTALACIÓN, una vez, antes de que existan datos
+    reales. La pantalla muestra la cuenta real de filas antes de tocar nada.
+    **Conserva el catálogo** —roles, permisos, áreas, habitaciones, llaves con
+    su numeración, denominaciones, fondo fijo, parámetros— porque si se fuera,
+    «dejar en cero» sería «desinstalar». **Y conserva la cuenta que lo
+    ejecuta**: si se borrara, el hotel se quedaría sin forma de entrar a su
+    propio sistema, sin arreglo posible desde dentro.
+    Las llaves no se borran —están numeradas y cuestan dinero— pero se desligan
+    de su estadía y vuelven a «disponible».
+    Borra la auditoría de las pruebas, pero la entrada que registra la propia
+    puesta en cero se escribe DESPUÉS de la transacción y **sobrevive**.
+    Todo en una sola transacción: una puesta en cero a medias dejaría el libro
+    incoherente. El orden es el mismo que `resetOperationalData` en las
+    pruebas, y se mantienen juntos a propósito. Reemplaza al comando de consola
+    `npm run demo:purge`, que exigía abrir una terminal contra producción.
+    Lo vigila `tests/puesta-en-cero.test.ts`.
+
 ## Rendimiento: lo aprendido en producción
 
 La base está en `sa-east-1` y las funciones en `gru1` (`vercel.json`). **Antes
@@ -418,17 +496,40 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
   leerla —no se guarda en claro y no se recupera— y el usuario quedaba creado
   sin forma de entrar. Lo vigila `tests/credenciales.test.ts`.
 
+19. **El correo se configura desde la consola, y la clave se guarda cifrada.**
+    `/admin/correo` (`system.configure`). **La base manda cuando está
+    configurada; el entorno es el respaldo.** Al revés sería peor: una variable
+    olvidada ganaría, el administrador vería «guardado» y los correos seguirían
+    saliendo por el servidor viejo sin que nada lo explicara. Sin nada
+    configurado, el comportamiento es idéntico al de antes de la pantalla.
+    Esto **no rompe** la regla de que los secretos viven en el entorno: lo que
+    se guarda es el texto CIFRADO (AES-256-GCM, `lib/secret-box.ts`) y la llave
+    se deriva de `AUTH_SECRET`, que sigue en el entorno. La base no contiene
+    por sí sola lo necesario para leer la clave —importa, porque se ramificó
+    dos veces con datos reales para ensayar migraciones—. ⚠️ Rotar `AUTH_SECRET`
+    vuelve ilegible lo guardado: `openSecret` devuelve `null` y la pantalla
+    pide reescribir la clave en lugar de caerse.
+    La clave **nunca vuelve al navegador**, ni cifrada: se informa si hay una y
+    se ofrece reemplazarla. Vacío conserva la actual; quitarla es un gesto
+    aparte. No va en `SystemSetting` porque ahí el valor es `Json` y se lista
+    genéricamente en `/admin/parametros`.
+    **El envío de prueba es la razón de ser de la pantalla**: configurar correo
+    a ciegas es cómo se llega a un sistema que calla. El error del servidor se
+    muestra tal cual. El dominio avisa —sin bloquear— cuando el puerto no
+    corresponde al protocolo: «IMAP + 995» no funciona, y es el par que venía
+    en las credenciales del hotel (995 es POP3S; IMAP sobre SSL es 993).
+    La entrada **se guarda pero todavía no se lee**: el sistema sólo envía, y
+    la pantalla lo dice en vez de aparentar lo contrario.
+    Lo vigila `tests/correo.test.ts`.
+
 ## Pendientes conocidos
 
-- **SMTP sin configurar en el despliegue**: el código está listo —el puerto
-  465 activa TLS directo en `src/server/mail.ts`— pero las variables
-  (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) sólo
-  existen en la plataforma de despliegue, cifradas, **nunca en el repositorio**.
-  Mientras falten, al crear un usuario la clave se muestra en pantalla en vez
-  de enviarse a `recepcion@hoteleshw.com`, y `mail.ts` lo informa en lugar de
-  fallar en silencio.
-- El correo **entrante** no lo usa el sistema: sólo envía. Conviene saber que
-  el 995 es POP3 sobre SSL, no IMAP (IMAP sobre SSL es 993).
+- **SMTP sin configurar en producción.** Ya no hace falta desplegar para
+  arreglarlo: se configura en `/admin/correo`. Mientras falte, al crear un
+  usuario la clave se muestra en pantalla en vez de enviarse, y se informa en
+  lugar de fallar en silencio.
+- El correo **entrante** no lo usa el sistema: sólo envía. Sus datos se pueden
+  guardar ya, pero no hay lector.
 - Los tres informes del PMS no se han importado todavía en producción, así que
   el inventario de llaves sigue sin reconciliar (101 disponibles, 0
   movimientos). Se resuelve importando o con el botón «Reconciliar con las

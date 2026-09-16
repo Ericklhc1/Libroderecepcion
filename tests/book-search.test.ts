@@ -7,6 +7,7 @@ import {
   prisma,
   resetOperationalData,
   seedCatalog,
+  openShiftAs,
 } from './helpers';
 import { getBookItems } from '@/server/services/book';
 import { createEntry, softDeleteEntry } from '@/server/services/entries';
@@ -14,7 +15,6 @@ import { changeTaskStatus, createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import { createManualAlert } from '@/server/services/alerts';
 import { defaultRange, getMetrics } from '@/server/services/metrics';
-import { startShift } from '@/server/services/shifts';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 describe('libro operativo: búsqueda y filtros combinados', () => {
@@ -190,8 +190,8 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
   });
 
   it('muestra el turno, el responsable y el vencimiento de cada fila', async () => {
-    const shift = await createShift({ userId: user.id, type: ShiftType.TARDE });
-    await startShift(user, shift);
+    const shift = await createShift({ userId: user.id, type: ShiftType.DIA });
+    await openShiftAs(user, shift);
 
     await createEntry(user, {
       type: EntryType.NOVEDAD,
@@ -207,7 +207,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     const result = await getBookItems({ kinds: ['entry'] });
     const row = result.items[0]!;
 
-    expect(row.shiftLabel).toContain('TARDE');
+    expect(row.shiftLabel).toContain('DIA');
     expect(row.ownerName).toBe('Diego Alarcón');
     expect(row.creatorName).toBe('Camila Vera');
     expect(row.overdue).toBe(true);

@@ -16,10 +16,11 @@ import { requirePermission } from '@/server/auth/guard';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import {
+  addShiftMember,
   cancelHandoverPreparation,
   closeShift,
-  ensureShift,
   getShiftById,
+  openShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
@@ -27,9 +28,8 @@ import {
 import {
   SHIFT_STATUS_LABEL,
   SHIFT_TYPE_LABEL,
-  customWindow,
+  SHIFT_WINDOW_LABEL,
   plannedWindow,
-  windowHours,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
 
@@ -42,27 +42,66 @@ function refresh(shiftId?: string) {
 }
 
 const shiftIdSchema = z.object({ shiftId: z.string().min(1) });
-/** Franja de turno: `AAAA-MM-DD:TIPO`. El servicio la valida de nuevo. */
-const slotSchema = z.object({ slot: z.string().min(1) });
 
-export async function startShiftAction(
+/**
+ * El tipo es OPCIONAL: si no viene, se usa el que corresponde al reloj. Nadie
+ * debería tener que elegir «día» a las nueve de la mañana.
+ */
+const openShiftSchema = z.object({
+  type: z
+    .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
+    .optional()
+    .transform((value) => (value === '' || value === undefined ? null : value)),
+});
+
+/**
+ * Abre el turno, o suma a quien llega al que ya está abierto.
+ *
+ * Un solo botón para las dos cosas: quien entra al mesón no tiene por qué
+ * saber si alguien abrió turno antes que él.
+ */
+export async function openShiftAction(
   _state: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('shift.start');
-    /*
-      Llega la FRANJA (fecha + tipo), no un id de fila: sin asignación previa
-      la franja puede no existir todavía, y la crea el propio inicio.
-    */
-    const input = parseOrThrow(slotSchema, formDataToObject(formData));
-    const { startShift, parseSlotKey } = await import('@/server/services/shifts');
-    const shift = await startShift(user, parseSlotKey(input.slot));
+    const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
+
+    const { shift, joined } = await openShift(user, { type: input.type });
     refresh(shift.id);
+
     return {
       ok: true as const,
-      message: `Turno ${SHIFT_TYPE_LABEL[shift.type]} iniciado. Revisa y confirma la entrega anterior.`,
+      message: joined
+        ? `Te sumaste al turno de ${SHIFT_TYPE_LABEL[shift.type]} que ya estaba abierto.`
+        : `Turno de ${SHIFT_TYPE_LABEL[shift.type]} abierto (${SHIFT_WINDOW_LABEL[shift.type]}). Revisa y confirma el cierre anterior.`,
     };
+  });
+}
+
+const addMemberSchema = z.object({
+  shiftId: z.string().min(1),
+  userId: z.string().min(1),
+});
+
+/** Suma a otra persona al turno vigente. */
+export async function addShiftMemberAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    /*
+      `shift.start` y no `shift.manage`: quien está en el mesón refuerza su
+      propio turno sin pedirle permiso a nadie. El servicio comprueba además
+      que quien lo hace esté en el turno o lo supervise.
+    */
+    const user = await requirePermission('shift.start');
+    const input = parseOrThrow(addMemberSchema, formDataToObject(formData));
+
+    await addShiftMember(user, input);
+    refresh(input.shiftId);
+    return { ok: true as const, message: 'Persona sumada al turno.' };
   });
 }
 
@@ -245,7 +284,18 @@ export async function removeHandoverNoteAction(
   });
 }
 
-/** Programación de turnos y asignación de personal (supervisión). */
+/**
+ * Crea un turno a mano, con su ventana fija.
+ *
+ * Sigue existiendo porque el hotel quiere poder crear turnos «a su antojo»
+ * —adelantar el de mañana, dejar preparado el de una cobertura— pero **ya no
+ * programa nada de antemano por su cuenta**: sin esta acción no hay turnos, y
+ * el flujo normal es que la persona que entra al mesón abra el suyo.
+ *
+ * Cambió respecto de la versión anterior: la ventana ya NO se escribe a mano.
+ * Son dos, son fijas y las decide el tipo (`plannedWindow`). Una ventana libre
+ * era complejidad que nadie pedía y hacía que dos turnos se solaparan.
+ */
 export async function scheduleShiftAction(
   _state: ActionState | null,
   formData: FormData,
@@ -260,26 +310,38 @@ export async function scheduleShiftAction(
 
     const date = new Date(input.date);
     date.setHours(0, 0, 0, 0);
-    const shift = await ensureShift(date, input.type, user.id);
+    const window = plannedWindow(date, input.type);
 
     /*
-      Ventana a medida sólo si se pidió entera: una hora sin duración, o una
-      duración sin hora, sería una ventana a medias. El límite de doce horas
-      lo impone `customWindow`, no el formulario.
+      Se reutiliza un turno ya programado de la misma franja en lugar de crear
+      otro: crear dos turnos programados idénticos no aporta nada y ensucia la
+      bandeja. Un turno YA EN CURSO no se toca: ése se maneja desde /turno.
     */
-    const window =
-      input.startTime && input.durationHours
-        ? customWindow(date, input.startTime, input.durationHours)
-        : plannedWindow(date, input.type);
-
-    await prisma.shift.update({
-      where: { id: shift.id },
-      data: {
-        notes: input.notes,
-        plannedStart: window.start,
-        plannedEnd: window.end,
+    const existing = await prisma.shift.findFirst({
+      where: {
+        date,
+        type: input.type,
+        status: ShiftStatus.PROGRAMADO,
+        archivedAt: null,
       },
+      orderBy: { createdAt: 'asc' },
     });
+
+    const shift = existing
+      ? await prisma.shift.update({
+          where: { id: existing.id },
+          data: { notes: input.notes, plannedStart: window.start, plannedEnd: window.end },
+        })
+      : await prisma.shift.create({
+          data: {
+            date,
+            type: input.type,
+            notes: input.notes,
+            plannedStart: window.start,
+            plannedEnd: window.end,
+            createdById: user.id,
+          },
+        });
 
     if (input.userIds.length > 0) {
       await prisma.shiftAssignment.deleteMany({
@@ -300,8 +362,8 @@ export async function scheduleShiftAction(
       entityId: shift.id,
       action: AuditAction.EDITAR,
       summary:
-        `Turno ${SHIFT_TYPE_LABEL[input.type]} del ${date.toLocaleDateString('es-CL')} ` +
-        `programado con ${input.userIds.length} persona(s), ${windowHours(window.start, window.end)} h`,
+        `Turno de ${SHIFT_TYPE_LABEL[input.type]} (${SHIFT_WINDOW_LABEL[input.type]}) ` +
+        `del ${date.toLocaleDateString('es-CL')} creado con ${input.userIds.length} persona(s)`,
       user,
       after: { userIds: input.userIds, notes: input.notes },
     });
@@ -310,7 +372,7 @@ export async function scheduleShiftAction(
     revalidatePath('/admin/turnos');
     return {
       ok: true as const,
-      message: `Turno programado: ${windowHours(window.start, window.end)} h.`,
+      message: `Turno de ${SHIFT_TYPE_LABEL[input.type]} creado: ${SHIFT_WINDOW_LABEL[input.type]}.`,
     };
   });
 }

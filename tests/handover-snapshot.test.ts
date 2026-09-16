@@ -15,6 +15,7 @@ import {
   prisma,
   resetOperationalData,
   seedCatalog,
+  openShiftAs,
 } from './helpers';
 import { buildHandoverSnapshot } from '@/server/services/handover-snapshot';
 import { runAlertEngine } from '@/server/services/alert-engine';
@@ -25,7 +26,6 @@ import {
   prepareHandover,
   receiveHandover,
   sendHandover,
-  startShift,
 } from '@/server/services/shifts';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -211,7 +211,7 @@ describe('resumen automático de la entrega', () => {
   });
 
   it('la entrega enviada guarda una fotografía inmutable de lo entregado', async () => {
-    const shiftA = await createShift({ userId: user.id, type: ShiftType.MANANA });
+    const shiftA = await createShift({ userId: user.id, type: ShiftType.DIA });
     const entry = await createEntry(user, {
       type: EntryType.NOVEDAD,
       title: 'Registro presente al momento de la entrega',
@@ -221,7 +221,7 @@ describe('resumen automático de la entrega', () => {
       requiresFollowUp: false,
     });
 
-    await startShift(user, shiftA);
+    await openShiftAs(user, shiftA);
     await receiveHandover(user, { shiftId: shiftA.id });
     await prepareHandover(user, shiftA.id);
     const sent = await sendHandover(user, { shiftId: shiftA.id });

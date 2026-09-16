@@ -21,13 +21,16 @@ export const dynamic = 'force-dynamic';
 export default async function UsersPage() {
   await requirePagePermission('user.manage');
 
-  const [users, roles, departments] = await Promise.all([
+  // La casilla de credenciales ahora sale de la base, así que entra en el
+  // mismo Promise.all en vez de encadenar una espera más.
+  const [users, roles, departments, credentialsMailTo] = await Promise.all([
     prisma.user.findMany({
       include: { role: true, department: { select: { name: true } } },
       orderBy: [{ deletedAt: 'asc' }, { role: { level: 'desc' } }, { name: 'asc' }],
     }),
     prisma.role.findMany({ orderBy: { level: 'desc' } }),
     prisma.department.findMany({ where: { active: true }, orderBy: { order: 'asc' } }),
+    credentialsRecipient(),
   ]);
 
   const roleOptions = roles.map((role) => ({ value: role.id, label: role.name }));
@@ -53,7 +56,7 @@ export default async function UsersPage() {
         <CreateUserDialog
           roles={roleOptions}
           departments={departmentOptions}
-          credentialsMailTo={credentialsRecipient()}
+          credentialsMailTo={credentialsMailTo}
         />
       </header>
 
@@ -87,7 +90,6 @@ export default async function UsersPage() {
                     {user.isDemo ? <Chip>Demo</Chip> : null}
                     {user.mustChangePassword ? <Chip>Debe cambiar contraseña</Chip> : null}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-600">{user.email}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {user.department?.name ?? 'Sin área'}
                     {user.phone ? ` · ${user.phone}` : ''} · último ingreso{' '}
@@ -112,7 +114,6 @@ export default async function UsersPage() {
                         user={{
                           id: user.id,
                           name: user.name,
-                          email: user.email,
                           roleId: user.roleId,
                           departmentId: user.departmentId,
                           phone: user.phone,

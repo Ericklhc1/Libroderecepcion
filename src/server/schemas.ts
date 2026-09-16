@@ -286,7 +286,6 @@ export const guaranteeDeleteSchema = z.object({
 
 export const userCreateSchema = z.object({
   name: zRequiredString(120, 'El nombre'),
-  email: z.string().trim().toLowerCase().email('Correo inválido'),
   /**
    * Opcional: si no se escribe, el sistema lo propone a partir del nombre
    * (inicial más apellido, del estilo EHerrera).
@@ -308,7 +307,6 @@ export const userCreateSchema = z.object({
 export const userUpdateSchema = z.object({
   id: z.string().min(1),
   name: zRequiredString(120, 'El nombre'),
-  email: z.string().trim().toLowerCase().email('Correo inválido'),
   roleId: z.string().min(1),
   departmentId: zOptionalCuid,
   phone: zOptionalString,

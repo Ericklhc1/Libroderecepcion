@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
+  SHIFT_SCHEDULE,
   SHIFT_TRANSITIONS,
+  SHIFT_WINDOW_LABEL,
   assertCanClose,
   assertTransition,
   canTransition,
-  nextShiftSlot,
   plannedWindow,
-  previousShiftSlot,
-  shiftOrder,
+  shiftTypeAt,
 } from '@/domain/shift';
 import { RuleError } from '@/server/errors';
 
@@ -54,91 +54,91 @@ describe('máquina de estados del turno', () => {
 });
 
 describe('regla de cierre de turno', () => {
-  it('bloquea el cierre sin entrega cuando existe turno siguiente', () => {
+  /*
+    Estas pruebas cambiaron a propósito, y documentan la corrección de un
+    fallo real. Antes la regla dependía de `hasNextShift`: había que tener el
+    turno siguiente CREADO para poder cerrar el propio. Con los turnos creados
+    a voluntad ese turno no existe cuando alguien cierra —lo crea el relevo
+    cuando llega— así que la condición era imposible y el cierre quedaba
+    trabado. Ahora depende sólo del estado de la entrega.
+  */
+  it('bloquea el cierre de un turno que no está activo y no entregó', () => {
     expect(() =>
-      assertCanClose({
-        status: ShiftStatus.ACTIVO,
-        hasNextShift: true,
-        handoverStatus: 'NONE',
-      }),
-    ).toThrow(/sin enviar la entrega/);
+      assertCanClose({ status: ShiftStatus.INICIADO, handoverStatus: 'NONE' }),
+    ).toThrow(/sin haber enviado el cierre/);
   });
 
-  it('bloquea el cierre con entrega en borrador', () => {
+  it('bloquea el cierre con la entrega en borrador', () => {
     expect(() =>
       assertCanClose({
         status: ShiftStatus.PREPARANDO_ENTREGA,
-        hasNextShift: true,
         handoverStatus: 'BORRADOR',
       }),
-    ).toThrow(/sin enviar la entrega/);
+    ).toThrow(/sin haber enviado el cierre/);
   });
 
-  it('bloquea el cierre mientras la entrega no es confirmada', () => {
+  it('mientras el cierre espera en la bandeja, el turno no se cierra a mano', () => {
     expect(() =>
-      assertCanClose({
-        status: ShiftStatus.ENTREGA_ENVIADA,
-        hasNextShift: true,
-        handoverStatus: 'ENVIADA',
-      }),
-    ).toThrow(/aún no la confirma/);
+      assertCanClose({ status: ShiftStatus.ENTREGA_ENVIADA, handoverStatus: 'ENVIADA' }),
+    ).toThrow(/bandeja/);
   });
 
   it('permite cerrar cuando la entrega fue recibida', () => {
     expect(() =>
-      assertCanClose({
-        status: ShiftStatus.RECIBIDO,
-        hasNextShift: true,
-        handoverStatus: 'RECIBIDA',
-      }),
+      assertCanClose({ status: ShiftStatus.RECIBIDO, handoverStatus: 'RECIBIDA' }),
     ).not.toThrow();
   });
 
-  it('permite cerrar sin entrega si no hay turno siguiente', () => {
+  /*
+    El turno que no releva a nadie —el último antes de un cierre del hotel, o
+    uno abierto por error— tiene que poder cerrarse. Antes esto dependía de que
+    no existiera turno siguiente; ahora de que no haya entrega que esperar.
+  */
+  it('permite cerrar desde ACTIVO cuando no hay entrega que esperar', () => {
     expect(() =>
-      assertCanClose({
-        status: ShiftStatus.ACTIVO,
-        hasNextShift: false,
-        handoverStatus: 'NONE',
-      }),
+      assertCanClose({ status: ShiftStatus.ACTIVO, handoverStatus: 'NONE' }),
     ).not.toThrow();
   });
 
   it('no permite cerrar dos veces', () => {
     expect(() =>
-      assertCanClose({
-        status: ShiftStatus.CERRADO,
-        hasNextShift: false,
-        handoverStatus: 'RECIBIDA',
-      }),
+      assertCanClose({ status: ShiftStatus.CERRADO, handoverStatus: 'RECIBIDA' }),
     ).toThrow(/ya está cerrado/);
   });
 });
 
-describe('secuencia de turnos', () => {
-  it('ordena mañana, tarde y noche', () => {
-    expect(shiftOrder(ShiftType.MANANA)).toBe(0);
-    expect(shiftOrder(ShiftType.TARDE)).toBe(1);
-    expect(shiftOrder(ShiftType.NOCHE)).toBe(2);
+describe('las dos ventanas fijas', () => {
+  it('son exactamente dos y cubren el día completo sin huecos', () => {
+    // El día termina donde empieza la noche, y la noche donde empieza el día.
+    expect(SHIFT_SCHEDULE.DIA.startHour).toBe(7);
+    expect(SHIFT_SCHEDULE.DIA.endHour).toBe(20);
+    expect(SHIFT_SCHEDULE.NOCHE.startHour).toBe(20);
+    expect(SHIFT_SCHEDULE.NOCHE.endHour).toBe(8);
+    expect(Object.keys(SHIFT_SCHEDULE)).toEqual(['DIA', 'NOCHE']);
   });
 
-  it('encadena la noche con la mañana del día siguiente', () => {
-    expect(nextShiftSlot(ShiftType.MANANA)).toEqual({ type: ShiftType.TARDE, dayOffset: 0 });
-    expect(nextShiftSlot(ShiftType.NOCHE)).toEqual({ type: ShiftType.MANANA, dayOffset: 1 });
-    expect(previousShiftSlot(ShiftType.MANANA)).toEqual({
-      type: ShiftType.NOCHE,
-      dayOffset: -1,
-    });
+  it('se leen como las dice el hotel', () => {
+    expect(SHIFT_WINDOW_LABEL.DIA).toBe('07:00 a 19:59');
+    expect(SHIFT_WINDOW_LABEL.NOCHE).toBe('20:00 a 07:59');
   });
 
-  it('el turno de noche cruza la medianoche', () => {
-    const date = new Date('2026-03-10T00:00:00');
-    const noche = plannedWindow(date, ShiftType.NOCHE);
-    expect(noche.start.getDate()).toBe(10);
-    expect(noche.end.getDate()).toBe(11);
+  it('el turno de día no cruza la medianoche y el de noche sí', () => {
+    const base = new Date(2026, 8, 16);
+    const dia = plannedWindow(base, ShiftType.DIA);
+    expect(dia.start.getHours()).toBe(7);
+    expect(dia.end.getDate()).toBe(base.getDate());
 
-    const manana = plannedWindow(date, ShiftType.MANANA);
-    expect(manana.start.getHours()).toBe(7);
-    expect(manana.end.getHours()).toBe(15);
+    const noche = plannedWindow(base, ShiftType.NOCHE);
+    expect(noche.start.getHours()).toBe(20);
+    expect(noche.end.getDate()).toBe(base.getDate() + 1);
+    expect(noche.end.getHours()).toBe(8);
+  });
+
+  it('propone el turno según el reloj, en los dos bordes', () => {
+    expect(shiftTypeAt(new Date(2026, 8, 16, 7, 0))).toBe(ShiftType.DIA);
+    expect(shiftTypeAt(new Date(2026, 8, 16, 19, 59))).toBe(ShiftType.DIA);
+    expect(shiftTypeAt(new Date(2026, 8, 16, 20, 0))).toBe(ShiftType.NOCHE);
+    expect(shiftTypeAt(new Date(2026, 8, 16, 6, 59))).toBe(ShiftType.NOCHE);
+    expect(shiftTypeAt(new Date(2026, 8, 16, 3, 0))).toBe(ShiftType.NOCHE);
   });
 });

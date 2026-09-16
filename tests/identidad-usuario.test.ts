@@ -12,13 +12,18 @@ import { allocateUsername } from '@/server/services/credentials';
 import { loginSchema } from '@/server/schemas';
 
 /**
- * La identidad de una cuenta es su nombre de usuario, no su correo.
+ * La identidad de una cuenta es su nombre de usuario, y **es lo único que hay**.
  *
- * En el hotel varias cuentas comparten la casilla de recepción, así que el
- * correo no distingue a nadie. Lo que estas pruebas fijan es que esa decisión
- * no se pueda deshacer por descuido: que el correo pueda repetirse, que entrar
- * dependa del usuario, y que no puedan existir dos usuarios que sólo se
- * diferencien en las mayúsculas —porque entonces entrar sería ambiguo—.
+ * Decisión llevada hasta el final: primero el correo dejó de ser identificador
+ * —en el hotel todo el mesón comparte la casilla de recepción, así que no
+ * distinguía a nadie— y después se eliminó del modelo. Una cuenta es nombre,
+ * usuario y contraseña. Un campo que no identifica, no sirve para entrar y hay
+ * que inventar al crear la cuenta es un campo que sobra.
+ *
+ * Lo que estas pruebas fijan: que entrar dependa del usuario, que se acepte la
+ * arroba y se ignoren las mayúsculas —en el mesón nadie recuerda cómo se
+ * escribió—, y que no existan dos usuarios que sólo se diferencien en eso,
+ * porque entonces entrar sería ambiguo.
  */
 describe('la identidad de la cuenta es el usuario', () => {
   beforeAll(async () => {
@@ -29,40 +34,31 @@ describe('la identidad de la cuenta es el usuario', () => {
     await resetOperationalData();
   });
 
-  it('varias cuentas pueden compartir el mismo correo', async () => {
-    const casilla = 'recepcion@hoteleshw.com';
-
-    const primera = await createUser({
+  /*
+    La cuenta no tiene correo. Se comprueba en el ESQUEMA y no sólo en la
+    interfaz: si alguien volviera a agregar la columna, un formulario podría
+    empezar a pedirlo otra vez sin que nadie lo notara.
+  */
+  it('una cuenta es nombre, usuario y contraseña: no hay correo', async () => {
+    const user = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,
-      email: casilla,
       name: 'Erick Herrera',
       username: 'EHerrera',
     });
-    const segunda = await createUser({
-      roleKey: ROLE_KEYS.RECEPTIONIST,
-      email: casilla,
-      name: 'Marta Soto',
-      username: 'MSoto',
-    });
 
-    expect(primera.email).toBe(casilla);
-    expect(segunda.email).toBe(casilla);
-    expect(primera.id).not.toBe(segunda.id);
-
-    const cuentas = await prisma.user.findMany({ where: { email: casilla } });
-    expect(cuentas).toHaveLength(2);
+    const fila = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(Object.keys(fila)).not.toContain('email');
+    expect(fila.name).toBe('Erick Herrera');
+    expect(fila.username).toBe('EHerrera');
   });
 
-  it('cada cuenta que comparte el correo entra con su propio usuario', async () => {
-    const casilla = 'recepcion@hoteleshw.com';
+  it('cada cuenta entra con su propio usuario', async () => {
     const erick = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,
-      email: casilla,
       username: 'EHerrera',
     });
     const marta = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,
-      email: casilla,
       username: 'MSoto',
     });
 
@@ -75,7 +71,6 @@ describe('la identidad de la cuenta es el usuario', () => {
       password: TEST_PASSWORD,
     });
 
-    // Cada usuario abre SU sesión: el correo compartido no las confunde.
     expect(sesionErick.userId).toBe(erick.id);
     expect(sesionMarta.userId).toBe(marta.id);
   });
@@ -92,14 +87,11 @@ describe('la identidad de la cuenta es el usuario', () => {
     }
   });
 
-  it('un correo ya no sirve para entrar', async () => {
-    const user = await createUser({
-      roleKey: ROLE_KEYS.RECEPTIONIST,
-      email: 'recepcion@hoteleshw.com',
-      username: 'EHerrera',
-    });
-    expect(user.email).toBe('recepcion@hoteleshw.com');
+  it('un correo no sirve para entrar', async () => {
+    await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, username: 'EHerrera' });
 
+    // Quien lo intente recibe el mismo mensaje que con cualquier usuario que
+    // no existe: no se revela si la cuenta está o no.
     await expect(
       authenticate({ username: 'recepcion@hoteleshw.com', password: TEST_PASSWORD }),
     ).rejects.toThrow('Usuario o contraseña incorrectos.');

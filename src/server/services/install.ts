@@ -26,7 +26,6 @@ export async function needsInstall(): Promise<boolean> {
 export async function runInstall(input: {
   hotelName: string;
   name: string;
-  email: string;
   password: string;
 }): Promise<{ userId: string }> {
   if (!(await needsInstall())) {
@@ -37,7 +36,6 @@ export async function runInstall(input: {
   }
 
   const passwordHash = await hashPassword(input.password);
-  const email = input.email.trim().toLowerCase();
 
   const user = await prisma.$transaction(
     async (tx) => {
@@ -56,7 +54,6 @@ export async function runInstall(input: {
       data: {
         name: input.name.trim(),
         username: suggestUsername(input.name),
-        email,
         passwordHash,
         roleId: role.id,
         isDemo: false,

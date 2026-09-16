@@ -83,7 +83,6 @@ export async function createUserAction(
     const user = await prisma.user.create({
       data: {
         name: input.name,
-        email: input.email,
         username,
         roleId: input.roleId,
         departmentId: input.departmentId,
@@ -97,7 +96,6 @@ export async function createUserAction(
     const delivery = await deliverCredentials({
       name: user.name,
       username,
-      email: user.email,
       password,
       roleName: role.name,
       hotelName,
@@ -108,12 +106,12 @@ export async function createUserAction(
       entityId: user.id,
       action: AuditAction.CREAR,
       summary:
-        `Usuario creado: ${user.name} (@${username}) <${user.email}> con rol ${role.name}. ` +
+        `Usuario creado: ${user.name} (@${username}) con rol ${role.name}. ` +
         (delivery.sent
           ? `Credenciales enviadas a ${delivery.recipient}.`
           : 'No se pudo enviar el correo con las credenciales.'),
       user: actor,
-      after: { name: user.name, email: user.email, username, roleId: role.id, role: role.name },
+      after: { name: user.name, username, roleId: role.id, role: role.name },
     });
 
     revalidatePath('/admin/usuarios');
@@ -130,7 +128,6 @@ export async function createUserAction(
       credentials: {
         name: user.name,
         username,
-        email: user.email,
         password,
         recipient: delivery.recipient,
         sent: delivery.sent,
@@ -168,7 +165,6 @@ export async function updateUserAction(
       where: { id: input.id },
       data: {
         name: input.name,
-        email: input.email,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -186,13 +182,12 @@ export async function updateUserAction(
       current as unknown as Record<string, unknown>,
       {
         name: input.name,
-        email: input.email,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
         active: input.active,
       },
-      ['name', 'email', 'roleId', 'departmentId', 'phone', 'active'],
+      ['name', 'roleId', 'departmentId', 'phone', 'active'],
     );
 
     await recordAudit({

@@ -54,11 +54,19 @@ const PRIMARY: NavItem[] = [
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
     mobile: true,
   },
+  /*
+    Supervisión la ve quien SUPERVISA, no quien opera.
+
+    `incident.manage` estaba en esta lista y era el error: ese permiso lo
+    tiene el mesón —de noche hay que poder mover una incidencia— así que la
+    pestaña le aparecía a perfiles de recepción. Gestionar una incidencia y
+    supervisar el turno de otro no son lo mismo.
+  */
   {
     href: '/supervision',
     label: 'Supervisión',
     icon: 'supervision',
-    anyOf: ['supervision.view', 'incident.manage', 'shift.manage'],
+    anyOf: ['supervision.view', 'shift.manage'],
     mobile: true,
   },
 ];

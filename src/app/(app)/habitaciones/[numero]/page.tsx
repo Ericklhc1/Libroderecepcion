@@ -384,6 +384,8 @@ export default async function RoomDetailPage({
         canAssign={canKeys}
         canStock={hasPermission(user, 'key.stock')}
         availableKeys={availableKeys}
+        /* `current` es la estadía IN_HOUSE: la condición para entregar la llave. */
+        hasGuestInside={Boolean(snapshot.current)}
       />
 
       {/*

@@ -255,6 +255,87 @@ export async function assignMainKey(
 }
 
 /**
+ * Entrega la llave principal al huésped que está DENTRO.
+ *
+ * **Por qué hacía falta.** La llave principal sólo se asignaba como efecto de
+ * confirmar el check-in. Una estadía que llega al sistema ya como `IN_HOUSE`
+ * —el informe de in house la trae así, sin pasar por una llegada— se quedaba
+ * sin llave y en la ficha de la habitación **no había ningún botón** para
+ * entregarla: el mesón veía al huésped dentro, la llave «disponible», y ningún
+ * gesto posible. Era el «no me deja entregar las llaves».
+ *
+ * No inventa una segunda lógica: llama a `assignMainKey`, la misma que usa el
+ * check-in y la reconciliación. Lo único que aporta es encontrar la estadía que
+ * está dentro y dar un error que se entienda cuando no hay ninguna.
+ */
+export async function handMainKey(
+  user: CurrentUser,
+  input: { roomId: string; keyId?: string | null; note?: string | null },
+): Promise<{ code: string; roomNumber: string }> {
+  const result = await prisma.$transaction(async (tx) => {
+    const room = await tx.room.findUnique({
+      where: { id: input.roomId },
+      select: { id: true, number: true },
+    });
+    if (!room) throw new NotFoundError('Esa habitación no existe en el inventario.');
+
+    const stay = await tx.roomStay.findFirst({
+      where: {
+        roomId: room.id,
+        deletedAt: null,
+        status: RoomStayStatus.IN_HOUSE,
+        stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
+      },
+      select: { id: true, guestNames: true, reservationId: true },
+    });
+    if (!stay) {
+      throw new RuleError(
+        `La habitación ${room.number} no tiene a nadie alojado. ` +
+          'Si el huésped está llegando, confirma primero su check-in: la llave se entrega ahí.',
+      );
+    }
+
+    // Si ya tiene una llave en mano, entregar otra sería duplicarla.
+    const held = await tx.roomKey.findFirst({
+      where: { stayId: stay.id, status: { in: HELD_BY_GUEST }, type: KeyType.PRINCIPAL },
+      select: { code: true },
+    });
+    if (held) {
+      throw new RuleError(
+        `La ${room.number} ya tiene entregada su llave principal (${held.code}). ` +
+          'Para una segunda llave, entrega una copia adicional.',
+      );
+    }
+
+    const assigned = await assignMainKey(tx, user, {
+      roomId: room.id,
+      stayId: stay.id,
+      keyId: input.keyId ?? null,
+    });
+    if (!assigned) {
+      throw new RuleError(
+        `No hay ninguna llave disponible para la ${room.number}. ` +
+          'Revisa el inventario: puede estar entregada, extraviada o fuera de servicio.',
+      );
+    }
+
+    return { code: assigned.code, roomNumber: room.number, guest: stay.guestNames[0] ?? null };
+  });
+
+  await recordAudit({
+    entity: 'RoomKey',
+    entityId: result.code,
+    action: AuditAction.CAMBIO_ESTADO,
+    user,
+    summary:
+      `Llave ${result.code} entregada a la habitación ${result.roomNumber}` +
+      (result.guest ? ` (${result.guest})` : ''),
+  });
+
+  return { code: result.code, roomNumber: result.roomNumber };
+}
+
+/**
  * Devuelve al inventario todas las llaves de una estadía.
  *
  * La principal se queda con su habitación —es su llave— y las copias vuelven

@@ -65,6 +65,13 @@ export async function resetOperationalData() {
     // Los comunicados y sus confirmaciones referencian al usuario: van antes.
     prisma.announcementRead.deleteMany(),
     prisma.announcement.deleteMany(),
+    /*
+      La configuración de correo se borra por la MISMA razón que `CashFund`: su
+      existencia cambia el comportamiento —con SMTP guardado, `isMailConfigured`
+      da verdadero— y dejarla viva haría que la prueba de credenciales pasara o
+      fallara según qué archivo corriera antes.
+    */
+    prisma.mailSettings.deleteMany(),
     prisma.handoverItem.deleteMany(),
     /*
       La caja va ANTES de la entrega y de los usuarios: los arqueos y los
@@ -122,24 +129,21 @@ export async function resetRoomsAndKeys() {
 
 export async function createUser(options: {
   roleKey: RoleKey;
-  email?: string;
   name?: string;
   password?: string;
   active?: boolean;
   username?: string;
-  /* El usuario es la identidad de la cuenta, así que las pruebas lo necesitan
-     para iniciar sesión. El correo puede repetirse a propósito. */
+  /* El usuario es la identidad de la cuenta y lo único que la identifica:
+     las cuentas no tienen correo. */
 }): Promise<CurrentUser & { passwordPlain: string; username: string }> {
   const role = await prisma.role.findUniqueOrThrow({
     where: { key: options.roleKey },
     include: { permissions: { include: { permission: true } } },
   });
   const password = options.password ?? TEST_PASSWORD;
-  const email = options.email ?? `${role.key.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@test.local`;
 
   const user = await prisma.user.create({
     data: {
-      email,
       name: options.name ?? `Usuario ${role.name}`,
       username:
         options.username ??
@@ -153,7 +157,6 @@ export async function createUser(options: {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
     sessionId: 'sesion-de-prueba',
     roleId: role.id,
     roleKey: role.key,
@@ -197,6 +200,41 @@ export async function createShift(options: {
         : {}),
     },
     include: { assignments: true },
+  });
+}
+
+/**
+ * Abre un turno en las pruebas.
+ *
+ * Envuelve `openShift`, que es el único camino real: crea el turno si no hay
+ * ninguno en curso, o suma a la persona al que ya está abierto. Acepta una fila
+ * de turno completa además de `{type, date}`, para que las pruebas puedan
+ * pasarle el turno que crearon con `createShift`.
+ */
+export async function openShiftAs(
+  user: CurrentUser,
+  slot?: { type?: ShiftType; date?: Date },
+) {
+  const { openShift } = await import('@/server/services/shifts');
+  const result = await openShift(user, {
+    type: slot?.type ?? null,
+    date: slot?.date ?? null,
+  });
+  return result.shift;
+}
+
+/**
+ * Deja la pizarra de turnos limpia.
+ *
+ * Hace falta porque ahora hay un índice único parcial que permite UN SOLO
+ * turno en curso en toda la base: sin esto, un archivo de pruebas que dejó un
+ * turno activo hace fallar al siguiente con un error de índice en lugar de con
+ * el fallo que se estaba buscando.
+ */
+export async function closeAllShifts() {
+  await prisma.shift.updateMany({
+    where: { status: { in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA] } },
+    data: { status: ShiftStatus.CERRADO },
   });
 }
 

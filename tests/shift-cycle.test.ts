@@ -7,16 +7,16 @@ import {
   prisma,
   resetOperationalData,
   seedCatalog,
+  openShiftAs,
 } from './helpers';
 import {
   cancelHandoverPreparation,
   closeShift,
-  getIncomingHandover,
+  getPendingHandover,
   getMyOpenShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
-  startShift,
 } from '@/server/services/shifts';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -40,11 +40,11 @@ describe('ciclo de turno de punta a punta', () => {
   });
 
   it('recorre programado → iniciado → activo → entrega → recibido → cerrado', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
     // 1. Inicio de turno
-    const started = await startShift(morning, shiftA);
+    const started = await openShiftAs(morning, shiftA);
     expect(started.status).toBe(ShiftStatus.INICIADO);
     expect(started.actualStart).not.toBeNull();
     expect(started.startedById).toBe(morning.id);
@@ -60,7 +60,13 @@ describe('ciclo de turno de punta a punta', () => {
     // 3. Preparación de la entrega
     const draft = await prepareHandover(morning, shiftA.id);
     expect(draft.status).toBe(HandoverStatus.BORRADOR);
-    expect(draft.toShiftId).toBe(shiftB.id);
+    /*
+      REVISADO: el destino ya NO se adivina al preparar la entrega. Cuando
+      alguien entrega, el turno que va a recibir todavía no existe. Queda nulo
+      y lo escribe quien la recibe. Intentar deducirlo por adyacencia de
+      franjas era la causa de que no se pudiera recibir.
+    */
+    expect(draft.toShiftId).toBeNull();
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } })).status).toBe(
       ShiftStatus.PREPARANDO_ENTREGA,
     );
@@ -79,11 +85,11 @@ describe('ciclo de turno de punta a punta', () => {
     );
 
     // El turno entrante ve la entrega como pendiente de recibir
-    const incoming = await getIncomingHandover(shiftB);
+    const incoming = await getPendingHandover(shiftB.id);
     expect(incoming?.id).toBe(sent.id);
 
     // 5. Recepción por el turno siguiente
-    await startShift(evening, shiftB);
+    await openShiftAs(evening, shiftB);
     const received = await receiveHandover(evening, {
       shiftId: shiftB.id,
       handoverId: sent.id,
@@ -109,10 +115,10 @@ describe('ciclo de turno de punta a punta', () => {
   });
 
   it('notifica al turno entrante cuando la entrega se envía', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await createShift({ userId: evening.id, type: ShiftType.TARDE });
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await createShift({ userId: evening.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
@@ -124,8 +130,8 @@ describe('ciclo de turno de punta a punta', () => {
   });
 
   it('el resumen automático se regenera y conserva las notas manuales', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shiftA);
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
 
     const draft = await prepareHandover(morning, shiftA.id);
@@ -165,16 +171,18 @@ describe('invariantes del turno', () => {
   });
 
   it('no permite iniciar dos veces el mismo turno', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
 
     /*
-      El mensaje cambió al quitar la asignación previa: ahora la primera
-      barrera es «ya tienes un turno abierto», que salta antes que la máquina
-      de estados. La invariante es la misma —un turno no se inicia dos veces—
-      así que se comprueba el hecho, no la redacción.
+      REVISADO DOS VECES, y esta versión es la que pidió el hotel. Entrar al
+      mesón cuando ya tienes turno abierto no es un error: te devuelve TU
+      turno. Lo que la invariante protege es que no se inicie dos veces —un
+      solo TURNO_INICIAR, un solo `actualStart`— no que la segunda pulsación
+      falle. Un error ahí sólo confundiría a quien recarga la pantalla.
     */
-    await expect(startShift(morning, shift)).rejects.toThrow(RuleError);
+    const otraVez = await openShiftAs(morning, shift);
+    expect(otraVez.id).toBe(shift.id);
 
     const started = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
     expect(started.status).toBe(ShiftStatus.INICIADO);
@@ -185,12 +193,24 @@ describe('invariantes del turno', () => {
     ).toBe(1);
   });
 
-  it('no permite dos turnos abiertos para el mismo usuario', async () => {
-    const first = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    const second = await createShift({ userId: morning.id, type: ShiftType.TARDE });
+  /*
+    REVISADO. La regla era «un turno abierto por usuario»; ahora es más fuerte:
+    UN TURNO ABIERTO EN TODO EL HOTEL. Y no se expresa con un error, sino
+    devolviendo el turno vigente: pedir abrir otro te mete en el que hay.
+  */
+  it('no hay dos turnos abiertos: pedir otro devuelve el vigente', async () => {
+    const first = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    const second = await createShift({ userId: morning.id, type: ShiftType.DIA });
 
-    await startShift(morning, first);
-    await expect(startShift(morning, second)).rejects.toThrow(/Ya tienes el turno/);
+    const abierto = await openShiftAs(morning, first);
+    const otro = await openShiftAs(morning, second);
+
+    expect(otro.id).toBe(abierto.id);
+    expect(
+      await prisma.shift.count({
+        where: { status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA'] } },
+      }),
+    ).toBe(1);
   });
 
   /*
@@ -200,31 +220,50 @@ describe('invariantes del turno', () => {
     reemplaza por la invariante que SÍ sobrevive, que es la que de verdad
     protege la operación: un turno que alguien ya tomó no se le puede quitar.
   */
-  it('quien no estaba asignado puede tomar un turno libre', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
+  it('quien no estaba asignado puede abrir un turno programado para otro', async () => {
+    // El turno viene con `morning` apuntado por quien lo programó.
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
 
-    const taken = await startShift(evening, shift);
+    const taken = await openShiftAs(evening, shift);
 
+    // Lo abre quien llegó, no quien estaba apuntado: eso es lo que importa.
     expect(taken.startedById).toBe(evening.id);
     const assignment = await prisma.shiftAssignment.findFirstOrThrow({
       where: { shiftId: shift.id, userId: evening.id },
     });
-    expect(assignment.role).toBe('TITULAR');
+    /*
+      Queda como APOYO, y es correcto: el turno ya tenía a alguien apuntado
+      como titular. El papel lo decide lo que ya hay en el turno, no quién
+      pulsa el botón.
+    */
+    expect(assignment.role).toBe('APOYO');
   });
 
-  it('un turno ya tomado no se le puede quitar a quien lo tomó', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+  /*
+    REVISADO. Antes el segundo recibía un error. Ahora SE SUMA al turno, que es
+    lo que pasa de verdad en el mesón cuando entra el refuerzo. La invariante
+    que sobrevive, y la que importa, es que el TITULAR no cambia: quien abrió
+    el turno sigue respondiendo por la caja.
+  */
+  it('quien llega después se suma, y el titular sigue siendo quien abrió', async () => {
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
 
-    await expect(startShift(evening, shift)).rejects.toThrow(RuleError);
+    const mismo = await openShiftAs(evening, shift);
+    expect(mismo.id).toBe(shift.id);
 
     const current = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
     expect(current.startedById).toBe(morning.id);
+
+    const apoyo = await prisma.shiftAssignment.findFirstOrThrow({
+      where: { shiftId: shift.id, userId: evening.id },
+    });
+    expect(apoyo.role).toBe('APOYO');
   });
 
   it('no permite recibir una entrega inexistente', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
 
     await expect(
       receiveHandover(morning, { shiftId: shift.id, handoverId: 'no-existe' }),
@@ -232,15 +271,15 @@ describe('invariantes del turno', () => {
   });
 
   it('no permite recibir dos veces la misma entrega', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
 
-    await startShift(evening, shiftB);
+    await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
     // Segundo intento sobre la misma entrega, ya confirmada.
@@ -249,51 +288,56 @@ describe('invariantes del turno', () => {
     ).rejects.toThrow(/ya fue recibida/);
   });
 
-  it('no permite recibir una entrega que no corresponde al turno', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    const shiftC = await createShift({ userId: evening.id, type: ShiftType.NOCHE });
+  /*
+    REVISADO. Antes «no corresponde» significaba «no es la franja siguiente».
+    Eso desapareció con la adyacencia: cualquier turno puede recibir el cierre
+    que esté en la bandeja, y es lo que arregla el atasco. Lo que sigue sin
+    poder hacerse es recibir una entrega que NO es la pendiente: por ejemplo
+    la propia, o una ya cerrada.
+  */
+  it('un turno no puede recibir su propia entrega', async () => {
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
 
-    // El turno de noche no es el siguiente del turno de mañana.
-    await startShift(evening, shiftC);
     await expect(
-      receiveHandover(evening, { shiftId: shiftC.id, handoverId: sent.id }),
-    ).rejects.toThrow(/no corresponde a este turno/);
+      receiveHandover(morning, { shiftId: shiftA.id, handoverId: sent.id }),
+    ).rejects.toThrow(RuleError);
   });
 
-  it('no permite cerrar el turno sin entregar cuando hay turno siguiente', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await createShift({ userId: evening.id, type: ShiftType.TARDE });
+  /*
+    REVISADO, y es la corrección del fallo reportado. Antes cerrar exigía que
+    el turno siguiente existiera como fila; con los turnos creados a voluntad
+    no existe, así que el cierre quedaba trabado. Ahora un turno activo que no
+    entregó a nadie SÍ se puede cerrar: hay turnos que no relevan a nadie.
+  */
+  it('un turno activo sin entrega se puede cerrar', async () => {
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
 
-    await expect(closeShift(morning, { shiftId: shiftA.id })).rejects.toThrow(
-      /sin enviar la entrega/,
-    );
+    const closed = await closeShift(morning, { shiftId: shiftA.id });
+    expect(closed.status).toBe(ShiftStatus.CERRADO);
   });
 
-  it('no permite cerrar el turno con la entrega aún sin confirmar', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await createShift({ userId: evening.id, type: ShiftType.TARDE });
+  it('mientras el cierre espera en la bandeja, el turno no se cierra a mano', async () => {
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
 
-    await expect(closeShift(morning, { shiftId: shiftA.id })).rejects.toThrow(
-      /aún no la confirma/,
-    );
+    await expect(closeShift(morning, { shiftId: shiftA.id })).rejects.toThrow(/bandeja/);
   });
 
-  it('permite cerrar sin entrega cuando no hay turno siguiente', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+  it('permite cerrar sin entrega cuando no hay nada que entregar', async () => {
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     const closed = await closeShift(morning, { shiftId: shift.id, notes: 'Sin novedades.' });
@@ -303,8 +347,8 @@ describe('invariantes del turno', () => {
   });
 
   it('no permite enviar una entrega inexistente ni enviarla dos veces', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(sendHandover(morning, { shiftId: shift.id })).rejects.toThrow(
@@ -319,8 +363,8 @@ describe('invariantes del turno', () => {
   });
 
   it('cada turno emite como máximo una entrega', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     const first = await prepareHandover(morning, shift.id);
     const second = await prepareHandover(morning, shift.id);
@@ -338,8 +382,8 @@ describe('invariantes del turno', () => {
   });
 
   it('una entrega siempre tiene emisor y turno de origen', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     const handover = await prepareHandover(morning, shift.id);
 
@@ -355,8 +399,8 @@ describe('invariantes del turno', () => {
   });
 
   it('sólo el personal del turno puede preparar o enviar su entrega', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(prepareHandover(evening, shift.id)).rejects.toThrow(
@@ -365,8 +409,8 @@ describe('invariantes del turno', () => {
   });
 
   it('permite cancelar la preparación y volver al turno activo', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     await prepareHandover(morning, shift.id);
 
@@ -376,9 +420,9 @@ describe('invariantes del turno', () => {
   });
 
   it('no permite cancelar una entrega ya enviada', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await createShift({ userId: evening.id, type: ShiftType.TARDE });
-    await startShift(morning, shiftA);
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await createShift({ userId: evening.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
@@ -387,8 +431,8 @@ describe('invariantes del turno', () => {
   });
 
   it('el supervisor puede cerrar el turno de otra persona', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     const closed = await closeShift(supervisor, { shiftId: shift.id });
@@ -397,8 +441,8 @@ describe('invariantes del turno', () => {
   });
 
   it('un tercero sin permisos de supervisión no puede cerrar un turno ajeno', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift);
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(closeShift(evening, { shiftId: shift.id })).rejects.toThrow(
@@ -407,10 +451,10 @@ describe('invariantes del turno', () => {
   });
 
   it('getMyOpenShift devuelve el turno vigente y nada cuando está cerrado', async () => {
-    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
+    const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
     expect(await getMyOpenShift(morning.id)).toBeNull();
 
-    await startShift(morning, shift);
+    await openShiftAs(morning, shift);
     expect((await getMyOpenShift(morning.id))?.id).toBe(shift.id);
 
     await receiveHandover(morning, { shiftId: shift.id });
@@ -419,14 +463,14 @@ describe('invariantes del turno', () => {
   });
 
   it('registra en auditoría cada paso del ciclo', async () => {
-    const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
-    await startShift(morning, shiftA);
+    await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
-    await startShift(evening, shiftB);
+    await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
     const actions = await prisma.auditLog.findMany({

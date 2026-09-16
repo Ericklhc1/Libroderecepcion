@@ -10,7 +10,6 @@ const installSchema = z
   .object({
     hotelName: zRequiredString(80, 'El nombre del hotel'),
     name: zRequiredString(120, 'Tu nombre'),
-    email: z.string().trim().toLowerCase().email('Ingresa un correo válido'),
     password: passwordSchema,
     confirmPassword: z.string().min(1, 'Repite la contraseña'),
   })

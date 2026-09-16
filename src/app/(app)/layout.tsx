@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Bell, BookOpen, LogOut, Search, UserRound } from 'lucide-react';
 import { NotificationChime } from '@/components/layout/notification-chime';
+import { ReceptionAssistant } from '@/components/layout/reception-assistant';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
@@ -152,6 +153,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <MobileNav items={items} badges={badges} />
+      <ReceptionAssistant />
 
       {blocking.length > 0 ? (
         <AnnouncementGate announcements={blocking} userName={user.name} />

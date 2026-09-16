@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import type { ActionState, RevealedCredentials } from '@/server/action';
 
@@ -206,6 +207,7 @@ export function ActionForm({
   closeOnSuccess = false,
   resetOnSuccess = false,
   hideSuccess = false,
+  refreshOnSuccess = false,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
@@ -213,8 +215,19 @@ export function ActionForm({
   closeOnSuccess?: boolean;
   resetOnSuccess?: boolean;
   hideSuccess?: boolean;
+  /**
+   * Vuelve a pedir la pantalla al servidor cuando la acción tiene éxito.
+   *
+   * Hace falta cuando lo que cambia se calcula en el LAYOUT, no en la página:
+   * `revalidatePath` invalida la caché del servidor, pero el router del
+   * cliente sigue mostrando el árbol que ya tenía. Fue un fallo real: al
+   * confirmar un comunicado obligatorio la confirmación se guardaba en la
+   * base y la pantalla seguía bloqueada.
+   */
+  refreshOnSuccess?: boolean;
 }) {
   const [state, formAction] = useActionState(action, null);
+  const router = useRouter();
   const close = useDialogClose();
   const formId = useId();
   const submitted = useRef<Map<string, ControlValue> | null>(null);
@@ -236,10 +249,11 @@ export function ActionForm({
       if (state.credentials) return;
       if (resetOnSuccess) form?.reset();
       if (closeOnSuccess && close) close();
+      if (refreshOnSuccess) router.refresh();
       return;
     }
     if (form && submitted.current) writeControls(form, submitted.current);
-  }, [state, close, closeOnSuccess, resetOnSuccess, formId]);
+  }, [state, close, closeOnSuccess, resetOnSuccess, refreshOnSuccess, router, formId]);
 
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 

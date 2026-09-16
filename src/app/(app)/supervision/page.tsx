@@ -6,6 +6,13 @@ import { redirect } from 'next/navigation';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
 import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { TONE_STYLES } from '@/components/ui/tone';
+import { Badge, Chip } from '@/components/ui/badge';
+import { listAnnouncements } from '@/server/services/announcements';
+import { listOperationalUsers } from '@/server/services/users';
+import {
+  CloseAnnouncementDialog,
+  NewAnnouncementDialog,
+} from './announcements';
 
 export const metadata = { title: 'Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -64,11 +71,21 @@ export default async function SupervisionPage() {
     tiene `incident.manage`, así que el permiso se comprueba también acá y no
     sólo en la navegación.
   */
-  if (!hasPermission(user, 'incident.manage') && !hasPermission(user, 'shift.manage')) {
+  if (
+    !hasPermission(user, 'supervision.view') &&
+    !hasPermission(user, 'incident.manage') &&
+    !hasPermission(user, 'shift.manage')
+  ) {
     redirect('/sin-permisos');
   }
 
-  const { blocks, total, now } = await getSupervisionData();
+  const canAnnounce = hasPermission(user, 'announcement.manage');
+
+  const [{ blocks, total, now }, announcements, operationalUsers] = await Promise.all([
+    getSupervisionData(),
+    canAnnounce ? listAnnouncements() : Promise.resolve([]),
+    canAnnounce ? listOperationalUsers() : Promise.resolve([]),
+  ]);
 
   const critical = blocks
     .filter((block) => block.tone === 'critico')
@@ -91,10 +108,106 @@ export default async function SupervisionPage() {
             carga: no hay listas que haya que mantener a mano.
           </p>
         </div>
-        <p className="text-xs text-slate-500">
-          Al {now.toLocaleString('es-CL')}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* El tablero de asignación es la otra mitad de Supervisión. */}
+          <Link
+            href="/supervision/tablero"
+            className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
+          >
+            Tablero de asignación y checklists
+          </Link>
+          <p className="text-xs text-slate-500">Al {now.toLocaleString('es-CL')}</p>
+        </div>
       </header>
+
+      {/*
+        Los comunicados obligatorios viven en Supervisión porque son su
+        herramienta: parar el mesón para decir algo que nadie puede dejar de
+        leer. No son una alerta (eso describe un estado) ni una notificación
+        (eso se puede ignorar).
+      */}
+      {canAnnounce ? (
+        <Card>
+          <CardHeader
+            title="Comunicados obligatorios"
+            count={announcements.filter((a) => a.active).length}
+            action={
+              <NewAnnouncementDialog
+                users={operationalUsers.map((u) => ({
+                  value: u.id,
+                  label: `${u.name} · ${u.role.name}`,
+                }))}
+              />
+            }
+          />
+          {announcements.length === 0 ? (
+            <EmptyState
+              message="Sin comunicados."
+              hint="Un comunicado bloquea la pantalla hasta que se confirme la lectura."
+            />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {announcements.map((announcement) => (
+                <li key={announcement.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-petrol-900">{announcement.title}</p>
+                        {announcement.active ? (
+                          <Badge
+                            tone={
+                              announcement.confirmed >= announcement.expected
+                                ? 'resuelto'
+                                : 'pendiente'
+                            }
+                          >
+                            {announcement.confirmed} de {announcement.expected} confirmado(s)
+                          </Badge>
+                        ) : (
+                          <Chip>Retirado</Chip>
+                        )}
+                        {announcement.targetName ? (
+                          <Chip>Para {announcement.targetName}</Chip>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600">
+                        {announcement.body}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {announcement.createdByName} ·{' '}
+                        {announcement.createdAt.toLocaleString('es-CL')}
+                        {announcement.expiresAt
+                          ? ` · caduca ${announcement.expiresAt.toLocaleString('es-CL')}`
+                          : ''}
+                      </p>
+                      {announcement.reads.length > 0 ? (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-xs font-medium text-petrol-600">
+                            Ver qué escribió cada uno
+                          </summary>
+                          <ul className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3">
+                            {announcement.reads.map((read) => (
+                              <li key={`${announcement.id}-${read.name}-${read.at.toISOString()}`}>
+                                <p className="text-xs font-medium text-petrol-800">
+                                  {read.name} · {read.at.toLocaleString('es-CL')}
+                                </p>
+                                <p className="text-xs text-slate-600">{read.text}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </div>
+                    {announcement.active ? (
+                      <CloseAnnouncementDialog announcementId={announcement.id} />
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile

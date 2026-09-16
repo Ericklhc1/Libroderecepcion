@@ -48,6 +48,23 @@ export async function resetOperationalData() {
     prisma.followUp.deleteMany(),
     prisma.task.deleteMany(),
     prisma.operationalEntry.deleteMany(),
+    // Las multas referencian la habitación, la estadía y al usuario que las
+    // creó, con clave ajena RESTRICT: van antes que todos ellos.
+    prisma.fine.deleteMany(),
+    /*
+      Las rondas de checklist referencian al usuario que las recorrió y al
+      turno, y las plantillas al usuario que las creó: van antes que ambos.
+      La PLANTILLA no es catálogo —la arma cada Supervisor— así que también
+      se limpia, o el conjunto de pruebas dependería del orden de los
+      archivos.
+    */
+    prisma.checklistRunItem.deleteMany(),
+    prisma.checklistRun.deleteMany(),
+    prisma.checklistTemplateItem.deleteMany(),
+    prisma.checklistTemplate.deleteMany(),
+    // Los comunicados y sus confirmaciones referencian al usuario: van antes.
+    prisma.announcementRead.deleteMany(),
+    prisma.announcement.deleteMany(),
     prisma.handoverItem.deleteMany(),
     /*
       La caja va ANTES de la entrega y de los usuarios: los arqueos y los
@@ -93,6 +110,8 @@ export async function resetOperationalData() {
  * Hay que llamarlo **antes** de volver a sembrar.
  */
 export async function resetRoomsAndKeys() {
+  // Las multas cuelgan de la habitación: sin borrarlas, no se puede borrar.
+  await prisma.fine.deleteMany();
   await prisma.keyMovement.deleteMany();
   await prisma.roomKey.updateMany({ data: { stayId: null } });
   await prisma.roomStay.deleteMany();

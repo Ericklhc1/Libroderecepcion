@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { NAV_GROUPS, visibleNavGroups, visibleNavItems } from '@/components/layout/nav-items';
-import { ROLE_PERMISSIONS, ROLE_KEYS } from '@/lib/permissions';
+import { NAV_GROUPS, NAV_ITEMS, visibleNavGroups, visibleNavItems } from '@/components/layout/nav-items';
+import { ROLE_PERMISSIONS, ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
+
+/** Los cuatro roles del hotel, para no repetirlos en cada prueba. */
+const ROLES = Object.values(ROLE_KEYS);
 
 /**
  * Contrato de la navegación.
@@ -104,5 +107,56 @@ describe('barra lateral fija', () => {
     // `sticky` deja de funcionar si un padre tiene overflow distinto de visible.
     const beforeAside = layout.slice(0, layout.indexOf('<aside'));
     expect(beforeAside).not.toMatch(/className="[^"]*overflow-(hidden|y-auto|x-auto|auto)/);
+  });
+});
+
+/**
+ * Ningún destino puede quedar inalcanzable desde el teléfono.
+ *
+ * El menú lateral está oculto por debajo de `lg`, así que la barra inferior es
+ * la ÚNICA puerta en móvil. Pintaba cinco elementos y los cuatro de consulta
+ * más Administración no tenían ninguna otra: Llaves, Huéspedes, Historial,
+ * Indicadores y Administración no se podían abrir desde un teléfono.
+ *
+ * La barra muestra ahora los cuatro primeros y el resto vive detrás de «Más».
+ * Estas pruebas cuidan las dos mitades de esa invariante.
+ */
+describe('todo el menú es alcanzable en móvil', () => {
+  const MOBILE_SLOTS = 4;
+
+  it('la barra inferior no puede prometer más destinos de los que caben', () => {
+    const marcados = NAV_ITEMS.filter((item) => item.mobile);
+    expect(marcados.length).toBeGreaterThanOrEqual(MOBILE_SLOTS);
+  });
+
+  for (const role of ROLES) {
+    it(`${role}: cada destino visible está en la barra o detrás de «Más»`, () => {
+      const permissions = [...ROLE_PERMISSIONS[role]] as PermissionKey[];
+      const visibles = visibleNavItems(permissions);
+
+      const enBarra = visibles.filter((item) => item.mobile).slice(0, MOBILE_SLOTS);
+      const enBarraHrefs = new Set(enBarra.map((item) => item.href));
+      // «Más» muestra exactamente lo que no entró en la barra.
+      const enMas = visibles.filter((item) => !enBarraHrefs.has(item.href));
+
+      const alcanzables = new Set([...enBarraHrefs, ...enMas.map((item) => item.href)]);
+      for (const item of visibles) {
+        expect(
+          alcanzables.has(item.href),
+          `${item.href} no se puede abrir desde el teléfono`,
+        ).toBe(true);
+      }
+    });
+  }
+
+  it('las páginas de consulta siguen fuera de la barra, pero alcanzables', () => {
+    const permissions = [...ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]] as PermissionKey[];
+    const visibles = visibleNavItems(permissions);
+    const enBarra = visibles.filter((item) => item.mobile).slice(0, MOBILE_SLOTS);
+
+    // La barra es el flujo principal: consulta no compite por ese espacio.
+    expect(enBarra.map((item) => item.href)).not.toContain('/llaves');
+    // Pero existe y es visible, así que «Más» la ofrece.
+    expect(visibles.map((item) => item.href)).toContain('/llaves');
   });
 });

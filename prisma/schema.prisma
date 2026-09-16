@@ -292,6 +292,12 @@ model User {
   active             Boolean     @default(true)
   mustChangePassword Boolean     @default(false)
   lastLoginAt        DateTime?
+  /// Cuándo terminó (o saltó) el recorrido guiado del primer ingreso.
+  ///
+  /// Nulo = todavía no lo hizo, así que se le ofrece. Se guarda en el usuario
+  /// y no en el navegador a propósito: quien entra desde otro equipo el primer
+  /// día sigue siendo alguien que ya conoce el sistema.
+  tutorialDoneAt     DateTime?
   failedAttempts     Int         @default(0)
   lockedUntil        DateTime?
   isDemo             Boolean     @default(false)
@@ -301,38 +307,47 @@ model User {
   deletedById        String?
   deletionReason     String?
 
-  sessions           Session[]
-  assignments        ShiftAssignment[]
-  shiftsCreated      Shift[]             @relation("shiftCreatedBy")
-  handoversIssued    ShiftHandover[]     @relation("handoverIssuedBy")
-  handoversReceived  ShiftHandover[]     @relation("handoverReceivedBy")
-  entriesCreated     OperationalEntry[]  @relation("entryCreatedBy")
-  entriesOwned       OperationalEntry[]  @relation("entryOwner")
-  entriesClosed      OperationalEntry[]  @relation("entryClosedBy")
-  tasksCreated       Task[]              @relation("taskCreatedBy")
-  tasksAssigned      Task[]              @relation("taskAssignee")
-  followUpsOwned     FollowUp[]          @relation("followUpOwner")
-  followUpsCreated   FollowUp[]          @relation("followUpCreatedBy")
-  comments           Comment[]
-  attachments        Attachment[]
-  alertsCreated      Alert[]             @relation("alertCreatedBy")
-  alertsAcknowledged Alert[]             @relation("alertAckBy")
-  alertsResolved     Alert[]             @relation("alertResolvedBy")
-  auditLogs          AuditLog[]
-  notifications      Notification[]
-  settingsUpdated    SystemSetting[]
-  checklistDone      TaskChecklistItem[]
-  staysConfirmed     RoomStay[]          @relation("stayConfirmedBy")
-  keysAssigned       RoomKey[]           @relation("keyAssignedBy")
-  keyMovements       KeyMovement[]       @relation("keyMovementBy")
-  batchesCreated     PmsImportBatch[]    @relation("batchCreatedBy")
-  batchesApplied     PmsImportBatch[]    @relation("batchAppliedBy")
-  guaranteesCreated  Guarantee[]         @relation("guaranteeCreatedBy")
-  guaranteesReturned Guarantee[]         @relation("guaranteeReturnedBy")
-  guaranteesDeleted  Guarantee[]         @relation("guaranteeDeletedBy")
-  cashCounted        CashCount[]         @relation("cashCountBy")
-  cashTransfers      CashTransfer[]      @relation("cashTransferBy")
-  cashFundsUpdated   CashFund[]          @relation("cashFundUpdatedBy")
+  sessions              Session[]
+  assignments           ShiftAssignment[]
+  shiftsCreated         Shift[]             @relation("shiftCreatedBy")
+  handoversIssued       ShiftHandover[]     @relation("handoverIssuedBy")
+  handoversReceived     ShiftHandover[]     @relation("handoverReceivedBy")
+  entriesCreated        OperationalEntry[]  @relation("entryCreatedBy")
+  entriesOwned          OperationalEntry[]  @relation("entryOwner")
+  entriesClosed         OperationalEntry[]  @relation("entryClosedBy")
+  tasksCreated          Task[]              @relation("taskCreatedBy")
+  tasksAssigned         Task[]              @relation("taskAssignee")
+  followUpsOwned        FollowUp[]          @relation("followUpOwner")
+  followUpsCreated      FollowUp[]          @relation("followUpCreatedBy")
+  comments              Comment[]
+  attachments           Attachment[]
+  alertsCreated         Alert[]             @relation("alertCreatedBy")
+  alertsAcknowledged    Alert[]             @relation("alertAckBy")
+  alertsResolved        Alert[]             @relation("alertResolvedBy")
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  settingsUpdated       SystemSetting[]
+  checklistDone         TaskChecklistItem[]
+  staysConfirmed        RoomStay[]          @relation("stayConfirmedBy")
+  keysAssigned          RoomKey[]           @relation("keyAssignedBy")
+  keyMovements          KeyMovement[]       @relation("keyMovementBy")
+  batchesCreated        PmsImportBatch[]    @relation("batchCreatedBy")
+  batchesApplied        PmsImportBatch[]    @relation("batchAppliedBy")
+  guaranteesCreated     Guarantee[]         @relation("guaranteeCreatedBy")
+  guaranteesReturned    Guarantee[]         @relation("guaranteeReturnedBy")
+  guaranteesDeleted     Guarantee[]         @relation("guaranteeDeletedBy")
+  cashCounted           CashCount[]         @relation("cashCountBy")
+  cashTransfers         CashTransfer[]      @relation("cashTransferBy")
+  cashFundsUpdated      CashFund[]          @relation("cashFundUpdatedBy")
+  shiftsArchived        Shift[]             @relation("shiftArchivedBy")
+  announcementsCreated  Announcement[]      @relation("announcementCreatedBy")
+  announcementsTargeted Announcement[]      @relation("announcementTarget")
+  announcementsDeleted  Announcement[]      @relation("announcementDeletedBy")
+  announcementReads     AnnouncementRead[]  @relation("announcementReadBy")
+  finesCreated          Fine[]              @relation("fineCreatedBy")
+  finesDeleted          Fine[]              @relation("fineDeletedBy")
+  checklistTemplates    ChecklistTemplate[] @relation("checklistTemplateCreatedBy")
+  checklistRuns         ChecklistRun[]      @relation("checklistRunBy")
 
   @@index([roleId])
   @@index([active])
@@ -406,16 +421,26 @@ model Shift {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   isDemo       Boolean     @default(false)
+  /// Turno retirado de las listas operativas sin borrarlo.
+  ///
+  /// Distinto de ANULADO: anular es «este turno no se va a usar»; archivar es
+  /// «ya pasó y no quiero verlo en las listas». Un turno archivado conserva su
+  /// historia, sus registros y su entrega: sólo deja de ofrecerse y de listarse.
+  archivedAt   DateTime?
+  archivedById String?
+  archivedBy   User?       @relation("shiftArchivedBy", fields: [archivedById], references: [id])
 
-  assignments ShiftAssignment[]
-  handoverOut ShiftHandover?     @relation("handoverFromShift")
-  handoverIn  ShiftHandover[]    @relation("handoverToShift")
-  entries     OperationalEntry[]
-  tasks       Task[]
+  assignments   ShiftAssignment[]
+  handoverOut   ShiftHandover?     @relation("handoverFromShift")
+  handoverIn    ShiftHandover[]    @relation("handoverToShift")
+  entries       OperationalEntry[]
+  tasks         Task[]
+  checklistRuns ChecklistRun[]
 
   @@unique([date, type])
   @@index([status])
   @@index([date])
+  @@index([archivedAt])
 }
 
 model ShiftAssignment {
@@ -542,11 +567,12 @@ model OperationalEntry {
   deletionReason String?
   isDemo         Boolean   @default(false)
 
-  tasks       Task[]
-  followUps   FollowUp[]
-  comments    Comment[]
-  attachments Attachment[]
-  alerts      Alert[]
+  tasks          Task[]
+  followUps      FollowUp[]
+  comments       Comment[]
+  attachments    Attachment[]
+  alerts         Alert[]
+  checklistItems ChecklistRunItem[]
 
   @@index([type, status])
   @@index([status, priority])
@@ -822,6 +848,7 @@ model ReservationReference {
   guarantees Guarantee[]
   /// Estadías del PMS que se pudieron vincular a esta reserva por su código.
   stays      RoomStay[]
+  fines      Fine[]
 
   @@index([status])
   @@index([requiresAction])
@@ -957,6 +984,7 @@ model Room {
   keys      RoomKey[]
   entries   OperationalEntry[]
   movements KeyMovement[]
+  fines     Fine[]
 
   @@index([active])
 }
@@ -1008,6 +1036,7 @@ model RoomStay {
 
   keys      RoomKey[]
   movements KeyMovement[]
+  fines     Fine[]
 
   // Un mismo informe no puede dejar dos veces la misma reserva en la misma
   // habitación y estado para un día de operación: la importación es idempotente.
@@ -1143,6 +1172,7 @@ model Guarantee {
   isDemo         Boolean   @default(false)
 
   alerts Alert[]
+  fines  Fine[]
 
   @@index([reservationReferenceId])
   @@index([state])
@@ -1277,4 +1307,269 @@ model HandoverElement {
 
   @@unique([handoverId, elementTypeId])
   @@index([handoverId])
+}
+
+// ============================== COMUNICADOS ================================
+//
+// Un comunicado obligatorio BLOQUEA la interfaz hasta que la persona confirme
+// que lo leyó, escribiendo algo. No es una notificación —ésas se pueden
+// ignorar— y no es una alerta —ésas describen un estado del hotel—. Esto es el
+// Supervisor diciendo «nadie sigue trabajando sin haber leído esto».
+//
+// La confirmación pide TEXTO a propósito: un botón solo se pulsa sin leer. Lo
+// que se escribe queda guardado, así que después se puede saber no sólo quién
+// confirmó, sino qué entendió.
+
+enum AnnouncementScope {
+  /// Todo el personal operativo.
+  TODOS
+  /// Una sola persona.
+  USUARIO
+}
+
+model Announcement {
+  id             String            @id @default(cuid())
+  title          String
+  body           String
+  scope          AnnouncementScope @default(TODOS)
+  /// Obligatorio cuando el alcance es USUARIO; nulo cuando es TODOS.
+  targetUserId   String?
+  targetUser     User?             @relation("announcementTarget", fields: [targetUserId], references: [id])
+  /// Mientras sea true y no haya expirado, bloquea a quien no lo confirmó.
+  active         Boolean           @default(true)
+  /// Nulo = no caduca. Un comunicado vencido deja de bloquear.
+  expiresAt      DateTime?
+  createdById    String
+  createdBy      User              @relation("announcementCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?             @relation("announcementDeletedBy", fields: [deletedById], references: [id])
+  deletionReason String?
+  isDemo         Boolean           @default(false)
+
+  reads AnnouncementRead[]
+
+  @@index([active, deletedAt])
+  @@index([targetUserId])
+}
+
+model AnnouncementRead {
+  id               String       @id @default(cuid())
+  announcementId   String
+  announcement     Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User         @relation("announcementReadBy", fields: [userId], references: [id], onDelete: Cascade)
+  /// Lo que escribió la persona al confirmar. Es la prueba de que leyó.
+  confirmationText String
+  confirmedAt      DateTime     @default(now())
+
+  /// Una persona confirma una vez.
+  @@unique([announcementId, userId])
+  @@index([userId])
+}
+
+// ================================= MULTAS ==================================
+//
+// El formulario real del hotel para cobrar un blanco dañado. Los campos son
+// los que ya se usaban en papel, con el mismo nombre, porque el papel llevaba
+// años funcionando: número de reserva, habitación, huésped, tipo de blanco,
+// tipo de mancha, por qué procede el cobro y qué dijo el huésped al negarse.
+//
+// La negativa del huésped es un campo propio y no una nota suelta a propósito:
+// cuando el cobro se discute, lo que decide es haber registrado su versión en
+// el momento, no recordarla después.
+//
+// NO reemplaza a `Guarantee`. Una multa puede cobrarse contra una garantía
+// —ése es el estado MULTA que ya existe— y entonces las dos se enlazan.
+
+enum FineKind {
+  /// Blanco dañado o manchado: toallas, sábanas, cubrecamas.
+  BLANCO
+  /// Daño a mobiliario o instalaciones.
+  DANO
+  /// Falta un elemento de la habitación.
+  FALTANTE
+  OTRO
+}
+
+/// Tipo de blanco afectado. Es catálogo cerrado porque el cobro se tarifica.
+enum LinenKind {
+  TOALLA_MANO
+  TOALLA_CUERPO
+  TOALLA_PISO
+  SABANA
+  FUNDA_ALMOHADA
+  CUBRECAMA
+  PROTECTOR_COLCHON
+  BATA
+  MANTEL
+  CORTINA
+  OTRO
+}
+
+enum FineStatus {
+  /// Registrada, todavía no se le dijo al huésped.
+  REGISTRADA
+  /// El huésped fue informado.
+  NOTIFICADA
+  /// Se cobró.
+  COBRADA
+  /// Se decidió no cobrar.
+  CONDONADA
+  /// Se registró por error.
+  ANULADA
+}
+
+model Fine {
+  id                     String                @id @default(cuid())
+  roomId                 String
+  room                   Room                  @relation(fields: [roomId], references: [id])
+  /// Número de reserva tal como lo entrega el PMS. Texto, no número: el PMS
+  /// puede cambiar el formato y un cero a la izquierda no se pierde.
+  reservationCode        String
+  /// Nombre completo del huésped, como aparece en el informe.
+  guestName              String
+  /// Vínculo opcional con la estadía y la reserva internas, cuando existen.
+  stayId                 String?
+  stay                   RoomStay?             @relation(fields: [stayId], references: [id])
+  reservationReferenceId String?
+  reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
+
+  kind           FineKind   @default(BLANCO)
+  /// Obligatorio cuando el tipo es BLANCO; nulo en los demás.
+  linenKind      LinenKind?
+  /// Detalle libre del elemento cuando el catálogo no alcanza.
+  itemDetail     String?
+  /// Tipo de mancha identificada: «Maquillaje lápiz de ojos negro».
+  stainType      String?
+  /// Motivo por el cual se considera procedente el cobro.
+  reason         String
+  /// Observaciones o antecedentes sobre la negativa del huésped.
+  guestStatement String?
+
+  amount   Decimal?   @db.Decimal(12, 2)
+  currency String     @default("CLP") @db.VarChar(3)
+  status   FineStatus @default(REGISTRADA)
+
+  /// Si se cobra contra una garantía, quedan enlazadas.
+  guaranteeId String?
+  guarantee   Guarantee? @relation(fields: [guaranteeId], references: [id])
+
+  createdById String
+  createdBy   User     @relation("fineCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?     @relation("fineDeletedBy", fields: [deletedById], references: [id])
+  deletionReason String?
+  isDemo         Boolean   @default(false)
+
+  @@index([roomId])
+  @@index([status, deletedAt])
+  @@index([reservationCode])
+}
+
+// ========================= CHECKLISTS DE SUPERVISIÓN =======================
+//
+// El Supervisor arma sus propias listas de control y las ejecuta. Dos modelos
+// y no uno: la PLANTILLA es lo que se define una vez, la EJECUCIÓN es lo que
+// se recorrió un día concreto.
+//
+// Separarlas es lo que permite cambiar la plantilla sin reescribir la
+// historia: una ejecución de marzo conserva los puntos que existían en marzo,
+// porque copia su texto al ejecutarse. Si apuntara a la plantilla viva, editar
+// un punto cambiaría lo que alguien ya firmó.
+
+enum ChecklistItemResult {
+  /// Sin revisar todavía.
+  PENDIENTE
+  /// Conforme.
+  OK
+  /// No conforme: exige observación.
+  FALLA
+  /// No aplicaba en esta ejecución.
+  NO_APLICA
+}
+
+model ChecklistTemplate {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  /// Sugerencia de cuándo recorrerla. Texto libre: «cada turno», «los lunes».
+  cadence     String?
+  active      Boolean @default(true)
+  order       Int     @default(0)
+
+  createdById String
+  createdBy   User     @relation("checklistTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deletedAt      DateTime?
+  deletionReason String?
+  isDemo         Boolean   @default(false)
+
+  items ChecklistTemplateItem[]
+  runs  ChecklistRun[]
+
+  @@index([active, deletedAt])
+}
+
+model ChecklistTemplateItem {
+  id         String            @id @default(cuid())
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  text       String
+  /// Un punto crítico que falla impide cerrar la ejecución como conforme.
+  critical   Boolean           @default(false)
+  order      Int               @default(0)
+
+  @@index([templateId])
+}
+
+model ChecklistRun {
+  id           String            @id @default(cuid())
+  templateId   String
+  template     ChecklistTemplate @relation(fields: [templateId], references: [id])
+  /// Nombre de la plantilla al ejecutarse. Se copia para que la historia no
+  /// cambie si después alguien renombra la plantilla.
+  templateName String
+  runById      String
+  runBy        User              @relation("checklistRunBy", fields: [runById], references: [id])
+  /// Turno en que se recorrió, si había uno abierto.
+  shiftId      String?
+  shift        Shift?            @relation(fields: [shiftId], references: [id])
+  startedAt    DateTime          @default(now())
+  /// Nulo mientras se está recorriendo.
+  finishedAt   DateTime?
+  notes        String?
+  isDemo       Boolean           @default(false)
+
+  items ChecklistRunItem[]
+
+  @@index([templateId])
+  @@index([runById])
+  @@index([finishedAt])
+}
+
+model ChecklistRunItem {
+  id          String              @id @default(cuid())
+  runId       String
+  run         ChecklistRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// Texto del punto TAL COMO ESTABA al ejecutarse.
+  text        String
+  critical    Boolean             @default(false)
+  order       Int                 @default(0)
+  result      ChecklistItemResult @default(PENDIENTE)
+  /// Obligatoria cuando el resultado es FALLA.
+  observation String?
+  /// Incidencia creada a partir de esta falla, si se abrió una.
+  entryId     String?
+  entry       OperationalEntry?   @relation(fields: [entryId], references: [id])
+
+  @@index([runId])
 }

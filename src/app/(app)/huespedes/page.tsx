@@ -1,5 +1,6 @@
 import { BedDouble, Star } from 'lucide-react';
-import { requirePagePermission } from '@/server/auth/guard';
+import { requirePageAnyPermission } from '@/server/auth/guard';
+import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -32,7 +33,12 @@ const RESERVATION_TONE = {
 } as const;
 
 export default async function GuestsPage() {
-  await requirePagePermission('guest.manage');
+  /*
+    Basta el permiso de CONSULTA para entrar. Antes se exigía `guest.manage`,
+    que además permite editar: un rol de sólo lectura no podía ni mirar.
+  */
+  const user = await requirePageAnyPermission(['guest.view', 'guest.manage']);
+  const canEdit = hasPermission(user, 'guest.manage');
 
   const [guests, reservations] = await Promise.all([
     prisma.guestReference.findMany({
@@ -88,11 +94,13 @@ export default async function GuestsPage() {
           title="Reservas"
           count={reservations.length}
           action={
-            <ReservationDialog
-              guests={guestOptions}
-              trigger="Nueva reserva"
-              title="Registrar reserva"
-            />
+            canEdit ? (
+              <ReservationDialog
+                guests={guestOptions}
+                trigger="Nueva reserva"
+                title="Registrar reserva"
+              />
+            ) : null
           }
         />
         {reservations.length === 0 ? (
@@ -178,20 +186,24 @@ export default async function GuestsPage() {
                                   : ''}
                               </span>
                             ) : null}
+                            {canEdit ? (
                             <GuaranteeStateDialog
                               guaranteeId={guarantee.id}
                               state={guarantee.state as GuaranteeStateValue}
                               amount={guarantee.amount.toString()}
                               currency={guarantee.currency}
                             />
+                            ) : null}
                           </li>
                         ))}
-                        <li>
-                          <GuaranteeDialog
-                            reservationId={reservation.id}
-                            reservationCode={reservation.code}
-                          />
-                        </li>
+                        {canEdit ? (
+                          <li>
+                            <GuaranteeDialog
+                              reservationId={reservation.id}
+                              reservationCode={reservation.code}
+                            />
+                          </li>
+                        ) : null}
                       </ul>
                     </td>
                     <td className="px-4 py-2.5 tabular">
@@ -209,6 +221,7 @@ export default async function GuestsPage() {
                           {reservation.actionNote ?? 'Requiere acción'}
                         </p>
                       ) : null}
+                      {canEdit ? (
                       <ReservationDialog
                         guests={guestOptions}
                         trigger="Editar"
@@ -231,6 +244,7 @@ export default async function GuestsPage() {
                           notes: reservation.notes,
                         }}
                       />
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -244,7 +258,7 @@ export default async function GuestsPage() {
         <CardHeader
           title="Huéspedes"
           count={guests.length}
-          action={<GuestDialog trigger="Nuevo huésped" title="Registrar huésped" />}
+          action={canEdit ? <GuestDialog trigger="Nuevo huésped" title="Registrar huésped" /> : null}
         />
         {guests.length === 0 ? (
           <EmptyState message="Sin huéspedes registrados." />
@@ -269,6 +283,7 @@ export default async function GuestsPage() {
                     {guest.phone ? ` · ${guest.phone}` : ''}
                   </p>
                 </div>
+                {canEdit ? (
                 <GuestDialog
                   trigger="Editar"
                   title={`Editar ${guest.fullName}`}
@@ -284,6 +299,7 @@ export default async function GuestsPage() {
                     notes: guest.notes,
                   }}
                 />
+                ) : null}
               </li>
             ))}
           </ul>

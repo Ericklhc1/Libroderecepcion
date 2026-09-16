@@ -39,6 +39,14 @@ Cinco destinos principales, uno por pregunta operativa:
 Más un grupo *Consulta* (`/llaves`, `/huespedes`, `/historial`,
 `/indicadores`) y *Sistema* (`/admin`).
 
+En **móvil** la barra inferior muestra los cuatro primeros y **«Más»** abre el
+resto. Ese botón no es un adorno: el menú lateral está oculto por debajo de
+`lg`, así que sin él Llaves, Huéspedes, Historial, Indicadores y
+Administración eran **inalcanzables desde el teléfono**. «Más» lleva aviso
+rojo cuando algo detrás tiene pendientes, de modo que las alertas de
+Supervisión siguen viéndose. Lo vigila `tests/navigation.test.ts`, que
+comprueba rol por rol que ningún destino visible quede sin puerta.
+
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
 el libro (pestañas `?clase=`), Inicio, la ficha de la habitación y Supervisión.
@@ -53,7 +61,8 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
 `GuestReference`/`ReservationReference`/`Guarantee` ·
 `CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` ·
-`HandoverElementType`/`HandoverElement` · `AuditLog` · `SystemSetting`.
+`HandoverElementType`/`HandoverElement` · `Announcement`/`AnnouncementRead` ·
+`Fine` · `ChecklistTemplate`/`ChecklistRun` · `AuditLog` · `SystemSetting`.
 
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
@@ -103,6 +112,14 @@ conserva su modelo y sus reglas.
    que crea la fila de `Permission` además de la de `RolePermission`, porque
    el catálogo también se siembra al instalar. Lo vigila
    `tests/eliminar-estadia.test.ts`.
+   **Y la habitación entera se puede resetear** (`room.reset`, `resetRoom`,
+   botón en la cabecera de la ficha), que lo tienen el administrador **y el
+   Supervisor**: el atasco ocurre en el mesón y no puede esperar. Conserva una
+   estadía por reserva y **fase** —la de estado más avanzado—, elimina el
+   resto, libera las llaves huérfanas y vuelve a llamar a
+   `reconcilePrincipalKeys`, que sigue siendo la única lógica de llaves. Una
+   salida y una llegada de la misma reserva **no son duplicidad**: son el caso
+   de la 610 y se conservan las dos. Sin duplicidad no toca nada y lo dice.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
    de importación **se recalculan, nunca se almacenan**.
    **Los tres informes se cargan desde el inicio de turno** (`/turno`, primera
@@ -149,6 +166,19 @@ conserva su modelo y sus reglas.
    a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
    vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
    `tests/rooms-keys.test.ts`.
+4bis. **Un turno dura lo que haga falta, hasta 12 h, y se puede archivar.**
+   El horario nominal (`SHIFT_SCHEDULE`, 8 h) cubre el caso normal y sigue
+   siendo el valor por omisión. Para lo que no encaja, el administrador escribe
+   hora de inicio y duración: las dos juntas o ninguna, porque una hora sin
+   duración es una ventana a medias. El límite lo impone `customWindow` en el
+   **dominio**, no el formulario, y rechaza fracciones más finas que la media
+   hora. No necesitó migración: `plannedStart`/`plannedEnd` ya admitían
+   cualquier ventana.
+   **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale antes
+   de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno de
+   las listas conservando su historia, sus registros y su entrega
+   (`archivedAt`). El servidor **rechaza archivar un turno en curso**: eso se
+   cierra, no se esconde. Lo vigila `tests/turno-duracion.test.ts`.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y
@@ -225,6 +255,100 @@ conserva su modelo y sus reglas.
     enlazan** desde el módulo de garantías, no se duplican.
     Lo vigilan `tests/caja.test.ts` (20, dominio puro) y
     `tests/caja-turno.test.ts` (16, ciclo completo).
+
+13. **Un comunicado obligatorio bloquea la pantalla hasta confirmar la
+    lectura.** Lo emite el Supervisor (`announcement.manage`), a todos o a una
+    persona, desde `/supervision`. No es una notificación —ésas se ignoran— ni
+    una alerta —ésas describen un estado del hotel—: es parar el mesón para
+    decir algo.
+    **La confirmación pide texto**, porque un botón solo se pulsa sin leer, y
+    lo escrito se guarda: después se sabe no sólo quién confirmó, sino qué
+    entendió. **Confirmar no exige permiso**, sólo sesión: si lo exigiera,
+    alguien podría quedar bloqueado sin forma de desbloquearse.
+    **Quien lo emite queda confirmado de entrada**, o se bloquearía a sí mismo
+    y no podría ni corregirlo. **El bloqueo se calcula, no se guarda** —activos
+    menos los confirmados—, igual que los conflictos de importación. Se muestra
+    **uno a la vez**: cinco apilados garantizan que no se lea ninguno.
+    El bloqueo es de interfaz, no de seguridad: quien sepa usar la consola
+    puede saltárselo. Lo que el sistema garantiza es que **sin confirmar no
+    queda registro de lectura**.
+    ⚠️ Vive en el LAYOUT, así que `revalidatePath` no basta para liberarlo: el
+    router del cliente seguiría mostrando el árbol que ya tenía. Por eso
+    `ActionForm` ganó `refreshOnSuccess`. Fue un fallo real, encontrado en
+    navegador: la confirmación se guardaba y la pantalla seguía bloqueada.
+    Lo vigila `tests/comunicados.test.ts`.
+
+14. **La ayuda es documentación, no un modelo de lenguaje.** Los
+    procedimientos viven en `domain/help.ts`, **en el mismo repositorio que el
+    código**, así que una regla que cambia y una ayuda que miente se ven en el
+    mismo cambio. Una respuesta inventada sobre cómo cerrar una caja es peor
+    que no tener ayuda, y por eso una búsqueda sin resultados **lo dice** en
+    vez de mostrar algo aproximado.
+    Se filtra por permisos: nadie ve el procedimiento de algo que no puede
+    hacer. Y por eso existe `atascado-sin-permiso`, **sin `anyOf`**: un
+    recepcionista que buscaba «no deja confirmar» recibía «¿Cómo tomo un
+    turno?», porque el reseteo está filtrado por un permiso que él no tiene.
+    Lo encontró una prueba en navegador.
+    **Sólo ejecuta acciones reversibles** (`HELP_ACTIONS`): reconciliar llaves
+    es idempotente, regenerar un borrador conserva las notas manuales.
+    Confirmar una salida, un check-in o un arqueo no están ahí y no deben
+    estarlo; una prueba falla si alguna acción usa un permiso operativo.
+    El **tutorial del primer ingreso** reutiliza los mismos procedimientos —no
+    repite sus textos— y muestra sólo los del rol. Se puede saltar desde el
+    primer paso, porque alguien con el mesón lleno no puede quedar atrapado, y
+    se reabre desde el perfil. `User.tutorialDoneAt` vive en el usuario y no en
+    el navegador: quien entra desde otro equipo ya conoce el sistema.
+    Lo vigila `tests/ayuda.test.ts`.
+
+15. **Gerencia sólo consulta, salvo como responsable.** Rol `GERENCIA`
+    (`operational: true`, porque tiene que poder figurar como responsable) con
+    **cinco permisos, todos de lectura**. Una prueba falla si se le cuela uno
+    de escritura al agregar un permiso nuevo al catálogo.
+    La excepción no se concede con un permiso —sería un permiso sobre todos
+    los registros— sino comprobando la propiedad del registro concreto:
+    `requirePermissionOrOwner(permiso, cargarDueños)`, que mira el permiso
+    PRIMERO para que quien lo tiene no pague una consulta extra. La aplican
+    `changeTaskStatusAction`, `toggleChecklistAction` y
+    `changeEntryStatusAction`.
+    Hicieron falta dos permisos de LECTURA nuevos: ver un huésped exigía
+    `guest.manage`, que además permite editarlo, y ver Supervisión exigía
+    gestionar incidencias. Ahora existen `guest.view` y `supervision.view`, y
+    `requirePageAnyPermission` deja entrar con cualquiera de los dos.
+    No puede tomar turnos aunque su rol sea operativo: le faltan
+    `shift.start`, `shift.receive` y `shift.handover`.
+    Lo vigila `tests/rol-gerencia.test.ts`.
+16. **La multa es el formulario de papel, con sus campos.** `Fine` guarda lo
+    que ya se usaba: número de reserva, habitación, huésped, tipo de blanco,
+    **tipo de mancha**, por qué procede el cobro y **la negativa del huésped**.
+    Ese último es un campo propio y no una nota suelta: cuando el cobro se
+    discute, lo que decide es haber registrado su versión en el momento.
+    El contexto **se autocompleta desde la estadía** de la habitación —pedirle
+    al mesón que transcriba el número de reserva con el huésped delante es
+    pedirle que se equivoque— y sigue editable.
+    `fineProblems` devuelve **todos** los campos que faltan, no el primero.
+    Cobrar contra la garantía de **otra reserva** se rechaza en el servidor: es
+    el error más caro que puede cometer un mesón. Una multa cobrada o anulada
+    no vuelve atrás; si hubo un error se anula y se registra otra.
+    Permiso `incident.manage`: cobrarle a un huésped es decisión de
+    supervisión. Lo vigila `tests/multas.test.ts`.
+17. **El tablero del Supervisor muestra la CARGA, que el listado no muestra.**
+    `/supervision/tablero`: lo que no tiene dueño primero, y después cuántas
+    tareas, vencidas, registros y urgentes tiene cada persona. Asignar reutiliza
+    `assignTaskAction` y `updateEntryAction` en lugar de una acción propia: si
+    hubiera una tercera, las reglas vivirían en dos sitios.
+18. **Los checklists son DOS modelos, y por eso se pueden editar.** La
+    plantilla es lo que se define; la **ejecución copia el texto** de cada
+    punto y el nombre de la plantilla. Si apuntara a la plantilla viva, editar
+    un punto cambiaría lo que alguien ya firmó, y un control reescribible hacia
+    atrás no controla nada.
+    Los puntos se escriben **uno por línea**, y un `*` al inicio marca el punto
+    como crítico: el Supervisor arma la lista de una sentada, y un constructor
+    de filas convierte cinco segundos en veinte clics. Una **falla exige
+    observación**, sólo quien recorre la ronda la marca, y no se cierra con
+    puntos sin revisar —ni como «no aplica»—.
+    `ChecklistTemplate` **no es catálogo**: la arma cada Supervisor, así que
+    `resetOperationalData` la limpia. Lo vigila
+    `tests/supervision-tablero.test.ts`.
 
 ## Rendimiento: lo aprendido en producción
 

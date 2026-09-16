@@ -11,7 +11,8 @@ import {
   taskStatusSchema,
   taskUpdateSchema,
 } from '@/server/schemas';
-import { requirePermission } from '@/server/auth/guard';
+import { prisma } from '@/lib/prisma';
+import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard';
 import {
   assignTask,
   changeTaskStatus,
@@ -77,8 +78,20 @@ export async function changeTaskStatusAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('task.edit');
     const input = parseOrThrow(taskStatusSchema, formDataToObject(formData));
+    /*
+      El responsable de una tarea puede moverla aunque no tenga `task.edit`.
+      Es lo que hace útil al rol de Gerencia: sólo consulta, salvo sobre lo
+      que se le asignó. El permiso se comprueba primero, así que quien lo
+      tiene no paga la consulta extra.
+    */
+    const user = await requirePermissionOrOwner('task.edit', async () => {
+      const task = await prisma.task.findUnique({
+        where: { id: input.id },
+        select: { assigneeId: true, createdById: true },
+      });
+      return [task?.assigneeId, task?.createdById];
+    });
     const task = await changeTaskStatus(user, input);
     refresh(task.id);
     return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id };
@@ -95,8 +108,15 @@ export async function toggleChecklistAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('task.edit');
     const input = parseOrThrow(checklistSchema, formDataToObject(formData));
+    // Igual que el estado: el responsable marca los puntos de su tarea.
+    const user = await requirePermissionOrOwner('task.edit', async () => {
+      const item = await prisma.taskChecklistItem.findUnique({
+        where: { id: input.itemId },
+        select: { task: { select: { assigneeId: true, createdById: true } } },
+      });
+      return [item?.task.assigneeId, item?.task.createdById];
+    });
     await toggleChecklistItem(user, input);
     refresh();
     return { ok: true as const, message: 'Checklist actualizado.' };

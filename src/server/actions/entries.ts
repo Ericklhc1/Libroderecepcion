@@ -10,7 +10,8 @@ import {
   restoreSchema,
   softDeleteSchema,
 } from '@/server/schemas';
-import { requirePermission } from '@/server/auth/guard';
+import { prisma } from '@/lib/prisma';
+import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard';
 import {
   changeEntryStatus,
   createEntry,
@@ -67,8 +68,19 @@ export async function changeEntryStatusAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('entry.edit');
     const input = parseOrThrow(entryStatusSchema, formDataToObject(formData));
+    /*
+      El responsable de un registro puede moverlo aunque no tenga
+      `entry.edit`. Es la excepción que hace útil al rol de Gerencia: sólo
+      consulta, salvo sobre aquello de lo que se le hizo responsable.
+    */
+    const user = await requirePermissionOrOwner('entry.edit', async () => {
+      const found = await prisma.operationalEntry.findUnique({
+        where: { id: input.id },
+        select: { ownerId: true, createdById: true },
+      });
+      return [found?.ownerId, found?.createdById];
+    });
     const entry = await changeEntryStatus(user, input);
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Estado actualizado.', id: entry.id };

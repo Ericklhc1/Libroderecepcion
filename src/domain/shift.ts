@@ -157,3 +157,49 @@ export function plannedWindow(
   if (schedule.crossesMidnight) end.setDate(end.getDate() + 1);
   return { start, end };
 }
+
+/** Duración máxima de un turno, en horas. Más allá no es un turno: es un abuso. */
+export const MAX_SHIFT_HOURS = 12;
+
+/**
+ * Ventana de un turno con hora de inicio y duración escritas a mano.
+ *
+ * El horario nominal (`SHIFT_SCHEDULE`) sigue siendo el de siempre y cubre el
+ * caso normal. Esto existe para el turno que no encaja: una cobertura de doce
+ * horas, un turno que entra a las 6, una jornada partida por una ausencia.
+ *
+ * La duración se valida acá y no en el formulario, porque el formulario no es
+ * la única puerta: la acción de servidor vuelve a comprobarlo.
+ */
+export function customWindow(
+  date: Date,
+  startTime: string,
+  durationHours: number,
+): { start: Date; end: Date } {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(startTime.trim());
+  if (!match) {
+    throw new RuleError('La hora de inicio debe venir como HH:MM, entre 00:00 y 23:59.');
+  }
+  if (!Number.isFinite(durationHours) || durationHours <= 0) {
+    throw new RuleError('La duración del turno debe ser mayor que cero.');
+  }
+  if (durationHours > MAX_SHIFT_HOURS) {
+    throw new RuleError(
+      `Un turno no puede durar más de ${MAX_SHIFT_HOURS} horas. Reparte la cobertura en dos turnos.`,
+    );
+  }
+  // Medias horas sí; fracciones más finas no significan nada en un mesón.
+  if (Math.round(durationHours * 2) !== durationHours * 2) {
+    throw new RuleError('La duración se escribe en horas o medias horas.');
+  }
+
+  const start = new Date(date);
+  start.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  const end = new Date(start.getTime() + durationHours * 3_600_000);
+  return { start, end };
+}
+
+/** Horas que abarca una ventana ya calculada. Sirve para mostrarla. */
+export function windowHours(start: Date, end: Date): number {
+  return (end.getTime() - start.getTime()) / 3_600_000;
+}

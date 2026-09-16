@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { seedCatalog } from '@/domain/catalog';
+import { ROLE_DEFINITIONS } from '@/lib/permissions';
 import { roomNumbers } from '@/domain/catalog';
 
 /**
@@ -54,7 +55,7 @@ describe('siembra del catálogo', () => {
     expect(await client.room.count()).toBe(before.rooms);
     expect(await client.roomKey.count()).toBe(before.keys);
     expect(await client.permission.count()).toBe(before.permissions);
-    expect(before.roles).toBe(4);
+    expect(before.roles).toBe(ROLE_DEFINITIONS.length);
   });
 
   it('no deja ninguna habitación sin llave principal', async () => {

@@ -179,7 +179,8 @@ export async function getStartableShifts(): Promise<TakeableSlot[]> {
 
   const [programmed, awaitingReceipt] = await Promise.all([
     prisma.shift.findMany({
-      where: { status: ShiftStatus.PROGRAMADO, date: { gte: from } },
+      // Un turno archivado no se ofrece: se archivó justamente para eso.
+      where: { status: ShiftStatus.PROGRAMADO, date: { gte: from }, archivedAt: null },
       orderBy: [{ date: 'asc' }, { type: 'asc' }],
       take: 10,
     }),
@@ -212,7 +213,7 @@ export async function getStartableShifts(): Promise<TakeableSlot[]> {
     where: {
       OR: [...candidates.values()].map(({ date, type }) => ({ date, type })),
     },
-    select: { id: true, date: true, type: true, status: true },
+    select: { id: true, date: true, type: true, status: true, archivedAt: true },
   });
   const rows = new Map(existing.map((row) => [slotKey(row.date, row.type), row]));
 
@@ -246,8 +247,8 @@ export async function getStartableShifts(): Promise<TakeableSlot[]> {
   const slots: TakeableSlot[] = [];
   for (const [key, slot] of candidates) {
     const row = rows.get(key);
-    // Una franja ya tomada, cerrada o anulada no se vuelve a ofrecer.
-    if (row && row.status !== ShiftStatus.PROGRAMADO) continue;
+    // Una franja ya tomada, cerrada, anulada o archivada no se vuelve a ofrecer.
+    if (row && (row.status !== ShiftStatus.PROGRAMADO || row.archivedAt)) continue;
 
     const window = plannedWindow(slot.date, slot.type);
     const previous = previousOf.get(key);

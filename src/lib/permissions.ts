@@ -40,7 +40,15 @@ export const PERMISSIONS = {
   'metrics.view': { group: 'Indicadores', name: 'Ver indicadores' },
   'audit.view': { group: 'Auditoría', name: 'Ver registro de auditoría' },
 
+  /*
+    Ver sin poder tocar. Existen porque antes ver la ficha de un huésped
+    exigía `guest.manage`, que además permite EDITARLO, y ver Supervisión
+    exigía gestionar incidencias. Un rol de consulta no puede necesitar
+    permisos de escritura para mirar.
+  */
+  'guest.view': { group: 'Huéspedes y reservas', name: 'Consultar huéspedes y reservas' },
   'guest.manage': { group: 'Huéspedes y reservas', name: 'Gestionar referencias de huésped y reserva' },
+  'supervision.view': { group: 'Supervisión', name: 'Consultar el tablero de supervisión' },
 
   'room.view': { group: 'Habitaciones y llaves', name: 'Ver el estado de habitaciones' },
   'room.manage': { group: 'Habitaciones y llaves', name: 'Confirmar salidas y check-in' },
@@ -53,6 +61,20 @@ export const PERMISSIONS = {
     deja como responsable de ninguna llegada ni salida.
   */
   'stay.delete': { group: 'Habitaciones y llaves', name: 'Eliminar una estadía para resolver conflictos' },
+  /*
+    Reparación también, pero de la habitación entera: colapsa las estadías
+    duplicadas que impiden confirmar un check-in o un check-out. La tienen el
+    Administrador de sistema y el Supervisor, porque el atasco ocurre en el
+    mesón y hay que poder resolverlo sin esperar al administrador.
+  */
+  'room.reset': { group: 'Habitaciones y llaves', name: 'Resetear una habitación atascada' },
+
+  /*
+    Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
+    confirme la lectura. Es del Supervisor: es él quien tiene que poder parar
+    el mesón para decir algo. Confirmar no necesita permiso, sólo sesión.
+  */
+  'announcement.manage': { group: 'Supervisión', name: 'Emitir comunicados obligatorios' },
 
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },
@@ -68,6 +90,7 @@ export const ROLE_KEYS = {
   SUPERVISOR: 'SUPERVISOR',
   RECEPTIONIST: 'RECEPCIONISTA',
   NIGHT_AUDITOR: 'AUDITOR_NOCTURNO',
+  MANAGEMENT: 'GERENCIA',
 } as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS];
@@ -88,6 +111,7 @@ const OPERATIONAL_BASE: PermissionKey[] = [
   'shift.receive',
   'shift.handover',
   'shift.close',
+  'guest.view',
   'guest.manage',
   'metrics.view',
   'room.view',
@@ -135,12 +159,36 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'shift.manage',
     'audit.view',
     'key.stock',
+    'room.reset',
+    'announcement.manage',
+    'supervision.view',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   [ROLE_KEYS.NIGHT_AUDITOR]: [
     ...OPERATIONAL_BASE,
     'incident.manage',
     'nightaudit.run',
+    'supervision.view',
+  ],
+  /*
+    Gerencia SÓLO CONSULTA. Ni un permiso de escritura: no crea, no edita, no
+    cierra, no asigna, no opera turnos ni llaves.
+
+    Lo que sí puede hacer es actuar sobre aquello de lo que es RESPONSABLE, y
+    eso no se concede con un permiso —sería un permiso sobre todo— sino
+    comprobando la propiedad del registro concreto en el servidor. Vive en
+    `canActOnOwned` y lo aplican las acciones una por una.
+
+    `operational: true` en el rol, porque tiene que poder figurar como
+    responsable. No puede tomar turnos igualmente: le faltan `shift.start`,
+    `shift.receive` y `shift.handover`.
+  */
+  [ROLE_KEYS.MANAGEMENT]: [
+    'guest.view',
+    'supervision.view',
+    'metrics.view',
+    'room.view',
+    'audit.view',
   ],
 };
 
@@ -173,6 +221,14 @@ export const ROLE_DEFINITIONS: Array<{
     description:
       'Operación diaria de recepción: turnos, novedades, incidencias, tareas, pendientes y entregas.',
     level: 30,
+    operational: true,
+  },
+  {
+    key: ROLE_KEYS.MANAGEMENT,
+    name: 'Gerencia de operaciones',
+    description:
+      'Consulta toda la operación sin intervenirla. Puede actuar únicamente sobre lo que se le asigne como responsable, y sólo el Supervisor puede asignárselo.',
+    level: 70,
     operational: true,
   },
   {

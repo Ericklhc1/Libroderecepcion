@@ -387,3 +387,49 @@ export async function deleteStayAction(
     };
   });
 }
+
+/**
+ * Resetea una habitación atascada por duplicidad.
+ *
+ * Administrador de sistema y Supervisor (`room.reset`): el atasco ocurre en el
+ * mesón y hay que poder resolverlo sin esperar al administrador.
+ */
+export async function resetRoomAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('room.reset');
+    const input = parseOrThrow(
+      z.object({
+        roomNumber: z.string().trim().min(1),
+        reason: zRequiredString(500, 'El motivo'),
+      }),
+      formDataToObject(formData),
+    );
+
+    const { resetRoom } = await import('@/server/services/rooms');
+    const result = await resetRoom(user, input);
+
+    revalidatePath('/habitaciones');
+    revalidatePath(`/habitaciones/${result.room.number}`);
+    revalidatePath('/llaves');
+    revalidatePath('/supervision');
+
+    // Se dice lo que pasó de verdad, incluido «no había nada que colapsar».
+    if (result.collapsed === 0 && result.releasedKeys === 0 && result.reassignedKeys === 0) {
+      return {
+        ok: true as const,
+        message:
+          'No había duplicidad que resolver: la habitación ya estaba coherente y no se tocó nada.',
+      };
+    }
+
+    return {
+      ok: true as const,
+      message:
+        `Habitación ${result.room.number} reseteada: ${result.collapsed} estadía(s) duplicada(s) ` +
+        `eliminada(s), ${result.remaining} conservada(s), ${result.reassignedKeys} llave(s) reasignada(s).`,
+    };
+  });
+}

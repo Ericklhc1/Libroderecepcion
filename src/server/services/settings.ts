@@ -45,6 +45,16 @@ export const DEFAULT_SETTINGS = {
     category: 'gimnasio',
     description: 'Precio del pase de gimnasio cuando se cobra en dólares estadounidenses.',
   },
+  'reception.usdRateCLP': {
+    value: 0,
+    category: 'recepción',
+    description: 'Valor operativo del dólar en pesos chilenos que usa Recepción.',
+  },
+  'reception.checkoutHour': {
+    value: 11,
+    category: 'recepción',
+    description: 'Hora límite de check-out; desde esta hora se alertan salidas sin confirmar.',
+  },
 
   // Fronti. Los controles de seguridad (permisos, auditoría y confirmaciones)
   // NO son configurables desde esta tabla: forman parte del contrato operativo.

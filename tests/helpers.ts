@@ -49,6 +49,25 @@ export async function resetOperationalData() {
     prisma.task.deleteMany(),
     prisma.operationalEntry.deleteMany(),
     prisma.handoverItem.deleteMany(),
+    /*
+      La caja va ANTES de la entrega y de los usuarios: los arqueos y los
+      egresos referencian a quien contó con clave ajena RESTRICT, así que
+      borrar usuarios sin borrarlos antes reventaría.
+
+      `CashFund` y `HandoverElementType` también se borran aunque parezcan
+      catálogo: NO lo son, son configuración del hotel, y la existencia de un
+      fondo es lo que activa la exigencia de arqueo. La migración los siembra
+      para producción, de modo que si no se limpiaran acá el conjunto de
+      pruebas daría un resultado distinto según el orden en que corrieran los
+      archivos: las del ciclo de turno fallarían si se ejecutaran antes que
+      las de caja. Cada prueba que necesita fondo lo siembra ella.
+    */
+    prisma.cashCountLine.deleteMany(),
+    prisma.cashCount.deleteMany(),
+    prisma.cashTransfer.deleteMany(),
+    prisma.handoverElement.deleteMany(),
+    prisma.cashFund.deleteMany(),
+    prisma.handoverElementType.deleteMany(),
     prisma.shiftHandover.deleteMany(),
     prisma.shiftAssignment.deleteMany(),
     prisma.shift.deleteMany(),

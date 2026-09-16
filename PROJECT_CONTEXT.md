@@ -51,8 +51,9 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `User`/`Role`/`Permission` · `Shift`/`ShiftHandover`/`HandoverItem` ·
 `OperationalEntry` (novedad, incidencia, mantenimiento…) · `Task` ·
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
-`GuestReference`/`ReservationReference`/`Guarantee` · `AuditLog` ·
-`SystemSetting`.
+`GuestReference`/`ReservationReference`/`Guarantee` ·
+`CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` ·
+`HandoverElementType`/`HandoverElement` · `AuditLog` · `SystemSetting`.
 
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
@@ -169,6 +170,34 @@ conserva su modelo y sus reglas.
     asignado» se eliminó a propósito y se reemplazó por la invariante que sí
     sobrevive —un turno ya tomado no se le quita a quien lo tomó—. Lo vigila
     `tests/turno-sin-asignacion.test.ts`.
+12. **La caja se traspasa con fondo fijo, y la exigencia la activa el fondo.**
+    `CashFund` define cuánto debe quedar SIEMPRE en el cajón por divisa (en
+    este hotel **CLP 100.000 y USD 150**). Lo que excede es recaudación del
+    turno y sale como `CashTransfer` a tesorería.
+    **Mientras no exista una fila activa en `CashFund`, la caja no existe**:
+    entregar y recibir funcionan igual que antes del módulo. Eso deja intactas
+    las pruebas del ciclo de turno y no bloquea un despliegue nuevo el primer
+    día. `CashFund` y `HandoverElementType` **no son catálogo** —son
+    configuración del hotel— así que `resetOperationalData` los borra: si no,
+    el conjunto de pruebas daría resultados distintos según el orden de los
+    archivos. Las **denominaciones sí** son catálogo y viven en `seedCatalog`.
+    El arqueo se cuenta **por denominación**, dos veces: lo declara quien
+    entrega (`DECLARADO`) y lo recuenta quien recibe (`CONFIRMADO`). La
+    **diferencia entre ambos se calcula, nunca se almacena**, igual que los
+    conflictos de importación. Recontar reemplaza el arqueo anterior en vez de
+    acumular dos.
+    Un descuadre **no impide entregar si viene explicado**: un faltante existe
+    y hay que poder declararlo, no esconderlo. Lo único que se rechaza es un
+    descuadre sin una palabra.
+    Los montos se calculan en **unidad menor como entero** (`domain/cash.ts`):
+    el peso no usa centavos y el dólar sí, y multiplicar cantidades por valores
+    en coma flotante da 149,99999 donde debía haber 150.
+    Los elementos físicos (llaves maestras, radio, objetos olvidados,
+    encomiendas) son una lista **editable por el hotel**; los obligatorios
+    bloquean la entrega y la recepción. Las **garantías por resolver se
+    enlazan** desde el módulo de garantías, no se duplican.
+    Lo vigilan `tests/caja.test.ts` (20, dominio puro) y
+    `tests/caja-turno.test.ts` (16, ciclo completo).
 
 ## Rendimiento: lo aprendido en producción
 

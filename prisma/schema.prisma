@@ -330,6 +330,9 @@ model User {
   guaranteesCreated  Guarantee[]         @relation("guaranteeCreatedBy")
   guaranteesReturned Guarantee[]         @relation("guaranteeReturnedBy")
   guaranteesDeleted  Guarantee[]         @relation("guaranteeDeletedBy")
+  cashCounted        CashCount[]         @relation("cashCountBy")
+  cashTransfers      CashTransfer[]      @relation("cashTransferBy")
+  cashFundsUpdated   CashFund[]          @relation("cashFundUpdatedBy")
 
   @@index([roleId])
   @@index([active])
@@ -452,10 +455,15 @@ model ShiftHandover {
   updatedAt            DateTime       @updatedAt
   isDemo               Boolean        @default(false)
 
-  items    HandoverItem[]
-  comments Comment[]
-  tasks    Task[]
-  alerts   Alert[]
+  items         HandoverItem[]
+  comments      Comment[]
+  tasks         Task[]
+  alerts        Alert[]
+  /// Arqueos de caja: el que declara quien entrega y el que confirma quien recibe.
+  cashCounts    CashCount[]
+  cashTransfers CashTransfer[]
+  /// Elementos físicos que se traspasan junto con la caja.
+  elements      HandoverElement[]
 
   @@index([status])
 }
@@ -1139,4 +1147,134 @@ model Guarantee {
   @@index([reservationReferenceId])
   @@index([state])
   @@index([deletedAt])
+}
+
+// ============================ CAJA Y ELEMENTOS =============================
+//
+// La caja se traspasa entre turnos con FONDO FIJO: un monto por divisa que
+// SIEMPRE debe quedar en el cajón. Lo que excede ese fondo es recaudación del
+// turno y sale como egreso a tesorería.
+//
+// El arqueo se cuenta por DENOMINACIÓN, no por total: así el conteo es
+// verificable y el fondo fijo se reconstruye exacto. Se cuenta dos veces —lo
+// declara quien entrega y lo confirma quien recibe— y la diferencia entre
+// ambos conteos **se calcula, nunca se almacena**, igual que los conflictos de
+// importación: un dato derivado que se guarda es un dato que se desincroniza.
+
+enum CashMedium {
+  BILLETE
+  MONEDA
+}
+
+/// Denominación de una divisa. Catálogo: no cambia con la operación.
+model CashDenomination {
+  id       String          @id @default(cuid())
+  currency String          @db.VarChar(3)
+  value    Decimal         @db.Decimal(12, 2)
+  medium   CashMedium      @default(BILLETE)
+  active   Boolean         @default(true)
+  order    Int             @default(0)
+  lines    CashCountLine[]
+
+  @@unique([currency, value])
+  @@index([currency, active])
+}
+
+/// Fondo fijo de una divisa: lo que debe quedar en caja al entregar el turno.
+///
+/// NO es catálogo: es una decisión de cada hotel y se configura desde
+/// `/admin/parametros`. Su existencia es la que ACTIVA la exigencia de arqueo
+/// en la entrega y la recepción; un despliegue sin fondos configurados opera
+/// exactamente como antes.
+model CashFund {
+  id          String   @id @default(cuid())
+  currency    String   @unique @db.VarChar(3)
+  amount      Decimal  @db.Decimal(12, 2)
+  active      Boolean  @default(true)
+  updatedById String?
+  updatedBy   User?    @relation("cashFundUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum CashCountKind {
+  /// Lo cuenta quien entrega el turno.
+  DECLARADO
+  /// Lo recuenta quien recibe. Si no coincide, la diferencia queda visible.
+  CONFIRMADO
+}
+
+model CashCount {
+  id          String          @id @default(cuid())
+  handoverId  String
+  handover    ShiftHandover   @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  kind        CashCountKind
+  countedById String
+  countedBy   User            @relation("cashCountBy", fields: [countedById], references: [id])
+  countedAt   DateTime        @default(now())
+  notes       String?
+  lines       CashCountLine[]
+
+  /// Un solo arqueo declarado y uno confirmado por entrega.
+  @@unique([handoverId, kind])
+  @@index([handoverId])
+}
+
+model CashCountLine {
+  id             String           @id @default(cuid())
+  countId        String
+  count          CashCount        @relation(fields: [countId], references: [id], onDelete: Cascade)
+  denominationId String
+  denomination   CashDenomination @relation(fields: [denominationId], references: [id])
+  quantity       Int
+
+  @@unique([countId, denominationId])
+  @@index([denominationId])
+}
+
+/// Egreso a tesorería: el excedente sobre el fondo fijo sale de la caja.
+model CashTransfer {
+  id          String        @id @default(cuid())
+  handoverId  String
+  handover    ShiftHandover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  currency    String        @db.VarChar(3)
+  amount      Decimal       @db.Decimal(12, 2)
+  /// Número de comprobante o sobre. Sin esto un egreso no es rastreable.
+  reference   String?
+  notes       String?
+  createdById String
+  createdBy   User          @relation("cashTransferBy", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+
+  @@index([handoverId])
+  @@index([currency])
+}
+
+/// Elemento físico que viaja con la caja. Lo define cada hotel.
+model HandoverElementType {
+  id       String            @id @default(cuid())
+  name     String            @unique
+  detail   String?
+  /// Si es obligatorio, la entrega no se recibe sin confirmarlo.
+  required Boolean           @default(true)
+  active   Boolean           @default(true)
+  order    Int               @default(0)
+  elements HandoverElement[]
+}
+
+model HandoverElement {
+  id            String              @id @default(cuid())
+  handoverId    String
+  handover      ShiftHandover       @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  elementTypeId String
+  elementType   HandoverElementType @relation(fields: [elementTypeId], references: [id])
+  /// Lo marca quien entrega: «está y lo dejo».
+  declared      Boolean             @default(false)
+  /// Lo marca quien recibe: «lo tengo en la mano».
+  confirmed     Boolean             @default(false)
+  notes         String?
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([handoverId, elementTypeId])
+  @@index([handoverId])
 }

@@ -24,7 +24,13 @@ import {
   receiveHandover,
   sendHandover,
 } from '@/server/services/shifts';
-import { SHIFT_TYPE_LABEL, plannedWindow } from '@/domain/shift';
+import {
+  SHIFT_STATUS_LABEL,
+  SHIFT_TYPE_LABEL,
+  customWindow,
+  plannedWindow,
+  windowHours,
+} from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
 
 function refresh(shiftId?: string) {
@@ -256,7 +262,16 @@ export async function scheduleShiftAction(
     date.setHours(0, 0, 0, 0);
     const shift = await ensureShift(date, input.type, user.id);
 
-    const window = plannedWindow(date, input.type);
+    /*
+      Ventana a medida sólo si se pidió entera: una hora sin duración, o una
+      duración sin hora, sería una ventana a medias. El límite de doce horas
+      lo impone `customWindow`, no el formulario.
+    */
+    const window =
+      input.startTime && input.durationHours
+        ? customWindow(date, input.startTime, input.durationHours)
+        : plannedWindow(date, input.type);
+
     await prisma.shift.update({
       where: { id: shift.id },
       data: {
@@ -284,14 +299,19 @@ export async function scheduleShiftAction(
       entity: 'Shift',
       entityId: shift.id,
       action: AuditAction.EDITAR,
-      summary: `Turno ${SHIFT_TYPE_LABEL[input.type]} del ${date.toLocaleDateString('es-CL')} programado con ${input.userIds.length} persona(s)`,
+      summary:
+        `Turno ${SHIFT_TYPE_LABEL[input.type]} del ${date.toLocaleDateString('es-CL')} ` +
+        `programado con ${input.userIds.length} persona(s), ${windowHours(window.start, window.end)} h`,
       user,
       after: { userIds: input.userIds, notes: input.notes },
     });
 
     refresh(shift.id);
     revalidatePath('/admin/turnos');
-    return { ok: true as const, message: 'Turno programado.' };
+    return {
+      ok: true as const,
+      message: `Turno programado: ${windowHours(window.start, window.end)} h.`,
+    };
   });
 }
 
@@ -327,5 +347,97 @@ export async function cancelShiftAction(
     refresh(shift.id);
     revalidatePath('/admin/turnos');
     return { ok: true as const, message: 'Turno anulado.' };
+  });
+}
+
+const archiveSchema = z.object({
+  shiftId: z.string().min(1),
+  reason: zOptionalString,
+});
+
+/**
+ * Archiva un turno: lo saca de las listas sin borrarlo.
+ *
+ * Archivar NO es anular. Anular dice «este turno no se va a usar» y sólo vale
+ * antes de que empiece; archivar dice «ya pasó y no quiero verlo», y vale
+ * justamente para los que terminaron. Un turno archivado conserva su historia,
+ * sus registros y su entrega: deja de ofrecerse y de listarse, nada más.
+ *
+ * Por eso no se archiva un turno en curso: eso se cierra, no se esconde.
+ */
+export async function archiveShiftAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.manage');
+    const input = parseOrThrow(archiveSchema, formDataToObject(formData));
+
+    const shift = await getShiftById(input.shiftId);
+    if (shift.archivedAt) throw new RuleError('Ese turno ya está archivado.');
+
+    const ARCHIVABLE: ShiftStatus[] = [
+      ShiftStatus.PROGRAMADO,
+      ShiftStatus.CERRADO,
+      ShiftStatus.ANULADO,
+      ShiftStatus.RECIBIDO,
+    ];
+    if (!ARCHIVABLE.includes(shift.status)) {
+      throw new RuleError(
+        `Un turno en estado ${SHIFT_STATUS_LABEL[shift.status]} está en curso: ciérralo antes de archivarlo.`,
+      );
+    }
+
+    await prisma.shift.update({
+      where: { id: shift.id },
+      data: { archivedAt: new Date(), archivedById: user.id },
+    });
+
+    await recordAudit({
+      entity: 'Shift',
+      entityId: shift.id,
+      action: AuditAction.EDITAR,
+      user,
+      summary:
+        `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} ` +
+        `archivado${input.reason ? `: ${input.reason}` : ''}`,
+      before: { archivedAt: null },
+      after: { archivedAt: new Date().toISOString() },
+    });
+
+    refresh(shift.id);
+    revalidatePath('/admin/turnos');
+    return { ok: true as const, message: 'Turno archivado. Sigue en el historial.' };
+  });
+}
+
+/** Devuelve un turno archivado a las listas. */
+export async function unarchiveShiftAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.manage');
+    const input = parseOrThrow(shiftIdSchema, formDataToObject(formData));
+
+    const shift = await getShiftById(input.shiftId);
+    if (!shift.archivedAt) throw new RuleError('Ese turno no está archivado.');
+
+    await prisma.shift.update({
+      where: { id: shift.id },
+      data: { archivedAt: null, archivedById: null },
+    });
+
+    await recordAudit({
+      entity: 'Shift',
+      entityId: shift.id,
+      action: AuditAction.EDITAR,
+      user,
+      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} desarchivado`,
+    });
+
+    refresh(shift.id);
+    revalidatePath('/admin/turnos');
+    return { ok: true as const, message: 'Turno devuelto a las listas.' };
   });
 }

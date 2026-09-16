@@ -165,6 +165,19 @@ conserva su modelo y sus reglas.
    a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
    vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
    `tests/rooms-keys.test.ts`.
+4bis. **Un turno dura lo que haga falta, hasta 12 h, y se puede archivar.**
+   El horario nominal (`SHIFT_SCHEDULE`, 8 h) cubre el caso normal y sigue
+   siendo el valor por omisión. Para lo que no encaja, el administrador escribe
+   hora de inicio y duración: las dos juntas o ninguna, porque una hora sin
+   duración es una ventana a medias. El límite lo impone `customWindow` en el
+   **dominio**, no el formulario, y rechaza fracciones más finas que la media
+   hora. No necesitó migración: `plannedStart`/`plannedEnd` ya admitían
+   cualquier ventana.
+   **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale antes
+   de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno de
+   las listas conservando su historia, sus registros y su entrega
+   (`archivedAt`). El servidor **rechaza archivar un turno en curso**: eso se
+   cierra, no se esconde. Lo vigila `tests/turno-duracion.test.ts`.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y

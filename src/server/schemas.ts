@@ -326,12 +326,33 @@ export const passwordChangeSchema = z
     path: ['confirmPassword'],
   });
 
+/*
+  Programar o modificar un turno.
+
+  `startTime` y `durationHours` son OPCIONALES: si no vienen, se usa el
+  horario nominal del tipo de turno, que cubre el caso normal. Vienen cuando
+  hay que cubrir algo que no encaja —doce horas, una entrada a las 6—. El
+  límite real lo impone `customWindow` en el dominio; acá sólo se acota el
+  formato para dar un mensaje decente.
+*/
 export const shiftScheduleSchema = z.object({
   date: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Fecha inválida'),
   type: z.nativeEnum(ShiftType),
   userIds: z
     .union([z.string(), z.array(z.string())])
     .transform((v) => (Array.isArray(v) ? v : [v]).filter((x) => x.length > 0)),
+  startTime: z
+    .string()
+    .trim()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'La hora va como HH:MM')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  durationHours: z.coerce
+    .number()
+    .positive('La duración debe ser mayor que cero')
+    .max(12, 'Un turno no puede durar más de 12 horas')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   notes: zOptionalString,
 });
 

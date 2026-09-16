@@ -378,6 +378,38 @@ export function ScheduleShiftForm({ users }: { users: Option[] }) {
           <Input name="notes" />
         </Field>
       </div>
+
+      {/*
+        Horario a medida. Vacío = el horario nominal del tipo de turno, que es
+        el caso normal. Se llena cuando hay que cubrir algo que no encaja: una
+        jornada de doce horas, una entrada a las 6. Las dos casillas van
+        juntas: una hora sin duración sería una ventana a medias, y el servidor
+        las ignora si falta una.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Hora de inicio (opcional)"
+          name="startTime"
+          hint="Vacío usa el horario del turno."
+        >
+          <Input type="time" name="startTime" />
+        </Field>
+        <Field
+          label="Duración en horas (opcional)"
+          name="durationHours"
+          hint="Hasta 12. Horas o medias horas."
+        >
+          <Input
+            type="number"
+            name="durationHours"
+            min={0.5}
+            max={12}
+            step={0.5}
+            placeholder="8"
+          />
+        </Field>
+      </div>
+
       <Field
         label="Personal asignado"
         name="userIds"

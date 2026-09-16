@@ -333,6 +333,7 @@ model User {
   cashCounted        CashCount[]         @relation("cashCountBy")
   cashTransfers      CashTransfer[]      @relation("cashTransferBy")
   cashFundsUpdated   CashFund[]          @relation("cashFundUpdatedBy")
+  shiftsArchived     Shift[]             @relation("shiftArchivedBy")
 
   @@index([roleId])
   @@index([active])
@@ -406,6 +407,14 @@ model Shift {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   isDemo       Boolean     @default(false)
+  /// Turno retirado de las listas operativas sin borrarlo.
+  ///
+  /// Distinto de ANULADO: anular es «este turno no se va a usar»; archivar es
+  /// «ya pasó y no quiero verlo en las listas». Un turno archivado conserva su
+  /// historia, sus registros y su entrega: sólo deja de ofrecerse y de listarse.
+  archivedAt   DateTime?
+  archivedById String?
+  archivedBy   User?       @relation("shiftArchivedBy", fields: [archivedById], references: [id])
 
   assignments ShiftAssignment[]
   handoverOut ShiftHandover?     @relation("handoverFromShift")
@@ -416,6 +425,7 @@ model Shift {
   @@unique([date, type])
   @@index([status])
   @@index([date])
+  @@index([archivedAt])
 }
 
 model ShiftAssignment {

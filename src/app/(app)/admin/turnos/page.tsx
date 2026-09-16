@@ -7,13 +7,13 @@ import { listOperationalUsers } from '@/server/services/users';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { ScheduleShiftForm } from '../admin-forms';
-import { CancelShiftDialog } from './cancel-shift';
+import { ArchiveShiftDialog, CancelShiftDialog } from './cancel-shift';
 import {
   ASSIGNMENT_ROLE_LABEL,
   HANDOVER_STATUS_LABEL,
   HANDOVER_STATUS_TONE,
 } from '@/domain/labels';
-import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, windowHours } from '@/domain/shift';
 import { formatDate, formatTime } from '@/lib/format';
 
 export const metadata = { title: 'Programación de turnos' };
@@ -99,6 +99,8 @@ export default async function ShiftAdminPage() {
                     <Badge tone={STATUS_TONE[shift.status]}>
                       {SHIFT_STATUS_LABEL[shift.status]}
                     </Badge>
+                    {/* Nunca sólo color: el archivado se dice con texto. */}
+                    {shift.archivedAt ? <Chip>Archivado</Chip> : null}
                     {shift.handoverOut ? (
                       <Link href={`/turno/entrega/${shift.handoverOut.id}`}>
                         <Badge tone={HANDOVER_STATUS_TONE[shift.handoverOut.status]}>
@@ -110,7 +112,8 @@ export default async function ShiftAdminPage() {
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Horario {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)} ·{' '}
+                    Horario {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)} (
+                    {windowHours(shift.plannedStart, shift.plannedEnd)} h) ·{' '}
                     {shift.assignments.length > 0
                       ? shift.assignments
                           .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
@@ -121,9 +124,21 @@ export default async function ShiftAdminPage() {
                     <p className="mt-0.5 text-xs text-slate-500">Notas: {shift.notes}</p>
                   ) : null}
                 </div>
-                {shift.status === ShiftStatus.PROGRAMADO ? (
-                  <CancelShiftDialog shiftId={shift.id} />
-                ) : null}
+                <div className="flex shrink-0 flex-wrap items-center gap-1">
+                  {/* Anular vale ANTES de empezar. */}
+                  {shift.status === ShiftStatus.PROGRAMADO ? (
+                    <CancelShiftDialog shiftId={shift.id} />
+                  ) : null}
+                  {/*
+                    Archivar vale cuando ya terminó, o cuando está programado y
+                    se quiere sacar de la lista. El servidor rechaza archivar
+                    un turno en curso: eso se cierra, no se esconde.
+                  */}
+                  <ArchiveShiftDialog
+                    shiftId={shift.id}
+                    archived={shift.archivedAt !== null}
+                  />
+                </div>
               </li>
             ))}
           </ul>

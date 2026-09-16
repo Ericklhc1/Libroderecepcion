@@ -14,6 +14,12 @@ const schema = z.object({
   SEED_DEMO_PASSWORD: z.string().min(8).default('Demo2024!'),
   HOTEL_TIMEZONE: z.string().default('America/Santiago'),
 
+  // Asistente IA. La clave es opcional para que el Libro pueda desplegar sin
+  // IA; el endpoint informa claramente si todavía no fue configurada.
+  // Nunca se expone al cliente: sólo la consume el servidor.
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().min(1).default('gpt-5.6-luna'),
+
   // Correo saliente. Opcional: si falta, el sistema muestra la clave en
   // pantalla en lugar de enviarla, y lo dice.
   SMTP_HOST: z.string().optional(),

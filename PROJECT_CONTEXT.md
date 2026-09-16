@@ -103,6 +103,12 @@ conserva su modelo y sus reglas.
    el conflicto es real y se conserva. Decisión revisada: la primera versión
    no entregaba ninguna llave al importar y dejaba treinta avisos no
    accionables por importación.
+   **Una sola implementación:** `services/keys.ts::reconcilePrincipalKeys(tx,
+   user, {businessDate?})`. La importación la llama acotada al día de su lote;
+   la **reconciliación explícita** del inventario (botón en `/llaves`, permiso
+   `key.stock`, `reconcileKeysAction`) la llama sin acotar, para alcanzar
+   estadías cargadas antes de que la regla existiera. Es idempotente. No hay
+   ni debe haber una segunda lógica de asignación.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y

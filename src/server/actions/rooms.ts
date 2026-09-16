@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { KeyType } from '@prisma/client';
+import { AuditAction, KeyType } from '@prisma/client';
 import {
   formDataToObject,
   parseOrThrow,
@@ -12,11 +12,14 @@ import {
   zOptionalString,
   type ActionState,
 } from '@/server/action';
+import { prisma } from '@/lib/prisma';
+import { recordAudit } from '@/server/audit';
 import { requirePermission } from '@/server/auth/guard';
 import { confirmCheckIn, confirmCheckOut } from '@/server/services/rooms';
 import {
   createKey,
   giveExtraCopy,
+  reconcilePrincipalKeys,
   reinstateKey,
   returnKey,
   setKeyIncidentStatus,
@@ -178,6 +181,55 @@ export async function createKeyAction(
     const result = await createKey(user, input);
     refreshRooms();
     return { ok: true as const, message: `Llave ${result.code} agregada al inventario.` };
+  });
+}
+
+/**
+ * Reconciliación explícita del inventario de llaves.
+ *
+ * Existe por una inconsistencia histórica real: las estadías importadas antes
+ * de que existiera la asignación automática quedaron con sus llaves en el
+ * inventario, y el tablero no reflejaba la ocupación.
+ *
+ * No es una segunda lógica ni un parche permanente: llama a la **misma**
+ * función que usa la importación (`reconcilePrincipalKeys`), sin acotar el día
+ * para que alcance también a las estadías antiguas. Es idempotente: repetirla
+ * no escribe nada si todo está donde debe.
+ *
+ * La ejecuta una persona a propósito, no un proceso automático.
+ */
+export async function reconcileKeysAction(): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('key.stock');
+
+    const assigned = await prisma.$transaction(
+      (tx) =>
+        reconcilePrincipalKeys(tx, user, { note: 'reconciliación del inventario' }),
+      // El cruce recorre todas las estadías activas: con la base en otra
+      // región, el plazo por omisión de cinco segundos no alcanza.
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+
+    if (assigned > 0) {
+      await recordAudit({
+        entity: 'RoomKey',
+        entityId: 'inventario',
+        action: AuditAction.CONFIGURAR,
+        user,
+        summary: `Inventario de llaves reconciliado: ${assigned} llave(s) principal(es) entregada(s) a su ocupante`,
+        after: { assigned },
+      });
+    }
+
+    refreshRooms();
+    return {
+      ok: true as const,
+      message:
+        assigned === 0
+          ? 'El inventario ya estaba al día: ninguna llave necesitaba cambio.'
+          : `Listo: ${assigned} llave(s) principal(es) quedaron con su ocupante. ` +
+            'Las entradas sin confirmar siguen sin llave.',
+    };
   });
 }
 

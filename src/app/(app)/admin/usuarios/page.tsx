@@ -90,7 +90,6 @@ export default async function UsersPage() {
                     {user.isDemo ? <Chip>Demo</Chip> : null}
                     {user.mustChangePassword ? <Chip>Debe cambiar contraseña</Chip> : null}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-600">{user.email}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {user.department?.name ?? 'Sin área'}
                     {user.phone ? ` · ${user.phone}` : ''} · último ingreso{' '}
@@ -115,7 +114,6 @@ export default async function UsersPage() {
                         user={{
                           id: user.id,
                           name: user.name,
-                          email: user.email,
                           roleId: user.roleId,
                           departmentId: user.departmentId,
                           phone: user.phone,

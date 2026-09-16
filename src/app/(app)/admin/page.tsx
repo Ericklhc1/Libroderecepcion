@@ -4,6 +4,7 @@ import {
   ClipboardList,
   KeyRound,
   Mail,
+  Eraser,
   Settings,
   ShieldCheck,
   Trash2,
@@ -68,6 +69,13 @@ const SECTIONS: Array<{
     description: 'Asignar personal a los turnos de cada día.',
     permission: 'shift.manage',
     icon: ClipboardList,
+  },
+  {
+    href: '/admin/puesta-en-cero',
+    title: 'Dejar el sistema en cero',
+    description: 'Borrar los datos de prueba para empezar a operar limpio.',
+    permission: 'system.configure',
+    icon: Eraser,
   },
   {
     href: '/admin/auditoria',
@@ -153,23 +161,12 @@ export default async function AdminPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader title="Datos demo" />
-        <div className="space-y-2 px-4 py-4 text-sm text-slate-600">
-          <p>
-            Los datos de demostración están marcados internamente y se eliminan con un solo
-            comando cuando el hotel entre en producción:
-          </p>
-          <pre className="overflow-x-auto rounded-lg bg-petrol-900 px-3 py-2 text-xs text-petrol-50">
-            npx tsx scripts/create-admin.ts &quot;Nombre&quot; correo@hotel.com
-            &quot;ContraseñaSegura1&quot;{'\n'}npm run demo:purge
-          </pre>
-          <p className="text-xs text-slate-500">
-            La purga exige que exista al menos un Administrador de sistema real, de modo que el
-            sistema nunca queda sin acceso administrativo.
-          </p>
-        </div>
-      </Card>
+      {/*
+        Antes acá se explicaba un comando de consola para purgar la demo. Ya no
+        hace falta: «Dejar el sistema en cero» hace lo mismo desde la pantalla,
+        con la cuenta de lo que va a borrar delante y sin abrir una terminal
+        contra la base de producción.
+      */}
     </div>
   );
 }

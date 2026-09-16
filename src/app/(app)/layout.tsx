@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Bell, BookOpen, LogOut, Search, UserRound } from 'lucide-react';
+import { NotificationChime } from '@/components/layout/notification-chime';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
@@ -126,6 +127,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
 
             <div className="ml-auto flex items-center gap-2">
+              {/*
+                El aviso sonoro. Va pegado a la campana porque habla de lo
+                mismo: la campana dice cuántas hay, esto avisa cuando llega
+                una. Sin sonido, un recordatorio sólo cambia un número en una
+                esquina que nadie está mirando.
+              */}
+              <NotificationChime
+                initialNotifications={unreadNotifications}
+                initialAlerts={alerts}
+              />
               <Link
                 href="/notificaciones"
                 className="relative rounded-lg p-2 text-petrol-700 hover:bg-petrol-50"

@@ -69,7 +69,7 @@ async function main() {
     },
   });
 
-  console.log(`✔ Administrador de sistema listo: ${user.name} (@${user.username}) <${user.email}>`);
+  console.log(`✔ Administrador de sistema listo: ${user.name} (@${user.username})`);
   if (!providedPassword) {
     console.log(`  Contraseña temporal (cámbiala al entrar): ${password}`);
   }

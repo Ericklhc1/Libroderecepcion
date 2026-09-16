@@ -9,7 +9,6 @@ import { DEPARTMENTS } from '@/domain/catalog';
 const DATOS = {
   hotelName: 'Hotel Costa Serena',
   name: 'Erick Herrera',
-  email: 'Erick@CostaSerena.cl',
   password: 'ClaveSegura2026',
 };
 
@@ -30,9 +29,8 @@ describe('instalación inicial', () => {
       include: { role: true },
     });
     expect(user.role.key).toBe(ROLE_KEYS.SYSTEM_ADMIN);
-    // El correo se guarda normalizado para que el inicio de sesión no dependa
-    // de cómo lo escribieron al instalar.
-    expect(user.email).toBe('erick@costaserena.cl');
+    // La instalación no pide correo: la cuenta es nombre, usuario y clave.
+    expect(user.username).toBeTruthy();
     expect(user.isDemo).toBe(false);
 
     const hotel = await prisma.systemSetting.findUnique({ where: { key: 'hotel.name' } });
@@ -53,7 +51,7 @@ describe('instalación inicial', () => {
 
     expect(await needsInstall()).toBe(false);
     await expect(
-      runInstall({ ...DATOS, email: 'otra@costaserena.cl' }),
+      runInstall({ ...DATOS, name: 'Otra Persona' }),
     ).rejects.toBeInstanceOf(AppError);
     expect(await prisma.user.count()).toBe(1);
   });

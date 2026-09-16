@@ -9,7 +9,6 @@ import { ROLE_KEYS } from '@/lib/permissions';
 export type CurrentUser = {
   id: string;
   name: string;
-  email: string;
   sessionId: string;
   roleId: string;
   roleKey: string;
@@ -40,7 +39,6 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
     sessionId: payload.sid,
     roleId: user.roleId,
     roleKey: user.role.key,

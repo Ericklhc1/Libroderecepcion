@@ -43,7 +43,7 @@ export function operationalDate(now = new Date()): Date {
 }
 
 export const shiftInclude = {
-  assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
+  assignments: { include: { user: { select: { id: true, name: true, username: true } } } },
   handoverOut: {
     include: {
       issuedBy: { select: { id: true, name: true } },

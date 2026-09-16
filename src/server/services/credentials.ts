@@ -83,7 +83,6 @@ export type CredentialDelivery = {
 export async function deliverCredentials(input: {
   name: string;
   username: string;
-  email: string;
   password: string;
   roleName: string;
   hotelName: string;
@@ -96,11 +95,10 @@ export async function deliverCredentials(input: {
     text: [
       `Se creó una cuenta en el Libro Operativo de Recepción de ${input.hotelName}.`,
       '',
-      `Nombre:          ${input.name}`,
-      `Usuario:         @${input.username}`,
-      `Correo de acceso: ${input.email}`,
-      `Rol:             ${input.roleName}`,
-      `Clave temporal:  ${input.password}`,
+      `Nombre:         ${input.name}`,
+      `Usuario:        @${input.username}`,
+      `Rol:            ${input.roleName}`,
+      `Clave temporal: ${input.password}`,
       '',
       'La clave es de un solo uso: el sistema pide cambiarla en el primer ingreso.',
       'Entrégala en persona y no la reenvíes por otros canales.',

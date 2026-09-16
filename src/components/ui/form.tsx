@@ -112,7 +112,6 @@ function CredentialsPanel({ credentials }: { credentials: RevealedCredentials })
   const plain = [
     `Nombre: ${credentials.name}`,
     `Usuario: @${credentials.username}`,
-    `Correo: ${credentials.email}`,
     `Clave temporal: ${credentials.password}`,
   ].join('\n');
 
@@ -130,7 +129,6 @@ function CredentialsPanel({ credentials }: { credentials: RevealedCredentials })
   const rows: Array<[string, string]> = [
     ['Nombre', credentials.name],
     ['Usuario', `@${credentials.username}`],
-    ['Correo de acceso', credentials.email],
     ['Clave temporal', credentials.password],
   ];
 

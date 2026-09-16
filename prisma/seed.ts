@@ -65,50 +65,25 @@ async function seedDemo() {
   const departments = await prisma.department.findMany();
   const dept = (key: string) => departments.find((d) => d.key === key)?.id ?? null;
 
+  /* Las cuentas se identifican por su USUARIO, que es lo único que las
+     identifica: no tienen correo. La clave es la de `SEED_DEMO_PASSWORD`. */
   const people = [
-    {
-      email: 'admin@hotel.local',
-      name: 'Sofía Reyes',
-      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
-      departmentKey: 'SISTEMAS',
-    },
-    {
-      email: 'supervisor@hotel.local',
-      name: 'Marcela Pinto',
-      roleKey: ROLE_KEYS.SUPERVISOR,
-      departmentKey: 'RECEPCION',
-    },
-    {
-      email: 'recepcion.manana@hotel.local',
-      name: 'Diego Alarcón',
-      roleKey: ROLE_KEYS.RECEPTIONIST,
-      departmentKey: 'RECEPCION',
-    },
-    {
-      email: 'recepcion.tarde@hotel.local',
-      name: 'Camila Vera',
-      roleKey: ROLE_KEYS.RECEPTIONIST,
-      departmentKey: 'RECEPCION',
-    },
-    {
-      email: 'auditor.noche@hotel.local',
-      name: 'Rodrigo Núñez',
-      roleKey: ROLE_KEYS.NIGHT_AUDITOR,
-      departmentKey: 'RECEPCION',
-    },
+    { key: 'admin', name: 'Sofía Reyes', roleKey: ROLE_KEYS.SYSTEM_ADMIN, departmentKey: 'SISTEMAS' },
+    { key: 'supervisor', name: 'Marcela Pinto', roleKey: ROLE_KEYS.SUPERVISOR, departmentKey: 'RECEPCION' },
+    { key: 'manana', name: 'Diego Alarcón', roleKey: ROLE_KEYS.RECEPTIONIST, departmentKey: 'RECEPCION' },
+    { key: 'tarde', name: 'Camila Vera', roleKey: ROLE_KEYS.RECEPTIONIST, departmentKey: 'RECEPCION' },
+    { key: 'noche', name: 'Rodrigo Núñez', roleKey: ROLE_KEYS.NIGHT_AUDITOR, departmentKey: 'RECEPCION' },
   ];
 
   const users: Record<string, { id: string; name: string }> = {};
   for (const person of people) {
     const role = roleByKey.get(person.roleKey);
     if (!role) throw new Error(`Rol no encontrado: ${person.roleKey}`);
-    // El upsert se resuelve por USUARIO: el correo puede repetirse entre
-    // cuentas, así que ya no identifica a nadie.
+    // El upsert se resuelve por USUARIO, que es la identidad de la cuenta.
     const user = await prisma.user.upsert({
       where: { username: suggestUsername(person.name) },
       update: { name: person.name, roleId: role.id, isDemo: true, active: true },
       create: {
-        email: person.email,
         name: person.name,
         username: suggestUsername(person.name),
         passwordHash,
@@ -117,14 +92,14 @@ async function seedDemo() {
         isDemo: true,
       },
     });
-    users[person.email] = { id: user.id, name: user.name };
+    users[person.key] = { id: user.id, name: user.name };
   }
 
-  const admin = users['admin@hotel.local']!;
-  const supervisor = users['supervisor@hotel.local']!;
-  const morning = users['recepcion.manana@hotel.local']!;
-  const evening = users['recepcion.tarde@hotel.local']!;
-  const night = users['auditor.noche@hotel.local']!;
+  const admin = users['admin']!;
+  const supervisor = users['supervisor']!;
+  const morning = users['manana']!;
+  const evening = users['tarde']!;
+  const night = users['noche']!;
 
   // ----------------------------- Huéspedes ------------------------------
   const guestData = [

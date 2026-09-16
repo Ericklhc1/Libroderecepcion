@@ -73,7 +73,6 @@ describe('entrega de credenciales', () => {
     const delivery = await deliverCredentials({
       name: 'Camila Rojas',
       username: 'CRojas',
-      email: 'crojas@hoteleshw.com',
       password: 'NoSeUsaEnLaPrueba9',
       roleName: 'Recepcionista',
       hotelName: 'Hotel HW Libertad',

@@ -51,12 +51,13 @@ export default async function LoginPage() {
         {showDemoHint ? (
           <div className="mt-5 rounded-xl bg-petrol-800/60 p-4 text-xs text-petrol-100 ring-1 ring-petrol-700">
             <p className="font-semibold text-gold-300">Cuentas demo (sólo desarrollo)</p>
+            {/* Se entra con el USUARIO, así que es lo que se muestra. */}
             <ul className="mt-2 space-y-1">
-              <li>admin@hotel.local · Administrador de sistema</li>
-              <li>supervisor@hotel.local · Supervisor</li>
-              <li>recepcion.manana@hotel.local · Recepcionista mañana</li>
-              <li>recepcion.tarde@hotel.local · Recepcionista tarde</li>
-              <li>auditor.noche@hotel.local · Auditor nocturno</li>
+              <li>@SReyes · Administrador de sistema</li>
+              <li>@MPinto · Supervisor</li>
+              <li>@DAlarcn · Recepcionista</li>
+              <li>@CVera · Recepcionista</li>
+              <li>@RNez · Auditor nocturno</li>
             </ul>
             <p className="mt-2 text-petrol-200">
               Contraseña: la definida en <code className="text-gold-200">SEED_DEMO_PASSWORD</code>.

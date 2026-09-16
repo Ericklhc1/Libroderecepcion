@@ -78,17 +78,22 @@ conserva su modelo y sus reglas.
 
 ## Decisiones que no se revierten
 
-0. **La identidad de una cuenta es su usuario, no su correo.** En el hotel
-   varias cuentas comparten la casilla de recepción, así que el correo **no
-   identifica a nadie y puede repetirse**: `User.email` no es único. El que sí
-   lo es —y con el que se inicia sesión— es `username` (`@EHerrera`): se
-   muestra con arroba y se guarda sin ella. La comparación al entrar **ignora
-   mayúsculas**, porque en el mesón nadie recuerda si se escribió `EHerrera` o
-   `eherrera`; por eso `allocateUsername` mide la colisión también sin
-   distinguirlas, aunque el índice único de PostgreSQL sí las distinga: si
-   coexistieran las dos, entrar sería ambiguo. `LoginAttempt.identifier`
-   guarda lo que se escribió, exista la cuenta o no. Lo vigila
-   `tests/identidad-usuario.test.ts`.
+0. **Una cuenta es nombre, usuario y contraseña. Nada más.**
+   `User.email` **ya no existe** (`20260916190000_cuenta_sin_correo`). Primero
+   dejó de ser identificador —en el hotel todo el mesón comparte la casilla de
+   recepción, así que no distinguía a nadie— y después se eliminó: un campo que
+   no identifica, no sirve para entrar y hay que inventar al crear la cuenta es
+   un campo que sobra. La casilla que recibe las credenciales es del HOTEL y
+   vive en `MailSettings.credentialsMailTo`, no en cada persona.
+   `GuestReference.email` **sí se conserva**: ése es el correo del huésped y es
+   un dato real.
+   La identidad es `username` (`@EHerrera`): se muestra con arroba y se guarda
+   sin ella. La comparación al entrar **ignora mayúsculas**, porque en el mesón
+   nadie recuerda si se escribió `EHerrera` o `eherrera`; por eso
+   `allocateUsername` mide la colisión también sin distinguirlas, aunque el
+   índice único de PostgreSQL sí las distinga: si coexistieran las dos, entrar
+   sería ambiguo. `LoginAttempt.identifier` guarda lo que se escribió, exista
+   la cuenta o no. Lo vigila `tests/identidad-usuario.test.ts`.
 1. **El rol técnico superior se llama sólo «Administrador de sistema».** Nunca
    *master*, *maestro*, *superusuario*. Queda **fuera de la operación
    habitual**: no inicia, recibe ni entrega turno, no confirma salidas ni
@@ -377,6 +382,51 @@ conserva su modelo y sus reglas.
     `ChecklistTemplate` **no es catálogo**: la arma cada Supervisor, así que
     `resetOperationalData` la limpia. Lo vigila
     `tests/supervision-tablero.test.ts`.
+
+20. **Las notificaciones suenan.** Un recordatorio que sólo cambia un número
+    en una esquina no avisa de nada: en el mesón nadie mira la campana.
+    `components/layout/notification-chime.tsx` consulta cada 20 s
+    (`getUnreadCounts`, dos `count` en paralelo, sin `revalidatePath`) y suena
+    **cuando el número SUBE**, no cuando es distinto de cero: si sonara con
+    cualquier valor, sonaría en cada consulta mientras quedara algo sin leer,
+    que es la forma más rápida de que alguien apague el sonido para siempre.
+    El contador de la cabecera se renderiza en el servidor y sólo cambia al
+    navegar; de ahí que haga falta la consulta.
+    **El tono se sintetiza con Web Audio, no es un archivo**: nada que
+    descargar, ningún `.mp3` en el repositorio, y el primer aviso no llega
+    tarde porque el audio se estuviera bajando. Dos notas ascendentes con
+    envolvente suave —un oscilador que arranca y se corta en seco chasquea y
+    suena a falla—. Una **alerta** suena distinto de una notificación (tres
+    notas más agudas): si sonaran igual, dejaría de distinguirse lo que hay que
+    atender ya. Incluye alertas además de notificaciones porque los
+    recordatorios y seguimientos llegan como alerta.
+    Los navegadores no permiten audio antes de un gesto, así que el contexto se
+    prepara con el primer clic y, si el navegador se niega, no pasa nada: el
+    contador rojo sigue estando. El silencio se guarda en `localStorage` y se
+    contempla que el almacenamiento falle.
+
+21. **«Dejar el sistema en cero» es lo ÚNICO que borra de verdad.**
+    `/admin/puesta-en-cero`, sólo el Administrador de sistema
+    (`isSystemAdmin`, no sólo el permiso) y hay que **escribir la frase**
+    «DEJAR EN CERO»: lo que protege de un borrado accidental no es un diálogo
+    que se cierra con Enter, es tener que escribir algo.
+    No contradice la regla 2 (nada se borra): eso vale para la OPERACIÓN, y
+    esto es un gesto de INSTALACIÓN, una vez, antes de que existan datos
+    reales. La pantalla muestra la cuenta real de filas antes de tocar nada.
+    **Conserva el catálogo** —roles, permisos, áreas, habitaciones, llaves con
+    su numeración, denominaciones, fondo fijo, parámetros— porque si se fuera,
+    «dejar en cero» sería «desinstalar». **Y conserva la cuenta que lo
+    ejecuta**: si se borrara, el hotel se quedaría sin forma de entrar a su
+    propio sistema, sin arreglo posible desde dentro.
+    Las llaves no se borran —están numeradas y cuestan dinero— pero se desligan
+    de su estadía y vuelven a «disponible».
+    Borra la auditoría de las pruebas, pero la entrada que registra la propia
+    puesta en cero se escribe DESPUÉS de la transacción y **sobrevive**.
+    Todo en una sola transacción: una puesta en cero a medias dejaría el libro
+    incoherente. El orden es el mismo que `resetOperationalData` en las
+    pruebas, y se mantienen juntos a propósito. Reemplaza al comando de consola
+    `npm run demo:purge`, que exigía abrir una terminal contra producción.
+    Lo vigila `tests/puesta-en-cero.test.ts`.
 
 ## Rendimiento: lo aprendido en producción
 

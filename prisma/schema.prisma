@@ -279,11 +279,16 @@ model RolePermission {
   @@index([permissionId])
 }
 
+/// Una cuenta del sistema: nombre, usuario y contraseña. Nada más.
+///
+/// **No tiene correo**, y es deliberado. Lo tuvo, y sobraba: en el hotel todo
+/// el mesón comparte la casilla de recepción, así que el correo no
+/// identificaba a nadie, no servía para entrar y sólo era un campo más que
+/// alguien tenía que inventar al crear una cuenta. La identidad es `username`.
+/// La casilla a la que se envían las credenciales es del HOTEL y vive en la
+/// configuración de correo, no en cada persona.
 model User {
   id                 String      @id @default(cuid())
-  /// Correo de contacto, NO identificador: varias cuentas pueden compartirlo
-  /// (todo el mesón usa la casilla de recepción). Por eso no es único.
-  email              String
   /// Nombre de usuario corto, del estilo @EHerrera. Es la identidad de la
   /// cuenta: con esto se inicia sesión y esto decide qué permisos aplican.
   username           String      @unique
@@ -360,7 +365,6 @@ model User {
   @@index([deletedAt])
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
-  @@index([email])
 }
 
 model Session {

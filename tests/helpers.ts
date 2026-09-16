@@ -129,24 +129,21 @@ export async function resetRoomsAndKeys() {
 
 export async function createUser(options: {
   roleKey: RoleKey;
-  email?: string;
   name?: string;
   password?: string;
   active?: boolean;
   username?: string;
-  /* El usuario es la identidad de la cuenta, así que las pruebas lo necesitan
-     para iniciar sesión. El correo puede repetirse a propósito. */
+  /* El usuario es la identidad de la cuenta y lo único que la identifica:
+     las cuentas no tienen correo. */
 }): Promise<CurrentUser & { passwordPlain: string; username: string }> {
   const role = await prisma.role.findUniqueOrThrow({
     where: { key: options.roleKey },
     include: { permissions: { include: { permission: true } } },
   });
   const password = options.password ?? TEST_PASSWORD;
-  const email = options.email ?? `${role.key.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@test.local`;
 
   const user = await prisma.user.create({
     data: {
-      email,
       name: options.name ?? `Usuario ${role.name}`,
       username:
         options.username ??
@@ -160,7 +157,6 @@ export async function createUser(options: {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
     sessionId: 'sesion-de-prueba',
     roleId: role.id,
     roleKey: role.key,

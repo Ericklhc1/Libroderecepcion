@@ -7,6 +7,7 @@ import { RestartTutorialButton } from './restart-tutorial';
 import { Chip } from '@/components/ui/badge';
 import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
+import { displayUsername } from '@/domain/username';
 
 export const metadata = { title: 'Mi perfil' };
 export const dynamic = 'force-dynamic';
@@ -52,8 +53,8 @@ export default async function ProfilePage() {
             <dd className="text-petrol-900">{record.name}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-slate-500">Correo</dt>
-            <dd className="text-petrol-900">{record.email}</dd>
+            <dt className="text-xs font-medium text-slate-500">Usuario</dt>
+            <dd className="text-petrol-900 tabular">{displayUsername(record.username)}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-slate-500">Rol</dt>

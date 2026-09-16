@@ -4,7 +4,10 @@ import { ActionForm, Field, Input, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { saveLiveCashAuditAction, voidGymPassAction } from '@/server/actions/live-cash';
-import { formatGymFolio } from '@/server/services/live-cash';
+
+function formatFolio(folio: number) {
+  return String(folio).padStart(6, '0');
+}
 
 export function LiveCashAuditForm({ currency }: { currency: string }) {
   return (
@@ -26,7 +29,7 @@ export function LiveCashAuditForm({ currency }: { currency: string }) {
 export function VoidGymPassDialog({ id, folio }: { id: string; folio: number }) {
   return (
     <Dialog
-      title={`Anular folio ${formatGymFolio(folio)}`}
+      title={`Anular folio ${formatFolio(folio)}`}
       description="El folio no se elimina ni se reutiliza. Si fue pagado en efectivo, se registra la salida correspondiente de Caja viva."
       triggerVariant="ghost"
       triggerSize="sm"

@@ -1,6 +1,5 @@
 import 'server-only';
-import { AuditAction, GuaranteeState, GuaranteeStatus, Prisma } from '@prisma/client';
-import type { GuaranteeKind } from '@prisma/client';
+import { AuditAction, GuaranteeKind, GuaranteeState, GuaranteeStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -12,6 +11,12 @@ import {
   deriveReservationGuaranteeSummary,
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
+import { getMyOpenShift } from './shifts';
+import {
+  assertGuaranteeCanBeDeleted,
+  recordGuaranteeCashIn,
+  recordGuaranteeCashOut,
+} from './live-cash';
 
 /**
  * Garantías de una reserva.
@@ -26,6 +31,10 @@ import {
  * y la entrega de turno lo leen. Este servicio es el **único** sitio que lo
  * escribe a partir de las garantías, con `syncReservationSummary`, de modo que
  * no puede quedar descuadrado.
+ *
+ * Las garantías en EFECTIVO además se reflejan en Caja viva. Registrar una
+ * garantía vigente y registrar su entrada física es una sola transacción: no
+ * puede existir una sin la otra.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -86,10 +95,13 @@ export async function createGuarantee(
     notes?: string | null;
   },
 ): Promise<{ id: string }> {
+  const shift = await getMyOpenShift(user.id);
+  const initialState = input.state ?? GuaranteeState.PENDIENTE;
+
   const guarantee = await prisma.$transaction(async (tx) => {
     const reservation = await tx.reservationReference.findFirst({
       where: { id: input.reservationReferenceId, deletedAt: null },
-      select: { id: true, code: true },
+      select: { id: true, code: true, roomNumber: true },
     });
     if (!reservation) throw new NotFoundError('Esa reserva no existe.');
 
@@ -99,12 +111,25 @@ export async function createGuarantee(
         kind: input.kind,
         amount: new Prisma.Decimal(input.amount),
         currency: input.currency.toUpperCase(),
-        state: input.state ?? GuaranteeState.PENDIENTE,
+        state: initialState,
         notes: input.notes ?? null,
         createdById: user.id,
       },
       select: { id: true, state: true, amount: true, currency: true },
     });
+
+    if (input.kind === GuaranteeKind.EFECTIVO && created.state === GuaranteeState.VIGENTE) {
+      await recordGuaranteeCashIn(tx, {
+        user,
+        guaranteeId: created.id,
+        reservationReferenceId: reservation.id,
+        reservationCode: reservation.code,
+        roomNumber: reservation.roomNumber,
+        currency: created.currency,
+        amount: money(created.amount) ?? input.amount,
+        shiftId: shift?.id ?? null,
+      });
+    }
 
     await syncReservationSummary(tx, reservation.id);
     return { ...created, reservationCode: reservation.code };
@@ -142,16 +167,21 @@ export async function changeGuaranteeState(
     notes?: string | null;
   },
 ): Promise<{ id: string }> {
+  const shift = await getMyOpenShift(user.id);
+
   const result = await prisma.$transaction(async (tx) => {
     const guarantee = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },
       select: {
         id: true,
+        kind: true,
         state: true,
         amount: true,
+        appliedAmount: true,
+        penaltyAmount: true,
         currency: true,
         reservationReferenceId: true,
-        reservationReference: { select: { code: true } },
+        reservationReference: { select: { code: true, roomNumber: true } },
       },
     });
     if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
@@ -214,6 +244,39 @@ export async function changeGuaranteeState(
       },
     });
 
+    if (guarantee.kind === GuaranteeKind.EFECTIVO) {
+      if (to === 'VIGENTE') {
+        await recordGuaranteeCashIn(tx, {
+          user,
+          guaranteeId: guarantee.id,
+          reservationReferenceId: guarantee.reservationReferenceId,
+          reservationCode: guarantee.reservationReference.code,
+          roomNumber: guarantee.reservationReference.roomNumber,
+          currency: guarantee.currency,
+          amount: total,
+          shiftId: shift?.id ?? null,
+        });
+      }
+
+      if (to === 'DEVUELTA') {
+        const alreadyApplied = money(guarantee.appliedAmount) ?? 0;
+        const alreadyPenalty = money(guarantee.penaltyAmount) ?? 0;
+        const refundable = Math.max(0, total - alreadyApplied - alreadyPenalty);
+        if (refundable > 0) {
+          await recordGuaranteeCashOut(tx, {
+            user,
+            guaranteeId: guarantee.id,
+            reservationReferenceId: guarantee.reservationReferenceId,
+            reservationCode: guarantee.reservationReference.code,
+            roomNumber: guarantee.reservationReference.roomNumber,
+            currency: guarantee.currency,
+            amount: refundable,
+            shiftId: shift?.id ?? null,
+          });
+        }
+      }
+    }
+
     await syncReservationSummary(tx, guarantee.reservationReferenceId);
     return { guarantee, from, to };
   });
@@ -241,6 +304,8 @@ export async function softDeleteGuarantee(
   user: CurrentUser,
   input: { id: string; reason: string },
 ): Promise<void> {
+  await assertGuaranteeCanBeDeleted(input.id);
+
   const guarantee = await prisma.$transaction(async (tx) => {
     const found = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },

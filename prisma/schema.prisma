@@ -233,6 +233,13 @@ enum NotificationType {
   INCIDENCIA_CRITICA
   ENTREGA_DISPONIBLE
   COMENTARIO
+  /**
+   * Mencionar a alguien con «@» no es comentar. El comentario avisa a los
+   * interesados del registro; la mención avisa a quien se nombró, que puede no
+   * tener nada que ver con él. Separados, la persona distingue «pasó algo en lo
+   * mío» de «me están pidiendo algo a mí».
+   */
+  MENCION
   ACCION_REQUERIDA
 }
 
@@ -792,6 +799,17 @@ model Comment {
   alert          Alert?            @relation(fields: [alertId], references: [id], onDelete: Cascade)
   handoverId     String?
   handover       ShiftHandover?    @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  /**
+   * Hilo de conversación: un comentario puede responder a otro. A nivel de
+   * producto es UN solo nivel —se responde a un comentario, no a una
+   * respuesta— y esa regla vive en el servicio, no acá, para no tener que
+   * migrar la base si mañana hace falta más profundidad.
+   * Cascada a propósito: si el comentario original se elimina, sus respuestas
+   * pierden todo sentido.
+   */
+  parentId       String?
+  parent         Comment?          @relation("commentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies        Comment[]         @relation("commentThread")
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?
@@ -802,6 +820,7 @@ model Comment {
   @@index([entryId])
   @@index([taskId])
   @@index([authorId])
+  @@index([parentId])
 }
 
 model Attachment {

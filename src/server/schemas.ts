@@ -163,6 +163,8 @@ export const commentSchema = z.object({
   followUpId: zOptionalCuid,
   alertId: zOptionalCuid,
   handoverId: zOptionalCuid,
+  /// Comentario al que responde, cuando es parte de un hilo.
+  parentId: zOptionalCuid,
 });
 
 export const alertCreateSchema = z.object({

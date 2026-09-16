@@ -285,6 +285,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   INCIDENCIA_CRITICA: 'Incidencia crítica',
   ENTREGA_DISPONIBLE: 'Entrega disponible',
   COMENTARIO: 'Nuevo comentario',
+  MENCION: 'Te mencionaron',
   ACCION_REQUERIDA: 'Acción requerida',
 };
 

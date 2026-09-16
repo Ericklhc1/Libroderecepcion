@@ -10,16 +10,20 @@ import {
   HandoverStatus,
   Prisma,
   ReservationStatus,
+  RoomStayStage,
+  RoomStayStatus,
   Severity,
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { hotelDateKey, hotelHour } from '@/domain/time';
 import {
   GUARANTEE_STATE_LABELS,
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
+import { getSettingNumber } from './settings';
 
 /**
  * Motor de alertas.
@@ -29,8 +33,9 @@ import {
  * duplica alertas. Cuando la condición que originó una alerta automática
  * desaparece, la alerta se resuelve sola.
  *
- * Se ejecuta al abrir el panel principal y al listar alertas (barato: sólo
- * consultas acotadas), y puede invocarse desde Administración → Mantenimiento.
+ * Se ejecuta al abrir el panel principal y al listar alertas, y puede invocarse
+ * desde Administración. Las horas operativas se comparan en la zona del hotel,
+ * nunca con la zona del proceso de Vercel.
  */
 
 type Candidate = {
@@ -219,6 +224,47 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     });
   }
 
+  /*
+    El check-out tiene una hora operativa, no sólo una fecha. A partir de esa
+    hora, cualquier salida del día o anterior que siga sin confirmar debe sonar
+    como ALERTA. Usamos `OTRO` para no crear otro enum/modelo: la identidad de
+    la regla está en la `dedupeKey` y el texto, siguiendo el motor existente.
+  */
+  const checkoutHour = await getSettingNumber('reception.checkoutHour', 11);
+  if (hotelHour(now) >= checkoutHour) {
+    const today = new Date(`${hotelDateKey(now)}T00:00:00.000Z`);
+    const overdueCheckOuts = await prisma.roomStay.findMany({
+      where: {
+        deletedAt: null,
+        status: RoomStayStatus.CHECK_OUT,
+        stage: { not: RoomStayStage.FINALIZADO },
+        departureDate: { lte: today },
+      },
+      select: {
+        id: true,
+        reservationId: true,
+        guestNames: true,
+        departureDate: true,
+        room: { select: { number: true } },
+      },
+      orderBy: [{ departureDate: 'asc' }, { room: { number: 'asc' } }],
+      take: 100,
+    });
+
+    for (const stay of overdueCheckOuts) {
+      candidates.push({
+        dedupeKey: `checkout-unconfirmed:${stay.id}`,
+        type: AlertType.OTRO,
+        level: AlertLevel.CRITICA,
+        title: `Check-out sin confirmar${stay.room ? `: hab. ${stay.room.number}` : ''}`,
+        message:
+          `${stay.guestNames[0] ?? 'Huésped sin nombre'} · reserva ${stay.reservationId}. ` +
+          `Pasó la hora límite de las ${String(checkoutHour).padStart(2, '0')}:00 y la salida sigue pendiente.`,
+        dueAt: stay.departureDate,
+      });
+    }
+  }
+
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
 
@@ -332,11 +378,6 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     }
   }
 
-  /*
-    Garantías vivas. Se añaden al motor existente: mismo `dedupeKey` estable,
-    misma idempotencia, y se resuelven solas cuando la garantía deja de estar
-    abierta, igual que el resto de las reglas.
-  */
   const openGuarantees = await prisma.guarantee.findMany({
     where: {
       deletedAt: null,
@@ -387,11 +428,6 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       });
     }
 
-    /*
-      La salida es el momento en que la garantía tiene que resolverse: o se
-      devuelve, o se aplica, o se cobra. Si llegó la fecha de salida y sigue
-      abierta, nadie la cerró.
-    */
     const saleHoy = reservation.checkOut !== null && reservation.checkOut <= now;
     if (saleHoy) {
       candidates.push({
@@ -411,11 +447,6 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     }
   }
 
-  /*
-    Saldo pendiente. El campo vive en la reserva desde antes; la regla es
-    nueva y no depende de las garantías: una reserva puede deber consumo sin
-    tener garantía alguna.
-  */
   for (const reservation of reservations) {
     const saldo = reservation.balanceDue;
     if (!saldo || saldo.lessThanOrEqualTo(0)) continue;
@@ -488,7 +519,6 @@ export async function runAlertEngine(
           created += 1;
         })
         .catch((error: unknown) => {
-          // Carrera con otra ejecución del motor: la clave única ya existe.
           if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
             error.code === 'P2002'
@@ -500,7 +530,6 @@ export async function runAlertEngine(
       continue;
     }
 
-    // La condición volvió a cumplirse tras haberse resuelto: se reabre.
     if (current.status === AlertStatus.RESUELTA) {
       await prisma.alert.update({
         where: { id: current.id },
@@ -524,7 +553,6 @@ export async function runAlertEngine(
     }
   }
 
-  // Alertas automáticas vivas cuya condición ya no existe: se resuelven.
   const staleWhere: Prisma.AlertWhereInput = {
     auto: true,
     deletedAt: null,
@@ -540,7 +568,6 @@ export async function runAlertEngine(
     },
   });
 
-  // Los seguimientos vencidos se marcan como tal para que la vista sea fiel.
   await prisma.followUp.updateMany({
     where: {
       deletedAt: null,
@@ -550,7 +577,6 @@ export async function runAlertEngine(
     data: { status: FollowUpStatus.VENCIDO },
   });
 
-  // Coherencia: registros resueltos/cerrados no deben figurar como pendientes.
   await prisma.task.updateMany({
     where: { deletedAt: null, status: TaskStatus.COMPLETADA, completedAt: null },
     data: { completedAt: now },

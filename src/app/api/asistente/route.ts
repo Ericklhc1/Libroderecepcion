@@ -16,6 +16,7 @@ import {
   prepareAssistantContext,
   startNewAssistantConversation,
 } from '@/server/ai/memory';
+import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -120,7 +121,22 @@ export async function POST(request: Request) {
     }
 
     const context = await prepareAssistantContext(user, rawMessage);
-    const result = await runReceptionAssistant(user, context.messages);
+    const sharedShiftMemory = await getSharedShiftMemoryContext(user);
+    const lastMessage = context.messages[context.messages.length - 1];
+    const modelMessages = sharedShiftMemory && lastMessage
+      ? [
+          ...context.messages.slice(0, -1),
+          {
+            role: 'assistant' as const,
+            content:
+              'Contexto compartido por otros recepcionistas del turno. Puede estar desactualizado; úsalo sólo para entender referencias y verifica el estado actual con las herramientas del Libro antes de afirmar hechos:\n' +
+              sharedShiftMemory,
+          },
+          lastMessage,
+        ].slice(-18)
+      : context.messages;
+
+    const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);
     if (context.persist) {

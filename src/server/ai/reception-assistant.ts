@@ -1,17 +1,21 @@
 import 'server-only';
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { FineKind, FollowUpStatus, Priority, TaskStatus } from '@prisma/client';
+import { FollowUpStatus, Priority } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
-import { fineProblems, type FineDraft, type FineKindValue, type LinenKindValue } from '@/domain/fines';
-import { getRoomDetail } from '@/server/services/rooms';
+import {
+  fineProblems,
+  type FineDraft,
+  type FineKindValue,
+  type LinenKindValue,
+} from '@/domain/fines';
+import { getRoomDetail, confirmCheckOut } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask } from '@/server/services/tasks';
-import { confirmCheckOut } from '@/server/services/rooms';
 
 export type AssistantMessage = {
   role: 'user' | 'assistant';
@@ -36,10 +40,10 @@ type OpenAIOutputItem = {
   name?: string;
   arguments?: string;
   content?: Array<{ type?: string; text?: string }>;
+  [key: string]: unknown;
 };
 
 type OpenAIResponse = {
-  id?: string;
   output?: OpenAIOutputItem[];
   error?: { message?: string };
 };
@@ -91,7 +95,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'consultar_habitacion',
     description:
-      'Consulta el estado operativo actual de una habitación, sus capas de salida/ocupante/entrada, llaves, incidencias y garantías. No modifica nada.',
+      'Consulta el estado operativo actual de una habitación, su salida, ocupante, entrada, llaves, incidencias y garantías. No modifica nada.',
     strict: true,
     parameters: {
       type: 'object',
@@ -106,7 +110,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'consultar_prioridades',
     description:
-      'Obtiene un panorama operativo para sugerir qué revisar primero: habitaciones que requieren acción, tareas vencidas, alertas, seguimientos e incidencias críticas. No modifica nada.',
+      'Obtiene el panorama operativo para sugerir qué revisar primero: habitaciones que requieren acción, tareas vencidas, alertas, seguimientos e incidencias críticas. No modifica nada.',
     strict: true,
     parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
   },
@@ -114,7 +118,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'consultar_vencimientos',
     description:
-      'Lista próximos vencimientos de tareas, seguimientos y registros operativos. Usa esta herramienta cuando pregunten qué vence pronto o qué está por vencer.',
+      'Lista próximos vencimientos de tareas, seguimientos y registros operativos. Úsala cuando pregunten qué vence pronto o qué está por vencer.',
     strict: true,
     parameters: {
       type: 'object',
@@ -134,7 +138,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'proponer_checkouts',
     description:
-      'Prepara la confirmación de salida de una o más habitaciones. Nunca afirma que el check-out fue realizado hasta que el usuario confirme la tarjeta de acción.',
+      'Prepara la confirmación de salida de una o más habitaciones. Nunca afirmes que el check-out fue realizado hasta que el usuario confirme la tarjeta de acción.',
     strict: true,
     parameters: {
       type: 'object',
@@ -144,9 +148,8 @@ const TOOL_DEFINITIONS = [
           minItems: 1,
           maxItems: 20,
           items: { type: 'string' },
-          description: 'Habitaciones a las que se confirmará la salida.',
         },
-        note: { type: ['string', 'null'], description: 'Nota opcional para la confirmación de salida.' },
+        note: { type: ['string', 'null'] },
       },
       required: ['roomNumbers', 'note'],
       additionalProperties: false,
@@ -168,11 +171,7 @@ const TOOL_DEFINITIONS = [
           description:
             'Fecha y hora ISO 8601 con zona horaria explícita, por ejemplo 2026-09-16T18:30:00-03:00.',
         },
-        priority: {
-          type: 'string',
-          enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
-          description: 'Usa MEDIA salvo que el usuario o el contexto indiquen claramente otra prioridad.',
-        },
+        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
       },
       required: ['title', 'description', 'dueAt', 'priority'],
       additionalProperties: false,
@@ -182,7 +181,7 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'proponer_multa',
     description:
-      'Prepara una multa para una habitación usando el contexto real de la estadía. La multa requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes que el usuario no haya dado.',
+      'Prepara una multa para una habitación usando el contexto real de la estadía. Requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes.',
     strict: true,
     parameters: {
       type: 'object',
@@ -209,19 +208,12 @@ const TOOL_DEFINITIONS = [
         itemDetail: { type: ['string', 'null'] },
         stainType: { type: ['string', 'null'] },
         reason: { type: 'string', minLength: 3, maxLength: 2000 },
-        guestStatement: {
-          type: ['string', 'null'],
-          description: 'Antecedentes u observación del huésped, por ejemplo que se negó a pagar.',
-        },
+        guestStatement: { type: ['string', 'null'] },
         amount: {
           type: ['number', 'null'],
-          description: 'Monto únicamente si el usuario lo indicó. Si no, null.',
+          description: 'Monto sólo si el usuario lo indicó. Si no lo indicó, null.',
         },
-        currency: {
-          type: 'string',
-          enum: ['CLP', 'USD'],
-          description: 'Moneda indicada por el usuario; CLP por defecto si no dijo otra.',
-        },
+        currency: { type: 'string', enum: ['CLP', 'USD'] },
       },
       required: [
         'roomNumber',
@@ -239,22 +231,18 @@ const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-function can(user: CurrentUser, permission: string): boolean {
-  return user.permissions.includes(permission as never);
+function hasPermission(user: CurrentUser, permission: string): boolean {
+  return user.permissions.some((value) => value === permission);
 }
 
 function requireToolPermission(user: CurrentUser, permission: string) {
-  if (!can(user, permission)) {
+  if (!hasPermission(user, permission)) {
     throw new Error(`No tienes el permiso necesario (${permission}) para esa acción.`);
   }
 }
 
-function base64url(input: Buffer | string): string {
-  return Buffer.from(input).toString('base64url');
-}
-
 function signAction(action: PendingAction): string {
-  const body = base64url(JSON.stringify(action));
+  const body = Buffer.from(JSON.stringify(action)).toString('base64url');
   const signature = createHmac('sha256', env().AUTH_SECRET).update(body).digest('base64url');
   return `${body}.${signature}`;
 }
@@ -262,6 +250,7 @@ function signAction(action: PendingAction): string {
 function verifyAction(token: string, user: CurrentUser): PendingAction {
   const [body, signature] = token.split('.');
   if (!body || !signature) throw new Error('La confirmación no es válida.');
+
   const expected = createHmac('sha256', env().AUTH_SECRET).update(body).digest();
   let received: Buffer;
   try {
@@ -272,6 +261,7 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
     throw new Error('La confirmación no es válida.');
   }
+
   let parsed: PendingAction;
   try {
     parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as PendingAction;
@@ -281,22 +271,26 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   if (parsed.version !== 1 || parsed.userId !== user.id) {
     throw new Error('Esta confirmación pertenece a otra sesión.');
   }
-  if (parsed.expiresAt < Date.now()) throw new Error('La confirmación venció. Vuelve a pedir la acción.');
+  if (parsed.expiresAt < Date.now()) {
+    throw new Error('La confirmación venció. Vuelve a pedir la acción.');
+  }
   return parsed;
 }
 
-function confirmation(
+function makeConfirmation(
   user: CurrentUser,
-  action: Omit<PendingAction, 'version' | 'userId' | 'expiresAt'>,
+  action: 'confirm_checkouts' | 'create_reminder' | 'create_fine',
+  args: PendingAction['args'],
   title: string,
   detail: string,
   risk: AssistantConfirmation['risk'],
 ): AssistantConfirmation {
   const payload = {
-    ...action,
-    version: 1 as const,
+    version: 1,
     userId: user.id,
     expiresAt: Date.now() + CONFIRMATION_TTL_MS,
+    action,
+    args,
   } as PendingAction;
   return { token: signAction(payload), title, detail, risk };
 }
@@ -306,12 +300,9 @@ function cleanRoomNumber(value: unknown): string {
 }
 
 function compactStay(stay: { id: string; reservationId: string; guestNames: string[] } | null) {
-  if (!stay) return null;
-  return {
-    stayId: stay.id,
-    reservationId: stay.reservationId,
-    guests: stay.guestNames,
-  };
+  return stay
+    ? { stayId: stay.id, reservationId: stay.reservationId, guests: stay.guestNames }
+    : null;
 }
 
 async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
@@ -345,7 +336,7 @@ async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
 }
 
 async function prioritiesTool(user: CurrentUser) {
-  if (!can(user, 'metrics.view') && !can(user, 'room.view')) {
+  if (!hasPermission(user, 'metrics.view') && !hasPermission(user, 'room.view')) {
     throw new Error('No tienes permiso para consultar el panorama operativo.');
   }
   const data = await getDashboardData(user);
@@ -368,7 +359,7 @@ async function prioritiesTool(user: CurrentUser) {
       id: alert.id,
       level: alert.level,
       title: alert.title,
-      body: alert.body,
+      message: alert.message,
       dueAt: alert.dueAt,
     })),
     followUps: data.followUps.map((followUp) => ({
@@ -389,11 +380,13 @@ async function prioritiesTool(user: CurrentUser) {
 }
 
 async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
-  if (!can(user, 'metrics.view') && !can(user, 'task.create')) {
+  if (!hasPermission(user, 'metrics.view') && !hasPermission(user, 'task.create')) {
     throw new Error('No tienes permiso para consultar vencimientos operativos.');
   }
-  const hoursRaw = Number(args.hours ?? 24);
-  const hours = Number.isFinite(hoursRaw) ? Math.min(168, Math.max(1, Math.round(hoursRaw))) : 24;
+  const requested = Number(args.hours ?? 24);
+  const hours = Number.isFinite(requested)
+    ? Math.min(168, Math.max(1, Math.round(requested)))
+    : 24;
   const now = new Date();
   const until = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
@@ -427,7 +420,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
         scheduledAt: true,
         status: true,
         owner: { select: { name: true } },
-        entry: { select: { seq: true, title: true } },
+        entry: { select: { seq: true } },
       },
       orderBy: { scheduledAt: 'asc' },
       take: 30,
@@ -455,7 +448,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ...tasks.map((item) => ({
       type: 'tarea',
       id: item.id,
-      ref: `#${item.seq}`,
+      ref: `T#${item.seq}`,
       title: item.title,
       priority: item.priority,
       at: item.dueAt,
@@ -481,7 +474,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     })),
   ]
     .filter((item) => item.at !== null)
-    .sort((a, b) => new Date(a.at!).getTime() - new Date(b.at!).getTime())
+    .sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0))
     .slice(0, 40);
 
   return { now, until, hours, items };
@@ -504,9 +497,10 @@ async function checkoutsProposalTool(user: CurrentUser, args: Record<string, unk
   }
 
   const note = typeof args.note === 'string' && args.note.trim() ? args.note.trim() : null;
-  const card = confirmation(
+  const confirmation = makeConfirmation(
     user,
-    { action: 'confirm_checkouts', args: { roomNumbers, note } },
+    'confirm_checkouts',
+    { roomNumbers, note },
     `Confirmar ${roomNumbers.length === 1 ? 'check-out' : `${roomNumbers.length} check-outs`}`,
     `Habitaciones: ${roomNumbers.join(', ')}${note ? ` · Nota: ${note}` : ''}`,
     'high',
@@ -514,29 +508,32 @@ async function checkoutsProposalTool(user: CurrentUser, args: Record<string, unk
   return {
     status: 'confirmation_required',
     message: 'La salida está preparada y todavía no se ha ejecutado.',
-    confirmation: card,
+    confirmation,
   };
 }
 
 async function reminderProposalTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'task.create');
   const title = String(args.title ?? '').trim();
-  const description = typeof args.description === 'string' && args.description.trim() ? args.description.trim() : null;
+  const description =
+    typeof args.description === 'string' && args.description.trim() ? args.description.trim() : null;
   const dueAt = String(args.dueAt ?? '').trim();
   const date = new Date(dueAt);
   if (title.length < 3) throw new Error('El recordatorio necesita un título.');
-  if (!dueAt || Number.isNaN(date.getTime())) throw new Error('No pude determinar una fecha y hora válida para el recordatorio.');
-  if (date.getTime() <= Date.now() - 60_000) throw new Error('La hora del recordatorio ya pasó.');
+  if (!dueAt || Number.isNaN(date.getTime())) {
+    throw new Error('No pude determinar una fecha y hora válida para el recordatorio.');
+  }
+  if (date.getTime() <= Date.now() - 60_000) {
+    throw new Error('La hora del recordatorio ya pasó.');
+  }
   const priority = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.priority))
     ? (String(args.priority) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
     : 'MEDIA';
 
-  const card = confirmation(
+  const confirmation = makeConfirmation(
     user,
-    {
-      action: 'create_reminder',
-      args: { title, description, dueAt: date.toISOString(), priority },
-    },
+    'create_reminder',
+    { title, description, dueAt: date.toISOString(), priority },
     'Crear recordatorio',
     `${title} · ${date.toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}`,
     'normal',
@@ -544,7 +541,7 @@ async function reminderProposalTool(user: CurrentUser, args: Record<string, unkn
   return {
     status: 'confirmation_required',
     message: 'El recordatorio está preparado y todavía no se ha creado.',
-    confirmation: card,
+    confirmation,
   };
 }
 
@@ -587,21 +584,19 @@ async function fineProposalTool(user: CurrentUser, args: Record<string, unknown>
     };
   }
 
-  const card = confirmation(
+  const confirmation = makeConfirmation(
     user,
+    'create_fine',
     {
-      action: 'create_fine',
-      args: {
-        roomNumber,
-        kind,
-        linenKind,
-        itemDetail,
-        stainType,
-        reason,
-        guestStatement,
-        amount,
-        currency,
-      },
+      roomNumber,
+      kind,
+      linenKind,
+      itemDetail,
+      stainType,
+      reason,
+      guestStatement,
+      amount,
+      currency,
     },
     `Registrar multa · Hab. ${roomNumber}`,
     `${reason}${amount ? ` · ${currency} ${amount.toLocaleString('es-CL')}` : ' · Monto por definir'}`,
@@ -612,7 +607,7 @@ async function fineProposalTool(user: CurrentUser, args: Record<string, unknown>
     message: 'La multa está preparada y todavía no se ha registrado.',
     reservationCode: context.reservationCode,
     guestName: context.guestName,
-    confirmation: card,
+    confirmation,
   };
 }
 
@@ -635,7 +630,7 @@ async function executeTool(user: CurrentUser, name: string, args: Record<string,
   }
 }
 
-function outputText(response: OpenAIResponse): string {
+function responseText(response: OpenAIResponse): string {
   const chunks: string[] = [];
   for (const item of response.output ?? []) {
     if (item.type !== 'message') continue;
@@ -646,7 +641,7 @@ function outputText(response: OpenAIResponse): string {
   return chunks.join('\n').trim();
 }
 
-async function openAI(input: unknown[]): Promise<OpenAIResponse> {
+async function callOpenAI(input: unknown[]): Promise<OpenAIResponse> {
   const key = env().OPENAI_API_KEY;
   if (!key) {
     throw new Error('El Asistente de Recepción todavía no tiene OPENAI_API_KEY configurada.');
@@ -664,14 +659,13 @@ async function openAI(input: unknown[]): Promise<OpenAIResponse> {
       reasoning: { effort: 'low' },
       instructions:
         'Eres el Asistente de Recepción del Libro Operativo del Hotel HW Libertad. ' +
-        'Responde siempre en español claro, breve y operativo. Tu función es ayudar al personal a consultar y ejecutar acciones del Libro usando exclusivamente las herramientas disponibles. ' +
+        'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
         'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
-        'Nunca digas que una acción de escritura fue realizada cuando la herramienta indique confirmation_required: di que está preparada y que debe confirmarse en pantalla. ' +
-        'Si una herramienta devuelve needs_info, pide sólo los datos faltantes. ' +
-        'Respeta los permisos: si una herramienta devuelve falta de permiso, explícalo sin proponer formas de saltarlo. ' +
-        `La zona horaria del hotel es ${env().HOTEL_TIMEZONE}. La fecha y hora de referencia es ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
-        'Para prioridades, basa el orden en datos devueltos por las herramientas: vencido/crítico y bloqueos operativos primero; no inventes urgencias. ' +
-        'Para fechas relativas como hoy, esta tarde o en dos horas, conviértelas a una fecha ISO con la zona horaria del hotel antes de proponer un recordatorio.',
+        'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
+        'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
+        `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
+        'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
+        'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel.',
       input,
       tools: TOOL_DEFINITIONS,
       tool_choice: 'auto',
@@ -687,7 +681,7 @@ async function openAI(input: unknown[]): Promise<OpenAIResponse> {
   return payload;
 }
 
-function messagesAsInput(messages: AssistantMessage[]) {
+function messagesAsInput(messages: AssistantMessage[]): unknown[] {
   return messages.slice(-MAX_MESSAGES).map((message) => ({
     role: message.role,
     content: [{ type: 'input_text', text: message.content }],
@@ -698,11 +692,11 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
 ): Promise<AssistantResult> {
-  let input: unknown[] = messagesAsInput(messages);
+  let input = messagesAsInput(messages);
   const confirmations: AssistantConfirmation[] = [];
 
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
-    const response = await openAI(input);
+    const response = await callOpenAI(input);
     const calls = (response.output ?? []).filter(
       (item): item is OpenAIOutputItem & { call_id: string; name: string; arguments: string } =>
         item.type === 'function_call' &&
@@ -713,39 +707,45 @@ export async function runReceptionAssistant(
 
     if (!calls.length) {
       return {
-        reply: outputText(response) || 'No pude formular una respuesta. Intenta decirlo de otra forma.',
+        reply: responseText(response) || 'No pude formular una respuesta. Intenta decirlo de otra forma.',
         confirmations,
       };
     }
 
     const toolOutputs: Array<Record<string, unknown>> = [];
     for (const call of calls) {
-      let args: Record<string, unknown> = {};
+      let args: Record<string, unknown>;
       try {
         args = JSON.parse(call.arguments) as Record<string, unknown>;
       } catch {
         toolOutputs.push({
           type: 'function_call_output',
           call_id: call.call_id,
-          output: JSON.stringify({ ok: false, error: 'Los parámetros de la herramienta no eran JSON válido.' }),
+          output: JSON.stringify({ ok: false, error: 'Los parámetros no eran JSON válido.' }),
         });
         continue;
       }
 
       try {
         const result = await executeTool(user, call.name, args);
+        let modelResult: unknown = result;
         if (
           result &&
           typeof result === 'object' &&
           'confirmation' in result &&
           (result as { confirmation?: AssistantConfirmation }).confirmation
         ) {
-          confirmations.push((result as { confirmation: AssistantConfirmation }).confirmation);
+          const card = (result as { confirmation: AssistantConfirmation }).confirmation;
+          confirmations.push(card);
+          modelResult = {
+            ...(result as Record<string, unknown>),
+            confirmation: { title: card.title, detail: card.detail, risk: card.risk },
+          };
         }
         toolOutputs.push({
           type: 'function_call_output',
           call_id: call.call_id,
-          output: JSON.stringify({ ok: true, result }),
+          output: JSON.stringify({ ok: true, result: modelResult }),
         });
       } catch (error) {
         toolOutputs.push({
@@ -759,7 +759,7 @@ export async function runReceptionAssistant(
       }
     }
 
-    input = [...input, ...(response.output ?? []), ...toolOutputs];
+    input = [...input, ...calls, ...toolOutputs];
   }
 
   return {
@@ -777,7 +777,9 @@ export async function executeReceptionConfirmation(
   if (pending.action === 'create_reminder') {
     requireToolPermission(user, 'task.create');
     const dueAt = new Date(pending.args.dueAt);
-    if (Number.isNaN(dueAt.getTime())) throw new Error('La fecha del recordatorio dejó de ser válida.');
+    if (Number.isNaN(dueAt.getTime())) {
+      throw new Error('La fecha del recordatorio dejó de ser válida.');
+    }
     const task = await createTask(user, {
       title: pending.args.title,
       description: pending.args.description ?? null,
@@ -806,7 +808,7 @@ export async function executeReceptionConfirmation(
       guestName: context.guestName,
       stayId: context.stayId,
       reservationReferenceId: context.reservationReferenceId,
-      kind: FineKind[pending.args.kind],
+      kind: pending.args.kind,
       linenKind: pending.args.linenKind ?? null,
       itemDetail: pending.args.itemDetail ?? null,
       stainType: pending.args.stainType ?? null,
@@ -819,7 +821,7 @@ export async function executeReceptionConfirmation(
   }
 
   requireToolPermission(user, 'room.manage');
-  const validated = [] as Array<{ roomNumber: string; stayId: string }>;
+  const validated: Array<{ roomNumber: string; stayId: string }> = [];
   for (const roomNumber of pending.args.roomNumbers) {
     const room = await getRoomDetail(roomNumber);
     if (!room.snapshot.outgoing) {
@@ -833,7 +835,5 @@ export async function executeReceptionConfirmation(
     await confirmCheckOut(user, { stayId: item.stayId, note: pending.args.note ?? null });
     completed.push(item.roomNumber);
   }
-  return {
-    reply: `Check-out confirmado: ${completed.join(', ')}.`,
-  };
+  return { reply: `Check-out confirmado: ${completed.join(', ')}.` };
 }

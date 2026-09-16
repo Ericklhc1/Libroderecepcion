@@ -36,6 +36,13 @@ function noStoreHeaders() {
   return { 'Cache-Control': 'no-store' };
 }
 
+function expiredResponse() {
+  return NextResponse.json(
+    { error: 'Tu sesión venció. Vuelve a iniciar sesión.' },
+    { status: 401, headers: noStoreHeaders() },
+  );
+}
+
 async function authenticatedUser() {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -44,18 +51,23 @@ async function authenticatedUser() {
 }
 
 export async function GET(request: Request) {
-  const user = await authenticatedUser();
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Tu sesión venció. Vuelve a iniciar sesión.' },
-      { status: 401, headers: noStoreHeaders() },
-    );
-  }
+  const user = await getCurrentUser();
+  if (!user) return expiredResponse();
 
   const url = new URL(request.url);
   if (url.searchParams.get('heartbeat') === '1') {
+    // La burbuja antigua puede seguir consultando heartbeat, pero sólo un
+    // pulso marcado como actividad real renueva la sesión. Así una pestaña
+    // abandonada no mantiene una cuenta abierta indefinidamente.
+    if (url.searchParams.get('active') === '1') {
+      const alive = await refreshSession(user.id, user.sessionId);
+      if (!alive) return expiredResponse();
+    }
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders() });
   }
+
+  const alive = await refreshSession(user.id, user.sessionId);
+  if (!alive) return expiredResponse();
 
   try {
     const bootstrap = await getAssistantBootstrap(user);
@@ -71,12 +83,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const user = await authenticatedUser();
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Tu sesión venció. Vuelve a iniciar sesión.' },
-      { status: 401, headers: noStoreHeaders() },
-    );
-  }
+  if (!user) return expiredResponse();
 
   try {
     const body = requestSchema.parse(await request.json());

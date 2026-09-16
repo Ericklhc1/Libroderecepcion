@@ -37,19 +37,21 @@ function reasoning(value: string): 'low' | 'medium' | 'high' {
 
 export async function getFrontiConfig(): Promise<FrontiConfig> {
   const settings = await getAllSettings();
-  const values = new Map(settings.map((setting) => [setting.key, setting.value]));
+  const values = new Map<string, unknown>(
+    settings.map((setting) => [setting.key, setting.value] as [string, unknown]),
+  );
 
   const bool = (key: string, fallback: boolean) => {
-    const value = values.get(key as never);
+    const value = values.get(key);
     return typeof value === 'boolean' ? value : fallback;
   };
   const number = (key: string, fallback: number) => {
-    const value = values.get(key as never);
+    const value = values.get(key);
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
   const string = (key: string, fallback: string) => {
-    const value = values.get(key as never);
+    const value = values.get(key);
     return typeof value === 'string' && value.length > 0 ? value : fallback;
   };
 

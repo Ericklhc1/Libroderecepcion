@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FileUp, KeyRound } from 'lucide-react';
+import { FileUp, KeyRound, LayoutGrid, List } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { listRoomsWithState } from '@/server/services/rooms';
@@ -8,6 +8,7 @@ import { getKeyInventory } from '@/server/services/keys';
 import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RoomCard } from '@/components/rooms/room-card';
+import { RoomListRow } from '@/components/rooms/room-list-row';
 import { ROOM_STATE_LABELS, type RoomState } from '@/domain/rooms';
 import { CONFLICT_LABELS, CONFLICT_TONE } from '@/domain/pms/conflicts';
 import type { RawSearchParams } from '@/lib/search-params';
@@ -28,7 +29,6 @@ const STATE_TILE_TONE: Record<RoomState, 'neutral' | 'alert' | 'good'> = {
   DISPONIBLE: 'good',
 };
 
-/** Orden de lectura del tablero: primero lo que bloquea la operación. */
 const STATE_ORDER: RoomState[] = [
   'PENDIENTE_LIBERACION',
   'CHECK_OUT_PENDIENTE',
@@ -47,6 +47,7 @@ export default async function RoomsPage({
   const params = await searchParams;
   const estado = typeof params.estado === 'string' ? params.estado : undefined;
   const piso = typeof params.piso === 'string' ? params.piso : undefined;
+  const vista = params.vista === 'cuadricula' ? 'cuadricula' : 'lista';
 
   const [rooms, conflicts, inventory] = await Promise.all([
     listRoomsWithState(),
@@ -61,20 +62,35 @@ export default async function RoomsPage({
 
   const floors = [...new Set(rooms.map((room) => room.floor).filter((f): f is number => f !== null))].sort();
 
+  // La operación necesita poder recorrer 401, 402, 403… sin saltar entre
+  // estados. Los filtros siguen disponibles arriba, pero el orden visible es
+  // siempre numérico ascendente para reducir búsquedas visuales innecesarias.
   const visible = rooms
     .filter((room) => (estado ? room.snapshot.state === estado : true))
     .filter((room) => (piso ? String(room.floor) === piso : true))
-    .sort((a, b) => {
-      const byState =
-        STATE_ORDER.indexOf(a.snapshot.state) - STATE_ORDER.indexOf(b.snapshot.state);
-      return byState !== 0 ? byState : a.number.localeCompare(b.number);
-    });
+    .sort((a, b) => Number(a.number) - Number(b.number) || a.number.localeCompare(b.number));
 
   const pendingAction = rooms.filter((room) =>
     ['PENDIENTE_LIBERACION', 'CHECK_OUT_PENDIENTE', 'CHECK_IN_LISTO'].includes(
       room.snapshot.state,
     ),
   ).length;
+
+  function roomsHref(next: {
+    estado?: string | null;
+    piso?: string | null;
+    vista?: 'lista' | 'cuadricula';
+  }) {
+    const query = new URLSearchParams();
+    const nextEstado = next.estado === undefined ? estado : next.estado;
+    const nextPiso = next.piso === undefined ? piso : next.piso;
+    const nextVista = next.vista ?? vista;
+    if (nextEstado) query.set('estado', nextEstado);
+    if (nextPiso) query.set('piso', nextPiso);
+    if (nextVista === 'cuadricula') query.set('vista', 'cuadricula');
+    const suffix = query.toString();
+    return suffix ? `/habitaciones?${suffix}` : '/habitaciones';
+  }
 
   return (
     <div className="space-y-5">
@@ -108,7 +124,10 @@ export default async function RoomsPage({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STATE_ORDER.map((state) => (
-          <Link key={state} href={estado === state ? '/habitaciones' : `/habitaciones?estado=${state}`}>
+          <Link
+            key={state}
+            href={roomsHref({ estado: estado === state ? null : state })}
+          >
             <StatTile
               label={ROOM_STATE_LABELS[state]}
               value={counts.get(state) ?? 0}
@@ -137,11 +156,6 @@ export default async function RoomsPage({
         </span>
       </div>
 
-      {/*
-        Sin ninguna estadía cargada, las 89 habitaciones se ven "Disponible" y
-        nada dice por qué. Este aviso existe porque esa pantalla se lee como
-        un hotel vacío en lugar de como un tablero sin informes.
-      */}
       {rooms.every(
         (room) =>
           !room.snapshot.outgoing && !room.snapshot.current && !room.snapshot.incoming,
@@ -217,39 +231,81 @@ export default async function RoomsPage({
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium text-slate-500">Piso</span>
-        <Link
-          href={estado ? `/habitaciones?estado=${estado}` : '/habitaciones'}
-          className={
-            piso
-              ? 'rounded-md px-2 py-1 text-petrol-700 hover:bg-slate-100'
-              : 'rounded-md bg-petrol-800 px-2 py-1 font-medium text-white'
-          }
-        >
-          Todos
-        </Link>
-        {floors.map((floor) => (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-slate-500">Piso</span>
           <Link
-            key={floor}
-            href={`/habitaciones?piso=${floor}${estado ? `&estado=${estado}` : ''}`}
+            href={roomsHref({ piso: null })}
             className={
-              piso === String(floor)
-                ? 'rounded-md bg-petrol-800 px-2 py-1 font-medium tabular text-white'
-                : 'rounded-md px-2 py-1 tabular text-petrol-700 hover:bg-slate-100'
+              piso
+                ? 'rounded-md px-2 py-1 text-petrol-700 hover:bg-slate-100'
+                : 'rounded-md bg-petrol-800 px-2 py-1 font-medium text-white'
             }
           >
-            {floor}
+            Todos
           </Link>
-        ))}
+          {floors.map((floor) => (
+            <Link
+              key={floor}
+              href={roomsHref({ piso: String(floor) })}
+              className={
+                piso === String(floor)
+                  ? 'rounded-md bg-petrol-800 px-2 py-1 font-medium tabular text-white'
+                  : 'rounded-md px-2 py-1 tabular text-petrol-700 hover:bg-slate-100'
+              }
+            >
+              {floor}
+            </Link>
+          ))}
+        </div>
+
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm no-print" aria-label="Vista de habitaciones">
+          <Link
+            href={roomsHref({ vista: 'lista' })}
+            className={
+              vista === 'lista'
+                ? 'inline-flex items-center gap-1.5 rounded-md bg-petrol-800 px-2.5 py-1.5 font-medium text-white'
+                : 'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-petrol-700 hover:bg-slate-100'
+            }
+          >
+            <List className="h-4 w-4" aria-hidden="true" />
+            Lista
+          </Link>
+          <Link
+            href={roomsHref({ vista: 'cuadricula' })}
+            className={
+              vista === 'cuadricula'
+                ? 'inline-flex items-center gap-1.5 rounded-md bg-petrol-800 px-2.5 py-1.5 font-medium text-white'
+                : 'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-petrol-700 hover:bg-slate-100'
+            }
+          >
+            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+            Cuadrícula
+          </Link>
+        </div>
       </div>
 
       {visible.length ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visible.map((room) => (
-            <RoomCard key={room.id} room={room} />
-          ))}
-        </div>
+        vista === 'lista' ? (
+          <Card className="overflow-hidden">
+            <div className="hidden grid-cols-[5rem_9rem_minmax(0,1fr)_minmax(0,1fr)_8rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+              <span>Hab.</span>
+              <span>Estado</span>
+              <span>Huésped / ID</span>
+              <span>Movimiento</span>
+              <span className="text-right">Llaves / Inc.</span>
+            </div>
+            {visible.map((room) => (
+              <RoomListRow key={room.id} room={room} />
+            ))}
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {visible.map((room) => (
+              <RoomCard key={room.id} room={room} />
+            ))}
+          </div>
+        )
       ) : (
         <Card>
           <EmptyState

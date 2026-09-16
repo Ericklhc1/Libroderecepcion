@@ -32,7 +32,7 @@ import {
   TASK_STATUS_TONE,
   isOverdue,
 } from '@/domain/labels';
-import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, shiftTypeAt } from '@/domain/shift';
 import {
   ROOM_STATE_ACTIONS,
   ROOM_STATE_LABELS,
@@ -44,7 +44,7 @@ import {
   CloseShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
-  StartShiftForm,
+  OpenShiftForm,
 } from '@/components/operational/shift-actions';
 
 export const metadata = { title: 'Inicio' };
@@ -103,30 +103,26 @@ export default async function DashboardPage() {
                   No tienes un turno abierto
                 </h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  {data.startableShifts.length > 0
-                    ? data.startableShifts.some((slot) => slot.pendingClosure)
-                      ? 'Hay un cierre esperando confirmación: toma el turno para revisarlo y recibir la caja.'
-                      : 'Puedes tomar el turno que corresponde ahora.'
-                    : user.roleOperational
-                      ? 'No hay turnos por tomar en este momento.'
-                      : 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'}
+                  {!user.roleOperational
+                    ? 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'
+                    : data.nextShift
+                      ? 'Hay un turno abierto: súmate a ése. No se abren turnos en paralelo.'
+                      : data.incoming
+                        ? 'Hay un cierre esperando en la bandeja: abre tu turno para revisarlo y recibir la caja.'
+                        : 'Abre tu turno para empezar.'}
                 </p>
               </>
             )}
           </div>
 
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            {!shift && data.startableShifts.length > 0
-              ? data.startableShifts
-                  .slice(0, 2)
-                  .map((startable) => (
-                    <StartShiftForm
-                      key={startable.key}
-                      slot={startable.key}
-                      label={`${startable.pendingClosure ? 'Tomar y revisar cierre' : 'Tomar turno'} ${SHIFT_TYPE_LABEL[startable.type]} · ${formatDate(startable.date)}`}
-                    />
-                  ))
-              : null}
+            {!shift && user.roleOperational ? (
+              <OpenShiftForm
+                suggestedType={shiftTypeAt()}
+                /* Si ya hay uno abierto, el único gesto posible es sumarse. */
+                joining={Boolean(data.nextShift)}
+              />
+            ) : null}
 
             {shift && shift.status === ShiftStatus.ACTIVO ? (
               <>
@@ -597,9 +593,9 @@ export default async function DashboardPage() {
                   </Badge>
                   <p className="mt-1 text-xs text-slate-500">
                     {shift.handoverOut.items.length} puntos ·{' '}
-                    {data.nextShift
-                      ? `destino: turno ${SHIFT_TYPE_LABEL[data.nextShift.type]}`
-                      : 'sin turno siguiente programado'}
+                    {shift.handoverOut.status === HandoverStatus.ENVIADA
+                      ? 'en la bandeja, a la espera de quien la reciba'
+                      : 'todavía sin enviar'}
                   </p>
                   <Link
                     href={`/turno/entrega/${shift.handoverOut.id}`}
@@ -610,9 +606,7 @@ export default async function DashboardPage() {
                 </div>
               ) : shift ? (
                 <p className="mt-1 text-sm text-slate-500">
-                  {data.nextShift
-                    ? `Al terminar, entrega al turno ${SHIFT_TYPE_LABEL[data.nextShift.type]}.`
-                    : 'No hay turno siguiente programado.'}
+                  Al terminar, tu cierre queda en la bandeja para que lo reciba quien entre.
                 </p>
               ) : (
                 <p className="mt-1 text-sm text-slate-500">Inicia tu turno para preparar la entrega.</p>

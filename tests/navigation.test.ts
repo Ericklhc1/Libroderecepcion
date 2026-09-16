@@ -65,6 +65,25 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toContain('/supervision');
   });
 
+  /*
+    El Auditor nocturno es un perfil DE RECEPCIÓN, y le aparecía Supervisión.
+    Dos causas a la vez: tenía `supervision.view`, y el menú además mostraba
+    Supervisión a cualquiera con `incident.manage`, que el mesón sí necesita
+    para mover una incidencia de noche. Se arreglaron las dos.
+  */
+  it('ningún perfil de recepción ve Supervisión', () => {
+    for (const roleKey of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR]) {
+      const hrefs = visibleNavItems(ROLE_PERMISSIONS[roleKey]).map((i) => i.href);
+      expect(hrefs, `${roleKey} no debe ver Supervisión`).not.toContain('/supervision');
+    }
+  });
+
+  it('gestionar incidencias no abre la puerta de Supervisión', () => {
+    // El permiso operativo, solo, no basta: era la causa del error.
+    const hrefs = visibleNavItems(['incident.manage']).map((i) => i.href);
+    expect(hrefs).not.toContain('/supervision');
+  });
+
   it('el Administrador de sistema queda fuera de la operación del turno', () => {
     /*
       Ve Turno porque administra la programación (`shift.manage`), pero no

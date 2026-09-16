@@ -4,11 +4,9 @@ import { CalendarClock, Inbox, Send, Users } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import {
-  getIncomingHandover,
   getMyOpenShift,
-  getNextShift,
   getShiftBriefing,
-  getStartableShifts,
+  getShiftDesk,
 } from '@/server/services/shifts';
 import { getShiftMetrics } from '@/server/services/metrics';
 import { getShiftReportsState } from '@/server/services/pms-import';
@@ -17,11 +15,12 @@ import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import { ShiftReports } from '@/components/operational/shift-reports';
 import {
+  AddShiftMemberForm,
   CancelPreparationForm,
   CloseShiftForm,
+  OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
-  StartShiftForm,
 } from '@/components/operational/shift-actions';
 import {
   ALERT_LEVEL_TONE,
@@ -41,7 +40,7 @@ import {
   TASK_STATUS_LABEL,
   TASK_STATUS_TONE,
 } from '@/domain/labels';
-import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, SHIFT_WINDOW_LABEL } from '@/domain/shift';
 import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 
 export const metadata = { title: 'Turno' };
@@ -58,8 +57,8 @@ export default async function ShiftPage() {
   const user = await requirePageUser();
   const shift = await getMyOpenShift(user.id);
 
-  const [startable, reportsState, recentShifts] = await Promise.all([
-    shift ? Promise.resolve([]) : getStartableShifts(),
+  const [desk, reportsState, recentShifts] = await Promise.all([
+    getShiftDesk(user),
     getShiftReportsState(),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
@@ -72,14 +71,34 @@ export default async function ShiftPage() {
     }),
   ]);
 
-  const [incoming, briefing, metrics, nextShift] = shift
-    ? await Promise.all([
-        getIncomingHandover(shift),
-        getShiftBriefing(shift),
-        getShiftMetrics(shift.id),
-        getNextShift(shift),
-      ])
-    : [null, null, null, null];
+  const [briefing, metrics] = shift
+    ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
+    : [null, null];
+
+  // La entrega que espera recepción: única, porque hay un turno a la vez.
+  const incoming = desk.pending;
+
+  /*
+    Candidatos a sumarse al turno vigente: operativos, activos y que no estén
+    ya dentro. Se consulta sólo si hay turno y quien mira puede sumar gente.
+  */
+  const canAddMembers =
+    Boolean(shift) &&
+    (desk.iAmIn || user.permissions.includes('shift.manage'));
+  const memberCandidates = canAddMembers
+    ? (
+        await prisma.user.findMany({
+          where: {
+            deletedAt: null,
+            active: true,
+            role: { operational: true },
+            assignments: { none: { shiftId: shift!.id } },
+          },
+          select: { id: true, name: true, username: true },
+          orderBy: { name: 'asc' },
+        })
+      ).map((person) => ({ value: person.id, label: `${person.name} · @${person.username}` }))
+    : [];
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -95,7 +114,7 @@ export default async function ShiftPage() {
             href="/admin/turnos"
             className="text-sm font-medium text-petrol-600 hover:underline"
           >
-            Programar turnos
+            Crear y archivar turnos
           </Link>
         ) : null}
       </header>
@@ -113,68 +132,57 @@ export default async function ShiftPage() {
 
       {!shift ? (
         <Card>
-          <CardHeader title="Tomar turno" />
+          <CardHeader title="Entrar al turno" />
           <div className="space-y-3 px-4 py-4">
             {/*
-              Los turnos no se asignan de antemano: aquí aparece la franja que
-              corresponde al reloj y, antes que ella, cualquier cierre que el
-              turno anterior dejó esperando confirmación. Quien toma el turno
-              es quien lo revisa y recibe.
+              Los turnos no están preestablecidos: no hay una lista de franjas
+              que elegir. Hay dos ventanas fijas y un solo turno en curso, así
+              que sólo caben dos situaciones —abrir el mío, o sumarme al que ya
+              está abierto— y el botón resuelve la que toque.
             */}
-            {startable.length === 0 ? (
+            {!user.roleOperational ? (
               <EmptyState
-                message={
-                  user.roleOperational
-                    ? 'No hay turnos por tomar en este momento.'
-                    : 'El Administrador de sistema no participa en el ciclo de turnos.'
-                }
-                hint={
-                  user.roleOperational
-                    ? 'Ya tomaste el turno que corresponde, o el ciclo está al día.'
-                    : 'Usa una cuenta operativa para operar turnos.'
-                }
+                message="El Administrador de sistema no participa en el ciclo de turnos."
+                hint="Usa una cuenta operativa para operar turnos."
               />
             ) : (
-              <ul className="space-y-3">
-                {startable.map((option) => (
-                  <li
-                    key={option.key}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-3 ring-1 ${
-                      option.pendingClosure
-                        ? 'bg-gold-50 ring-gold-300'
-                        : 'bg-slate-50 ring-slate-200'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium text-petrol-900">
-                        {SHIFT_TYPE_LABEL[option.type]} · {formatDate(option.date)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Horario {formatTime(option.plannedStart)}–{formatTime(option.plannedEnd)}
-                      </p>
-                      {option.pendingClosure ? (
-                        <p className="mt-1 text-xs font-medium text-orange-800">
-                          Cierre por confirmar: {SHIFT_TYPE_LABEL[option.pendingClosure.fromType]}{' '}
-                          del {formatDate(option.pendingClosure.fromDate)}, entregado por{' '}
-                          {option.pendingClosure.issuedByName}
-                          {option.pendingClosure.issuedAt
-                            ? ` a las ${formatTime(option.pendingClosure.issuedAt)}`
-                            : ''}
-                          .
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-slate-500">
-                          Sin cierre anterior pendiente.
-                        </p>
-                      )}
-                    </div>
-                    <StartShiftForm
-                      slot={option.key}
-                      label={option.pendingClosure ? 'Tomar y revisar cierre' : 'Tomar turno'}
-                    />
-                  </li>
-                ))}
-              </ul>
+              <>
+                {desk.current ? (
+                  <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
+                    <p className="font-medium text-petrol-900">
+                      Hay un turno abierto: {SHIFT_TYPE_LABEL[desk.current.type]} ·{' '}
+                      {formatDate(desk.current.date)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {desk.current.assignments.map((a) => a.user.name).join(', ')} ·{' '}
+                      {SHIFT_STATUS_LABEL[desk.current.status]}. Se trabaja sobre ése: no se
+                      abren turnos en paralelo.
+                    </p>
+                  </div>
+                ) : desk.pending ? (
+                  <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
+                    <p className="font-medium text-petrol-900">
+                      Hay un cierre esperando en la bandeja
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {SHIFT_TYPE_LABEL[desk.pending.fromShift.type]} del{' '}
+                      {formatDate(desk.pending.fromShift.date)}, entregado por{' '}
+                      {desk.pending.issuedBy.name}
+                      {desk.pending.issuedAt ? ` a las ${formatTime(desk.pending.issuedAt)}` : ''}.
+                      Abre tu turno para revisarlo y recibir la caja.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    No hay ningún cierre pendiente. Abre tu turno para empezar.
+                  </p>
+                )}
+
+                <OpenShiftForm
+                  suggestedType={desk.suggestedType}
+                  joining={Boolean(desk.current)}
+                />
+              </>
             )}
           </div>
         </Card>
@@ -205,6 +213,7 @@ export default async function ShiftPage() {
                     {shift.actualStart ? (
                       <span>Iniciado {formatDateTime(shift.actualStart)}</span>
                     ) : null}
+                    <Chip>{SHIFT_WINDOW_LABEL[shift.type]}</Chip>
                   </div>
                   <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                     <Users className="h-3.5 w-3.5" aria-hidden="true" />
@@ -212,13 +221,27 @@ export default async function ShiftPage() {
                       .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
                       .join(' · ')}
                   </p>
+                  {/*
+                    Reforzar el mesón no pasa por Administración: lo hace quien
+                    está en el turno, desde el turno.
+                  */}
+                  {memberCandidates.length > 0 ? (
+                    <div className="mt-3 max-w-sm">
+                      <AddShiftMemberForm shiftId={shift.id} candidates={memberCandidates} />
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-2">
                   {shift.status === ShiftStatus.ACTIVO ? (
                     <>
                       <PrepareHandoverForm shiftId={shift.id} />
-                      {!nextShift ? <CloseShiftForm shiftId={shift.id} /> : null}
+                      {/*
+                        Cerrar sin entregar sigue siendo posible —hay turnos que
+                        no relevan a nadie— pero el camino principal es
+                        entregar: el cierre queda en la bandeja.
+                      */}
+                      <CloseShiftForm shiftId={shift.id} />
                     </>
                   ) : null}
                   {shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (

@@ -20,6 +20,7 @@ import { confirmCheckIn, confirmCheckOut } from '@/server/services/rooms';
 import {
   createKey,
   giveExtraCopy,
+  handMainKey,
   reconcilePrincipalKeys,
   reinstateKey,
   returnKey,
@@ -106,6 +107,29 @@ const extraCopySchema = z.object({
   keyId: zOptionalCuid,
   note: zOptionalString,
 });
+
+/**
+ * Entrega la llave principal a quien está alojado.
+ *
+ * Permiso `key.assign` —el del mesón—, no `key.stock`, que es el del stock del
+ * Supervisor. Ésa era parte del problema: el único gesto de llaves visible en
+ * la ficha exigía `key.stock`, así que un recepcionista no veía ninguno.
+ */
+export async function handMainKeyAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('key.assign');
+    const input = parseOrThrow(extraCopySchema, formDataToObject(formData));
+    const result = await handMainKey(user, input);
+    refreshRooms();
+    return {
+      ok: true as const,
+      message: `Llave ${result.code} entregada a la habitación ${result.roomNumber}.`,
+    };
+  });
+}
 
 export async function giveExtraCopyAction(
   _state: ActionState | null,

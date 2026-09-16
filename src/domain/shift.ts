@@ -26,7 +26,15 @@ export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   [ShiftStatus.ANULADO]: [],
 };
 
-/** Estados en los que el turno ocupa al usuario y bloquea abrir otro. */
+/**
+ * Estados en los que el turno está EN CURSO y por lo tanto **bloquea abrir
+ * otro**. La regla es global, no por usuario: en el hotel hay un solo mesón.
+ *
+ * `ENTREGA_ENVIADA` queda deliberadamente fuera. Un turno que ya envió su
+ * cierre está esperando en la bandeja a que alguien lo reciba, y ese alguien
+ * necesita abrir su turno para recibirlo: si bloqueara, el relevo sería
+ * imposible y es exactamente el atasco que había.
+ */
 export const OCCUPYING_SHIFT_STATUSES: ShiftStatus[] = [
   ShiftStatus.INICIADO,
   ShiftStatus.ACTIVO,
@@ -44,54 +52,51 @@ export const SHIFT_STATUS_LABEL: Record<ShiftStatus, string> = {
   INICIADO: 'Iniciado',
   ACTIVO: 'Turno activo',
   PREPARANDO_ENTREGA: 'Preparando entrega',
-  ENTREGA_ENVIADA: 'Entrega enviada',
-  RECIBIDO: 'Recibido por siguiente turno',
+  ENTREGA_ENVIADA: 'Cierre enviado, esperando recepción',
+  RECIBIDO: 'Recibido por el turno siguiente',
   CERRADO: 'Cerrado',
   ANULADO: 'Anulado',
 };
 
 export const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
-  MANANA: 'Mañana',
-  TARDE: 'Tarde',
+  DIA: 'Día',
   NOCHE: 'Noche',
 };
 
-/** Horario nominal de cada turno (hora local del hotel). */
+/**
+ * Las DOS ventanas del hotel, y son fijas.
+ *
+ * Día 07:00–19:59 y noche 20:00–07:59. No hay un tercer turno ni ventanas a
+ * medida: el hotel trabaja así todos los días, y un horario configurable era
+ * complejidad que nadie pidió.
+ *
+ * El fin se expresa como la hora en que empieza el otro turno (20 y 8), de modo
+ * que las dos ventanas se tocan sin dejar un minuto sin cubrir. Lo que se
+ * MUESTRA es 19:59, porque a las 20:00 ya es el turno de noche.
+ */
 export const SHIFT_SCHEDULE: Record<
   ShiftType,
   { startHour: number; endHour: number; crossesMidnight: boolean }
 > = {
-  MANANA: { startHour: 7, endHour: 15, crossesMidnight: false },
-  TARDE: { startHour: 15, endHour: 23, crossesMidnight: false },
-  NOCHE: { startHour: 23, endHour: 7, crossesMidnight: true },
+  DIA: { startHour: 7, endHour: 20, crossesMidnight: false },
+  NOCHE: { startHour: 20, endHour: 8, crossesMidnight: true },
 };
 
-const ORDER: ShiftType[] = [ShiftType.MANANA, ShiftType.TARDE, ShiftType.NOCHE];
+/** Cómo se lee la ventana en pantalla: el último minuto que cubre. */
+export const SHIFT_WINDOW_LABEL: Record<ShiftType, string> = {
+  DIA: '07:00 a 19:59',
+  NOCHE: '20:00 a 07:59',
+};
 
-export function shiftOrder(type: ShiftType): number {
-  return ORDER.indexOf(type);
-}
-
-/** Turno que sigue en la secuencia; `dayOffset` = 1 al pasar de NOCHE a MAÑANA. */
-export function nextShiftSlot(type: ShiftType): {
-  type: ShiftType;
-  dayOffset: number;
-} {
-  const index = shiftOrder(type);
-  const next = ORDER[(index + 1) % ORDER.length];
-  if (!next) throw new RuleError('Tipo de turno desconocido.');
-  return { type: next, dayOffset: index === ORDER.length - 1 ? 1 : 0 };
-}
-
-export function previousShiftSlot(type: ShiftType): {
-  type: ShiftType;
-  dayOffset: number;
-} {
-  const index = shiftOrder(type);
-  const prevIndex = (index - 1 + ORDER.length) % ORDER.length;
-  const prev = ORDER[prevIndex];
-  if (!prev) throw new RuleError('Tipo de turno desconocido.');
-  return { type: prev, dayOffset: index === 0 ? -1 : 0 };
+/**
+ * Qué turno corresponde a un momento dado.
+ *
+ * Sirve para proponer el tipo al crearlo —nadie debería tener que pensarlo a
+ * las tres de la mañana— pero **no obliga**: quien crea el turno elige.
+ */
+export function shiftTypeAt(now = new Date()): ShiftType {
+  const hour = now.getHours();
+  return hour >= 7 && hour < 20 ? ShiftType.DIA : ShiftType.NOCHE;
 }
 
 export function canTransition(from: ShiftStatus, to: ShiftStatus): boolean {
@@ -107,44 +112,49 @@ export function assertTransition(from: ShiftStatus, to: ShiftStatus): void {
 }
 
 /**
- * Regla de cierre: un turno no puede cerrarse sin haber entregado cuando
- * existe un turno siguiente que debe recibir.
+ * Regla de cierre.
+ *
+ * Decisión revisada, y es la corrección de un fallo real: antes la regla
+ * dependía de que existiera «el turno siguiente» como fila en la base. Con los
+ * turnos creados a voluntad ese turno **no existe todavía** cuando alguien
+ * cierra el suyo, así que la condición era imposible de cumplir y el cierre
+ * quedaba trabado. Ahora depende sólo del estado de la entrega, que es lo que
+ * de verdad importa: el cierre se envía a la bandeja y queda ahí hasta que
+ * alguien lo recibe.
  */
 export function assertCanClose(params: {
   status: ShiftStatus;
-  hasNextShift: boolean;
   handoverStatus: 'NONE' | 'BORRADOR' | 'ENVIADA' | 'RECIBIDA';
 }): void {
-  const { status, hasNextShift, handoverStatus } = params;
+  const { status, handoverStatus } = params;
 
   if (FINISHED_SHIFT_STATUSES.includes(status)) {
     throw new RuleError('El turno ya está cerrado.');
   }
 
-  if (hasNextShift) {
-    if (handoverStatus === 'NONE' || handoverStatus === 'BORRADOR') {
-      throw new RuleError(
-        'No puedes cerrar el turno sin enviar la entrega al turno siguiente.',
-      );
-    }
-    if (handoverStatus === 'ENVIADA') {
-      throw new RuleError(
-        'La entrega fue enviada pero el turno siguiente aún no la confirma. El turno se cierra una vez recibida.',
-      );
-    }
+  if (handoverStatus === 'ENVIADA') {
+    throw new RuleError(
+      'El cierre está en la bandeja esperando que alguien lo reciba. El turno se cierra solo al recibirse.',
+    );
+  }
+
+  if (handoverStatus === 'RECIBIDA') {
     assertTransition(status, ShiftStatus.CERRADO);
     return;
   }
 
-  // Sin turno siguiente programado: se permite cerrar desde ACTIVO o RECIBIDO.
-  if (status !== ShiftStatus.ACTIVO && status !== ShiftStatus.RECIBIDO) {
+  /*
+    Sin entrega enviada sólo se cierra desde ACTIVO, y es un cierre sin relevo:
+    lo usa el turno que no entrega a nadie. La pantalla lo advierte.
+  */
+  if (status !== ShiftStatus.ACTIVO) {
     throw new RuleError(
-      `No puedes cerrar un turno en estado ${SHIFT_STATUS_LABEL[status]}.`,
+      `No puedes cerrar un turno en estado ${SHIFT_STATUS_LABEL[status]} sin haber enviado el cierre.`,
     );
   }
 }
 
-/** Fechas nominales de inicio/fin a partir de la fecha operativa y el tipo. */
+/** Fechas de inicio/fin a partir de la fecha operativa y el tipo. */
 export function plannedWindow(
   date: Date,
   type: ShiftType,
@@ -155,47 +165,6 @@ export function plannedWindow(
   const end = new Date(date);
   end.setHours(schedule.endHour, 0, 0, 0);
   if (schedule.crossesMidnight) end.setDate(end.getDate() + 1);
-  return { start, end };
-}
-
-/** Duración máxima de un turno, en horas. Más allá no es un turno: es un abuso. */
-export const MAX_SHIFT_HOURS = 12;
-
-/**
- * Ventana de un turno con hora de inicio y duración escritas a mano.
- *
- * El horario nominal (`SHIFT_SCHEDULE`) sigue siendo el de siempre y cubre el
- * caso normal. Esto existe para el turno que no encaja: una cobertura de doce
- * horas, un turno que entra a las 6, una jornada partida por una ausencia.
- *
- * La duración se valida acá y no en el formulario, porque el formulario no es
- * la única puerta: la acción de servidor vuelve a comprobarlo.
- */
-export function customWindow(
-  date: Date,
-  startTime: string,
-  durationHours: number,
-): { start: Date; end: Date } {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(startTime.trim());
-  if (!match) {
-    throw new RuleError('La hora de inicio debe venir como HH:MM, entre 00:00 y 23:59.');
-  }
-  if (!Number.isFinite(durationHours) || durationHours <= 0) {
-    throw new RuleError('La duración del turno debe ser mayor que cero.');
-  }
-  if (durationHours > MAX_SHIFT_HOURS) {
-    throw new RuleError(
-      `Un turno no puede durar más de ${MAX_SHIFT_HOURS} horas. Reparte la cobertura en dos turnos.`,
-    );
-  }
-  // Medias horas sí; fracciones más finas no significan nada en un mesón.
-  if (Math.round(durationHours * 2) !== durationHours * 2) {
-    throw new RuleError('La duración se escribe en horas o medias horas.');
-  }
-
-  const start = new Date(date);
-  start.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  const end = new Date(start.getTime() + durationHours * 3_600_000);
   return { start, end };
 }
 

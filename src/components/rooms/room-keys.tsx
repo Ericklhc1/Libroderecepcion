@@ -13,7 +13,11 @@ import {
   type KeyFacts,
   type KeyStatusValue,
 } from '@/domain/rooms';
-import { giveExtraCopyAction, returnKeyAction } from '@/server/actions/rooms';
+import {
+  giveExtraCopyAction,
+  handMainKeyAction,
+  returnKeyAction,
+} from '@/server/actions/rooms';
 
 /**
  * La fecha llega ya escrita desde el servidor. Si se formateara aquí, el
@@ -28,8 +32,15 @@ const HELD: KeyStatusValue[] = ['ASIGNADA', 'COPIA_ADICIONAL', 'PENDIENTE_DEVOLU
 /**
  * Llaves de la habitación.
  *
- * Muestra la principal y las copias con su estado, y deja a mano los dos gestos
- * de mesón: recibir una llave y entregar una copia adicional.
+ * Los tres gestos del mesón: **entregar la llave**, recibirla y entregar una
+ * copia adicional.
+ *
+ * El primero faltaba, y era un agujero real: la principal sólo se asignaba al
+ * confirmar un check-in, así que una estadía que entra al sistema ya como
+ * `IN_HOUSE` —como la trae el informe de in house— dejaba al mesón viendo al
+ * huésped dentro, la llave «disponible» y **ningún botón**. Encima, el único
+ * gesto de llaves que había exigía `key.stock`, que es del Supervisor: un
+ * recepcionista no veía absolutamente nada.
  */
 export function RoomKeys({
   roomId,
@@ -38,6 +49,7 @@ export function RoomKeys({
   canAssign,
   canStock,
   availableKeys,
+  hasGuestInside,
 }: {
   roomId: string;
   roomNumber: string;
@@ -45,8 +57,21 @@ export function RoomKeys({
   canAssign: boolean;
   canStock: boolean;
   availableKeys: Array<{ value: string; label: string }>;
+  /** Si hay una estadía IN_HOUSE: es la condición para entregar la principal. */
+  hasGuestInside: boolean;
 }) {
   const copies = availableKeys.filter((key) => key.label.includes('copia'));
+
+  /*
+    Se ofrece entregar cuando hay alguien dentro y ninguna llave en sus manos.
+    Si ya tiene una, lo que corresponde es una copia adicional, no otra
+    principal; el servidor rechaza el caso igualmente.
+  */
+  const guestHoldsKey = keys.some((key) => HELD.includes(key.status));
+  const canHandMainKey = canAssign && hasGuestInside && !guestHoldsKey;
+  const principalAvailable = keys.some(
+    (key) => key.type === 'PRINCIPAL' && key.status === 'DISPONIBLE',
+  );
 
   return (
     <Card>
@@ -56,7 +81,47 @@ export function RoomKeys({
         href="/llaves"
         hrefLabel="Inventario"
         action={
-          canStock ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {canHandMainKey ? (
+              <Dialog
+                title={`Entregar la llave de la ${roomNumber}`}
+                description={
+                  principalAvailable
+                    ? 'La llave queda a nombre de la estadía y vuelve sola al confirmar la salida.'
+                    : 'La principal de esta habitación no está disponible. Puedes entregar una copia del stock.'
+                }
+                triggerVariant="gold"
+                triggerSize="sm"
+                trigger={
+                  <>
+                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    Entregar la llave
+                  </>
+                }
+              >
+                <ActionForm action={handMainKeyAction} closeOnSuccess>
+                  <input type="hidden" name="roomId" value={roomId} />
+                  <Field
+                    label="Llave"
+                    name="keyId"
+                    hint="Si no eliges ninguna, se toma la principal de la habitación."
+                  >
+                    <Select
+                      name="keyId"
+                      placeholder="Principal de la habitación"
+                      options={availableKeys}
+                    />
+                  </Field>
+                  <Field label="Nota" name="note">
+                    <Input name="note" maxLength={300} placeholder="Opcional" />
+                  </Field>
+                  <SubmitButton className="w-full" pendingLabel="Entregando…">
+                    Entregar la llave
+                  </SubmitButton>
+                </ActionForm>
+              </Dialog>
+            ) : null}
+            {canStock ? (
             <Dialog
               title={`Entregar una copia adicional a la ${roomNumber}`}
               description="La copia se descuenta del stock y vuelve sola cuando se confirme la salida."
@@ -82,7 +147,8 @@ export function RoomKeys({
                 </SubmitButton>
               </ActionForm>
             </Dialog>
-          ) : null
+            ) : null}
+          </div>
         }
       />
 
@@ -111,6 +177,22 @@ export function RoomKeys({
           hint="Agrégalas desde el inventario de llaves."
         />
       )}
+
+      {/*
+        Decirle al mesón por qué no hay nada que pulsar. Un botón ausente sin
+        explicación es lo que hace pensar que el sistema está roto.
+      */}
+      {canAssign && hasGuestInside && guestHoldsKey ? (
+        <p className="px-4 pb-3 text-xs text-slate-500">
+          El huésped ya tiene su llave. Si necesita otra, entrega una copia adicional.
+        </p>
+      ) : null}
+      {canAssign && !hasGuestInside ? (
+        <p className="px-4 pb-3 text-xs text-slate-500">
+          No hay nadie alojado en esta habitación. La llave se entrega al confirmar el check-in,
+          o desde aquí cuando el huésped ya esté dentro.
+        </p>
+      ) : null}
     </Card>
   );
 }

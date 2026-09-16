@@ -1,26 +1,85 @@
 'use client';
 
-import { ActionForm, Field, Textarea } from '@/components/ui/form';
+import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import {
+  addShiftMemberAction,
   cancelHandoverPreparationAction,
   closeShiftAction,
+  openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
   sendHandoverAction,
-  startShiftAction,
 } from '@/server/actions/shifts';
+import { SHIFT_WINDOW_LABEL } from '@/domain/shift';
 
 /**
- * Toma de turno. Viaja la franja (`AAAA-MM-DD:TIPO`), no un id de fila: sin
- * asignación previa el turno puede no existir hasta que alguien lo tome.
+ * Entrar al mesón.
+ *
+ * **Un botón para las dos cosas.** Si no hay turno abierto, lo abre; si ya hay
+ * uno, se suma a ése. Quien llega no tiene por qué saber cuál de los dos casos
+ * es, y ofrecerle la elección era pedirle que decidiera algo que el sistema ya
+ * sabe. El tipo se propone según el reloj y se puede cambiar.
  */
-export function StartShiftForm({ slot, label }: { slot: string; label: string }) {
+export function OpenShiftForm({
+  suggestedType,
+  joining,
+}: {
+  suggestedType: 'DIA' | 'NOCHE';
+  joining: boolean;
+}) {
   return (
-    <ActionForm action={startShiftAction} hideSuccess className="space-y-0">
-      <input type="hidden" name="slot" value={slot} />
-      <SubmitButton variant="gold" pendingLabel="Iniciando…">
-        {label}
+    <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess>
+      {joining ? (
+        <SubmitButton variant="gold" pendingLabel="Entrando…">
+          Sumarme al turno abierto
+        </SubmitButton>
+      ) : (
+        <>
+          <Field
+            label="Turno"
+            name="type"
+            hint={`Propuesto según la hora: ${SHIFT_WINDOW_LABEL[suggestedType]}.`}
+          >
+            <Select
+              name="type"
+              defaultValue={suggestedType}
+              options={[
+                { value: 'DIA', label: `Día · ${SHIFT_WINDOW_LABEL.DIA}` },
+                { value: 'NOCHE', label: `Noche · ${SHIFT_WINDOW_LABEL.NOCHE}` },
+              ]}
+            />
+          </Field>
+          <SubmitButton variant="gold" pendingLabel="Abriendo…">
+            Abrir mi turno
+          </SubmitButton>
+        </>
+      )}
+    </ActionForm>
+  );
+}
+
+/** Suma a otra persona al turno vigente. */
+export function AddShiftMemberForm({
+  shiftId,
+  candidates,
+}: {
+  shiftId: string;
+  candidates: Array<{ value: string; label: string }>;
+}) {
+  if (candidates.length === 0) return null;
+  return (
+    <ActionForm action={addShiftMemberAction} refreshOnSuccess>
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <Field
+        label="Sumar a alguien al turno"
+        name="userId"
+        hint="Quien se suma queda como apoyo; el titular sigue siendo quien lo abrió."
+      >
+        <Select name="userId" required placeholder="Elige a la persona" options={candidates} />
+      </Field>
+      <SubmitButton variant="secondary" pendingLabel="Sumando…">
+        Sumar al turno
       </SubmitButton>
     </ActionForm>
   );

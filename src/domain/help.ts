@@ -262,6 +262,35 @@ export const HELP_TOPICS: HelpTopic[] = [
     anyOf: ['shift.manage'],
     keywords: ['turno', 'horario', '12 horas', 'doce', 'duración', 'programar', 'archivar'],
   },
+  {
+    id: 'configurar-correo',
+    question: '¿Cómo configuro el correo del hotel?',
+    steps: [
+      'Entra a Administración y luego a Correo.',
+      'Escribe el servidor de salida y su puerto: 465 usa TLS directo, 587 negocia STARTTLS.',
+      'Escribe el usuario del buzón, su clave y el remitente.',
+      'Guarda y envía un correo de prueba: es lo único que confirma que funciona.',
+    ],
+    caveat:
+      'La clave se guarda cifrada y no se puede volver a leer desde la pantalla. Si la prueba ' +
+      'falla, el mensaje que aparece es el del servidor de correo, y es lo que dice qué corregir.',
+    route: '/admin/correo',
+    anyOf: ['system.configure'],
+    keywords: [
+      'correo',
+      'mail',
+      'email',
+      'smtp',
+      'imap',
+      'pop3',
+      'buzon',
+      'casilla',
+      'enviar',
+      'clave',
+      'credenciales',
+      'no llegan',
+    ],
+  },
 ];
 
 /** Filtra por permiso: nadie ve el procedimiento de algo que no puede hacer. */

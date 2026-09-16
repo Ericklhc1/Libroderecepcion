@@ -1,5 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog,
+  openShiftAs,
+} from './helpers';
 import {
   ALL_PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -9,7 +11,6 @@ import { hasPermission } from '@/server/auth/current-user';
 import { assertAssignable, listOperationalUsers } from '@/server/services/users';
 import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
-import { startShift } from '@/server/services/shifts';
 import { createShift } from './helpers';
 import { ShiftType } from '@prisma/client';
 import { RuleError } from '@/server/errors';
@@ -208,10 +209,10 @@ describe('el Administrador de sistema no participa en la operación', () => {
 
   it('no puede iniciar un turno aunque esté asignado', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    const shift = await createShift({ userId: admin.id, type: ShiftType.MANANA });
+    const shift = await createShift({ userId: admin.id, type: ShiftType.DIA });
 
-    await expect(startShift(admin, shift)).rejects.toThrow(RuleError);
-    await expect(startShift(admin, shift)).rejects.toThrow(
+    await expect(openShiftAs(admin, shift)).rejects.toThrow(RuleError);
+    await expect(openShiftAs(admin, shift)).rejects.toThrow(
       /no participa en la operación de turnos/,
     );
   });

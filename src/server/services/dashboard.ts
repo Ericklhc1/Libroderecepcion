@@ -15,10 +15,10 @@ import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { LIVE_ALERT_WHERE, runAlertEngine } from './alert-engine';
 import {
-  getIncomingHandover,
+  getCurrentShift,
   getMyOpenShift,
-  getNextShift,
-  getStartableShifts,
+  getPendingHandover,
+  getShiftsAwaitingReceipt,
   operationalDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
@@ -71,7 +71,7 @@ export async function getDashboardData(user: CurrentUser) {
   const myShift = await getMyOpenShift(user.id);
 
   const [
-    startableShifts,
+    awaitingReceipt,
     incoming,
     criticalEntries,
     overdueTasks,
@@ -82,8 +82,12 @@ export async function getDashboardData(user: CurrentUser) {
     latestEntries,
     lastReceivedHandover,
   ] = await Promise.all([
-    myShift ? Promise.resolve([]) : getStartableShifts(),
-    myShift ? getIncomingHandover(myShift) : Promise.resolve(null),
+    /*
+      Ya no se ofrece «una lista de franjas tomables»: con un solo turno a la
+      vez la pregunta es otra —¿hay uno abierto, y hay un cierre esperando?—.
+    */
+    getShiftsAwaitingReceipt(),
+    getPendingHandover(myShift?.id ?? null),
     prisma.operationalEntry.findMany({
       where: {
         deletedAt: null,
@@ -191,7 +195,9 @@ export async function getDashboardData(user: CurrentUser) {
     criticalAlerts,
   ] =
     await Promise.all([
-      myShift ? getNextShift(myShift) : null,
+      // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
+      // en curso, que puede ser el propio o ninguno.
+      getCurrentShift(),
       myShift ? getShiftMetrics(myShift.id) : null,
       // Sólo a quien puede ver el tablero: el panel no salta el permiso.
       user.permissions.includes('room.view') ? listRoomsWithState() : [],
@@ -240,7 +246,7 @@ export async function getDashboardData(user: CurrentUser) {
   return {
     now,
     myShift,
-    startableShifts,
+    awaitingReceipt,
     incoming,
     nextShift,
     shiftMetrics,

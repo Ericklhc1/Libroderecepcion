@@ -19,9 +19,14 @@ datasource db {
 
 // ============================== ENUMERACIONES ==============================
 
+/// Las dos ventanas fijas del hotel: día 07:00-19:59 y noche 20:00-07:59.
+///
+/// Antes eran tres (MANANA/TARDE/NOCHE, de ocho horas). Los turnos históricos
+/// de mañana y tarde se convirtieron a DIA en la migración
+/// `20260916170000_turnos_dia_noche`, que es el mapeo más fiel: ambos ocurrían
+/// dentro de la ventana diurna.
 enum ShiftType {
-  MANANA
-  TARDE
+  DIA
   NOCHE
 }
 
@@ -327,6 +332,7 @@ model User {
   auditLogs             AuditLog[]
   notifications         Notification[]
   settingsUpdated       SystemSetting[]
+  mailSettingsUpdated   MailSettings[]
   checklistDone         TaskChecklistItem[]
   staysConfirmed        RoomStay[]          @relation("stayConfirmedBy")
   keysAssigned          RoomKey[]           @relation("keyAssignedBy")
@@ -437,7 +443,20 @@ model Shift {
   tasks         Task[]
   checklistRuns ChecklistRun[]
 
-  @@unique([date, type])
+  /*
+    NO hay unicidad por fecha+tipo, y es deliberado.
+    Esa restriccion obligaba a que existiera a lo sumo un turno por franja y
+    por dia, y de ahi salia la idea de «programar» los turnos. Los turnos se
+    crean a voluntad, asi que puede haber dos turnos de dia el mismo dia
+    (una cobertura partida, un relevo adelantado).
+
+    La invariante que SI se exige es «un solo turno en curso a la vez», y la
+    garantiza un indice unico PARCIAL que Prisma no sabe expresar:
+    `Shift_un_solo_turno_en_curso`, creado en la migracion
+    20260916170000_turnos_dia_noche. Vive en SQL a proposito; el servicio
+    tambien lo comprueba para dar un mensaje legible, pero quien impide la
+    carrera entre dos recepcionistas es el indice.
+  */
   @@index([status])
   @@index([date])
   @@index([archivedAt])
@@ -908,6 +927,57 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 
   @@index([category])
+}
+
+enum MailInboundProtocol {
+  IMAP
+  POP3
+}
+
+/// Configuración del correo del hotel, editable desde la consola.
+///
+/// **Una fila, no un catálogo de parámetros.** No va en `SystemSetting` por dos
+/// razones: ahí el valor es `Json` y se lista genéricamente en
+/// `/admin/parametros`, así que una clave de buzón quedaría a un descuido de
+/// aparecer en pantalla; y el campo cifrado necesita ser una columna con nombre
+/// propio —`…PasswordEnc`— para que no exista la duda de si lo que hay dentro
+/// está en claro.
+///
+/// La clave se guarda cifrada con AES-256-GCM (`lib/secret-box.ts`) y la llave
+/// de cifrado se deriva de `AUTH_SECRET`, que sigue viviendo en el entorno: la
+/// base nunca contiene por sí sola lo necesario para leerla.
+model MailSettings {
+  /// Singleton: siempre la fila `default`. No hay dos configuraciones de correo.
+  id String @id @default("default")
+
+  // --- Salida (SMTP). Es lo único que el sistema usa hoy. ---
+  smtpHost        String?
+  smtpPort        Int?
+  smtpUser        String?
+  /// Cifrada. Nunca en claro, nunca devuelta al navegador.
+  smtpPasswordEnc String?
+  mailFrom        String?
+  /// Casilla que recibe las credenciales de los usuarios nuevos.
+  credentialsMailTo String?
+
+  // --- Entrada (IMAP/POP3). Se guarda; todavía no hay lector. ---
+  inboundProtocol    MailInboundProtocol?
+  inboundHost        String?
+  inboundPort        Int?
+  inboundUser        String?
+  /// Cifrada, igual que la de salida.
+  inboundPasswordEnc String?
+
+  /// Resultado del último envío de prueba: configurar el correo a ciegas es
+  /// cómo se llega a un sistema que calla en vez de avisar.
+  lastTestAt     DateTime?
+  lastTestOk     Boolean?
+  lastTestDetail String?
+  lastTestTo     String?
+
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
 }
 
 // ==================== HABITACIONES, ESTADÍAS Y LLAVES =====================

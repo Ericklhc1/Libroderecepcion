@@ -65,6 +65,13 @@ export async function resetOperationalData() {
     // Los comunicados y sus confirmaciones referencian al usuario: van antes.
     prisma.announcementRead.deleteMany(),
     prisma.announcement.deleteMany(),
+    /*
+      La configuración de correo se borra por la MISMA razón que `CashFund`: su
+      existencia cambia el comportamiento —con SMTP guardado, `isMailConfigured`
+      da verdadero— y dejarla viva haría que la prueba de credenciales pasara o
+      fallara según qué archivo corriera antes.
+    */
+    prisma.mailSettings.deleteMany(),
     prisma.handoverItem.deleteMany(),
     /*
       La caja va ANTES de la entrega y de los usuarios: los arqueos y los
@@ -197,6 +204,41 @@ export async function createShift(options: {
         : {}),
     },
     include: { assignments: true },
+  });
+}
+
+/**
+ * Abre un turno en las pruebas.
+ *
+ * Envuelve `openShift`, que es el único camino real: crea el turno si no hay
+ * ninguno en curso, o suma a la persona al que ya está abierto. Acepta una fila
+ * de turno completa además de `{type, date}`, para que las pruebas puedan
+ * pasarle el turno que crearon con `createShift`.
+ */
+export async function openShiftAs(
+  user: CurrentUser,
+  slot?: { type?: ShiftType; date?: Date },
+) {
+  const { openShift } = await import('@/server/services/shifts');
+  const result = await openShift(user, {
+    type: slot?.type ?? null,
+    date: slot?.date ?? null,
+  });
+  return result.shift;
+}
+
+/**
+ * Deja la pizarra de turnos limpia.
+ *
+ * Hace falta porque ahora hay un índice único parcial que permite UN SOLO
+ * turno en curso en toda la base: sin esto, un archivo de pruebas que dejó un
+ * turno activo hace fallar al siguiente con un error de índice en lugar de con
+ * el fallo que se estaba buscando.
+ */
+export async function closeAllShifts() {
+  await prisma.shift.updateMany({
+    where: { status: { in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA] } },
+    data: { status: ShiftStatus.CERRADO },
   });
 }
 

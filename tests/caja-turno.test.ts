@@ -6,13 +6,12 @@ import {
   prisma,
   resetOperationalData,
   seedCatalog,
+  openShiftAs,
 } from './helpers';
 import {
-  ensureShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
-  startShift,
 } from '@/server/services/shifts';
 import {
   cashBlockersForReceiving,
@@ -73,8 +72,7 @@ async function exactFundQuantities(): Promise<Record<string, number>> {
 }
 
 async function openShift(user: CurrentUser, type: ShiftType) {
-  const shift = await ensureShift(new Date(), type);
-  await startShift(user, shift);
+  const shift = await openShiftAs(user, { type });
   await receiveHandover(user, { shiftId: shift.id });
   return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
 }
@@ -109,7 +107,7 @@ describe('caja en la entrega de turno', () => {
   it('sin fondo configurado la caja no existe y no bloquea nada', async () => {
     expect(await isCashEnabled()).toBe(false);
 
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
@@ -124,7 +122,7 @@ describe('caja en la entrega de turno', () => {
     await seedFunds();
     expect(await isCashEnabled()).toBe(true);
 
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     await prepareHandover(saliente, shift.id);
 
     await expect(sendHandover(saliente, { shiftId: shift.id })).rejects.toThrow(
@@ -134,7 +132,7 @@ describe('caja en la entrega de turno', () => {
 
   it('un arqueo que cuadra con el fondo permite entregar', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     await saveCashCount(saliente, {
@@ -150,7 +148,7 @@ describe('caja en la entrega de turno', () => {
 
   it('una caja descuadrada sin explicación no se entrega; con explicación sí', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
     const denominations = await prisma.cashDenomination.findMany();
     const clp20 = denominations.find(
@@ -184,7 +182,7 @@ describe('caja en la entrega de turno', () => {
 
   it('recontar reemplaza el arqueo anterior en vez de acumular dos', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
     const quantities = await exactFundQuantities();
 
@@ -197,7 +195,7 @@ describe('caja en la entrega de turno', () => {
 
   it('quien recibe tiene que contar la caja antes de confirmar la recepción', async () => {
     await seedFunds();
-    const manana = await openShift(saliente, ShiftType.MANANA);
+    const manana = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, manana.id);
     await saveCashCount(saliente, {
       handoverId: handover.id,
@@ -206,8 +204,7 @@ describe('caja en la entrega de turno', () => {
     });
     await sendHandover(saliente, { shiftId: manana.id });
 
-    const tarde = await ensureShift(new Date(), ShiftType.TARDE);
-    await startShift(entrante, tarde);
+    const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
 
     await expect(receiveHandover(entrante, { shiftId: tarde.id })).rejects.toThrow(
       /Cuenta la caja y confirma el fondo fijo/,
@@ -225,7 +222,7 @@ describe('caja en la entrega de turno', () => {
 
   it('la diferencia entre los dos conteos se calcula y no se almacena', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
     const denominations = await prisma.cashDenomination.findMany();
     const clp20 = denominations.find(
@@ -262,7 +259,7 @@ describe('caja en la entrega de turno', () => {
 
   it('el excedente sobre el fondo se registra como egreso a tesorería', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     await recordCashTransfer(saliente, {
@@ -281,7 +278,7 @@ describe('caja en la entrega de turno', () => {
 
   it('un egreso sin monto o con divisa inválida se rechaza', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     await expect(
@@ -294,7 +291,7 @@ describe('caja en la entrega de turno', () => {
 
   it('un arqueo con una denominación inventada se rechaza', async () => {
     await seedFunds();
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     await expect(
@@ -325,7 +322,7 @@ describe('elementos que viajan con la caja', () => {
     await seedElement('Llaves maestras');
     await seedElement('Radio de turno');
 
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     let state = await getHandoverCashState(handover.id);
@@ -351,7 +348,7 @@ describe('elementos que viajan con la caja', () => {
     await seedFunds();
     await seedElement('Llaves maestras');
 
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
     await saveCashCount(saliente, {
       handoverId: handover.id,
@@ -368,7 +365,7 @@ describe('elementos que viajan con la caja', () => {
     await seedFunds();
     await seedElement('Cargador de cortesía', false);
 
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
     await saveCashCount(saliente, {
       handoverId: handover.id,
@@ -383,7 +380,7 @@ describe('elementos que viajan con la caja', () => {
     await seedFunds();
     await seedElement('Radio de turno');
 
-    const manana = await openShift(saliente, ShiftType.MANANA);
+    const manana = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, manana.id);
     const quantities = await exactFundQuantities();
     await saveCashCount(saliente, { handoverId: handover.id, kind: 'DECLARADO', quantities });
@@ -396,8 +393,7 @@ describe('elementos que viajan con la caja', () => {
     });
     await sendHandover(saliente, { shiftId: manana.id });
 
-    const tarde = await ensureShift(new Date(), ShiftType.TARDE);
-    await startShift(entrante, tarde);
+    const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
     await saveCashCount(entrante, { handoverId: handover.id, kind: 'CONFIRMADO', quantities });
 
     await expect(receiveHandover(entrante, { shiftId: tarde.id })).rejects.toThrow(
@@ -417,7 +413,7 @@ describe('elementos que viajan con la caja', () => {
 
   it('marcar un elemento de otra entrega no hace nada', async () => {
     await seedElement('Llaves maestras');
-    const shift = await openShift(saliente, ShiftType.MANANA);
+    const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
 
     const result = await markHandoverElements(saliente, {

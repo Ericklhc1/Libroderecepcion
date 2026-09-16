@@ -164,11 +164,19 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'supervision.view',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
+  /*
+    El Auditor nocturno es un perfil DE RECEPCIÓN, y por eso NO lleva
+    `supervision.view`. Lo llevaba, y con eso le aparecía la pestaña de
+    Supervisión: Supervisión es la pantalla de quien revisa el trabajo del
+    mesón, no la de quien está en el mesón.
+
+    Conserva `incident.manage`, que es otra cosa: de noche hay que poder
+    registrar y mover una incidencia sin despertar a nadie.
+  */
   [ROLE_KEYS.NIGHT_AUDITOR]: [
     ...OPERATIONAL_BASE,
     'incident.manage',
     'nightaudit.run',
-    'supervision.view',
   ],
   /*
     Gerencia SÓLO CONSULTA. Ni un permiso de escritura: no crea, no edita, no

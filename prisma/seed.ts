@@ -266,13 +266,16 @@ async function seedDemo() {
     userId: string;
     support?: string;
   }> = [
-    { offset: -1, type: ShiftType.MANANA, status: ShiftStatus.CERRADO, userId: morning.id },
-    { offset: -1, type: ShiftType.TARDE, status: ShiftStatus.CERRADO, userId: evening.id },
+    /*
+      Con dos franjas fijas y un solo turno en curso a la vez, la demo muestra
+      la cadena real: tres turnos cerrados, uno con el cierre EN LA BANDEJA
+      esperando a que alguien lo reciba, y ninguno en curso. Así, al entrar por
+      primera vez, la primera acción posible es justamente recibir.
+    */
+    { offset: -2, type: ShiftType.DIA, status: ShiftStatus.CERRADO, userId: morning.id },
+    { offset: -1, type: ShiftType.DIA, status: ShiftStatus.CERRADO, userId: evening.id, support: supervisor.id },
     { offset: -1, type: ShiftType.NOCHE, status: ShiftStatus.CERRADO, userId: night.id },
-    { offset: 0, type: ShiftType.MANANA, status: ShiftStatus.ENTREGA_ENVIADA, userId: morning.id },
-    { offset: 0, type: ShiftType.TARDE, status: ShiftStatus.PROGRAMADO, userId: evening.id, support: supervisor.id },
-    { offset: 0, type: ShiftType.NOCHE, status: ShiftStatus.PROGRAMADO, userId: night.id },
-    { offset: 1, type: ShiftType.MANANA, status: ShiftStatus.PROGRAMADO, userId: morning.id },
+    { offset: 0, type: ShiftType.DIA, status: ShiftStatus.ENTREGA_ENVIADA, userId: morning.id },
   ];
 
   const shiftIds: Record<string, string> = {};
@@ -369,7 +372,7 @@ async function seedDemo() {
       status: EntryStatus.ABIERTO,
       createdBy: evening.id,
       ownerId: evening.id,
-      shiftKey: [-1, ShiftType.TARDE],
+      shiftKey: [-1, ShiftType.DIA],
       occurredAt: at(-1, 19, 40),
       dueAt: at(0, 18),
       tags: ['garantia', 'cobro'],
@@ -391,7 +394,7 @@ async function seedDemo() {
       status: EntryStatus.EN_ESPERA,
       createdBy: morning.id,
       ownerId: morning.id,
-      shiftKey: [-1, ShiftType.MANANA],
+      shiftKey: [-1, ShiftType.DIA],
       occurredAt: at(-2, 10, 20),
       dueAt: at(-1, 18),
       tags: ['gasfiteria'],
@@ -409,7 +412,7 @@ async function seedDemo() {
       status: EntryStatus.ABIERTO,
       createdBy: morning.id,
       ownerId: evening.id,
-      shiftKey: [0, ShiftType.MANANA],
+      shiftKey: [0, ShiftType.DIA],
       occurredAt: at(0, 8, 30),
       dueAt: at(0, 14, 30),
       tags: ['vip', 'celebracion'],
@@ -428,7 +431,7 @@ async function seedDemo() {
       status: EntryStatus.ABIERTO,
       createdBy: evening.id,
       ownerId: evening.id,
-      shiftKey: [-1, ShiftType.TARDE],
+      shiftKey: [-1, ShiftType.DIA],
       occurredAt: at(-1, 20, 10),
       dueAt: at(0, 20),
       tags: ['traslado'],
@@ -465,7 +468,7 @@ async function seedDemo() {
       status: EntryStatus.EN_CURSO,
       createdBy: evening.id,
       ownerId: supervisor.id,
-      shiftKey: [-1, ShiftType.TARDE],
+      shiftKey: [-1, ShiftType.DIA],
       occurredAt: at(-1, 22, 50),
       dueAt: at(0, 17),
       tags: ['caja', 'cuadratura'],
@@ -498,7 +501,7 @@ async function seedDemo() {
       status: EntryStatus.EN_ESPERA,
       createdBy: morning.id,
       ownerId: admin.id,
-      shiftKey: [0, ShiftType.MANANA],
+      shiftKey: [0, ShiftType.DIA],
       occurredAt: at(0, 9, 15),
       tags: ['pms', 'proveedor'],
       requiresFollowUp: true,
@@ -513,7 +516,7 @@ async function seedDemo() {
       priority: Priority.BAJA,
       status: EntryStatus.ABIERTO,
       createdBy: morning.id,
-      shiftKey: [0, ShiftType.MANANA],
+      shiftKey: [0, ShiftType.DIA],
       occurredAt: at(0, 9, 40),
       dueAt: at(0, 12),
       tags: ['insumos'],
@@ -529,7 +532,7 @@ async function seedDemo() {
       status: EntryStatus.RESUELTO,
       createdBy: morning.id,
       ownerId: morning.id,
-      shiftKey: [0, ShiftType.MANANA],
+      shiftKey: [0, ShiftType.DIA],
       occurredAt: at(0, 9, 5),
       tags: ['reclamo', 'desayuno'],
       resolution: 'Se reforzó la dotación del buffet a partir de las 08:00 según acuerdo con A&B.',
@@ -544,7 +547,7 @@ async function seedDemo() {
       priority: Priority.BAJA,
       status: EntryStatus.CERRADO,
       createdBy: evening.id,
-      shiftKey: [-1, ShiftType.TARDE],
+      shiftKey: [-1, ShiftType.DIA],
       occurredAt: at(-1, 17, 25),
       tags: ['llaves', 'equipos'],
       resolution: 'Equipo operativo tras reinicio. Sin reincidencia durante el turno.',
@@ -985,8 +988,8 @@ async function seedDemo() {
 
   const handoverSeeds: HandoverSeed[] = [
     {
-      fromKey: [-1, ShiftType.MANANA],
-      toKey: [-1, ShiftType.TARDE],
+      fromKey: [-2, ShiftType.DIA],
+      toKey: [-1, ShiftType.DIA],
       status: HandoverStatus.RECIBIDA,
       issuedById: morning.id,
       issuedAt: at(-1, 14, 45),
@@ -1010,7 +1013,7 @@ async function seedDemo() {
       ],
     },
     {
-      fromKey: [-1, ShiftType.TARDE],
+      fromKey: [-1, ShiftType.DIA],
       toKey: [-1, ShiftType.NOCHE],
       status: HandoverStatus.RECIBIDA,
       issuedById: evening.id,
@@ -1048,7 +1051,7 @@ async function seedDemo() {
     },
     {
       fromKey: [-1, ShiftType.NOCHE],
-      toKey: [0, ShiftType.MANANA],
+      toKey: [0, ShiftType.DIA],
       status: HandoverStatus.RECIBIDA,
       issuedById: night.id,
       issuedAt: at(0, 6, 40),
@@ -1084,8 +1087,9 @@ async function seedDemo() {
       ],
     },
     {
-      fromKey: [0, ShiftType.MANANA],
-      toKey: [0, ShiftType.TARDE],
+      fromKey: [0, ShiftType.DIA],
+      // Sin destino: está en la bandeja. El destino lo escribe quien reciba.
+      toKey: null,
       status: HandoverStatus.ENVIADA,
       issuedById: morning.id,
       issuedAt: at(0, 14, 40),

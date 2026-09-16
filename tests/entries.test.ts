@@ -7,6 +7,7 @@ import {
   prisma,
   resetOperationalData,
   seedCatalog,
+  openShiftAs,
 } from './helpers';
 import {
   changeEntryStatus,
@@ -19,7 +20,6 @@ import {
 import { createFollowUp, updateFollowUp } from '@/server/services/followups';
 import { addComment } from '@/server/services/comments';
 import { getHistory } from '@/server/services/history';
-import { startShift } from '@/server/services/shifts';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -62,8 +62,8 @@ describe('registros del libro operativo', () => {
   });
 
   it('asocia el registro al turno abierto de quien lo crea', async () => {
-    const shift = await createShift({ userId: receptionist.id, type: ShiftType.MANANA });
-    await startShift(receptionist, shift);
+    const shift = await createShift({ userId: receptionist.id, type: ShiftType.DIA });
+    await openShiftAs(receptionist, shift);
 
     const entry = await createEntry(receptionist, novedad);
     expect(entry.shiftId).toBe(shift.id);

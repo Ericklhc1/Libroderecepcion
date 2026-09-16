@@ -62,7 +62,12 @@ describe('entrega de credenciales', () => {
       —el usuario sí se crea— pero tiene que decir que no se envió, porque de
       eso depende que alguien copie la clave.
     */
-    expect(isMailConfigured()).toBe(false);
+    /*
+      `isMailConfigured` pasó a ser asíncrono: la configuración puede venir de
+      la base —la escribe el administrador desde la consola— y no sólo del
+      entorno. Sin nada configurado, el estado sigue siendo el de este hotel.
+    */
+    expect(await isMailConfigured()).toBe(false);
 
     const { deliverCredentials } = await import('@/server/services/credentials');
     const delivery = await deliverCredentials({

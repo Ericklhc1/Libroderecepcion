@@ -18,7 +18,13 @@ import {
   getRoomDetail,
   listRoomsWithState,
 } from '@/server/services/rooms';
-import { getKeyInventory, giveExtraCopy, returnKey, setKeyIncidentStatus } from '@/server/services/keys';
+import {
+  getKeyInventory,
+  giveExtraCopy,
+  handMainKey,
+  returnKey,
+  setKeyIncidentStatus,
+} from '@/server/services/keys';
 import { getLiveConflicts } from '@/server/services/pms-import';
 import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -364,6 +370,104 @@ describe('habitaciones y llaves', () => {
   describe('llaves', () => {
     beforeEach(async () => {
       await applyImport(receptionist, await seedBatch(receptionist));
+    });
+
+    /*
+      ENTREGAR LA LLAVE A MANO. Era el agujero que dejaba al mesón sin poder
+      entregar nada: la principal sólo se asignaba al confirmar un check-in,
+      así que una estadía que entra ya como IN_HOUSE —o una habitación cuya
+      llave volvió al inventario— se quedaba sin gesto posible. La ficha no
+      mostraba ningún botón y parecía que el sistema estuviera roto.
+    */
+    describe('entregar la llave a mano', () => {
+      /** Deja la habitación in house y con su llave de vuelta en el inventario. */
+      async function conLlaveLibre(roomNumber: string) {
+        const room = await prisma.room.findUniqueOrThrow({ where: { number: roomNumber } });
+        await prisma.roomKey.updateMany({
+          where: { roomId: room.id },
+          data: { status: KeyStatus.DISPONIBLE, stayId: null, assignedAt: null },
+        });
+        return room;
+      }
+
+      it('entrega la llave al huésped que está dentro', async () => {
+        const inHouse = await prisma.roomStay.findFirstOrThrow({
+          where: { status: RoomStayStatus.IN_HOUSE, deletedAt: null, roomId: { not: null } },
+          include: { room: true },
+        });
+        const room = await conLlaveLibre(inHouse.room!.number);
+
+        const result = await handMainKey(receptionist, { roomId: room.id });
+
+        expect(result.roomNumber).toBe(room.number);
+        const key = await prisma.roomKey.findFirstOrThrow({ where: { code: result.code } });
+        expect(key.status).toBe(KeyStatus.ASIGNADA);
+        // Queda a nombre de la estadía, no sólo de la habitación.
+        expect(key.stayId).toBe(inHouse.id);
+        expect(key.assignedById).toBe(receptionist.id);
+      });
+
+      it('no entrega dos veces la principal: manda usar una copia', async () => {
+        const inHouse = await prisma.roomStay.findFirstOrThrow({
+          where: { status: RoomStayStatus.IN_HOUSE, deletedAt: null, roomId: { not: null } },
+          include: { room: true },
+        });
+        const room = await conLlaveLibre(inHouse.room!.number);
+        await handMainKey(receptionist, { roomId: room.id });
+
+        await expect(handMainKey(receptionist, { roomId: room.id })).rejects.toThrow(
+          /copia adicional/,
+        );
+      });
+
+      /*
+        Sin nadie dentro no se entrega, y el mensaje dice qué hacer: la llave de
+        una llegada se entrega confirmando el check-in, que es lo que además
+        deja registrado quién entró.
+      */
+      it('sin nadie alojado no entrega, y explica dónde se hace', async () => {
+        const libre = await prisma.room.findFirstOrThrow({
+          where: { stays: { none: { deletedAt: null, status: RoomStayStatus.IN_HOUSE } } },
+        });
+
+        await expect(handMainKey(receptionist, { roomId: libre.id })).rejects.toThrow(
+          /confirma primero su check-in/,
+        );
+      });
+
+      it('si no hay ninguna llave disponible lo dice en lugar de callarse', async () => {
+        const inHouse = await prisma.roomStay.findFirstOrThrow({
+          where: { status: RoomStayStatus.IN_HOUSE, deletedAt: null, roomId: { not: null } },
+          include: { room: true },
+        });
+        const room = await conLlaveLibre(inHouse.room!.number);
+
+        // Toda llave fuera de servicio: ni la principal ni una copia del stock.
+        await prisma.roomKey.updateMany({
+          data: { status: KeyStatus.FUERA_DE_SERVICIO },
+        });
+
+        await expect(handMainKey(receptionist, { roomId: room.id })).rejects.toThrow(
+          /No hay ninguna llave disponible/,
+        );
+      });
+
+      it('deja rastro en el historial de la llave', async () => {
+        const inHouse = await prisma.roomStay.findFirstOrThrow({
+          where: { status: RoomStayStatus.IN_HOUSE, deletedAt: null, roomId: { not: null } },
+          include: { room: true },
+        });
+        const room = await conLlaveLibre(inHouse.room!.number);
+        const result = await handMainKey(receptionist, { roomId: room.id });
+
+        const key = await prisma.roomKey.findFirstOrThrow({ where: { code: result.code } });
+        const movement = await prisma.keyMovement.findFirstOrThrow({
+          where: { keyId: key.id, action: 'ASIGNADA' },
+          orderBy: { at: 'desc' },
+        });
+        expect(movement.toStatus).toBe(KeyStatus.ASIGNADA);
+        expect(movement.userId).toBe(receptionist.id);
+      });
     });
 
     /*

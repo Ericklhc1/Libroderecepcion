@@ -88,7 +88,7 @@ export async function deliverCredentials(input: {
   roleName: string;
   hotelName: string;
 }): Promise<CredentialDelivery> {
-  const recipient = credentialsRecipient();
+  const recipient = await credentialsRecipient();
 
   const result = await sendMail({
     to: recipient,

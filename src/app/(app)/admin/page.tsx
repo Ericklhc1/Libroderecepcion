@@ -3,6 +3,7 @@ import {
   Building2,
   ClipboardList,
   KeyRound,
+  Mail,
   Settings,
   ShieldCheck,
   Trash2,
@@ -53,6 +54,13 @@ const SECTIONS: Array<{
     description: 'Configuración del sistema y reglas operativas.',
     permission: 'system.configure',
     icon: Settings,
+  },
+  {
+    href: '/admin/correo',
+    title: 'Correo',
+    description: 'Servidor de salida, casilla del hotel y envío de prueba.',
+    permission: 'system.configure',
+    icon: Mail,
   },
   {
     href: '/admin/turnos',

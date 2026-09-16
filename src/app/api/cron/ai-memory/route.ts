@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { cleanupExpiredAiMemory } from '@/server/ai/memory';
+import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * El cron sólo elimina filas cuyo expires_at ya venció. No acepta parámetros
- * ni puede tocar memoria vigente, de modo que una invocación externa no puede
- * borrar contexto que aún esté dentro de los 30 días.
+ * El cron aplica la política vigente de Fronti. Si el Administrador reduce la
+ * retención, también elimina registros creados con una configuración anterior.
  */
 export async function GET(request: Request) {
   const userAgent = request.headers.get('user-agent') ?? '';
@@ -15,7 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
   }
 
-  const deleted = await cleanupExpiredAiMemory();
+  const deleted = await enforceFrontiRetentionPolicy();
   return NextResponse.json(
     { ok: true, deleted },
     { headers: { 'Cache-Control': 'no-store' } },

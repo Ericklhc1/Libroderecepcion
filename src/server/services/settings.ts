@@ -35,6 +35,16 @@ export const DEFAULT_SETTINGS = {
     category: 'general',
     description: 'Registros por página en el libro operativo.',
   },
+  'gym.passPriceCLP': {
+    value: 6000,
+    category: 'gimnasio',
+    description: 'Precio del pase de gimnasio cuando se cobra en pesos chilenos.',
+  },
+  'gym.passPriceUSD': {
+    value: 6,
+    category: 'gimnasio',
+    description: 'Precio del pase de gimnasio cuando se cobra en dólares estadounidenses.',
+  },
 } as const;
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;

@@ -4,6 +4,7 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { TONE_STYLES } from '@/components/ui/tone';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import type { BookItem } from '@/server/services/book';
+import { BookMailDialog } from './book-mail-dialog';
 
 /**
  * Fila del libro operativo. Muestra de un vistazo tipo, título, estado,
@@ -16,7 +17,7 @@ export function BookRow({ item }: { item: BookItem }) {
     <li className="relative">
       <Link
         href={item.href}
-        className="flex gap-3 border-b border-slate-100 px-4 py-3 transition-colors last:border-b-0 hover:bg-slate-50"
+        className="flex gap-3 border-b border-slate-100 px-4 py-3 pr-24 transition-colors last:border-b-0 hover:bg-slate-50"
       >
         <span
           className={`mt-1 h-full w-1 shrink-0 self-stretch rounded-full ${tone.bar}`}
@@ -32,9 +33,7 @@ export function BookRow({ item }: { item: BookItem }) {
                 {item.priorityLabel}
               </Badge>
             ) : null}
-            {item.overdue ? (
-              <Badge tone="critico">Vencido</Badge>
-            ) : null}
+            {item.overdue ? <Badge tone="critico">Vencido</Badge> : null}
             {item.deleted ? <Badge tone="neutro">Eliminado</Badge> : null}
           </div>
 
@@ -76,6 +75,9 @@ export function BookRow({ item }: { item: BookItem }) {
           </div>
         </div>
       </Link>
+      <div className="absolute right-2 top-2 z-10 no-print">
+        <BookMailDialog kind={item.kind} id={item.id} reference={item.ref} />
+      </div>
     </li>
   );
 }

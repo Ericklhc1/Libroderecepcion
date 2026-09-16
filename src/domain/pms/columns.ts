@@ -29,6 +29,11 @@ export type ColumnField =
   | 'pendingAmount'
   | 'paymentType';
 
+/**
+ * Nombre semántico interno de cada campo. No representa necesariamente el texto
+ * que FNS imprime en el PDF: por ejemplo, el campo interno «Habitación» aparece
+ * literalmente como «Hab» en «Habitaciones con actividad».
+ */
 export const COLUMN_LABELS: Record<ColumnField, string> = {
   reservationId: 'ID de reserva',
   channel: 'Canal',
@@ -44,6 +49,51 @@ export const COLUMN_LABELS: Record<ColumnField, string> = {
   pendingAmount: 'Importe pendiente',
   paymentType: 'Tipo de pago',
 };
+
+/**
+ * Encabezados LITERALES del informe FNS «Habitaciones con actividad».
+ *
+ * Esta lista se tomó de la plantilla real del hotel. Se mantiene separada de
+ * `COLUMN_LABELS` a propósito: una cosa es lo que dice el PDF y otra el nombre
+ * canónico que usa el dominio. Así la pantalla de revisión puede afirmar con
+ * precisión qué leyó, sin convertir «Hab» en «Habitación» ni «Lle.» en
+ * «Llegada».
+ *
+ * «Tipo de pago» está visualmente partido en dos líneas en el PDF ("Tipo de"
+ * sobre "pago"), pero ése es el encabezado completo que ve la persona.
+ */
+export const ACTIVITY_SOURCE_HEADERS: Partial<Record<ColumnField, string>> = {
+  reservationId: 'ID',
+  pmsStatus: 'Tipo',
+  channel: 'Canal',
+  firstName: 'Nombre',
+  lastName: 'Apellidos',
+  arrival: 'Lle.',
+  departure: 'Salida',
+  roomNumber: 'Hab',
+  guestCount: 'Hué',
+  totalAmount: 'Imp. tot',
+  pendingAmount: 'Imp. pte',
+  paymentType: 'Tipo de pago',
+};
+
+/**
+ * Devuelve el encabezado que debe mostrarse al revisar un informe.
+ *
+ * Para Actividad usamos la leyenda literal de FNS, porque su cabecera contiene
+ * varias abreviaturas y un encabezado partido en dos líneas. Para los demás
+ * informes conservamos exactamente el texto que extrajo el PDF.
+ */
+export function displayedSourceHeader(
+  reportKind: string | null,
+  field: ColumnField,
+  detectedHeader: string,
+): string {
+  if (reportKind === 'ACTIVIDAD') {
+    return ACTIVITY_SOURCE_HEADERS[field] ?? detectedHeader;
+  }
+  return detectedHeader;
+}
 
 /**
  * Sinónimos por campo. La comparación se hace sobre el encabezado normalizado
@@ -78,6 +128,7 @@ const SYNONYMS: Record<ColumnField, string[]> = {
   firstName: ['nombre', 'nombres', 'primer nombre'],
   lastName: ['apellidos', 'apellido', 'apellido paterno', 'apellidos del cliente'],
   roomNumber: [
+    // FNS Actividad imprime literalmente «Hab».
     'hab',
     'habitacion',
     'habitaciones',
@@ -88,6 +139,7 @@ const SYNONYMS: Record<ColumnField, string[]> = {
     'depto',
   ],
   arrival: [
+    // FNS Actividad imprime literalmente «Lle.»; la puntuación se normaliza.
     'lle',
     'llegada',
     'entrada',
@@ -114,7 +166,7 @@ const SYNONYMS: Record<ColumnField, string[]> = {
     'adultos',
     'cantidad huespedes',
     'total huespedes',
-    // «Habitaciones con actividad» abrevia la columna a «Hué».
+    // FNS Actividad abrevia literalmente la columna a «Hué».
     'hue',
     'hues',
   ],

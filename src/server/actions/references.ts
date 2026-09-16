@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, RoomStayStage } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import {
@@ -13,13 +13,14 @@ import {
 } from '@/server/schemas';
 import { requirePermission } from '@/server/auth/guard';
 import { recordAudit } from '@/server/audit';
-import { AppError } from '@/server/errors';
+import { AppError, RuleError } from '@/server/errors';
 import {
   changeGuaranteeState,
   createGuarantee,
   softDeleteGuarantee,
 } from '@/server/services/guarantees';
 import { GUARANTEE_STATE_LABELS } from '@/domain/guarantees';
+import { hotelDateKey } from '@/domain/time';
 
 /**
  * Referencias ligeras de huésped y reserva.
@@ -82,6 +83,11 @@ export async function saveGuestAction(
   });
 }
 
+/** Convierte una fecha de pared del hotel a la fecha pura que guarda RoomStay. */
+function stayDate(value: Date | null | undefined): Date | null {
+  return value ? new Date(`${hotelDateKey(value)}T00:00:00.000Z`) : null;
+}
+
 export async function saveReservationAction(
   _state: ActionState | null,
   formData: FormData,
@@ -90,12 +96,23 @@ export async function saveReservationAction(
     const user = await requirePermission('guest.manage');
     const input = parseOrThrow(reservationSchema, formDataToObject(formData));
 
+    if (input.checkIn && input.checkOut && input.checkOut < input.checkIn) {
+      throw new RuleError('La salida no puede quedar antes de la llegada.');
+    }
+
     if (!input.id) {
       const exists = await prisma.reservationReference.findUnique({
         where: { code: input.code },
       });
       if (exists) throw new AppError('Ya existe una reserva con ese código.', 'DUPLICATE');
     }
+
+    const previous = input.id
+      ? await prisma.reservationReference.findUnique({
+          where: { id: input.id },
+          select: { checkIn: true, checkOut: true },
+        })
+      : null;
 
     const data = {
       code: input.code,
@@ -112,29 +129,76 @@ export async function saveReservationAction(
       notes: input.notes,
     };
 
-    const reservation = input.id
-      ? await prisma.reservationReference.update({ where: { id: input.id }, data })
-      : await prisma.reservationReference.create({ data });
+    const datesChanged = Boolean(
+      input.id &&
+        previous &&
+        (previous.checkIn?.getTime() !== input.checkIn?.getTime() ||
+          previous.checkOut?.getTime() !== input.checkOut?.getTime()),
+    );
+
+    const { reservation, syncedStays } = await prisma.$transaction(async (tx) => {
+      const reservation = input.id
+        ? await tx.reservationReference.update({ where: { id: input.id }, data })
+        : await tx.reservationReference.create({ data });
+
+      /*
+        La referencia de reserva no reemplaza al PMS. Pero cuando una persona
+        corrige explícitamente las fechas de una reserva ya vinculada, dejar la
+        estadía con las fechas viejas crea dos verdades dentro del propio Libro.
+        Sólo se tocan estadías VIVAS y se marca `touchedManually`: una carga
+        posterior del PMS no puede deshacer la corrección humana en silencio.
+      */
+      let syncedStays = 0;
+      if (datesChanged) {
+        const updated = await tx.roomStay.updateMany({
+          where: {
+            reservationRefId: reservation.id,
+            deletedAt: null,
+            stage: { not: RoomStayStage.FINALIZADO },
+          },
+          data: {
+            arrivalDate: stayDate(input.checkIn),
+            departureDate: stayDate(input.checkOut),
+            touchedManually: true,
+          },
+        });
+        syncedStays = updated.count;
+      }
+
+      return { reservation, syncedStays };
+    });
 
     await recordAudit({
       entity: 'ReservationReference',
       entityId: reservation.id,
       action: input.id ? AuditAction.EDITAR : AuditAction.CREAR,
-      summary: `Reserva ${reservation.code} ${input.id ? 'actualizada' : 'registrada'} (${reservation.status})`,
+      summary:
+        `Reserva ${reservation.code} ${input.id ? 'actualizada' : 'registrada'} (${reservation.status})` +
+        (syncedStays > 0 ? ` · ${syncedStays} estadía(s) activa(s) sincronizada(s)` : ''),
       user,
       after: {
         code: reservation.code,
         status: reservation.status,
         guaranteeStatus: reservation.guaranteeStatus,
         requiresAction: reservation.requiresAction,
+        checkIn: reservation.checkIn,
+        checkOut: reservation.checkOut,
+        syncedStays,
       },
     });
 
     revalidatePath('/huespedes');
     revalidatePath('/alertas');
+    revalidatePath('/habitaciones');
+    revalidatePath('/turno');
+    revalidatePath('/');
+    revalidatePath('/libro');
+    if (reservation.roomNumber) revalidatePath(`/habitaciones/${reservation.roomNumber}`);
     return {
       ok: true as const,
-      message: `Reserva ${input.id ? 'actualizada' : 'registrada'}.`,
+      message:
+        `Reserva ${input.id ? 'actualizada' : 'registrada'}.` +
+        (syncedStays > 0 ? ` Se actualizaron ${syncedStays} estadía(s) vinculada(s).` : ''),
       id: reservation.id,
     };
   });

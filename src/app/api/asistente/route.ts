@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
-import { env } from '@/lib/env';
 import {
   executeReceptionConfirmation,
   runReceptionAssistant,
@@ -24,13 +23,6 @@ const requestSchema = z
   .refine((value) => Boolean(value.messages?.length || value.confirmationToken), {
     message: 'Falta el mensaje o la confirmación.',
   });
-
-export async function GET() {
-  return NextResponse.json(
-    { configured: Boolean(env().OPENAI_API_KEY) },
-    { headers: { 'Cache-Control': 'no-store' } },
-  );
-}
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();

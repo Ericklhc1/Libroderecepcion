@@ -36,6 +36,8 @@ function refresh(shiftId?: string) {
 }
 
 const shiftIdSchema = z.object({ shiftId: z.string().min(1) });
+/** Franja de turno: `AAAA-MM-DD:TIPO`. El servicio la valida de nuevo. */
+const slotSchema = z.object({ slot: z.string().min(1) });
 
 export async function startShiftAction(
   _state: ActionState | null,
@@ -43,9 +45,13 @@ export async function startShiftAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('shift.start');
-    const input = parseOrThrow(shiftIdSchema, formDataToObject(formData));
-    const { startShift } = await import('@/server/services/shifts');
-    const shift = await startShift(user, input.shiftId);
+    /*
+      Llega la FRANJA (fecha + tipo), no un id de fila: sin asignación previa
+      la franja puede no existir todavía, y la crea el propio inicio.
+    */
+    const input = parseOrThrow(slotSchema, formDataToObject(formData));
+    const { startShift, parseSlotKey } = await import('@/server/services/shifts');
+    const shift = await startShift(user, parseSlotKey(input.slot));
     refresh(shift.id);
     return {
       ok: true as const,

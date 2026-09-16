@@ -82,7 +82,7 @@ export async function getDashboardData(user: CurrentUser) {
     latestEntries,
     lastReceivedHandover,
   ] = await Promise.all([
-    myShift ? Promise.resolve([]) : getStartableShifts(user.id),
+    myShift ? Promise.resolve([]) : getStartableShifts(),
     myShift ? getIncomingHandover(myShift) : Promise.resolve(null),
     prisma.operationalEntry.findMany({
       where: {

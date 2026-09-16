@@ -45,8 +45,10 @@ async function main() {
     throw new Error('El rol Administrador de sistema no existe. Ejecuta primero `npm run db:seed`.');
   }
 
+  // Se identifica por USUARIO, no por correo: varias cuentas pueden compartir
+  // la misma casilla y el correo dejó de ser único.
   const user = await prisma.user.upsert({
-    where: { email: email.toLowerCase() },
+    where: { username: suggestUsername(name) },
     update: {
       name,
       roleId: role.id,
@@ -67,7 +69,7 @@ async function main() {
     },
   });
 
-  console.log(`✔ Administrador de sistema listo: ${user.name} <${user.email}>`);
+  console.log(`✔ Administrador de sistema listo: ${user.name} (@${user.username}) <${user.email}>`);
   if (!providedPassword) {
     console.log(`  Contraseña temporal (cámbiala al entrar): ${password}`);
   }

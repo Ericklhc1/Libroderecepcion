@@ -198,12 +198,18 @@ export const restoreSchema = z.object({
   reason: zOptionalString,
 });
 
+/*
+  Se entra con el nombre de usuario. No se valida contra USERNAME_PATTERN: un
+  identificador mal escrito tiene que fallar como «usuario o contraseña
+  incorrectos», no como error de formato, para no revelar qué forma tienen los
+  usuarios válidos. La arroba se acepta y se descarta.
+*/
 export const loginSchema = z.object({
-  email: z
+  username: z
     .string()
     .trim()
-    .toLowerCase()
-    .email('Ingresa un correo válido'),
+    .transform((value) => value.replace(/^@+/, '').replace(/\s+/g, ''))
+    .pipe(z.string().min(1, 'Ingresa tu usuario')),
   password: z.string().min(1, 'Ingresa tu contraseña'),
 });
 

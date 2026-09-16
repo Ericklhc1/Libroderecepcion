@@ -88,7 +88,10 @@ export async function createUser(options: {
   name?: string;
   password?: string;
   active?: boolean;
-}): Promise<CurrentUser & { passwordPlain: string }> {
+  username?: string;
+  /* El usuario es la identidad de la cuenta, así que las pruebas lo necesitan
+     para iniciar sesión. El correo puede repetirse a propósito. */
+}): Promise<CurrentUser & { passwordPlain: string; username: string }> {
   const role = await prisma.role.findUniqueOrThrow({
     where: { key: options.roleKey },
     include: { permissions: { include: { permission: true } } },
@@ -100,7 +103,9 @@ export async function createUser(options: {
     data: {
       email,
       name: options.name ?? `Usuario ${role.name}`,
-      username: `U${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      username:
+        options.username ??
+        `U${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
       passwordHash: await bcrypt.hash(password, 4),
       roleId: role.id,
       active: options.active ?? true,
@@ -122,6 +127,7 @@ export async function createUser(options: {
     permissions: role.permissions.map((rp) => rp.permission.key as PermissionKey),
     isSystemAdmin: role.key === ROLE_KEYS.SYSTEM_ADMIN,
     passwordPlain: password,
+    username: user.username,
   };
 }
 

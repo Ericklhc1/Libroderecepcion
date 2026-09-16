@@ -60,6 +60,17 @@ conserva su modelo y sus reglas.
 
 ## Decisiones que no se revierten
 
+0. **La identidad de una cuenta es su usuario, no su correo.** En el hotel
+   varias cuentas comparten la casilla de recepción, así que el correo **no
+   identifica a nadie y puede repetirse**: `User.email` no es único. El que sí
+   lo es —y con el que se inicia sesión— es `username` (`@EHerrera`): se
+   muestra con arroba y se guarda sin ella. La comparación al entrar **ignora
+   mayúsculas**, porque en el mesón nadie recuerda si se escribió `EHerrera` o
+   `eherrera`; por eso `allocateUsername` mide la colisión también sin
+   distinguirlas, aunque el índice único de PostgreSQL sí las distinga: si
+   coexistieran las dos, entrar sería ambiguo. `LoginAttempt.identifier`
+   guarda lo que se escribió, exista la cuenta o no. Lo vigila
+   `tests/identidad-usuario.test.ts`.
 1. **El rol técnico superior se llama sólo «Administrador de sistema».** Nunca
    *master*, *maestro*, *superusuario*. Queda **fuera de la operación
    habitual**: no inicia, recibe ni entrega turno, no confirma salidas ni
@@ -140,6 +151,24 @@ conserva su modelo y sus reglas.
     **código** de reserva (`linkStaysToReservations`), nunca por nombre, y
     queda nulo cuando la reserva no existe en el sistema. Una estadía sin
     vínculo sigue siendo válida y operable.
+11. **Los turnos no se asignan de antemano.** Nadie reparte los turnos: quien
+    llega al mesón toma el que corresponde. Lo que habilita a tomar una franja
+    es que esté libre, y lo que la pone primera en la lista es que el turno
+    anterior haya dejado **un cierre esperando confirmación**. `/turno` ofrece
+    la franja del reloj, las que siguen a una entrega enviada y sin recibir, y
+    los turnos que alguien haya programado a mano, que siguen valiendo.
+    La franja viaja como `AAAA-MM-DD:TIPO` (`slotKey`), no como id de fila,
+    porque puede no existir todavía: la crea el propio inicio, dentro de la
+    transacción, con `ensureShift`, que es idempotente. `parseSlotKey` valida
+    la fecha **componente a componente**: `new Date(2026, 12, 1)` no falla,
+    desborda en silencio a enero de 2027, y un mes 13 crearía un turno en una
+    fecha que nadie pidió.
+    `ShiftAssignment` **no desaparece**: deja de ser requisito y pasa a ser el
+    registro de quién tomó el turno, que es lo que consulta `getMyOpenShift`.
+    Decisión revisada: la prueba «no permite iniciar un turno al que no estás
+    asignado» se eliminó a propósito y se reemplazó por la invariante que sí
+    sobrevive —un turno ya tomado no se le quita a quien lo tomó—. Lo vigila
+    `tests/turno-sin-asignacion.test.ts`.
 
 ## Rendimiento: lo aprendido en producción
 
@@ -211,10 +240,15 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
 
 ## Pendientes conocidos
 
-- **SMTP sin configurar** (`SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM`): al crear un
-  usuario la clave se muestra en pantalla en vez de enviarse a
-  `recepcion@hoteleshw.com`. `src/server/mail.ts` lo informa, no falla en
-  silencio.
+- **SMTP sin configurar en el despliegue**: el código está listo —el puerto
+  465 activa TLS directo en `src/server/mail.ts`— pero las variables
+  (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) sólo
+  existen en la plataforma de despliegue, cifradas, **nunca en el repositorio**.
+  Mientras falten, al crear un usuario la clave se muestra en pantalla en vez
+  de enviarse a `recepcion@hoteleshw.com`, y `mail.ts` lo informa en lugar de
+  fallar en silencio.
+- El correo **entrante** no lo usa el sistema: sólo envía. Conviene saber que
+  el 995 es POP3 sobre SSL, no IMAP (IMAP sobre SSL es 993).
 - Los tres informes del PMS no se han importado todavía en producción, así que
   el inventario de llaves sigue sin reconciliar (101 disponibles, 0
   movimientos). Se resuelve importando o con el botón «Reconciliar con las

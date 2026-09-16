@@ -18,6 +18,7 @@ import { hashPassword, passwordSchema } from '@/server/auth/password';
 import { revokeAllUserSessions } from '@/server/auth/session';
 import { recordAudit, diffFields } from '@/server/audit';
 import { AppError, NotFoundError, RuleError } from '@/server/errors';
+import { normalizeUsername } from '@/domain/username';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { DEFAULT_SETTINGS, getSettingString, type SettingKey } from '@/server/services/settings';
 import { allocateUsername, deliverCredentials, generatePassword } from '@/server/services/credentials';
@@ -48,8 +49,25 @@ export async function createUserAction(
     const actor = await requirePermission('user.manage');
     const input = parseOrThrow(userCreateSchema, formDataToObject(formData));
 
-    const exists = await prisma.user.findUnique({ where: { email: input.email } });
-    if (exists) throw new AppError('Ya existe un usuario con ese correo.', 'DUPLICATE');
+    /*
+      El correo NO se comprueba: puede repetirse a propósito. Varias cuentas
+      comparten la casilla de recepción y lo que distingue a cada una es su
+      nombre de usuario. Lo que sí se comprueba es ese usuario, cuando la
+      persona lo escribió a mano: si ya existe hay que decirlo, en vez de
+      entregar en silencio un «EHerrera2» que nadie pidió.
+    */
+    if (input.username) {
+      const taken = await prisma.user.findFirst({
+        where: { username: { equals: normalizeUsername(input.username), mode: 'insensitive' } },
+        select: { username: true },
+      });
+      if (taken) {
+        throw new AppError(
+          `El usuario @${taken.username} ya está en uso. Elige otro o deja el campo vacío para que el sistema lo proponga.`,
+          'DUPLICATE',
+        );
+      }
+    }
 
     const role = await prisma.role.findUnique({ where: { id: input.roleId } });
     if (!role) throw new NotFoundError('El rol indicado no existe.');

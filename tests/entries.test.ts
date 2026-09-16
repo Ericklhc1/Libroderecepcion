@@ -63,7 +63,7 @@ describe('registros del libro operativo', () => {
 
   it('asocia el registro al turno abierto de quien lo crea', async () => {
     const shift = await createShift({ userId: receptionist.id, type: ShiftType.MANANA });
-    await startShift(receptionist, shift.id);
+    await startShift(receptionist, shift);
 
     const entry = await createEntry(receptionist, novedad);
     expect(entry.shiftId).toBe(shift.id);

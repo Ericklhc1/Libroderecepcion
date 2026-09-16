@@ -25,7 +25,7 @@ describe('inicio de sesión', () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
 
     const session = await authenticate({
-      email: user.email,
+      username: user.username,
       password: TEST_PASSWORD,
       ip: '10.0.0.5',
     });
@@ -39,30 +39,30 @@ describe('inicio de sesión', () => {
     expect(stored.revokedAt).toBeNull();
   });
 
-  it('acepta el correo con mayúsculas y espacios', async () => {
+  it('acepta el usuario con arroba, mayúsculas y espacios', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const session = await authenticate({
-      email: `  ${user.email.toUpperCase()}  `,
+      username: `  @${user.username.toUpperCase()}  `,
       password: TEST_PASSWORD,
     });
     expect(session.userId).toBe(user.id);
   });
 
-  it('rechaza la contraseña incorrecta con un mensaje que no revela el correo', async () => {
+  it('rechaza la contraseña incorrecta con un mensaje que no revela el usuario', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
 
     await expect(
-      authenticate({ email: user.email, password: 'IncorrectaAA1' }),
-    ).rejects.toThrow('Correo o contraseña incorrectos.');
+      authenticate({ username: user.username, password: 'IncorrectaAA1' }),
+    ).rejects.toThrow('Usuario o contraseña incorrectos.');
 
     await expect(
-      authenticate({ email: 'no-existe@test.local', password: 'IncorrectaAA1' }),
-    ).rejects.toThrow('Correo o contraseña incorrectos.');
+      authenticate({ username: 'NoExiste', password: 'IncorrectaAA1' }),
+    ).rejects.toThrow('Usuario o contraseña incorrectos.');
   });
 
   it('registra el intento fallido en la auditoría', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    await authenticate({ email: user.email, password: 'IncorrectaAA1' }).catch(() => null);
+    await authenticate({ username: user.username, password: 'IncorrectaAA1' }).catch(() => null);
 
     const log = await prisma.auditLog.findFirst({
       where: { entityId: user.id, action: 'LOGIN_FALLIDO' },
@@ -75,12 +75,12 @@ describe('inicio de sesión', () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
 
     for (let attempt = 0; attempt < MAX_FAILED_ATTEMPTS; attempt += 1) {
-      await authenticate({ email: user.email, password: 'IncorrectaAA1' }).catch(() => null);
+      await authenticate({ username: user.username, password: 'IncorrectaAA1' }).catch(() => null);
     }
 
     // Incluso con la contraseña correcta, la cuenta queda bloqueada.
     await expect(
-      authenticate({ email: user.email, password: TEST_PASSWORD }),
+      authenticate({ username: user.username, password: TEST_PASSWORD }),
     ).rejects.toThrow(/bloqueada temporalmente/);
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -90,8 +90,8 @@ describe('inicio de sesión', () => {
 
   it('reinicia el contador de fallos tras un ingreso correcto', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    await authenticate({ email: user.email, password: 'IncorrectaAA1' }).catch(() => null);
-    await authenticate({ email: user.email, password: TEST_PASSWORD });
+    await authenticate({ username: user.username, password: 'IncorrectaAA1' }).catch(() => null);
+    await authenticate({ username: user.username, password: TEST_PASSWORD });
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.failedAttempts).toBe(0);
@@ -101,7 +101,7 @@ describe('inicio de sesión', () => {
   it('impide el ingreso de cuentas inactivas y eliminadas', async () => {
     const inactive = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, active: false });
     await expect(
-      authenticate({ email: inactive.email, password: TEST_PASSWORD }),
+      authenticate({ username: inactive.username, password: TEST_PASSWORD }),
     ).rejects.toThrow(/inactiva/);
 
     const deleted = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
@@ -110,13 +110,13 @@ describe('inicio de sesión', () => {
       data: { deletedAt: new Date() },
     });
     await expect(
-      authenticate({ email: deleted.email, password: TEST_PASSWORD }),
-    ).rejects.toThrow('Correo o contraseña incorrectos.');
+      authenticate({ username: deleted.username, password: TEST_PASSWORD }),
+    ).rejects.toThrow('Usuario o contraseña incorrectos.');
   });
 
   it('una sesión revocada deja de ser válida', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const session = await authenticate({ email: user.email, password: TEST_PASSWORD });
+    const session = await authenticate({ username: user.username, password: TEST_PASSWORD });
 
     await revokeSession(session.sessionId);
     expect(await readSessionToken(session.token)).toBeNull();
@@ -147,8 +147,8 @@ describe('política y cambio de contraseña', () => {
 
   it('cambia la contraseña y revoca las demás sesiones', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const first = await authenticate({ email: user.email, password: TEST_PASSWORD });
-    const second = await authenticate({ email: user.email, password: TEST_PASSWORD });
+    const first = await authenticate({ username: user.username, password: TEST_PASSWORD });
+    const second = await authenticate({ username: user.username, password: TEST_PASSWORD });
 
     const result = await changeOwnPassword(
       { id: user.id, name: user.name, sessionId: second.sessionId },
@@ -161,10 +161,10 @@ describe('política y cambio de contraseña', () => {
     expect(await readSessionToken(result.token)).not.toBeNull();
 
     await expect(
-      authenticate({ email: user.email, password: TEST_PASSWORD }),
+      authenticate({ username: user.username, password: TEST_PASSWORD }),
     ).rejects.toThrow(AppError);
     await expect(
-      authenticate({ email: user.email, password: 'NuevaClave2026' }),
+      authenticate({ username: user.username, password: 'NuevaClave2026' }),
     ).resolves.toMatchObject({ userId: user.id });
   });
 

@@ -56,8 +56,16 @@ describe('instalación inicial', () => {
   it('la cuenta creada puede iniciar sesión de inmediato', async () => {
     const { userId } = await runInstall(DATOS);
 
+    /*
+      Se entra con el USUARIO, no con el correo. La instalación lo deriva del
+      nombre: «Erick Herrera» → EHerrera. Se comprueba aquí porque es el dato
+      con el que la única cuenta del hotel podrá entrar el primer día.
+    */
+    const cuenta = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    expect(cuenta.username).toBe('EHerrera');
+
     const session = await authenticate({
-      email: 'erick@costaserena.cl',
+      username: '@eherrera',
       password: DATOS.password,
     });
     expect(session.userId).toBe(userId);

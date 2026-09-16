@@ -11,10 +11,14 @@ import {
   startShiftAction,
 } from '@/server/actions/shifts';
 
-export function StartShiftForm({ shiftId, label }: { shiftId: string; label: string }) {
+/**
+ * Toma de turno. Viaja la franja (`AAAA-MM-DD:TIPO`), no un id de fila: sin
+ * asignación previa el turno puede no existir hasta que alguien lo tome.
+ */
+export function StartShiftForm({ slot, label }: { slot: string; label: string }) {
   return (
     <ActionForm action={startShiftAction} hideSuccess className="space-y-0">
-      <input type="hidden" name="shiftId" value={shiftId} />
+      <input type="hidden" name="slot" value={slot} />
       <SubmitButton variant="gold" pendingLabel="Iniciando…">
         {label}
       </SubmitButton>

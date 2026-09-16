@@ -8,12 +8,13 @@ import {
   revokeAllUserSessions,
 } from '@/server/auth/session';
 import { hashPassword, passwordSchema, verifyPassword } from '@/server/auth/password';
+import { normalizeUsername } from '@/domain/username';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCK_MINUTES = 15;
 
-/** Mensaje único para credenciales inválidas: no revela si el correo existe. */
-const INVALID_CREDENTIALS = 'Correo o contraseña incorrectos.';
+/** Mensaje único para credenciales inválidas: no revela si el usuario existe. */
+const INVALID_CREDENTIALS = 'Usuario o contraseña incorrectos.';
 
 export type AuthenticatedSession = {
   userId: string;
@@ -32,21 +33,35 @@ export type AuthenticatedSession = {
  * comportamiento es verificable con pruebas automatizadas.
  */
 export async function authenticate(input: {
-  email: string;
+  username: string;
   password: string;
   ip?: string | null;
   userAgent?: string | null;
 }): Promise<AuthenticatedSession> {
-  const email = input.email.trim().toLowerCase();
+  /*
+    Se entra con el nombre de usuario, no con el correo. El correo puede
+    repetirse —todo el mesón comparte la casilla de recepción— así que no
+    identifica a nadie; el usuario sí, y es único.
 
-  const user = await prisma.user.findFirst({
-    where: { email, deletedAt: null },
-    include: { role: true },
-  });
+    La comparación ignora mayúsculas porque en el mesón nadie recuerda si su
+    usuario se escribió «EHerrera» o «eherrera», y la arroba se descarta:
+    se muestra con ella, se guarda sin ella.
+  */
+  const identifier = normalizeUsername(input.username);
+
+  const user = identifier
+    ? await prisma.user.findFirst({
+        where: {
+          username: { equals: identifier, mode: 'insensitive' },
+          deletedAt: null,
+        },
+        include: { role: true },
+      })
+    : null;
 
   if (!user) {
     await prisma.loginAttempt.create({
-      data: { email, ip: input.ip ?? null, success: false },
+      data: { identifier, ip: input.ip ?? null, success: false },
     });
     throw new AppError(INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
   }
@@ -80,13 +95,13 @@ export async function authenticate(input: {
       },
     });
     await prisma.loginAttempt.create({
-      data: { email, ip: input.ip ?? null, success: false },
+      data: { identifier, ip: input.ip ?? null, success: false },
     });
     await recordAudit({
       entity: 'User',
       entityId: user.id,
       action: AuditAction.LOGIN_FALLIDO,
-      summary: `Intento de sesión fallido para ${user.email} (${failedAttempts}/${MAX_FAILED_ATTEMPTS})`,
+      summary: `Intento de sesión fallido para @${user.username} (${failedAttempts}/${MAX_FAILED_ATTEMPTS})`,
     });
     throw new AppError(INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
   }
@@ -101,7 +116,7 @@ export async function authenticate(input: {
     data: { lastLoginAt: new Date(), failedAttempts: 0, lockedUntil: null },
   });
   await prisma.loginAttempt.create({
-    data: { email, ip: input.ip ?? null, success: true },
+    data: { identifier, ip: input.ip ?? null, success: true },
   });
   await recordAudit({
     entity: 'User',

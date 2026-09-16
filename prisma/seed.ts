@@ -102,8 +102,10 @@ async function seedDemo() {
   for (const person of people) {
     const role = roleByKey.get(person.roleKey);
     if (!role) throw new Error(`Rol no encontrado: ${person.roleKey}`);
+    // El upsert se resuelve por USUARIO: el correo puede repetirse entre
+    // cuentas, así que ya no identifica a nadie.
     const user = await prisma.user.upsert({
-      where: { email: person.email },
+      where: { username: suggestUsername(person.name) },
       update: { name: person.name, roleId: role.id, isDemo: true, active: true },
       create: {
         email: person.email,

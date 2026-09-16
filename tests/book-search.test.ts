@@ -191,7 +191,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
 
   it('muestra el turno, el responsable y el vencimiento de cada fila', async () => {
     const shift = await createShift({ userId: user.id, type: ShiftType.TARDE });
-    await startShift(user, shift.id);
+    await startShift(user, shift);
 
     await createEntry(user, {
       type: EntryType.NOVEDAD,

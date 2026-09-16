@@ -7,14 +7,20 @@ import { loginAction } from '@/server/actions/auth';
 export function LoginForm() {
   return (
     <ActionForm action={loginAction} hideSuccess>
-      <Field label="Correo" name="email" required>
+      {/*
+        Se entra con el usuario, no con el correo: la casilla de recepción la
+        comparte todo el mesón, así que no identifica a nadie.
+      */}
+      <Field label="Usuario" name="username" required>
         <Input
-          name="email"
-          type="email"
+          name="username"
+          type="text"
           autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           required
           autoFocus
-          placeholder="nombre@hotel.com"
+          placeholder="@EHerrera"
         />
       </Field>
       <Field label="Contraseña" name="password" required>

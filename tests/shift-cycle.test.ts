@@ -44,7 +44,7 @@ describe('ciclo de turno de punta a punta', () => {
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
     // 1. Inicio de turno
-    const started = await startShift(morning, shiftA.id);
+    const started = await startShift(morning, shiftA);
     expect(started.status).toBe(ShiftStatus.INICIADO);
     expect(started.actualStart).not.toBeNull();
     expect(started.startedById).toBe(morning.id);
@@ -83,7 +83,7 @@ describe('ciclo de turno de punta a punta', () => {
     expect(incoming?.id).toBe(sent.id);
 
     // 5. Recepción por el turno siguiente
-    await startShift(evening, shiftB.id);
+    await startShift(evening, shiftB);
     const received = await receiveHandover(evening, {
       shiftId: shiftB.id,
       handoverId: sent.id,
@@ -112,7 +112,7 @@ describe('ciclo de turno de punta a punta', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
@@ -125,7 +125,7 @@ describe('ciclo de turno de punta a punta', () => {
 
   it('el resumen automático se regenera y conserva las notas manuales', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
 
     const draft = await prepareHandover(morning, shiftA.id);
@@ -166,26 +166,65 @@ describe('invariantes del turno', () => {
 
   it('no permite iniciar dos veces el mismo turno', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
-    await expect(startShift(morning, shift.id)).rejects.toThrow(/no permitida/);
+    await startShift(morning, shift);
+
+    /*
+      El mensaje cambió al quitar la asignación previa: ahora la primera
+      barrera es «ya tienes un turno abierto», que salta antes que la máquina
+      de estados. La invariante es la misma —un turno no se inicia dos veces—
+      así que se comprueba el hecho, no la redacción.
+    */
+    await expect(startShift(morning, shift)).rejects.toThrow(RuleError);
+
+    const started = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+    expect(started.status).toBe(ShiftStatus.INICIADO);
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: shift.id, action: 'TURNO_INICIAR' },
+      }),
+    ).toBe(1);
   });
 
   it('no permite dos turnos abiertos para el mismo usuario', async () => {
     const first = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     const second = await createShift({ userId: morning.id, type: ShiftType.TARDE });
 
-    await startShift(morning, first.id);
-    await expect(startShift(morning, second.id)).rejects.toThrow(/Ya tienes el turno/);
+    await startShift(morning, first);
+    await expect(startShift(morning, second)).rejects.toThrow(/Ya tienes el turno/);
   });
 
-  it('no permite iniciar un turno al que no estás asignado', async () => {
+  /*
+    DECISIÓN REVISADA. Antes esta prueba exigía estar asignado para iniciar un
+    turno. Esa regla se eliminó a propósito: los turnos no se reparten de
+    antemano y quien llega al mesón toma el que corresponde. La prueba se
+    reemplaza por la invariante que SÍ sobrevive, que es la que de verdad
+    protege la operación: un turno que alguien ya tomó no se le puede quitar.
+  */
+  it('quien no estaba asignado puede tomar un turno libre', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await expect(startShift(evening, shift.id)).rejects.toThrow(/No estás asignado/);
+
+    const taken = await startShift(evening, shift);
+
+    expect(taken.startedById).toBe(evening.id);
+    const assignment = await prisma.shiftAssignment.findFirstOrThrow({
+      where: { shiftId: shift.id, userId: evening.id },
+    });
+    expect(assignment.role).toBe('TITULAR');
+  });
+
+  it('un turno ya tomado no se le puede quitar a quien lo tomó', async () => {
+    const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
+    await startShift(morning, shift);
+
+    await expect(startShift(evening, shift)).rejects.toThrow(RuleError);
+
+    const current = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+    expect(current.startedById).toBe(morning.id);
   });
 
   it('no permite recibir una entrega inexistente', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
 
     await expect(
       receiveHandover(morning, { shiftId: shift.id, handoverId: 'no-existe' }),
@@ -196,12 +235,12 @@ describe('invariantes del turno', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
 
-    await startShift(evening, shiftB.id);
+    await startShift(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
     // Segundo intento sobre la misma entrega, ya confirmada.
@@ -214,13 +253,13 @@ describe('invariantes del turno', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     const shiftC = await createShift({ userId: evening.id, type: ShiftType.NOCHE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
 
     // El turno de noche no es el siguiente del turno de mañana.
-    await startShift(evening, shiftC.id);
+    await startShift(evening, shiftC);
     await expect(
       receiveHandover(evening, { shiftId: shiftC.id, handoverId: sent.id }),
     ).rejects.toThrow(/no corresponde a este turno/);
@@ -230,7 +269,7 @@ describe('invariantes del turno', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
 
     await expect(closeShift(morning, { shiftId: shiftA.id })).rejects.toThrow(
@@ -242,7 +281,7 @@ describe('invariantes del turno', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
@@ -254,7 +293,7 @@ describe('invariantes del turno', () => {
 
   it('permite cerrar sin entrega cuando no hay turno siguiente', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     const closed = await closeShift(morning, { shiftId: shift.id, notes: 'Sin novedades.' });
@@ -265,7 +304,7 @@ describe('invariantes del turno', () => {
 
   it('no permite enviar una entrega inexistente ni enviarla dos veces', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(sendHandover(morning, { shiftId: shift.id })).rejects.toThrow(
@@ -281,7 +320,7 @@ describe('invariantes del turno', () => {
 
   it('cada turno emite como máximo una entrega', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     const first = await prepareHandover(morning, shift.id);
     const second = await prepareHandover(morning, shift.id);
@@ -300,7 +339,7 @@ describe('invariantes del turno', () => {
 
   it('una entrega siempre tiene emisor y turno de origen', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     const handover = await prepareHandover(morning, shift.id);
 
@@ -317,7 +356,7 @@ describe('invariantes del turno', () => {
 
   it('sólo el personal del turno puede preparar o enviar su entrega', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(prepareHandover(evening, shift.id)).rejects.toThrow(
@@ -327,7 +366,7 @@ describe('invariantes del turno', () => {
 
   it('permite cancelar la preparación y volver al turno activo', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     await prepareHandover(morning, shift.id);
 
@@ -339,7 +378,7 @@ describe('invariantes del turno', () => {
   it('no permite cancelar una entrega ya enviada', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     await createShift({ userId: evening.id, type: ShiftType.TARDE });
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     await sendHandover(morning, { shiftId: shiftA.id });
@@ -349,7 +388,7 @@ describe('invariantes del turno', () => {
 
   it('el supervisor puede cerrar el turno de otra persona', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     const closed = await closeShift(supervisor, { shiftId: shift.id });
@@ -359,7 +398,7 @@ describe('invariantes del turno', () => {
 
   it('un tercero sin permisos de supervisión no puede cerrar un turno ajeno', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
 
     await expect(closeShift(evening, { shiftId: shift.id })).rejects.toThrow(
@@ -371,7 +410,7 @@ describe('invariantes del turno', () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     expect(await getMyOpenShift(morning.id)).toBeNull();
 
-    await startShift(morning, shift.id);
+    await startShift(morning, shift);
     expect((await getMyOpenShift(morning.id))?.id).toBe(shift.id);
 
     await receiveHandover(morning, { shiftId: shift.id });
@@ -383,11 +422,11 @@ describe('invariantes del turno', () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.MANANA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.TARDE });
 
-    await startShift(morning, shiftA.id);
+    await startShift(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
-    await startShift(evening, shiftB.id);
+    await startShift(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
     const actions = await prisma.auditLog.findMany({

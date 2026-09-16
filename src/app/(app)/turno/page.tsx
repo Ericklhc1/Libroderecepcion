@@ -59,7 +59,7 @@ export default async function ShiftPage() {
   const shift = await getMyOpenShift(user.id);
 
   const [startable, reportsState, recentShifts] = await Promise.all([
-    shift ? Promise.resolve([]) : getStartableShifts(user.id),
+    shift ? Promise.resolve([]) : getStartableShifts(),
     getShiftReportsState(),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
@@ -113,18 +113,24 @@ export default async function ShiftPage() {
 
       {!shift ? (
         <Card>
-          <CardHeader title="No tienes un turno abierto" />
+          <CardHeader title="Tomar turno" />
           <div className="space-y-3 px-4 py-4">
+            {/*
+              Los turnos no se asignan de antemano: aquí aparece la franja que
+              corresponde al reloj y, antes que ella, cualquier cierre que el
+              turno anterior dejó esperando confirmación. Quien toma el turno
+              es quien lo revisa y recibe.
+            */}
             {startable.length === 0 ? (
               <EmptyState
                 message={
                   user.roleOperational
-                    ? 'No hay turnos programados a tu nombre.'
+                    ? 'No hay turnos por tomar en este momento.'
                     : 'El Administrador de sistema no participa en el ciclo de turnos.'
                 }
                 hint={
                   user.roleOperational
-                    ? 'Solicita la programación a tu supervisor.'
+                    ? 'Ya tomaste el turno que corresponde, o el ciclo está al día.'
                     : 'Usa una cuenta operativa para operar turnos.'
                 }
               />
@@ -132,19 +138,40 @@ export default async function ShiftPage() {
               <ul className="space-y-3">
                 {startable.map((option) => (
                   <li
-                    key={option.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200"
+                    key={option.key}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-3 ring-1 ${
+                      option.pendingClosure
+                        ? 'bg-gold-50 ring-gold-300'
+                        : 'bg-slate-50 ring-slate-200'
+                    }`}
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-medium text-petrol-900">
                         {SHIFT_TYPE_LABEL[option.type]} · {formatDate(option.date)}
                       </p>
                       <p className="text-xs text-slate-500">
-                        Horario {formatTime(option.plannedStart)}–{formatTime(option.plannedEnd)} ·{' '}
-                        {option.assignments.map((a) => a.user.name).join(', ')}
+                        Horario {formatTime(option.plannedStart)}–{formatTime(option.plannedEnd)}
                       </p>
+                      {option.pendingClosure ? (
+                        <p className="mt-1 text-xs font-medium text-orange-800">
+                          Cierre por confirmar: {SHIFT_TYPE_LABEL[option.pendingClosure.fromType]}{' '}
+                          del {formatDate(option.pendingClosure.fromDate)}, entregado por{' '}
+                          {option.pendingClosure.issuedByName}
+                          {option.pendingClosure.issuedAt
+                            ? ` a las ${formatTime(option.pendingClosure.issuedAt)}`
+                            : ''}
+                          .
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Sin cierre anterior pendiente.
+                        </p>
+                      )}
                     </div>
-                    <StartShiftForm shiftId={option.id} label="Iniciar turno" />
+                    <StartShiftForm
+                      slot={option.key}
+                      label={option.pendingClosure ? 'Tomar y revisar cierre' : 'Tomar turno'}
+                    />
                   </li>
                 ))}
               </ul>

@@ -1,13 +1,10 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { ShiftStatus } from '@prisma/client';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { listOperationalUsers } from '@/server/services/users';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
-import { ScheduleShiftForm } from '../admin-forms';
-import { ArchiveShiftDialog, CancelShiftDialog } from './cancel-shift';
+import { ArchiveShiftDialog } from './cancel-shift';
 import {
   ASSIGNMENT_ROLE_LABEL,
   HANDOVER_STATUS_LABEL,
@@ -16,7 +13,7 @@ import {
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, windowHours } from '@/domain/shift';
 import { formatDate, formatTime } from '@/lib/format';
 
-export const metadata = { title: 'Programación de turnos' };
+export const metadata = { title: 'Historial de turnos' };
 export const dynamic = 'force-dynamic';
 
 const STATUS_TONE = {
@@ -34,26 +31,18 @@ export default async function ShiftAdminPage() {
   await requirePagePermission('shift.manage');
 
   const from = new Date();
-  from.setDate(from.getDate() - 7);
+  from.setDate(from.getDate() - 30);
   from.setHours(0, 0, 0, 0);
 
-  const [shifts, users] = await Promise.all([
-    prisma.shift.findMany({
-      where: { date: { gte: from } },
-      include: {
-        assignments: { include: { user: { select: { id: true, name: true } } } },
-        handoverOut: { select: { id: true, status: true } },
-      },
-      orderBy: [{ date: 'desc' }, { type: 'asc' }],
-      take: 60,
-    }),
-    listOperationalUsers(),
-  ]);
-
-  const userOptions = users.map((user) => ({
-    value: user.id,
-    label: `${user.name} · ${user.role.name}`,
-  }));
+  const shifts = await prisma.shift.findMany({
+    where: { date: { gte: from } },
+    include: {
+      assignments: { include: { user: { select: { id: true, name: true } } } },
+      handoverOut: { select: { id: true, status: true } },
+    },
+    orderBy: [{ date: 'desc' }, { actualStart: 'desc' }, { createdAt: 'desc' }],
+    take: 120,
+  });
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -66,24 +55,18 @@ export default async function ShiftAdminPage() {
       </Link>
 
       <header>
-        <h1 className="text-xl font-semibold text-petrol-900">Programación de turnos</h1>
+        <h1 className="text-xl font-semibold text-petrol-900">Historial y archivo de turnos</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Un turno por fecha y tipo. El Administrador de sistema no aparece entre las personas
-          asignables: su rol está fuera de la operación.
+          Los turnos no se programan desde aquí. Se abren al comenzar la operación y sólo puede
+          existir uno en curso. Esta pantalla conserva la trazabilidad y permite archivar turnos
+          terminados sin borrar su información.
         </p>
       </header>
 
       <Card>
-        <CardHeader title="Programar o reasignar" />
-        <div className="px-4 py-4">
-          <ScheduleShiftForm users={userOptions} />
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader title="Turnos recientes y próximos" count={shifts.length} />
+        <CardHeader title="Turnos recientes" count={shifts.length} />
         {shifts.length === 0 ? (
-          <EmptyState message="No hay turnos programados." />
+          <EmptyState message="Todavía no hay turnos en el historial." />
         ) : (
           <ul className="divide-y divide-slate-100">
             {shifts.map((shift) => (
@@ -99,7 +82,6 @@ export default async function ShiftAdminPage() {
                     <Badge tone={STATUS_TONE[shift.status]}>
                       {SHIFT_STATUS_LABEL[shift.status]}
                     </Badge>
-                    {/* Nunca sólo color: el archivado se dice con texto. */}
                     {shift.archivedAt ? <Chip>Archivado</Chip> : null}
                     {shift.handoverOut ? (
                       <Link href={`/turno/entrega/${shift.handoverOut.id}`}>
@@ -112,7 +94,7 @@ export default async function ShiftAdminPage() {
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Horario {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)} (
+                    Ventana {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)} (
                     {windowHours(shift.plannedStart, shift.plannedEnd)} h) ·{' '}
                     {shift.assignments.length > 0
                       ? shift.assignments
@@ -125,15 +107,6 @@ export default async function ShiftAdminPage() {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1">
-                  {/* Anular vale ANTES de empezar. */}
-                  {shift.status === ShiftStatus.PROGRAMADO ? (
-                    <CancelShiftDialog shiftId={shift.id} />
-                  ) : null}
-                  {/*
-                    Archivar vale cuando ya terminó, o cuando está programado y
-                    se quiere sacar de la lista. El servidor rechaza archivar
-                    un turno en curso: eso se cierra, no se esconde.
-                  */}
                   <ArchiveShiftDialog
                     shiftId={shift.id}
                     archived={shift.archivedAt !== null}

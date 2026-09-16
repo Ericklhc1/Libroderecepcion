@@ -22,14 +22,6 @@ import {
   reconcilePrincipalKeys,
 } from './keys';
 
-/**
- * Estado operativo de habitaciones.
- *
- * Las confirmaciones de salida y de check-in son las dos únicas puertas por las
- * que una habitación cambia de manos, y las dos exigen que una persona las
- * apriete: el sistema nunca mueve a un huésped de una capa a otra por su cuenta.
- */
-
 const ACTIVE_STAGES: RoomStayStage[] = [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO];
 
 const stayFactsSelect = {
@@ -82,7 +74,6 @@ function toKeyFacts(key: Prisma.RoomKeyGetPayload<{ select: typeof keyFactsSelec
   };
 }
 
-/** Tablero completo: una ficha por habitación, con sus tres capas y sus llaves. */
 export async function listRoomsWithState(): Promise<RoomWithState[]> {
   const rooms = await prisma.room.findMany({
     where: { active: true },
@@ -115,13 +106,6 @@ export async function listRoomsWithState(): Promise<RoomWithState[]> {
   }));
 }
 
-/**
- * Contexto interno de la reserva, cuando la estadía se pudo vincular.
- *
- * Es información del sistema, no del PMS: saldo, garantías y si la reserva
- * pide una acción. Va aparte del snapshot a propósito, porque el snapshot
- * describe el estado físico de la habitación y esto describe la cuenta.
- */
 export type RoomReservationContext = {
   stayId: string;
   code: string;
@@ -143,10 +127,8 @@ export type RoomReservationContext = {
 
 export type RoomDetail = RoomWithState & {
   notes: string | null;
-  /** Historial del día: incluye las estadías ya finalizadas. */
   history: StayFacts[];
   keys: Array<KeyFacts & { assignedAt: Date | null; assignedBy: string | null }>;
-  /** Reservas internas de las estadías activas, si están vinculadas. */
   reservations: RoomReservationContext[];
 };
 
@@ -163,8 +145,6 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
         orderBy: [{ businessDate: 'desc' }, { createdAt: 'desc' }],
         select: {
           ...stayFactsSelect,
-          // El contexto de la cuenta viaja con la estadía: no hay consulta
-          // adicional. Nulo cuando la reserva no existe en el sistema.
           reservationRef: {
             select: {
               code: true,
@@ -248,13 +228,6 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
   };
 }
 
-/**
- * Confirma la salida de un huésped.
- *
- * Es el gesto que libera la habitación: la estadía queda finalizada y las
- * llaves que tenía vuelven al inventario. Mientras esto no ocurra, la reserva
- * entrante sigue en cola, sin llave y sin habitación.
- */
 export async function confirmCheckOut(
   user: CurrentUser,
   input: { stayId: string; note?: string | null },
@@ -282,15 +255,8 @@ export async function confirmCheckOut(
         note: input.note ?? stay.note,
       },
     });
-    // Guarda de concurrencia: si dos personas confirman a la vez, sólo una
-    // encuentra la estadía sin finalizar.
     if (updated.count === 0) throw new RuleError('Esa salida ya fue confirmada.');
 
-    /*
-      La estadía in house de la misma reserva se cierra junto con la salida. Si
-      no se cerrara, la habitación seguiría mostrando a alguien dentro después
-      de haberse ido, y la reserva entrante no podría pasar nunca.
-    */
     let closedInHouse = 0;
     if (stay.roomId) {
       const siblings = await tx.roomStay.updateMany({
@@ -309,8 +275,6 @@ export async function confirmCheckOut(
       });
       closedInHouse = siblings.count;
 
-      // Las llaves pueden estar asociadas a la estadía in house y no a la de
-      // salida: se liberan todas las de la habitación que siga con esa reserva.
       const inHouseStays = await tx.roomStay.findMany({
         where: {
           roomId: stay.roomId,
@@ -346,9 +310,11 @@ export async function confirmCheckOut(
 /**
  * Confirma el check-in de una reserva entrante.
  *
- * Recién aquí la reserva pasa a IN_HOUSE y recibe llave. Si la habitación
- * todavía tiene una salida sin confirmar, la operación se rechaza: es la regla
- * de cola, y vive en el servidor para que ninguna pantalla pueda saltarla.
+ * Si el PMS ya dejó una fila IN_HOUSE para la misma reserva y el mismo día,
+ * no intentamos convertir la fila CHECK_IN en una segunda IN_HOUSE: la
+ * restricción única de la base lo rechazaría (P2002) y, más importante, serían
+ * dos representaciones del mismo huésped. En ese caso se reutiliza la fila
+ * IN_HOUSE como canónica y la entrada queda finalizada como evidencia histórica.
  */
 export async function confirmCheckIn(
   user: CurrentUser,
@@ -396,12 +362,71 @@ export async function confirmCheckIn(
       );
     }
 
+    const now = new Date();
+    const existingInHouse = await tx.roomStay.findFirst({
+      where: {
+        businessDate: stay.businessDate,
+        reservationId: stay.reservationId,
+        roomId: stay.room.id,
+        status: RoomStayStatus.IN_HOUSE,
+        id: { not: stay.id },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existingInHouse) {
+      /*
+        `deletedAt` también cuenta para el índice único, así que una fila vieja
+        eliminada puede producir P2002. La reactivamos y la dejamos como la
+        única IN_HOUSE; la fila CHECK_IN no se borra, queda finalizada.
+      */
+      await tx.roomStay.update({
+        where: { id: existingInHouse.id },
+        data: {
+          deletedAt: null,
+          deletedById: null,
+          deletionReason: null,
+          stage: RoomStayStage.CONFIRMADO,
+          confirmedAt: now,
+          confirmedById: user.id,
+          touchedManually: true,
+          note: input.note ?? existingInHouse.note,
+        },
+      });
+      await tx.roomStay.update({
+        where: { id: stay.id },
+        data: {
+          stage: RoomStayStage.FINALIZADO,
+          confirmedAt: now,
+          confirmedById: user.id,
+          touchedManually: true,
+          note:
+            input.note ??
+            `Consolidado con la estadía in house ${existingInHouse.id}; no se duplicó la reserva.`,
+        },
+      });
+
+      const key = await assignMainKey(tx, user, {
+        roomId: stay.room.id,
+        stayId: existingInHouse.id,
+        keyId: input.keyId ?? null,
+      });
+
+      return {
+        stay,
+        roomNumber: stay.room.number,
+        keyCode: key?.code ?? null,
+        canonicalStayId: existingInHouse.id,
+        consolidated: true,
+      };
+    }
+
     const updated = await tx.roomStay.updateMany({
       where: { id: stay.id, stage: RoomStayStage.PENDIENTE },
       data: {
         status: RoomStayStatus.IN_HOUSE,
         stage: RoomStayStage.CONFIRMADO,
-        confirmedAt: new Date(),
+        confirmedAt: now,
         confirmedById: user.id,
         touchedManually: true,
         note: input.note ?? stay.note,
@@ -415,30 +440,34 @@ export async function confirmCheckIn(
       keyId: input.keyId ?? null,
     });
 
-    return { stay, roomNumber: stay.room.number, keyCode: key?.code ?? null };
+    return {
+      stay,
+      roomNumber: stay.room.number,
+      keyCode: key?.code ?? null,
+      canonicalStayId: stay.id,
+      consolidated: false,
+    };
   });
 
   await recordAudit({
     entity: 'RoomStay',
-    entityId: result.stay.id,
+    entityId: result.canonicalStayId,
     action: AuditAction.CAMBIO_ESTADO,
     user,
     summary:
-      `Check-in confirmado en habitación ${result.roomNumber}: ` +
+      `${result.consolidated ? 'Check-in consolidado' : 'Check-in confirmado'} en habitación ${result.roomNumber}: ` +
       `${result.stay.guestNames[0] ?? 'sin nombre'} (reserva ${result.stay.reservationId})` +
       (result.keyCode ? `, llave ${result.keyCode}` : ', sin llave disponible'),
-    after: { status: RoomStayStatus.IN_HOUSE, stage: RoomStayStage.CONFIRMADO },
+    after: {
+      status: RoomStayStatus.IN_HOUSE,
+      stage: RoomStayStage.CONFIRMADO,
+      consolidated: result.consolidated,
+    },
   });
 
   return { roomNumber: result.roomNumber, keyCode: result.keyCode };
 }
 
-/**
- * Marca las llaves de una habitación como pendientes de devolución.
- *
- * Se ejecuta al importar una salida: el huésped sigue teniendo la llave, pero
- * recepción ya sabe que tiene que recuperarla.
- */
 export async function flagDepartureKeys(
   user: CurrentUser,
   stayId: string,
@@ -448,7 +477,6 @@ export async function flagDepartureKeys(
   });
 }
 
-/** Recuento por estado para las fichas resumen del tablero. */
 export async function countRoomStates(): Promise<Record<string, number>> {
   const rooms = await listRoomsWithState();
   const counts: Record<string, number> = {};
@@ -458,23 +486,6 @@ export async function countRoomStates(): Promise<Record<string, number>> {
   return counts;
 }
 
-/**
- * Elimina lógicamente una estadía, para desatascar un conflicto.
- *
- * Existe porque un estado histórico incoherente —una estadía duplicada, una
- * cargada antes de que una regla existiera— puede dejar una habitación
- * bloqueada, y la operación necesita una salida que no sea tocar la base a
- * mano. La reserva el **Administrador de sistema**: es la única acción sobre
- * estadías que le corresponde, porque no es operar el mesón sino reparar el
- * sistema, y no lo deja como responsable de ninguna llegada ni salida.
- *
- * Nada se borra de verdad: `deletedAt`, `deletedById` y un **motivo
- * obligatorio**, como el resto del sistema.
- *
- * La llave que tuviera asignada se libera en la misma transacción. Dejarla
- * apuntando a una estadía eliminada es exactamente el conflicto que esta
- * acción viene a resolver.
- */
 export async function softDeleteStay(
   user: CurrentUser,
   input: { stayId: string; reason: string },
@@ -502,8 +513,6 @@ export async function softDeleteStay(
       },
     });
 
-    // La llave vuelve al inventario: una llave asignada a una estadía
-    // eliminada es el conflicto que esto viene a resolver.
     const released = await tx.roomKey.updateMany({
       where: { stayId: stay.id },
       data: { stayId: null, status: KeyStatus.DISPONIBLE },
@@ -526,32 +535,6 @@ export async function softDeleteStay(
   return result;
 }
 
-/**
- * Resetea una habitación atascada por duplicidad.
- *
- * El caso real: dos estadías de la misma reserva y la misma fase conviven en
- * la habitación —una llegó por el informe de in house y otra por el de
- * entradas—, la ficha muestra al mismo huésped como «Actual» y «Entrante», y
- * el mesón no puede confirmar ni el check-in ni el check-out porque la regla
- * de cola ve un conflicto que en la realidad no existe.
- *
- * NO borra la habitación ni sus estadías. Colapsa las duplicadas:
- *
- *   1. Agrupa las estadías vivas por reserva y **fase** (`stayPhase`), que es
- *      la misma noción que usa la importación. Dentro de cada grupo conserva
- *      la de estado más avanzado y elimina lógicamente el resto, con motivo.
- *   2. Libera las llaves que quedaron apuntando a una estadía eliminada.
- *   3. Vuelve a aplicar la regla de la llave principal llamando a
- *      `reconcilePrincipalKeys`, que es **la única implementación** que decide
- *      quién tiene la llave. No se escribe una segunda acá.
- *
- * Si no había duplicados, no toca nada y lo dice: un reseteo que "arregla"
- * algo que estaba bien es un reseteo que destruye datos.
- *
- * Lo pueden hacer el Administrador de sistema y el Supervisor: es reparación
- * del sistema, no operación del mesón, y por eso no entra en la exclusión del
- * administrador.
- */
 export async function resetRoom(
   user: CurrentUser,
   input: { roomNumber: string; reason: string },
@@ -577,11 +560,6 @@ export async function resetRoom(
         orderBy: { createdAt: 'asc' },
       });
 
-      /*
-        Se conserva UNA estadía por reserva y fase: la de estado más avanzado.
-        Con empate de estado gana la más antigua, que es la que ya tiene
-        historia colgando (comentarios, movimientos de llave).
-      */
       const keep = new Map<string, (typeof stays)[number]>();
       for (const stay of stays) {
         const key = `${stay.reservationId}|${stayPhase(stay.status as StayStatus)}`;
@@ -614,11 +592,6 @@ export async function resetRoom(
         });
       }
 
-      /*
-        Toda llave de esta habitación que apunte a una estadía que ya no está
-        viva queda huérfana. Se sueltan aquí y `reconcilePrincipalKeys` decide
-        a continuación quién debe tenerla.
-      */
       const orphaned = await tx.roomKey.updateMany({
         where: {
           roomId: room.id,
@@ -643,8 +616,6 @@ export async function resetRoom(
         remaining: keptIds.size,
       };
     },
-    // El cruce de llaves recorre todas las estadías activas: con la base en
-    // otra región, el plazo por omisión de cinco segundos no alcanza.
     { timeout: 30_000, maxWait: 10_000 },
   );
 

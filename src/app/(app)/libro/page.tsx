@@ -22,6 +22,7 @@ const TABS = [
   { label: 'Todo', href: '/libro' },
   { label: 'Registros', href: '/libro?clase=entry' },
   { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
+  { label: 'Multas', href: '/libro?clase=fine' },
   { label: 'Tareas', href: '/libro?clase=task' },
   { label: 'Seguimientos', href: '/libro?clase=followup' },
   { label: 'Alertas', href: '/libro?clase=alert' },
@@ -42,7 +43,6 @@ export default async function BookPage({
     getShiftOptions(),
   ]);
 
-  // La pestaña activa se deduce de los mismos parámetros que ya filtran.
   const clase = typeof params.clase === 'string' ? params.clase : undefined;
   const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
   const activeTab =
@@ -52,11 +52,6 @@ export default async function BookPage({
         ? `/libro?clase=${clase}`
         : '/libro';
 
-  /*
-    Vistas especializadas. No se duplican acá: cada una aporta acciones que el
-    listado cronológico no tiene (reconocer una alerta, cerrar un seguimiento
-    con su resultado, el avance de la lista de una tarea).
-  */
   const SPECIALIZED: Record<string, { href: string; label: string }> = {
     task: { href: '/tareas', label: 'Abrir vista de tareas' },
     followup: { href: '/seguimientos', label: 'Abrir vista de seguimientos' },
@@ -79,12 +74,6 @@ export default async function BookPage({
         </p>
       </header>
 
-      {/*
-        Cada pestaña es un filtro de esta misma vista, no otro módulo: cambia
-        el parámetro `clase` de la URL. Las clases que tienen acciones propias
-        —alertas y seguimientos— ofrecen además el enlace a su pantalla
-        especializada, que sigue existiendo como vista secundaria.
-      */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ViewTabs label="Clase de registro" activeHref={activeTab} tabs={TABS} />
         {specialized ? (

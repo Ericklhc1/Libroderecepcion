@@ -40,16 +40,10 @@ h4 {
       placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500;
   }
 
-  /*
-    Etiqueta de formulario. Sin mayúsculas ni espaciado forzado: la jerarquía
-    la dan el tamaño, el peso y el color, que es lo que hace que la pantalla
-    se lea como software de hotelería y no como una terminal.
-  */
   .label-base {
     @apply mb-1 block text-sm font-medium text-petrol-800;
   }
 
-  /* Metadato o etiqueta menor: peso medio, caja normal. */
   .meta-label {
     @apply text-xs font-medium text-slate-500;
   }
@@ -67,12 +61,71 @@ h4 {
   }
 }
 
-/* Impresión: la entrega de turno se imprime en algunas recepciones. */
+/*
+  Impresión / PDF del cierre.
+
+  El navegador ya produce PDF con mejor fidelidad que mantener un segundo
+  renderizador. La hoja usa margen real de 1 cm en los cuatro lados y se
+  compacta sólo al imprimir: la interfaz normal conserva su respiración.
+*/
+@page {
+  size: A4;
+  margin: 1cm;
+}
+
 @media print {
+  html,
+  body {
+    height: auto;
+    background: white !important;
+  }
+
+  body {
+    font-size: 9.5pt;
+    line-height: 1.25;
+  }
+
   .no-print {
     display: none !important;
   }
-  body {
-    @apply bg-white;
+
+  .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+    border-radius: 6px !important;
+  }
+
+  .card-header {
+    padding: 0.28cm 0.35cm !important;
+  }
+
+  .card > div,
+  .card > ul > li {
+    break-inside: avoid;
+  }
+
+  .card > ul > li {
+    padding-top: 0.18cm !important;
+    padding-bottom: 0.18cm !important;
+  }
+
+  h1 {
+    font-size: 15pt !important;
+  }
+
+  h2,
+  h3 {
+    font-size: 11pt !important;
+  }
+
+  p {
+    orphans: 2;
+    widows: 2;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
   }
 }

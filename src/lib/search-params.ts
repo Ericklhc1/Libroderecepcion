@@ -30,7 +30,7 @@ export function parseBookFilters(
   const clase = one(params.clase);
 
   const kinds: BookKind[] | undefined =
-    clase && ['entry', 'task', 'followup', 'alert'].includes(clase)
+    clase && ['entry', 'task', 'followup', 'alert', 'fine'].includes(clase)
       ? [clase as BookKind]
       : defaults.kinds;
 

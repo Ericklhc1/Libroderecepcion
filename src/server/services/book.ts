@@ -3,6 +3,7 @@ import {
   AlertStatus,
   EntryStatus,
   EntryType,
+  FineStatus,
   FollowUpStatus,
   TaskStatus,
 } from '@prisma/client';
@@ -25,16 +26,21 @@ import {
   isOverdue,
   type Tone,
 } from '@/domain/labels';
+import {
+  FINE_KIND_LABELS,
+  FINE_STATUS_LABELS,
+  OPEN_FINE_STATUSES,
+} from '@/domain/fines';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
 /**
  * El libro operativo es una vista cronológica única.
  *
- * En lugar de duplicar módulos, se unifican en un mismo flujo los cuatro
- * objetos operativos —registros, tareas, seguimientos y alertas— mediante una
- * proyección común (`BookItem`). Cada uno conserva su modelo y sus reglas.
+ * No se duplican entidades para hacerlas aparecer acá: cada módulo conserva su
+ * propia fuente de verdad y se proyecta como `BookItem`. Las multas forman
+ * parte del libro igual que incidencias, tareas, seguimientos y alertas.
  */
-export type BookKind = 'entry' | 'task' | 'followup' | 'alert';
+export type BookKind = 'entry' | 'task' | 'followup' | 'alert' | 'fine';
 
 export type BookItem = {
   kind: BookKind;
@@ -84,9 +90,22 @@ export type BookFilters = {
 
 const DEFAULT_PAGE_SIZE = 40;
 
+/**
+ * El buscador acepta la forma en que el mesón escribe las referencias: `@401`,
+ * `#123`, `T#44` y texto normal. El prefijo ayuda a leer, pero no debe volver
+ * invisible el dato en la base.
+ */
 function textSearch(q: string | undefined) {
   if (!q || q.trim().length === 0) return null;
-  return q.trim();
+  const raw = q.trim();
+  const normalized = raw.replace(/^T#/i, '').replace(/^[@#]/, '').trim();
+  return normalized || raw;
+}
+
+function numericRef(q: string | null): number | null {
+  if (!q || !/^\d+$/.test(q)) return null;
+  const value = Number(q);
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 function shiftLabel(shift: { type: string; date: Date } | null | undefined): string | null {
@@ -113,9 +132,10 @@ export async function getBookItems(filters: BookFilters): Promise<{
   const kinds: BookKind[] =
     filters.kinds && filters.kinds.length > 0
       ? filters.kinds
-      : ['entry', 'task', 'followup', 'alert'];
+      : ['entry', 'task', 'followup', 'alert', 'fine'];
 
   const q = textSearch(filters.q);
+  const seq = numericRef(q);
   const deletedFilter = filters.includeDeleted ? {} : { deletedAt: null };
   const dateRange =
     filters.from || filters.to
@@ -127,8 +147,6 @@ export async function getBookItems(filters: BookFilters): Promise<{
 
   async function entryItems(): Promise<BookItem[]> {
     const items: BookItem[] = [];
-    // Cada grupo de condiciones se acumula en AND: así ningún filtro
-    // sobrescribe a otro y todos se aplican simultáneamente.
     const and: Prisma.OperationalEntryWhereInput[] = [];
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });
@@ -144,11 +162,18 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(seq !== null ? [{ seq }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
           { guest: { fullName: { contains: q, mode: 'insensitive' } } },
+          { guest: { roomNumber: { contains: q, mode: 'insensitive' } } },
           { reservation: { code: { contains: q, mode: 'insensitive' } } },
+          { reservation: { roomNumber: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { username: { contains: q, mode: 'insensitive' } } },
+          { owner: { name: { contains: q, mode: 'insensitive' } } },
+          { owner: { username: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -231,8 +256,6 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { assigneeId: filters.userId }] });
     }
-    // La habitación y la reserva llegan a la tarea a través de su registro de
-    // origen: si la tarea no tiene ese vínculo, queda fuera del resultado.
     if (filters.room) {
       and.push({
         entry: {
@@ -251,10 +274,17 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(seq !== null ? [{ seq }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
           { entry: { guest: { fullName: { contains: q, mode: 'insensitive' } } } },
+          { entry: { guest: { roomNumber: { contains: q, mode: 'insensitive' } } } },
+          { entry: { reservation: { code: { contains: q, mode: 'insensitive' } } } },
+          { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { username: { contains: q, mode: 'insensitive' } } },
+          { assignee: { name: { contains: q, mode: 'insensitive' } } },
+          { assignee: { username: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -354,6 +384,10 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { action: { contains: q, mode: 'insensitive' } },
           { nextAction: { contains: q, mode: 'insensitive' } },
           { result: { contains: q, mode: 'insensitive' } },
+          { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { username: { contains: q, mode: 'insensitive' } } },
+          { owner: { name: { contains: q, mode: 'insensitive' } } },
+          { owner: { username: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -440,6 +474,10 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { title: { contains: q, mode: 'insensitive' } },
           { message: { contains: q, mode: 'insensitive' } },
           { guest: { fullName: { contains: q, mode: 'insensitive' } } },
+          { guest: { roomNumber: { contains: q, mode: 'insensitive' } } },
+          { reservation: { code: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { username: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -499,17 +537,113 @@ export async function getBookItems(filters: BookFilters): Promise<{
     return items;
   }
 
-  /*
-    Las cuatro fuentes se consultan en paralelo. Antes corrían una detrás de
-    otra: con la base en otra región, cada espera costaba un viaje completo y
-    abrir el libro sumaba cuatro. Ahora el costo es el de la consulta más
-    lenta, no el de la suma.
-  */
+  async function fineItems(): Promise<BookItem[]> {
+    /*
+      Una multa es una entidad operativa propia. No se crea una incidencia copia
+      para verla en el Libro: eso partiría su estado en dos lugares. Los filtros
+      que una multa no posee (turno, área, prioridad, responsable o tipo de
+      registro) simplemente la excluyen de esa consulta especializada.
+    */
+    if (
+      filters.shiftId ||
+      filters.departmentId ||
+      filters.priority ||
+      filters.ownerId ||
+      filters.entryType
+    ) {
+      return [];
+    }
+
+    const and: Prisma.FineWhereInput[] = [];
+    if (filters.userId) and.push({ createdById: filters.userId });
+    if (filters.room) {
+      and.push({ room: { number: { contains: filters.room, mode: 'insensitive' } } });
+    }
+    if (filters.reservation) {
+      and.push({ reservationCode: { contains: filters.reservation, mode: 'insensitive' } });
+    }
+    if (q) {
+      and.push({
+        OR: [
+          { reservationCode: { contains: q, mode: 'insensitive' } },
+          { guestName: { contains: q, mode: 'insensitive' } },
+          { reason: { contains: q, mode: 'insensitive' } },
+          { itemDetail: { contains: q, mode: 'insensitive' } },
+          { stainType: { contains: q, mode: 'insensitive' } },
+          { guestStatement: { contains: q, mode: 'insensitive' } },
+          { room: { number: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+          { createdBy: { username: { contains: q, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    const where: Prisma.FineWhereInput = {
+      ...deletedFilter,
+      ...(dateRange ? { createdAt: dateRange } : {}),
+      ...(filters.status && filters.status in FineStatus
+        ? { status: filters.status as FineStatus }
+        : {}),
+      ...(filters.onlyOpen
+        ? { status: { in: OPEN_FINE_STATUSES.map((status) => FineStatus[status]) } }
+        : {}),
+      ...(and.length > 0 ? { AND: and } : {}),
+    };
+
+    const rows = await prisma.fine.findMany({
+      where,
+      include: {
+        room: { select: { number: true } },
+        createdBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: window,
+    });
+
+    return rows.map((row) => {
+      const tone: Tone =
+        row.status === FineStatus.COBRADA
+          ? 'resuelto'
+          : row.status === FineStatus.NOTIFICADA
+            ? 'atencion'
+            : row.status === FineStatus.REGISTRADA
+              ? 'pendiente'
+              : 'neutro';
+      const detail = row.itemDetail || row.stainType;
+      return {
+        kind: 'fine' as const,
+        id: row.id,
+        ref: `Multa · ${row.room.number}`,
+        kindLabel: 'Multa',
+        typeLabel: FINE_KIND_LABELS[row.kind],
+        title: `Multa habitación ${row.room.number} · ${row.guestName}`,
+        summary: `${detail ? `${detail}. ` : ''}${row.reason}`.slice(0, 180),
+        statusLabel: FINE_STATUS_LABELS[row.status],
+        tone,
+        priorityLabel: null,
+        priorityTone: null,
+        departmentName: null,
+        ownerName: null,
+        creatorName: row.createdBy.name,
+        date: row.createdAt,
+        shiftLabel: null,
+        dueAt: null,
+        overdue: false,
+        hasFollowUp: OPEN_FINE_STATUSES.includes(row.status),
+        commentCount: 0,
+        guestLabel: `${row.guestName} · hab. ${row.room.number} · rva. ${row.reservationCode}`,
+        href: `/habitaciones/${row.room.number}?multa=${row.id}`,
+        deleted: row.deletedAt !== null,
+      } satisfies BookItem;
+    });
+  }
+
   const groups = await Promise.all([
     kinds.includes('entry') ? entryItems() : [],
     kinds.includes('task') ? taskItems() : [],
     kinds.includes('followup') ? followUpItems() : [],
     kinds.includes('alert') ? alertItems() : [],
+    kinds.includes('fine') ? fineItems() : [],
   ]);
 
   const items = groups.flat();

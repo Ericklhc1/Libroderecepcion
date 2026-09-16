@@ -67,8 +67,8 @@ export const ROOM_STATE_LABELS: Record<RoomState, string> = {
  */
 export const ROOM_STATE_ACTIONS: Record<RoomState, string> = {
   OCUPADA: 'Sin acción pendiente',
-  CHECK_OUT_PENDIENTE: 'Confirmar la salida y recibir la llave',
-  PENDIENTE_LIBERACION: 'Confirmar la salida anterior antes de entregar la habitación',
+  CHECK_OUT_PENDIENTE: 'Confirmar la salida; la llave se recibe por separado',
+  PENDIENTE_LIBERACION: 'Confirmar la salida anterior para liberar la habitación',
   CHECK_IN_EN_COLA: 'La habitación sigue ocupada: la entrada espera',
   CHECK_IN_LISTO: 'Confirmar el check-in y entregar la llave',
   DISPONIBLE: 'Disponible para asignar',
@@ -208,7 +208,9 @@ export function deriveRoomState(input: {
  *
  * CHECK_IN no tiene llave: la reserva entrante no recibe nada hasta que
  * alguien confirme el check-in. IN_HOUSE exige al menos la principal.
- * CHECK_OUT conserva la llave hasta que la salida se confirme.
+ * CHECK_OUT conserva la llave mientras el huésped todavía la tiene; confirmar
+ * la salida NO inventa una devolución física, sólo permite que la llave quede
+ * pendiente hasta que recepción la reciba.
  */
 /**
  * Quién debe tener la llave principal de la habitación, y en qué estado.
@@ -218,7 +220,7 @@ export function deriveRoomState(input: {
  * pantalla de revisión anuncia que va a pasar, para que no puedan divergir.
  *
  *   · salida sin confirmar → PENDIENTE_DEVOLUCION: la tiene y hay que
- *     recuperarla, así que confirmar la salida la devuelve al inventario.
+ *     recuperarla. Confirmar el C/O libera la habitación, no la llave.
  *   · in house             → ASIGNADA.
  *   · entrada sin confirmar→ nadie. Es la regla de cola: quien espera no
  *     recibe llave hasta que la salida anterior se confirme.
@@ -245,8 +247,12 @@ export function principalKeyHolder(
 export function expectedKeys(status: StayStatus, stage: StayStage): { min: number; max: number } {
   if (status === 'CHECK_IN') return { min: 0, max: 0 };
   if (status === 'IN_HOUSE') return { min: 1, max: Infinity };
-  // CHECK_OUT
-  return stage === 'FINALIZADO' ? { min: 0, max: 0 } : { min: 1, max: Infinity };
+  /*
+    Una salida finalizada puede tener cero llaves (ya volvieron) o seguir con
+    una o más PENDIENTE_DEVOLUCION. El C/O y la devolución física son hechos
+    distintos, así que ambos escenarios son coherentes.
+  */
+  return stage === 'FINALIZADO' ? { min: 0, max: Infinity } : { min: 1, max: Infinity };
 }
 
 export const KEY_STATUS_LABELS: Record<KeyStatusValue, string> = {
@@ -339,7 +345,7 @@ export const KEY_STATUS_TONE: Record<KeyStatusValue, Tone> = {
  *
  * CHECK_OUT gana sobre todo porque es lo que exige acción del mesón: si el
  * huésped está dentro y además tiene salida hoy, lo que hay que hacer es
- * confirmar la salida y recuperar la llave.
+ * confirmar la salida y dejar su llave pendiente hasta que vuelva al mesón.
  */
 const STAY_PROGRESS: Record<StayStatus, number> = {
   CHECK_IN: 0,

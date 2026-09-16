@@ -8,15 +8,16 @@ import { confirmAnnouncementAction } from '@/server/actions/announcements';
 import type { PendingAnnouncement } from '@/server/services/announcements';
 
 /**
- * Comunicado obligatorio: bloquea la pantalla hasta confirmar la lectura.
+ * Aviso importante: bloquea la pantalla hasta confirmar la lectura.
  *
- * Se muestra UNO a la vez, el primero de la cola. Apilar cinco comunicados en
- * una pantalla es garantizar que no se lea ninguno; de a uno, cada
- * confirmación revela el siguiente.
+ * Se muestra UNO a la vez, el primero de la cola. Apilar cinco avisos en una
+ * pantalla es garantizar que no se lea ninguno; de a uno, cada confirmación
+ * revela el siguiente.
  *
- * No hay forma de cerrarlo: ni aspa, ni Escape, ni clic fuera. Eso es el punto
- * —si se pudiera esquivar no sería obligatorio— y por eso el texto de
- * confirmación es obligatorio: un botón solo se pulsa sin leer.
+ * No hay forma de cerrarlo: ni aspa, ni Escape, ni clic fuera. La exigencia
+ * operativa no cambió; sólo el lenguaje visible evita presentar una medida de
+ * seguridad como una amenaza. El texto de confirmación sigue siendo
+ * obligatorio porque un botón solo se pulsa sin leer.
  *
  * El bloqueo es de interfaz, no de seguridad: quien sepa usar la consola puede
  * saltárselo. Lo que garantiza el sistema es que **sin confirmar no queda
@@ -39,7 +40,7 @@ export function AnnouncementGate({
       className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-petrol-950/80 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="comunicado-titulo"
+      aria-labelledby="aviso-importante-titulo"
     >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
         <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
@@ -53,7 +54,7 @@ export function AnnouncementGate({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="atencion">
-                {current.personal ? 'Comunicado para ti' : 'Comunicado para todos'}
+                {current.personal ? 'Aviso importante para ti' : 'Aviso importante para el equipo'}
               </Badge>
               {remaining > 0 ? (
                 <span className="text-xs text-slate-500">
@@ -62,7 +63,7 @@ export function AnnouncementGate({
               ) : null}
             </div>
             <h2
-              id="comunicado-titulo"
+              id="aviso-importante-titulo"
               className="mt-1 text-lg font-semibold text-petrol-900"
             >
               {current.title}
@@ -74,17 +75,10 @@ export function AnnouncementGate({
         </div>
 
         <div className="px-5 py-4">
-          {/* `whitespace-pre-line` conserva los saltos que escribió el Supervisor. */}
           <p className="whitespace-pre-line text-sm text-slate-700">{current.body}</p>
         </div>
 
         <div className="border-t border-slate-100 px-5 py-4">
-          {/*
-            `refreshOnSuccess`: el bloqueo se calcula en el LAYOUT, así que
-            `revalidatePath` no basta —el router del cliente seguiría mostrando
-            el árbol que ya tenía y la pantalla quedaría bloqueada con la
-            confirmación ya guardada en la base—.
-          */}
           <ActionForm action={confirmAnnouncementAction} refreshOnSuccess>
             <input type="hidden" name="announcementId" value={current.id} />
             <Field
@@ -108,7 +102,7 @@ export function AnnouncementGate({
             </SubmitButton>
           </ActionForm>
           <p className="mt-2 text-center text-xs text-slate-400">
-            No se puede continuar sin confirmar.
+            Este aviso requiere confirmación antes de continuar.
           </p>
         </div>
       </div>

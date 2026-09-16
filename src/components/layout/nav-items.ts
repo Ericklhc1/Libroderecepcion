@@ -13,6 +13,7 @@ export type NavItem = {
     | 'metrics'
     | 'room'
     | 'key'
+    | 'cash'
     | 'admin';
   /** Se muestra si el usuario tiene al menos uno de estos permisos. */
   anyOf?: PermissionKey[];
@@ -28,14 +29,9 @@ export type NavGroup = {
 
 /**
  * La navegación responde a cinco preguntas operativas, en este orden:
- * qué ocurre ahora, qué queda pendiente, qué pasa en cada habitación, qué se
- * entrega al siguiente turno y qué debe revisar el Supervisor.
- *
- * Tareas, incidencias, seguimientos y alertas no son destinos del menú: son
- * clases de un mismo flujo y se consultan desde el Libro operativo, desde
- * Inicio, desde la ficha de la habitación y desde Supervisión. Sus páginas
- * siguen existiendo como vista secundaria (pestañas del libro), porque cada
- * una aporta acciones propias que no se pueden perder.
+ * qué ocurre ahora, qué queda pendiente, qué pasa en cada habitación, qué hay
+ * físicamente en caja, qué se entrega al siguiente turno y qué debe revisar el
+ * Supervisor.
  */
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
@@ -44,6 +40,13 @@ const PRIMARY: NavItem[] = [
     href: '/habitaciones',
     label: 'Habitaciones',
     icon: 'room',
+    anyOf: ['room.view'],
+    mobile: true,
+  },
+  {
+    href: '/caja',
+    label: 'Caja',
+    icon: 'cash',
     anyOf: ['room.view'],
     mobile: true,
   },

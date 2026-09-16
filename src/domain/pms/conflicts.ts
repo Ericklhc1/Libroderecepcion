@@ -34,7 +34,7 @@ export const CONFLICT_LABELS: Record<ConflictKind, string> = {
   ENTRADA_YA_REALIZADA: 'Entrada que el informe in house ya da por realizada',
   IN_HOUSE_SIN_LLAVE: 'Habitación in house sin llave',
   CHECK_IN_CON_LLAVE: 'Entrada con llave asignada antes del check-in',
-  SALIDA_CONFIRMADA_CON_LLAVE: 'Salida confirmada con llave sin devolver',
+  SALIDA_CONFIRMADA_CON_LLAVE: 'Salida confirmada con llave todavía asignada',
   MULTIPLES_PRINCIPALES: 'Más de una llave principal',
   INFORMES_CONTRADICTORIOS: 'La misma reserva con datos distintos en dos informes',
   HABITACION_SIN_NUMERO: 'Fila sin número de habitación',
@@ -182,19 +182,30 @@ export function detectConflicts(input: ConflictInput): Conflict[] {
       }
     }
 
-    // 5. Salida confirmada y la llave sigue fuera.
+    /*
+      5. Una salida confirmada puede conservar una llave PENDIENTE_DEVOLUCION:
+      eso no es una contradicción, es precisamente cómo se representa que el
+      huésped ya salió pero el objeto físico todavía no volvió. Sólo hay
+      conflicto si la llave quedó como ASIGNADA/COPIA_ADICIONAL, es decir, si
+      el C/O no la pasó al estado operativo correcto.
+    */
     const settledCheckouts = room.stays.filter(
       (stay) => stay.status === 'CHECK_OUT' && stay.stage === 'FINALIZADO',
     );
     for (const stay of settledCheckouts) {
-      const stillOut = assigned.filter((key) => key.stayId === stay.id);
-      if (stillOut.length) {
+      const stillAssigned = room.keys.filter(
+        (key) =>
+          key.stayId === stay.id &&
+          ['ASIGNADA', 'COPIA_ADICIONAL'].includes(key.status),
+      );
+      if (stillAssigned.length) {
         conflicts.push({
           kind: 'SALIDA_CONFIRMADA_CON_LLAVE',
           roomNumber: room.number,
           detail:
-            `La salida de ${guestLabel(stay)} está confirmada y siguen sin devolver ` +
-            `${stillOut.map((key) => key.code).join(', ')}.`,
+            `La salida de ${guestLabel(stay)} está confirmada y ` +
+            `${stillAssigned.map((key) => key.code).join(', ')} sigue(n) marcada(s) como entregada(s) ` +
+            'en lugar de pendiente(s) de devolución.',
         });
       }
     }

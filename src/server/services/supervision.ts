@@ -1,11 +1,15 @@
 import 'server-only';
 import {
   AlertLevel,
-  GuaranteeState,
   EntryType,
+  FineStatus,
   FollowUpStatus,
+  GuaranteeState,
   HandoverStatus,
+  KeyStatus,
   Priority,
+  RoomStayStage,
+  RoomStayStatus,
   Severity,
   ShiftStatus,
 } from '@prisma/client';
@@ -17,6 +21,12 @@ import {
   GUARANTEE_STATE_LABELS,
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
+import {
+  FINE_STATUS_LABELS,
+  fineSummary,
+  type FineKindValue,
+  type LinenKindValue,
+} from '@/domain/fines';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import { getLiveConflicts } from './pms-import';
 
@@ -28,6 +38,10 @@ import { getLiveConflicts } from './pms-import';
  * no tiene responsable y los conflictos de habitaciones y llaves. No define
  * entidades nuevas ni duplica reglas: consulta los mismos modelos y reutiliza
  * el detector de conflictos de la importación.
+ *
+ * También muestra las excepciones físicas que el Libro no debe convertir en
+ * registros duplicados sólo para que el Supervisor las vea: C/O sin confirmar,
+ * llaves por recuperar y multas abiertas.
  *
  * Todo se resuelve en un único `Promise.all`: la base está en otra región y
  * encadenar esperas es lo que se nota como lentitud.
@@ -78,6 +92,9 @@ export async function getSupervisionData(): Promise<{
     unassigned,
     criticalAlerts,
     conflicts,
+    pendingDepartures,
+    pendingKeys,
+    openFines,
     openGuarantees,
     staleHandovers,
     pendingClosures,
@@ -176,8 +193,62 @@ export async function getSupervisionData(): Promise<{
       take: 20,
     }),
     getLiveConflicts(),
-    // Garantías vivas cuya reserva ya llegó a su fecha de salida: es el
-    // momento en que hay que devolverlas, aplicarlas o cobrarlas.
+    // Salidas que el PMS ya informó y recepción todavía no confirmó.
+    prisma.roomStay.findMany({
+      where: {
+        deletedAt: null,
+        status: RoomStayStatus.CHECK_OUT,
+        stage: { not: RoomStayStage.FINALIZADO },
+      },
+      select: {
+        id: true,
+        reservationId: true,
+        guestNames: true,
+        departureDate: true,
+        room: { select: { number: true } },
+      },
+      orderBy: [{ departureDate: 'asc' }, { createdAt: 'asc' }],
+      take: 20,
+    }),
+    // Objeto físico todavía fuera. Puede seguir pendiente aunque el C/O ya se
+    // haya confirmado: eso es una excepción a resolver, no una habitación ocupada.
+    prisma.roomKey.findMany({
+      where: { status: KeyStatus.PENDIENTE_DEVOLUCION },
+      select: {
+        id: true,
+        code: true,
+        room: { select: { number: true } },
+        stay: { select: { reservationId: true, guestNames: true, stage: true } },
+      },
+      orderBy: { code: 'asc' },
+      take: 20,
+    }),
+    // Multas que todavía piden una decisión. La entidad sigue viviendo en
+    // Multas/Habitación; Supervisión sólo la proyecta.
+    prisma.fine.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: [FineStatus.REGISTRADA, FineStatus.NOTIFICADA] },
+      },
+      select: {
+        id: true,
+        status: true,
+        kind: true,
+        linenKind: true,
+        itemDetail: true,
+        stainType: true,
+        reason: true,
+        amount: true,
+        currency: true,
+        reservationCode: true,
+        guestName: true,
+        room: { select: { number: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    }),
+    // Garantías vivas cuya reserva YA llegó a su salida. Una garantía vigente
+    // durante una estadía normal no es una excepción de Supervisión.
     prisma.guarantee.findMany({
       where: {
         deletedAt: null,
@@ -188,6 +259,7 @@ export async function getSupervisionData(): Promise<{
             GuaranteeState.APLICADA_PARCIALMENTE,
           ],
         },
+        reservationReference: { checkOut: { lte: now } },
       },
       select: {
         id: true,
@@ -341,12 +413,72 @@ export async function getSupervisionData(): Promise<{
       })),
     },
     {
+      key: 'salidas',
+      title: 'Salidas por confirmar',
+      hint: 'El PMS ya informa el C/O y recepción todavía no confirmó que el huésped dejó la habitación.',
+      tone: 'atencion',
+      rows: pendingDepartures.map((stay) => ({
+        id: stay.id,
+        ref: stay.room ? `Hab. ${stay.room.number}` : `Reserva ${stay.reservationId}`,
+        title: stay.guestNames[0] ?? 'Huésped sin nombre',
+        detail: `Reserva ${stay.reservationId} · salida ${stay.departureDate ? stay.departureDate.toLocaleString('es-CL') : 'sin hora'}`,
+        href: stay.room ? `/habitaciones/${stay.room.number}` : '/habitaciones',
+        meta: stay.departureDate && stay.departureDate <= now ? 'salida vencida' : 'por confirmar',
+      })),
+    },
+    {
+      key: 'llaves-pendientes',
+      title: 'Llaves por recuperar',
+      hint: 'La llave sigue fuera del inventario. Una salida confirmada no la devuelve por sí sola: hay que recibir el objeto físico.',
+      tone: 'atencion',
+      rows: pendingKeys.map((key) => ({
+        id: key.id,
+        ref: key.room ? `Hab. ${key.room.number}` : key.code,
+        title: `Llave ${key.code}`,
+        detail: [
+          key.stay?.guestNames[0],
+          key.stay?.reservationId ? `reserva ${key.stay.reservationId}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
+        href: key.room ? `/habitaciones/${key.room.number}` : '/llaves',
+        meta:
+          key.stay?.stage === RoomStayStage.FINALIZADO
+            ? 'huésped ya salió · falta devolver llave'
+            : 'pendiente de devolución',
+      })),
+    },
+    {
+      key: 'multas',
+      title: 'Multas pendientes',
+      hint: 'Registradas o notificadas y todavía sin una decisión final.',
+      tone: 'atencion',
+      rows: openFines.map((fine) => ({
+        id: fine.id,
+        ref: `Hab. ${fine.room.number}`,
+        title: fineSummary({
+          roomNumber: fine.room.number,
+          kind: fine.kind as FineKindValue,
+          linenKind: fine.linenKind as LinenKindValue | null,
+          itemDetail: fine.itemDetail,
+          stainType: fine.stainType,
+        }),
+        detail: `${fine.guestName} · reserva ${fine.reservationCode} · ${fine.reason}`,
+        href: `/habitaciones/${fine.room.number}?multa=${fine.id}`,
+        meta: [
+          FINE_STATUS_LABELS[fine.status],
+          fine.amount ? `${fine.currency} ${fine.amount.toString()}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
+      })),
+    },
+    {
       key: 'garantias',
       title: 'Garantías por resolver',
       hint: 'Vivas y con la salida encima: devolverlas, aplicarlas o cobrarlas antes de cerrar la cuenta.',
       tone: 'critico',
       rows: openGuarantees
-        // Lo urgente es lo que ya llegó a su salida; el resto informa.
         .sort((a, b) => {
           const sa = a.reservationReference.checkOut?.getTime() ?? Infinity;
           const sb = b.reservationReference.checkOut?.getTime() ?? Infinity;
@@ -354,18 +486,17 @@ export async function getSupervisionData(): Promise<{
         })
         .map((guarantee) => {
           const reserva = guarantee.reservationReference;
-          const sale = reserva.checkOut !== null && reserva.checkOut <= now;
           return {
             id: guarantee.id,
             ref: `Reserva ${reserva.code}`,
             title: `${reserva.guest?.fullName ?? 'Sin huésped'} · ${guarantee.currency} ${guarantee.amount.toString()}`,
             detail: GUARANTEE_STATE_ACTIONS[guarantee.state as GuaranteeStateValue],
-            href: '/huespedes',
+            href: reserva.roomNumber ? `/habitaciones/${reserva.roomNumber}` : '/huespedes',
             meta:
               [
                 GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue],
                 reserva.roomNumber ? `hab. ${reserva.roomNumber}` : null,
-                sale ? 'salida vencida' : null,
+                'salida vencida',
               ]
                 .filter(Boolean)
                 .join(' · ') || null,
@@ -382,7 +513,7 @@ export async function getSupervisionData(): Promise<{
     {
       key: 'conflictos-llaves',
       title: 'Conflictos de llaves',
-      hint: 'Llaves cuyo estado no coincide con la ocupación de la habitación.',
+      hint: 'Llaves cuyo estado contradice la ocupación; una devolución pendiente normal se muestra arriba, no como conflicto.',
       tone: 'atencion',
       rows: conflictRows(keyConflicts),
     },

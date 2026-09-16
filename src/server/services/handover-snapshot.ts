@@ -2,10 +2,14 @@ import 'server-only';
 import {
   AlertLevel,
   EntryType,
+  FineStatus,
   FollowUpStatus,
   GuaranteeStatus,
   HandoverLevel,
+  KeyStatus,
   ReservationStatus,
+  RoomStayStage,
+  RoomStayStatus,
 } from '@prisma/client';
 import type { Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -16,6 +20,12 @@ import {
   PRIORITY_LABEL,
   TASK_OPEN_STATUSES,
 } from '@/domain/labels';
+import {
+  FINE_STATUS_LABELS,
+  fineSummary,
+  type FineKindValue,
+  type LinenKindValue,
+} from '@/domain/fines';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
 export type SnapshotItem = {
@@ -33,6 +43,9 @@ const SECTIONS = {
   tareas: 'Tareas pendientes',
   alertas: 'Alertas activas',
   seguimientos: 'Seguimientos próximos',
+  salidas: 'Salidas por confirmar',
+  llaves: 'Llaves por recuperar',
+  multas: 'Multas pendientes',
   reservas: 'Reservas que requieren acción',
   cobros: 'Cobros pendientes',
   garantias: 'Garantías pendientes',
@@ -74,6 +87,12 @@ function fmt(date: Date | null | undefined): string {
  * El resultado se guarda como items persistentes y como snapshot JSON, de modo
  * que la entrega queda registrada de forma permanente e inmutable aunque los
  * registros de origen cambien después.
+ *
+ * Además de los registros del Libro, se incluyen los hechos físicos que no se
+ * pueden convertir en una novedad sólo para que aparezcan acá: salidas todavía
+ * sin confirmar, llaves por recuperar y multas abiertas. Son las mismas
+ * entidades de Habitaciones, Llaves y Multas, proyectadas en la entrega sin
+ * duplicar su estado.
  */
 export async function buildHandoverSnapshot(
   now = new Date(),
@@ -81,7 +100,16 @@ export async function buildHandoverSnapshot(
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
 
-  const [entries, tasks, alerts, followUps, reservations] = await Promise.all([
+  const [
+    entries,
+    tasks,
+    alerts,
+    followUps,
+    reservations,
+    departures,
+    pendingKeys,
+    fines,
+  ] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
       select: {
@@ -174,6 +202,62 @@ export async function buildHandoverSnapshot(
       },
       take: 150,
     }),
+    prisma.roomStay.findMany({
+      where: {
+        deletedAt: null,
+        status: RoomStayStatus.CHECK_OUT,
+        stage: { not: RoomStayStage.FINALIZADO },
+      },
+      select: {
+        id: true,
+        reservationId: true,
+        guestNames: true,
+        departureDate: true,
+        room: { select: { number: true } },
+      },
+      orderBy: [{ departureDate: 'asc' }, { createdAt: 'asc' }],
+      take: 150,
+    }),
+    prisma.roomKey.findMany({
+      where: { status: KeyStatus.PENDIENTE_DEVOLUCION },
+      select: {
+        id: true,
+        code: true,
+        type: true,
+        room: { select: { number: true } },
+        stay: {
+          select: {
+            reservationId: true,
+            guestNames: true,
+            stage: true,
+          },
+        },
+      },
+      orderBy: { code: 'asc' },
+      take: 150,
+    }),
+    prisma.fine.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: [FineStatus.REGISTRADA, FineStatus.NOTIFICADA] },
+      },
+      select: {
+        id: true,
+        status: true,
+        kind: true,
+        linenKind: true,
+        itemDetail: true,
+        stainType: true,
+        reason: true,
+        amount: true,
+        currency: true,
+        reservationCode: true,
+        guestName: true,
+        room: { select: { number: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    }),
   ]);
 
   for (const entry of entries) {
@@ -262,6 +346,63 @@ export async function buildHandoverSnapshot(
         .join(' · '),
       refType: 'followup',
       refId: followUp.id,
+    });
+  }
+
+  for (const departure of departures) {
+    const roomNumber = departure.room?.number ?? null;
+    const due = departure.departureDate !== null && departure.departureDate <= now;
+    items.push({
+      section: SECTIONS.salidas,
+      level: due ? HandoverLevel.URGENTE : HandoverLevel.IMPORTANTE,
+      title: `${departure.guestNames[0] ?? 'Huésped sin nombre'}${roomNumber ? ` · hab. ${roomNumber}` : ''}`,
+      detail: `Reserva ${departure.reservationId} · salida ${fmt(departure.departureDate)} · falta confirmar que dejó la habitación.`,
+      refType: roomNumber ? 'room' : 'stay',
+      refId: roomNumber ?? departure.id,
+    });
+  }
+
+  for (const key of pendingKeys) {
+    const roomNumber = key.room?.number ?? null;
+    const alreadyLeft = key.stay?.stage === RoomStayStage.FINALIZADO;
+    items.push({
+      section: SECTIONS.llaves,
+      level: alreadyLeft ? HandoverLevel.URGENTE : HandoverLevel.IMPORTANTE,
+      title: `Llave ${key.code}${roomNumber ? ` · hab. ${roomNumber}` : ''}`,
+      detail: [
+        key.stay?.guestNames[0] ?? null,
+        key.stay?.reservationId ? `Reserva ${key.stay.reservationId}` : null,
+        alreadyLeft
+          ? 'La salida ya fue confirmada y la llave todavía no volvió.'
+          : 'Pendiente de devolución al mesón.',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      refType: roomNumber ? 'room' : 'key',
+      refId: roomNumber ?? key.id,
+    });
+  }
+
+  for (const fine of fines) {
+    items.push({
+      section: SECTIONS.multas,
+      level: HandoverLevel.IMPORTANTE,
+      title: fineSummary({
+        roomNumber: fine.room.number,
+        kind: fine.kind as FineKindValue,
+        linenKind: fine.linenKind as LinenKindValue | null,
+        itemDetail: fine.itemDetail,
+        stainType: fine.stainType,
+      }),
+      detail: [
+        `${FINE_STATUS_LABELS[fine.status]} · ${fine.guestName} · reserva ${fine.reservationCode}`,
+        fine.amount ? `${fine.currency} ${fine.amount.toString()}` : null,
+        fine.reason,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      refType: 'room',
+      refId: fine.room.number,
     });
   }
 

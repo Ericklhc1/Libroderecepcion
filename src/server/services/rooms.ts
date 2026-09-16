@@ -17,7 +17,6 @@ import {
 import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import {
   assignMainKey,
-  releaseStayKeys,
   markKeysPendingReturn,
   reconcilePrincipalKeys,
 } from './keys';
@@ -231,7 +230,7 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
 export async function confirmCheckOut(
   user: CurrentUser,
   input: { stayId: string; note?: string | null },
-): Promise<{ roomNumber: string | null }> {
+): Promise<{ roomNumber: string | null; pendingKeys: number }> {
   const result = await prisma.$transaction(async (tx) => {
     const stay = await tx.roomStay.findFirst({
       where: { id: input.stayId, deletedAt: null },
@@ -245,11 +244,12 @@ export async function confirmCheckOut(
       throw new RuleError('Esa salida ya fue confirmada.');
     }
 
+    const now = new Date();
     const updated = await tx.roomStay.updateMany({
       where: { id: stay.id, stage: { not: RoomStayStage.FINALIZADO } },
       data: {
         stage: RoomStayStage.FINALIZADO,
-        confirmedAt: new Date(),
+        confirmedAt: now,
         confirmedById: user.id,
         touchedManually: true,
         note: input.note ?? stay.note,
@@ -257,9 +257,17 @@ export async function confirmCheckOut(
     });
     if (updated.count === 0) throw new RuleError('Esa salida ya fue confirmada.');
 
+    /*
+      Salir de la habitación y devolver una llave son dos hechos distintos.
+      El C/O libera la habitación; cualquier llave que siga en manos del
+      huésped queda pendiente y sólo vuelve al inventario cuando recepción la
+      recibe con `returnKey`. Antes se liberaba acá y el sistema inventaba una
+      devolución física que podía no haber ocurrido.
+    */
+    const stayIds = new Set<string>([stay.id]);
     let closedInHouse = 0;
     if (stay.roomId) {
-      const siblings = await tx.roomStay.updateMany({
+      const inHouseStays = await tx.roomStay.findMany({
         where: {
           roomId: stay.roomId,
           reservationId: stay.reservationId,
@@ -267,30 +275,33 @@ export async function confirmCheckOut(
           status: RoomStayStatus.IN_HOUSE,
           stage: { not: RoomStayStage.FINALIZADO },
         },
+        select: { id: true },
+      });
+      for (const sibling of inHouseStays) stayIds.add(sibling.id);
+
+      const siblings = await tx.roomStay.updateMany({
+        where: { id: { in: inHouseStays.map((sibling) => sibling.id) } },
         data: {
           stage: RoomStayStage.FINALIZADO,
-          confirmedAt: new Date(),
+          confirmedAt: now,
           confirmedById: user.id,
         },
       });
       closedInHouse = siblings.count;
-
-      const inHouseStays = await tx.roomStay.findMany({
-        where: {
-          roomId: stay.roomId,
-          reservationId: stay.reservationId,
-          status: RoomStayStatus.IN_HOUSE,
-        },
-        select: { id: true },
-      });
-      for (const sibling of inHouseStays) {
-        await releaseStayKeys(tx, user, sibling.id, 'Salida confirmada');
-      }
     }
 
-    await releaseStayKeys(tx, user, stay.id, 'Salida confirmada');
+    for (const stayId of stayIds) {
+      await markKeysPendingReturn(tx, user, stayId);
+    }
 
-    return { stay, roomNumber: stay.room?.number ?? null, closedInHouse };
+    const pendingKeys = await tx.roomKey.count({
+      where: {
+        stayId: { in: [...stayIds] },
+        status: KeyStatus.PENDIENTE_DEVOLUCION,
+      },
+    });
+
+    return { stay, roomNumber: stay.room?.number ?? null, closedInHouse, pendingKeys };
   });
 
   await recordAudit({
@@ -300,11 +311,12 @@ export async function confirmCheckOut(
     user,
     summary:
       `Salida confirmada en habitación ${result.roomNumber ?? 'sin número'}: ` +
-      `${result.stay.guestNames[0] ?? 'sin nombre'} (reserva ${result.stay.reservationId})`,
-    after: { stage: RoomStayStage.FINALIZADO },
+      `${result.stay.guestNames[0] ?? 'sin nombre'} (reserva ${result.stay.reservationId})` +
+      (result.pendingKeys > 0 ? ` · ${result.pendingKeys} llave(s) por recibir` : ''),
+    after: { stage: RoomStayStage.FINALIZADO, pendingKeys: result.pendingKeys },
   });
 
-  return { roomNumber: result.roomNumber };
+  return { roomNumber: result.roomNumber, pendingKeys: result.pendingKeys };
 }
 
 /**

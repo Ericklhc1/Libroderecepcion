@@ -148,7 +148,9 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
           { guest: { fullName: { contains: q, mode: 'insensitive' } } },
+          { guest: { roomNumber: { contains: q, mode: 'insensitive' } } },
           { reservation: { code: { contains: q, mode: 'insensitive' } } },
+          { reservation: { roomNumber: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -255,6 +257,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
           { entry: { guest: { fullName: { contains: q, mode: 'insensitive' } } } },
+          { entry: { guest: { roomNumber: { contains: q, mode: 'insensitive' } } } },
+          { entry: { reservation: { roomNumber: { contains: q, mode: 'insensitive' } } } },
         ],
       });
     }
@@ -354,6 +358,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { action: { contains: q, mode: 'insensitive' } },
           { nextAction: { contains: q, mode: 'insensitive' } },
           { result: { contains: q, mode: 'insensitive' } },
+          { entry: { guest: { roomNumber: { contains: q, mode: 'insensitive' } } } },
+          { entry: { reservation: { roomNumber: { contains: q, mode: 'insensitive' } } } },
         ],
       });
     }
@@ -440,6 +446,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { title: { contains: q, mode: 'insensitive' } },
           { message: { contains: q, mode: 'insensitive' } },
           { guest: { fullName: { contains: q, mode: 'insensitive' } } },
+          { guest: { roomNumber: { contains: q, mode: 'insensitive' } } },
+          { reservation: { roomNumber: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }

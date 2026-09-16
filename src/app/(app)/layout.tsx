@@ -112,7 +112,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </Link>
 
-            <form action="/historial" className="relative min-w-0 flex-1 max-w-xl">
+            {/*
+              La búsqueda global va al libro operativo: es donde viven los
+              registros, tareas, seguimientos y alertas, y donde `q` cruza
+              título, descripción, etiquetas, huésped, reserva y habitación.
+              Antes apuntaba a /historial, que sólo mira el resumen de la
+              bitácora de auditoría: buscar una habitación ahí no devolvía
+              nada.
+            */}
+            <form action="/libro" className="relative min-w-0 flex-1 max-w-xl">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"

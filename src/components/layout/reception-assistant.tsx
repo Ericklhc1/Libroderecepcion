@@ -1,7 +1,16 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { Check, Loader2, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Check,
+  Loader2,
+  Plus,
+  Send,
+  ShieldAlert,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 type ChatMessage = {
   id: string;
@@ -19,6 +28,9 @@ type Confirmation = {
 type AssistantResponse = {
   reply?: string;
   confirmations?: Confirmation[];
+  messages?: ChatMessage[];
+  retentionDays?: number;
+  reset?: boolean;
   error?: string;
 };
 
@@ -27,22 +39,68 @@ function id(): string {
 }
 
 const WELCOME =
-  'Dime qué necesitas hacer o consultar. Por ejemplo: “¿qué debería revisar primero?”, “próximos vencimientos” o “marca check-out 415 y 417”.';
+  'Dime qué necesitas hacer o consultar. Puedo revisar prioridades, vencimientos, habitaciones y preparar acciones del Libro.';
+
+function initialMessages(): ChatMessage[] {
+  return [{ id: 'welcome', role: 'assistant', content: WELCOME }];
+}
 
 export function ReceptionAssistant() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 'welcome', role: 'assistant', content: WELCOME },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
+  const [retentionDays, setRetentionDays] = useState(30);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
 
-  const apiMessages = useMemo(
-    () => messages.map(({ role, content }) => ({ role, content })).slice(-17),
-    [messages],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/asistente', { cache: 'no-store' });
+        if (response.status === 401) return;
+        const payload = (await response.json()) as AssistantResponse;
+        if (!response.ok || cancelled) return;
+        if (payload.messages?.length) setMessages(payload.messages);
+        else setMessages(initialMessages());
+        if (payload.retentionDays) setRetentionDays(payload.retentionDays);
+      } catch {
+        // La UI principal del Libro no depende del asistente.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    async function heartbeat() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const response = await fetch('/api/asistente?heartbeat=1', {
+          cache: 'no-store',
+        });
+        if (response.status === 401) window.location.assign('/login');
+      } catch {
+        // Una caída temporal de red no debe expulsar al recepcionista.
+      }
+    }
+
+    const timer = window.setInterval(() => void heartbeat(), 4 * 60 * 1000);
+    const onFocus = () => void heartbeat();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  }, [messages, confirmations, busy, open]);
 
   function addAssistant(content: string) {
     setMessages((current) => [...current, { id: id(), role: 'assistant', content }]);
@@ -61,7 +119,6 @@ export function ReceptionAssistant() {
     if (!content || busy) return;
 
     const userMessage: ChatMessage = { id: id(), role: 'user', content };
-    const conversation = [...apiMessages, { role: 'user' as const, content }].slice(-18);
     setMessages((current) => [...current, userMessage]);
     setText('');
     setBusy(true);
@@ -70,13 +127,27 @@ export function ReceptionAssistant() {
       const response = await fetch('/api/asistente', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversation }),
+        body: JSON.stringify({ message: content }),
       });
       const payload = (await response.json()) as AssistantResponse;
+      if (response.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || 'No se pudo consultar al asistente.');
 
-      addAssistant(payload.reply || 'Listo.');
-      if (payload.confirmations?.length) mergeConfirmations(payload.confirmations);
+      if (payload.reset) {
+        setMessages([
+          ...initialMessages(),
+          ...(payload.reply
+            ? [{ id: id(), role: 'assistant' as const, content: payload.reply }]
+            : []),
+        ]);
+        setConfirmations([]);
+      } else {
+        addAssistant(payload.reply || 'Listo.');
+        if (payload.confirmations?.length) mergeConfirmations(payload.confirmations);
+      }
     } catch (error) {
       addAssistant(error instanceof Error ? error.message : 'No se pudo consultar al asistente.');
     } finally {
@@ -95,6 +166,10 @@ export function ReceptionAssistant() {
         body: JSON.stringify({ confirmationToken: item.token }),
       });
       const payload = (await response.json()) as AssistantResponse;
+      if (response.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || 'No se pudo ejecutar la acción.');
 
       setConfirmations((current) => current.filter((candidate) => candidate.token !== item.token));
@@ -106,40 +181,93 @@ export function ReceptionAssistant() {
     }
   }
 
-  function newConversation() {
-    setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME }]);
-    setConfirmations([]);
-    setText('');
-    requestAnimationFrame(() => inputRef.current?.focus());
+  async function newConversation() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch('/api/asistente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'new_conversation' }),
+      });
+      const payload = (await response.json()) as AssistantResponse;
+      if (!response.ok) throw new Error(payload.error || 'No se pudo iniciar otra conversación.');
+      setMessages(initialMessages());
+      setConfirmations([]);
+      setText('');
+    } catch (error) {
+      addAssistant(error instanceof Error ? error.message : 'No se pudo iniciar otra conversación.');
+    } finally {
+      setBusy(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
+  async function forgetConversation() {
+    if (busy) return;
+    if (!window.confirm('¿Eliminar esta conversación y las memorias que se generaron a partir de ella?')) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch('/api/asistente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'forget_conversation' }),
+      });
+      const payload = (await response.json()) as AssistantResponse;
+      if (!response.ok) throw new Error(payload.error || 'No se pudo eliminar la conversación.');
+      setMessages(initialMessages());
+      setConfirmations([]);
+      setText('');
+    } catch (error) {
+      addAssistant(error instanceof Error ? error.message : 'No se pudo eliminar la conversación.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div className="fixed bottom-20 right-3 z-50 lg:bottom-5 lg:right-5 no-print">
+    <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
-          className="flex h-[min(72vh,620px)] w-[min(calc(100vw-1.5rem),410px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          className="pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(68vh,570px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:left-auto sm:right-4 sm:w-[390px] lg:bottom-4"
           aria-label="Asistente de Recepción"
         >
-          <header className="flex items-center gap-3 border-b border-petrol-800 bg-petrol-900 px-4 py-3 text-white">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gold-500 text-petrol-950">
-              <Sparkles className="h-5 w-5" aria-hidden="true" />
+          <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold">Asistente de Recepción</h2>
-              <p className="text-[0.68rem] text-petrol-100">Consulta, prepara y ejecuta acciones del Libro</p>
+              <h2 className="truncate text-sm font-semibold">Asistente de Recepción</h2>
+              <p className="truncate text-[0.64rem] text-petrol-100">Memoria personal {retentionDays} días · contexto del turno</p>
             </div>
             <button
               type="button"
-              onClick={newConversation}
-              className="rounded-lg px-2 py-1 text-[0.68rem] font-medium text-petrol-100 hover:bg-petrol-800 hover:text-white"
+              disabled={busy}
+              onClick={() => void newConversation()}
+              className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 hover:text-white disabled:opacity-40"
+              aria-label="Nueva conversación"
+              title="Nueva conversación"
             >
-              Nuevo
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void forgetConversation()}
+              className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 hover:text-white disabled:opacity-40"
+              aria-label="Olvidar esta conversación"
+              title="Olvidar esta conversación"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 hover:text-white"
-              aria-label="Cerrar asistente"
+              aria-label="Minimizar asistente"
+              title="Minimizar"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -212,10 +340,11 @@ export function ReceptionAssistant() {
                 Procesando…
               </div>
             ) : null}
+            <div ref={endRef} />
           </div>
 
           <div className="border-t border-slate-200 bg-white p-3">
-            <div className="mb-2 flex flex-wrap gap-1.5">
+            <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
               {['¿Qué debería revisar primero?', 'Próximos vencimientos'].map((suggestion) => (
                 <button
                   key={suggestion}
@@ -225,7 +354,7 @@ export function ReceptionAssistant() {
                     setText(suggestion);
                     requestAnimationFrame(() => inputRef.current?.focus());
                   }}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.68rem] text-slate-600 hover:border-petrol-300 hover:bg-petrol-50 hover:text-petrol-800 disabled:opacity-50"
+                  className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.68rem] text-slate-600 hover:border-petrol-300 hover:bg-petrol-50 hover:text-petrol-800 disabled:opacity-50"
                 >
                   {suggestion}
                 </button>
@@ -262,8 +391,8 @@ export function ReceptionAssistant() {
                 )}
               </button>
             </div>
-            <p className="mt-1.5 text-center text-[0.62rem] text-slate-400">
-              Las acciones sensibles requieren confirmación y respetan tus permisos.
+            <p className="mt-1.5 text-center text-[0.61rem] leading-4 text-slate-400">
+              “No guardes esto: …” evita memoria. Las acciones sensibles requieren confirmación.
             </p>
           </div>
         </section>
@@ -274,11 +403,11 @@ export function ReceptionAssistant() {
             setOpen(true);
             requestAnimationFrame(() => inputRef.current?.focus());
           }}
-          className="flex items-center gap-2 rounded-full bg-petrol-900 px-4 py-3 text-sm font-semibold text-white shadow-xl ring-1 ring-petrol-800 hover:bg-petrol-800"
+          className="pointer-events-auto absolute bottom-20 right-3 flex h-12 w-12 items-center justify-center rounded-full bg-petrol-900 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:bottom-4 lg:right-4"
           aria-label="Abrir Asistente de Recepción"
+          title="Asistente de Recepción"
         >
-          <Sparkles className="h-4 w-4 text-gold-400" aria-hidden="true" />
-          <span>Asistente</span>
+          <Sparkles className="h-5 w-5 text-gold-400" aria-hidden="true" />
         </button>
       )}
     </div>

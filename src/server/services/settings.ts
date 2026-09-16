@@ -45,6 +45,95 @@ export const DEFAULT_SETTINGS = {
     category: 'gimnasio',
     description: 'Precio del pase de gimnasio cuando se cobra en dólares estadounidenses.',
   },
+
+  // Fronti. Los controles de seguridad (permisos, auditoría y confirmaciones)
+  // NO son configurables desde esta tabla: forman parte del contrato operativo.
+  'fronti.enabled': {
+    value: true,
+    category: 'fronti',
+    description: 'Muestra Fronti y permite usar el asistente operativo.',
+  },
+  'fronti.displayName': {
+    value: 'Fronti',
+    category: 'fronti',
+    description: 'Nombre visible del asistente en el Libro.',
+  },
+  'fronti.welcomeMessage': {
+    value:
+      'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.',
+    category: 'fronti',
+    description: 'Mensaje inicial cuando no existe historial de conversación.',
+  },
+  'fronti.extraInstructions': {
+    value: 'Prioriza claridad, brevedad y seguridad operacional. Si un dato puede haber cambiado, verifícalo con las herramientas del Libro antes de responder.',
+    category: 'fronti',
+    description: 'Instrucciones adicionales de comportamiento para Fronti.',
+  },
+  'fronti.model': {
+    value: 'gpt-5.6-luna',
+    category: 'fronti',
+    description: 'Modelo de OpenAI utilizado por Fronti. La clave API sigue protegida en el servidor.',
+  },
+  'fronti.reasoningEffort': {
+    value: 'low',
+    category: 'fronti',
+    description: 'Esfuerzo de razonamiento: low, medium o high.',
+  },
+  'fronti.memoryRetentionDays': {
+    value: 30,
+    category: 'fronti',
+    description: 'Días que se conserva la memoria personal y el historial nuevo de Fronti.',
+  },
+  'fronti.shiftMemoryHours': {
+    value: 36,
+    category: 'fronti',
+    description: 'Horas máximas de vida para recuerdos vinculados al turno.',
+  },
+  'fronti.memoryContextLimit': {
+    value: 12,
+    category: 'fronti',
+    description: 'Máximo de recuerdos relevantes que Fronti recupera para una respuesta.',
+  },
+  'fronti.modelHistoryLimit': {
+    value: 15,
+    category: 'fronti',
+    description: 'Máximo de mensajes recientes enviados al modelo como contexto conversacional.',
+  },
+  'fronti.sessionActivityMinutes': {
+    value: 15,
+    category: 'fronti',
+    description: 'Ventana de actividad reciente usada por el cliente para mantener viva la sesión.',
+  },
+  'fronti.tool.room': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite consultar el estado operativo de habitaciones.',
+  },
+  'fronti.tool.priorities': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite consultar y ordenar prioridades operativas.',
+  },
+  'fronti.tool.deadlines': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite consultar próximos vencimientos.',
+  },
+  'fronti.tool.checkout': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite preparar check-outs. La ejecución siempre requiere confirmación y permiso.',
+  },
+  'fronti.tool.reminder': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite preparar recordatorios/tareas. La creación siempre requiere confirmación y permiso.',
+  },
+  'fronti.tool.fine': {
+    value: true,
+    category: 'fronti-capacidades',
+    description: 'Permite preparar multas. El registro siempre requiere confirmación y permiso.',
+  },
 } as const;
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;

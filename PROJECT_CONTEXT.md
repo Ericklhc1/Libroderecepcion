@@ -55,6 +55,15 @@ rojo cuando algo detrás tiene pendientes, de modo que las alertas de
 Supervisión siguen viéndose. Lo vigila `tests/navigation.test.ts`, que
 comprueba rol por rol que ningún destino visible quede sin puerta.
 
+⚠️ **Cerrar sesión tiene que estar FUERA del `<aside>`.** Estaba sólo ahí
+dentro, y como el aside es `hidden lg:flex`, por debajo de 1024 px **no había
+ninguna forma de salir** —el perfil tampoco la ofrecía—. Es el mismo descuido
+que dejó los destinos inalcanzables, y en un mesón que se comparte entre turnos
+es más grave: si quien entra no puede cerrar la sesión de quien sale, opera con
+la cuenta ajena y el libro le atribuye sus actos a otra persona. Ahora vive en
+tres sitios —el aside, el panel «Más» y `/perfil`, que es la casa natural— y
+`tests/navigation.test.ts` falla si el aside vuelve a ser el único camino.
+
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
 el libro (pestañas `?clase=`), Inicio, la ficha de la habitación y Supervisión.

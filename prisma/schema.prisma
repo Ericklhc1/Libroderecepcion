@@ -292,6 +292,12 @@ model User {
   active             Boolean     @default(true)
   mustChangePassword Boolean     @default(false)
   lastLoginAt        DateTime?
+  /// Cuándo terminó (o saltó) el recorrido guiado del primer ingreso.
+  ///
+  /// Nulo = todavía no lo hizo, así que se le ofrece. Se guarda en el usuario
+  /// y no en el navegador a propósito: quien entra desde otro equipo el primer
+  /// día sigue siendo alguien que ya conoce el sistema.
+  tutorialDoneAt     DateTime?
   failedAttempts     Int         @default(0)
   lockedUntil        DateTime?
   isDemo             Boolean     @default(false)

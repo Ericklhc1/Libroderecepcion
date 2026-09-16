@@ -277,6 +277,28 @@ conserva su modelo y sus reglas.
     navegador: la confirmación se guardaba y la pantalla seguía bloqueada.
     Lo vigila `tests/comunicados.test.ts`.
 
+14. **La ayuda es documentación, no un modelo de lenguaje.** Los
+    procedimientos viven en `domain/help.ts`, **en el mismo repositorio que el
+    código**, así que una regla que cambia y una ayuda que miente se ven en el
+    mismo cambio. Una respuesta inventada sobre cómo cerrar una caja es peor
+    que no tener ayuda, y por eso una búsqueda sin resultados **lo dice** en
+    vez de mostrar algo aproximado.
+    Se filtra por permisos: nadie ve el procedimiento de algo que no puede
+    hacer. Y por eso existe `atascado-sin-permiso`, **sin `anyOf`**: un
+    recepcionista que buscaba «no deja confirmar» recibía «¿Cómo tomo un
+    turno?», porque el reseteo está filtrado por un permiso que él no tiene.
+    Lo encontró una prueba en navegador.
+    **Sólo ejecuta acciones reversibles** (`HELP_ACTIONS`): reconciliar llaves
+    es idempotente, regenerar un borrador conserva las notas manuales.
+    Confirmar una salida, un check-in o un arqueo no están ahí y no deben
+    estarlo; una prueba falla si alguna acción usa un permiso operativo.
+    El **tutorial del primer ingreso** reutiliza los mismos procedimientos —no
+    repite sus textos— y muestra sólo los del rol. Se puede saltar desde el
+    primer paso, porque alguien con el mesón lleno no puede quedar atrapado, y
+    se reabre desde el perfil. `User.tutorialDoneAt` vive en el usuario y no en
+    el navegador: quien entra desde otro equipo ya conoce el sistema.
+    Lo vigila `tests/ayuda.test.ts`.
+
 ## Rendimiento: lo aprendido en producción
 
 La base está en `sa-east-1` y las funciones en `gru1` (`vercel.json`). **Antes

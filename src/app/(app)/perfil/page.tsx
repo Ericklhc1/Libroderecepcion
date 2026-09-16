@@ -3,6 +3,7 @@ import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Card, CardHeader } from '@/components/ui/card';
+import { RestartTutorialButton } from './restart-tutorial';
 import { Chip } from '@/components/ui/badge';
 import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
@@ -85,6 +86,17 @@ export default async function ProfilePage() {
             <KeyRound className="h-4 w-4" aria-hidden="true" />
             Cambiar contraseña
           </Link>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Ayuda" />
+        <div className="space-y-2 px-4 py-4">
+          <p className="text-sm text-slate-600">
+            La central de ayuda está siempre en la cabecera, con los procedimientos que
+            puedes ejecutar. Si saltaste el recorrido del primer día, acá vuelve.
+          </p>
+          <RestartTutorialButton />
         </div>
       </Card>
 

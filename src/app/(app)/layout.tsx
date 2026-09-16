@@ -9,6 +9,9 @@ import { countLiveAlerts } from '@/server/services/alert-engine';
 import { visibleNavGroups } from '@/components/layout/nav-items';
 import { MobileNav, SidebarNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
+import { HelpCenter } from '@/components/layout/help-center';
+import { TutorialTour } from '@/components/layout/tutorial';
+import { tutorialSteps } from '@/domain/help';
 import { getBlockingAnnouncements } from '@/server/services/announcements';
 import { QuickActions } from '@/components/layout/quick-actions';
 import { logoutAction } from '@/server/actions/auth';
@@ -23,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
 
-  const [hotelName, alerts, unreadNotifications, myOpenTasks, blocking] =
+  const [hotelName, alerts, unreadNotifications, myOpenTasks, blocking, tutorialRow] =
     await Promise.all([
       getSettingString('hotel.name', 'Hotel'),
       countLiveAlerts(),
@@ -34,7 +37,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       // Comunicados obligatorios sin confirmar. Va en el mismo Promise.all:
       // es una consulta más, no una espera más.
       getBlockingAnnouncements(user.id),
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: { tutorialDoneAt: true },
+      }),
     ]);
+
+  const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
 
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
@@ -129,6 +138,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   </span>
                 ) : null}
               </Link>
+              {/*
+                La ayuda vive en la cabecera, al lado de las notificaciones:
+                se necesita desde cualquier pantalla y no es un destino del
+                menú. Filtra por permisos, así que nadie ve el procedimiento
+                de algo que no puede hacer.
+              */}
+              <HelpCenter permissions={user.permissions} />
               <Link
                 href="/perfil"
                 className="rounded-lg p-2 text-petrol-700 hover:bg-petrol-50 lg:hidden"
@@ -161,6 +177,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       */}
       {blocking.length > 0 ? (
         <AnnouncementGate announcements={blocking} userName={user.name} />
+      ) : null}
+
+      {/*
+        Recorrido guiado del primer ingreso. No se muestra junto al comunicado
+        obligatorio: si alguien entra por primera vez y además tiene un aviso
+        que bloquea, primero lo urgente. El recorrido espera a la próxima
+        pantalla, y sigue esperando hasta que lo termine o lo salte.
+      */}
+      {!tutorialDone && blocking.length === 0 ? (
+        <TutorialTour steps={tutorialSteps(user.permissions)} userName={user.name} />
       ) : null}
     </div>
   );

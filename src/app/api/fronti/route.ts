@@ -3,9 +3,14 @@ import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { refreshSession } from '@/server/auth/session';
 import {
+  AssistantError,
   executeReceptionConfirmation,
   runReceptionAssistant,
 } from '@/server/ai/reception-assistant';
+import {
+  ASSISTANT_FAILURE_IS_TEMPORARY,
+  ASSISTANT_FAILURE_STATUS,
+} from '@/domain/assistant-status';
 import {
   extractAndStoreMemories,
   forgetCurrentAssistantConversation,
@@ -217,6 +222,29 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders() },
     );
   } catch (error) {
+    console.error('[fronti]', error);
+
+    /*
+      Un fallo del asistente ya sabe qué es, así que se responde con SU estado
+      —503 si no está configurado, 429 si está saturado, 504 si se agotó el
+      plazo— y con un mensaje operativo en español.
+
+      Antes todo salía como 400 con el texto que viniera de OpenAI, y eso
+      llegaba tal cual al chat del mesón: el recepcionista leía un error
+      técnico en inglés que no le decía a quién avisar, y la monitorización no
+      podía distinguir «lo pediste mal» de «el proveedor está caído».
+    */
+    if (error instanceof AssistantError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          causa: error.failure,
+          reintentable: ASSISTANT_FAILURE_IS_TEMPORARY[error.failure],
+        },
+        { status: ASSISTANT_FAILURE_STATUS[error.failure], headers: noStoreHeaders() },
+      );
+    }
+
     const message =
       error instanceof z.ZodError
         ? error.issues.map((issue) => issue.message).join(' ')
@@ -224,7 +252,6 @@ export async function POST(request: Request) {
           ? error.message
           : 'Fronti no pudo procesar la solicitud.';
 
-    console.error('[fronti]', error);
     return NextResponse.json(
       { error: message },
       { status: 400, headers: noStoreHeaders() },

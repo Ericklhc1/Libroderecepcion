@@ -7,6 +7,12 @@ import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import {
+  ASSISTANT_FAILURE_MESSAGE,
+  ASSISTANT_TIMEOUT_MS,
+  classifyAssistantFailure,
+  type AssistantFailure,
+} from '@/domain/assistant-status';
+import {
   fineProblems,
   type FineDraft,
   type FineKindValue,
@@ -654,6 +660,26 @@ async function executeTool(
   }
 }
 
+/**
+ * Un fallo del asistente que ya sabe qué es y qué decirle al mesón.
+ *
+ * Lleva la causa además del texto para que el endpoint pueda elegir el estado
+ * HTTP correcto y la pantalla pueda decidir si ofrece reintentar, sin volver a
+ * adivinar leyendo el mensaje.
+ */
+export class AssistantError extends Error {
+  readonly failure: AssistantFailure;
+
+  constructor(failure: AssistantFailure, cause?: Error) {
+    super(ASSISTANT_FAILURE_MESSAGE[failure]);
+    this.name = 'AssistantError';
+    this.failure = failure;
+    // Se conserva el error original para el registro del servidor, no para la
+    // pantalla: es donde vive el detalle técnico que el mesón no debe leer.
+    if (cause) this.cause = cause;
+  }
+}
+
 function responseText(response: OpenAIResponse): string {
   const chunks: string[] = [];
   for (const item of response.output ?? []) {
@@ -668,16 +694,24 @@ function responseText(response: OpenAIResponse): string {
 async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenAIResponse> {
   const key = env().OPENAI_API_KEY;
   if (!key) {
-    throw new Error('Fronti todavía no tiene OPENAI_API_KEY configurada.');
+    throw new AssistantError('SIN_CLAVE');
   }
 
   const tools = enabledToolDefinitions(config);
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
+    /*
+      Sin plazo, una llamada colgada dejaba la pantalla del mesón esperando
+      indefinidamente: no había timeout explícito y el `fetch` de Node no trae
+      ninguno por omisión.
+    */
+    signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
     body: JSON.stringify({
       model: config.model,
       store: false,
@@ -698,12 +732,44 @@ async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenA
       parallel_tool_calls: false,
     }),
     cache: 'no-store',
-  });
-
-  const payload = (await response.json()) as OpenAIResponse;
-  if (!response.ok) {
-    throw new Error(payload.error?.message || `OpenAI respondió con estado ${response.status}.`);
+    });
+  } catch (error) {
+    /*
+      Acá sólo caen los fallos de transporte: plazo agotado o sin red. Un
+      estado HTTP de error NO lanza, se comprueba más abajo.
+    */
+    const aborted = error instanceof Error && error.name === 'TimeoutError';
+    throw new AssistantError(
+      classifyAssistantFailure({ aborted, network: !aborted }),
+      error instanceof Error ? error : undefined,
+    );
   }
+
+  /*
+    El cuerpo puede no ser JSON —una pasarela caída devuelve HTML— así que
+    parsear no puede tumbar la clasificación del fallo.
+  */
+  let payload: OpenAIResponse | null = null;
+  try {
+    payload = (await response.json()) as OpenAIResponse;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const apiError = payload?.error as
+      | { message?: string; code?: string; type?: string }
+      | undefined;
+    throw new AssistantError(
+      classifyAssistantFailure({
+        status: response.status,
+        code: apiError?.code ?? apiError?.type ?? null,
+        message: apiError?.message ?? null,
+      }),
+    );
+  }
+
+  if (!payload) throw new AssistantError('CAIDO');
   return payload;
 }
 
@@ -720,7 +786,7 @@ export async function runReceptionAssistant(
 ): Promise<AssistantResult> {
   const config = await getFrontiConfig();
   if (!config.enabled) {
-    throw new Error('Fronti está desactivado por el Administrador de sistema.');
+    throw new AssistantError('DESACTIVADO');
   }
 
   let input = messagesAsInput(messages, config.modelHistoryLimit + 3);
@@ -805,7 +871,7 @@ export async function executeReceptionConfirmation(
 ): Promise<{ reply: string }> {
   const config = await getFrontiConfig();
   if (!config.enabled) {
-    throw new Error('Fronti está desactivado por el Administrador de sistema.');
+    throw new AssistantError('DESACTIVADO');
   }
 
   const pending = verifyAction(token, user);

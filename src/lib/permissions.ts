@@ -61,6 +61,13 @@ export const PERMISSIONS = {
   */
   'room.reset': { group: 'Habitaciones y llaves', name: 'Resetear una habitación atascada' },
 
+  /*
+    Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
+    confirme la lectura. Es del Supervisor: es él quien tiene que poder parar
+    el mesón para decir algo. Confirmar no necesita permiso, sólo sesión.
+  */
+  'announcement.manage': { group: 'Supervisión', name: 'Emitir comunicados obligatorios' },
+
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },
   'system.configure': { group: 'Administración', name: 'Configurar el sistema' },
@@ -143,6 +150,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'audit.view',
     'key.stock',
     'room.reset',
+    'announcement.manage',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   [ROLE_KEYS.NIGHT_AUDITOR]: [

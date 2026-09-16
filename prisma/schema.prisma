@@ -301,39 +301,43 @@ model User {
   deletedById        String?
   deletionReason     String?
 
-  sessions           Session[]
-  assignments        ShiftAssignment[]
-  shiftsCreated      Shift[]             @relation("shiftCreatedBy")
-  handoversIssued    ShiftHandover[]     @relation("handoverIssuedBy")
-  handoversReceived  ShiftHandover[]     @relation("handoverReceivedBy")
-  entriesCreated     OperationalEntry[]  @relation("entryCreatedBy")
-  entriesOwned       OperationalEntry[]  @relation("entryOwner")
-  entriesClosed      OperationalEntry[]  @relation("entryClosedBy")
-  tasksCreated       Task[]              @relation("taskCreatedBy")
-  tasksAssigned      Task[]              @relation("taskAssignee")
-  followUpsOwned     FollowUp[]          @relation("followUpOwner")
-  followUpsCreated   FollowUp[]          @relation("followUpCreatedBy")
-  comments           Comment[]
-  attachments        Attachment[]
-  alertsCreated      Alert[]             @relation("alertCreatedBy")
-  alertsAcknowledged Alert[]             @relation("alertAckBy")
-  alertsResolved     Alert[]             @relation("alertResolvedBy")
-  auditLogs          AuditLog[]
-  notifications      Notification[]
-  settingsUpdated    SystemSetting[]
-  checklistDone      TaskChecklistItem[]
-  staysConfirmed     RoomStay[]          @relation("stayConfirmedBy")
-  keysAssigned       RoomKey[]           @relation("keyAssignedBy")
-  keyMovements       KeyMovement[]       @relation("keyMovementBy")
-  batchesCreated     PmsImportBatch[]    @relation("batchCreatedBy")
-  batchesApplied     PmsImportBatch[]    @relation("batchAppliedBy")
-  guaranteesCreated  Guarantee[]         @relation("guaranteeCreatedBy")
-  guaranteesReturned Guarantee[]         @relation("guaranteeReturnedBy")
-  guaranteesDeleted  Guarantee[]         @relation("guaranteeDeletedBy")
-  cashCounted        CashCount[]         @relation("cashCountBy")
-  cashTransfers      CashTransfer[]      @relation("cashTransferBy")
-  cashFundsUpdated   CashFund[]          @relation("cashFundUpdatedBy")
-  shiftsArchived     Shift[]             @relation("shiftArchivedBy")
+  sessions              Session[]
+  assignments           ShiftAssignment[]
+  shiftsCreated         Shift[]             @relation("shiftCreatedBy")
+  handoversIssued       ShiftHandover[]     @relation("handoverIssuedBy")
+  handoversReceived     ShiftHandover[]     @relation("handoverReceivedBy")
+  entriesCreated        OperationalEntry[]  @relation("entryCreatedBy")
+  entriesOwned          OperationalEntry[]  @relation("entryOwner")
+  entriesClosed         OperationalEntry[]  @relation("entryClosedBy")
+  tasksCreated          Task[]              @relation("taskCreatedBy")
+  tasksAssigned         Task[]              @relation("taskAssignee")
+  followUpsOwned        FollowUp[]          @relation("followUpOwner")
+  followUpsCreated      FollowUp[]          @relation("followUpCreatedBy")
+  comments              Comment[]
+  attachments           Attachment[]
+  alertsCreated         Alert[]             @relation("alertCreatedBy")
+  alertsAcknowledged    Alert[]             @relation("alertAckBy")
+  alertsResolved        Alert[]             @relation("alertResolvedBy")
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  settingsUpdated       SystemSetting[]
+  checklistDone         TaskChecklistItem[]
+  staysConfirmed        RoomStay[]          @relation("stayConfirmedBy")
+  keysAssigned          RoomKey[]           @relation("keyAssignedBy")
+  keyMovements          KeyMovement[]       @relation("keyMovementBy")
+  batchesCreated        PmsImportBatch[]    @relation("batchCreatedBy")
+  batchesApplied        PmsImportBatch[]    @relation("batchAppliedBy")
+  guaranteesCreated     Guarantee[]         @relation("guaranteeCreatedBy")
+  guaranteesReturned    Guarantee[]         @relation("guaranteeReturnedBy")
+  guaranteesDeleted     Guarantee[]         @relation("guaranteeDeletedBy")
+  cashCounted           CashCount[]         @relation("cashCountBy")
+  cashTransfers         CashTransfer[]      @relation("cashTransferBy")
+  cashFundsUpdated      CashFund[]          @relation("cashFundUpdatedBy")
+  shiftsArchived        Shift[]             @relation("shiftArchivedBy")
+  announcementsCreated  Announcement[]      @relation("announcementCreatedBy")
+  announcementsTargeted Announcement[]      @relation("announcementTarget")
+  announcementsDeleted  Announcement[]      @relation("announcementDeletedBy")
+  announcementReads     AnnouncementRead[]  @relation("announcementReadBy")
 
   @@index([roleId])
   @@index([active])
@@ -1287,4 +1291,65 @@ model HandoverElement {
 
   @@unique([handoverId, elementTypeId])
   @@index([handoverId])
+}
+
+// ============================== COMUNICADOS ================================
+//
+// Un comunicado obligatorio BLOQUEA la interfaz hasta que la persona confirme
+// que lo leyó, escribiendo algo. No es una notificación —ésas se pueden
+// ignorar— y no es una alerta —ésas describen un estado del hotel—. Esto es el
+// Supervisor diciendo «nadie sigue trabajando sin haber leído esto».
+//
+// La confirmación pide TEXTO a propósito: un botón solo se pulsa sin leer. Lo
+// que se escribe queda guardado, así que después se puede saber no sólo quién
+// confirmó, sino qué entendió.
+
+enum AnnouncementScope {
+  /// Todo el personal operativo.
+  TODOS
+  /// Una sola persona.
+  USUARIO
+}
+
+model Announcement {
+  id             String            @id @default(cuid())
+  title          String
+  body           String
+  scope          AnnouncementScope @default(TODOS)
+  /// Obligatorio cuando el alcance es USUARIO; nulo cuando es TODOS.
+  targetUserId   String?
+  targetUser     User?             @relation("announcementTarget", fields: [targetUserId], references: [id])
+  /// Mientras sea true y no haya expirado, bloquea a quien no lo confirmó.
+  active         Boolean           @default(true)
+  /// Nulo = no caduca. Un comunicado vencido deja de bloquear.
+  expiresAt      DateTime?
+  createdById    String
+  createdBy      User              @relation("announcementCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?             @relation("announcementDeletedBy", fields: [deletedById], references: [id])
+  deletionReason String?
+  isDemo         Boolean           @default(false)
+
+  reads AnnouncementRead[]
+
+  @@index([active, deletedAt])
+  @@index([targetUserId])
+}
+
+model AnnouncementRead {
+  id               String       @id @default(cuid())
+  announcementId   String
+  announcement     Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User         @relation("announcementReadBy", fields: [userId], references: [id], onDelete: Cascade)
+  /// Lo que escribió la persona al confirmar. Es la prueba de que leyó.
+  confirmationText String
+  confirmedAt      DateTime     @default(now())
+
+  /// Una persona confirma una vez.
+  @@unique([announcementId, userId])
+  @@index([userId])
 }

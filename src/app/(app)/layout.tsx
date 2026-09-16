@@ -8,6 +8,8 @@ import { getSettingString } from '@/server/services/settings';
 import { countLiveAlerts } from '@/server/services/alert-engine';
 import { visibleNavGroups } from '@/components/layout/nav-items';
 import { MobileNav, SidebarNav } from '@/components/layout/nav';
+import { AnnouncementGate } from '@/components/operational/announcement-gate';
+import { getBlockingAnnouncements } from '@/server/services/announcements';
 import { QuickActions } from '@/components/layout/quick-actions';
 import { logoutAction } from '@/server/actions/auth';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
@@ -21,14 +23,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
 
-  const [hotelName, alerts, unreadNotifications, myOpenTasks] = await Promise.all([
-    getSettingString('hotel.name', 'Hotel'),
-    countLiveAlerts(),
-    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
-    prisma.task.count({
-      where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
-    }),
-  ]);
+  const [hotelName, alerts, unreadNotifications, myOpenTasks, blocking] =
+    await Promise.all([
+      getSettingString('hotel.name', 'Hotel'),
+      countLiveAlerts(),
+      prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+      prisma.task.count({
+        where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
+      }),
+      // Comunicados obligatorios sin confirmar. Va en el mismo Promise.all:
+      // es una consulta más, no una espera más.
+      getBlockingAnnouncements(user.id),
+    ]);
 
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
@@ -142,6 +148,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <MobileNav items={items} badges={badges} />
+
+      {/*
+        El comunicado obligatorio se monta al final y por encima de todo
+        (`z-[60]`, sobre el menú móvil que va en `z-40`). Se renderiza DENTRO
+        del layout, no en lugar de él: así la pantalla de abajo sigue cargada y
+        al confirmar no hay que volver a montarla.
+
+        El bloqueo es de interfaz, no de seguridad: quien sepa usar la consola
+        puede saltárselo. Lo que el sistema garantiza es que sin confirmar no
+        queda registro de lectura, y eso es lo que el Supervisor necesita.
+      */}
+      {blocking.length > 0 ? (
+        <AnnouncementGate announcements={blocking} userName={user.name} />
+      ) : null}
     </div>
   );
 }

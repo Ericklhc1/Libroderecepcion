@@ -255,6 +255,28 @@ conserva su modelo y sus reglas.
     Lo vigilan `tests/caja.test.ts` (20, dominio puro) y
     `tests/caja-turno.test.ts` (16, ciclo completo).
 
+13. **Un comunicado obligatorio bloquea la pantalla hasta confirmar la
+    lectura.** Lo emite el Supervisor (`announcement.manage`), a todos o a una
+    persona, desde `/supervision`. No es una notificación —ésas se ignoran— ni
+    una alerta —ésas describen un estado del hotel—: es parar el mesón para
+    decir algo.
+    **La confirmación pide texto**, porque un botón solo se pulsa sin leer, y
+    lo escrito se guarda: después se sabe no sólo quién confirmó, sino qué
+    entendió. **Confirmar no exige permiso**, sólo sesión: si lo exigiera,
+    alguien podría quedar bloqueado sin forma de desbloquearse.
+    **Quien lo emite queda confirmado de entrada**, o se bloquearía a sí mismo
+    y no podría ni corregirlo. **El bloqueo se calcula, no se guarda** —activos
+    menos los confirmados—, igual que los conflictos de importación. Se muestra
+    **uno a la vez**: cinco apilados garantizan que no se lea ninguno.
+    El bloqueo es de interfaz, no de seguridad: quien sepa usar la consola
+    puede saltárselo. Lo que el sistema garantiza es que **sin confirmar no
+    queda registro de lectura**.
+    ⚠️ Vive en el LAYOUT, así que `revalidatePath` no basta para liberarlo: el
+    router del cliente seguiría mostrando el árbol que ya tenía. Por eso
+    `ActionForm` ganó `refreshOnSuccess`. Fue un fallo real, encontrado en
+    navegador: la confirmación se guardaba y la pantalla seguía bloqueada.
+    Lo vigila `tests/comunicados.test.ts`.
+
 ## Rendimiento: lo aprendido en producción
 
 La base está en `sa-east-1` y las funciones en `gru1` (`vercel.json`). **Antes

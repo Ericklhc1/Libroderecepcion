@@ -48,6 +48,9 @@ export async function resetOperationalData() {
     prisma.followUp.deleteMany(),
     prisma.task.deleteMany(),
     prisma.operationalEntry.deleteMany(),
+    // Los comunicados y sus confirmaciones referencian al usuario: van antes.
+    prisma.announcementRead.deleteMany(),
+    prisma.announcement.deleteMany(),
     prisma.handoverItem.deleteMany(),
     /*
       La caja va ANTES de la entrega y de los usuarios: los arqueos y los

@@ -1,11 +1,7 @@
 import 'server-only';
 
 import { env } from '@/lib/env';
-import {
-  getSettingBool,
-  getSettingNumber,
-  getSettingString,
-} from '@/server/services/settings';
+import { getAllSettings } from '@/server/services/settings';
 
 export type FrontiToolKey =
   | 'room'
@@ -40,63 +36,49 @@ function reasoning(value: string): 'low' | 'medium' | 'high' {
 }
 
 export async function getFrontiConfig(): Promise<FrontiConfig> {
-  const [
-    enabled,
-    displayName,
-    welcomeMessage,
-    extraInstructions,
-    model,
-    effort,
-    retention,
-    shiftHours,
-    memoryLimit,
-    historyLimit,
-    activityMinutes,
-    room,
-    priorities,
-    deadlines,
-    checkout,
-    reminder,
-    fine,
-  ] = await Promise.all([
-    getSettingBool('fronti.enabled', true),
-    getSettingString('fronti.displayName', 'Fronti'),
-    getSettingString(
-      'fronti.welcomeMessage',
-      'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.',
-    ),
-    getSettingString(
-      'fronti.extraInstructions',
-      'Prioriza claridad, brevedad y seguridad operacional. Si un dato puede haber cambiado, verifícalo con las herramientas del Libro antes de responder.',
-    ),
-    getSettingString('fronti.model', env().OPENAI_MODEL),
-    getSettingString('fronti.reasoningEffort', 'low'),
-    getSettingNumber('fronti.memoryRetentionDays', 30),
-    getSettingNumber('fronti.shiftMemoryHours', 36),
-    getSettingNumber('fronti.memoryContextLimit', 12),
-    getSettingNumber('fronti.modelHistoryLimit', 15),
-    getSettingNumber('fronti.sessionActivityMinutes', 15),
-    getSettingBool('fronti.tool.room', true),
-    getSettingBool('fronti.tool.priorities', true),
-    getSettingBool('fronti.tool.deadlines', true),
-    getSettingBool('fronti.tool.checkout', true),
-    getSettingBool('fronti.tool.reminder', true),
-    getSettingBool('fronti.tool.fine', true),
-  ]);
+  const settings = await getAllSettings();
+  const values = new Map(settings.map((setting) => [setting.key, setting.value]));
+
+  const bool = (key: string, fallback: boolean) => {
+    const value = values.get(key as never);
+    return typeof value === 'boolean' ? value : fallback;
+  };
+  const number = (key: string, fallback: number) => {
+    const value = values.get(key as never);
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const string = (key: string, fallback: string) => {
+    const value = values.get(key as never);
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+  };
 
   return {
-    enabled,
-    displayName: displayName.slice(0, 40),
-    welcomeMessage: welcomeMessage.slice(0, 800),
-    extraInstructions: extraInstructions.slice(0, 4000),
-    model: model.slice(0, 120),
-    reasoningEffort: reasoning(effort),
-    memoryRetentionDays: clamp(retention, 1, 90, 30),
-    shiftMemoryHours: clamp(shiftHours, 1, 72, 36),
-    memoryContextLimit: clamp(memoryLimit, 1, 30, 12),
-    modelHistoryLimit: clamp(historyLimit, 4, 30, 15),
-    sessionActivityMinutes: clamp(activityMinutes, 5, 60, 15),
-    tools: { room, priorities, deadlines, checkout, reminder, fine },
+    enabled: bool('fronti.enabled', true),
+    displayName: string('fronti.displayName', 'Fronti').slice(0, 40),
+    welcomeMessage: string(
+      'fronti.welcomeMessage',
+      'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.',
+    ).slice(0, 800),
+    extraInstructions: string(
+      'fronti.extraInstructions',
+      'Prioriza claridad, brevedad y seguridad operacional. Si un dato puede haber cambiado, verifícalo con las herramientas del Libro antes de responder.',
+    ).slice(0, 4000),
+    model: string('fronti.model', env().OPENAI_MODEL).slice(0, 120),
+    reasoningEffort: reasoning(string('fronti.reasoningEffort', 'low')),
+    memoryRetentionDays: clamp(number('fronti.memoryRetentionDays', 30), 1, 90, 30),
+    shiftMemoryHours: clamp(number('fronti.shiftMemoryHours', 36), 1, 72, 36),
+    memoryContextLimit: clamp(number('fronti.memoryContextLimit', 12), 1, 30, 12),
+    modelHistoryLimit: clamp(number('fronti.modelHistoryLimit', 15), 4, 30, 15),
+    sessionActivityMinutes: clamp(number('fronti.sessionActivityMinutes', 15), 5, 60, 15),
+    tools: {
+      room: bool('fronti.tool.room', true),
+      priorities: bool('fronti.tool.priorities', true),
+      deadlines: bool('fronti.tool.deadlines', true),
+      checkout: bool('fronti.tool.checkout', true),
+      reminder: bool('fronti.tool.reminder', true),
+      fine: bool('fronti.tool.fine', true),
+    },
   };
 }
 

@@ -4,15 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
-import {
-  createGymPass,
-  saveLiveCashAudit,
-  voidGymPass,
-} from '@/server/services/live-cash';
-import { assertGymPassEligibleReservation } from '@/server/services/gym-pass';
+import { saveLiveCashAudit } from '@/server/services/live-cash';
+import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 
 const gymPassSchema = z.object({
-  reservationReferenceId: z.string().min(1),
+  stayId: z.string().min(1),
   currency: z.enum(['CLP', 'USD']),
   paymentMethod: z.enum(['EFECTIVO', 'TARJETA', 'OTRO']),
 });
@@ -24,7 +20,6 @@ export async function createGymPassAction(
   return runAction(async () => {
     const user = await requirePermission('room.manage');
     const input = parseOrThrow(gymPassSchema, formDataToObject(formData));
-    await assertGymPassEligibleReservation(input.reservationReferenceId);
     const pass = await createGymPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/libro');

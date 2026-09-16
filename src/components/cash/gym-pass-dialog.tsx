@@ -8,7 +8,7 @@ import { SubmitButton } from '@/components/ui/button';
 import { createGymPassAction } from '@/server/actions/live-cash';
 
 export type GymPassContext = {
-  reservationReferenceId: string;
+  stayId: string;
   reservationCode: string;
   roomNumber: string;
   guestName: string;
@@ -38,7 +38,7 @@ export function GymPassDialog({
       description="Disponible sólo para huéspedes IN_HOUSE o CHECK_OUT cuya salida todavía no se ha confirmado."
     >
       <ActionForm action={createGymPassAction} closeOnSuccess resetOnSuccess>
-        <input type="hidden" name="reservationReferenceId" value={context.reservationReferenceId} />
+        <input type="hidden" name="stayId" value={context.stayId} />
 
         <div className="rounded-xl bg-petrol-50 p-3 ring-1 ring-petrol-100">
           <p className="font-semibold text-petrol-900">Habitación {context.roomNumber}</p>

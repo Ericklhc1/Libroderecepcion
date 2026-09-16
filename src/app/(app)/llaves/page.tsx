@@ -11,6 +11,7 @@ import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { createKeyAction } from '@/server/actions/rooms';
 import { KeyRowActions } from '@/components/rooms/key-row-actions';
+import { ReconcileKeysForm } from '@/components/rooms/reconcile-keys';
 import { KEY_STATUS_LABELS, KEY_STATUS_TONE, KEY_TYPE_LABELS } from '@/domain/rooms';
 import { KEY_ACTION_LABELS } from '@/domain/keys';
 import { formatDateTime } from '@/lib/format';
@@ -52,7 +53,9 @@ export default async function KeysPage({
           </p>
         </div>
         {canStock ? (
-          <Dialog
+          <div className="flex flex-wrap items-center gap-2 no-print">
+            <ReconcileKeysForm />
+            <Dialog
             title="Agregar una llave al inventario"
             description="Para reponer una copia perdida o registrar una llave nueva."
             trigger={
@@ -84,6 +87,7 @@ export default async function KeysPage({
               </SubmitButton>
             </ActionForm>
           </Dialog>
+          </div>
         ) : null}
       </header>
 

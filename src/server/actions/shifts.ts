@@ -179,11 +179,12 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
       )
       .filter(Boolean),
   );
-  const missing = [
+  const requiredReports: ReadonlyArray<readonly [string, string]> = [
     ['ENTRADAS', 'Entradas'],
     ['IN_HOUSE', 'In house'],
     ['SALIDAS', 'Salidas'],
-  ].filter(([kind]) => !kinds.has(kind));
+  ];
+  const missing = requiredReports.filter(([kind]) => !kinds.has(kind));
 
   if (missing.length > 0) {
     throw new RuleError(

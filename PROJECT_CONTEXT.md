@@ -51,7 +51,8 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `User`/`Role`/`Permission` · `Shift`/`ShiftHandover`/`HandoverItem` ·
 `OperationalEntry` (novedad, incidencia, mantenimiento…) · `Task` ·
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
-`GuestReference`/`ReservationReference` · `AuditLog` · `SystemSetting`.
+`GuestReference`/`ReservationReference`/`Guarantee` · `AuditLog` ·
+`SystemSetting`.
 
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
@@ -120,6 +121,25 @@ conserva su modelo y sus reglas.
    `docs/entorno.example`, **no** en un `.env.example` de la raíz: las
    plataformas de despliegue leen ese archivo como lista de variables
    obligatorias y bloquean el despliegue.
+9. **La garantía es una entidad, y el resumen de la reserva se conserva.**
+   `Guarantee` (tipo, monto, moneda, estado) cuelga de `ReservationReference`.
+   `ReservationReference.guaranteeStatus` **no se elimina**: lo leen el motor
+   de alertas y la entrega de turno. Se mantiene sincronizado por **un único
+   camino de escritura** (`syncReservationSummary`, privado en
+   `services/guarantees.ts`), así que nada de lo que ya funcionaba cambia.
+   Reglas: los estados se mueven sólo por la máquina de
+   `domain/guarantees.ts` (`canTransition`); `APLICADA_PARCIALMENTE` exige
+   monto y motivo, `MULTA` exige monto, y `aplicado + multa` nunca supera el
+   total; `RECHAZADA` **jamás se deriva**, sólo la pone una persona; al
+   eliminar la última garantía el resumen se deja como estaba, no se
+   reinventa. Las alertas de garantía leen `Guarantee` directamente, así que
+   son inmunes a una desincronización del resumen.
+10. **El vínculo `RoomStay` → `ReservationReference` es opcional y por
+    código.** `RoomStay.reservationId` y `guestNames` **se conservan**: son la
+    fotografía de lo que entregó el PMS. `reservationRefId` se resuelve por
+    **código** de reserva (`linkStaysToReservations`), nunca por nombre, y
+    queda nulo cuando la reserva no existe en el sistema. Una estadía sin
+    vínculo sigue siendo válida y operable.
 
 ## Rendimiento: lo aprendido en producción
 
@@ -195,7 +215,12 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
   usuario la clave se muestra en pantalla en vez de enviarse a
   `recepcion@hoteleshw.com`. `src/server/mail.ts` lo informa, no falla en
   silencio.
-- Los tres informes del PMS no se han importado todavía en producción.
+- Los tres informes del PMS no se han importado todavía en producción, así que
+  el inventario de llaves sigue sin reconciliar (101 disponibles, 0
+  movimientos). Se resuelve importando o con el botón «Reconciliar con las
+  estadías» de `/llaves`; el código ya está desplegado y probado.
+- `Attachment` existe en el esquema sin ninguna implementación, y no hay
+  almacenamiento de archivos definido (FASE G).
 - Sin dominio propio del hotel.
 
 ## Compuerta de calidad

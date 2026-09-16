@@ -1,188 +1,206 @@
 import 'server-only';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { recordAudit } from '@/server/audit';
+import { AuditAction } from '@prisma/client';
+import type { CurrentUser } from '@/server/auth/current-user';
+import { NotFoundError } from '@/server/errors';
 
-/** Parámetros del sistema con valor por defecto en código y sobrescritura en BD. */
+/**
+ * Parámetros del hotel.
+ *
+ * El valor es JSON porque los parámetros son heterogéneos, pero cada clave
+ * tiene un valor por defecto tipado en este archivo. Las reglas operativas no
+ * leen cadenas mágicas repartidas por la aplicación: pasan por estas funciones.
+ */
 export const DEFAULT_SETTINGS = {
-  'hotel.name': {
-    value: 'Hotel Demo',
-    category: 'general',
-    description: 'Nombre del hotel que se muestra en la cabecera.',
-  },
-  'shift.autoCloseOnReceive': {
-    value: true,
-    category: 'turnos',
-    description:
-      'Cierra automáticamente el turno saliente cuando el turno siguiente confirma la recepción de la entrega.',
-  },
-  'shift.handoverReminderMinutes': {
-    value: 60,
-    category: 'turnos',
-    description:
-      'Minutos que puede permanecer una entrega enviada sin confirmar antes de generar alerta.',
-  },
-  'task.dueSoonHours': {
-    value: 4,
-    category: 'tareas',
-    description: 'Horas de antelación para avisar de un vencimiento próximo.',
-  },
-  'maintenance.staleHours': {
-    value: 24,
-    category: 'alertas',
-    description: 'Horas antes de alertar por mantenimiento sin resolver.',
-  },
-  'book.pageSize': {
-    value: 40,
-    category: 'general',
-    description: 'Registros por página en el libro operativo.',
-  },
-  'gym.passPriceCLP': {
-    value: 6000,
-    category: 'gimnasio',
-    description: 'Precio del pase de gimnasio cuando se cobra en pesos chilenos.',
-  },
-  'gym.passPriceUSD': {
-    value: 6,
-    category: 'gimnasio',
-    description: 'Precio del pase de gimnasio cuando se cobra en dólares estadounidenses.',
-  },
-
-  // Fronti. Los controles de seguridad (permisos, auditoría y confirmaciones)
-  // NO son configurables desde esta tabla: forman parte del contrato operativo.
-  'fronti.enabled': {
-    value: true,
-    category: 'fronti',
-    description: 'Muestra Fronti y permite usar el asistente operativo.',
-  },
-  'fronti.displayName': {
-    value: 'Fronti',
-    category: 'fronti',
-    description: 'Nombre visible del asistente en el Libro.',
-  },
-  'fronti.welcomeMessage': {
-    value:
-      'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.',
-    category: 'fronti',
-    description: 'Mensaje inicial cuando no existe historial de conversación.',
-  },
-  'fronti.extraInstructions': {
-    value: 'Prioriza claridad, brevedad y seguridad operacional. Si un dato puede haber cambiado, verifícalo con las herramientas del Libro antes de responder.',
-    category: 'fronti',
-    description: 'Instrucciones adicionales de comportamiento para Fronti.',
-  },
-  'fronti.model': {
-    value: 'gpt-5.6-luna',
-    category: 'fronti',
-    description: 'Modelo de OpenAI utilizado por Fronti. La clave API sigue protegida en el servidor.',
-  },
-  'fronti.reasoningEffort': {
-    value: 'low',
-    category: 'fronti',
-    description: 'Esfuerzo de razonamiento: low, medium o high.',
-  },
-  'fronti.memoryRetentionDays': {
-    value: 30,
-    category: 'fronti',
-    description: 'Días que se conserva la memoria personal y el historial nuevo de Fronti.',
-  },
-  'fronti.shiftMemoryHours': {
-    value: 36,
-    category: 'fronti',
-    description: 'Horas máximas de vida para recuerdos vinculados al turno.',
-  },
-  'fronti.memoryContextLimit': {
-    value: 12,
-    category: 'fronti',
-    description: 'Máximo de recuerdos relevantes que Fronti recupera para una respuesta.',
-  },
-  'fronti.modelHistoryLimit': {
-    value: 15,
-    category: 'fronti',
-    description: 'Máximo de mensajes recientes enviados al modelo como contexto conversacional.',
-  },
-  'fronti.sessionActivityMinutes': {
-    value: 15,
-    category: 'fronti',
-    description: 'Ventana de actividad reciente usada por el cliente para mantener viva la sesión.',
-  },
-  'fronti.tool.room': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite consultar el estado operativo de habitaciones.',
-  },
-  'fronti.tool.priorities': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite consultar y ordenar prioridades operativas.',
-  },
-  'fronti.tool.deadlines': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite consultar próximos vencimientos.',
-  },
-  'fronti.tool.checkout': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite preparar check-outs. La ejecución siempre requiere confirmación y permiso.',
-  },
-  'fronti.tool.reminder': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite preparar recordatorios/tareas. La creación siempre requiere confirmación y permiso.',
-  },
-  'fronti.tool.fine': {
-    value: true,
-    category: 'fronti-capacidades',
-    description: 'Permite preparar multas. El registro siempre requiere confirmación y permiso.',
-  },
+  'hotel.name': 'Hotel HW Libertad',
+  'shift.maxHours': 12,
+  'shift.requireSupervisorValidation': true,
+  'shift.autoCloseOnReceive': true,
+  'task.overdueAlertMinutes': 0,
+  'maintenance.staleHours': 24,
+  'book.pageSize': 50,
+  'gym.price.externalCLP': 10000,
+  'gym.price.externalUSD': 10,
+  'reception.usdRateCLP': 0,
+  'reception.checkoutHour': 11,
+  // Integración Fronti: desactivada por defecto. Activarla exige configurar
+  // también los secretos en variables de entorno; acá nunca se guardan claves.
+  'fronti.enabled': false,
+  'fronti.baseUrl': 'https://fronti.example.com',
+  'fronti.hotelCode': '',
 } as const;
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
 
-async function readSetting(key: SettingKey): Promise<unknown> {
+export const SETTING_META: Record<
+  SettingKey,
+  { category: string; description: string; type: 'string' | 'number' | 'boolean' }
+> = {
+  'hotel.name': {
+    category: 'hotel',
+    description: 'Nombre visible del hotel',
+    type: 'string',
+  },
+  'shift.maxHours': {
+    category: 'turnos',
+    description: 'Duración máxima de un turno antes de marcarlo vencido',
+    type: 'number',
+  },
+  'shift.requireSupervisorValidation': {
+    category: 'turnos',
+    description: 'Exigir validación del Supervisor al cierre',
+    type: 'boolean',
+  },
+  'shift.autoCloseOnReceive': {
+    category: 'turnos',
+    description: 'Cerrar el turno anterior cuando el siguiente recibe la entrega',
+    type: 'boolean',
+  },
+  'task.overdueAlertMinutes': {
+    category: 'alertas',
+    description: 'Minutos de tolerancia antes de alertar una tarea vencida',
+    type: 'number',
+  },
+  'maintenance.staleHours': {
+    category: 'alertas',
+    description: 'Horas para considerar un mantenimiento sin resolver',
+    type: 'number',
+  },
+  'book.pageSize': {
+    category: 'libro',
+    description: 'Registros por página del Libro Operativo',
+    type: 'number',
+  },
+  'gym.price.externalCLP': {
+    category: 'caja',
+    description: 'Tarifa gimnasio para no huéspedes en pesos chilenos',
+    type: 'number',
+  },
+  'gym.price.externalUSD': {
+    category: 'caja',
+    description: 'Tarifa gimnasio para no huéspedes en dólares',
+    type: 'number',
+  },
+  'reception.usdRateCLP': {
+    category: 'recepción',
+    description: 'Valor operativo del dólar en pesos chilenos que usa Recepción',
+    type: 'number',
+  },
+  'reception.checkoutHour': {
+    category: 'recepción',
+    description: 'Hora límite de check-out; desde esta hora se alertan salidas sin confirmar',
+    type: 'number',
+  },
+  'fronti.enabled': {
+    category: 'integraciones',
+    description: 'Habilitar el cliente de Fronti',
+    type: 'boolean',
+  },
+  'fronti.baseUrl': {
+    category: 'integraciones',
+    description: 'URL base de la API de Fronti',
+    type: 'string',
+  },
+  'fronti.hotelCode': {
+    category: 'integraciones',
+    description: 'Código del hotel en Fronti',
+    type: 'string',
+  },
+};
+
+/** Obtiene un parámetro con fallback seguro a su valor por defecto. */
+export async function getSetting<K extends SettingKey>(
+  key: K,
+): Promise<(typeof DEFAULT_SETTINGS)[K]> {
   const row = await prisma.systemSetting.findUnique({ where: { key } });
-  if (row) return row.value;
-  return DEFAULT_SETTINGS[key].value;
+  if (!row) return DEFAULT_SETTINGS[key];
+  return row.value as (typeof DEFAULT_SETTINGS)[K];
 }
 
-export async function getSettingBool(
-  key: SettingKey,
-  fallback: boolean,
-): Promise<boolean> {
-  const value = await readSetting(key).catch(() => fallback);
+export async function getSettingBool(key: SettingKey, fallback: boolean): Promise<boolean> {
+  const value = await getSetting(key);
   return typeof value === 'boolean' ? value : fallback;
 }
 
-export async function getSettingNumber(
-  key: SettingKey,
-  fallback: number,
-): Promise<number> {
-  const value = await readSetting(key).catch(() => fallback);
-  const parsed = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+export async function getSettingNumber(key: SettingKey, fallback: number): Promise<number> {
+  const value = await getSetting(key);
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-export async function getSettingString(
-  key: SettingKey,
-  fallback: string,
-): Promise<string> {
-  const value = await readSetting(key).catch(() => fallback);
-  return typeof value === 'string' && value.length > 0 ? value : fallback;
-}
+export async function listSettings() {
+  const rows = await prisma.systemSetting.findMany({ orderBy: [{ category: 'asc' }, { key: 'asc' }] });
+  const byKey = new Map(rows.map((row) => [row.key, row]));
 
-export async function getAllSettings() {
-  const rows = await prisma.systemSetting.findMany({ orderBy: { key: 'asc' } });
-  const byKey = new Map(rows.map((r) => [r.key, r]));
   return (Object.keys(DEFAULT_SETTINGS) as SettingKey[]).map((key) => {
-    const meta = DEFAULT_SETTINGS[key];
-    const row = byKey.get(key);
+    const existing = byKey.get(key);
     return {
+      id: existing?.id ?? null,
       key,
-      value: row ? row.value : (meta.value as unknown),
-      defaultValue: meta.value as unknown,
-      category: meta.category,
-      description: meta.description,
-      overridden: Boolean(row),
-      updatedAt: row?.updatedAt ?? null,
+      value: existing?.value ?? DEFAULT_SETTINGS[key],
+      category: existing?.category ?? SETTING_META[key].category,
+      description: existing?.description ?? SETTING_META[key].description,
+      type: SETTING_META[key].type,
+      updatedAt: existing?.updatedAt ?? null,
     };
   });
+}
+
+export async function setSetting(
+  user: CurrentUser,
+  input: { key: string; rawValue: string },
+) {
+  if (!(input.key in DEFAULT_SETTINGS)) {
+    throw new NotFoundError('Ese parámetro no existe.');
+  }
+  const key = input.key as SettingKey;
+  const meta = SETTING_META[key];
+  let value: Prisma.InputJsonValue;
+
+  if (meta.type === 'boolean') {
+    if (!['true', 'false'].includes(input.rawValue)) {
+      throw new Error('El valor debe ser verdadero o falso.');
+    }
+    value = input.rawValue === 'true';
+  } else if (meta.type === 'number') {
+    const parsed = Number(input.rawValue);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error('El valor debe ser un número igual o mayor que cero.');
+    }
+    if (key === 'reception.checkoutHour' && (!Number.isInteger(parsed) || parsed > 23)) {
+      throw new Error('La hora límite de check-out debe estar entre 0 y 23.');
+    }
+    value = parsed;
+  } else {
+    value = input.rawValue.trim();
+  }
+
+  const updated = await prisma.systemSetting.upsert({
+    where: { key },
+    create: {
+      key,
+      value,
+      category: meta.category,
+      description: meta.description,
+      updatedById: user.id,
+    },
+    update: {
+      value,
+      category: meta.category,
+      description: meta.description,
+      updatedById: user.id,
+    },
+  });
+
+  await recordAudit({
+    entity: 'SystemSetting',
+    entityId: updated.id,
+    action: AuditAction.CONFIGURAR,
+    user,
+    summary: `Parámetro ${key} actualizado`,
+    after: { key, value },
+  });
+
+  return updated;
 }

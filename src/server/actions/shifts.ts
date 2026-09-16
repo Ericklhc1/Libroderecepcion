@@ -43,10 +43,6 @@ function refresh(shiftId?: string) {
 
 const shiftIdSchema = z.object({ shiftId: z.string().min(1) });
 
-/**
- * El tipo es OPCIONAL: si no viene, se usa el que corresponde al reloj. Nadie
- * debería tener que elegir «día» a las nueve de la mañana.
- */
 const openShiftSchema = z.object({
   type: z
     .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
@@ -54,12 +50,6 @@ const openShiftSchema = z.object({
     .transform((value) => (value === '' || value === undefined ? null : value)),
 });
 
-/**
- * Abre el turno, o suma a quien llega al que ya está abierto.
- *
- * Un solo botón para las dos cosas: quien entra al mesón no tiene por qué
- * saber si alguien abrió turno antes que él.
- */
 export async function openShiftAction(
   _state: ActionState | null,
   formData: FormData,
@@ -85,17 +75,11 @@ const addMemberSchema = z.object({
   userId: z.string().min(1),
 });
 
-/** Suma a otra persona al turno vigente. */
 export async function addShiftMemberAction(
   _state: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    /*
-      `shift.start` y no `shift.manage`: quien está en el mesón refuerza su
-      propio turno sin pedirle permiso a nadie. El servicio comprueba además
-      que quien lo hace esté en el turno o lo supervise.
-    */
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(addMemberSchema, formDataToObject(formData));
 
@@ -142,7 +126,8 @@ export async function prepareHandoverAction(
     revalidatePath(`/turno/entrega/${handover.id}`);
     return {
       ok: true as const,
-      message: 'Resumen de entrega generado. Revísalo, agrega notas y envíalo.',
+      message:
+        'Cierre iniciado. Vuelve a cargar Entradas, In house y Salidas, revisa las discrepancias y después completa caja y novedades.',
       id: handover.id,
     };
   });
@@ -153,6 +138,62 @@ const sendSchema = z.object({
   notes: zOptionalString,
 });
 
+/**
+ * El cierre exige una fotografía nueva del PMS.
+ *
+ * No basta con «los informes de hoy»: pueden haberse cargado al inicio del
+ * turno y haber cambiado seis horas después. El `createdAt` del borrador es la
+ * marca natural de cuándo empezó el cierre, así que el lote aplicado debe ser
+ * posterior y contener los tres informes. La pantalla de importación ya obliga
+ * a revisarlo antes de aplicar; no guardamos un segundo checkbox de validación.
+ */
+async function assertFreshClosingReports(shiftId: string): Promise<void> {
+  const handover = await prisma.shiftHandover.findUnique({
+    where: { fromShiftId: shiftId },
+    select: { id: true, status: true, createdAt: true },
+  });
+  if (!handover || handover.status !== HandoverStatus.BORRADOR) {
+    throw new RuleError('Primero inicia el cierre y la entrega de turno.');
+  }
+
+  const latest = await prisma.pmsImportBatch.findFirst({
+    where: {
+      status: 'APLICADO',
+      appliedAt: { gte: handover.createdAt },
+    },
+    orderBy: { appliedAt: 'desc' },
+    select: { id: true, reports: true, appliedAt: true },
+  });
+  if (!latest) {
+    throw new RuleError(
+      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Entradas, In house y Salidas. Deben ser posteriores al inicio del cierre.',
+    );
+  }
+
+  const kinds = new Set(
+    (Array.isArray(latest.reports) ? latest.reports : [])
+      .map((report) =>
+        report && typeof report === 'object' && 'kind' in report
+          ? String((report as { kind?: unknown }).kind ?? '')
+          : '',
+      )
+      .filter(Boolean),
+  );
+  const missing = [
+    ['ENTRADAS', 'Entradas'],
+    ['IN_HOUSE', 'In house'],
+    ['SALIDAS', 'Salidas'],
+  ].filter(([kind]) => !kinds.has(kind));
+
+  if (missing.length > 0) {
+    throw new RuleError(
+      `La validación de cierre está incompleta. Falta cargar: ${missing
+        .map(([, label]) => label)
+        .join(', ')}.`,
+    );
+  }
+}
+
 export async function sendHandoverAction(
   _state: ActionState | null,
   formData: FormData,
@@ -160,12 +201,13 @@ export async function sendHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = parseOrThrow(sendSchema, formDataToObject(formData));
+    await assertFreshClosingReports(input.shiftId);
     const handover = await sendHandover(user, input);
     refresh(input.shiftId);
     revalidatePath(`/turno/entrega/${handover.id}`);
     return {
       ok: true as const,
-      message: 'Entrega enviada. El turno siguiente debe confirmarla.',
+      message: 'Entrega enviada. Queda en la bandeja para recepción y validación de Supervisión.',
       id: handover.id,
     };
   });
@@ -209,7 +251,6 @@ const handoverNoteSchema = z.object({
   detail: zOptionalString,
 });
 
-/** Nota manual dentro de la entrega, clasificada por urgencia. */
 export async function addHandoverNoteAction(
   _state: ActionState | null,
   formData: FormData,
@@ -285,16 +326,10 @@ export async function removeHandoverNoteAction(
 }
 
 /**
- * Crea un turno a mano, con su ventana fija.
- *
- * Sigue existiendo porque el hotel quiere poder crear turnos «a su antojo»
- * —adelantar el de mañana, dejar preparado el de una cobertura— pero **ya no
- * programa nada de antemano por su cuenta**: sin esta acción no hay turnos, y
- * el flujo normal es que la persona que entra al mesón abra el suyo.
- *
- * Cambió respecto de la versión anterior: la ventana ya NO se escribe a mano.
- * Son dos, son fijas y las decide el tipo (`plannedWindow`). Una ventana libre
- * era complejidad que nadie pedía y hacía que dos turnos se solaparan.
+ * Acción heredada sólo para compatibilidad de historial antiguo.
+ * La interfaz ya no ofrece programación de turnos; el flujo normal es abrir el
+ * turno al comenzar la operación. Se conserva aquí para no romper referencias
+ * históricas ni migraciones mientras se limpia el código muerto.
  */
 export async function scheduleShiftAction(
   _state: ActionState | null,
@@ -312,11 +347,6 @@ export async function scheduleShiftAction(
     date.setHours(0, 0, 0, 0);
     const window = plannedWindow(date, input.type);
 
-    /*
-      Se reutiliza un turno ya programado de la misma franja en lugar de crear
-      otro: crear dos turnos programados idénticos no aporta nada y ensucia la
-      bandeja. Un turno YA EN CURSO no se toca: ése se maneja desde /turno.
-    */
     const existing = await prisma.shift.findFirst({
       where: {
         date,
@@ -377,7 +407,6 @@ export async function scheduleShiftAction(
   });
 }
 
-/** Anula un turno programado que no se usará (por ejemplo, error de carga). */
 export async function cancelShiftAction(
   _state: ActionState | null,
   formData: FormData,
@@ -417,16 +446,6 @@ const archiveSchema = z.object({
   reason: zOptionalString,
 });
 
-/**
- * Archiva un turno: lo saca de las listas sin borrarlo.
- *
- * Archivar NO es anular. Anular dice «este turno no se va a usar» y sólo vale
- * antes de que empiece; archivar dice «ya pasó y no quiero verlo», y vale
- * justamente para los que terminaron. Un turno archivado conserva su historia,
- * sus registros y su entrega: deja de ofrecerse y de listarse, nada más.
- *
- * Por eso no se archiva un turno en curso: eso se cierra, no se esconde.
- */
 export async function archiveShiftAction(
   _state: ActionState | null,
   formData: FormData,
@@ -473,7 +492,6 @@ export async function archiveShiftAction(
   });
 }
 
-/** Devuelve un turno archivado a las listas. */
 export async function unarchiveShiftAction(
   _state: ActionState | null,
   formData: FormData,

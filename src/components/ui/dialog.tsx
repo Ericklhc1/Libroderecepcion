@@ -1,14 +1,26 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { DialogProvider } from './form';
 import { Button } from './button';
 
 /**
- * Modal simple y accesible. Se usa sólo para acciones rápidas (crear novedad,
- * incidencia, tarea o seguimiento); los formularios largos viven en su página.
+ * Modal simple y accesible para las acciones rápidas del Libro.
+ *
+ * El panel se monta en `document.body`, pero su centro NO se calcula a partir
+ * del contenedor de la aplicación. El Libro tiene una barra lateral fija en
+ * escritorio y un centrado por flex podía terminar tomando como referencia la
+ * columna de contenido, dejando la ventana corrida hacia la derecha.
+ *
+ * Por eso el panel se posiciona explícitamente en 50vw / 50dvh: son unidades
+ * del viewport real. La barra lateral, el ancho del contenido y cualquier
+ * wrapper de la página dejan de participar en el cálculo.
+ *
+ * Cuando el formulario es largo, sólo se desplaza el cuerpo del diálogo y la
+ * cabecera permanece visible.
  */
 export function Dialog({
   trigger,
@@ -30,21 +42,78 @@ export function Dialog({
   triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', onKey);
+
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.querySelector<HTMLElement>('input, textarea, select, button')?.focus();
+    panelRef.current?.focus({ preventScroll: true });
+
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  const overlay = (
+    <div
+      className="fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          /*
+            `vw` / `dvh` fuerzan el centro de la pantalla completa. No usar
+            `items-center` acá: el diálogo no debe poder heredar el ancho útil
+            de la columna principal del shell.
+
+            Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
+            `transform` y pisaría el `translate` que hace el centrado.
+          */
+          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-xl outline-none',
+          width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
+        )}
+      >
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-petrol-900">{title}</h2>
+            {description ? (
+              <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Cerrar"
+            className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <DialogProvider close={() => setOpen(false)}>{children}</DialogProvider>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -58,45 +127,7 @@ export function Dialog({
         {trigger}
       </Button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-petrol-950/40 p-0 sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setOpen(false);
-          }}
-        >
-          <div
-            ref={panelRef}
-            className={cn(
-              'max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-xl animate-fade-in sm:rounded-2xl',
-              width === 'sm' ? 'sm:max-w-md' : width === 'lg' ? 'sm:max-w-3xl' : 'sm:max-w-xl',
-            )}
-          >
-            <div className="sticky top-0 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
-              <div>
-                <h2 className="text-base font-semibold text-petrol-900">{title}</h2>
-                {description ? (
-                  <p className="mt-0.5 text-xs text-slate-500">{description}</p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Cerrar"
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-              >
-                <X className="h-5 w-5" aria-hidden="true" />
-              </button>
-            </div>
-            <div className="px-5 py-4">
-              <DialogProvider close={() => setOpen(false)}>{children}</DialogProvider>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {open && mounted ? createPortal(overlay, document.body) : null}
     </>
   );
 }

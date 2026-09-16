@@ -5,7 +5,11 @@ import { getImportPreview, listImportBatches } from '@/server/services/pms-impor
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { CONFLICT_LABELS, CONFLICT_TONE } from '@/domain/pms/conflicts';
-import { COLUMN_LABELS, type ColumnField } from '@/domain/pms/columns';
+import {
+  COLUMN_LABELS,
+  displayedSourceHeader,
+  type ColumnField,
+} from '@/domain/pms/columns';
 import { STAY_STATUS_LABELS, STAY_STATUS_TONE } from '@/domain/rooms';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
@@ -22,6 +26,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const REPORT_NAMES: Record<string, string> = {
+  ACTIVIDAD: 'Habitaciones con actividad',
   ENTRADAS: 'Informe de entradas',
   IN_HOUSE: 'Informe in house',
   SALIDAS: 'Informe de salidas',
@@ -159,18 +164,32 @@ export default async function ImportPage({
                   ) : null}
 
                   {report.columns.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {report.columns.map((column) => (
-                        <span
-                          key={`${report.fileName}-${column.header}`}
-                          className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
-                        >
-                          <span className="font-medium">{column.header}</span>
-                          <span className="text-slate-400"> → </span>
-                          {COLUMN_LABELS[column.field as ColumnField] ?? column.field}
-                        </span>
-                      ))}
-                    </div>
+                    <>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Encabezados del PDF. El campo interno se muestra aparte para no confundir lo
+                        que FNS imprime con el nombre que usa el Libro.
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {report.columns.map((column) => {
+                          const field = column.field as ColumnField;
+                          const sourceHeader = displayedSourceHeader(
+                            report.kind,
+                            field,
+                            column.header,
+                          );
+                          return (
+                            <span
+                              key={`${report.fileName}-${column.header}`}
+                              className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                            >
+                              <span className="font-medium">PDF: {sourceHeader}</span>
+                              <span className="text-slate-400"> · campo interno: </span>
+                              {COLUMN_LABELS[field] ?? column.field}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </>
                   ) : null}
 
                   {report.unmapped.length ? (

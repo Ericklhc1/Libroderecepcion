@@ -8,20 +8,73 @@
  */
 import type { ColumnField } from './columns';
 import type { RawRecord, ReportKind, StructuredReport } from './layout';
+import { parseMoney, type Money } from './money';
+import { parsePaymentType, type ParsedPayment } from './payment';
 
 /** Estado operativo que aporta cada informe. */
 export type OperationalStatus = 'CHECK_IN' | 'IN_HOUSE' | 'CHECK_OUT';
 
-export const STATUS_BY_REPORT: Record<ReportKind, OperationalStatus> = {
+/**
+ * Estado que aporta cada informe, cuando lo aporta el informe entero.
+ *
+ * `ACTIVIDAD` no está acá a propósito: es el único informe cuyo estado NO lo
+ * define el documento sino cada fila, en su columna «Tipo». Por eso el mapa
+ * deja de ser total y quien lo consulta tiene que decidir qué hace cuando no
+ * hay entrada, en vez de recibir un estado equivocado por omisión.
+ */
+export const STATUS_BY_REPORT: Partial<Record<ReportKind, OperationalStatus>> = {
   ENTRADAS: 'CHECK_IN',
   IN_HOUSE: 'IN_HOUSE',
   SALIDAS: 'CHECK_OUT',
 };
 
+/**
+ * Cómo se lee la columna «Tipo» del informe de actividad.
+ *
+ * Son las tres palabras que imprime el PMS. «Ocupada» es la estadía en curso
+ * —el equivalente al informe in house— y las otras dos son la llegada y la
+ * salida del día.
+ *
+ * Importante y explícito: que el informe diga «Check-in» NO significa que el
+ * check-in esté hecho. Significa que hay una llegada esperada para hoy. Lo
+ * mismo con «Check-out»: es una salida que corresponde a hoy, no una salida
+ * cerrada. Quien decide si el trámite se completó es el Libro, con sus llaves,
+ * garantías y pendientes.
+ */
+export const ACTIVITY_TYPES: Record<string, OperationalStatus> = {
+  'check-in': 'CHECK_IN',
+  'check in': 'CHECK_IN',
+  checkin: 'CHECK_IN',
+  entrada: 'CHECK_IN',
+  llegada: 'CHECK_IN',
+  'check-out': 'CHECK_OUT',
+  'check out': 'CHECK_OUT',
+  checkout: 'CHECK_OUT',
+  salida: 'CHECK_OUT',
+  ocupada: 'IN_HOUSE',
+  ocupado: 'IN_HOUSE',
+  'in house': 'IN_HOUSE',
+  'in-house': 'IN_HOUSE',
+  alojado: 'IN_HOUSE',
+};
+
+/** Traduce la columna «Tipo» a estado operativo. `null` si no se reconoce. */
+export function activityStatus(raw: string | null): OperationalStatus | null {
+  if (!raw) return null;
+  const key = raw
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  return ACTIVITY_TYPES[key] ?? null;
+}
+
 export const REPORT_LABELS: Record<ReportKind, string> = {
   ENTRADAS: 'Informe de entradas',
   IN_HOUSE: 'Informe in house',
   SALIDAS: 'Informe de salidas',
+  ACTIVIDAD: 'Habitaciones con actividad',
 };
 
 /** Estructura común a la que se reducen los tres informes. */
@@ -35,6 +88,14 @@ export type NormalizedStay = {
   pmsStatus: string | null;
   sourceReport: ReportKind;
   operationalStatus: OperationalStatus;
+  /** Huéspedes que declara la fila. Sólo lo trae el informe de actividad. */
+  guestCount: number | null;
+  /** Importe total de la estancia, con su moneda. Nunca un número suelto. */
+  totalAmount: Money | null;
+  /** Saldo pendiente de ESTA estancia, no de la habitación. */
+  pendingAmount: Money | null;
+  /** Forma de pago normalizada, con el texto original conservado. */
+  payment: ParsedPayment | null;
   /** Página y fila del informe, para poder señalar el origen en la revisión. */
   origin: { page: number; y: number };
   /** Problemas de la propia fila: sin habitación, fecha ilegible, etc. */
@@ -134,11 +195,20 @@ function guestNames(record: RawRecord): string[] {
   return names;
 }
 
+/** Cantidad de huéspedes: un entero pequeño, o nada. */
+function parseGuestCount(value: string | null): number | null {
+  if (!value) return null;
+  const digits = value.match(/\d+/)?.[0];
+  if (!digits) return null;
+  const count = Number(digits);
+  return Number.isInteger(count) && count > 0 && count < 100 ? count : null;
+}
+
 export function normalizeReport(report: StructuredReport): NormalizedReport | null {
   if (!report.kind) return null;
   const kind = report.kind;
   const reportDate = parseReportDate(report.reportDate);
-  const operationalStatus = STATUS_BY_REPORT[kind];
+  const reportStatus = STATUS_BY_REPORT[kind] ?? null;
 
   const stays = report.records.map((record): NormalizedStay => {
     const issues: string[] = [];
@@ -153,6 +223,46 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
     const departure = parseDateCell(cell(record, 'departure'), reportDate);
     if (departure.unreadable) issues.push('No se pudo leer la fecha de salida.');
 
+    const rawType = cell(record, 'pmsStatus');
+
+    /*
+      El estado sale de la fila cuando el informe no lo define, que es el caso
+      del informe de actividad: su columna «Tipo» dice Check-in, Check-out u
+      Ocupada por cada habitación. Si la palabra no se reconoce, la fila no se
+      descarta —se conserva con el problema anotado— y va al preview para que
+      alguien decida, que es la regla: no corregir datos dudosos en silencio.
+    */
+    const fromRow = reportStatus ? null : activityStatus(rawType);
+    if (!reportStatus && !fromRow) {
+      issues.push(
+        rawType
+          ? `El tipo de actividad «${rawType}» no se reconoce.`
+          : 'La fila no dice si es entrada, salida u ocupada.',
+      );
+    }
+
+    /*
+      El importe se guarda con su moneda. El informe mezcla pesos y dólares, y
+      en cada moneda el punto significa otra cosa: un importe sin moneda queda
+      en nulo en lugar de suponerse peso.
+    */
+    const totalAmount = parseMoney(cell(record, 'totalAmount'));
+    const pendingAmount = parseMoney(cell(record, 'pendingAmount'));
+    const rawTotal = cell(record, 'totalAmount');
+    if (rawTotal && !totalAmount) {
+      issues.push(`No se pudo interpretar el importe total «${rawTotal}».`);
+    }
+    const rawPending = cell(record, 'pendingAmount');
+    if (rawPending && !pendingAmount) {
+      issues.push(`No se pudo interpretar el importe pendiente «${rawPending}».`);
+    }
+    if (totalAmount && pendingAmount && totalAmount.currency !== pendingAmount.currency) {
+      issues.push('El importe total y el pendiente vienen en monedas distintas.');
+    }
+
+    const rawPayment = cell(record, 'paymentType');
+    const payment = rawPayment ? parsePaymentType(rawPayment) : null;
+
     return {
       reservationId: cell(record, 'reservationId') ?? '',
       roomNumber,
@@ -160,9 +270,19 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
       channel: cell(record, 'channel'),
       arrivalDate: arrival.date,
       departureDate: departure.date,
-      pmsStatus: cell(record, 'pmsStatus'),
+      pmsStatus: rawType,
       sourceReport: kind,
-      operationalStatus,
+      /*
+        `CHECK_IN` como último recurso es deliberado y sólo se alcanza con la
+        fila ya marcada como problemática: es el estado que NO otorga llave ni
+        da nada por hecho, así que un dato ilegible no puede provocar que el
+        sistema entregue una llave o cierre una salida por su cuenta.
+      */
+      operationalStatus: reportStatus ?? fromRow ?? 'CHECK_IN',
+      guestCount: parseGuestCount(cell(record, 'guestCount')),
+      totalAmount,
+      pendingAmount,
+      payment,
       origin: { page: record.page, y: record.y },
       issues,
     };

@@ -1037,6 +1037,15 @@ enum PmsReportKind {
   ENTRADAS
   IN_HOUSE
   SALIDAS
+  /// «Habitaciones con actividad»: el informe PRINCIPAL.
+  ///
+  /// Trae en un solo documento las ocupadas, las salidas y las entradas del
+  /// día, así que ya no hace falta subir tres archivos para armar la foto
+  /// operativa. Se diferencia de los otros tres en algo estructural: el estado
+  /// no lo define el informe, lo define cada fila en su columna «Tipo».
+  ///
+  /// Los otros tres se conservan: pasan a ser secundarios o de respaldo.
+  ACTIVIDAD
 }
 
 enum KeyType {
@@ -1117,6 +1126,31 @@ model RoomStay {
   pmsStatus        String?
   sourceReport     PmsReportKind
   status           RoomStayStatus
+  /// Huéspedes que declara el informe para esta estancia.
+  guestCount       Int?
+  /*
+    Importes de ESTA estancia, no de la habitación.
+
+    La distinción es la razón de que vivan acá: una reserva puede ocupar varias
+    habitaciones con saldos distintos —en el informe real, la misma reserva
+    tiene CL$ 0 pendientes en cuatro habitaciones y CL$ 15.000 en una quinta— y
+    una habitación puede tener el mismo día una salida con saldo cero y una
+    entrada con saldo pendiente. Un «saldo de habitación» sería falso en los
+    dos casos.
+
+    La moneda va en su propia columna y nunca se mezcla: el informe trae pesos
+    y dólares a la vez.
+  */
+  totalAmount      Decimal?              @db.Decimal(12, 2)
+  pendingAmount    Decimal?              @db.Decimal(12, 2)
+  currency         String?               @db.VarChar(3)
+  /// Forma de pago normalizada, y el texto tal como lo imprimió el PMS.
+  ///
+  /// Se conservan los dos porque de esto depende si el mesón cobra, y el PMS
+  /// puede introducir formas nuevas: normalizar sin guardar el original haría
+  /// perder el dato en cuanto apareciera una que no conocemos.
+  paymentType      String?
+  paymentTypeRaw   String?
   stage            RoomStayStage         @default(PENDIENTE)
   /// Fecha de operación del informe que originó la estadía.
   businessDate     DateTime              @db.Date

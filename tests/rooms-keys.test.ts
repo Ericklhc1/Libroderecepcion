@@ -111,6 +111,104 @@ describe('habitaciones y llaves', () => {
   });
 
   describe('importación de los tres informes', () => {
+    /*
+      Caso real de producción: la habitación 629 mostraba a la MISMA reserva
+      (7528281) como «Actual · In house» y como «Entrante · Check-in» a la
+      vez. La causa era que la clave de deduplicación incluía el estado, así
+      que la misma reserva en el informe de in house y en el de entradas
+      generaba dos claves y dos estadías, con un conflicto de llave que en la
+      realidad no existía.
+
+      Una reserva es UNA estadía por habitación, y gana el estado más
+      avanzado. Esto se prueba con un lote armado a mano, no con los
+      fixtures, porque el informe real del hotel no traía el caso.
+    */
+    it('la misma reserva en dos informes no crea dos estadías', async () => {
+      const reserva = '7528281';
+      const comun = {
+        reservationId: reserva,
+        roomNumber: '629',
+        guestNames: ['Karla Paula Baya'],
+        channel: 'Walk-in',
+        arrivalDate: new Date(2026, 8, 15).toISOString(),
+        departureDate: new Date(2026, 8, 21).toISOString(),
+        pmsStatus: null,
+        issues: [],
+      };
+      const batch = await prisma.pmsImportBatch.create({
+        data: {
+          businessDate: new Date(2026, 8, 14),
+          reports: [],
+          payload: [
+            { ...comun, sourceReport: 'IN_HOUSE', status: RoomStayStatus.IN_HOUSE },
+            { ...comun, sourceReport: 'ENTRADAS', status: RoomStayStatus.CHECK_IN },
+          ],
+          summary: {},
+          createdById: receptionist.id,
+        },
+        select: { id: true },
+      });
+
+      await applyImport(receptionist, batch.id);
+
+      const estadias = await prisma.roomStay.findMany({
+        where: { reservationId: reserva, deletedAt: null },
+      });
+
+      expect(estadias).toHaveLength(1);
+      // Gana el estado más avanzado: quien ya está dentro no está «por llegar».
+      expect(estadias[0]?.status).toBe(RoomStayStatus.IN_HOUSE);
+
+      // Y una sola llave principal, sin el conflicto que no existía.
+      const llaves = await prisma.roomKey.findMany({
+        where: { room: { number: '629' }, stayId: { not: null } },
+      });
+      expect(llaves).toHaveLength(1);
+      expect(llaves[0]?.stayId).toBe(estadias[0]?.id);
+    });
+
+    it('volver a importar el informe de entradas no retrocede a quien ya está dentro', async () => {
+      const reserva = '7528299';
+      const comun = {
+        reservationId: reserva,
+        roomNumber: '628',
+        guestNames: ['Huésped Dentro'],
+        channel: null,
+        arrivalDate: new Date(2026, 8, 15).toISOString(),
+        departureDate: new Date(2026, 8, 21).toISOString(),
+        pmsStatus: null,
+        issues: [],
+      };
+      const lote = async (payload: unknown[]) =>
+        (
+          await prisma.pmsImportBatch.create({
+            data: {
+              businessDate: new Date(2026, 8, 14),
+              reports: [],
+              payload: payload as never,
+              summary: {},
+              createdById: receptionist.id,
+            },
+            select: { id: true },
+          })
+        ).id;
+
+      await applyImport(
+        receptionist,
+        await lote([{ ...comun, sourceReport: 'IN_HOUSE', status: RoomStayStatus.IN_HOUSE }]),
+      );
+      await applyImport(
+        receptionist,
+        await lote([{ ...comun, sourceReport: 'ENTRADAS', status: RoomStayStatus.CHECK_IN }]),
+      );
+
+      const estadias = await prisma.roomStay.findMany({
+        where: { reservationId: reserva, deletedAt: null },
+      });
+      expect(estadias).toHaveLength(1);
+      expect(estadias[0]?.status).toBe(RoomStayStatus.IN_HOUSE);
+    });
+
     it('aplica las filas y agrupa por habitación', async () => {
       const batchId = await seedBatch(receptionist);
       const result = await applyImport(receptionist, batchId);

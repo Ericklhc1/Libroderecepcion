@@ -122,6 +122,21 @@ conserva su modelo y sus reglas.
    `key.stock`, `reconcileKeysAction`) la llama sin acotar, para alcanzar
    estadías cargadas antes de que la regla existiera. Es idempotente. No hay
    ni debe haber una segunda lógica de asignación.
+   **Una reserva es UNA estadía por habitación y por FASE.** `CHECK_IN` e
+   `IN_HOUSE` son el mismo hecho en dos etapas —el informe de entradas la
+   lista como llegada y el de in house como alojada— así que se conservan en
+   una sola estadía y gana el estado más avanzado (`mostAdvancedStayStatus`).
+   `CHECK_OUT` es un hecho APARTE: una reserva que sale y vuelve a entrar el
+   mismo día son dos filas, y eso es lo que hace existir
+   `sameReservationTurnaround`. La fase la decide `stayPhase` en el dominio.
+   La clave de deduplicación de `applyImport` y el emparejamiento de la
+   pantalla de revisión usan **la misma fase**: si divergieran, la revisión
+   anunciaría estadías que al aplicar no se crean.
+   Decisión revisada: la clave incluía el estado completo, y por eso la misma
+   reserva en dos informes creaba dos estadías. En producción la 629 mostraba
+   a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
+   vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
+   `tests/rooms-keys.test.ts`.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y

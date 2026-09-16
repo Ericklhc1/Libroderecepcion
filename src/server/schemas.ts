@@ -242,6 +242,42 @@ export const reservationSchema = z.object({
   notes: zOptionalString,
 });
 
+/* --------------------------------- Garantías -------------------------------- */
+
+const zMoney = z
+  .union([z.string(), z.number()])
+  .transform((value) => (typeof value === 'number' ? value : Number(value.replace(/[^\d.-]/g, ''))))
+  .refine((value) => Number.isFinite(value) && value >= 0, 'Monto inválido');
+
+export const guaranteeCreateSchema = z.object({
+  reservationReferenceId: z.string().min(1, 'Selecciona la reserva'),
+  kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),
+  amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero'),
+  /** Código ISO de tres letras. La operación es en CLP, pero no sólo. */
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .default('CLP')
+    .refine((value) => /^[A-Z]{3}$/.test(value), 'Usa el código de tres letras, como CLP o USD'),
+  state: z.enum(['PENDIENTE', 'VIGENTE']).optional(),
+  notes: zOptionalString,
+});
+
+export const guaranteeStateSchema = z.object({
+  id: z.string().min(1),
+  state: z.enum(['PENDIENTE', 'VIGENTE', 'DEVUELTA', 'APLICADA_PARCIALMENTE', 'MULTA', 'CERRADA']),
+  appliedAmount: zMoney.optional(),
+  applicationReason: zOptionalString,
+  penaltyAmount: zMoney.optional(),
+  notes: zOptionalString,
+});
+
+export const guaranteeDeleteSchema = z.object({
+  id: z.string().min(1),
+  reason: zRequiredString(500, 'El motivo'),
+});
+
 export const userCreateSchema = z.object({
   name: zRequiredString(120, 'El nombre'),
   email: z.string().trim().toLowerCase().email('Correo inválido'),

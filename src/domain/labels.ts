@@ -158,6 +158,8 @@ export const FOLLOWUP_STATUS_TONE: Record<FollowUpStatus, Tone> = {
 
 export const ALERT_TYPE_LABEL: Record<AlertType, string> = {
   GARANTIA_PENDIENTE: 'Garantía pendiente',
+  GARANTIA_SIN_RESOLVER_EN_SALIDA: 'Garantía sin resolver en la salida',
+  SALDO_PENDIENTE: 'Saldo pendiente de cobro',
   TARJETA_INVALIDA: 'Tarjeta inválida',
   PAGO_PENDIENTE: 'Pago pendiente',
   RESERVA_SIN_CONFIRMAR: 'Reserva sin confirmar',
@@ -242,6 +244,15 @@ export const GUARANTEE_STATUS_LABEL: Record<GuaranteeStatus, string> = {
   PENDIENTE: 'Pendiente',
   VALIDADA: 'Validada',
   RECHAZADA: 'Rechazada',
+};
+
+/** Tono del resumen de garantía de la reserva. Lo usan Huéspedes y la ficha
+ *  de habitación, así que vive aquí y no duplicado en cada pantalla. */
+export const GUARANTEE_STATUS_TONE: Record<GuaranteeStatus, Tone> = {
+  NO_REQUIERE: 'neutro',
+  PENDIENTE: 'atencion',
+  VALIDADA: 'resuelto',
+  RECHAZADA: 'critico',
 };
 
 export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {

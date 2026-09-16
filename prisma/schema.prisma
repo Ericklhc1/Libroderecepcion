@@ -127,6 +127,8 @@ enum FollowUpStatus {
 
 enum AlertType {
   GARANTIA_PENDIENTE
+  GARANTIA_SIN_RESOLVER_EN_SALIDA
+  SALDO_PENDIENTE
   TARJETA_INVALIDA
   PAGO_PENDIENTE
   RESERVA_SIN_CONFIRMAR
@@ -182,6 +184,31 @@ enum GuaranteeStatus {
   PENDIENTE
   VALIDADA
   RECHAZADA
+}
+
+/// Estado del ciclo de vida de una garantía concreta.
+///
+/// Distinto de `GuaranteeStatus`, que resume en la reserva si hay garantía
+/// válida y que se conserva para no romper el motor de alertas ni la entrega
+/// de turno. Aquí se sigue la garantía como objeto: se toma, se mantiene
+/// vigente, se devuelve, se aplica en parte, se convierte en multa o se cierra.
+enum GuaranteeState {
+  PENDIENTE
+  VIGENTE
+  DEVUELTA
+  APLICADA_PARCIALMENTE
+  MULTA
+  CERRADA
+}
+
+/// Cómo se tomó la garantía.
+enum GuaranteeKind {
+  TARJETA
+  EFECTIVO
+  TRANSFERENCIA
+  VOUCHER
+  CARTA_EMPRESA
+  OTRO
 }
 
 enum ReservationStatus {
@@ -298,6 +325,9 @@ model User {
   keyMovements       KeyMovement[]      @relation("keyMovementBy")
   batchesCreated     PmsImportBatch[]   @relation("batchCreatedBy")
   batchesApplied     PmsImportBatch[]   @relation("batchAppliedBy")
+  guaranteesCreated  Guarantee[] @relation("guaranteeCreatedBy")
+  guaranteesReturned Guarantee[] @relation("guaranteeReturnedBy")
+  guaranteesDeleted  Guarantee[] @relation("guaranteeDeletedBy")
 
   @@index([roleId])
   @@index([active])
@@ -656,6 +686,8 @@ model Alert {
   resolvedAt     DateTime?
   resolutionNote String?
 
+  guaranteeId    String?
+  guarantee      Guarantee?  @relation(fields: [guaranteeId], references: [id])
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   deletedAt      DateTime?
@@ -670,6 +702,7 @@ model Alert {
   @@index([createdAt])
   @@index([type])
   @@index([deletedAt])
+  @@index([guaranteeId])
 }
 
 model Comment {
@@ -771,6 +804,9 @@ model ReservationReference {
 
   entries         OperationalEntry[]
   alerts          Alert[]
+  guarantees      Guarantee[]
+  /// Estadías del PMS que se pudieron vincular a esta reserva por su código.
+  stays           RoomStay[]
 
   @@index([status])
   @@index([requiresAction])
@@ -913,9 +949,19 @@ model Room {
 /// Estadía normalizada: una fila de un informe del PMS, ya interpretada.
 model RoomStay {
   id            String         @id @default(cuid())
+  /// Código de reserva TAL COMO lo entrega el PMS. Es la fotografía de lo
+  /// recibido y no se toca nunca: es la clave con la que se reconcilia.
   reservationId String
+  /// Vínculo OPCIONAL a la reserva interna, resuelto por código.
+  ///
+  /// Opcional a propósito: el PMS es la fuente y una estadía existe aunque
+  /// nadie haya creado su reserva en el sistema. Nunca se asocia por nombre.
+  reservationRefId String?
+  reservationRef   ReservationReference? @relation(fields: [reservationRefId], references: [id])
   roomId        String?
   room          Room?          @relation(fields: [roomId], references: [id])
+  /// Nombres tal como los entrega el PMS. Se conservan como histórico aunque
+  /// exista `reservationRef`.
   guestNames    String[]       @default([])
   channel       String?
   arrivalDate   DateTime?      @db.Date
@@ -954,6 +1000,7 @@ model RoomStay {
   @@index([roomId, status])
   @@index([businessDate])
   @@index([reservationId])
+  @@index([reservationRefId])
   @@index([stage])
   @@index([deletedAt])
 }
@@ -1035,4 +1082,54 @@ model PmsImportBatch {
 
   @@index([businessDate])
   @@index([status])
+}
+
+/// Garantía tomada sobre una reserva.
+///
+/// Vive colgada de la reserva y no de la habitación, así que **sobrevive a un
+/// cambio de habitación y a los turnos**: cambiar de habitación no la toca.
+///
+/// No tiene tabla de historial propia: cada cambio queda en `AuditLog` con su
+/// antes y su después, igual que el resto del sistema.
+model Guarantee {
+  id                     String          @id @default(cuid())
+  reservationReferenceId String
+  reservationReference   ReservationReference @relation(fields: [reservationReferenceId], references: [id], onDelete: Cascade)
+
+  kind     GuaranteeKind  @default(TARJETA)
+  state    GuaranteeState @default(PENDIENTE)
+  /// Monto tomado en garantía.
+  amount   Decimal        @db.Decimal(12, 2)
+  /// Código ISO de tres letras. La operación es en CLP, pero el hotel recibe
+  /// huéspedes que dejan garantía en otra moneda.
+  currency String         @default("CLP") @db.VarChar(3)
+
+  /// Monto efectivamente aplicado al consumo o a daños.
+  appliedAmount    Decimal?  @db.Decimal(12, 2)
+  applicationReason String?
+  /// Multa cobrada, distinta de lo aplicado al consumo.
+  penaltyAmount    Decimal?  @db.Decimal(12, 2)
+  returnedAt       DateTime?
+  returnedById     String?
+  returnedBy       User?     @relation("guaranteeReturnedBy", fields: [returnedById], references: [id])
+
+  notes String?
+
+  createdById String
+  createdBy   User     @relation("guaranteeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// Eliminación lógica: nada operativo se borra de verdad.
+  deletedAt       DateTime?
+  deletedById     String?
+  deletedBy       User?     @relation("guaranteeDeletedBy", fields: [deletedById], references: [id])
+  deletionReason  String?
+  isDemo          Boolean   @default(false)
+
+  alerts Alert[]
+
+  @@index([reservationReferenceId])
+  @@index([state])
+  @@index([deletedAt])
 }

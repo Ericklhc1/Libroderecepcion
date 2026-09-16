@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   AlertLevel,
+  GuaranteeState,
   EntryType,
   FollowUpStatus,
   HandoverStatus,
@@ -11,6 +12,11 @@ import {
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { CONFLICT_LABELS, type Conflict, type ConflictKind } from '@/domain/pms/conflicts';
+import {
+  GUARANTEE_STATE_ACTIONS,
+  GUARANTEE_STATE_LABELS,
+  type GuaranteeStateValue,
+} from '@/domain/guarantees';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import { getLiveConflicts } from './pms-import';
 
@@ -72,6 +78,7 @@ export async function getSupervisionData(): Promise<{
     unassigned,
     criticalAlerts,
     conflicts,
+    openGuarantees,
     staleHandovers,
     pendingClosures,
   ] = await Promise.all([
@@ -169,6 +176,37 @@ export async function getSupervisionData(): Promise<{
       take: 20,
     }),
     getLiveConflicts(),
+    // Garantías vivas cuya reserva ya llegó a su fecha de salida: es el
+    // momento en que hay que devolverlas, aplicarlas o cobrarlas.
+    prisma.guarantee.findMany({
+      where: {
+        deletedAt: null,
+        state: {
+          in: [
+            GuaranteeState.PENDIENTE,
+            GuaranteeState.VIGENTE,
+            GuaranteeState.APLICADA_PARCIALMENTE,
+          ],
+        },
+      },
+      select: {
+        id: true,
+        state: true,
+        amount: true,
+        currency: true,
+        reservationReference: {
+          select: {
+            id: true,
+            code: true,
+            roomNumber: true,
+            checkOut: true,
+            guest: { select: { fullName: true } },
+          },
+        },
+      },
+      orderBy: [{ state: 'asc' }, { createdAt: 'asc' }],
+      take: 20,
+    }),
     // Entregas enviadas que el turno siguiente no ha recibido.
     prisma.shiftHandover.findMany({
       where: { status: HandoverStatus.ENVIADA },
@@ -301,6 +339,38 @@ export async function getSupervisionData(): Promise<{
           .filter(Boolean)
           .join(' · ') || null,
       })),
+    },
+    {
+      key: 'garantias',
+      title: 'Garantías por resolver',
+      hint: 'Vivas y con la salida encima: devolverlas, aplicarlas o cobrarlas antes de cerrar la cuenta.',
+      tone: 'critico',
+      rows: openGuarantees
+        // Lo urgente es lo que ya llegó a su salida; el resto informa.
+        .sort((a, b) => {
+          const sa = a.reservationReference.checkOut?.getTime() ?? Infinity;
+          const sb = b.reservationReference.checkOut?.getTime() ?? Infinity;
+          return sa - sb;
+        })
+        .map((guarantee) => {
+          const reserva = guarantee.reservationReference;
+          const sale = reserva.checkOut !== null && reserva.checkOut <= now;
+          return {
+            id: guarantee.id,
+            ref: `Reserva ${reserva.code}`,
+            title: `${reserva.guest?.fullName ?? 'Sin huésped'} · ${guarantee.currency} ${guarantee.amount.toString()}`,
+            detail: GUARANTEE_STATE_ACTIONS[guarantee.state as GuaranteeStateValue],
+            href: '/huespedes',
+            meta:
+              [
+                GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue],
+                reserva.roomNumber ? `hab. ${reserva.roomNumber}` : null,
+                sale ? 'salida vencida' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ') || null,
+          };
+        }),
     },
     {
       key: 'conflictos-habitacion',

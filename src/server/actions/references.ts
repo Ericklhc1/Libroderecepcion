@@ -4,10 +4,22 @@ import { revalidatePath } from 'next/cache';
 import { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
-import { guestSchema, reservationSchema } from '@/server/schemas';
+import {
+  guaranteeCreateSchema,
+  guaranteeDeleteSchema,
+  guaranteeStateSchema,
+  guestSchema,
+  reservationSchema,
+} from '@/server/schemas';
 import { requirePermission } from '@/server/auth/guard';
 import { recordAudit } from '@/server/audit';
 import { AppError } from '@/server/errors';
+import {
+  changeGuaranteeState,
+  createGuarantee,
+  softDeleteGuarantee,
+} from '@/server/services/guarantees';
+import { GUARANTEE_STATE_LABELS } from '@/domain/guarantees';
 
 /**
  * Referencias ligeras de huésped y reserva.
@@ -125,5 +137,65 @@ export async function saveReservationAction(
       message: `Reserva ${input.id ? 'actualizada' : 'registrada'}.`,
       id: reservation.id,
     };
+  });
+}
+
+/** Pantallas que muestran garantías. Invalidación acotada, no global. */
+function refreshGuarantees(): void {
+  revalidatePath('/huespedes');
+  revalidatePath('/supervision');
+  revalidatePath('/turno');
+}
+
+/* --------------------------------- Garantías -------------------------------- */
+
+/**
+ * Las garantías se administran con el mismo permiso que las reservas
+ * (`guest.manage`): son parte del contexto de la reserva, no un módulo aparte,
+ * así que no se agrega un permiso nuevo.
+ */
+export async function createGuaranteeAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('guest.manage');
+    const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
+    const guarantee = await createGuarantee(user, input);
+    refreshGuarantees();
+    return {
+      ok: true as const,
+      message: `Garantía registrada por ${input.currency} ${input.amount}.`,
+      id: guarantee.id,
+    };
+  });
+}
+
+export async function changeGuaranteeStateAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('guest.manage');
+    const input = parseOrThrow(guaranteeStateSchema, formDataToObject(formData));
+    await changeGuaranteeState(user, input);
+    refreshGuarantees();
+    return {
+      ok: true as const,
+      message: `Garantía actualizada: ${GUARANTEE_STATE_LABELS[input.state]}.`,
+    };
+  });
+}
+
+export async function deleteGuaranteeAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('guest.manage');
+    const input = parseOrThrow(guaranteeDeleteSchema, formDataToObject(formData));
+    await softDeleteGuarantee(user, input);
+    refreshGuarantees();
+    return { ok: true as const, message: 'Garantía eliminada. Se conserva y puede auditarse.' };
   });
 }

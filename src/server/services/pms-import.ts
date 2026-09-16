@@ -407,6 +407,8 @@ export type ImportResult = {
   skipped: number;
   /** Llaves principales que la importación entregó a su ocupante. */
   keysAssigned: number;
+  /** Estadías que quedaron vinculadas a una reserva interna existente. */
+  reservationsLinked: number;
   keysFlagged: number;
 };
 
@@ -437,6 +439,7 @@ export async function applyImport(
       preserved: 0,
       skipped: 0,
       keysAssigned: 0,
+      reservationsLinked: 0,
       keysFlagged: 0,
     };
 
@@ -553,6 +556,22 @@ export async function applyImport(
     });
 
     /*
+      Vínculo con la reserva interna.
+      ------------------------------------------------------------------
+      `reservationId` y `guestNames` son la fotografía de lo que entregó el
+      PMS y no se tocan nunca. Esto sólo **añade** el vínculo opcional cuando
+      la reserva ya existe en el sistema, emparejando por CÓDIGO: nunca por
+      nombre, que es la forma de confundir a dos huéspedes homónimos.
+
+      Queda nulo cuando la reserva no existe, y eso es normal: el PMS es la
+      fuente y una estadía vale por sí misma.
+
+      Dos consultas, no una por fila: se leen los códigos presentes y se
+      agrupa la actualización por reserva.
+    */
+    summary.reservationsLinked = await linkStaysToReservations(tx, { businessDate });
+
+    /*
       Copias adicionales en habitaciones con salida informada. La principal ya
       quedó pendiente de devolución en el paso anterior; esto recoge las
       copias, que también hay que recuperar.
@@ -636,6 +655,7 @@ export async function applyImport(
       `Informes del PMS aplicados: ${result.created} estadías nuevas, ` +
       `${result.updated} actualizadas, ${result.preserved} conservadas por decisión manual, ` +
       `${result.skipped} sin habitación, ${result.keysAssigned} llave(s) entregada(s), ` +
+      `${result.reservationsLinked} estadía(s) vinculada(s) a su reserva, ` +
       `${result.keysFlagged} copia(s) por devolver`,
     after: result,
   });
@@ -745,6 +765,61 @@ export type ShiftReportsState = {
     createdByName: string;
   } | null;
 };
+
+/**
+ * Vincula estadías con la reserva interna que les corresponde, por código.
+ *
+ * `RoomStay.reservationId` es el código que entregó el PMS;
+ * `ReservationReference.code` es el de la reserva interna. Cuando coinciden,
+ * se guarda el vínculo en `reservationRefId`.
+ *
+ * **Nunca empareja por nombre.** Dos huéspedes pueden llamarse igual, y el
+ * caso real de la habitación 515 —mismo nombre, dos reservas distintas— es
+ * justamente el que se arruinaría.
+ *
+ * `businessDate` omitido = todas las estadías sin vincular, que es lo que
+ * permite recuperar las anteriores a este vínculo.
+ */
+export async function linkStaysToReservations(
+  tx: Prisma.TransactionClient,
+  options: { businessDate?: Date } = {},
+): Promise<number> {
+  const pendientes = await tx.roomStay.findMany({
+    where: {
+      ...(options.businessDate ? { businessDate: options.businessDate } : {}),
+      deletedAt: null,
+      reservationRefId: null,
+    },
+    select: { id: true, reservationId: true },
+  });
+  if (!pendientes.length) return 0;
+
+  const codigos = [...new Set(pendientes.map((stay) => stay.reservationId))];
+  const reservas = await tx.reservationReference.findMany({
+    where: { code: { in: codigos }, deletedAt: null },
+    select: { id: true, code: true },
+  });
+  if (!reservas.length) return 0;
+
+  const porCodigo = new Map(reservas.map((reserva) => [reserva.code, reserva.id]));
+  let vinculadas = 0;
+
+  // Una actualización por reserva, no una por estadía: varias estadías de la
+  // misma reserva (entrada, in house, salida) se agrupan en un solo UPDATE.
+  for (const [code, reservationRefId] of porCodigo) {
+    const ids = pendientes
+      .filter((stay) => stay.reservationId === code)
+      .map((stay) => stay.id);
+    if (!ids.length) continue;
+    const { count } = await tx.roomStay.updateMany({
+      where: { id: { in: ids } },
+      data: { reservationRefId },
+    });
+    vinculadas += count;
+  }
+
+  return vinculadas;
+}
 
 export async function getShiftReportsState(now = new Date()): Promise<ShiftReportsState> {
   const today = midnight(now);

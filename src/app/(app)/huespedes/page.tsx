@@ -3,19 +3,24 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
-import { GUARANTEE_STATUS_LABEL, RESERVATION_STATUS_LABEL } from '@/domain/labels';
+import {
+  GUARANTEE_STATUS_LABEL,
+  GUARANTEE_STATUS_TONE,
+  RESERVATION_STATUS_LABEL,
+} from '@/domain/labels';
 import { formatDateTime, formatMoney, toDateTimeInput } from '@/lib/format';
 import { GuestDialog, ReservationDialog } from './guest-forms';
+import { GuaranteeDialog, GuaranteeStateDialog } from './guarantee-forms';
+import {
+  GUARANTEE_KIND_LABELS,
+  GUARANTEE_STATE_LABELS,
+  GUARANTEE_STATE_TONE,
+  type GuaranteeKindValue,
+  type GuaranteeStateValue,
+} from '@/domain/guarantees';
 
 export const metadata = { title: 'Huéspedes y reservas' };
 export const dynamic = 'force-dynamic';
-
-const GUARANTEE_TONE = {
-  NO_REQUIERE: 'neutro',
-  PENDIENTE: 'atencion',
-  VALIDADA: 'resuelto',
-  RECHAZADA: 'critico',
-} as const;
 
 const RESERVATION_TONE = {
   PENDIENTE: 'pendiente',
@@ -39,7 +44,23 @@ export default async function GuestsPage() {
     prisma.reservationReference.findMany({
       where: { deletedAt: null },
       orderBy: [{ requiresAction: 'desc' }, { checkIn: 'desc' }],
-      include: { guest: { select: { id: true, fullName: true, vip: true } } },
+      include: {
+        guest: { select: { id: true, fullName: true, vip: true } },
+        // Las garantías viajan con la reserva: no hay consulta adicional.
+        guarantees: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            kind: true,
+            state: true,
+            amount: true,
+            currency: true,
+            appliedAmount: true,
+            penaltyAmount: true,
+          },
+        },
+      },
       take: 200,
     }),
   ]);
@@ -122,9 +143,56 @@ export default async function GuestsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Badge tone={GUARANTEE_TONE[reservation.guaranteeStatus]}>
+                      <Badge tone={GUARANTEE_STATUS_TONE[reservation.guaranteeStatus]}>
                         {GUARANTEE_STATUS_LABEL[reservation.guaranteeStatus]}
                       </Badge>
+                      {/*
+                        El resumen de arriba se conserva porque lo leen el motor
+                        de alertas y la entrega de turno. Debajo van las
+                        garantías concretas, que son la fuente.
+                      */}
+                      <ul className="mt-1.5 space-y-1.5">
+                        {reservation.guarantees.map((guarantee) => (
+                          <li key={guarantee.id} className="text-xs">
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <Badge
+                                tone={GUARANTEE_STATE_TONE[guarantee.state as GuaranteeStateValue]}
+                              >
+                                {GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue]}
+                              </Badge>
+                              <span className="tabular font-medium text-petrol-900">
+                                {guarantee.currency} {guarantee.amount.toString()}
+                              </span>
+                              <span className="text-slate-500">
+                                {GUARANTEE_KIND_LABELS[guarantee.kind as GuaranteeKindValue]}
+                              </span>
+                            </span>
+                            {guarantee.appliedAmount || guarantee.penaltyAmount ? (
+                              <span className="mt-0.5 block text-slate-500">
+                                {guarantee.appliedAmount
+                                  ? `aplicado ${guarantee.appliedAmount.toString()}`
+                                  : ''}
+                                {guarantee.appliedAmount && guarantee.penaltyAmount ? ' · ' : ''}
+                                {guarantee.penaltyAmount
+                                  ? `multa ${guarantee.penaltyAmount.toString()}`
+                                  : ''}
+                              </span>
+                            ) : null}
+                            <GuaranteeStateDialog
+                              guaranteeId={guarantee.id}
+                              state={guarantee.state as GuaranteeStateValue}
+                              amount={guarantee.amount.toString()}
+                              currency={guarantee.currency}
+                            />
+                          </li>
+                        ))}
+                        <li>
+                          <GuaranteeDialog
+                            reservationId={reservation.id}
+                            reservationCode={reservation.code}
+                          />
+                        </li>
+                      </ul>
                     </td>
                     <td className="px-4 py-2.5 tabular">
                       {reservation.balanceDue && Number(reservation.balanceDue) > 0 ? (

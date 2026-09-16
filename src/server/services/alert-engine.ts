@@ -5,6 +5,7 @@ import {
   AlertType,
   EntryType,
   FollowUpStatus,
+  GuaranteeState,
   GuaranteeStatus,
   HandoverStatus,
   Prisma,
@@ -15,6 +16,10 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import {
+  GUARANTEE_STATE_LABELS,
+  type GuaranteeStateValue,
+} from '@/domain/guarantees';
 
 /**
  * Motor de alertas.
@@ -42,6 +47,7 @@ type Candidate = {
   guestId?: string | null;
   reservationId?: string | null;
   departmentId?: string | null;
+  guaranteeId?: string | null;
 };
 
 const MAINTENANCE_GRACE_HOURS = 24;
@@ -326,6 +332,112 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     }
   }
 
+  /*
+    Garantías vivas. Se añaden al motor existente: mismo `dedupeKey` estable,
+    misma idempotencia, y se resuelven solas cuando la garantía deja de estar
+    abierta, igual que el resto de las reglas.
+  */
+  const openGuarantees = await prisma.guarantee.findMany({
+    where: {
+      deletedAt: null,
+      state: {
+        in: [
+          GuaranteeState.PENDIENTE,
+          GuaranteeState.VIGENTE,
+          GuaranteeState.APLICADA_PARCIALMENTE,
+        ],
+      },
+    },
+    select: {
+      id: true,
+      state: true,
+      amount: true,
+      currency: true,
+      reservationReferenceId: true,
+      reservationReference: {
+        select: {
+          code: true,
+          roomNumber: true,
+          checkOut: true,
+          guestId: true,
+          guest: { select: { fullName: true } },
+        },
+      },
+    },
+    take: 300,
+  });
+
+  for (const guarantee of openGuarantees) {
+    const reservation = guarantee.reservationReference;
+    const quien = reservation.guest?.fullName ?? `Reserva ${reservation.code}`;
+    const donde = reservation.roomNumber ? ` (hab. ${reservation.roomNumber})` : '';
+
+    if (guarantee.state === GuaranteeState.PENDIENTE) {
+      candidates.push({
+        dedupeKey: `guarantee-open:${guarantee.id}`,
+        type: AlertType.GARANTIA_PENDIENTE,
+        level: AlertLevel.ATENCION,
+        title: `Garantía sin tomar: ${quien}${donde}`,
+        message:
+          `La reserva ${reservation.code} tiene una garantía registrada de ` +
+          `${guarantee.currency} ${guarantee.amount.toString()} que todavía no se ha tomado.`,
+        reservationId: guarantee.reservationReferenceId,
+        guestId: reservation.guestId,
+        guaranteeId: guarantee.id,
+      });
+    }
+
+    /*
+      La salida es el momento en que la garantía tiene que resolverse: o se
+      devuelve, o se aplica, o se cobra. Si llegó la fecha de salida y sigue
+      abierta, nadie la cerró.
+    */
+    const saleHoy = reservation.checkOut !== null && reservation.checkOut <= now;
+    if (saleHoy) {
+      candidates.push({
+        dedupeKey: `guarantee-unresolved-checkout:${guarantee.id}`,
+        type: AlertType.GARANTIA_SIN_RESOLVER_EN_SALIDA,
+        level: AlertLevel.CRITICA,
+        title: `Garantía sin resolver en la salida: ${quien}${donde}`,
+        message:
+          `La reserva ${reservation.code} llegó a su fecha de salida con la garantía en ` +
+          `«${GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue]}». ` +
+          'Devolverla, aplicarla o cobrarla antes de cerrar la cuenta.',
+        dueAt: reservation.checkOut,
+        reservationId: guarantee.reservationReferenceId,
+        guestId: reservation.guestId,
+        guaranteeId: guarantee.id,
+      });
+    }
+  }
+
+  /*
+    Saldo pendiente. El campo vive en la reserva desde antes; la regla es
+    nueva y no depende de las garantías: una reserva puede deber consumo sin
+    tener garantía alguna.
+  */
+  for (const reservation of reservations) {
+    const saldo = reservation.balanceDue;
+    if (!saldo || saldo.lessThanOrEqualTo(0)) continue;
+
+    const quien = reservation.guest?.fullName ?? `Reserva ${reservation.code}`;
+    const donde = reservation.roomNumber ? ` (hab. ${reservation.roomNumber})` : '';
+    const sale = reservation.checkOut !== null && reservation.checkOut <= now;
+
+    candidates.push({
+      dedupeKey: `balance-due:${reservation.id}`,
+      type: AlertType.SALDO_PENDIENTE,
+      level: sale ? AlertLevel.CRITICA : AlertLevel.ATENCION,
+      title: `Saldo pendiente: ${quien}${donde}`,
+      message:
+        `La reserva ${reservation.code} tiene un saldo de ${saldo.toString()} sin cobrar` +
+        (sale ? ' y ya llegó a su fecha de salida.' : '.'),
+      dueAt: reservation.checkOut,
+      reservationId: reservation.id,
+      guestId: reservation.guestId,
+    });
+  }
+
   return candidates;
 }
 
@@ -367,6 +479,7 @@ export async function runAlertEngine(
             guestId: candidate.guestId ?? null,
             reservationId: candidate.reservationId ?? null,
             departmentId: candidate.departmentId ?? null,
+            guaranteeId: candidate.guaranteeId ?? null,
             auto: true,
             status: AlertStatus.NUEVA,
           },

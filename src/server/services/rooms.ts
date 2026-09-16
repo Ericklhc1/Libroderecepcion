@@ -107,11 +107,39 @@ export async function listRoomsWithState(): Promise<RoomWithState[]> {
   }));
 }
 
+/**
+ * Contexto interno de la reserva, cuando la estadía se pudo vincular.
+ *
+ * Es información del sistema, no del PMS: saldo, garantías y si la reserva
+ * pide una acción. Va aparte del snapshot a propósito, porque el snapshot
+ * describe el estado físico de la habitación y esto describe la cuenta.
+ */
+export type RoomReservationContext = {
+  stayId: string;
+  code: string;
+  guestName: string | null;
+  vip: boolean;
+  status: string;
+  guaranteeSummary: string;
+  balanceDue: number | null;
+  guarantees: Array<{
+    id: string;
+    state: string;
+    kind: string;
+    amount: string;
+    currency: string;
+    appliedAmount: string | null;
+    penaltyAmount: string | null;
+  }>;
+};
+
 export type RoomDetail = RoomWithState & {
   notes: string | null;
   /** Historial del día: incluye las estadías ya finalizadas. */
   history: StayFacts[];
   keys: Array<KeyFacts & { assignedAt: Date | null; assignedBy: string | null }>;
+  /** Reservas internas de las estadías activas, si están vinculadas. */
+  reservations: RoomReservationContext[];
 };
 
 export async function getRoomDetail(number: string): Promise<RoomDetail> {
@@ -125,7 +153,33 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
       stays: {
         where: { deletedAt: null },
         orderBy: [{ businessDate: 'desc' }, { createdAt: 'desc' }],
-        select: stayFactsSelect,
+        select: {
+          ...stayFactsSelect,
+          // El contexto de la cuenta viaja con la estadía: no hay consulta
+          // adicional. Nulo cuando la reserva no existe en el sistema.
+          reservationRef: {
+            select: {
+              code: true,
+              status: true,
+              guaranteeStatus: true,
+              balanceDue: true,
+              guest: { select: { fullName: true, vip: true } },
+              guarantees: {
+                where: { deletedAt: null },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                  id: true,
+                  state: true,
+                  kind: true,
+                  amount: true,
+                  currency: true,
+                  appliedAmount: true,
+                  penaltyAmount: true,
+                },
+              },
+            },
+          },
+        },
       },
       keys: {
         orderBy: [{ type: 'asc' }, { code: 'asc' }],
@@ -160,6 +214,29 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
     openIncidents: room._count.entries,
     history: room.stays.map(toStayFacts),
     keys,
+    reservations: active
+      .filter((stay) => stay.reservationRef !== null)
+      .map((stay) => {
+        const reserva = stay.reservationRef!;
+        return {
+          stayId: stay.id,
+          code: reserva.code,
+          guestName: reserva.guest?.fullName ?? null,
+          vip: reserva.guest?.vip ?? false,
+          status: reserva.status,
+          guaranteeSummary: reserva.guaranteeStatus,
+          balanceDue: reserva.balanceDue ? reserva.balanceDue.toNumber() : null,
+          guarantees: reserva.guarantees.map((guarantee) => ({
+            id: guarantee.id,
+            state: guarantee.state,
+            kind: guarantee.kind,
+            amount: guarantee.amount.toString(),
+            currency: guarantee.currency,
+            appliedAmount: guarantee.appliedAmount?.toString() ?? null,
+            penaltyAmount: guarantee.penaltyAmount?.toString() ?? null,
+          })),
+        };
+      }),
   };
 }
 

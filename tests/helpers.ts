@@ -52,6 +52,8 @@ export async function resetOperationalData() {
     prisma.shiftHandover.deleteMany(),
     prisma.shiftAssignment.deleteMany(),
     prisma.shift.deleteMany(),
+    // Las garantías referencian al usuario que las creó: van antes.
+    prisma.guarantee.deleteMany(),
     prisma.reservationReference.deleteMany(),
     prisma.guestReference.deleteMany(),
     prisma.loginAttempt.deleteMany(),

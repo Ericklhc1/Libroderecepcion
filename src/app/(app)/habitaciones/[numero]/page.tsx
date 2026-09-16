@@ -9,13 +9,22 @@ import { getRoomDetail } from '@/server/services/rooms';
 import { listAvailableKeys } from '@/server/services/keys';
 import { getFormOptions } from '@/server/services/options';
 import { NotFoundError } from '@/server/errors';
-import { Badge } from '@/components/ui/badge';
+import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EntryForm } from '@/components/forms/entry-form';
 import { createEntryAction } from '@/server/actions/entries';
 import { StayActions } from '@/components/rooms/stay-actions';
 import { RoomKeys } from '@/components/rooms/room-keys';
+import { GUARANTEE_STATUS_LABEL, GUARANTEE_STATUS_TONE } from '@/domain/labels';
+import {
+  GUARANTEE_KIND_LABELS,
+  GUARANTEE_STATE_ACTIONS,
+  GUARANTEE_STATE_LABELS,
+  GUARANTEE_STATE_TONE,
+  type GuaranteeKindValue,
+  type GuaranteeStateValue,
+} from '@/domain/guarantees';
 import {
   INCOMING_STATE_LABELS,
   INCOMING_STATE_TONE,
@@ -230,6 +239,81 @@ export default async function RoomDetailPage({
           ) : null}
         </Layer>
       </div>
+
+      {/*
+        Contexto de la cuenta. Aparece sólo cuando la estadía se pudo vincular
+        a una reserva interna por su código: el PMS sigue siendo la fuente del
+        movimiento, y esto es lo que el hotel sabe del cobro.
+      */}
+      {room.reservations.length > 0 ? (
+        <Card>
+          <CardHeader title="Reserva y garantía" count={room.reservations.length} />
+          <ul className="divide-y divide-slate-100">
+            {room.reservations.map((reserva) => (
+              <li key={reserva.stayId} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-petrol-900">
+                    {reserva.guestName ?? 'Sin huésped asociado'}
+                  </span>
+                  {reserva.vip ? <Chip>VIP</Chip> : null}
+                  <span className="tabular text-xs text-slate-500">reserva {reserva.code}</span>
+                  <Badge
+                    tone={GUARANTEE_STATUS_TONE[reserva.guaranteeSummary as keyof typeof GUARANTEE_STATUS_TONE]}
+                  >
+                    {
+                      GUARANTEE_STATUS_LABEL[
+                        reserva.guaranteeSummary as keyof typeof GUARANTEE_STATUS_LABEL
+                      ]
+                    }
+                  </Badge>
+                </div>
+
+                {reserva.balanceDue && reserva.balanceDue > 0 ? (
+                  <p className="mt-1 text-sm text-orange-700">
+                    Saldo pendiente:{' '}
+                    <span className="tabular font-semibold">{reserva.balanceDue}</span>
+                  </p>
+                ) : null}
+
+                {reserva.guarantees.length > 0 ? (
+                  <ul className="mt-2 space-y-1">
+                    {reserva.guarantees.map((garantia) => (
+                      <li key={garantia.id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge
+                          tone={GUARANTEE_STATE_TONE[garantia.state as GuaranteeStateValue]}
+                        >
+                          {GUARANTEE_STATE_LABELS[garantia.state as GuaranteeStateValue]}
+                        </Badge>
+                        <span className="tabular font-medium text-petrol-900">
+                          {garantia.currency} {garantia.amount}
+                        </span>
+                        <span className="text-slate-500">
+                          {GUARANTEE_KIND_LABELS[garantia.kind as GuaranteeKindValue]}
+                        </span>
+                        <span className="text-slate-500">
+                          {GUARANTEE_STATE_ACTIONS[garantia.state as GuaranteeStateValue]}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Sin garantía registrada. Se registra en{' '}
+                    <Link href="/huespedes" className="font-medium text-petrol-600 hover:underline">
+                      Huéspedes y reservas
+                    </Link>
+                    .
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+            La garantía cuelga de la reserva, no de la habitación: un cambio de habitación no la
+            mueve.
+          </p>
+        </Card>
+      ) : null}
 
       <RoomKeys
         roomId={room.id}

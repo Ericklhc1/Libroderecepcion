@@ -35,6 +35,41 @@ export const ROOM_RANGES = [
   { floor: 6, from: 601, to: 630 },
 ];
 
+/**
+ * Denominaciones de efectivo en circulación.
+ *
+ * Es CATÁLOGO: no cambia con la operación, así que se siembra siempre. Lo que
+ * NO se siembra acá es el fondo fijo (`CashFund`), porque cuánto dinero debe
+ * quedar en el cajón es una decisión de cada hotel y su existencia es la que
+ * activa la exigencia de arqueo. Un despliegue nuevo tiene las denominaciones
+ * listas y ninguna obligación hasta que alguien configure el fondo.
+ *
+ * El valor va en la unidad de la divisa, no en la menor: 20000 son veinte mil
+ * pesos y 100 son cien dólares. La conversión a unidad menor la hace
+ * `domain/cash.ts`, que es quien sabe que el peso no usa centavos.
+ */
+export const CASH_DENOMINATIONS: Array<{
+  currency: string;
+  value: number;
+  medium: 'BILLETE' | 'MONEDA';
+}> = [
+  { currency: 'CLP', value: 20000, medium: 'BILLETE' },
+  { currency: 'CLP', value: 10000, medium: 'BILLETE' },
+  { currency: 'CLP', value: 5000, medium: 'BILLETE' },
+  { currency: 'CLP', value: 2000, medium: 'BILLETE' },
+  { currency: 'CLP', value: 1000, medium: 'BILLETE' },
+  { currency: 'CLP', value: 500, medium: 'MONEDA' },
+  { currency: 'CLP', value: 100, medium: 'MONEDA' },
+  { currency: 'CLP', value: 50, medium: 'MONEDA' },
+  { currency: 'CLP', value: 10, medium: 'MONEDA' },
+  { currency: 'USD', value: 100, medium: 'BILLETE' },
+  { currency: 'USD', value: 50, medium: 'BILLETE' },
+  { currency: 'USD', value: 20, medium: 'BILLETE' },
+  { currency: 'USD', value: 10, medium: 'BILLETE' },
+  { currency: 'USD', value: 5, medium: 'BILLETE' },
+  { currency: 'USD', value: 1, medium: 'BILLETE' },
+];
+
 export function roomNumbers(): Array<{ number: string; floor: number }> {
   const rooms: Array<{ number: string; floor: number }> = [];
   for (const range of ROOM_RANGES) {
@@ -178,6 +213,17 @@ export async function seedCatalog(
     FROM "Room" AS r
     WHERE k."type" = 'PRINCIPAL' AND k."roomId" IS NULL AND k."code" = 'P-' || r."number"
   `;
+
+  // --- Denominaciones de efectivo -----------------------------------------
+  await client.cashDenomination.createMany({
+    data: CASH_DENOMINATIONS.map((denomination, index) => ({
+      currency: denomination.currency,
+      value: denomination.value,
+      medium: denomination.medium,
+      order: index,
+    })),
+    skipDuplicates: true,
+  });
 
   // --- Nombre del hotel ---------------------------------------------------
   if (options.hotelName) {

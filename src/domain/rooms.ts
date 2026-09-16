@@ -326,3 +326,47 @@ export const KEY_STATUS_TONE: Record<KeyStatusValue, Tone> = {
   EXTRAVIADA: 'critico',
   FUERA_DE_SERVICIO: 'neutro',
 };
+
+/**
+ * Qué estado gana cuando la MISMA reserva aparece en dos informes del PMS.
+ *
+ * El PMS reporta una estadía desde varios ángulos: el informe de in house la
+ * lista como alojada y el de entradas como llegada del día. Es un solo hecho,
+ * así que se conserva una sola estadía y se queda con el estado más avanzado
+ * del recorrido:
+ *
+ *   CHECK_IN (por llegar) → IN_HOUSE (dentro) → CHECK_OUT (por salir)
+ *
+ * CHECK_OUT gana sobre todo porque es lo que exige acción del mesón: si el
+ * huésped está dentro y además tiene salida hoy, lo que hay que hacer es
+ * confirmar la salida y recuperar la llave.
+ */
+const STAY_PROGRESS: Record<StayStatus, number> = {
+  CHECK_IN: 0,
+  IN_HOUSE: 1,
+  CHECK_OUT: 2,
+};
+
+export function mostAdvancedStayStatus(a: StayStatus, b: StayStatus): StayStatus {
+  return STAY_PROGRESS[b] > STAY_PROGRESS[a] ? b : a;
+}
+
+/**
+ * Fase de la estadía, que es lo que decide si dos filas del PMS son el MISMO
+ * hecho o dos hechos distintos.
+ *
+ * `CHECK_IN` e `IN_HOUSE` son la misma estancia en dos etapas: el informe de
+ * entradas la lista como llegada del día y el de in house como alojada. Una
+ * sola estadía, y gana `IN_HOUSE`.
+ *
+ * `CHECK_OUT` es un hecho APARTE y puede convivir con una llegada de la misma
+ * reserva: eso es una reserva que sale y vuelve a entrar el mismo día, y el
+ * mesón tiene que hacer las dos cosas. Colapsarla escondería la llegada, así
+ * que la salida conserva su propia fila —es lo que hace que
+ * `sameReservationTurnaround` siga existiendo—.
+ */
+export type StayPhase = 'ESTANCIA' | 'SALIDA';
+
+export function stayPhase(status: StayStatus): StayPhase {
+  return status === 'CHECK_OUT' ? 'SALIDA' : 'ESTANCIA';
+}

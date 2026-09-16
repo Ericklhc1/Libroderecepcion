@@ -10,6 +10,7 @@ import {
   runAction,
   zOptionalCuid,
   zOptionalString,
+  zRequiredString,
   type ActionState,
 } from '@/server/action';
 import { prisma } from '@/lib/prisma';
@@ -345,5 +346,44 @@ export async function discardImportAction(
     await discardImport(user, input.batchId);
     revalidatePath('/habitaciones/importar');
     return { ok: true as const, message: 'Importación descartada. No se cambió nada.' };
+  });
+}
+
+/**
+ * Elimina una estadía para desatascar un conflicto.
+ *
+ * Reservada al Administrador de sistema (`stay.delete`). El motivo es
+ * obligatorio, como en toda eliminación del sistema: una estadía que
+ * desaparece sin explicación es peor que el conflicto que resolvía.
+ */
+export async function deleteStayAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('stay.delete');
+    const input = parseOrThrow(
+      z.object({
+        stayId: z.string().min(1),
+        reason: zRequiredString(500, 'El motivo'),
+      }),
+      formDataToObject(formData),
+    );
+
+    const { softDeleteStay } = await import('@/server/services/rooms');
+    const result = await softDeleteStay(user, input);
+
+    revalidatePath('/habitaciones');
+    revalidatePath(`/habitaciones/${result.stay.room?.number ?? ''}`);
+    revalidatePath('/llaves');
+    revalidatePath('/supervision');
+
+    return {
+      ok: true as const,
+      message:
+        result.releasedKeys > 0
+          ? `Estadía eliminada y ${result.releasedKeys} llave(s) devuelta(s) al inventario.`
+          : 'Estadía eliminada.',
+    };
   });
 }

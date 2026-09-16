@@ -47,6 +47,12 @@ export const PERMISSIONS = {
   'key.assign': { group: 'Habitaciones y llaves', name: 'Entregar y recibir llaves' },
   'key.stock': { group: 'Habitaciones y llaves', name: 'Administrar el stock de llaves' },
   'pms.import': { group: 'Habitaciones y llaves', name: 'Importar informes del PMS' },
+  /*
+    Reparación, no operación: elimina lógicamente una estadía incoherente para
+    desatascar un conflicto de llaves. Es del Administrador de sistema y no lo
+    deja como responsable de ninguna llegada ni salida.
+  */
+  'stay.delete': { group: 'Habitaciones y llaves', name: 'Eliminar una estadía para resolver conflictos' },
 
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },

@@ -18,9 +18,12 @@ import { normalizeReport, REPORT_LABELS, type NormalizedStay } from '@/domain/pm
 import { detectConflicts, type Conflict } from '@/domain/pms/conflicts';
 import {
   buildRoomSnapshot,
+  mostAdvancedStayStatus,
   principalKeyHolder,
+  stayPhase,
   type KeyFacts,
   type StayFacts,
+  type StayStatus,
 } from '@/domain/rooms';
 import { reconcilePrincipalKeys } from './keys';
 
@@ -306,10 +309,15 @@ async function analyseDraft(
       continue;
     }
 
+    /*
+      Se empareja por RESERVA y habitación, sin el estado: es la misma clave
+      que usa `applyImport`. Si divergieran, la pantalla de revisión
+      anunciaría estadías nuevas que al aplicar no se crean.
+    */
     const existing = room.stays.find(
       (stay) =>
         stay.reservationId === draft.reservationId &&
-        stay.status === draft.status &&
+        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
         midnight(stay.businessDate).getTime() === businessDate.getTime(),
     );
 
@@ -327,8 +335,31 @@ async function analyseDraft(
     if (existing) continue;
 
     const list = projected.get(room.number) ?? [];
+
+    /*
+      La misma reserva puede venir en dos informes. Si ya se proyectó, se
+      avanza su estado en lugar de proyectar una segunda estadía: si no, la
+      revisión mostraría al mismo huésped como «Actual» y «Entrante» a la vez.
+    */
+    const alreadyProjected = list.find(
+      (stay) =>
+        stay.reservationId === draft.reservationId &&
+        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus),
+    );
+    if (alreadyProjected) {
+      alreadyProjected.status = mostAdvancedStayStatus(
+        alreadyProjected.status as StayStatus,
+        draft.status as StayStatus,
+      ) as RoomStayStatus;
+      alreadyProjected.stage =
+        alreadyProjected.status === RoomStayStatus.IN_HOUSE
+          ? RoomStayStage.CONFIRMADO
+          : RoomStayStage.PENDIENTE;
+      continue;
+    }
+
     list.push({
-      id: `nuevo:${draft.status}:${draft.reservationId}:${room.number}`,
+      id: `nuevo:${stayPhase(draft.status as StayStatus)}:${draft.reservationId}:${room.number}`,
       reservationId: draft.reservationId,
       guestNames: draft.guestNames,
       status: draft.status,
@@ -469,10 +500,28 @@ export async function applyImport(
       },
     });
 
+    /*
+      UNA reserva es UNA estadía por habitación. El estado NO entra en la
+      clave.
+
+      La versión anterior lo incluía, y por eso la misma reserva creaba dos
+      estadías cuando aparecía en dos informes: el de in house la traía como
+      IN_HOUSE y el de entradas como CHECK_IN, con dos claves distintas. El
+      resultado era la habitación mostrando al mismo huésped como «Actual» y
+      como «Entrante» a la vez, con el mismo código de reserva, y un conflicto
+      de llave que no existía en la realidad.
+
+      El código de reserva es la identidad, igual que en la regla de cola:
+      nunca el nombre. Si el PMS la reporta desde dos ángulos, se conserva una
+      sola estadía y se actualiza su estado.
+    */
     const keyOf = (reservationId: string, roomId: string | null, status: RoomStayStatus) =>
-      `${reservationId}|${roomId ?? ''}|${status}`;
+      `${reservationId}|${roomId ?? ''}|${stayPhase(status as StayStatus)}`;
     const existingByKey = new Map(
-      existingStays.map((stay) => [keyOf(stay.reservationId, stay.roomId, stay.status), stay]),
+      existingStays.map((stay) => [
+        keyOf(stay.reservationId, stay.roomId, stay.status),
+        stay,
+      ]),
     );
 
     const toCreate: Prisma.RoomStayCreateManyInput[] = [];
@@ -506,15 +555,52 @@ export async function applyImport(
         if (protectedStay) summary.preserved += 1;
         else summary.updated += 1;
 
+        /*
+          El estado se AVANZA, nunca se retrocede. Si la estadía ya está
+          IN_HOUSE y el informe de entradas la vuelve a listar como CHECK_IN,
+          mandar el estado atrás la haría aparecer de nuevo como pendiente de
+          llegada y le quitaría la llave a quien está dentro.
+        */
+        const status = mostAdvancedStayStatus(
+          existing.status as StayStatus,
+          draft.status as StayStatus,
+        ) as RoomStayStatus;
+
         // Sólo se escribe si algo cambió de verdad: un informe idéntico no
         // genera ninguna escritura.
         const unchanged =
+          existing.status === status &&
           existing.guestNames.join('\u0000') === draft.guestNames.join('\u0000') &&
           existing.channel === descriptive.channel &&
           existing.pmsStatus === descriptive.pmsStatus &&
           sameDay(existing.arrivalDate, descriptive.arrivalDate) &&
           sameDay(existing.departureDate, descriptive.departureDate);
-        if (!unchanged) toUpdate.push({ id: existing.id, data: descriptive });
+        if (!unchanged) {
+          toUpdate.push({ id: existing.id, data: { ...descriptive, status } });
+        }
+        continue;
+      }
+
+      /*
+        La misma reserva puede venir dos veces en el MISMO lote, en dos
+        informes distintos. Si ya se decidió crearla, se avanza esa decisión
+        en lugar de agregar una segunda fila.
+      */
+      const pending = toCreate.find(
+        (row) =>
+          row.reservationId === draft.reservationId &&
+          row.roomId === room.id &&
+          stayPhase(row.status as StayStatus) === stayPhase(draft.status as StayStatus),
+      );
+      if (pending) {
+        pending.status = mostAdvancedStayStatus(
+          pending.status as StayStatus,
+          draft.status as StayStatus,
+        ) as RoomStayStatus;
+        pending.stage =
+          pending.status === RoomStayStatus.IN_HOUSE
+            ? RoomStayStage.CONFIRMADO
+            : RoomStayStage.PENDIENTE;
         continue;
       }
 

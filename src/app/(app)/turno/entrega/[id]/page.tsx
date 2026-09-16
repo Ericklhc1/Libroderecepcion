@@ -7,6 +7,9 @@ import { requirePageUser } from '@/server/auth/guard';
 import { getHistory } from '@/server/services/history';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { CashBox } from '@/components/operational/cash-box';
+import { getHandoverCashState, listDenominations } from '@/server/services/cash';
+import { CashCountKind } from '@prisma/client';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
 import { SendHandoverForm } from '@/components/operational/shift-actions';
@@ -59,12 +62,47 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const history = await getHistory({ entity: 'ShiftHandover', entityId: handover.id });
+  const [history, cashState, denominations] = await Promise.all([
+    getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
+    getHandoverCashState(handover.id),
+    listDenominations(),
+  ]);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const isReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
+
+  /*
+    Quién cuenta la caja: el emisor declara mientras la entrega es borrador; el
+    receptor recuenta mientras está enviada y sin recibir. Fuera de esos dos
+    casos —una entrega ya recibida, o alguien que sólo mira— la caja es de
+    lectura: recontar después no tiene a quién preguntarle por la diferencia.
+  */
+  const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
+    ? 'emisor'
+    : isReceiver &&
+        handover.status === HandoverStatus.ENVIADA &&
+        user.permissions.includes('shift.receive')
+      ? 'receptor'
+      : 'lector';
+
+  // Rellena el formulario con lo que ya contó este rol, para no empezar de cero.
+  const ownCount =
+    cashRole === 'lector'
+      ? null
+      : await prisma.cashCount.findUnique({
+          where: {
+            handoverId_kind: {
+              handoverId: handover.id,
+              kind: cashRole === 'emisor' ? CashCountKind.DECLARADO : CashCountKind.CONFIRMADO,
+            },
+          },
+          include: { lines: { select: { denominationId: true, quantity: true } } },
+        });
+  const previousQuantities = Object.fromEntries(
+    (ownCount?.lines ?? []).map((line) => [line.denominationId, line.quantity]),
+  );
 
   const grouped = LEVEL_ORDER.map((level) => ({
     level,
@@ -188,6 +226,23 @@ export default async function HandoverPage({
           </div>
         ) : null}
       </Card>
+
+      {/*
+        La caja va ANTES de los puntos de la entrega: es lo primero que
+        cuenta quien entrega y lo primero que recuenta quien recibe.
+      */}
+      <CashBox
+        handoverId={handover.id}
+        state={cashState}
+        denominations={denominations.map((denomination) => ({
+          id: denomination.id,
+          currency: denomination.currency,
+          value: Number(denomination.value),
+          medium: denomination.medium,
+        }))}
+        previous={previousQuantities}
+        role={cashRole}
+      />
 
       {grouped.length === 0 ? (
         <Card>

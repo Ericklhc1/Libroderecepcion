@@ -51,8 +51,9 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `User`/`Role`/`Permission` · `Shift`/`ShiftHandover`/`HandoverItem` ·
 `OperationalEntry` (novedad, incidencia, mantenimiento…) · `Task` ·
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
-`GuestReference`/`ReservationReference`/`Guarantee` · `AuditLog` ·
-`SystemSetting`.
+`GuestReference`/`ReservationReference`/`Guarantee` ·
+`CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` ·
+`HandoverElementType`/`HandoverElement` · `AuditLog` · `SystemSetting`.
 
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
@@ -90,6 +91,18 @@ conserva su modelo y sus reglas.
    código.
 2. **Nada se borra de verdad.** Eliminación lógica (`deletedAt`, `deletedBy`,
    `deletionReason`); el administrador restaura.
+   **Las estadías también se pueden eliminar, y sólo el Administrador de
+   sistema** (`stay.delete`, `softDeleteStay`, diálogo en las tres capas de la
+   ficha de habitación). Es **reparación, no operación**: desatasca un estado
+   histórico incoherente —una estadía duplicada, una cargada antes de que una
+   regla existiera— para que nadie tenga que tocar la base a mano, y no deja
+   al administrador como responsable de ninguna llegada ni salida. La llave
+   asignada **se libera en la misma transacción**: una llave apuntando a una
+   estadía eliminada es justo el conflicto que la acción viene a resolver.
+   El permiso necesitó su migración (`20260916070000_admin_elimina_estadia`),
+   que crea la fila de `Permission` además de la de `RolePermission`, porque
+   el catálogo también se siembra al instalar. Lo vigila
+   `tests/eliminar-estadia.test.ts`.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
    de importación **se recalculan, nunca se almacenan**.
    **Los tres informes se cargan desde el inicio de turno** (`/turno`, primera
@@ -121,6 +134,21 @@ conserva su modelo y sus reglas.
    `key.stock`, `reconcileKeysAction`) la llama sin acotar, para alcanzar
    estadías cargadas antes de que la regla existiera. Es idempotente. No hay
    ni debe haber una segunda lógica de asignación.
+   **Una reserva es UNA estadía por habitación y por FASE.** `CHECK_IN` e
+   `IN_HOUSE` son el mismo hecho en dos etapas —el informe de entradas la
+   lista como llegada y el de in house como alojada— así que se conservan en
+   una sola estadía y gana el estado más avanzado (`mostAdvancedStayStatus`).
+   `CHECK_OUT` es un hecho APARTE: una reserva que sale y vuelve a entrar el
+   mismo día son dos filas, y eso es lo que hace existir
+   `sameReservationTurnaround`. La fase la decide `stayPhase` en el dominio.
+   La clave de deduplicación de `applyImport` y el emparejamiento de la
+   pantalla de revisión usan **la misma fase**: si divergieran, la revisión
+   anunciaría estadías que al aplicar no se crean.
+   Decisión revisada: la clave incluía el estado completo, y por eso la misma
+   reserva en dos informes creaba dos estadías. En producción la 629 mostraba
+   a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
+   vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
+   `tests/rooms-keys.test.ts`.
 5. **El stock de llaves se cuenta, no se guarda.** Habitaciones 401–429,
    501–530, 601–630 (89) y 12 copias en el stock del Supervisor.
 6. **Inter como única familia tipográfica.** Jerarquía por tamaño, peso y
@@ -169,6 +197,34 @@ conserva su modelo y sus reglas.
     asignado» se eliminó a propósito y se reemplazó por la invariante que sí
     sobrevive —un turno ya tomado no se le quita a quien lo tomó—. Lo vigila
     `tests/turno-sin-asignacion.test.ts`.
+12. **La caja se traspasa con fondo fijo, y la exigencia la activa el fondo.**
+    `CashFund` define cuánto debe quedar SIEMPRE en el cajón por divisa (en
+    este hotel **CLP 100.000 y USD 150**). Lo que excede es recaudación del
+    turno y sale como `CashTransfer` a tesorería.
+    **Mientras no exista una fila activa en `CashFund`, la caja no existe**:
+    entregar y recibir funcionan igual que antes del módulo. Eso deja intactas
+    las pruebas del ciclo de turno y no bloquea un despliegue nuevo el primer
+    día. `CashFund` y `HandoverElementType` **no son catálogo** —son
+    configuración del hotel— así que `resetOperationalData` los borra: si no,
+    el conjunto de pruebas daría resultados distintos según el orden de los
+    archivos. Las **denominaciones sí** son catálogo y viven en `seedCatalog`.
+    El arqueo se cuenta **por denominación**, dos veces: lo declara quien
+    entrega (`DECLARADO`) y lo recuenta quien recibe (`CONFIRMADO`). La
+    **diferencia entre ambos se calcula, nunca se almacena**, igual que los
+    conflictos de importación. Recontar reemplaza el arqueo anterior en vez de
+    acumular dos.
+    Un descuadre **no impide entregar si viene explicado**: un faltante existe
+    y hay que poder declararlo, no esconderlo. Lo único que se rechaza es un
+    descuadre sin una palabra.
+    Los montos se calculan en **unidad menor como entero** (`domain/cash.ts`):
+    el peso no usa centavos y el dólar sí, y multiplicar cantidades por valores
+    en coma flotante da 149,99999 donde debía haber 150.
+    Los elementos físicos (llaves maestras, radio, objetos olvidados,
+    encomiendas) son una lista **editable por el hotel**; los obligatorios
+    bloquean la entrega y la recepción. Las **garantías por resolver se
+    enlazan** desde el módulo de garantías, no se duplican.
+    Lo vigilan `tests/caja.test.ts` (20, dominio puro) y
+    `tests/caja-turno.test.ts` (16, ciclo completo).
 
 ## Rendimiento: lo aprendido en producción
 

@@ -30,6 +30,11 @@ import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { buildHandoverSnapshot, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import { getSettingBool } from './settings';
+import {
+  cashBlockersForReceiving,
+  cashBlockersForSending,
+  ensureHandoverElements,
+} from './cash';
 
 /** Fecha operativa (medianoche local) usada como clave de turno. */
 export function operationalDate(now = new Date()): Date {
@@ -546,6 +551,20 @@ export async function receiveHandover(
 
   assertTransition(shift.status, ShiftStatus.ACTIVO);
 
+  /*
+    Recibir el turno es recibir la caja. Quien entra recuenta el fondo fijo y
+    confirma los elementos ANTES de que la entrega se marque como recibida:
+    después ya no hay a quién preguntarle por una diferencia.
+
+    Sólo aplica cuando hay una entrega concreta que recibir. El primer turno
+    del ciclo no tiene nada que contar, y si el hotel no configuró fondo fijo
+    la lista viene vacía y la recepción funciona como siempre.
+  */
+  if (incoming) {
+    const cashProblems = await cashBlockersForReceiving(incoming.id);
+    if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
+  }
+
   const autoClose = await getSettingBool('shift.autoCloseOnReceive', true);
 
   return prisma.$transaction(async (tx) => {
@@ -705,6 +724,13 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
       });
     }
 
+    /*
+      Los elementos físicos que viajan con la caja se materializan acá, al
+      preparar. Es idempotente: regenerar el borrador no borra lo que alguien
+      ya marcó. Si el hotel no configuró elementos, no crea ninguno.
+    */
+    await ensureHandoverElements(handover.id, tx);
+
     if (shift.status !== ShiftStatus.PREPARANDO_ENTREGA) {
       await tx.shift.update({
         where: { id: shift.id },
@@ -745,6 +771,13 @@ export async function sendHandover(
     throw new RuleError('Esta entrega ya fue enviada.');
   }
   assertTransition(shift.status, ShiftStatus.ENTREGA_ENVIADA);
+
+  /*
+    La caja se cuenta antes de entregar, no después. Si el hotel no tiene
+    fondo fijo configurado esto no bloquea nada: la lista viene vacía.
+  */
+  const cashProblems = await cashBlockersForSending(handover.id);
+  if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
 
   const nextShift = await getNextShift(shift);
   const items = await prisma.handoverItem.findMany({

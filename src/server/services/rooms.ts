@@ -1,5 +1,5 @@
 import 'server-only';
-import { AuditAction, RoomStayStage, RoomStayStatus } from '@prisma/client';
+import { AuditAction, KeyStatus, RoomStayStage, RoomStayStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -448,4 +448,72 @@ export async function countRoomStates(): Promise<Record<string, number>> {
     counts[room.snapshot.state] = (counts[room.snapshot.state] ?? 0) + 1;
   }
   return counts;
+}
+
+/**
+ * Elimina lógicamente una estadía, para desatascar un conflicto.
+ *
+ * Existe porque un estado histórico incoherente —una estadía duplicada, una
+ * cargada antes de que una regla existiera— puede dejar una habitación
+ * bloqueada, y la operación necesita una salida que no sea tocar la base a
+ * mano. La reserva el **Administrador de sistema**: es la única acción sobre
+ * estadías que le corresponde, porque no es operar el mesón sino reparar el
+ * sistema, y no lo deja como responsable de ninguna llegada ni salida.
+ *
+ * Nada se borra de verdad: `deletedAt`, `deletedById` y un **motivo
+ * obligatorio**, como el resto del sistema.
+ *
+ * La llave que tuviera asignada se libera en la misma transacción. Dejarla
+ * apuntando a una estadía eliminada es exactamente el conflicto que esta
+ * acción viene a resolver.
+ */
+export async function softDeleteStay(
+  user: CurrentUser,
+  input: { stayId: string; reason: string },
+) {
+  const result = await prisma.$transaction(async (tx) => {
+    const stay = await tx.roomStay.findFirst({
+      where: { id: input.stayId, deletedAt: null },
+      select: {
+        id: true,
+        reservationId: true,
+        status: true,
+        stage: true,
+        guestNames: true,
+        room: { select: { id: true, number: true } },
+      },
+    });
+    if (!stay) throw new NotFoundError('Esa estadía no existe o ya fue eliminada.');
+
+    await tx.roomStay.update({
+      where: { id: stay.id },
+      data: {
+        deletedAt: new Date(),
+        deletedById: user.id,
+        deletionReason: input.reason,
+      },
+    });
+
+    // La llave vuelve al inventario: una llave asignada a una estadía
+    // eliminada es el conflicto que esto viene a resolver.
+    const released = await tx.roomKey.updateMany({
+      where: { stayId: stay.id },
+      data: { stayId: null, status: KeyStatus.DISPONIBLE },
+    });
+
+    return { stay, releasedKeys: released.count };
+  });
+
+  await recordAudit({
+    entity: 'RoomStay',
+    entityId: result.stay.id,
+    action: AuditAction.ELIMINAR,
+    user,
+    summary:
+      `Estadía ${result.stay.reservationId} de la habitación ${result.stay.room?.number ?? 's/n'} ` +
+      `eliminada (${result.releasedKeys} llave(s) liberada(s)): ${input.reason}`,
+    before: { status: result.stay.status, stage: result.stay.stage },
+  });
+
+  return result;
 }

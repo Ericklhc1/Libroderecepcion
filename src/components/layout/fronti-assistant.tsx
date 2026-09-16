@@ -26,36 +26,50 @@ type Confirmation = {
   risk: 'normal' | 'high';
 };
 
+type ClientConfig = {
+  enabled: boolean;
+  displayName: string;
+  welcomeMessage: string;
+  sessionActivityMinutes: number;
+};
+
 type FrontiResponse = {
   reply?: string;
   confirmations?: Confirmation[];
   messages?: ChatMessage[];
   retentionDays?: number;
+  assistant?: string;
+  config?: ClientConfig;
   reset?: boolean;
   error?: string;
 };
 
 const API = '/api/fronti';
 const OPEN_KEY = 'fronti-open';
-const ACTIVE_WINDOW_MS = 15 * 60 * 1000;
+const DEFAULT_CONFIG: ClientConfig = {
+  enabled: true,
+  displayName: 'Fronti',
+  welcomeMessage:
+    'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.',
+  sessionActivityMinutes: 15,
+};
 
 function localId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const WELCOME =
-  'Hola, soy Fronti. Puedo revisar el Libro, recordar contexto útil, consultar habitaciones y vencimientos, y preparar acciones para que las confirmes.';
-
-function initialMessages(): ChatMessage[] {
-  return [{ id: 'fronti-welcome', role: 'assistant', content: WELCOME }];
+function welcomeMessages(config: ClientConfig): ChatMessage[] {
+  return [{ id: 'fronti-welcome', role: 'assistant', content: config.welcomeMessage }];
 }
 
 export function FrontiAssistant() {
+  const [config, setConfig] = useState<ClientConfig>(DEFAULT_CONFIG);
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(welcomeMessages(DEFAULT_CONFIG));
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -76,10 +90,14 @@ export function FrontiAssistant() {
         }
         const payload = (await response.json()) as FrontiResponse;
         if (!response.ok || cancelled) return;
-        setMessages(payload.messages?.length ? payload.messages : initialMessages());
+        const nextConfig = payload.config ?? DEFAULT_CONFIG;
+        setConfig(nextConfig);
+        setMessages(payload.messages?.length ? payload.messages : welcomeMessages(nextConfig));
         if (payload.retentionDays) setRetentionDays(payload.retentionDays);
       } catch {
         // Fronti nunca debe impedir usar el Libro.
+      } finally {
+        if (!cancelled) setLoaded(true);
       }
     })();
 
@@ -103,7 +121,8 @@ export function FrontiAssistant() {
 
     async function heartbeat() {
       if (document.visibilityState !== 'visible') return;
-      if (Date.now() - lastActivityRef.current > ACTIVE_WINDOW_MS) return;
+      const activeWindowMs = config.sessionActivityMinutes * 60 * 1000;
+      if (Date.now() - lastActivityRef.current > activeWindowMs) return;
       try {
         const response = await fetch(`${API}?heartbeat=1&active=1`, { cache: 'no-store' });
         if (response.status === 401) window.location.assign('/login');
@@ -126,7 +145,7 @@ export function FrontiAssistant() {
       document.removeEventListener('visibilitychange', onVisibility);
       for (const event of events) window.removeEventListener(event, markActivity);
     };
-  }, []);
+  }, [config.sessionActivityMinutes]);
 
   useEffect(() => {
     if (!open) return;
@@ -156,7 +175,8 @@ export function FrontiAssistant() {
       window.location.assign('/login');
       throw new Error('Tu sesión venció.');
     }
-    if (!response.ok) throw new Error(data.error || 'Fronti no pudo procesar la solicitud.');
+    if (!response.ok) throw new Error(data.error || `${config.displayName} no pudo procesar la solicitud.`);
+    if (data.config) setConfig(data.config);
     return data;
   }
 
@@ -164,10 +184,7 @@ export function FrontiAssistant() {
     const content = text.trim();
     if (!content || busy) return;
 
-    setMessages((current) => [
-      ...current,
-      { id: localId(), role: 'user', content },
-    ]);
+    setMessages((current) => [...current, { id: localId(), role: 'user', content }]);
     setText('');
     setBusy(true);
     lastActivityRef.current = Date.now();
@@ -176,7 +193,7 @@ export function FrontiAssistant() {
       const payload = await request({ message: content });
       if (payload.reset) {
         setMessages([
-          ...initialMessages(),
+          ...welcomeMessages(config),
           ...(payload.reply
             ? [{ id: localId(), role: 'assistant' as const, content: payload.reply }]
             : []),
@@ -187,7 +204,7 @@ export function FrontiAssistant() {
         if (payload.confirmations?.length) mergeConfirmations(payload.confirmations);
       }
     } catch (error) {
-      addFronti(error instanceof Error ? error.message : 'Fronti no pudo procesar la solicitud.');
+      addFronti(error instanceof Error ? error.message : `${config.displayName} no pudo procesar la solicitud.`);
     } finally {
       setBusy(false);
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -214,7 +231,7 @@ export function FrontiAssistant() {
     setBusy(true);
     try {
       await request({ action: 'new_conversation' });
-      setMessages(initialMessages());
+      setMessages(welcomeMessages(config));
       setConfirmations([]);
       setText('');
     } catch (error) {
@@ -227,12 +244,12 @@ export function FrontiAssistant() {
 
   async function forgetConversation() {
     if (busy) return;
-    if (!window.confirm('¿Quieres que Fronti elimine esta conversación y las memorias generadas a partir de ella?')) return;
+    if (!window.confirm(`¿Quieres que ${config.displayName} elimine esta conversación y las memorias generadas a partir de ella?`)) return;
 
     setBusy(true);
     try {
       await request({ action: 'forget_conversation' });
-      setMessages(initialMessages());
+      setMessages(welcomeMessages(config));
       setConfirmations([]);
       setText('');
     } catch (error) {
@@ -242,21 +259,21 @@ export function FrontiAssistant() {
     }
   }
 
-  if (!hydrated) return null;
+  if (!hydrated || !loaded || !config.enabled) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
           className="pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
-          aria-label="Fronti"
+          aria-label={config.displayName}
         >
           <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="truncate text-sm font-semibold">Fronti</h2>
+              <h2 className="truncate text-sm font-semibold">{config.displayName}</h2>
               <p className="truncate text-[0.64rem] text-petrol-100">
                 Asistente de Recepción · memoria {retentionDays} días
               </p>
@@ -266,7 +283,7 @@ export function FrontiAssistant() {
               disabled={busy}
               onClick={() => void newConversation()}
               className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 hover:text-white disabled:opacity-40"
-              aria-label="Nueva conversación con Fronti"
+              aria-label={`Nueva conversación con ${config.displayName}`}
               title="Nueva conversación"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
@@ -285,7 +302,7 @@ export function FrontiAssistant() {
               type="button"
               onClick={() => setOpen(false)}
               className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 hover:text-white"
-              aria-label="Minimizar Fronti"
+              aria-label={`Minimizar ${config.displayName}`}
               title="Minimizar"
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -347,7 +364,7 @@ export function FrontiAssistant() {
             {busy ? (
               <div className="flex items-center gap-2 px-1 text-xs text-slate-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                Fronti está procesando…
+                {config.displayName} está procesando…
               </div>
             ) : null}
             <div ref={endRef} />
@@ -383,22 +400,22 @@ export function FrontiAssistant() {
                 }}
                 rows={2}
                 maxLength={6000}
-                placeholder="Pregúntale o dale una instrucción a Fronti…"
+                placeholder={`Pregúntale o dale una instrucción a ${config.displayName}…`}
                 className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-                aria-label="Mensaje para Fronti"
+                aria-label={`Mensaje para ${config.displayName}`}
               />
               <button
                 type="button"
                 disabled={busy || !text.trim()}
                 onClick={() => void sendMessage()}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Enviar a Fronti"
+                aria-label={`Enviar a ${config.displayName}`}
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>
             <p className="mt-1.5 text-center text-[0.61rem] leading-4 text-slate-400">
-              Memoria personal 30 días · “No guardes esto: …” evita memoria · acciones sensibles requieren confirmación.
+              Memoria personal {retentionDays} días · “No guardes esto: …” evita memoria · acciones sensibles requieren confirmación.
             </p>
           </div>
         </section>
@@ -410,11 +427,11 @@ export function FrontiAssistant() {
             requestAnimationFrame(() => inputRef.current?.focus());
           }}
           className="pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:bottom-4 lg:right-4"
-          aria-label="Abrir Fronti"
-          title="Fronti"
+          aria-label={`Abrir ${config.displayName}`}
+          title={config.displayName}
         >
           <MessageCircle className="h-4 w-4 text-gold-400" aria-hidden="true" />
-          <span className="text-xs font-semibold">Fronti</span>
+          <span className="text-xs font-semibold">{config.displayName}</span>
         </button>
       )}
     </div>

@@ -6,15 +6,12 @@ import { env } from '@/lib/env';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { getMyOpenShift } from '@/server/services/shifts';
 import type { AssistantMessage } from './reception-assistant';
+import { getFrontiConfig } from './fronti-config';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const AI_MEMORY_RETENTION_DAYS = 30;
-const RETENTION_MS = AI_MEMORY_RETENTION_DAYS * DAY_MS;
-const SHIFT_MEMORY_MS = 36 * 60 * 60 * 1000;
-const MODEL_HISTORY_LIMIT = 15;
 const UI_HISTORY_LIMIT = 60;
 const MEMORY_CANDIDATE_LIMIT = 80;
-const MEMORY_CONTEXT_LIMIT = 12;
 
 type ConversationRow = {
   id: string;
@@ -145,8 +142,6 @@ function containsSecretLikeData(message: string): boolean {
   if (/\b(?:cvv|cvc|contraseña|password|api[_ -]?key|token de acceso|clave secreta)\b/i.test(lower)) {
     return true;
   }
-  // Evita persistir números que parecen una tarjeta completa. Reservas y
-  // habitaciones son mucho más cortas y no activan esta regla.
   const digits = message.replace(/[^0-9]/g, '');
   return digits.length >= 13 && digits.length <= 19;
 }
@@ -169,12 +164,12 @@ function keywords(value: string): Set<string> {
   );
 }
 
-function memoryScore(memory: MemoryRow, queryTokens: Set<string>): number {
+function memoryScore(memory: MemoryRow, queryTokens: Set<string>, retentionDays: number): number {
   const memoryTokens = keywords(`${memory.summary} ${memory.entity_type ?? ''} ${memory.entity_id ?? ''}`);
   let overlap = 0;
   for (const token of queryTokens) if (memoryTokens.has(token)) overlap += 1;
   const ageDays = Math.max(0, (Date.now() - memory.updated_at.getTime()) / DAY_MS);
-  const recency = Math.max(0, 30 - ageDays) / 6;
+  const recency = Math.max(0, retentionDays - ageDays) / Math.max(1, retentionDays / 5);
   const entityBonus = memory.entity_id && queryTokens.has(normalizeToken(memory.entity_id)) ? 12 : 0;
   return memory.importance * 5 + overlap * 7 + recency + entityBonus;
 }
@@ -194,9 +189,10 @@ async function findActiveConversation(user: CurrentUser): Promise<ConversationRo
 }
 
 async function createConversation(user: CurrentUser): Promise<ConversationRow> {
+  const config = await getFrontiConfig();
   const id = randomUUID();
   const shiftId = await currentShiftId(user.id);
-  const expiresAt = expiresIn(RETENTION_MS);
+  const expiresAt = expiresIn(config.memoryRetentionDays * DAY_MS);
 
   try {
     await prisma.$executeRaw`
@@ -240,8 +236,9 @@ async function storeMessage(
   role: 'user' | 'assistant',
   content: string,
 ): Promise<string> {
+  const config = await getFrontiConfig();
   const id = randomUUID();
-  const expiresAt = expiresIn(RETENTION_MS);
+  const expiresAt = expiresIn(config.memoryRetentionDays * DAY_MS);
   await prisma.$transaction([
     prisma.$executeRaw`
       INSERT INTO ai_message (id, conversation_id, role, content, expires_at)
@@ -259,6 +256,7 @@ async function storeMessage(
 }
 
 async function relevantMemories(user: CurrentUser, query: string): Promise<MemoryRow[]> {
+  const config = await getFrontiConfig();
   const shiftId = await currentShiftId(user.id);
   const rows = shiftId
     ? await prisma.$queryRaw<MemoryRow[]>`
@@ -282,9 +280,12 @@ async function relevantMemories(user: CurrentUser, query: string): Promise<Memor
 
   const queryTokens = keywords(query);
   return rows
-    .map((memory) => ({ memory, score: memoryScore(memory, queryTokens) }))
+    .map((memory) => ({
+      memory,
+      score: memoryScore(memory, queryTokens, config.memoryRetentionDays),
+    }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, MEMORY_CONTEXT_LIMIT)
+    .slice(0, config.memoryContextLimit)
     .map(({ memory }) => memory);
 }
 
@@ -311,13 +312,17 @@ async function upsertMemory(
     importance: number;
   },
 ) {
+  const config = await getFrontiConfig();
   const summary = memory.summary.trim().slice(0, 600);
   if (!summary || containsSecretLikeData(summary)) return;
 
   const shiftId = memory.scope === 'TURNO' ? await currentShiftId(user.id) : null;
   const scope = memory.scope === 'TURNO' && !shiftId ? 'PERSONAL' : memory.scope;
   const effectiveShiftId = scope === 'TURNO' ? shiftId : null;
-  const ttl = scope === 'TURNO' ? SHIFT_MEMORY_MS : RETENTION_MS;
+  const ttl =
+    scope === 'TURNO'
+      ? config.shiftMemoryHours * 60 * 60 * 1000
+      : config.memoryRetentionDays * DAY_MS;
   const expiresAt = expiresIn(ttl);
   const importance = Math.min(5, Math.max(1, Math.round(memory.importance || 3)));
   const entityType = memory.entityType?.trim().slice(0, 80) || null;
@@ -375,6 +380,7 @@ export async function extractAndStoreMemories(
   if (!key) return;
 
   try {
+    const config = await getFrontiConfig();
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -382,14 +388,14 @@ export async function extractAndStoreMemories(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: env().OPENAI_MODEL,
+        model: config.model,
         store: false,
-        reasoning: { effort: 'low' },
+        reasoning: { effort: config.reasoningEffort },
         instructions:
           'Extrae sólo contexto conversacional que pueda ser útil después en la operación de recepción. ' +
           'No guardes contraseñas, claves, tokens, números completos de tarjetas, CVV/CVC ni secretos. ' +
           'No dupliques como memoria datos que deberían consultarse como fuente de verdad en tareas, multas, garantías, habitaciones o reservas. ' +
-          'PERSONAL sirve para contexto útil al mismo usuario durante hasta 30 días. TURNO sirve sólo para contexto útil al turno actual. ' +
+          `PERSONAL sirve para contexto útil al mismo usuario durante hasta ${config.memoryRetentionDays} días. TURNO sirve sólo para contexto útil al turno actual. ` +
           'Si no hay nada que merezca recordarse, devuelve una lista vacía. Resume sin adornos y minimiza datos personales.',
         input: [
           {
@@ -467,7 +473,6 @@ export async function extractAndStoreMemories(
       });
     }
   } catch (error) {
-    // La memoria mejora el asistente, pero nunca debe bloquear la operación.
     console.error('[asistente-memoria-extraccion]', error);
   }
 }
@@ -487,11 +492,12 @@ export async function cleanupExpiredAiMemory(): Promise<{
 
 export async function getAssistantBootstrap(user: CurrentUser): Promise<AssistantBootstrap> {
   await cleanupExpiredAiMemory();
+  const config = await getFrontiConfig();
   const conversation = await getOrCreateConversation(user);
   const messages = await recentMessages(conversation.id, UI_HISTORY_LIMIT);
   return {
     conversationId: conversation.id,
-    retentionDays: AI_MEMORY_RETENTION_DAYS,
+    retentionDays: config.memoryRetentionDays,
     messages: messages.map((message) => ({
       id: message.id,
       role: message.role,
@@ -506,11 +512,12 @@ export async function prepareAssistantContext(
   rawMessage: string,
 ): Promise<PreparedAssistantContext> {
   await cleanupExpiredAiMemory();
+  const config = await getFrontiConfig();
   const conversation = await getOrCreateConversation(user);
   const cleanMessage = stripNoStoreDirective(rawMessage) || rawMessage.trim();
   const persist = shouldPersist(rawMessage);
   const [history, memories] = await Promise.all([
-    recentMessages(conversation.id, MODEL_HISTORY_LIMIT),
+    recentMessages(conversation.id, config.modelHistoryLimit),
     relevantMemories(user, cleanMessage),
   ]);
 
@@ -533,7 +540,7 @@ export async function prepareAssistantContext(
 
   return {
     conversationId: conversation.id,
-    messages: messages.slice(-17),
+    messages: messages.slice(-(config.modelHistoryLimit + 2)),
     memoryContext,
     persist,
     cleanMessage,

@@ -18,7 +18,9 @@ function kindOf(value: unknown): 'boolean' | 'number' | 'string' {
 
 export default async function SettingsPage() {
   await requirePagePermission('system.configure');
-  const settings = await getAllSettings();
+  const settings = (await getAllSettings()).filter(
+    (setting) => !setting.key.startsWith('fronti.'),
+  );
 
   const byCategory = Array.from(
     settings.reduce((map, setting) => {
@@ -43,7 +45,7 @@ export default async function SettingsPage() {
         <h1 className="text-xl font-semibold text-petrol-900">Parámetros del sistema</h1>
         <p className="mt-0.5 text-sm text-slate-600">
           Cada parámetro tiene un valor por defecto en el código; aquí se sobrescribe sin
-          necesidad de desplegar.
+          necesidad de desplegar. La configuración de Fronti se administra desde su sección propia.
         </p>
       </header>
 

@@ -9,7 +9,7 @@ import { requirePermission } from '@/server/auth/guard';
 import { recordAudit } from '@/server/audit';
 import { RuleError } from '@/server/errors';
 import { DEFAULT_SETTINGS, type SettingKey } from '@/server/services/settings';
-import { cleanupExpiredAiMemory } from '@/server/ai/memory';
+import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
 
 const FRONTI_KEYS = (Object.keys(DEFAULT_SETTINGS) as SettingKey[]).filter((key) =>
   key.startsWith('fronti.'),
@@ -96,6 +96,10 @@ export async function saveFrontiSettingAction(
       },
     });
 
+    if (key === 'fronti.memoryRetentionDays' || key === 'fronti.shiftMemoryHours') {
+      await enforceFrontiRetentionPolicy();
+    }
+
     await recordAudit({
       entity: 'SystemSetting',
       entityId: setting.id,
@@ -122,6 +126,7 @@ export async function resetFrontiSettingsAction(): Promise<ActionState> {
     });
 
     await prisma.systemSetting.deleteMany({ where: { key: { in: FRONTI_KEYS } } });
+    await enforceFrontiRetentionPolicy();
     await recordAudit({
       entity: 'SystemSetting',
       entityId: 'fronti',
@@ -142,7 +147,7 @@ export async function resetFrontiSettingsAction(): Promise<ActionState> {
 export async function cleanupFrontiMemoryAction(): Promise<ActionState> {
   return runAction(async () => {
     const actor = await requirePermission('system.configure');
-    const result = await cleanupExpiredAiMemory();
+    const result = await enforceFrontiRetentionPolicy();
     await recordAudit({
       entity: 'System',
       entityId: 'fronti-memory',

@@ -12,6 +12,7 @@ import { NotFoundError } from '@/server/errors';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
+import { DeleteStayDialog } from '@/components/rooms/delete-stay';
 import { EntryForm } from '@/components/forms/entry-form';
 import { createEntryAction } from '@/server/actions/entries';
 import { StayActions } from '@/components/rooms/stay-actions';
@@ -147,6 +148,12 @@ export default async function RoomDetailPage({
 
   const { snapshot } = room;
   const canManage = hasPermission(user, 'room.manage');
+  /*
+    Reparación, no operación: sólo el Administrador de sistema. Aparece en las
+    tres capas porque el conflicto puede estar en cualquiera —una estadía
+    duplicada suele quedar como «Entrante» junto a la «Actual» real—.
+  */
+  const canDeleteStay = hasPermission(user, 'stay.delete');
   const canKeys = hasPermission(user, 'key.assign');
   const openEntries = entries.filter((entry) => ENTRY_OPEN_STATUSES.includes(entry.status));
 
@@ -207,9 +214,24 @@ export default async function RoomDetailPage({
               roomNumber={room.number}
             />
           ) : null}
+          {snapshot.outgoing && canDeleteStay ? (
+            <DeleteStayDialog
+              stayId={snapshot.outgoing.id}
+              reservationId={snapshot.outgoing.reservationId}
+              roomNumber={room.number}
+            />
+          ) : null}
         </Layer>
 
-        <Layer title="Actual" stay={snapshot.current} />
+        <Layer title="Actual" stay={snapshot.current}>
+          {snapshot.current && canDeleteStay ? (
+            <DeleteStayDialog
+              stayId={snapshot.current.id}
+              reservationId={snapshot.current.reservationId}
+              roomNumber={room.number}
+            />
+          ) : null}
+        </Layer>
 
         <Layer
           title="Entrante"
@@ -236,6 +258,13 @@ export default async function RoomDetailPage({
                 availableKeys={availableKeys}
               />
             )
+          ) : null}
+          {snapshot.incoming && canDeleteStay ? (
+            <DeleteStayDialog
+              stayId={snapshot.incoming.id}
+              reservationId={snapshot.incoming.reservationId}
+              roomNumber={room.number}
+            />
           ) : null}
         </Layer>
       </div>

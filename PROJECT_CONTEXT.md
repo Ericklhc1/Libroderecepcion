@@ -91,6 +91,18 @@ conserva su modelo y sus reglas.
    código.
 2. **Nada se borra de verdad.** Eliminación lógica (`deletedAt`, `deletedBy`,
    `deletionReason`); el administrador restaura.
+   **Las estadías también se pueden eliminar, y sólo el Administrador de
+   sistema** (`stay.delete`, `softDeleteStay`, diálogo en las tres capas de la
+   ficha de habitación). Es **reparación, no operación**: desatasca un estado
+   histórico incoherente —una estadía duplicada, una cargada antes de que una
+   regla existiera— para que nadie tenga que tocar la base a mano, y no deja
+   al administrador como responsable de ninguna llegada ni salida. La llave
+   asignada **se libera en la misma transacción**: una llave apuntando a una
+   estadía eliminada es justo el conflicto que la acción viene a resolver.
+   El permiso necesitó su migración (`20260916070000_admin_elimina_estadia`),
+   que crea la fila de `Permission` además de la de `RolePermission`, porque
+   el catálogo también se siembra al instalar. Lo vigila
+   `tests/eliminar-estadia.test.ts`.
 3. **El PMS es la fuente principal.** Este módulo no es un PMS. Los conflictos
    de importación **se recalculan, nunca se almacenan**.
    **Los tres informes se cargan desde el inicio de turno** (`/turno`, primera

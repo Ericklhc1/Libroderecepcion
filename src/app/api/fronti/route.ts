@@ -17,6 +17,7 @@ import {
   startNewAssistantConversation,
 } from '@/server/ai/memory';
 import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
+import { getFrontiConfig } from '@/server/ai/fronti-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,14 +32,6 @@ const requestSchema = z
     (value) => Boolean(value.message || value.confirmationToken || value.action),
     { message: 'Falta el mensaje, la confirmación o la acción.' },
   );
-
-const FRONTI_IDENTITY = {
-  role: 'assistant' as const,
-  content:
-    'Tu nombre visible es Fronti. Eres el asistente operativo de Recepción del Hotel HW Libertad. ' +
-    'Si el usuario pregunta quién eres o cómo te llamas, responde que eres Fronti. ' +
-    'Mantén un tono claro, breve, amable y operativo. La memoria es contexto y nunca sustituye el estado real del Libro.',
-};
 
 function noStoreHeaders() {
   return { 'Cache-Control': 'no-store' };
@@ -58,26 +51,51 @@ async function authenticatedUser() {
   return alive ? user : null;
 }
 
+function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
+  return {
+    enabled: config.enabled,
+    displayName: config.displayName,
+    welcomeMessage: config.welcomeMessage,
+    sessionActivityMinutes: config.sessionActivityMinutes,
+  };
+}
+
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return expiredResponse();
 
+  const config = await getFrontiConfig();
   const url = new URL(request.url);
   if (url.searchParams.get('heartbeat') === '1') {
     if (url.searchParams.get('active') === '1') {
       const alive = await refreshSession(user.id, user.sessionId);
       if (!alive) return expiredResponse();
     }
-    return NextResponse.json({ ok: true, assistant: 'Fronti' }, { headers: noStoreHeaders() });
+    return NextResponse.json(
+      { ok: true, assistant: config.displayName, config: publicConfig(config) },
+      { headers: noStoreHeaders() },
+    );
   }
 
   const alive = await refreshSession(user.id, user.sessionId);
   if (!alive) return expiredResponse();
 
   try {
+    if (!config.enabled) {
+      return NextResponse.json(
+        {
+          assistant: config.displayName,
+          retentionDays: config.memoryRetentionDays,
+          messages: [],
+          config: publicConfig(config),
+        },
+        { headers: noStoreHeaders() },
+      );
+    }
+
     const bootstrap = await getAssistantBootstrap(user);
     return NextResponse.json(
-      { ...bootstrap, assistant: 'Fronti' },
+      { ...bootstrap, assistant: config.displayName, config: publicConfig(config) },
       { headers: noStoreHeaders() },
     );
   } catch (error) {
@@ -94,12 +112,26 @@ export async function POST(request: Request) {
   if (!user) return expiredResponse();
 
   try {
+    const config = await getFrontiConfig();
+    if (!config.enabled) {
+      return NextResponse.json(
+        { error: `${config.displayName} está desactivado por el Administrador de sistema.` },
+        { status: 403, headers: noStoreHeaders() },
+      );
+    }
+
     const body = requestSchema.parse(await request.json());
 
     if (body.action === 'new_conversation') {
       const bootstrap = await startNewAssistantConversation(user);
       return NextResponse.json(
-        { ...bootstrap, assistant: 'Fronti', reset: true, reply: 'Nueva conversación iniciada.' },
+        {
+          ...bootstrap,
+          assistant: config.displayName,
+          config: publicConfig(config),
+          reset: true,
+          reply: 'Nueva conversación iniciada.',
+        },
         { headers: noStoreHeaders() },
       );
     }
@@ -109,9 +141,10 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           ...bootstrap,
-          assistant: 'Fronti',
+          assistant: config.displayName,
+          config: publicConfig(config),
           reset: true,
-          reply: 'Fronti eliminó esta conversación y las memorias derivadas de ella.',
+          reply: `${config.displayName} eliminó esta conversación y las memorias derivadas de ella.`,
         },
         { headers: noStoreHeaders() },
       );
@@ -121,7 +154,7 @@ export async function POST(request: Request) {
       const result = await executeReceptionConfirmation(user, body.confirmationToken);
       await persistAssistantEvent(user, result.reply);
       return NextResponse.json(
-        { ...result, assistant: 'Fronti' },
+        { ...result, assistant: config.displayName, config: publicConfig(config) },
         { headers: noStoreHeaders() },
       );
     }
@@ -132,9 +165,10 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           ...bootstrap,
-          assistant: 'Fronti',
+          assistant: config.displayName,
+          config: publicConfig(config),
           reset: true,
-          reply: 'Fronti eliminó esta conversación y las memorias derivadas de ella.',
+          reply: `${config.displayName} eliminó esta conversación y las memorias derivadas de ella.`,
         },
         { headers: noStoreHeaders() },
       );
@@ -157,7 +191,15 @@ export async function POST(request: Request) {
         ]
       : context.messages;
 
-    const modelMessages = [FRONTI_IDENTITY, ...contextualMessages].slice(-18);
+    const identity = {
+      role: 'assistant' as const,
+      content:
+        `Tu nombre visible es ${config.displayName}. Eres el asistente operativo de Recepción del Hotel HW Libertad. ` +
+        `Si el usuario pregunta quién eres o cómo te llamas, responde que eres ${config.displayName}. ` +
+        'Mantén un tono claro, breve, amable y operativo. La memoria es contexto y nunca sustituye el estado real del Libro.',
+    };
+
+    const modelMessages = [identity, ...contextualMessages].slice(-(config.modelHistoryLimit + 3));
     const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);
@@ -171,7 +213,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { ...result, assistant: 'Fronti' },
+      { ...result, assistant: config.displayName, config: publicConfig(config) },
       { headers: noStoreHeaders() },
     );
   } catch (error) {

@@ -3,7 +3,7 @@ import { prisma, resetOperationalData } from './helpers';
 import { needsInstall, runInstall } from '@/server/services/install';
 import { authenticate } from '@/server/services/auth';
 import { AppError } from '@/server/errors';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_DEFINITIONS, ROLE_KEYS } from '@/lib/permissions';
 import { DEPARTMENTS } from '@/domain/catalog';
 
 const DATOS = {
@@ -39,7 +39,12 @@ describe('instalación inicial', () => {
     expect(hotel?.value).toBe(DATOS.hotelName);
 
     expect(await prisma.department.count()).toBe(DEPARTMENTS.length);
-    expect(await prisma.role.count()).toBe(4);
+    /*
+      Se cuenta contra el catálogo, no contra un número escrito a mano: si se
+      agrega un rol, la prueba debe seguir diciendo «se sembraron todos», no
+      romperse por aritmética.
+    */
+    expect(await prisma.role.count()).toBe(ROLE_DEFINITIONS.length);
     expect(await prisma.rolePermission.count()).toBeGreaterThan(0);
   });
 

@@ -61,7 +61,8 @@ acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
 `FollowUp` · `Alert` · `Comment` · `Room`/`RoomStay`/`RoomKey`/`KeyMovement` ·
 `GuestReference`/`ReservationReference`/`Guarantee` ·
 `CashFund`/`CashDenomination`/`CashCount`/`CashTransfer` ·
-`HandoverElementType`/`HandoverElement` · `AuditLog` · `SystemSetting`.
+`HandoverElementType`/`HandoverElement` · `Announcement`/`AnnouncementRead` ·
+`Fine` · `ChecklistTemplate`/`ChecklistRun` · `AuditLog` · `SystemSetting`.
 
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
@@ -298,6 +299,56 @@ conserva su modelo y sus reglas.
     se reabre desde el perfil. `User.tutorialDoneAt` vive en el usuario y no en
     el navegador: quien entra desde otro equipo ya conoce el sistema.
     Lo vigila `tests/ayuda.test.ts`.
+
+15. **Gerencia sólo consulta, salvo como responsable.** Rol `GERENCIA`
+    (`operational: true`, porque tiene que poder figurar como responsable) con
+    **cinco permisos, todos de lectura**. Una prueba falla si se le cuela uno
+    de escritura al agregar un permiso nuevo al catálogo.
+    La excepción no se concede con un permiso —sería un permiso sobre todos
+    los registros— sino comprobando la propiedad del registro concreto:
+    `requirePermissionOrOwner(permiso, cargarDueños)`, que mira el permiso
+    PRIMERO para que quien lo tiene no pague una consulta extra. La aplican
+    `changeTaskStatusAction`, `toggleChecklistAction` y
+    `changeEntryStatusAction`.
+    Hicieron falta dos permisos de LECTURA nuevos: ver un huésped exigía
+    `guest.manage`, que además permite editarlo, y ver Supervisión exigía
+    gestionar incidencias. Ahora existen `guest.view` y `supervision.view`, y
+    `requirePageAnyPermission` deja entrar con cualquiera de los dos.
+    No puede tomar turnos aunque su rol sea operativo: le faltan
+    `shift.start`, `shift.receive` y `shift.handover`.
+    Lo vigila `tests/rol-gerencia.test.ts`.
+16. **La multa es el formulario de papel, con sus campos.** `Fine` guarda lo
+    que ya se usaba: número de reserva, habitación, huésped, tipo de blanco,
+    **tipo de mancha**, por qué procede el cobro y **la negativa del huésped**.
+    Ese último es un campo propio y no una nota suelta: cuando el cobro se
+    discute, lo que decide es haber registrado su versión en el momento.
+    El contexto **se autocompleta desde la estadía** de la habitación —pedirle
+    al mesón que transcriba el número de reserva con el huésped delante es
+    pedirle que se equivoque— y sigue editable.
+    `fineProblems` devuelve **todos** los campos que faltan, no el primero.
+    Cobrar contra la garantía de **otra reserva** se rechaza en el servidor: es
+    el error más caro que puede cometer un mesón. Una multa cobrada o anulada
+    no vuelve atrás; si hubo un error se anula y se registra otra.
+    Permiso `incident.manage`: cobrarle a un huésped es decisión de
+    supervisión. Lo vigila `tests/multas.test.ts`.
+17. **El tablero del Supervisor muestra la CARGA, que el listado no muestra.**
+    `/supervision/tablero`: lo que no tiene dueño primero, y después cuántas
+    tareas, vencidas, registros y urgentes tiene cada persona. Asignar reutiliza
+    `assignTaskAction` y `updateEntryAction` en lugar de una acción propia: si
+    hubiera una tercera, las reglas vivirían en dos sitios.
+18. **Los checklists son DOS modelos, y por eso se pueden editar.** La
+    plantilla es lo que se define; la **ejecución copia el texto** de cada
+    punto y el nombre de la plantilla. Si apuntara a la plantilla viva, editar
+    un punto cambiaría lo que alguien ya firmó, y un control reescribible hacia
+    atrás no controla nada.
+    Los puntos se escriben **uno por línea**, y un `*` al inicio marca el punto
+    como crítico: el Supervisor arma la lista de una sentada, y un constructor
+    de filas convierte cinco segundos en veinte clics. Una **falla exige
+    observación**, sólo quien recorre la ronda la marca, y no se cierra con
+    puntos sin revisar —ni como «no aplica»—.
+    `ChecklistTemplate` **no es catálogo**: la arma cada Supervisor, así que
+    `resetOperationalData` la limpia. Lo vigila
+    `tests/supervision-tablero.test.ts`.
 
 ## Rendimiento: lo aprendido en producción
 

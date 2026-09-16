@@ -71,7 +71,11 @@ export default async function SupervisionPage() {
     tiene `incident.manage`, así que el permiso se comprueba también acá y no
     sólo en la navegación.
   */
-  if (!hasPermission(user, 'incident.manage') && !hasPermission(user, 'shift.manage')) {
+  if (
+    !hasPermission(user, 'supervision.view') &&
+    !hasPermission(user, 'incident.manage') &&
+    !hasPermission(user, 'shift.manage')
+  ) {
     redirect('/sin-permisos');
   }
 
@@ -104,9 +108,16 @@ export default async function SupervisionPage() {
             carga: no hay listas que haya que mantener a mano.
           </p>
         </div>
-        <p className="text-xs text-slate-500">
-          Al {now.toLocaleString('es-CL')}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* El tablero de asignación es la otra mitad de Supervisión. */}
+          <Link
+            href="/supervision/tablero"
+            className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
+          >
+            Tablero de asignación y checklists
+          </Link>
+          <p className="text-xs text-slate-500">Al {now.toLocaleString('es-CL')}</p>
+        </div>
       </header>
 
       {/*

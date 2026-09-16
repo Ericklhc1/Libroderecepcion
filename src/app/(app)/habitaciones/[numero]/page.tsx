@@ -13,6 +13,13 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { DeleteStayDialog, ResetRoomDialog } from '@/components/rooms/delete-stay';
+import {
+  FineBadge,
+  FineDialog,
+  FineStatusDialog,
+} from '@/components/rooms/fine-form';
+import { fineContextForRoom, listFinesForRoom } from '@/server/services/fines';
+import { fineSummary, type FineStatusValue } from '@/domain/fines';
 import { EntryForm } from '@/components/forms/entry-form';
 import { createEntryAction } from '@/server/actions/entries';
 import { StayActions } from '@/components/rooms/stay-actions';
@@ -126,7 +133,7 @@ export default async function RoomDetailPage({
     throw error;
   }
 
-  const [availableKeys, options, entries] = await Promise.all([
+  const [availableKeys, options, entries, fineContext, fines] = await Promise.all([
     listAvailableKeys(),
     getFormOptions(),
     prisma.operationalEntry.findMany({
@@ -144,6 +151,9 @@ export default async function RoomDetailPage({
         _count: { select: { tasks: true, followUps: true } },
       },
     }),
+    // Contexto para rellenar el formulario de multa y las multas ya puestas.
+    fineContextForRoom(numero),
+    listFinesForRoom(numero),
   ]);
 
   const { snapshot } = room;
@@ -159,6 +169,11 @@ export default async function RoomDetailPage({
     mesón y no puede esperar al administrador.
   */
   const canResetRoom = hasPermission(user, 'room.reset');
+  /*
+    Cobrarle a un huésped es una decisión de supervisión, no de mesón: una
+    multa mal puesta cuesta más que una no puesta.
+  */
+  const canFine = hasPermission(user, 'incident.manage');
   const canKeys = hasPermission(user, 'key.assign');
   const openEntries = entries.filter((entry) => ENTRY_OPEN_STATUSES.includes(entry.status));
 
@@ -194,6 +209,7 @@ export default async function RoomDetailPage({
           que se repara es la habitación entera, no una fila.
         */}
         {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
+        {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
         <Dialog
           title="Nueva incidencia en esta habitación"
           description="Queda con la habitación como contexto, junto al huésped y la reserva del momento."
@@ -369,6 +385,69 @@ export default async function RoomDetailPage({
         canStock={hasPermission(user, 'key.stock')}
         availableKeys={availableKeys}
       />
+
+      {/*
+        Las multas de la habitación. Se muestran aunque estén cerradas: cuando
+        un huésped discute un cobro, lo que importa es poder ver el historial
+        completo de la habitación, no sólo lo que sigue abierto.
+      */}
+      {fines.length > 0 || canFine ? (
+        <Card>
+          <CardHeader title="Multas de la habitación" count={fines.length} />
+          {fines.length === 0 ? (
+            <EmptyState
+              message="Sin multas registradas."
+              hint="Se registran desde «Registrar multa», arriba."
+            />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {fines.map((fine) => (
+                <li key={fine.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-petrol-900">
+                          {fineSummary({
+                            roomNumber: fine.room.number,
+                            kind: fine.kind,
+                            linenKind: fine.linenKind,
+                            itemDetail: fine.itemDetail,
+                            stainType: fine.stainType,
+                          })}
+                        </p>
+                        <FineBadge status={fine.status as FineStatusValue} />
+                        {fine.amount ? (
+                          <span className="tabular text-sm font-semibold text-petrol-900">
+                            {fine.currency} {Number(fine.amount).toLocaleString('es-CL')}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Reserva {fine.reservationCode} · {fine.guestName} ·{' '}
+                        {fine.createdBy.name} · {fine.createdAt.toLocaleString('es-CL')}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">{fine.reason}</p>
+                      {fine.guestStatement ? (
+                        <p className="mt-1 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                          <span className="font-medium">Versión del huésped:</span>{' '}
+                          {fine.guestStatement}
+                        </p>
+                      ) : null}
+                    </div>
+                    {canFine ? (
+                      <FineStatusDialog
+                        fineId={fine.id}
+                        roomNumber={room.number}
+                        status={fine.status as FineStatusValue}
+                      />
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader

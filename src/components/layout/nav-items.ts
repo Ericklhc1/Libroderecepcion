@@ -58,7 +58,7 @@ const PRIMARY: NavItem[] = [
     href: '/supervision',
     label: 'Supervisión',
     icon: 'supervision',
-    anyOf: ['incident.manage', 'shift.manage'],
+    anyOf: ['supervision.view', 'incident.manage', 'shift.manage'],
     mobile: true,
   },
 ];
@@ -66,7 +66,12 @@ const PRIMARY: NavItem[] = [
 /** Consultas de apoyo: se usan a diario, pero no son el flujo principal. */
 const SECONDARY: NavItem[] = [
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'] },
-  { href: '/huespedes', label: 'Huéspedes y reservas', icon: 'guest', anyOf: ['guest.manage'] },
+  {
+    href: '/huespedes',
+    label: 'Huéspedes y reservas',
+    icon: 'guest',
+    anyOf: ['guest.view', 'guest.manage'],
+  },
   { href: '/historial', label: 'Historial', icon: 'history' },
   { href: '/indicadores', label: 'Indicadores', icon: 'metrics', anyOf: ['metrics.view'] },
 ];

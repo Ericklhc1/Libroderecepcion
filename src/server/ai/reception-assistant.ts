@@ -16,6 +16,11 @@ import { getRoomDetail, confirmCheckOut } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask } from '@/server/services/tasks';
+import {
+  frontiToolSettingForFunction,
+  getFrontiConfig,
+  type FrontiConfig,
+} from './fronti-config';
 
 export type AssistantMessage = {
   role: 'user' | 'assistant';
@@ -86,7 +91,6 @@ type PendingAction =
       };
     };
 
-const MAX_MESSAGES = 18;
 const MAX_TOOL_LOOPS = 5;
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
 
@@ -230,6 +234,20 @@ const TOOL_DEFINITIONS = [
     },
   },
 ] as const;
+
+function enabledToolDefinitions(config: FrontiConfig) {
+  return TOOL_DEFINITIONS.filter((definition) => {
+    const key = frontiToolSettingForFunction(definition.name);
+    return key ? config.tools[key] : false;
+  });
+}
+
+function assertToolEnabled(config: FrontiConfig, functionName: string) {
+  const key = frontiToolSettingForFunction(functionName);
+  if (!key || !config.tools[key]) {
+    throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
+  }
+}
 
 function hasPermission(user: CurrentUser, permission: string): boolean {
   return user.permissions.some((value) => value === permission);
@@ -611,7 +629,13 @@ async function fineProposalTool(user: CurrentUser, args: Record<string, unknown>
   };
 }
 
-async function executeTool(user: CurrentUser, name: string, args: Record<string, unknown>) {
+async function executeTool(
+  user: CurrentUser,
+  name: string,
+  args: Record<string, unknown>,
+  config: FrontiConfig,
+) {
+  assertToolEnabled(config, name);
   switch (name) {
     case 'consultar_habitacion':
       return roomTool(user, args);
@@ -641,12 +665,13 @@ function responseText(response: OpenAIResponse): string {
   return chunks.join('\n').trim();
 }
 
-async function callOpenAI(input: unknown[]): Promise<OpenAIResponse> {
+async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenAIResponse> {
   const key = env().OPENAI_API_KEY;
   if (!key) {
-    throw new Error('El Asistente de Recepción todavía no tiene OPENAI_API_KEY configurada.');
+    throw new Error('Fronti todavía no tiene OPENAI_API_KEY configurada.');
   }
 
+  const tools = enabledToolDefinitions(config);
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -654,21 +679,22 @@ async function callOpenAI(input: unknown[]): Promise<OpenAIResponse> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: env().OPENAI_MODEL,
+      model: config.model,
       store: false,
-      reasoning: { effort: 'low' },
+      reasoning: { effort: config.reasoningEffort },
       instructions:
-        'Eres el Asistente de Recepción del Libro Operativo del Hotel HW Libertad. ' +
+        `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
         'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
         'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
         'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
         'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
         `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
         'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
-        'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel.',
+        'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
+        `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`,
       input,
-      tools: TOOL_DEFINITIONS,
-      tool_choice: 'auto',
+      tools: tools.length ? tools : undefined,
+      tool_choice: tools.length ? 'auto' : undefined,
       parallel_tool_calls: false,
     }),
     cache: 'no-store',
@@ -681,8 +707,8 @@ async function callOpenAI(input: unknown[]): Promise<OpenAIResponse> {
   return payload;
 }
 
-function messagesAsInput(messages: AssistantMessage[]): unknown[] {
-  return messages.slice(-MAX_MESSAGES).map((message) => ({
+function messagesAsInput(messages: AssistantMessage[], limit: number): unknown[] {
+  return messages.slice(-limit).map((message) => ({
     role: message.role,
     content: [{ type: 'input_text', text: message.content }],
   }));
@@ -692,11 +718,16 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
 ): Promise<AssistantResult> {
-  let input = messagesAsInput(messages);
+  const config = await getFrontiConfig();
+  if (!config.enabled) {
+    throw new Error('Fronti está desactivado por el Administrador de sistema.');
+  }
+
+  let input = messagesAsInput(messages, config.modelHistoryLimit + 3);
   const confirmations: AssistantConfirmation[] = [];
 
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
-    const response = await callOpenAI(input);
+    const response = await callOpenAI(input, config);
     const calls = (response.output ?? []).filter(
       (item): item is OpenAIOutputItem & { call_id: string; name: string; arguments: string } =>
         item.type === 'function_call' &&
@@ -727,7 +758,7 @@ export async function runReceptionAssistant(
       }
 
       try {
-        const result = await executeTool(user, call.name, args);
+        const result = await executeTool(user, call.name, args, config);
         let modelResult: unknown = result;
         if (
           result &&
@@ -772,9 +803,15 @@ export async function executeReceptionConfirmation(
   user: CurrentUser,
   token: string,
 ): Promise<{ reply: string }> {
+  const config = await getFrontiConfig();
+  if (!config.enabled) {
+    throw new Error('Fronti está desactivado por el Administrador de sistema.');
+  }
+
   const pending = verifyAction(token, user);
 
   if (pending.action === 'create_reminder') {
+    assertToolEnabled(config, 'proponer_recordatorio');
     requireToolPermission(user, 'task.create');
     const dueAt = new Date(pending.args.dueAt);
     if (Number.isNaN(dueAt.getTime())) {
@@ -791,7 +828,7 @@ export async function executeReceptionConfirmation(
       followUpId: null,
       alertId: null,
       handoverId: null,
-      tags: ['recordatorio', 'asistente-ia'],
+      tags: ['recordatorio', 'fronti'],
       checklist: [],
     });
     return {
@@ -800,6 +837,7 @@ export async function executeReceptionConfirmation(
   }
 
   if (pending.action === 'create_fine') {
+    assertToolEnabled(config, 'proponer_multa');
     requireToolPermission(user, 'incident.manage');
     const context = await fineContextForRoom(pending.args.roomNumber);
     const fine = await createFine(user, {
@@ -820,6 +858,7 @@ export async function executeReceptionConfirmation(
     return { reply: `Multa registrada para la habitación ${pending.args.roomNumber}. ID ${fine.id}.` };
   }
 
+  assertToolEnabled(config, 'proponer_checkouts');
   requireToolPermission(user, 'room.manage');
   const validated: Array<{ roomNumber: string; stayId: string }> = [];
   for (const roomNumber of pending.args.roomNumbers) {

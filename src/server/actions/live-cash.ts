@@ -4,11 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
-import {
-  createGymPass,
-  saveLiveCashAudit,
-  voidGymPass,
-} from '@/server/services/live-cash';
+import { saveLiveCashAudit } from '@/server/services/live-cash';
+import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 
 const gymPassSchema = z.object({
   stayId: z.string().min(1),

@@ -1,6 +1,12 @@
 import 'server-only';
 // `Prisma` entra como VALOR, no como tipo: se usa `new Prisma.Decimal(...)`.
-import { AuditAction, FineStatus, GuaranteeState, Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  FineStatus,
+  GuaranteeState,
+  Prisma,
+  RoomStayStage,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -86,7 +92,6 @@ export async function createFine(
     currency?: string;
   },
 ): Promise<FineWithContext> {
-  // Las reglas del formulario, una sola vez y en el dominio.
   const problems = fineProblems(input);
   if (problems.length > 0) {
     throw new RuleError(problems.map((problem) => problem.message).join(' '));
@@ -207,10 +212,6 @@ export async function linkFineToGuarantee(
   if (!fine) throw new NotFoundError('Esa multa no existe.');
   if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
 
-  /*
-    La garantía tiene que ser de la MISMA reserva. Cobrar una multa contra la
-    garantía de otro huésped es el error más caro que puede cometer un mesón.
-  */
   if (
     fine.reservationReferenceId &&
     guarantee.reservationReferenceId !== fine.reservationReferenceId
@@ -265,10 +266,25 @@ export async function softDeleteFine(
   });
 }
 
-/** Multas de una habitación, lo abierto primero. */
+/**
+ * Multas vigentes en el contexto de una habitación.
+ *
+ * Una multa ligada a una estadía deja de ocupar la ficha cuando se confirma el
+ * check-out. No se borra ni se convierte en una copia: queda en el Libro y en
+ * el historial de la reserva con su estado original. Las multas sin estadía
+ * vinculada permanecen visibles porque no hay un checkout que permita inferir
+ * que su contexto terminó.
+ */
 export async function listFinesForRoom(roomNumber: string): Promise<FineWithContext[]> {
   return prisma.fine.findMany({
-    where: { room: { number: roomNumber }, deletedAt: null },
+    where: {
+      room: { number: roomNumber },
+      deletedAt: null,
+      OR: [
+        { stayId: null },
+        { stay: { stage: { not: RoomStayStage.FINALIZADO } } },
+      ],
+    },
     include: fineInclude,
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     take: 30,

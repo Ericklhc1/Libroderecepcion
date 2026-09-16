@@ -7,6 +7,7 @@ import {
   Eraser,
   Settings,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Users,
   Wrench,
@@ -48,6 +49,13 @@ const SECTIONS: Array<{
     description: 'Departamentos operativos del hotel.',
     permission: 'system.configure',
     icon: Building2,
+  },
+  {
+    href: '/admin/fronti',
+    title: 'Fronti',
+    description: 'Modelo, memoria, comportamiento, capacidades y diagnóstico del asistente.',
+    permission: 'system.configure',
+    icon: Sparkles,
   },
   {
     href: '/admin/parametros',

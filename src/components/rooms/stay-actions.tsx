@@ -11,7 +11,13 @@ import { confirmCheckInAction, confirmCheckOutAction } from '@/server/actions/ro
  *
  * Las dos son un botón y un diálogo de una sola pantalla: en el mesón no hay
  * tiempo para formularios largos. La confirmación se pide porque estos dos
- * gestos mueven al huésped de una capa a otra y liberan o entregan la llave.
+ * gestos mueven al huésped de una capa a otra.
+ *
+ * La llave NO forma parte de la confirmación de salida. Un huésped puede haber
+ * dejado la habitación y seguir debiendo una llave: la habitación se libera y
+ * el objeto físico queda pendiente hasta que recepción lo reciba desde el
+ * módulo de llaves. Mezclar ambas cosas dejaba C/O abiertos sólo para poder
+ * representar una llave que no volvió.
  */
 export function StayActions({
   kind,
@@ -31,7 +37,7 @@ export function StayActions({
       <div className="mt-3">
         <Dialog
           title={`Confirmar la salida de la ${roomNumber}`}
-          description={`${guest} entrega la habitación. Las llaves vuelven al inventario y la habitación queda liberada.`}
+          description={`${guest} deja la habitación. Las llaves se reciben por separado: si siguen fuera, quedan pendientes de devolución hasta que recepción las reciba.`}
           triggerVariant="primary"
           triggerSize="sm"
           triggerClassName="w-full"
@@ -45,10 +51,10 @@ export function StayActions({
           <ActionForm action={confirmCheckOutAction} closeOnSuccess>
             <input type="hidden" name="stayId" value={stayId} />
             <Field label="Nota" name="note" hint="Opcional. Queda en el historial de la habitación.">
-              <Input name="note" maxLength={300} placeholder="Ej: entregó dos llaves" />
+              <Input name="note" maxLength={300} placeholder="Ej: huésped salió sin devolver una copia" />
             </Field>
             <SubmitButton className="w-full" pendingLabel="Confirmando…">
-              Confirmar salida y recibir llave
+              Confirmar salida
             </SubmitButton>
           </ActionForm>
         </Dialog>

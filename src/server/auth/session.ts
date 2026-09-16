@@ -12,6 +12,14 @@ function secretKey(): Uint8Array {
   return new TextEncoder().encode(env().AUTH_SECRET);
 }
 
+async function signSessionToken(userId: string, sessionId: string, expiresAt: Date): Promise<string> {
+  return new SignJWT({ sub: userId, sid: sessionId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
+    .sign(secretKey());
+}
+
 /**
  * Crea una sesión persistida (para trazabilidad y revocación) y devuelve el
  * token firmado que viaja en una cookie httpOnly.
@@ -32,12 +40,7 @@ export async function createSession(
     },
   });
 
-  const token = await new SignJWT({ sub: userId, sid: session.id })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
-    .sign(secretKey());
-
+  const token = await signSessionToken(userId, session.id, expiresAt);
   return { token, sessionId: session.id, expiresAt };
 }
 
@@ -86,6 +89,33 @@ export async function readSessionToken(
   } catch {
     return null;
   }
+}
+
+/**
+ * Sesión deslizante: mientras el usuario mantenga el Libro abierto, el cliente
+ * envía un pulso periódico. Cada pulso renueva el vencimiento por el mismo TTL
+ * configurado, sin crear una sesión nueva ni alterar su trazabilidad.
+ */
+export async function refreshSession(userId: string, sessionId: string): Promise<boolean> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + env().SESSION_TTL_HOURS * 3600_000);
+  const updated = await prisma.session.updateMany({
+    where: {
+      id: sessionId,
+      userId,
+      revokedAt: null,
+      expiresAt: { gt: now },
+    },
+    data: {
+      lastSeenAt: now,
+      expiresAt,
+    },
+  });
+  if (updated.count !== 1) return false;
+
+  const token = await signSessionToken(userId, sessionId, expiresAt);
+  await writeSessionCookie(token, expiresAt);
+  return true;
 }
 
 export async function revokeSession(sessionId: string) {

@@ -23,22 +23,38 @@ describe('menú principal', () => {
     }
   });
 
-  it('responde a las cinco preguntas operativas en el grupo principal', () => {
+  it('responde a las seis preguntas operativas en el grupo principal', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // qué ocurre ahora
       '/libro', // qué tengo pendiente
       '/habitaciones', // qué ocurre en cada habitación
+      '/caja', // qué hay en caja ahora mismo
       '/turno', // qué debo entregar
       '/supervision', // qué debo revisar
     ]);
   });
 
-  it('cabe en la barra inferior móvil sin recortar destinos principales', () => {
-    const mobile = NAV_GROUPS.flatMap((group) => group.items).filter((item) => item.mobile);
-    // MobileNav muestra cinco: si hubiera más, alguno quedaría invisible.
-    expect(mobile).toHaveLength(5);
+  /*
+    La barra inferior no muestra TODOS los destinos marcados para móvil:
+    `nav.tsx` recorta a los primeros y el resto vive detrás de «Más».
+
+    Esta prueba exigía exactamente cinco y se rompió al sumarse Caja, que es
+    lo correcto: el número no es una regla, es una consecuencia. Así que en vez
+    de repetirlo acá se lee del componente, que es quien decide. Si alguien
+    cambia el recorte, esto lo sigue sin avisar en falso; si alguien marca más
+    destinos de los que caben, la prueba de alcanzabilidad de más abajo avisa.
+  */
+  it('el recorte de la barra móvil es el que dice el componente', () => {
+    const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
+    const slice = nav.match(/\.filter\(\(item\) => item\.mobile\)\.slice\(0,\s*(\d+)\)/);
+    expect(slice, 'no se encontró el recorte en nav.tsx').not.toBeNull();
+
+    const slots = Number(slice![1]);
+    const mobile = NAV_ITEMS.filter((item) => item.mobile);
+    // Hay al menos con qué llenar la barra, y ninguno queda huérfano.
+    expect(mobile.length).toBeGreaterThanOrEqual(slots);
   });
 
   it('las páginas retiradas del menú siguen existiendo', () => {

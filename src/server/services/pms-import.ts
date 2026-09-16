@@ -64,6 +64,14 @@ type StayDraft = {
   pmsStatus: string | null;
   sourceReport: PmsReportKind;
   status: RoomStayStatus;
+  /* Lo que aporta «Habitaciones con actividad». Los tres informes antiguos no
+     traen nada de esto y lo dejan en nulo. */
+  guestCount: number | null;
+  totalAmount: number | null;
+  pendingAmount: number | null;
+  currency: string | null;
+  paymentType: string | null;
+  paymentTypeRaw: string | null;
   issues: string[];
 };
 
@@ -78,14 +86,58 @@ export type ImportPreview = {
   /** Estadías ya intervenidas a mano que la importación no va a modificar. */
   protectedStays: Array<{ roomNumber: string; reservationId: string; status: RoomStayStatus; reason: string }>;
   counts: { checkIn: number; inHouse: number; checkOut: number };
+  /** Resumen del informe de actividad. Es lo que se confirma antes de aplicar. */
+  activity: ActivitySummary;
 };
 
-const STATUS_BY_KIND: Record<PmsReportKind, RoomStayStatus> = {
-  ENTRADAS: RoomStayStatus.CHECK_IN,
-  IN_HOUSE: RoomStayStatus.IN_HOUSE,
-  SALIDAS: RoomStayStatus.CHECK_OUT,
+/**
+ * Lo que hay que poder leer ANTES de aplicar nada.
+ *
+ * El informe de actividad reemplaza a tres archivos, así que el preview tiene
+ * que responder solo las preguntas que antes se contestaban comparando: cuántas
+ * habitaciones se mueven, cuántas tienen salida y entrada el mismo día, qué
+ * reservas no conocíamos, y cuánto queda por cobrar en cada moneda.
+ *
+ * Los totales por moneda van separados a propósito: sumar pesos con dólares da
+ * un número sin significado, y el informe declara los suyos por separado, lo
+ * que permite contrastar lo leído con lo que dice el documento.
+ */
+export type ActivitySummary = {
+  /** Habitaciones distintas con alguna actividad. */
+  roomsWithActivity: number;
+  occupied: number;
+  arrivals: number;
+  departures: number;
+  /** Habitaciones con salida Y entrada el mismo día: la cola. */
+  turnarounds: Array<{ roomNumber: string; leaving: string; arriving: string }>;
+  /** Reservas que el sistema no había visto nunca. */
+  newReservations: number;
+  knownReservations: number;
+  /** Reservas con saldo pendiente distinto de cero. */
+  withBalance: number;
+  /** Pendiente por moneda. Nunca un total único. */
+  pendingByCurrency: Record<'CLP' | 'USD', number>;
+  totalByCurrency: Record<'CLP' | 'USD', number>;
+  /** Una reserva repartida entre varias habitaciones. No es un error. */
+  multiRoom: Array<{ reservationId: string; rooms: string[] }>;
+  /** Filas con algún problema: van a la bandeja, no se corrigen solas. */
+  rowIssues: Array<{ reservationId: string; roomNumber: string | null; issues: string[] }>;
+  /** Lo que el informe declara en su pie, para contrastar con lo leído. */
+  declared: Array<{ label: string; numbers: number[] }>;
 };
 
+/**
+ * Convierte una fila normalizada en borrador.
+ *
+ * El estado se toma de `operationalStatus`, que es lo que ya decidió el
+ * normalizador: para los tres informes antiguos viene del TIPO DE INFORME y
+ * para «Habitaciones con actividad» de la columna «Tipo» de CADA FILA.
+ *
+ * Antes se recalculaba acá con un mapa por tipo de informe. Con el informe de
+ * actividad ese mapa no puede existir —un solo documento trae los tres
+ * estados— y mantenerlo habría marcado sus cincuenta y tres filas con un único
+ * estado.
+ */
 function toDraft(stay: NormalizedStay): StayDraft {
   return {
     reservationId: stay.reservationId,
@@ -96,7 +148,18 @@ function toDraft(stay: NormalizedStay): StayDraft {
     departureDate: stay.departureDate ? stay.departureDate.toISOString() : null,
     pmsStatus: stay.pmsStatus,
     sourceReport: stay.sourceReport as PmsReportKind,
-    status: STATUS_BY_KIND[stay.sourceReport as PmsReportKind],
+    status: stay.operationalStatus as RoomStayStatus,
+    guestCount: stay.guestCount,
+    /*
+      El importe se separa en cifra y moneda al guardarlo. Van juntos siempre:
+      una cifra sin su moneda no significa nada cuando el informe trae pesos y
+      dólares, y la columna `currency` es la que impide sumarlos.
+    */
+    totalAmount: stay.totalAmount?.amount ?? null,
+    pendingAmount: stay.pendingAmount?.amount ?? null,
+    currency: stay.totalAmount?.currency ?? stay.pendingAmount?.currency ?? null,
+    paymentType: stay.payment?.type ?? null,
+    paymentTypeRaw: stay.payment?.raw ?? null,
     issues: stay.issues,
   };
 }
@@ -199,7 +262,8 @@ export async function prepareImport(
     reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date(),
   );
 
-  const analysis = await analyseDraft(businessDate, stays);
+  const declaredTotals = reports.flatMap((report) => report.declaredTotals);
+  const analysis = await analyseDraft(businessDate, stays, declaredTotals);
 
   const batch = await prisma.pmsImportBatch.create({
     data: {
@@ -233,6 +297,12 @@ export async function prepareImport(
 async function analyseDraft(
   businessDate: Date,
   stays: StayDraft[],
+  /*
+    Los totales que el informe declara en su pie. Se arrastran hasta el preview
+    para poder contrastarlos con lo leído: si el documento dice 24 salidas y se
+    leyeron 23, falta una fila y hay que mirarlo antes de aplicar.
+  */
+  declaredTotals: Array<{ label: string; numbers: number[] }> = [],
 ): Promise<Omit<ImportPreview, 'batchId' | 'businessDate' | 'reports' | 'stays'>> {
   const rooms = await prisma.room.findMany({
     where: { active: true },
@@ -411,7 +481,142 @@ async function analyseDraft(
     })),
   });
 
-  return { orphans, conflicts, protectedStays, counts };
+  const knownCodes = new Set(
+    (
+      await prisma.reservationReference.findMany({
+        where: { code: { in: [...new Set(stays.map((s) => s.reservationId))] } },
+        select: { code: true },
+      })
+    ).map((reference) => reference.code),
+  );
+
+  return {
+    orphans,
+    conflicts,
+    protectedStays,
+    counts,
+    activity: summarizeActivity(stays, knownCodes, declaredTotals),
+  };
+}
+
+/**
+ * Resumen del informe de actividad, para decidir antes de aplicar.
+ *
+ * No consulta nada: recibe los borradores y qué reservas ya se conocen. Así el
+ * cálculo se puede probar sin base y la pantalla muestra exactamente lo mismo
+ * que se va a aplicar.
+ */
+export function summarizeActivity(
+  stays: StayDraft[],
+  knownCodes: Set<string>,
+  declared: Array<{ label: string; numbers: number[] }> = [],
+): ActivitySummary {
+  const rooms = new Set<string>();
+  const byRoom = new Map<string, StayDraft[]>();
+  const byReservation = new Map<string, Set<string>>();
+
+  let occupied = 0;
+  let arrivals = 0;
+  let departures = 0;
+  let withBalance = 0;
+
+  const pendingByCurrency: Record<'CLP' | 'USD', number> = { CLP: 0, USD: 0 };
+  const totalByCurrency: Record<'CLP' | 'USD', number> = { CLP: 0, USD: 0 };
+  const rowIssues: ActivitySummary['rowIssues'] = [];
+
+  for (const stay of stays) {
+    if (stay.roomNumber) {
+      rooms.add(stay.roomNumber);
+      const list = byRoom.get(stay.roomNumber) ?? [];
+      list.push(stay);
+      byRoom.set(stay.roomNumber, list);
+    }
+
+    const forReservation = byReservation.get(stay.reservationId) ?? new Set<string>();
+    if (stay.roomNumber) forReservation.add(stay.roomNumber);
+    byReservation.set(stay.reservationId, forReservation);
+
+    if (stay.status === RoomStayStatus.IN_HOUSE) occupied += 1;
+    else if (stay.status === RoomStayStatus.CHECK_IN) arrivals += 1;
+    else departures += 1;
+
+    /*
+      Los importes se acumulan POR MONEDA. El informe trae pesos y dólares a la
+      vez y declara sus totales por separado, así que juntarlos daría una cifra
+      que no se puede contrastar con nada.
+    */
+    const currency = stay.currency === 'USD' ? 'USD' : stay.currency === 'CLP' ? 'CLP' : null;
+    if (currency) {
+      if (stay.totalAmount !== null) totalByCurrency[currency] += stay.totalAmount;
+      if (stay.pendingAmount !== null) pendingByCurrency[currency] += stay.pendingAmount;
+    }
+    if (stay.pendingAmount !== null && stay.pendingAmount > 0) withBalance += 1;
+
+    if (stay.issues.length > 0) {
+      rowIssues.push({
+        reservationId: stay.reservationId,
+        roomNumber: stay.roomNumber,
+        issues: stay.issues,
+      });
+    }
+  }
+
+  // El dólar se redondea al final: acumular centavos en coma flotante arrastra
+  // milésimas y el total no cuadraría con el que declara el informe.
+  totalByCurrency.USD = Math.round(totalByCurrency.USD * 100) / 100;
+  pendingByCurrency.USD = Math.round(pendingByCurrency.USD * 100) / 100;
+
+  /*
+    La cola: salida Y entrada en la misma habitación el mismo día. NO es una
+    inconsistencia —en el informe real son tres habitaciones— y se muestra
+    aparte porque es lo que el mesón tiene que mirar primero: hay que cerrar la
+    salida antes de poder entregar la habitación.
+  */
+  const turnarounds: ActivitySummary['turnarounds'] = [];
+  for (const [roomNumber, list] of byRoom) {
+    const leaving = list.find((stay) => stay.status === RoomStayStatus.CHECK_OUT);
+    const arriving = list.find((stay) => stay.status === RoomStayStatus.CHECK_IN);
+    if (!leaving || !arriving) continue;
+    // La misma reserva entrando y saliendo es uso diurno, no una cola.
+    if (leaving.reservationId === arriving.reservationId) continue;
+    turnarounds.push({
+      roomNumber,
+      leaving: leaving.reservationId,
+      arriving: arriving.reservationId,
+    });
+  }
+
+  /*
+    Una reserva repartida entre varias habitaciones tampoco es un error: en el
+    informe real hay una en ocho habitaciones. Se lista para que se vea, porque
+    confirmar la salida de una no confirma las otras.
+  */
+  const multiRoom = [...byReservation.entries()]
+    .filter(([, roomSet]) => roomSet.size > 1)
+    .map(([reservationId, roomSet]) => ({
+      reservationId,
+      rooms: [...roomSet].sort(),
+    }));
+
+  const codes = new Set(stays.map((stay) => stay.reservationId));
+  let newReservations = 0;
+  for (const code of codes) if (!knownCodes.has(code)) newReservations += 1;
+
+  return {
+    roomsWithActivity: rooms.size,
+    occupied,
+    arrivals,
+    departures,
+    turnarounds,
+    newReservations,
+    knownReservations: codes.size - newReservations,
+    withBalance,
+    pendingByCurrency,
+    totalByCurrency,
+    multiRoom,
+    rowIssues,
+    declared,
+  };
 }
 
 /** Vuelve a cargar un borrador guardado, con su análisis recalculado. */
@@ -420,12 +625,17 @@ export async function getImportPreview(batchId: string): Promise<ImportPreview> 
   if (!batch) throw new NotFoundError('Esa importación no existe.');
 
   const stays = batch.payload as unknown as StayDraft[];
-  const analysis = await analyseDraft(midnight(batch.businessDate), stays);
+  const reports = batch.reports as unknown as ReportMeta[];
+  const analysis = await analyseDraft(
+    midnight(batch.businessDate),
+    stays,
+    reports.flatMap((report) => report.declaredTotals ?? []),
+  );
 
   return {
     batchId: batch.id,
     businessDate: batch.businessDate,
-    reports: batch.reports as unknown as ReportMeta[],
+    reports,
     stays,
     ...analysis,
   };
@@ -435,6 +645,16 @@ export type ImportResult = {
   created: number;
   updated: number;
   preserved: number;
+  /**
+   * Filas que el informe repite sin un solo cambio, y por las que no se
+   * escribió nada.
+   *
+   * Existe para que la idempotencia sea VISIBLE. Antes `updated` contaba las
+   * filas existentes no protegidas, escribiera o no, así que reimportar el
+   * mismo informe reportaba «2 actualizadas» cuando no había tocado nada: no
+   * había forma de distinguir un informe idéntico de uno con cambios reales.
+   */
+  unchanged: number;
   skipped: number;
   /** Llaves principales que la importación entregó a su ocupante. */
   keysAssigned: number;
@@ -468,6 +688,7 @@ export async function applyImport(
       created: 0,
       updated: 0,
       preserved: 0,
+      unchanged: 0,
       skipped: 0,
       keysAssigned: 0,
       reservationsLinked: 0,
@@ -497,6 +718,15 @@ export async function applyImport(
         arrivalDate: true,
         departureDate: true,
         pmsStatus: true,
+        // Los importes entran en la comparación de «sin cambios»: sin ellos,
+        // reimportar el mismo informe no escribiría los saldos la primera vez
+        // y un saldo corregido en el PMS no llegaría nunca.
+        guestCount: true,
+        totalAmount: true,
+        pendingAmount: true,
+        currency: true,
+        paymentType: true,
+        paymentTypeRaw: true,
       },
     });
 
@@ -530,6 +760,21 @@ export async function applyImport(
     const sameDay = (a: Date | null, b: Date | null) =>
       a && b ? a.getTime() === b.getTime() : a === b;
 
+    /*
+      Compara un importe guardado con uno leído. La base devuelve `Decimal` y
+      el borrador un número, así que compararlos directo daría siempre distinto
+      y cada importación reescribiría las cincuenta y tres filas.
+
+      La tolerancia es de medio centavo, que es la precisión de la columna.
+    */
+    const sameAmount = (
+      stored: Prisma.Decimal | null,
+      drafted: number | null,
+    ): boolean => {
+      if (stored === null || drafted === null) return stored === null && drafted === null;
+      return Math.abs(Number(stored) - drafted) < 0.005;
+    };
+
     for (const draft of drafts) {
       const room = draft.roomNumber ? byNumber.get(draft.roomNumber) : null;
       if (!room) {
@@ -537,6 +782,15 @@ export async function applyImport(
         continue;
       }
 
+      /*
+        Datos DESCRIPTIVOS: lo que el PMS cuenta de la estancia. Se refrescan en
+        cada importación porque el PMS es su fuente.
+
+        No hay nada operativo acá, y es la línea que separa las dos verdades:
+        llaves, garantías, multas, novedades, pendientes, entregas y cualquier
+        confirmación manual no se tocan nunca desde una importación. FNS aporta
+        contexto; el Libro conserva sus procesos.
+      */
       const descriptive = {
         guestNames: draft.guestNames,
         channel: draft.channel,
@@ -544,6 +798,12 @@ export async function applyImport(
         departureDate: draft.departureDate ? new Date(draft.departureDate) : null,
         pmsStatus: draft.pmsStatus,
         sourceReport: draft.sourceReport,
+        guestCount: draft.guestCount,
+        totalAmount: draft.totalAmount,
+        pendingAmount: draft.pendingAmount,
+        currency: draft.currency,
+        paymentType: draft.paymentType,
+        paymentTypeRaw: draft.paymentTypeRaw,
         batchId: batch.id,
       };
 
@@ -552,8 +812,6 @@ export async function applyImport(
       if (existing) {
         const protectedStay =
           existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE;
-        if (protectedStay) summary.preserved += 1;
-        else summary.updated += 1;
 
         /*
           El estado se AVANZA, nunca se retrocede. Si la estadía ya está
@@ -574,9 +832,28 @@ export async function applyImport(
           existing.channel === descriptive.channel &&
           existing.pmsStatus === descriptive.pmsStatus &&
           sameDay(existing.arrivalDate, descriptive.arrivalDate) &&
-          sameDay(existing.departureDate, descriptive.departureDate);
-        if (!unchanged) {
+          sameDay(existing.departureDate, descriptive.departureDate) &&
+          existing.guestCount === descriptive.guestCount &&
+          sameAmount(existing.totalAmount, descriptive.totalAmount) &&
+          sameAmount(existing.pendingAmount, descriptive.pendingAmount) &&
+          existing.currency === descriptive.currency &&
+          existing.paymentType === descriptive.paymentType &&
+          existing.paymentTypeRaw === descriptive.paymentTypeRaw;
+        /*
+          Los tres contadores son excluyentes y cada uno dice algo preciso:
+
+            unchanged → el informe la repite igual y no se escribió nada.
+            preserved → se escribió, pero su avance manual se respetó: `stage`
+                        no está entre los campos descriptivos, así que una
+                        confirmación del mesón nunca se deshace.
+            updated   → se escribió.
+        */
+        if (unchanged) {
+          summary.unchanged += 1;
+        } else {
           toUpdate.push({ id: existing.id, data: { ...descriptive, status } });
+          if (protectedStay) summary.preserved += 1;
+          else summary.updated += 1;
         }
         continue;
       }

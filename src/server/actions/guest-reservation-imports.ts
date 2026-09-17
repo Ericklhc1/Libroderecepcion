@@ -11,7 +11,14 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { applyImport, discardImport, prepareImport } from '@/server/services/pms-import';
 import { syncReservationCoreFromPms } from '@/server/services/reservation-core';
 
-const batchSchema = z.object({ batchId: z.string().min(1) });
+const batchSchema = z.object({
+  batchId: z.string().min(1),
+  returnTo: z.enum(['turno']).optional(),
+});
+
+function returnToOf(formData: FormData): 'turno' | null {
+  return formData.get('returnTo') === 'turno' ? 'turno' : null;
+}
 
 function refreshContext(): void {
   revalidatePath('/huespedes');
@@ -21,6 +28,7 @@ function refreshContext(): void {
   revalidatePath('/caja');
   revalidatePath('/supervision');
   revalidatePath('/libro');
+  revalidatePath('/turno');
   revalidatePath('/');
 }
 
@@ -29,6 +37,7 @@ export async function prepareGuestReservationImportAction(
   formData: FormData,
 ): Promise<ActionState> {
   let batchId: string | null = null;
+  const returnTo = returnToOf(formData);
 
   const result = await runAction(async () => {
     const user = await requirePermission('pms.import');
@@ -58,7 +67,11 @@ export async function prepareGuestReservationImportAction(
     };
   });
 
-  if (batchId) redirect(`/huespedes/importar?revision=${batchId}`);
+  if (batchId) {
+    const query = new URLSearchParams({ revision: batchId });
+    if (returnTo) query.set('volverA', returnTo);
+    redirect(`/huespedes/importar?${query.toString()}`);
+  }
   return result;
 }
 
@@ -67,10 +80,12 @@ export async function applyGuestReservationImportAction(
   formData: FormData,
 ): Promise<ActionState> {
   let completed = false;
+  let destination = '/huespedes';
 
   const result = await runAction(async () => {
     const user = await requirePermission('pms.import');
     const input = parseOrThrow(batchSchema, formDataToObject(formData));
+    destination = input.returnTo === 'turno' ? '/turno' : '/huespedes';
 
     const batch = await prisma.pmsImportBatch.findUnique({
       where: { id: input.batchId },
@@ -102,7 +117,7 @@ export async function applyGuestReservationImportAction(
     };
   });
 
-  if (completed) redirect('/huespedes');
+  if (completed) redirect(destination);
   return result;
 }
 
@@ -111,14 +126,16 @@ export async function discardGuestReservationImportAction(
   formData: FormData,
 ): Promise<ActionState> {
   let completed = false;
+  let destination = '/huespedes';
   const result = await runAction(async () => {
     const user = await requirePermission('pms.import');
     const input = parseOrThrow(batchSchema, formDataToObject(formData));
+    destination = input.returnTo === 'turno' ? '/turno' : '/huespedes';
     await discardImport(user, input.batchId);
     refreshContext();
     completed = true;
     return { ok: true as const, message: 'Carga descartada. No se cambió ningún dato operativo.' };
   });
-  if (completed) redirect('/huespedes');
+  if (completed) redirect(destination);
   return result;
 }

@@ -18,13 +18,27 @@ function kindOf(value: unknown): 'boolean' | 'number' | 'string' {
   return 'string';
 }
 
+function boolSetting(
+  settings: Awaited<ReturnType<typeof getAllSettings>>,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const value = settings.find((setting) => setting.key === key)?.value;
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 export default async function SettingsPage() {
   await requirePagePermission('system.configure');
   const [allSettings, cashFunds] = await Promise.all([
     getAllSettings(),
     prisma.cashFund.findMany({ where: { currency: { in: ['CLP', 'USD'] } } }),
   ]);
-  const settings = allSettings.filter((setting) => !setting.key.startsWith('fronti.'));
+
+  // Fronti y Caja tienen pantallas/formularios propios: no se duplican abajo
+  // como parámetros técnicos sueltos.
+  const settings = allSettings.filter(
+    (setting) => !setting.key.startsWith('fronti.') && !setting.key.startsWith('cash.'),
+  );
 
   const byCategory = Array.from(
     settings.reduce((map, setting) => {
@@ -52,14 +66,21 @@ export default async function SettingsPage() {
         <h1 className="text-xl font-semibold text-petrol-900">Parámetros del sistema</h1>
         <p className="mt-0.5 text-sm text-slate-600">
           Cada parámetro tiene un valor por defecto en el código; aquí se sobrescribe sin
-          necesidad de desplegar. La configuración de Fronti se administra desde su sección propia.
+          necesidad de desplegar. Fronti y Caja tienen controles dedicados para no mezclar reglas operativas con claves técnicas.
         </p>
       </header>
 
       <Card>
         <CardHeader title="Caja" />
         <div className="px-4 py-4">
-          <CashConfigForm clpMinimum={clpMinimum} usdMinimum={usdMinimum} />
+          <CashConfigForm
+            clpMinimum={clpMinimum}
+            usdMinimum={usdMinimum}
+            treasuryTransfersEnabled={boolSetting(allSettings, 'cash.treasuryTransfersEnabled', true)}
+            transferReceiptRequired={boolSetting(allSettings, 'cash.transferReceiptRequired', false)}
+            usdRateEnabled={boolSetting(allSettings, 'cash.usdRateEnabled', true)}
+            requireDifferenceNote={boolSetting(allSettings, 'cash.requireDifferenceNote', true)}
+          />
         </div>
       </Card>
 

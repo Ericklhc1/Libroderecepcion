@@ -86,6 +86,12 @@ function decodeTag(value: string | null): string | null {
   }
 }
 
+/**
+ * Autoriza una solicitud de movimiento sin permitir doble aplicación.
+ * EN_ESPERA → EN_CURSO funciona como un candado transaccional; sólo el proceso
+ * que reclama la fila inserta el movimiento. Después queda RESUELTO y marcado
+ * con `ajuste-aplicado` para que un reintento sea idempotente.
+ */
 async function applyCashManualApproval(user: CurrentUser, entryId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const entry = await tx.operationalEntry.findFirst({
@@ -110,20 +116,13 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
     }
 
     const claimed = await tx.operationalEntry.updateMany({
-      where: { id: entry.id, status: EntryStatus.PENDIENTE },
-      data: {
-        status: EntryStatus.RESUELTO,
-        resolution: `Movimiento autorizado por Supervisor ${user.name}.`,
-        requiresFollowUp: false,
-        closedAt: new Date(),
-        closedById: user.id,
-        tags: { push: 'ajuste-aplicado' },
-      },
+      where: { id: entry.id, status: EntryStatus.EN_ESPERA },
+      data: { status: EntryStatus.EN_CURSO },
     });
     if (claimed.count === 0) {
       const refreshed = await tx.operationalEntry.findUnique({
         where: { id: entry.id },
-        select: { tags: true },
+        select: { status: true, tags: true },
       });
       if (refreshed?.tags.includes('ajuste-aplicado')) return;
       throw new RuleError('La solicitud de Caja ya no está pendiente de autorización.');
@@ -140,6 +139,18 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         ${entry.shiftId}, ${user.id}, ${reference}, ${notes}
       )
     `;
+
+    await tx.operationalEntry.update({
+      where: { id: entry.id },
+      data: {
+        status: EntryStatus.RESUELTO,
+        resolution: `Movimiento autorizado por Supervisor ${user.name}.`,
+        requiresFollowUp: false,
+        closedAt: new Date(),
+        closedById: user.id,
+        tags: { push: 'ajuste-aplicado' },
+      },
+    });
 
     await recordAudit(
       {

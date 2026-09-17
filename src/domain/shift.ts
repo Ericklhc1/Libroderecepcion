@@ -14,7 +14,7 @@ export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   [ShiftStatus.PROGRAMADO]: [ShiftStatus.INICIADO, ShiftStatus.ANULADO],
   // INICIADO: el turno arrancó pero aún no confirmó la entrega anterior.
   [ShiftStatus.INICIADO]: [ShiftStatus.ACTIVO],
-  [ShiftStatus.ACTIVO]: [ShiftStatus.PREPARANDO_ENTREGA, ShiftStatus.CERRADO],
+  [ShiftStatus.ACTIVO]: [ShiftStatus.PREPARANDO_ENTREGA],
   // Permite volver atrás si la entrega se preparó por error.
   [ShiftStatus.PREPARANDO_ENTREGA]: [
     ShiftStatus.ENTREGA_ENVIADA,
@@ -114,13 +114,14 @@ export function assertTransition(from: ShiftStatus, to: ShiftStatus): void {
 /**
  * Regla de cierre.
  *
- * Decisión revisada, y es la corrección de un fallo real: antes la regla
- * dependía de que existiera «el turno siguiente» como fila en la base. Con los
- * turnos creados a voluntad ese turno **no existe todavía** cuando alguien
- * cierra el suyo, así que la condición era imposible de cumplir y el cierre
- * quedaba trabado. Ahora depende sólo del estado de la entrega, que es lo que
- * de verdad importa: el cierre se envía a la bandeja y queda ahí hasta que
- * alguien lo recibe.
+ * Un cierre operativo siempre recorre la misma secuencia: preparar entrega,
+ * actualizar los informes, completar caja/elementos, enviar y recibir. El
+ * cierre directo desde ACTIVO se eliminó porque abría una segunda ruta capaz
+ * de saltarse precisamente esas validaciones.
+ *
+ * Un turno abierto por error se resuelve desde Administración mediante la
+ * retirada/anulación auditada del Administrador de sistema; no mediante un
+ * «cierre rápido» que parezca un cierre operativo válido.
  */
 export function assertCanClose(params: {
   status: ShiftStatus;
@@ -134,24 +135,18 @@ export function assertCanClose(params: {
 
   if (handoverStatus === 'ENVIADA') {
     throw new RuleError(
-      'El cierre está en la bandeja esperando que alguien lo reciba. El turno se cierra solo al recibirse.',
+      'El cierre está en la bandeja esperando que el turno siguiente confirme la recepción.',
     );
   }
 
-  if (handoverStatus === 'RECIBIDA') {
+  if (handoverStatus === 'RECIBIDA' && status === ShiftStatus.RECIBIDO) {
     assertTransition(status, ShiftStatus.CERRADO);
     return;
   }
 
-  /*
-    Sin entrega enviada sólo se cierra desde ACTIVO, y es un cierre sin relevo:
-    lo usa el turno que no entrega a nadie. La pantalla lo advierte.
-  */
-  if (status !== ShiftStatus.ACTIVO) {
-    throw new RuleError(
-      `No puedes cerrar un turno en estado ${SHIFT_STATUS_LABEL[status]} sin haber enviado el cierre.`,
-    );
-  }
+  throw new RuleError(
+    'Para cerrar el turno primero prepara la entrega, actualiza los informes, completa caja y elementos, envíala y espera la confirmación del turno entrante.',
+  );
 }
 
 /** Fechas de inicio/fin a partir de la fecha operativa y el tipo. */

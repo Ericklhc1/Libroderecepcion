@@ -194,9 +194,18 @@ export function FineDialog({ context }: { context: FineContext }) {
           />
         </Field>
 
-        <Field label="Monto (opcional)" name="amount" hint="Vacío si todavía no se tarifica.">
-          <Input name="amount" type="number" min={1} step="0.01" className="tabular" />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Cantidad"
+            name="quantity"
+            hint="Unidades afectadas por esta misma multa. Por defecto 1."
+          >
+            <Input name="quantity" type="number" min={1} step={1} defaultValue={1} className="tabular" />
+          </Field>
+          <Field label="Monto (opcional)" name="amount" hint="Vacío si todavía no se tarifica.">
+            <Input name="amount" type="number" min={1} step="0.01" className="tabular" />
+          </Field>
+        </div>
 
         <SubmitButton pendingLabel="Registrando…">Registrar la multa</SubmitButton>
       </ActionForm>

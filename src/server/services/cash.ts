@@ -1,5 +1,14 @@
 import 'server-only';
-import { AuditAction, CashCountKind, GuaranteeState, Prisma } from '@prisma/client';
+import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
+  AuditAction,
+  CashCountKind,
+  GuaranteeKind,
+  GuaranteeState,
+  Prisma,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -16,44 +25,35 @@ import {
   type FundStatus,
 } from '@/domain/cash';
 import { OPEN_GUARANTEE_STATES } from '@/domain/guarantees';
+import { getSettingBool } from '@/server/services/settings';
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof prisma;
 
-/**
- * Caja del turno.
- *
- * Las reglas viven en `domain/cash.ts`; acá sólo se leen y escriben filas. La
- * diferencia entre el arqueo declarado y el confirmado **no se guarda nunca**:
- * se calcula al leer, igual que los conflictos de importación.
- *
- * La exigencia de arqueo se activa sola: si el hotel no configuró ningún
- * `CashFund`, `isCashEnabled` devuelve false y la entrega funciona exactamente
- * como antes de que este módulo existiera. Eso es lo que permite que las
- * pruebas del ciclo de turno sigan pasando sin tocarlas y que un despliegue
- * nuevo no quede bloqueado el primer día.
- */
+const CASH_CURRENCIES = ['CLP', 'USD'] as const;
 
+/** Caja del turno: CLP y USD son las únicas divisas operativas. */
 export async function isCashEnabled(client: Client = prisma): Promise<boolean> {
-  const count = await client.cashFund.count({ where: { active: true } });
+  const count = await client.cashFund.count({
+    where: { active: true, currency: { in: [...CASH_CURRENCIES] } },
+  });
   return count > 0;
 }
 
 export async function listDenominations(client: Client = prisma) {
   return client.cashDenomination.findMany({
-    where: { active: true },
+    where: { active: true, currency: { in: [...CASH_CURRENCIES] } },
     orderBy: [{ currency: 'asc' }, { value: 'desc' }],
   });
 }
 
 export async function listFunds(client: Client = prisma) {
   return client.cashFund.findMany({
-    where: { active: true },
+    where: { active: true, currency: { in: [...CASH_CURRENCIES] } },
     orderBy: { currency: 'asc' },
   });
 }
 
-/** Convierte las filas de fondo a la forma que entiende el dominio. */
 function fundTargets(funds: Array<{ currency: string; amount: Prisma.Decimal }>) {
   return funds.map((fund) => ({
     currency: fund.currency,
@@ -61,7 +61,6 @@ function fundTargets(funds: Array<{ currency: string; amount: Prisma.Decimal }>)
   }));
 }
 
-/** Convierte las líneas de un arqueo a la forma que entiende el dominio. */
 function countedLines(
   lines: Array<{ quantity: number; denomination: { currency: string; value: Prisma.Decimal } }>,
 ): CountedDenomination[] {
@@ -92,7 +91,6 @@ export type HandoverCashState = {
     notes: string | null;
     statuses: FundStatus[];
   } | null;
-  /** Calculada, nunca almacenada. Vacía cuando los dos conteos coinciden. */
   discrepancies: Array<{
     currency: string;
     declaredMinor: number;
@@ -105,6 +103,7 @@ export type HandoverCashState = {
     amount: number;
     reference: string | null;
     createdByName: string;
+    approved: boolean;
   }>;
   elements: Array<{
     id: string;
@@ -115,15 +114,22 @@ export type HandoverCashState = {
     confirmed: boolean;
     notes: string | null;
   }>;
-  /** Garantías abiertas: se ENLAZAN desde FASE B, no se duplican acá. */
-  openGuarantees: number;
+  cashGuarantees: Array<{
+    id: string;
+    currency: string;
+    amount: number;
+    state: string;
+    reservationCode: string;
+    roomNumber: string | null;
+    guestName: string | null;
+  }>;
 };
 
 export async function getHandoverCashState(
   handoverId: string,
   client: Client = prisma,
 ): Promise<HandoverCashState> {
-  const [funds, counts, transfers, elements, guarantees] = await Promise.all([
+  const [funds, counts, transfers, elements, guarantees, approvalAlerts] = await Promise.all([
     listFunds(client),
     client.cashCount.findMany({ where: { handoverId }, include: countInclude }),
     client.cashTransfer.findMany({
@@ -136,17 +142,37 @@ export async function getHandoverCashState(
       include: { elementType: true },
       orderBy: { elementType: { order: 'asc' } },
     }),
-    // Sólo el número: traer las filas para contarlas sería trabajo de más.
-    client.guarantee.count({
+    client.guarantee.findMany({
       where: {
         deletedAt: null,
+        kind: GuaranteeKind.EFECTIVO,
         state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
       },
+      include: {
+        reservationReference: {
+          include: { guest: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    client.alert.findMany({
+      where: {
+        handoverId,
+        deletedAt: null,
+        dedupeKey: { startsWith: 'cash-transfer:' },
+      },
+      select: { dedupeKey: true, status: true },
     }),
   ]);
 
   const targets = fundTargets(funds);
   const byKind = (kind: CashCountKind) => counts.find((count) => count.kind === kind);
+  const approvalByTransfer = new Map(
+    approvalAlerts.map((alert) => [
+      alert.dedupeKey?.replace('cash-transfer:', ''),
+      alert.status === AlertStatus.RESUELTA,
+    ]),
+  );
 
   const shape = (count: (typeof counts)[number] | undefined) =>
     count
@@ -179,6 +205,7 @@ export async function getHandoverCashState(
       amount: Number(transfer.amount),
       reference: transfer.reference,
       createdByName: transfer.createdBy.name,
+      approved: approvalByTransfer.get(transfer.id) === true,
     })),
     elements: elements.map((element) => ({
       id: element.id,
@@ -189,23 +216,23 @@ export async function getHandoverCashState(
       confirmed: element.confirmed,
       notes: element.notes,
     })),
-    openGuarantees: guarantees,
+    cashGuarantees: guarantees.map((guarantee) => ({
+      id: guarantee.id,
+      currency: guarantee.currency,
+      amount: Number(guarantee.amount),
+      state: guarantee.state,
+      reservationCode: guarantee.reservationReference.code,
+      roomNumber: guarantee.reservationReference.roomNumber,
+      guestName: guarantee.reservationReference.guest?.fullName ?? null,
+    })),
   };
 }
 
-/**
- * Guarda un arqueo. Único camino de escritura de `CashCount`.
- *
- * Es idempotente por entrega y tipo: volver a contar reemplaza el conteo
- * anterior en lugar de acumular dos, porque contar mal y recontar es normal.
- * El reemplazo va en transacción, de modo que nunca queda un arqueo a medias.
- */
 export async function saveCashCount(
   user: CurrentUser,
   params: {
     handoverId: string;
     kind: CashCountKindValue;
-    /** denominationId → cantidad. Las ausentes valen cero. */
     quantities: Record<string, number>;
     notes?: string | null;
   },
@@ -220,10 +247,13 @@ export async function saveCashCount(
   assertValidQuantities(entries.map(([, quantity]) => ({ quantity })));
 
   const denominations = await prisma.cashDenomination.findMany({
-    where: { id: { in: entries.map(([id]) => id) } },
+    where: {
+      id: { in: entries.map(([id]) => id) },
+      currency: { in: [...CASH_CURRENCIES] },
+    },
   });
   if (denominations.length !== entries.length) {
-    throw new RuleError('El arqueo incluye una denominación que no existe.');
+    throw new RuleError('El arqueo incluye una denominación que no existe o una divisa no habilitada.');
   }
 
   const funds = await listFunds();
@@ -234,7 +264,6 @@ export async function saveCashCount(
   const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
 
   await prisma.$transaction(async (tx) => {
-    // Reemplazo, no acumulación: un recuento corrige el anterior.
     await tx.cashCount.deleteMany({
       where: { handoverId: params.handoverId, kind: params.kind as CashCountKind },
     });
@@ -272,7 +301,7 @@ export async function saveCashCount(
   return { statuses };
 }
 
-/** Egreso a tesorería del excedente sobre el fondo fijo. */
+/** Egreso a tesorería. Todo monto real requiere validación de Supervisión. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -283,9 +312,19 @@ export async function recordCashTransfer(
     notes?: string | null;
   },
 ) {
+  if (!(await getSettingBool('cash.treasuryTransfersEnabled', true))) {
+    throw new RuleError('Los egresos a tesorería están desactivados en la configuración de Caja.');
+  }
   if (!(params.amount > 0)) {
     throw new RuleError('El monto del egreso debe ser mayor que cero.');
   }
+  if (
+    (await getSettingBool('cash.transferReceiptRequired', false)) &&
+    !params.reference?.trim()
+  ) {
+    throw new RuleError('La configuración de Caja exige indicar el comprobante del egreso.');
+  }
+
   const handover = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
     select: { id: true },
@@ -293,8 +332,8 @@ export async function recordCashTransfer(
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
 
   const currency = params.currency.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    throw new RuleError('El código de divisa debe tener tres letras.');
+  if (!CASH_CURRENCIES.includes(currency as (typeof CASH_CURRENCIES)[number])) {
+    throw new RuleError('Caja sólo admite CLP o USD.');
   }
 
   return prisma.$transaction(async (tx) => {
@@ -308,6 +347,22 @@ export async function recordCashTransfer(
         createdById: user.id,
       },
     });
+
+    await tx.alert.create({
+      data: {
+        type: AlertType.OTRO,
+        // La validación es obligatoria y debe ser visible en Supervisión.
+        level: AlertLevel.CRITICA,
+        status: AlertStatus.NUEVA,
+        title: 'Validar egreso a tesorería',
+        message: `Validar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
+        handoverId: params.handoverId,
+        dedupeKey: `cash-transfer:${transfer.id}`,
+        auto: false,
+        createdById: user.id,
+      },
+    });
+
     await recordAudit(
       {
         entity: 'CashTransfer',
@@ -315,7 +370,7 @@ export async function recordCashTransfer(
         action: AuditAction.CREAR,
         summary: `Egreso a tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
-        }`,
+        }; pendiente de validación de Supervisión.`,
         user,
       },
       tx,
@@ -324,12 +379,6 @@ export async function recordCashTransfer(
   });
 }
 
-/**
- * Materializa los elementos configurados en una entrega concreta.
- *
- * Idempotente: `skipDuplicates` deja intactas las marcas que alguien ya puso,
- * así que regenerar el borrador de la entrega no borra lo confirmado.
- */
 export async function ensureHandoverElements(
   handoverId: string,
   client: Client = prisma,
@@ -347,13 +396,11 @@ export async function ensureHandoverElements(
   return result.count;
 }
 
-/** Marca elementos como declarados (quien entrega) o confirmados (quien recibe). */
 export async function markHandoverElements(
   user: CurrentUser,
   params: {
     handoverId: string;
     field: 'declared' | 'confirmed';
-    /** elementId → marcado. */
     marks: Record<string, boolean>;
     notes?: Record<string, string | null>;
   },
@@ -394,12 +441,6 @@ export async function markHandoverElements(
   return { updated: updates.length };
 }
 
-/**
- * Qué impide ENVIAR la entrega. Lista vacía = se puede enviar.
- *
- * Si el hotel no configuró fondo, no impide nada: la caja es opcional hasta
- * que alguien decide que existe.
- */
 export async function cashBlockersForSending(handoverId: string): Promise<string[]> {
   if (!(await isCashEnabled())) return [];
 
@@ -413,23 +454,33 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     return problems;
   }
 
+  const requireDifferenceNote = await getSettingBool('cash.requireDifferenceNote', true);
   problems.push(
     ...cashHandoverProblems({
       statuses: state.declared.statuses,
-      hasNotes: Boolean(state.declared.notes),
+      // Si el administrador desactiva esta validación, el descuadre se conserva
+      // y se muestra, pero no bloquea por falta de texto explicativo.
+      hasNotes: !requireDifferenceNote || Boolean(state.declared.notes),
     }),
   );
 
   const missing = state.elements.filter((element) => element.required && !element.declared);
   if (missing.length > 0) {
+    problems.push(`Falta declarar: ${missing.map((element) => element.name).join(', ')}.`);
+  }
+
+  const pendingTransfers = state.transfers.filter(
+    (transfer) => transfer.amount > 0 && !transfer.approved,
+  );
+  if (pendingTransfers.length > 0) {
     problems.push(
-      `Falta declarar: ${missing.map((element) => element.name).join(', ')}.`,
+      `Hay ${pendingTransfers.length} egreso(s) a tesorería pendiente(s) de validación por Supervisión.`,
     );
   }
+
   return problems;
 }
 
-/** Qué impide CONFIRMAR la recepción. Lista vacía = se puede recibir. */
 export async function cashBlockersForReceiving(handoverId: string): Promise<string[]> {
   if (!(await isCashEnabled())) return [];
 
@@ -444,9 +495,7 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
 
   const missing = state.elements.filter((element) => element.required && !element.confirmed);
   if (missing.length > 0) {
-    problems.push(
-      `Confirma que recibes: ${missing.map((element) => element.name).join(', ')}.`,
-    );
+    problems.push(`Confirma que recibes: ${missing.map((element) => element.name).join(', ')}.`);
   }
   return problems;
 }

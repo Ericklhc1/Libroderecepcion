@@ -124,7 +124,7 @@ describe('resumen automático de la entrega', () => {
     const sections = snapshot.map((item) => item.section);
 
     expect(sections).toContain('Cobros pendientes');
-    expect(sections).toContain('Garantías pendientes');
+    expect(sections).toContain('Garantías (resumen de reserva)');
     expect(sections).toContain('Reservas que requieren acción');
 
     const cobro = snapshot.find((item) => item.section === 'Cobros pendientes');
@@ -133,8 +133,6 @@ describe('resumen automático de la entrega', () => {
   });
 
   it('no repite un asunto que ya aparece en otra sección', async () => {
-    // Una tarea vencida genera alerta automática: la entrega debe mencionarla
-    // una sola vez, en "Tareas pendientes", sin duplicarla en "Alertas".
     const task = await createTask(user, {
       title: 'Revisar comprobantes de caja',
       priority: Priority.MEDIA,
@@ -158,8 +156,6 @@ describe('resumen automático de la entrega', () => {
 
     expect(alertItems.some((item) => item.title.includes('Revisar comprobantes'))).toBe(false);
     expect(alertItems.some((item) => item.title.includes('Corte de energía'))).toBe(false);
-
-    // Y cada asunto sigue estando presente exactamente una vez.
     expect(snapshot.filter((item) => item.refId === task.id)).toHaveLength(1);
     expect(snapshot.filter((item) => item.refId === incident.id)).toHaveLength(1);
   });
@@ -233,7 +229,6 @@ describe('resumen automático de la entrega', () => {
     expect(snapshot.items.some((item) => item.refId === entry.id)).toBe(true);
     expect(Object.keys(snapshot.counts)).toEqual(['urgente', 'importante', 'informativo']);
 
-    // Cambiar el registro después no altera lo ya entregado.
     await prisma.operationalEntry.update({
       where: { id: entry.id },
       data: { title: 'Título cambiado después de la entrega' },

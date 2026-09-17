@@ -24,6 +24,7 @@ import {
 import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
+import { getSettingNumber } from './settings';
 
 let lastEngineRun = 0;
 const ENGINE_THROTTLE_MS = 60_000;
@@ -182,8 +183,8 @@ export async function getDashboardData(user: CurrentUser) {
 
   /*
     Los contadores y el resumen del turno no dependen entre sí. Encadenarlos
-    con `await` sucesivos costaba seis viajes a la base uno detrás de otro,
-    que es lo que se percibía como demora al abrir Inicio tras cada acción.
+    con `await` sucesivos costaba viajes a la base uno detrás de otro, que es
+    lo que se percibía como demora al abrir Inicio tras cada acción.
   */
   const [
     nextShift,
@@ -193,23 +194,24 @@ export async function getDashboardData(user: CurrentUser) {
     openTasks,
     liveAlerts,
     criticalAlerts,
-  ] =
-    await Promise.all([
-      // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
-      // en curso, que puede ser el propio o ninguno.
-      getCurrentShift(),
-      myShift ? getShiftMetrics(myShift.id) : null,
-      // Sólo a quien puede ver el tablero: el panel no salta el permiso.
-      user.permissions.includes('room.view') ? listRoomsWithState() : [],
-      prisma.operationalEntry.count({
-        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
-      }),
-      prisma.task.count({
-        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
-      }),
-      prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
-      prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
-    ]);
+    usdRateCLP,
+  ] = await Promise.all([
+    // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
+    // en curso, que puede ser el propio o ninguno.
+    getCurrentShift(),
+    myShift ? getShiftMetrics(myShift.id) : null,
+    // Sólo a quien puede ver el tablero: el panel no salta el permiso.
+    user.permissions.includes('room.view') ? listRoomsWithState() : [],
+    prisma.operationalEntry.count({
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+    }),
+    prisma.task.count({
+      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+    }),
+    prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
+    prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
+    getSettingNumber('reception.usdRateCLP', 0),
+  ]);
 
   /*
     Habitaciones que piden una acción concreta del turno. El estado ya lo
@@ -235,6 +237,33 @@ export async function getDashboardData(user: CurrentUser) {
     )
     .slice(0, 8);
 
+  /*
+    Ocupación de recepción, no estadística comercial: una habitación sigue
+    contando como ocupada mientras haya alguien dentro O una salida todavía
+    sin confirmar. Así el porcentaje representa lo que el mesón debe operar,
+    no una proyección abstracta.
+  */
+  const occupiedRooms = allRooms.filter(
+    (room) => room.snapshot.current !== null || room.snapshot.outgoing !== null,
+  ).length;
+  const pendingCheckOuts = allRooms.filter((room) => room.snapshot.outgoing !== null).length;
+  const occupancyPercent =
+    allRooms.length > 0 ? Math.round((occupiedRooms / allRooms.length) * 1000) / 10 : null;
+
+  /*
+    La entrega anterior es el punto de partida del turno actual. Sus métricas
+    se guardan como elementos de la misma entrega —no como otra tabla— para que
+    «inicio» y «cierre» hablen de la misma fotografía operativa.
+  */
+  const receivedOccupancy =
+    lastReceivedHandover?.items.find(
+      (item) => item.refType === 'metric' && item.refId === 'occupancy',
+    )?.title ?? null;
+  const receivedUsdRate =
+    lastReceivedHandover?.items.find(
+      (item) => item.refType === 'metric' && item.refId === 'usd-rate',
+    )?.title ?? null;
+
   const counters = {
     openEntries,
     openTasks,
@@ -259,6 +288,15 @@ export async function getDashboardData(user: CurrentUser) {
     latestEntries,
     lastReceivedHandover,
     roomsNeedingAction,
+    operational: {
+      occupiedRooms,
+      totalRooms: allRooms.length,
+      occupancyPercent,
+      pendingCheckOuts,
+      usdRateCLP,
+      receivedOccupancy,
+      receivedUsdRate,
+    },
     counters,
     today: operationalDate(now),
   };

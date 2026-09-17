@@ -19,12 +19,15 @@ import {
   softDeleteEntry,
   updateEntry,
 } from '@/server/services/entries';
+import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
 
 function refreshOperationalViews(entryId?: string) {
   revalidatePath('/');
   revalidatePath('/libro');
   revalidatePath('/supervision');
   revalidatePath('/incidencias');
+  revalidatePath('/tareas');
+  revalidatePath('/seguimientos');
   revalidatePath('/alertas');
   if (entryId) revalidatePath(`/libro/${entryId}`);
 }
@@ -36,15 +39,18 @@ export async function createEntryAction(
   return runAction(async () => {
     const raw = formDataToObject(formData);
     const input = parseOrThrow(entryCreateWithContextSchema, raw);
-    const permission =
-      input.type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create';
+    const permission = input.type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create';
     const user = await requirePermission(permission);
 
     const entry = await createEntry(user, input);
+    if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
     refreshOperationalViews(entry.id);
     return {
       ok: true as const,
-      message: `Registro #${entry.seq} creado.`,
+      message:
+        entry.type === EntryType.INCIDENCIA
+          ? `Incidencia #${entry.seq} creada con tarea y seguimiento.`
+          : `Registro #${entry.seq} creado.`,
       id: entry.id,
     };
   });
@@ -58,6 +64,7 @@ export async function updateEntryAction(
     const user = await requirePermission('entry.edit');
     const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
     const entry = await updateEntry(user, input);
+    if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Registro actualizado.', id: entry.id };
   });
@@ -69,11 +76,6 @@ export async function changeEntryStatusAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const input = parseOrThrow(entryStatusSchema, formDataToObject(formData));
-    /*
-      El responsable de un registro puede moverlo aunque no tenga
-      `entry.edit`. Es la excepción que hace útil al rol de Gerencia: sólo
-      consulta, salvo sobre aquello de lo que se le hizo responsable.
-    */
     const user = await requirePermissionOrOwner('entry.edit', async () => {
       const found = await prisma.operationalEntry.findUnique({
         where: { id: input.id },
@@ -97,10 +99,7 @@ export async function deleteEntryAction(
     await softDeleteEntry(user, input);
     refreshOperationalViews(input.id);
     revalidatePath('/admin/eliminados');
-    return {
-      ok: true as const,
-      message: 'Registro eliminado. Queda recuperable desde Administración.',
-    };
+    return { ok: true as const, message: 'Registro eliminado. Queda recuperable desde Administración.' };
   });
 }
 

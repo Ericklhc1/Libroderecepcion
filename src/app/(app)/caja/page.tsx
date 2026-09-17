@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Banknote, Dumbbell, Scale, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Banknote, Dumbbell, PlusCircle, Scale, ShieldCheck } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { formatGymFolio } from '@/server/services/live-cash';
@@ -7,7 +7,11 @@ import { getLiveCashStateWithGym as getLiveCashState } from '@/server/services/g
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
-import { LiveCashAuditForm, VoidGymPassDialog } from '@/components/cash/live-cash-forms';
+import {
+  LiveCashAuditForm,
+  ManualCashMovementForm,
+  VoidGymPassDialog,
+} from '@/components/cash/live-cash-forms';
 import { formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Caja' };
@@ -18,8 +22,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   GARANTIA_DEVOLUCION: 'Garantía devuelta',
   VENTA_GIMNASIO: 'Pase gimnasio',
   ANULACION_GIMNASIO: 'Anulación gimnasio',
-  AJUSTE_ENTRADA: 'Ajuste de entrada',
-  AJUSTE_SALIDA: 'Ajuste de salida',
+  AJUSTE_ENTRADA: 'Ingreso manual',
+  AJUSTE_SALIDA: 'Egreso manual',
 };
 
 function amount(currency: string, value: number) {
@@ -46,13 +50,30 @@ export default async function LiveCashPage() {
           </p>
         </div>
         {canOperate ? (
-          <Link
-            href="/habitaciones"
-            className="inline-flex items-center gap-2 rounded-lg bg-petrol-800 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-700"
-          >
-            <Dumbbell className="h-4 w-4" aria-hidden="true" />
-            Vender pase desde habitación
-          </Link>
+          <div className="flex flex-wrap gap-2 no-print">
+            <Dialog
+              title="Registrar movimiento de caja"
+              description="Registra un ingreso o egreso manual. El sistema exigirá que tengas un turno operativo abierto."
+              triggerVariant="primary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                  Ingreso / egreso
+                </>
+              }
+            >
+              <ManualCashMovementForm />
+            </Dialog>
+            <Link
+              href="/habitaciones"
+              className="inline-flex items-center gap-2 rounded-lg bg-petrol-800 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-700"
+            >
+              <Dumbbell className="h-4 w-4" aria-hidden="true" />
+              Vender pase desde habitación
+            </Link>
+          </div>
         ) : null}
       </header>
 

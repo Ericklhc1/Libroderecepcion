@@ -34,6 +34,7 @@ describe('máquina de estados del turno', () => {
     expect(canTransition(ShiftStatus.INICIADO, ShiftStatus.ENTREGA_ENVIADA)).toBe(false);
     expect(canTransition(ShiftStatus.ENTREGA_ENVIADA, ShiftStatus.CERRADO)).toBe(false);
     expect(canTransition(ShiftStatus.ACTIVO, ShiftStatus.ENTREGA_ENVIADA)).toBe(false);
+    expect(canTransition(ShiftStatus.ACTIVO, ShiftStatus.CERRADO)).toBe(false);
   });
 
   it('los estados finales no admiten más transiciones', () => {
@@ -55,17 +56,15 @@ describe('máquina de estados del turno', () => {
 
 describe('regla de cierre de turno', () => {
   /*
-    Estas pruebas cambiaron a propósito, y documentan la corrección de un
-    fallo real. Antes la regla dependía de `hasNextShift`: había que tener el
-    turno siguiente CREADO para poder cerrar el propio. Con los turnos creados
-    a voluntad ese turno no existe cuando alguien cierra —lo crea el relevo
-    cuando llega— así que la condición era imposible y el cierre quedaba
-    trabado. Ahora depende sólo del estado de la entrega.
+    El cierre manual ya no sirve como atajo desde ACTIVO. El contrato operativo
+    es único: preparar entrega -> actualizar informes -> caja/elementos ->
+    enviar -> recibir -> cerrar. Así la capa de dominio y la interfaz no pueden
+    divergir ni dejar un cierre sin fotografía del PMS.
   */
-  it('bloquea el cierre de un turno que no está activo y no entregó', () => {
+  it('bloquea el cierre de un turno que no inició la entrega', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.INICIADO, handoverStatus: 'NONE' }),
-    ).toThrow(/sin haber enviado el cierre/);
+    ).toThrow(/primero prepara la entrega/i);
   });
 
   it('bloquea el cierre con la entrega en borrador', () => {
@@ -74,7 +73,7 @@ describe('regla de cierre de turno', () => {
         status: ShiftStatus.PREPARANDO_ENTREGA,
         handoverStatus: 'BORRADOR',
       }),
-    ).toThrow(/sin haber enviado el cierre/);
+    ).toThrow(/primero prepara la entrega/i);
   });
 
   it('mientras el cierre espera en la bandeja, el turno no se cierra a mano', () => {
@@ -89,15 +88,10 @@ describe('regla de cierre de turno', () => {
     ).not.toThrow();
   });
 
-  /*
-    El turno que no releva a nadie —el último antes de un cierre del hotel, o
-    uno abierto por error— tiene que poder cerrarse. Antes esto dependía de que
-    no existiera turno siguiente; ahora de que no haya entrega que esperar.
-  */
-  it('permite cerrar desde ACTIVO cuando no hay entrega que esperar', () => {
+  it('bloquea cerrar directamente desde ACTIVO aunque todavía no exista entrega', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.ACTIVO, handoverStatus: 'NONE' }),
-    ).not.toThrow();
+    ).toThrow(/primero prepara la entrega/i);
   });
 
   it('no permite cerrar dos veces', () => {
@@ -109,7 +103,6 @@ describe('regla de cierre de turno', () => {
 
 describe('las dos ventanas fijas', () => {
   it('son exactamente dos y cubren el día completo sin huecos', () => {
-    // El día termina donde empieza la noche, y la noche donde empieza el día.
     expect(SHIFT_SCHEDULE.DIA.startHour).toBe(7);
     expect(SHIFT_SCHEDULE.DIA.endHour).toBe(20);
     expect(SHIFT_SCHEDULE.NOCHE.startHour).toBe(20);

@@ -101,6 +101,8 @@ export type FineDraft = {
   reason?: string | null;
   /** Observaciones o antecedentes sobre la negativa del huésped. */
   guestStatement?: string | null;
+  /** Cantidad de unidades afectadas por la misma multa. */
+  quantity?: number | null;
   amount?: number | null;
 };
 
@@ -157,6 +159,15 @@ export function fineProblems(draft: FineDraft): Array<{ field: string; message: 
     });
   }
 
+  if (draft.quantity !== null && draft.quantity !== undefined) {
+    if (!Number.isInteger(draft.quantity) || draft.quantity < 1) {
+      problems.push({
+        field: 'quantity',
+        message: 'La cantidad debe ser un número entero mayor que cero.',
+      });
+    }
+  }
+
   if (draft.amount !== null && draft.amount !== undefined) {
     if (!(draft.amount > 0)) {
       problems.push({ field: 'amount', message: 'El monto debe ser mayor que cero.' });
@@ -173,6 +184,7 @@ export function fineSummary(fine: {
   linenKind?: LinenKindValue | null;
   itemDetail?: string | null;
   stainType?: string | null;
+  quantity?: number | null;
 }): string {
   const what =
     fine.kind === 'BLANCO' && fine.linenKind
@@ -180,8 +192,9 @@ export function fineSummary(fine: {
         ? (fine.itemDetail ?? 'blanco sin detallar')
         : LINEN_KIND_LABELS[fine.linenKind]
       : (fine.itemDetail ?? FINE_KIND_LABELS[fine.kind]);
+  const quantity = fine.quantity && fine.quantity > 1 ? ` · ${fine.quantity} unidades` : '';
 
   return fine.stainType
-    ? `Hab. ${fine.roomNumber} · ${what} · ${fine.stainType}`
-    : `Hab. ${fine.roomNumber} · ${what}`;
+    ? `Hab. ${fine.roomNumber} · ${what}${quantity} · ${fine.stainType}`
+    : `Hab. ${fine.roomNumber} · ${what}${quantity}`;
 }

@@ -45,6 +45,39 @@ export const DEFAULT_SETTINGS = {
     category: 'gimnasio',
     description: 'Precio del pase de gimnasio cuando se cobra en dólares estadounidenses.',
   },
+  'reception.usdRateCLP': {
+    value: 0,
+    category: 'recepción',
+    description: 'Valor operativo del dólar en pesos chilenos que usa Recepción.',
+  },
+  'reception.checkoutHour': {
+    value: 11,
+    category: 'recepción',
+    description: 'Hora límite de check-out; desde esta hora se alertan salidas sin confirmar.',
+  },
+
+  // Caja: las divisas son fijas (CLP y USD); estas reglas deciden qué módulos
+  // están activos y qué validaciones aplican en la operación.
+  'cash.treasuryTransfersEnabled': {
+    value: true,
+    category: 'caja',
+    description: 'Permite registrar egresos a tesorería durante la entrega de turno.',
+  },
+  'cash.transferReceiptRequired': {
+    value: false,
+    category: 'caja',
+    description: 'Exige comprobante/referencia al registrar un egreso a tesorería.',
+  },
+  'cash.usdRateEnabled': {
+    value: true,
+    category: 'caja',
+    description: 'Muestra y permite declarar el tipo de cambio USD/CLP del turno.',
+  },
+  'cash.requireDifferenceNote': {
+    value: true,
+    category: 'caja',
+    description: 'Exige explicar una diferencia entre el efectivo contado y el fondo mínimo.',
+  },
 
   // Fronti. Los controles de seguridad (permisos, auditoría y confirmaciones)
   // NO son configurables desde esta tabla: forman parte del contrato operativo.

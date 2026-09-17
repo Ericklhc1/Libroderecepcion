@@ -116,6 +116,7 @@ export async function createFine(
       stainType: input.stainType?.trim() || null,
       reason: input.reason!.trim(),
       guestStatement: input.guestStatement?.trim() || null,
+      quantity: input.quantity ?? 1,
       amount:
         input.amount !== null && input.amount !== undefined
           ? new Prisma.Decimal(input.amount)
@@ -137,6 +138,7 @@ export async function createFine(
       linenKind: input.linenKind ?? null,
       itemDetail: input.itemDetail ?? null,
       stainType: input.stainType ?? null,
+      quantity: input.quantity ?? 1,
     })}. Reserva ${input.reservationCode} · ${input.guestName}. Motivo: ${input.reason}`,
   });
 
@@ -269,11 +271,10 @@ export async function softDeleteFine(
 /**
  * Multas vigentes en el contexto de una habitación.
  *
- * Una multa ligada a una estadía deja de ocupar la ficha cuando se confirma el
- * check-out. No se borra ni se convierte en una copia: queda en el Libro y en
- * el historial de la reserva con su estado original. Las multas sin estadía
- * vinculada permanecen visibles porque no hay un checkout que permita inferir
- * que su contexto terminó.
+ * Una multa abierta sigue siendo un pendiente de esa habitación aunque el
+ * check-out ya se haya confirmado. El C/O libera la ocupación, no resuelve el
+ * cobro. Las multas resueltas dejan de ocupar la ficha cuando su estadía ya
+ * finalizó y permanecen en el Libro/historial de la reserva.
  */
 export async function listFinesForRoom(roomNumber: string): Promise<FineWithContext[]> {
   return prisma.fine.findMany({
@@ -282,6 +283,7 @@ export async function listFinesForRoom(roomNumber: string): Promise<FineWithCont
       deletedAt: null,
       OR: [
         { stayId: null },
+        { status: { in: OPEN_FINE_STATUSES.map((status) => FineStatus[status]) } },
         { stay: { stage: { not: RoomStayStage.FINALIZADO } } },
       ],
     },

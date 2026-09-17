@@ -2,9 +2,12 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getAllSettings } from '@/server/services/settings';
+import { prisma } from '@/lib/prisma';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { SettingForm } from '../admin-forms';
+import { CashConfigForm } from '@/components/admin/cash-config-form';
+import { HandoverElementsConfig } from '@/components/admin/handover-elements-config';
 import { formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Parámetros' };
@@ -16,10 +19,27 @@ function kindOf(value: unknown): 'boolean' | 'number' | 'string' {
   return 'string';
 }
 
+function boolSetting(
+  settings: Awaited<ReturnType<typeof getAllSettings>>,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const value = settings.find((setting) => setting.key === key)?.value;
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 export default async function SettingsPage() {
   await requirePagePermission('system.configure');
-  const settings = (await getAllSettings()).filter(
-    (setting) => !setting.key.startsWith('fronti.'),
+  const [allSettings, cashFunds, handoverElements] = await Promise.all([
+    getAllSettings(),
+    prisma.cashFund.findMany({ where: { currency: { in: ['CLP', 'USD'] } } }),
+    prisma.handoverElementType.findMany({ orderBy: [{ order: 'asc' }, { name: 'asc' }] }),
+  ]);
+
+  // Fronti y Caja tienen pantallas/formularios propios: no se duplican abajo
+  // como parámetros técnicos sueltos.
+  const settings = allSettings.filter(
+    (setting) => !setting.key.startsWith('fronti.') && !setting.key.startsWith('cash.'),
   );
 
   const byCategory = Array.from(
@@ -30,6 +50,9 @@ export default async function SettingsPage() {
       return map;
     }, new Map<string, typeof settings>()),
   );
+
+  const clpMinimum = Number(cashFunds.find((fund) => fund.currency === 'CLP')?.amount ?? 100000);
+  const usdMinimum = Number(cashFunds.find((fund) => fund.currency === 'USD')?.amount ?? 0);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -45,9 +68,35 @@ export default async function SettingsPage() {
         <h1 className="text-xl font-semibold text-petrol-900">Parámetros del sistema</h1>
         <p className="mt-0.5 text-sm text-slate-600">
           Cada parámetro tiene un valor por defecto en el código; aquí se sobrescribe sin
-          necesidad de desplegar. La configuración de Fronti se administra desde su sección propia.
+          necesidad de desplegar. Fronti y Caja tienen controles dedicados para no mezclar reglas operativas con claves técnicas.
         </p>
       </header>
+
+      <Card>
+        <CardHeader title="Caja" />
+        <div className="px-4 py-4">
+          <CashConfigForm
+            clpMinimum={clpMinimum}
+            usdMinimum={usdMinimum}
+            treasuryTransfersEnabled={boolSetting(allSettings, 'cash.treasuryTransfersEnabled', true)}
+            transferReceiptRequired={boolSetting(allSettings, 'cash.transferReceiptRequired', false)}
+            usdRateEnabled={boolSetting(allSettings, 'cash.usdRateEnabled', true)}
+            requireDifferenceNote={boolSetting(allSettings, 'cash.requireDifferenceNote', true)}
+          />
+        </div>
+        <div className="border-t border-slate-200 px-4 py-4">
+          <HandoverElementsConfig
+            elements={handoverElements.map((element) => ({
+              id: element.id,
+              name: element.name,
+              detail: element.detail,
+              required: element.required,
+              active: element.active,
+              order: element.order,
+            }))}
+          />
+        </div>
+      </Card>
 
       {byCategory.map(([category, list]) => (
         <Card key={category}>

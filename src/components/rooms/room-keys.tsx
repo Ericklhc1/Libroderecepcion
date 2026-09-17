@@ -41,6 +41,11 @@ const HELD: KeyStatusValue[] = ['ASIGNADA', 'COPIA_ADICIONAL', 'PENDIENTE_DEVOLU
  * huésped dentro, la llave «disponible» y **ningún botón**. Encima, el único
  * gesto de llaves que había exigía `key.stock`, que es del Supervisor: un
  * recepcionista no veía absolutamente nada.
+ *
+ * Recibir la llave es deliberadamente independiente del check-out. La salida
+ * describe la ocupación de la habitación; este módulo describe el objeto
+ * físico. Si el huésped salió sin devolverla, queda `PENDIENTE_DEVOLUCION`
+ * hasta que alguien pulse «Recibir».
  */
 export function RoomKeys({
   roomId,
@@ -87,7 +92,7 @@ export function RoomKeys({
                 title={`Entregar la llave de la ${roomNumber}`}
                 description={
                   principalAvailable
-                    ? 'La llave queda a nombre de la estadía y vuelve sola al confirmar la salida.'
+                    ? 'La llave queda a nombre de la estadía. En la salida quedará pendiente hasta que recepción confirme su devolución.'
                     : 'La principal de esta habitación no está disponible. Puedes entregar una copia del stock.'
                 }
                 triggerVariant="gold"
@@ -124,7 +129,7 @@ export function RoomKeys({
             {canStock ? (
             <Dialog
               title={`Entregar una copia adicional a la ${roomNumber}`}
-              description="La copia se descuenta del stock y vuelve sola cuando se confirme la salida."
+              description="La copia se descuenta del stock. Al salir queda pendiente hasta que recepción la reciba físicamente."
               triggerVariant="secondary"
               triggerSize="sm"
               trigger={

@@ -6,6 +6,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
+import { ROLE_KEYS } from '@/lib/permissions';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -138,7 +139,29 @@ export async function resolveAlert(
   const alert = await loadAlert(input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
-  // Las alertas automáticas se regeneran si la condición persiste: se avisa.
+  /*
+    Las alertas que equivalen a una aprobación formal no heredan simplemente
+    `alert.manage`: el rol que toma la decisión es parte de la regla de negocio.
+  */
+  if (
+    alert.dedupeKey?.startsWith('cash-transfer:') &&
+    user.roleKey !== ROLE_KEYS.SUPERVISOR
+  ) {
+    throw new RuleError(
+      'Los egresos a tesorería sólo pueden ser validados por un Supervisor desde su cuenta.',
+    );
+  }
+
+  if (
+    alert.dedupeKey?.startsWith('shift-validation:') &&
+    user.roleKey !== ROLE_KEYS.SUPERVISOR &&
+    !user.isSystemAdmin
+  ) {
+    throw new RuleError(
+      'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
+    );
+  }
+
   const updated = await prisma.alert.update({
     where: { id: input.id },
     data: {
@@ -154,7 +177,11 @@ export async function resolveAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.CERRAR,
-    summary: `Alerta resuelta: ${alert.title}`,
+    summary: alert.dedupeKey?.startsWith('cash-transfer:')
+      ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
+      : alert.dedupeKey?.startsWith('shift-validation:')
+        ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+        : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.RESUELTA },

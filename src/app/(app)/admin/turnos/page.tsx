@@ -28,7 +28,7 @@ const STATUS_TONE = {
 } as const;
 
 export default async function ShiftAdminPage() {
-  await requirePagePermission('shift.manage');
+  const user = await requirePagePermission('shift.manage');
 
   const from = new Date();
   from.setDate(from.getDate() - 30);
@@ -58,8 +58,11 @@ export default async function ShiftAdminPage() {
         <h1 className="text-xl font-semibold text-petrol-900">Historial y archivo de turnos</h1>
         <p className="mt-0.5 text-sm text-slate-600">
           Los turnos no se programan desde aquí. Se abren al comenzar la operación y sólo puede
-          existir uno en curso. Esta pantalla conserva la trazabilidad y permite archivar turnos
-          terminados sin borrar su información.
+          existir uno en curso. Esta pantalla conserva la trazabilidad y permite retirar turnos
+          sin borrar su información.
+          {user.isSystemAdmin
+            ? ' Como Administrador de sistema, puedes retirar también un turno que aún no esté cerrado.'
+            : ''}
         </p>
       </header>
 
@@ -110,6 +113,7 @@ export default async function ShiftAdminPage() {
                   <ArchiveShiftDialog
                     shiftId={shift.id}
                     archived={shift.archivedAt !== null}
+                    systemAdmin={user.isSystemAdmin}
                   />
                 </div>
               </li>

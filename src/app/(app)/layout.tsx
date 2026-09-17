@@ -13,7 +13,7 @@ import { MobileNav, SidebarNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { HelpCenter } from '@/components/layout/help-center';
 import { TutorialTour } from '@/components/layout/tutorial';
-import { tutorialSteps } from '@/domain/help';
+import { guidedTourSteps } from '@/domain/tutorial-tour';
 import { getBlockingAnnouncements } from '@/server/services/announcements';
 import { QuickActions } from '@/components/layout/quick-actions';
 import { logoutAction } from '@/server/actions/auth';
@@ -57,9 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <BookOpen className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[0.65rem] font-medium text-gold-300">
-              {hotelName}
-            </p>
+            <p className="truncate text-[0.65rem] font-medium text-gold-300">{hotelName}</p>
             <p className="truncate text-sm font-semibold text-white">Libro Operativo</p>
           </div>
         </div>
@@ -69,10 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="border-t border-petrol-800 px-3 py-3">
-          <Link
-            href="/perfil"
-            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-petrol-800/60"
-          >
+          <Link href="/perfil" className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-petrol-800/60">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-petrol-700 text-xs font-semibold text-gold-200">
               {initials(user.name)}
             </span>
@@ -102,7 +97,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </Link>
 
-            <form action="/libro" className="relative min-w-0 flex-1 max-w-xl">
+            <form action="/libro" className="relative min-w-0 flex-1 max-w-xl" data-tour="global-search">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"
@@ -117,10 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
 
             <div className="ml-auto flex items-center gap-2">
-              <NotificationChime
-                initialNotifications={unreadNotifications}
-                initialAlerts={alerts}
-              />
+              <NotificationChime initialNotifications={unreadNotifications} initialAlerts={alerts} />
               <Link
                 href="/notificaciones"
                 className="relative rounded-lg p-2 text-petrol-700 hover:bg-petrol-50"
@@ -133,7 +125,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   </span>
                 ) : null}
               </Link>
-              <HelpCenter permissions={user.permissions} />
+              <div data-tour="help-center">
+                <HelpCenter permissions={user.permissions} />
+              </div>
               <Link
                 href="/perfil"
                 className="rounded-lg p-2 text-petrol-700 hover:bg-petrol-50 lg:hidden"
@@ -144,7 +138,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          <div className="overflow-x-auto border-t border-slate-100 px-4 py-2">
+          <div className="overflow-x-auto border-t border-slate-100 px-4 py-2" data-tour="quick-actions">
             <QuickActions user={user} compact />
           </div>
         </header>
@@ -155,12 +149,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MobileNav items={items} badges={badges} />
       <ReceptionAssistant />
 
-      {blocking.length > 0 ? (
-        <AnnouncementGate announcements={blocking} userName={user.name} />
-      ) : null}
+      {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 
       {!tutorialDone && blocking.length === 0 ? (
-        <TutorialTour steps={tutorialSteps(user.permissions)} userName={user.name} />
+        <TutorialTour steps={guidedTourSteps(user.permissions)} userName={user.name} />
       ) : null}
     </div>
   );

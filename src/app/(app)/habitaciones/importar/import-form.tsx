@@ -6,24 +6,20 @@ import { SubmitButton } from '@/components/ui/button';
 import { prepareImportAction } from '@/server/actions/rooms';
 
 /**
- * Carga de los tres informes.
+ * Carga de informes para «Huéspedes & reservas».
  *
- * No aplica nada: deja un borrador y lleva a la revisión. El sistema jamás
- * cambia el estado del mesón sin que alguien vea antes lo que va a cambiar.
- *
- * `returnTo` es la clave del destino al que volver tras aplicar —el servidor
- * la traduce contra su propia lista— porque este formulario vive tanto en el
- * inicio de turno como en Habitaciones.
+ * No aplica nada: deja un borrador y lleva a revisión. El sistema nunca cambia
+ * el estado operativo sin que alguien vea antes qué información se incorporará.
  */
 export function ImportForm({ returnTo }: { returnTo?: 'turno' | 'habitaciones' }) {
   return (
     <ActionForm action={prepareImportAction} hideSuccess>
       {returnTo ? <input type="hidden" name="volverA" value={returnTo} /> : null}
       <Field
-        label="Informes del PMS en PDF"
+        label="Informes de huéspedes & reservas en PDF"
         name="reports"
         required
-        hint="Entradas, in house y salidas. Puedes adjuntar los tres a la vez; el sistema reconoce cada uno."
+        hint="Habitaciones con actividad, entradas, in house y salidas. Puedes adjuntar varios a la vez; el sistema reconoce cada uno."
       >
         <input
           type="file"

@@ -65,9 +65,9 @@ async function exactFundQuantities(): Promise<Record<string, number>> {
     return row.id;
   };
   return {
-    [find('CLP', 20_000)]: 5, // 100.000
+    [find('CLP', 20_000)]: 5,
     [find('USD', 100)]: 1,
-    [find('USD', 50)]: 1, // 150
+    [find('USD', 50)]: 1,
   };
 }
 
@@ -92,15 +92,8 @@ describe('caja en la entrega de turno', () => {
   });
 
   it('el reinicio de pruebas deja la caja apagada, sin depender del orden de los archivos', async () => {
-    /*
-      La migración siembra el fondo fijo para producción. Si `resetOperationalData`
-      no lo limpiara, este conjunto daría resultados distintos según el orden en
-      que Vitest ejecutara los archivos: las pruebas del ciclo de turno fallarían
-      cuando corrieran después de la migración y antes que este archivo.
-    */
     expect(await prisma.cashFund.count()).toBe(0);
     expect(await prisma.handoverElementType.count()).toBe(0);
-    // Las denominaciones SÍ son catálogo y se conservan.
     expect(await prisma.cashDenomination.count()).toBeGreaterThan(0);
   });
 
@@ -113,7 +106,6 @@ describe('caja en la entrega de turno', () => {
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
     expect(await cashBlockersForReceiving(handover.id)).toEqual([]);
 
-    // Y la entrega se envía sin haber contado un peso.
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -155,7 +147,6 @@ describe('caja en la entrega de turno', () => {
       (d) => d.currency === 'CLP' && Number(d.value) === 20_000,
     )!;
 
-    // Falta un billete de 20.000 y todo el USD.
     await saveCashCount(saliente, {
       handoverId: handover.id,
       kind: 'DECLARADO',
@@ -165,11 +156,6 @@ describe('caja en la entrega de turno', () => {
       /no coincide con el fondo fijo/,
     );
 
-    /*
-      Un faltante existe y hay que poder declararlo: lo que no se admite es
-      que nadie diga nada. Con una explicación, la entrega sale y la
-      diferencia queda escrita.
-    */
     await saveCashCount(saliente, {
       handoverId: handover.id,
       kind: 'DECLARADO',
@@ -248,7 +234,6 @@ describe('caja en la entrega de turno', () => {
     expect(state.discrepancies[0]?.currency).toBe('CLP');
     expect(state.discrepancies[0]?.differenceMinor).toBe(-20_000);
 
-    // No hay columna que la guarde: sale de comparar los dos conteos.
     const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'CashCount'
     `;
@@ -286,7 +271,7 @@ describe('caja en la entrega de turno', () => {
     ).rejects.toThrow(RuleError);
     await expect(
       recordCashTransfer(saliente, { handoverId: handover.id, currency: 'PESOS', amount: 100 }),
-    ).rejects.toThrow(/tres letras/);
+    ).rejects.toThrow(/CLP o USD/);
   });
 
   it('un arqueo con una denominación inventada se rechaza', async () => {
@@ -331,7 +316,6 @@ describe('elementos que viajan con la caja', () => {
       'Radio de turno',
     ]);
 
-    // Regenerar el borrador no duplica ni borra marcas.
     await markHandoverElements(saliente, {
       handoverId: handover.id,
       field: 'declared',

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import {
@@ -135,23 +136,29 @@ export function PrepareHandoverForm({ shiftId }: { shiftId: string }) {
 
 export function SendHandoverForm({ shiftId }: { shiftId: string }) {
   return (
-    <ActionForm action={sendHandoverAction} hideSuccess>
-      <input type="hidden" name="shiftId" value={shiftId} />
-      <Field
-        label="Nota de cierre para el turno siguiente"
-        name="notes"
-        hint="Lo más importante, en pocas líneas. El resumen automático ya va incluido."
-      >
-        <Textarea
-          name="notes"
-          rows={3}
-          placeholder="Prioridad de la tarde: llegada VIP de la 402 y regularizar el pago de la 215."
-        />
-      </Field>
-      <SubmitButton variant="gold" pendingLabel="Enviando…">
-        Enviar entrega al turno siguiente
-      </SubmitButton>
-    </ActionForm>
+    <div className="space-y-3">
+      <div className="rounded-lg bg-gold-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-gold-200">
+        <p className="font-medium">Antes de enviar: actualiza la fotografía PMS.</p>
+        <p className="mt-0.5 text-xs text-slate-600">
+          El cierre exige una carga nueva de Entradas, In house y Salidas posterior al inicio de la entrega.
+        </p>
+        <Link
+          href="/huespedes/importar?volverA=turno"
+          className="mt-2 inline-flex text-sm font-semibold text-petrol-700 underline-offset-2 hover:underline"
+        >
+          Cargar informes para el cierre
+        </Link>
+      </div>
+      <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
+        <input type="hidden" name="shiftId" value={shiftId} />
+        <p className="text-xs text-slate-500">
+          La nota para el turno siguiente se guarda como Observación + Siguiente acción. Aquí sólo se confirma el envío.
+        </p>
+        <SubmitButton variant="gold" pendingLabel="Enviando…">
+          Enviar entrega al turno siguiente
+        </SubmitButton>
+      </ActionForm>
+    </div>
   );
 }
 
@@ -168,11 +175,8 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
 
 export function CloseShiftForm({ shiftId }: { shiftId: string }) {
   return (
-    <ActionForm action={closeShiftAction} hideSuccess>
+    <ActionForm action={closeShiftAction} hideSuccess className="space-y-0">
       <input type="hidden" name="shiftId" value={shiftId} />
-      <Field label="Observaciones de cierre" name="notes">
-        <Textarea name="notes" rows={2} />
-      </Field>
       <SubmitButton variant="secondary" pendingLabel="Cerrando…">
         Cerrar turno
       </SubmitButton>

@@ -1,46 +1,43 @@
 'use client';
 
-import { HandoverLevel } from '@prisma/client';
 import { Printer, Trash2 } from 'lucide-react';
-import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
+import { ActionForm, Field, Textarea } from '@/components/ui/form';
 import { Button, SubmitButton } from '@/components/ui/button';
-import { HANDOVER_LEVEL_LABEL } from '@/domain/labels';
 import {
-  addHandoverNoteAction,
   prepareHandoverAction,
   removeHandoverNoteAction,
 } from '@/server/actions/shifts';
+import { saveSingleHandoverNoteAction } from '@/server/actions/handover-note';
 
-const LEVEL_OPTIONS = Object.values(HandoverLevel).map((level) => ({
-  value: level,
-  label: HANDOVER_LEVEL_LABEL[level],
-}));
-
-/** Nota manual: lo que el resumen automático no puede saber. */
+/** Una sola nota operativa para el turno siguiente. Volver a guardar reemplaza la anterior. */
 export function AddHandoverNoteForm({ handoverId }: { handoverId: string }) {
   return (
-    <ActionForm action={addHandoverNoteAction} resetOnSuccess hideSuccess>
+    <ActionForm action={saveSingleHandoverNoteAction} resetOnSuccess hideSuccess>
       <input type="hidden" name="handoverId" value={handoverId} />
-      <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-        <Field label="Clasificación" name="level" required>
-          <Select name="level" defaultValue={HandoverLevel.IMPORTANTE} options={LEVEL_OPTIONS} />
-        </Field>
-        <Field label="Nota" name="title" required>
-          <Input
-            name="title"
-            required
-            minLength={3}
-            maxLength={300}
-            placeholder="Ej: El ascensor de servicio queda con llave en recepción"
-          />
-        </Field>
-      </div>
-      <Field label="Detalle" name="detail">
-        <Textarea name="detail" rows={2} />
+      <Field label="Observación" name="observation" required>
+        <Textarea
+          name="observation"
+          rows={2}
+          required
+          minLength={3}
+          maxLength={500}
+          placeholder="Qué debe saber el turno entrante."
+        />
       </Field>
+      <Field label="Siguiente acción (turno entrante)" name="nextAction">
+        <Textarea
+          name="nextAction"
+          rows={2}
+          maxLength={500}
+          placeholder="Qué debe hacer después, si corresponde."
+        />
+      </Field>
+      <p className="text-xs text-slate-500">
+        Sólo existe una nota manual por entrega. Guardarla nuevamente reemplaza la anterior.
+      </p>
       <div className="flex justify-end">
-        <SubmitButton size="sm" pendingLabel="Agregando…">
-          Agregar nota
+        <SubmitButton size="sm" pendingLabel="Guardando…">
+          Guardar nota para el turno siguiente
         </SubmitButton>
       </div>
     </ActionForm>
@@ -64,7 +61,7 @@ export function RemoveHandoverNoteForm({ itemId }: { itemId: string }) {
   );
 }
 
-/** Regenera el resumen automático conservando las notas manuales. */
+/** Regenera el resumen automático conservando la nota manual. */
 export function RegenerateSummaryForm({ shiftId }: { shiftId: string }) {
   return (
     <ActionForm action={prepareHandoverAction} hideSuccess className="space-y-0">

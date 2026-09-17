@@ -67,13 +67,12 @@ function Block({ block }: { block: SupervisionBlock }) {
 export default async function SupervisionPage() {
   const user = await requirePageUser();
   /*
-    Misma condición que muestra la sección en el menú: el Recepcionista no
-    tiene `incident.manage`, así que el permiso se comprueba también acá y no
-    sólo en la navegación.
+    Debe coincidir exactamente con la navegación. Gestionar incidencias no
+    equivale a supervisar el trabajo de otros: Recepción puede gestionar una
+    incidencia sin obtener acceso al tablero de Supervisión por URL directa.
   */
   if (
     !hasPermission(user, 'supervision.view') &&
-    !hasPermission(user, 'incident.manage') &&
     !hasPermission(user, 'shift.manage')
   ) {
     redirect('/sin-permisos');

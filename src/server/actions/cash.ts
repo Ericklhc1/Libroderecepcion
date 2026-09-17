@@ -1,15 +1,19 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { AuditAction, HandoverStatus } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
+import { prisma } from '@/lib/prisma';
+import { recordAudit } from '@/server/audit';
 import {
   markHandoverElements,
   recordCashTransfer,
   saveCashCount,
 } from '@/server/services/cash';
+import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
 
 /**
@@ -66,6 +70,7 @@ export async function declareCashCountAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
     revalidatePath(`/turno/entrega/${handoverId}`);
     return { ok: true as const, message: summarise(statuses) };
   });
@@ -88,6 +93,7 @@ export async function confirmCashCountAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
     revalidatePath(`/turno/entrega/${handoverId}`);
     return { ok: true as const, message: summarise(statuses) };
   });
@@ -95,8 +101,8 @@ export async function confirmCashCountAction(
 
 const transferSchema = z.object({
   handoverId: z.string().min(1),
-  currency: z.string().trim().toUpperCase().length(3, 'La divisa lleva tres letras'),
-  amount: z.coerce.number().positive('El monto debe ser mayor que cero'),
+  currency: z.enum(['CLP', 'USD']),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
   reference: z.string().trim().max(60).optional(),
   notes: z.string().trim().max(500).optional(),
 });
@@ -109,6 +115,10 @@ export async function recordCashTransferAction(
     const user = await requirePermission('shift.handover');
     const input = transferSchema.parse(formDataToObject(formData));
 
+    if (input.amount === 0) {
+      return { ok: true as const, message: 'Sin egreso a tesorería: monto 0.' };
+    }
+
     await recordCashTransfer(user, {
       handoverId: input.handoverId,
       currency: input.currency,
@@ -118,11 +128,104 @@ export async function recordCashTransferAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
+    revalidatePath('/supervision');
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado y enviado a validación de Supervisión.`,
     };
+  });
+}
+
+const usdRateSchema = z.object({
+  handoverId: z.string().min(1),
+  usdRateCLP: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().positive('El valor del dólar debe ser mayor que cero').optional(),
+  ),
+});
+
+export async function saveHandoverUsdRateAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.handover');
+    const input = usdRateSchema.parse(formDataToObject(formData));
+    const usdRateCLP = input.usdRateCLP;
+
+    // Declarar dólar es opcional. Un formulario vacío no debe convertirse en 0
+    // ni generar un error de validación que ensucie los logs de producción.
+    if (usdRateCLP === undefined) {
+      return { ok: true as const, message: 'No se declaró un nuevo valor de dólar.' };
+    }
+
+    if (!(await getSettingBool('cash.usdRateEnabled', true))) {
+      throw new RuleError(
+        'La declaración de tipo de cambio está desactivada en la configuración de Caja.',
+      );
+    }
+
+    const handover = await prisma.shiftHandover.findUnique({
+      where: { id: input.handoverId },
+      include: { fromShift: { include: { assignments: true } } },
+    });
+    if (!handover) throw new RuleError('La entrega indicada no existe.');
+    if (handover.status !== HandoverStatus.BORRADOR) {
+      throw new RuleError('El dólar del turno se declara antes de enviar la entrega.');
+    }
+    if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+      throw new RuleError('Sólo quien está en el turno puede declarar el dólar de la entrega.');
+    }
+
+    const perHandoverKey = `handover.usdRateCLP.${input.handoverId}`;
+
+    await prisma.$transaction(async (tx) => {
+      /*
+        Dos valores distintos a propósito:
+        - reception.usdRateCLP = valor operativo vigente para formularios nuevos;
+        - handover.usdRateCLP.<id> = fotografía histórica de ESTA entrega.
+        Cambiar el dólar mañana no reescribe un cierre anterior.
+      */
+      await tx.systemSetting.upsert({
+        where: { key: 'reception.usdRateCLP' },
+        create: {
+          key: 'reception.usdRateCLP',
+          value: usdRateCLP,
+          category: 'recepción',
+          description: 'Valor operativo vigente del dólar en pesos chilenos que usa Recepción.',
+          updatedById: user.id,
+        },
+        update: { value: usdRateCLP, updatedById: user.id },
+      });
+      await tx.systemSetting.upsert({
+        where: { key: perHandoverKey },
+        create: {
+          key: perHandoverKey,
+          value: usdRateCLP,
+          category: 'caja-historica',
+          description: `Tipo de cambio USD/CLP utilizado en la entrega ${input.handoverId}.`,
+          updatedById: user.id,
+        },
+        update: { value: usdRateCLP, updatedById: user.id },
+      });
+      await recordAudit(
+        {
+          entity: 'ShiftHandover',
+          entityId: input.handoverId,
+          action: AuditAction.CONFIGURAR,
+          summary: `Tipo de cambio declarado para el turno: USD 1 = CLP ${usdRateCLP}.`,
+          user,
+          after: { usdRateCLP, historicalSetting: perHandoverKey },
+        },
+        tx,
+      );
+    });
+
+    revalidatePath('/caja');
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
+    return { ok: true as const, message: `Dólar declarado: USD 1 = CLP ${usdRateCLP}.` };
   });
 }
 

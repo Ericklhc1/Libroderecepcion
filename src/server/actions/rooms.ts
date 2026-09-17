@@ -39,6 +39,7 @@ import { applyImport, discardImport, prepareImport } from '@/server/services/pms
 function refreshRooms(roomNumber?: string | null) {
   revalidatePath('/habitaciones');
   revalidatePath('/llaves');
+  revalidatePath('/turno');
   revalidatePath('/');
   revalidatePath('/supervision');
   if (roomNumber) revalidatePath(`/habitaciones/${roomNumber}`);
@@ -60,7 +61,11 @@ export async function confirmCheckOutAction(
     refreshRooms(result.roomNumber);
     return {
       ok: true as const,
-      message: `Salida confirmada. La habitación ${result.roomNumber ?? ''} quedó liberada y la llave volvió al inventario.`.trim(),
+      message:
+        `Salida confirmada. La habitación ${result.roomNumber ?? ''} quedó liberada.` +
+        (result.pendingKeys > 0
+          ? ` Quedan ${result.pendingKeys} llave(s) por recibir.`
+          : ''),
     };
   });
 }

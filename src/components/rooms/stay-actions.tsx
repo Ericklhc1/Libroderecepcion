@@ -4,15 +4,9 @@ import { LogIn, LogOut } from 'lucide-react';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { confirmCheckInAction, confirmCheckOutAction } from '@/server/actions/rooms';
+import { confirmCheckInAction } from '@/server/actions/rooms';
+import { completeStayCheckoutAction } from '@/server/actions/stay-lifecycle';
 
-/**
- * Confirmación de salida y de check-in.
- *
- * Las dos son un botón y un diálogo de una sola pantalla: en el mesón no hay
- * tiempo para formularios largos. La confirmación se pide porque estos dos
- * gestos mueven al huésped de una capa a otra y liberan o entregan la llave.
- */
 export function StayActions({
   kind,
   stayId,
@@ -20,35 +14,40 @@ export function StayActions({
   roomNumber,
   availableKeys = [],
 }: {
-  kind: 'checkout' | 'checkin';
+  kind: 'checkout' | 'early-checkout' | 'checkin';
   stayId: string;
   guest: string;
   roomNumber: string;
   availableKeys?: Array<{ value: string; label: string }>;
 }) {
-  if (kind === 'checkout') {
+  if (kind === 'checkout' || kind === 'early-checkout') {
+    const early = kind === 'early-checkout';
     return (
       <div className="mt-3">
         <Dialog
-          title={`Confirmar la salida de la ${roomNumber}`}
-          description={`${guest} entrega la habitación. Las llaves vuelven al inventario y la habitación queda liberada.`}
+          title={early ? `Check-out anticipado de la ${roomNumber}` : `Confirmar la salida de la ${roomNumber}`}
+          description={
+            early
+              ? `${guest} todavía figura In House. Se conservará la fecha de salida prevista en el historial y se registrará la salida real como anticipada. Los pendientes de esta estadía seguirán heredándose sin contaminar al próximo huésped.`
+              : `${guest} deja la habitación. Los pendientes de esta estadía seguirán en el historial hasta resolverse. Las llaves se reciben por separado.`
+          }
           triggerVariant="primary"
           triggerSize="sm"
           triggerClassName="w-full"
           trigger={
             <>
               <LogOut className="h-4 w-4" aria-hidden="true" />
-              Confirmar salida
+              {early ? 'Realizar check-out anticipado' : 'Confirmar salida'}
             </>
           }
         >
-          <ActionForm action={confirmCheckOutAction} closeOnSuccess>
+          <ActionForm action={completeStayCheckoutAction} closeOnSuccess>
             <input type="hidden" name="stayId" value={stayId} />
-            <Field label="Nota" name="note" hint="Opcional. Queda en el historial de la habitación.">
-              <Input name="note" maxLength={300} placeholder="Ej: entregó dos llaves" />
+            <Field label="Nota" name="note" hint="Opcional. Queda en el historial de la estadía.">
+              <Input name="note" maxLength={300} placeholder={early ? 'Ej: huésped decide retirarse antes de la fecha prevista' : 'Ej: huésped salió sin devolver una copia'} />
             </Field>
             <SubmitButton className="w-full" pendingLabel="Confirmando…">
-              Confirmar salida y recibir llave
+              {early ? 'Confirmar check-out anticipado' : 'Confirmar salida'}
             </SubmitButton>
           </ActionForm>
         </Dialog>
@@ -73,16 +72,8 @@ export function StayActions({
       >
         <ActionForm action={confirmCheckInAction} closeOnSuccess>
           <input type="hidden" name="stayId" value={stayId} />
-          <Field
-            label="Llave a entregar"
-            name="keyId"
-            hint="Si no eliges ninguna, se entrega la llave principal de la habitación."
-          >
-            <Select
-              name="keyId"
-              placeholder="Llave principal de la habitación"
-              options={availableKeys}
-            />
+          <Field label="Llave a entregar" name="keyId" hint="Si no eliges ninguna, se entrega la llave principal de la habitación.">
+            <Select name="keyId" placeholder="Llave principal de la habitación" options={availableKeys} />
           </Field>
           <Field label="Nota" name="note">
             <Input name="note" maxLength={300} placeholder="Opcional" />

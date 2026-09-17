@@ -324,7 +324,7 @@ describe('habitaciones y llaves', () => {
       expect(still.stage).toBe(RoomStayStage.PENDIENTE);
     });
 
-    it('confirmada la salida, la entrada pasa a in house y recibe llave', async () => {
+    it('confirmada la salida, la entrada queda libre para entrar aunque falte la llave', async () => {
       const departure = await stayFor('408', RoomStayStatus.CHECK_OUT);
       await confirmCheckOut(receptionist, { stayId: departure.id });
 
@@ -332,15 +332,26 @@ describe('habitaciones y llaves', () => {
       expect(released.snapshot.outgoing).toBeNull();
       expect(released.snapshot.incomingState).toBe('LISTO');
       expect(released.snapshot.state).toBe('CHECK_IN_LISTO');
+      expect(released.snapshot.mainKey?.status).toBe(KeyStatus.PENDIENTE_DEVOLUCION);
+      expect(released.snapshot.mainKey?.stayId).toBe(departure.id);
 
       const incoming = await stayFor('408', RoomStayStatus.CHECK_IN);
       const result = await confirmCheckIn(receptionist, { stayId: incoming.id });
-      expect(result.keyCode).toBe('P-408');
+      expect(result.keyCode).not.toBeNull();
+      // La principal sigue con quien salió: la llegada puede usar una copia disponible.
+      expect(result.keyCode).not.toBe('P-408');
 
       const occupied = await getRoomDetail('408');
       expect(occupied.snapshot.state).toBe('OCUPADA');
       expect(occupied.snapshot.current?.reservationId).toBe('7508240');
-      expect(occupied.snapshot.mainKey?.status).toBe(KeyStatus.ASIGNADA);
+      expect(
+        occupied.keys.some(
+          (key) =>
+            key.code === result.keyCode &&
+            key.status === KeyStatus.ASIGNADA &&
+            key.stayId === incoming.id,
+        ),
+      ).toBe(true);
     });
 
     it('no se puede confirmar dos veces la misma salida', async () => {
@@ -591,7 +602,7 @@ describe('habitaciones y llaves', () => {
       expect(conflicts.some((conflict) => conflict.kind === 'CHECK_IN_CON_LLAVE')).toBe(false);
     });
 
-    it('la salida informada deja la llave pendiente de devolución', async () => {
+    it('confirmar la salida mantiene la llave pendiente hasta recibirla físicamente', async () => {
       // Primero alguien está dentro con su llave.
       const departure = await stayFor('408', RoomStayStatus.CHECK_OUT);
       await confirmCheckOut(receptionist, { stayId: departure.id });
@@ -620,12 +631,25 @@ describe('habitaciones y llaves', () => {
       const room = await getRoomDetail('408');
       expect(room.snapshot.mainKey?.status).toBe(KeyStatus.PENDIENTE_DEVOLUCION);
 
-      // Al confirmar la salida, la llave vuelve al inventario.
       await confirmCheckOut(receptionist, { stayId: nextDay.id });
-      const released = await prisma.roomKey.findUniqueOrThrow({ where: { code: 'P-408' } });
-      expect(released.status).toBe(KeyStatus.DISPONIBLE);
-      expect(released.stayId).toBeNull();
-      expect(released.roomId).not.toBeNull();
+      const stillOut = await prisma.roomKey.findUniqueOrThrow({ where: { code: 'P-408' } });
+      expect(stillOut.status).toBe(KeyStatus.PENDIENTE_DEVOLUCION);
+      expect(stillOut.stayId).toBe(nextDay.id);
+
+      // Ese estado es legítimo después del check-out: no es un conflicto de datos.
+      const conflicts = await getLiveConflicts();
+      expect(
+        conflicts.some(
+          (conflict) =>
+            conflict.kind === 'SALIDA_CONFIRMADA_CON_LLAVE' && conflict.roomNumber === '408',
+        ),
+      ).toBe(false);
+
+      await returnKey(receptionist, { keyId: stillOut.id });
+      const returned = await prisma.roomKey.findUniqueOrThrow({ where: { code: 'P-408' } });
+      expect(returned.status).toBe(KeyStatus.DISPONIBLE);
+      expect(returned.stayId).toBeNull();
+      expect(returned.roomId).not.toBeNull();
     });
 
     it('la copia adicional se descuenta del stock y vuelve al recuperarla', async () => {
@@ -664,10 +688,11 @@ describe('habitaciones y llaves', () => {
       const departure = await stayFor('408', RoomStayStatus.CHECK_OUT);
       await confirmCheckOut(receptionist, { stayId: departure.id });
       const incoming = await stayFor('408', RoomStayStatus.CHECK_IN);
-      await confirmCheckIn(receptionist, { stayId: incoming.id });
+      const result = await confirmCheckIn(receptionist, { stayId: incoming.id });
+      expect(result.keyCode).not.toBeNull();
 
       const movements = await prisma.keyMovement.findMany({
-        where: { key: { code: 'P-408' } },
+        where: { key: { code: result.keyCode! } },
         orderBy: { at: 'asc' },
       });
       expect(movements.length).toBeGreaterThan(0);

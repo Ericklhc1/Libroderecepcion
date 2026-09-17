@@ -12,21 +12,24 @@ import {
 export type UserOption = { value: string; label: string };
 
 /**
- * Emitir un comunicado obligatorio.
+ * Emitir un aviso importante.
  *
  * El selector de persona se muestra siempre y el servidor descarta el
  * destinatario cuando el alcance es «todos»: esconderlo con JavaScript sería
  * una barrera de interfaz, y la regla tiene que valer también si el formulario
  * se envía de otra forma.
+ *
+ * El modelo sigue siendo `Announcement`: cambia el lenguaje del mesón, no la
+ * arquitectura ni la trazabilidad que ya existe.
  */
 export function NewAnnouncementDialog({ users }: { users: UserOption[] }) {
   return (
     <Dialog
-      trigger="Emitir comunicado"
+      trigger="Emitir aviso importante"
       triggerVariant="gold"
       triggerSize="sm"
-      title="Comunicado obligatorio"
-      description="Bloquea la pantalla de quien lo recibe hasta que confirme la lectura escribiendo algo. Úsalo para lo que nadie puede dejar de leer."
+      title="Aviso importante"
+      description="Se muestra antes de continuar y pide una confirmación escrita de lectura. Úsalo para instrucciones que el turno necesita ver sí o sí."
     >
       <ActionForm action={createAnnouncementAction} closeOnSuccess resetOnSuccess>
         <Field label="Título" name="title" required>
@@ -62,19 +65,19 @@ export function NewAnnouncementDialog({ users }: { users: UserOption[] }) {
         <Field
           label="Caduca (opcional)"
           name="expiresAt"
-          hint="Vacío = no caduca. Un comunicado vencido deja de bloquear."
+          hint="Vacío = no caduca. Un aviso vencido deja de pedir confirmación."
         >
           <Input type="datetime-local" name="expiresAt" />
         </Field>
         <SubmitButton variant="gold" pendingLabel="Emitiendo…">
-          Emitir comunicado
+          Emitir aviso
         </SubmitButton>
       </ActionForm>
     </Dialog>
   );
 }
 
-/** Retira un comunicado: deja de bloquear y se conserva quién lo confirmó. */
+/** Retira un aviso: deja de bloquear y conserva quién lo confirmó. */
 export function CloseAnnouncementDialog({ announcementId }: { announcementId: string }) {
   return (
     <Dialog
@@ -82,8 +85,8 @@ export function CloseAnnouncementDialog({ announcementId }: { announcementId: st
       triggerVariant="ghost"
       triggerSize="sm"
       width="sm"
-      title="Retirar comunicado"
-      description="Deja de bloquear a quien no lo haya confirmado. Las confirmaciones que ya existen se conservan."
+      title="Retirar aviso"
+      description="Deja de pedir confirmación a quien no lo haya leído. Las confirmaciones que ya existen se conservan."
     >
       <ActionForm action={closeAnnouncementAction} closeOnSuccess>
         <input type="hidden" name="announcementId" value={announcementId} />

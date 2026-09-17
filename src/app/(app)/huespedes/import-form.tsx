@@ -5,14 +5,19 @@ import { ActionForm, Field } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { prepareGuestReservationImportAction } from '@/server/actions/guest-reservation-imports';
 
-export function GuestReservationImportForm() {
+export function GuestReservationImportForm({
+  returnTo,
+}: {
+  returnTo?: 'turno';
+} = {}) {
   return (
     <ActionForm action={prepareGuestReservationImportAction} hideSuccess>
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
       <Field
         label="Cargar informes de huéspedes & reservas"
         name="reports"
         required
-        hint="Habitaciones con actividad, entradas, in house y salidas. Puedes adjuntar varios PDF a la vez."
+        hint="Entradas, in house y salidas. Puedes adjuntar varios PDF a la vez; el sistema reconoce cada informe por sus encabezados."
       >
         <input
           type="file"

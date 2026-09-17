@@ -7,6 +7,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { SettingForm } from '../admin-forms';
 import { CashConfigForm } from '@/components/admin/cash-config-form';
+import { HandoverElementsConfig } from '@/components/admin/handover-elements-config';
 import { formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Parámetros' };
@@ -29,9 +30,10 @@ function boolSetting(
 
 export default async function SettingsPage() {
   await requirePagePermission('system.configure');
-  const [allSettings, cashFunds] = await Promise.all([
+  const [allSettings, cashFunds, handoverElements] = await Promise.all([
     getAllSettings(),
     prisma.cashFund.findMany({ where: { currency: { in: ['CLP', 'USD'] } } }),
+    prisma.handoverElementType.findMany({ orderBy: [{ order: 'asc' }, { name: 'asc' }] }),
   ]);
 
   // Fronti y Caja tienen pantallas/formularios propios: no se duplican abajo
@@ -80,6 +82,18 @@ export default async function SettingsPage() {
             transferReceiptRequired={boolSetting(allSettings, 'cash.transferReceiptRequired', false)}
             usdRateEnabled={boolSetting(allSettings, 'cash.usdRateEnabled', true)}
             requireDifferenceNote={boolSetting(allSettings, 'cash.requireDifferenceNote', true)}
+          />
+        </div>
+        <div className="border-t border-slate-200 px-4 py-4">
+          <HandoverElementsConfig
+            elements={handoverElements.map((element) => ({
+              id: element.id,
+              name: element.name,
+              detail: element.detail,
+              required: element.required,
+              active: element.active,
+              order: element.order,
+            }))}
           />
         </div>
       </Card>

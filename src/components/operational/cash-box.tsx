@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,9 +30,7 @@ function formatMinor(minor: number, currency: string): string {
 function FundRow({
   status,
 }: {
-  status: HandoverCashState['declared'] extends null
-    ? never
-    : NonNullable<HandoverCashState['declared']>['statuses'][number];
+  status: NonNullable<HandoverCashState['declared']>['statuses'][number];
 }) {
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
@@ -46,7 +45,7 @@ function FundRow({
         <Badge tone="atencion">Falta {formatMinor(status.shortfallMinor, status.currency)}</Badge>
       ) : (
         <Badge tone="pendiente">
-          Sobra {formatMinor(status.surplusMinor, status.currency)} · puede egresarse a tesorería
+          Sobra {formatMinor(status.surplusMinor, status.currency)}
         </Badge>
       )}
     </li>
@@ -64,47 +63,69 @@ function CountForm({
   kind: 'declarar' | 'confirmar';
   previous: Record<string, number>;
 }) {
-  const byCurrency = new Map<string, DenominationOption[]>();
-  for (const denomination of denominations) {
-    const list = byCurrency.get(denomination.currency) ?? [];
-    list.push(denomination);
-    byCurrency.set(denomination.currency, list);
-  }
+  const currencies = useMemo(() => {
+    const map = new Map<string, DenominationOption[]>();
+    for (const denomination of denominations) {
+      const list = map.get(denomination.currency) ?? [];
+      list.push(denomination);
+      map.set(denomination.currency, list);
+    }
+    return [...map.entries()];
+  }, [denominations]);
 
   return (
     <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}>
       <input type="hidden" name="handoverId" value={handoverId} />
-      <div className="space-y-3">
-        {[...byCurrency.entries()].map(([currency, rows]) => (
-          <fieldset key={currency} className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
-            <legend className="px-1 text-sm font-semibold text-petrol-900">{currency}</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {rows.map((denomination) => (
-                <label key={denomination.id} className="text-xs text-slate-600">
-                  <span className="block">
-                    {denomination.value.toLocaleString('es-CL')}{' '}
-                    <span className="text-slate-400">
-                      {CASH_MEDIUM_LABELS[denomination.medium].toLowerCase()}
-                    </span>
-                  </span>
-                  <Input
-                    name={`d_${denomination.id}`}
-                    type="number"
-                    min={0}
-                    step={1}
-                    inputMode="numeric"
-                    defaultValue={previous[denomination.id] ?? ''}
-                    placeholder="0"
-                    className="tabular"
-                  />
-                </label>
-              ))}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {currencies.map(([currency, rows]) => (
+          <fieldset key={currency} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+            <legend className="sr-only">Arqueo {currency}</legend>
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2">
+              <span className="text-sm font-semibold text-petrol-900">{currency}</span>
+              <span className="text-xs text-slate-500">Cantidad física</span>
             </div>
+            {(['BILLETE', 'MONEDA'] as CashMediumValue[]).map((medium) => {
+              const mediumRows = rows.filter((row) => row.medium === medium);
+              if (mediumRows.length === 0) return null;
+              return (
+                <div key={medium} className="border-b border-slate-100 last:border-0">
+                  <p className="px-3 pt-2 text-[0.68rem] font-semibold uppercase tracking-wide text-slate-400">
+                    {CASH_MEDIUM_LABELS[medium]}
+                  </p>
+                  <div className="divide-y divide-slate-100">
+                    {mediumRows.map((denomination) => (
+                      <label
+                        key={denomination.id}
+                        className="grid grid-cols-[1fr_6.5rem] items-center gap-3 px-3 py-2"
+                      >
+                        <span className="text-sm font-medium tabular text-petrol-900">
+                          {currency} {denomination.value.toLocaleString('es-CL')}
+                        </span>
+                        <Input
+                          name={`d_${denomination.id}`}
+                          type="number"
+                          min={0}
+                          step={1}
+                          inputMode="numeric"
+                          defaultValue={previous[denomination.id] ?? ''}
+                          placeholder="0"
+                          className="h-9 text-right tabular"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </fieldset>
         ))}
       </div>
 
-      <Field label="Observaciones del arqueo" name="notes" hint="Sólo necesarias si existe una diferencia que explicar.">
+      <Field
+        label="Observaciones del arqueo"
+        name="notes"
+        hint="Úsalo sólo cuando exista una diferencia que explicar."
+      >
         <Textarea name="notes" rows={2} maxLength={500} />
       </Field>
 
@@ -125,28 +146,97 @@ function ElementsForm({
   kind: 'declarar' | 'confirmar';
 }) {
   const field = kind === 'declarar' ? 'declared' : 'confirmed';
+  const eligible = useMemo(
+    () => (kind === 'confirmar' ? elements.filter((element) => element.declared) : elements),
+    [elements, kind],
+  );
+  const [selected, setSelected] = useState<string[]>(
+    eligible.filter((element) => element[field]).map((element) => element.id),
+  );
+
+  const selectedElements = eligible.filter((element) => selected.includes(element.id));
+  const available = eligible.filter((element) => !selected.includes(element.id));
+
+  if (kind === 'confirmar' && eligible.length === 0) {
+    return <p className="text-sm text-slate-500">El turno anterior declaró que no entrega elementos físicos.</p>;
+  }
+
   return (
     <ActionForm action={kind === 'declarar' ? declareElementsAction : confirmElementsAction}>
       <input type="hidden" name="handoverId" value={handoverId} />
-      <ul className="space-y-2">
-        {elements.map((element) => (
-          <li key={element.id} className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              name={`e_${element.id}`}
-              defaultChecked={element[field]}
-              className="mt-1 h-4 w-4 rounded border-slate-300 text-petrol-600"
+      {eligible.map((element) => (
+        <input
+          key={element.id}
+          type="hidden"
+          name={`e_${element.id}`}
+          value={selected.includes(element.id) ? 'true' : 'false'}
+        />
+      ))}
+
+      <Field
+        label={kind === 'declarar' ? 'Agregar elemento' : 'Confirmar elemento recibido'}
+        name="elementPicker"
+        hint="Selecciona un elemento y se agregará a la lista. Puedes quitarlo antes de guardar."
+      >
+        <select
+          name="elementPicker"
+          value=""
+          className="input-base"
+          onChange={(event) => {
+            const id = event.currentTarget.value;
+            if (id) setSelected((current) => [...current, id]);
+          }}
+        >
+          <option value="">{available.length ? 'Seleccionar…' : 'No quedan elementos por agregar'}</option>
+          {available.map((element) => (
+            <option key={element.id} value={element.id}>
+              {element.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {selectedElements.length > 0 ? (
+        <ul className="divide-y divide-slate-100 rounded-xl bg-slate-50 ring-1 ring-slate-200">
+          {selectedElements.map((element) => (
+            <li key={element.id} className="flex items-center justify-between gap-3 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-petrol-900">{element.name}</p>
+                {element.detail ? <p className="text-xs text-slate-500">{element.detail}</p> : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelected((current) => current.filter((id) => id !== element.id))}
+                className="text-xs font-medium text-red-700 hover:underline"
+              >
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : kind === 'declarar' ? (
+        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+          <p className="text-sm font-medium text-amber-900">No se entregará ningún elemento.</p>
+          <Field
+            label="Justificación"
+            name="noneJustification"
+            required
+            hint="Supervisión la revisará, pero esta revisión no bloquea el cierre."
+          >
+            <Textarea
+              name="noneJustification"
+              required
+              minLength={5}
+              maxLength={500}
+              rows={2}
+              placeholder="Ej.: no hay elementos físicos asignados a este turno."
             />
-            <span>
-              <span className="font-medium text-petrol-900">{element.name}</span>
-              {element.required ? null : <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
-              {element.detail ? <span className="block text-xs text-slate-500">{element.detail}</span> : null}
-            </span>
-          </li>
-        ))}
-      </ul>
+          </Field>
+        </div>
+      ) : null}
+
       <SubmitButton variant="secondary" pendingLabel="Guardando…">
-        {kind === 'declarar' ? 'Declarar elementos' : 'Confirmar que los recibo'}
+        {kind === 'declarar' ? 'Guardar elementos de entrega' : 'Confirmar elementos recibidos'}
       </SubmitButton>
     </ActionForm>
   );
@@ -262,14 +352,17 @@ export function CashBox({
 
         {state.elements.length > 0 ? (
           <section>
-            <h3 className="text-sm font-semibold text-petrol-900">Elementos</h3>
+            <h3 className="text-sm font-semibold text-petrol-900">Elementos físicos</h3>
             {role === 'lector' ? (
               <ul className="mt-1 space-y-1 text-sm">
                 {state.elements.map((element) => (
                   <li key={element.id} className="flex flex-wrap items-center gap-2">
                     <span className="text-petrol-900">{element.name}</span>
-                    <Badge tone={element.declared ? 'resuelto' : 'neutro'}>{element.declared ? 'Declarado' : 'Sin declarar'}</Badge>
-                    <Badge tone={element.confirmed ? 'resuelto' : 'neutro'}>{element.confirmed ? 'Recibido' : 'Sin confirmar'}</Badge>
+                    <Badge tone={element.declared ? 'resuelto' : 'neutro'}>{element.declared ? 'Declarado' : 'No entregado'}</Badge>
+                    {element.declared ? (
+                      <Badge tone={element.confirmed ? 'resuelto' : 'neutro'}>{element.confirmed ? 'Recibido' : 'Sin confirmar'}</Badge>
+                    ) : null}
+                    {!element.declared && element.notes ? <span className="text-xs text-slate-500">{element.notes}</span> : null}
                   </li>
                 ))}
               </ul>
@@ -317,20 +410,35 @@ export function CashBox({
         {role === 'emisor' ? (
           <>
             <div className="border-t border-slate-100 pt-3 no-print">
-              <h3 className="mb-2 text-sm font-semibold text-petrol-900">Declarar dólar operativo</h3>
+              <h3 className="mb-2 text-sm font-semibold text-petrol-900">Dólar operativo</h3>
               <ActionForm action={saveHandoverUsdRateAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />
-                <Field label="Tipo de cambio USD/CLP" name="usdRateCLP" hint="Cuántos pesos chilenos equivalen a USD 1 durante este turno.">
-                  <Input name="usdRateCLP" type="number" min="0.01" step="0.01" placeholder="Ej.: 950" />
+                <Field
+                  label="USD 1 = CLP"
+                  name="usdRateCLP"
+                  hint="Escribe pesos enteros. El campo no cambia con la rueda del ratón ni agrega decimales."
+                >
+                  <div className="relative max-w-xs">
+                    <span className="pointer-events-none absolute left-3 top-2.5 text-sm font-medium text-slate-500">CLP</span>
+                    <Input
+                      name="usdRateCLP"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
+                      placeholder="950"
+                      className="pl-12 text-right text-lg font-semibold tabular"
+                    />
+                  </div>
                 </Field>
-                <SubmitButton variant="secondary" pendingLabel="Guardando…">Guardar dólar del turno</SubmitButton>
+                <SubmitButton variant="secondary" pendingLabel="Guardando…">Guardar dólar</SubmitButton>
               </ActionForm>
             </div>
 
             <div className="border-t border-slate-100 pt-3 no-print">
-              <h3 className="mb-1 text-sm font-semibold text-petrol-900">Registrar egreso a tesorería</h3>
+              <h3 className="mb-1 text-sm font-semibold text-petrol-900">Egreso de Caja a tesorería</h3>
               <p className="mb-2 text-xs text-slate-500">
-                Opcional. Si el monto es 0 no se registra nada. Todo egreso mayor que 0 debe ser validado por Supervisión antes de enviar la entrega.
+                Es un movimiento real de Caja. Todo monto mayor que 0 genera una solicitud inmediata de autorización a Supervisión.
               </p>
               <ActionForm action={recordCashTransferAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />

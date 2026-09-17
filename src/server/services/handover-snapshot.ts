@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   AlertLevel,
+  EntryStatus,
   EntryType,
   FineStatus,
   FollowUpStatus,
@@ -10,6 +11,7 @@ import {
   ReservationStatus,
   RoomStayStage,
   RoomStayStatus,
+  TaskStatus,
 } from '@prisma/client';
 import type { Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -27,6 +29,8 @@ import {
   type LinenKindValue,
 } from '@/domain/fines';
 import { LIVE_ALERT_WHERE } from './alert-engine';
+import { listRoomsWithState } from './rooms';
+import { getSettingNumber } from './settings';
 
 export type SnapshotItem = {
   section: string;
@@ -38,6 +42,7 @@ export type SnapshotItem = {
 };
 
 const SECTIONS = {
+  resueltos: 'Resuelto en este turno',
   novedades: 'Novedades activas',
   incidencias: 'Incidencias abiertas',
   tareas: 'Tareas pendientes',
@@ -51,9 +56,10 @@ const SECTIONS = {
   garantias: 'Garantías pendientes',
   huespedes: 'Solicitudes de huéspedes',
   mantenimiento: 'Mantenimiento',
+  estadoHotel: 'Estado del hotel',
 } as const;
 
-/** Orden de presentación: lo urgente primero. */
+/** Orden de presentación: lo urgente primero y el contexto general al final. */
 export const SNAPSHOT_SECTION_ORDER: string[] = Object.values(SECTIONS);
 
 const PRIORITY_TO_LEVEL: Record<Priority, HandoverLevel> = {
@@ -80,6 +86,13 @@ function fmt(date: Date | null | undefined): string {
   });
 }
 
+type SnapshotOptions = {
+  /** Turno que está cerrando: permite contar lo resuelto en ESTE turno. */
+  shiftId?: string | null;
+  /** Las métricas se congelan sólo al preparar la entrega, no en previews genéricos. */
+  includeMetrics?: boolean;
+};
+
 /**
  * Construye el resumen automático de la entrega de turno: todo lo que el
  * turno siguiente necesita saber, agrupado y clasificado por urgencia.
@@ -96,6 +109,7 @@ function fmt(date: Date | null | undefined): string {
  */
 export async function buildHandoverSnapshot(
   now = new Date(),
+  options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
@@ -109,6 +123,8 @@ export async function buildHandoverSnapshot(
     departures,
     pendingKeys,
     fines,
+    resolvedEntries,
+    completedIndependentTasks,
   ] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
@@ -137,6 +153,7 @@ export async function buildHandoverSnapshot(
         status: true,
         priority: true,
         dueAt: true,
+        entryId: true,
         assignee: { select: { name: true } },
       },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
@@ -171,6 +188,7 @@ export async function buildHandoverSnapshot(
         nextAction: true,
         scheduledAt: true,
         status: true,
+        entryId: true,
         owner: { select: { name: true } },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -248,17 +266,85 @@ export async function buildHandoverSnapshot(
         linenKind: true,
         itemDetail: true,
         stainType: true,
-        reason: true,
         amount: true,
         currency: true,
         reservationCode: true,
-        guestName: true,
         room: { select: { number: true } },
+        reservationReference: {
+          select: { checkIn: true, checkOut: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
       take: 100,
     }),
+    options.shiftId
+      ? prisma.operationalEntry.findMany({
+          where: {
+            shiftId: options.shiftId,
+            deletedAt: null,
+            status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },
+          },
+          select: {
+            id: true,
+            seq: true,
+            type: true,
+            title: true,
+            resolution: true,
+            closedAt: true,
+            room: { select: { number: true } },
+            _count: { select: { tasks: true, followUps: true } },
+          },
+          orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
+          take: 150,
+        })
+      : Promise.resolve([]),
+    options.shiftId
+      ? prisma.task.findMany({
+          where: {
+            shiftId: options.shiftId,
+            deletedAt: null,
+            entryId: null,
+            status: TaskStatus.COMPLETADA,
+          },
+          select: { id: true, seq: true, title: true, completedAt: true },
+          orderBy: { completedAt: 'asc' },
+          take: 100,
+        })
+      : Promise.resolve([]),
   ]);
+
+  for (const resolved of resolvedEntries) {
+    items.push({
+      section: SECTIONS.resueltos,
+      level: HandoverLevel.INFORMATIVO,
+      title: `#${resolved.seq} ${resolved.title}`,
+      detail: [
+        ENTRY_TYPE_LABEL[resolved.type],
+        resolved.room ? `Hab. ${resolved.room.number}` : null,
+        resolved.resolution?.trim() || 'Resuelto durante el turno.',
+        resolved._count.tasks > 0 ? `${resolved._count.tasks} tarea(s)` : null,
+        resolved._count.followUps > 0 ? `${resolved._count.followUps} seguimiento(s)` : null,
+        resolved.closedAt ? `Cerrado ${fmt(resolved.closedAt)}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      refType: 'entry',
+      refId: resolved.id,
+    });
+  }
+
+  for (const task of completedIndependentTasks) {
+    items.push({
+      section: SECTIONS.resueltos,
+      level: HandoverLevel.INFORMATIVO,
+      title: `Tarea #${task.seq} · ${task.title}`,
+      detail: task.completedAt ? `Completada ${fmt(task.completedAt)}` : 'Completada durante el turno.',
+      refType: 'task',
+      refId: task.id,
+    });
+  }
+
+  const listedEntryIds = new Set(entries.map((entry) => entry.id));
 
   for (const entry of entries) {
     const who = entry.guest
@@ -312,12 +398,14 @@ export async function buildHandoverSnapshot(
   }
 
   for (const task of tasks) {
+    // Si la tarea forma parte de una novedad abierta, la entrega muestra el
+    // caso una sola vez. La tarea sigue viva dentro de la ficha del caso.
+    if (task.entryId && listedEntryIds.has(task.entryId)) continue;
+
     const overdue = task.dueAt !== null && task.dueAt.getTime() < now.getTime();
     items.push({
       section: SECTIONS.tareas,
-      level: overdue
-        ? HandoverLevel.URGENTE
-        : PRIORITY_TO_LEVEL[task.priority],
+      level: overdue ? HandoverLevel.URGENTE : PRIORITY_TO_LEVEL[task.priority],
       title: `#${task.seq} ${task.title}`,
       detail: [
         `Prioridad ${PRIORITY_LABEL[task.priority]}`,
@@ -330,6 +418,10 @@ export async function buildHandoverSnapshot(
   }
 
   for (const followUp of followUps) {
+    // Igual que las tareas: un seguimiento ligado a una novedad abierta no se
+    // repite como asunto independiente en la entrega.
+    if (followUp.entryId && listedEntryIds.has(followUp.entryId)) continue;
+
     const overdue = followUp.status === FollowUpStatus.VENCIDO;
     items.push({
       section: SECTIONS.seguimientos,
@@ -384,20 +476,26 @@ export async function buildHandoverSnapshot(
   }
 
   for (const fine of fines) {
+    const dates = fine.reservationReference
+      ? `Llegada ${fmt(fine.reservationReference.checkIn)} · Salida ${fmt(fine.reservationReference.checkOut)}`
+      : null;
+
     items.push({
       section: SECTIONS.multas,
       level: HandoverLevel.IMPORTANTE,
-      title: fineSummary({
-        roomNumber: fine.room.number,
-        kind: fine.kind as FineKindValue,
-        linenKind: fine.linenKind as LinenKindValue | null,
-        itemDetail: fine.itemDetail,
-        stainType: fine.stainType,
-      }),
+      title: `Multa ${fine.id.slice(0, 8)} · hab. ${fine.room.number}`,
       detail: [
-        `${FINE_STATUS_LABELS[fine.status]} · ${fine.guestName} · reserva ${fine.reservationCode}`,
+        `Reserva ${fine.reservationCode}`,
+        dates,
+        FINE_STATUS_LABELS[fine.status],
         fine.amount ? `${fine.currency} ${fine.amount.toString()}` : null,
-        fine.reason,
+        fineSummary({
+          roomNumber: fine.room.number,
+          kind: fine.kind as FineKindValue,
+          linenKind: fine.linenKind as LinenKindValue | null,
+          itemDetail: fine.itemDetail,
+          stainType: fine.stainType,
+        }),
       ]
         .filter(Boolean)
         .join(' · '),
@@ -493,6 +591,34 @@ export async function buildHandoverSnapshot(
       detail: alert.message,
       refType: 'alert',
       refId: alert.id,
+    });
+  }
+
+  if (options.includeMetrics) {
+    const [rooms, usdRateCLP] = await Promise.all([
+      listRoomsWithState(),
+      getSettingNumber('reception.usdRateCLP', 0),
+    ]);
+    const occupied = rooms.filter(
+      (room) => room.snapshot.current !== null || room.snapshot.outgoing !== null,
+    ).length;
+    const occupancy = rooms.length > 0 ? Math.round((occupied / rooms.length) * 1000) / 10 : 0;
+
+    items.push({
+      section: SECTIONS.estadoHotel,
+      level: HandoverLevel.INFORMATIVO,
+      title: `Ocupación ${occupancy}% (${occupied}/${rooms.length})`,
+      detail: 'Fotografía operativa al preparar la entrega.',
+      refType: 'metric',
+      refId: 'occupancy',
+    });
+    items.push({
+      section: SECTIONS.estadoHotel,
+      level: HandoverLevel.INFORMATIVO,
+      title: usdRateCLP > 0 ? `Dólar CLP ${usdRateCLP}` : 'Dólar sin configurar',
+      detail: 'Valor operativo vigente al preparar la entrega.',
+      refType: 'metric',
+      refId: 'usd-rate',
     });
   }
 

@@ -1584,6 +1584,8 @@ model Fine {
   itemDetail     String?
   /// Tipo de mancha identificada: «Maquillaje lápiz de ojos negro».
   stainType      String?
+  /// Cantidad de unidades afectadas por la misma multa. Aditivo: default 1.
+  quantity       Int                   @default(1)
   /// Motivo por el cual se considera procedente el cobro.
   reason         String
   /// Observaciones o antecedentes sobre la negativa del huésped.

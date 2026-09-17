@@ -9,6 +9,10 @@ import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/s
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { confirmCheckOut, softDeleteStay } from '@/server/services/rooms';
+import {
+  getCheckoutKeyContext,
+  resolveCheckoutKeyReturn,
+} from '@/server/services/checkout-keys';
 
 async function inheritPendingStayContext(stayId: string) {
   const stay = await prisma.roomStay.findUnique({
@@ -43,6 +47,8 @@ function refresh(roomNumber?: string | null) {
   revalidatePath('/');
   revalidatePath('/libro');
   revalidatePath('/habitaciones');
+  revalidatePath('/llaves');
+  revalidatePath('/notificaciones');
   revalidatePath('/supervision');
   revalidatePath('/turno');
   revalidatePath('/historial');
@@ -53,6 +59,7 @@ function refresh(roomNumber?: string | null) {
 const checkoutSchema = z.object({
   stayId: z.string().min(1),
   note: z.string().trim().max(300).optional(),
+  returnedKeyCount: z.coerce.number().int().min(0).default(0),
 });
 
 /** Salida única: sirve tanto para CHECK_OUT PMS como para IN_HOUSE anticipado. */
@@ -65,12 +72,30 @@ export async function completeStayCheckoutAction(
     const input = parseOrThrow(checkoutSchema, formDataToObject(formData));
     const stay = await prisma.roomStay.findFirst({
       where: { id: input.stayId, deletedAt: null },
-      select: { id: true, status: true, stage: true, departureDate: true, room: { select: { number: true } } },
+      select: {
+        id: true,
+        status: true,
+        stage: true,
+        departureDate: true,
+        room: { select: { number: true } },
+      },
     });
     if (!stay) throw new RuleError('Esa estadía no existe o fue eliminada.');
     if (stay.stage === RoomStayStage.FINALIZADO) throw new RuleError('Esa salida ya fue confirmada.');
     if (stay.status !== RoomStayStatus.IN_HOUSE && stay.status !== RoomStayStatus.CHECK_OUT) {
       throw new RuleError('Sólo se puede dar salida a una estadía in house o en check-out.');
+    }
+
+    /*
+      Validamos la cantidad ANTES de cerrar la estadía. Así un dato incorrecto
+      en el modal nunca deja un check-out confirmado a medias con las llaves sin
+      resolver.
+    */
+    const keyContext = await getCheckoutKeyContext(stay.id);
+    if (input.returnedKeyCount > keyContext.count) {
+      throw new RuleError(
+        `La habitación tiene ${keyContext.count} llave(s) asociada(s); no puedes confirmar ${input.returnedKeyCount} devuelta(s).`,
+      );
     }
 
     const early = stay.status === RoomStayStatus.IN_HOUSE;
@@ -94,15 +119,27 @@ export async function completeStayCheckoutAction(
         ? `CHECK-OUT ANTICIPADO. ${input.note?.trim() ?? ''}`.trim()
         : input.note?.trim() || null,
     });
+    const keys = await resolveCheckoutKeyReturn(user, {
+      stayId: stay.id,
+      returnedCount: input.returnedKeyCount,
+    });
+
     await inheritPendingStayContext(stay.id);
     refresh(result.roomNumber);
+
+    const keyMessage =
+      keyContext.count === 0
+        ? ' No había llaves asociadas a la estadía.'
+        : keys.pending > 0
+          ? ` Se recibieron ${keys.returned} de ${keyContext.count} llave(s); ${keys.pending} queda(n) pendiente(s) de devolución.`
+          : ` Se recibieron las ${keys.returned} llave(s) y volvieron al inventario.`;
 
     return {
       ok: true as const,
       message:
         `${early ? 'Check-out anticipado' : 'Salida'} confirmado. ` +
         `La habitación ${result.roomNumber ?? stay.room?.number ?? ''} quedó liberada.` +
-        (result.pendingKeys > 0 ? ` Quedan ${result.pendingKeys} llave(s) por recibir.` : ''),
+        keyMessage,
     };
   });
 }

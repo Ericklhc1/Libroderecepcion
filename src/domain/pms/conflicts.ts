@@ -91,12 +91,6 @@ function sameDay(a: Date | null, b: Date | null): boolean {
   return a.getTime() === b.getTime();
 }
 
-function assignedKeys(keys: KeyFacts[]): KeyFacts[] {
-  return keys.filter((key) =>
-    ['ASIGNADA', 'COPIA_ADICIONAL', 'PENDIENTE_DEVOLUCION'].includes(key.status),
-  );
-}
-
 export function detectConflicts(input: ConflictInput): Conflict[] {
   const conflicts: Conflict[] = [];
 
@@ -156,7 +150,6 @@ export function detectConflicts(input: ConflictInput): Conflict[] {
     }
 
     // 4. Llaves contra estado operativo.
-    const assigned = assignedKeys(room.keys);
     for (const stay of active) {
       const expected = expectedKeys(stay.status, stay.stage);
       const own = room.keys.filter(

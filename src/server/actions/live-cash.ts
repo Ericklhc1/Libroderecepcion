@@ -9,9 +9,10 @@ import { recordAudit } from '@/server/audit';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
+import { ROLE_KEYS } from '@/lib/permissions';
 import { saveLiveCashAudit } from '@/server/services/live-cash';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
-import { getMyOpenShift } from '@/server/services/shifts';
+import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 
 const gymPassSchema = z.object({
   stayId: z.string().min(1),
@@ -145,6 +146,7 @@ export async function createManualCashMovementAction(
 const auditSchema = z.object({
   currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
   countedAmount: z.coerce.number().nonnegative(),
+  reconcile: z.enum(['SI', 'NO']).default('NO'),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
@@ -153,17 +155,86 @@ export async function saveLiveCashAuditAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('room.view');
+    const user = await requirePermission('supervision.view');
+    if (user.roleKey !== ROLE_KEYS.SUPERVISOR) {
+      throw new RuleError('La reconciliación de Caja sólo puede realizarla un Supervisor.');
+    }
+
     const input = parseOrThrow(auditSchema, formDataToObject(formData));
     const result = await saveLiveCashAudit(user, input);
-    revalidatePath('/caja');
     const difference = result.difference;
-    return {
-      ok: true as const,
-      message:
-        difference === 0
-          ? `Caja ${input.currency} auditada: cuadra exactamente.`
-          : `Caja ${input.currency} auditada: diferencia ${difference > 0 ? '+' : ''}${difference}.`,
-    };
+    let reconciled = false;
+
+    if (difference !== 0 && input.reconcile === 'SI') {
+      const shift = await getCurrentShift();
+      if (!shift) {
+        throw new RuleError('No existe un turno operativo al que asociar el ajuste de cuadratura.');
+      }
+
+      const direction = difference > 0 ? 'ENTRADA' : 'SALIDA';
+      const kind = difference > 0 ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
+      const adjustment = Math.abs(difference);
+      const movementId = randomUUID();
+      const reference = `Ajuste autorizado por Supervisión · auditoría ${input.currency}`;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          INSERT INTO "CashMovement" (
+            "id", "kind", "direction", "currency", "amount", "shiftId",
+            "createdById", "reference", "notes"
+          ) VALUES (
+            ${movementId}, ${kind}, ${direction}, ${input.currency}, ${adjustment},
+            ${shift.id}, ${user.id}, ${reference}, ${input.notes}
+          )
+        `;
+
+        await tx.operationalEntry.create({
+          data: {
+            type: EntryType.CAJA,
+            status: EntryStatus.RESUELTO,
+            title: `Ajuste de cuadratura ${input.currency}`,
+            description:
+              `Supervisión actualizó el saldo esperado para hacerlo coincidir con el conteo físico. ` +
+              `Esperado anterior: ${result.expected}. Contado: ${input.countedAmount}. ` +
+              `Ajuste: ${direction === 'ENTRADA' ? '+' : '−'}${adjustment} ${input.currency}.`,
+            category: kind,
+            priority: Priority.MEDIA,
+            ownerId: user.id,
+            shiftId: shift.id,
+            occurredAt: new Date(),
+            tags: ['caja', 'cuadratura', 'ajuste-supervision'],
+            requiresFollowUp: false,
+            resolution: 'Diferencia reconciliada por Supervisión.',
+            createdById: user.id,
+          },
+        });
+
+        await recordAudit(
+          {
+            entity: 'CashMovement',
+            entityId: movementId,
+            action: AuditAction.CONFIGURAR,
+            user,
+            summary: `Supervisor reconcilió Caja ${input.currency}: ajuste ${direction} ${adjustment}`,
+            before: { expected: result.expected, counted: input.countedAmount, difference },
+            after: { expected: input.countedAmount, difference: 0 },
+            reason: input.notes,
+          },
+          tx,
+        );
+      });
+      reconciled = true;
+    }
+
+    revalidatePath('/caja');
+    revalidatePath('/libro');
+    revalidatePath('/turno');
+    const message =
+      difference === 0
+        ? `Caja ${input.currency} auditada: cuadra exactamente.`
+        : reconciled
+          ? `Caja ${input.currency} auditada y reconciliada por Supervisión. Diferencia eliminada mediante ajuste trazable.`
+          : `Caja ${input.currency} auditada: diferencia ${difference > 0 ? '+' : ''}${difference}. Se conserva sin modificar el saldo esperado.`;
+    return { ok: true as const, message };
   });
 }

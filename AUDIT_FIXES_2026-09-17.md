@@ -19,4 +19,6 @@ La pasada funcional alcanzó Compuerta verde con lint, TypeScript, regresiones y
 
 Antes de promocionar Producción se creó el snapshot de seguridad Neon `snap-steep-base-acewwx3p` sobre la rama `production`.
 
-La producción no debe considerarse validada hasta comprobar el deployment posterior al merge, la aplicación de migraciones y los smoke tests finales.
+## Criterio de salida
+
+No se considera cerrada la auditoría sólo porque compile. Para promover deben coincidir: HEAD de GitHub, Compuerta verde, Preview READY y migraciones verificadas. Después del merge se comprueban nuevamente deployment de producción, migraciones aplicadas y ausencia de errores críticos de runtime.

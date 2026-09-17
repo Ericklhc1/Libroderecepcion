@@ -16,6 +16,16 @@ export type ReservationCoreSyncResult = {
   staysLinked: number;
 };
 
+type StayIdentityRow = {
+  status: RoomStayStatus;
+  guestNames: string[];
+};
+
+type GuestCandidate = {
+  name: string;
+  status: RoomStayStatus;
+};
+
 function derivedReservationStatus(statuses: RoomStayStatus[]): ReservationStatus {
   /*
     Una reserva multihabitación puede tener una habitación saliendo mientras
@@ -55,23 +65,56 @@ function nameScore(value: string | null | undefined): number {
   return tokens * 20 + letters;
 }
 
-/**
- * Entradas puede traer «Cliente» y Salidas suele traer nombre+apellido.
- * El ID de reserva manda siempre; el nombre sólo enriquece la ficha.
- *
- * Sin una marca histórica fiable de «editado manualmente», el criterio es
- * deliberadamente conservador: sólo sustituimos un nombre por otro que aporte
- * claramente más información. Nunca se usa el nombre para decidir identidad.
- */
-function shouldUpgradeGuestName(current: string, candidate: string | null): boolean {
-  if (!candidate?.trim()) return false;
-  if (normalizedName(current) === normalizedName(candidate)) return false;
-  return nameScore(candidate) >= nameScore(current) + 8;
+function nameExistsInStatus(
+  stays: StayIdentityRow[],
+  status: RoomStayStatus,
+  name: string,
+): boolean {
+  const normalized = normalizedName(name);
+  return stays.some(
+    (stay) =>
+      stay.status === status &&
+      stay.guestNames.some((value) => normalizedName(value) === normalized),
+  );
 }
 
-function primaryGuestName(
-  stays: Array<{ status: RoomStayStatus; guestNames: string[]; createdAt?: Date }>,
-): string | null {
+/**
+ * Entradas puede traer «Cliente» (que incluso puede ser empresa/agencia) y
+ * Salidas suele traer Nombre + Apellidos ya identificados durante la estadía.
+ * El ID de reserva manda siempre; el nombre sólo enriquece la ficha.
+ *
+ * Si el huésped actual coincide con el dato de CHECK_IN y posteriormente el
+ * MISMO ID trae otro nombre en CHECK_OUT, la salida gana aunque el texto no sea
+ * más largo: es una fuente más rica, no una nueva identidad. Fuera de ese caso
+ * sólo sustituimos por un nombre claramente más informativo para no pisar una
+ * corrección manual con datos peores del PMS.
+ */
+function shouldUpgradeGuestName(
+  current: string,
+  candidate: GuestCandidate | null,
+  stays: StayIdentityRow[],
+): boolean {
+  if (!candidate?.name.trim()) return false;
+  if (normalizedName(current) === normalizedName(candidate.name)) return false;
+
+  if (
+    candidate.status === RoomStayStatus.CHECK_OUT &&
+    nameExistsInStatus(stays, RoomStayStatus.CHECK_IN, current)
+  ) {
+    return true;
+  }
+
+  if (
+    candidate.status === RoomStayStatus.IN_HOUSE &&
+    nameExistsInStatus(stays, RoomStayStatus.CHECK_IN, current)
+  ) {
+    return true;
+  }
+
+  return nameScore(candidate.name) >= nameScore(current) + 8;
+}
+
+function primaryGuestCandidate(stays: StayIdentityRow[]): GuestCandidate | null {
   const statusPriority: RoomStayStatus[] = [
     RoomStayStatus.CHECK_OUT,
     RoomStayStatus.IN_HOUSE,
@@ -83,13 +126,14 @@ function primaryGuestName(
       (stay) => stay.status === status && stay.guestNames.some((name) => name.trim()),
     );
     const name = candidate?.guestNames.find((value) => value.trim())?.trim();
-    if (name) return name;
+    if (name) return { name, status };
   }
 
-  return stays
-    .flatMap((stay) => stay.guestNames)
-    .map((name) => name.trim())
-    .find(Boolean) ?? null;
+  for (const stay of stays) {
+    const name = stay.guestNames.find((value) => value.trim())?.trim();
+    if (name) return { name, status: stay.status };
+  }
+  return null;
 }
 
 /**
@@ -164,7 +208,8 @@ export async function syncReservationCoreFromPms(
   };
 
   for (const [code, reservationStays] of byCode) {
-    const primaryName = primaryGuestName(reservationStays);
+    const primaryGuest = primaryGuestCandidate(reservationStays);
+    const primaryName = primaryGuest?.name ?? null;
     const rooms = [
       ...new Set(
         reservationStays
@@ -223,10 +268,13 @@ export async function syncReservationCoreFromPms(
         });
         guestId = guest.id;
         result.guestsCreated += 1;
-      } else if (reservation.guest && primaryName && shouldUpgradeGuestName(reservation.guest.fullName, primaryName)) {
+      } else if (
+        reservation.guest &&
+        shouldUpgradeGuestName(reservation.guest.fullName, primaryGuest, reservationStays)
+      ) {
         await db.guestReference.update({
           where: { id: reservation.guest.id },
-          data: { fullName: primaryName, roomNumber },
+          data: { fullName: primaryName!, roomNumber },
         });
       }
 

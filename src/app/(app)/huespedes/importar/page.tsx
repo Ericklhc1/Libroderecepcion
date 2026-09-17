@@ -22,6 +22,9 @@ export default async function GuestReservationImportPage({
   await requirePagePermission('pms.import');
   const params = await searchParams;
   const batchId = typeof params.revision === 'string' ? params.revision : undefined;
+  const returnTo = params.volverA === 'turno' ? 'turno' as const : undefined;
+  const backHref = returnTo === 'turno' ? '/turno' : '/huespedes';
+  const backLabel = returnTo === 'turno' ? 'Mi turno' : 'Huéspedes & reservas';
 
   const [preview, batches] = await Promise.all([
     batchId ? getImportPreview(batchId).catch(() => null) : Promise.resolve(null),
@@ -31,23 +34,29 @@ export default async function GuestReservationImportPage({
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="no-print">
-        <Link href="/huespedes" className="inline-flex items-center gap-1.5 text-sm font-medium text-petrol-600 hover:underline">
+        <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm font-medium text-petrol-600 hover:underline">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Huéspedes & reservas
+          {backLabel}
         </Link>
       </div>
 
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Cargar información de huéspedes & reservas</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Los PDF alimentan el núcleo de reservas y, desde ahí, el resto de la operación. Nada se aplica sin una revisión previa.
+          Esta es la única ruta de importación PMS. Los PDF alimentan reservas y estadías y, desde ahí, habitaciones, llaves, caja, garantías y el resto de la operación. Nada se aplica sin revisión previa.
         </p>
       </header>
+
+      {returnTo === 'turno' ? (
+        <div className="rounded-lg bg-gold-50 px-4 py-3 text-sm text-petrol-900 ring-1 ring-gold-200">
+          Estás actualizando la fotografía PMS para el cierre de turno. Después de aplicar volverás a Mi turno para continuar la entrega.
+        </div>
+      ) : null}
 
       {!preview ? (
         <>
           <Card className="p-4">
-            <GuestReservationImportForm />
+            <GuestReservationImportForm returnTo={returnTo} />
           </Card>
           <Card>
             <CardHeader title="Cargas recientes" count={batches.length} />
@@ -62,7 +71,10 @@ export default async function GuestReservationImportPage({
                     <span className="text-slate-500">{batch.createdBy.name}</span>
                     <span className="text-xs text-slate-400">{formatDateTime(batch.createdAt)}</span>
                     {batch.status === 'BORRADOR' ? (
-                      <Link href={`/huespedes/importar?revision=${batch.id}`} className="ml-auto text-sm font-medium text-petrol-600 hover:underline">
+                      <Link
+                        href={`/huespedes/importar?revision=${batch.id}${returnTo ? '&volverA=turno' : ''}`}
+                        className="ml-auto text-sm font-medium text-petrol-600 hover:underline"
+                      >
                         Revisar
                       </Link>
                     ) : null}
@@ -130,7 +142,7 @@ export default async function GuestReservationImportPage({
             </div>
           </Card>
 
-          <GuestReservationReviewActions batchId={preview.batchId} />
+          <GuestReservationReviewActions batchId={preview.batchId} returnTo={returnTo} />
         </>
       )}
     </div>

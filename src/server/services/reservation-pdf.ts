@@ -70,6 +70,11 @@ function candidateAfterLabel(lines: string[], labels: RegExp[]): string | null {
 }
 
 function reservationCode(lines: string[]): string | null {
+  const fullText = lines.join('\n');
+  const fns = fullText.match(/\bDatos\s+de\s+la\s+reserva\.?\s*ID\s*:\s*([A-Z0-9._\/-]{3,})/i)
+    ?? fullText.match(/(?:^|\n)\s*ID\s*:\s*(\d{6,12})\b/i);
+  if (fns?.[1]) return fns[1].replace(/[.,;:]+$/, '').toUpperCase();
+
   const labels = [
     /\bID\s*(?:DE\s*)?(?:RESERVA|RESERVATION)\b/i,
     /\bN[°º.]?\s*(?:DE\s*)?RESERVA\b/i,
@@ -97,56 +102,121 @@ function reservationCode(lines: string[]): string | null {
 }
 
 function dateFromLabel(lines: string[], labels: RegExp[]): string | null {
-  const raw = candidateAfterLabel(lines, labels);
-  const source = raw ?? lines.find((line) => labels.some((label) => label.test(line))) ?? '';
-  const match = source.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
-  if (!match) return null;
-  const day = match[1];
-  const month = match[2];
-  const year = match[3];
-  if (!day || !month || !year) return null;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  // La prioridad es la del tipo de campo, no la primera palabra que aparezca
+  // visualmente en el PDF. FNSRooms imprime arriba "Check-in Cobrado Check-out"
+  // como estados y más abajo los campos autoritativos "Entrada:" / "Salida:".
+  for (const label of labels) {
+    for (const line of lines) {
+      const found = line.match(label);
+      if (!found || found.index === undefined) continue;
+      const rest = line.slice(found.index + found[0].length).replace(/^[\s:#.\-–—]+/, '').trim();
+      const match = rest.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
+      if (!match) continue;
+      const day = match[1];
+      const month = match[2];
+      const year = match[3];
+      if (!day || !month || !year) continue;
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
+function cleanFieldValue(value: string | null | undefined, max = 160): string | null {
+  const clean = value
+    ?.replace(/[|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+  return clean || null;
+}
+
+function fnsGuestName(lines: string[]): string | null {
+  const fullText = lines.join('\n');
+  const start = fullText.search(/\bDatos\s+del\s+cliente\b/i);
+  if (start < 0) return null;
+  const tail = fullText.slice(start);
+  const end = tail.search(/\b(?:Datos\s+empresa|Desglose\s+reserva|Consumos\s+y\s+servicios)\b/i);
+  const section = end > 0 ? tail.slice(0, end) : tail.slice(0, 2_500);
+  const match = section.match(
+    /\bNombre\s*:\s*([\s\S]*?)(?=\s+(?:Email|Tel[eé]fono|Direcci[oó]n|Ciudad|Provincia|Pa[ií]s|Nacionalidad|N[º°o]\s*de\s*documento|Sexo|Motivo\s+viaje|Observaciones)\s*:|$)/i,
+  );
+  return cleanFieldValue(match?.[1]);
 }
 
 function guestName(lines: string[]): string | null {
+  const fns = fnsGuestName(lines);
+  if (fns) return fns;
   const value = candidateAfterLabel(lines, [
     /\bHU[EÉ]SPED(?:\s+PRINCIPAL)?\b/i,
     /\bNOMBRE\s+DEL\s+HU[EÉ]SPED\b/i,
     /\bGUEST\s*(?:NAME)?\b/i,
   ]);
   if (!value) return null;
-  return value
-    .split(/\s{2,}|\b(?:HABITACI[ÓO]N|ROOM|LLEGADA|ARRIVAL|CHECK[- ]?IN|SALIDA|DEPARTURE|CHECK[- ]?OUT)\b/i)[0]
-    ?.replace(/[|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 160) || null;
+  return cleanFieldValue(
+    value.split(/\s{2,}|\b(?:HABITACI[ÓO]N|ROOM|LLEGADA|ARRIVAL|CHECK[- ]?IN|SALIDA|DEPARTURE|CHECK[- ]?OUT)\b/i)[0],
+  );
+}
+
+function isHotelRoom(value: string): boolean {
+  const room = Number(value);
+  return (room >= 401 && room <= 429) || (room >= 501 && room <= 530) || (room >= 601 && room <= 630);
 }
 
 function roomNumber(lines: string[]): string | null {
-  const raw = candidateAfterLabel(lines, [/\bHAB(?:ITACI[ÓO]N)?\b/i, /\bROOM\b/i]);
-  const value = raw?.match(/\b\d{3}\b/)?.[0] ?? null;
-  return value && /^(4\d{2}|5\d{2}|6\d{2})$/.test(value) ? value : null;
+  const fullText = lines.join('\n');
+  const explicit = fullText.match(/\b(?:Habitaci[oó]n|Room)\s*:\s*([456]\d{2})\b/i)?.[1];
+  if (explicit && isHotelRoom(explicit)) return explicit;
+
+  // FNSRooms imprime la habitación dentro de la fila de «Desglose reserva».
+  // La geometría del PDF puede separar el encabezado «Hab.» del valor, por eso
+  // se busca primero en las filas del desglose, nunca en dirección/teléfono.
+  const headerIndex = lines.findIndex((line) => /\bHab\.?\b/i.test(line) && /Hu[eé]spedes/i.test(line));
+  const detailLines = headerIndex >= 0 ? lines.slice(headerIndex + 1, headerIndex + 6) : lines;
+  for (const line of detailLines) {
+    if (!/(?:Tarifa|Matrimonial|Individual|Doble|CL\$|\(\d+N\)|Hu[eé]sped)/i.test(line)) continue;
+    const candidates = line.match(/\b[456]\d{2}\b/g) ?? [];
+    const room = candidates.find(isHotelRoom);
+    if (room) return room;
+  }
+
+  const raw = candidateAfterLabel(lines, [/\bHABITACI[ÓO]N\b/i, /\bROOM\b/i]);
+  const candidates = raw?.match(/\b[456]\d{2}\b/g) ?? [];
+  return candidates.find(isHotelRoom) ?? null;
 }
 
 function channel(lines: string[]): string | null {
+  const fullText = lines.join('\n');
+  const fns = fullText.match(
+    /\bCanal\s*:\s*([\s\S]*?)(?=\s+(?:Segmento|Entrada|Salida|Direcci[oó]n|Ciudad|Provincia|Pa[ií]s|Nacionalidad|Datos\s+del\s+cliente)\s*:|\n|$)/i,
+  );
+  const precise = cleanFieldValue(fns?.[1], 80);
+  if (precise) return precise;
+
   const raw = candidateAfterLabel(lines, [/\bCANAL\b/i, /\bCHANNEL\b/i, /\bORIGEN\b/i]);
-  return raw?.split(/\s{2,}|\b(?:HABITACI[ÓO]N|ROOM|LLEGADA|SALIDA)\b/i)[0]?.trim().slice(0, 80) || null;
+  return cleanFieldValue(
+    raw?.split(/\s{2,}|\b(?:SEGMENTO|ENTRADA|HABITACI[ÓO]N|ROOM|LLEGADA|SALIDA|DIRECCI[ÓO]N|CIUDAD|PROVINCIA|PA[IÍ]S|NACIONALIDAD)\b/i)[0],
+    80,
+  );
 }
 
-export async function extractReservationPdf(data: Uint8Array): Promise<ReservationPdfExtract> {
-  const fragments = await readPdfFragments(data);
-  const lines = linesFromFragments(fragments);
+export function parseReservationLines(lines: string[]): ReservationPdfExtract {
   if (lines.length === 0) throw new RuleError('El PDF no contiene texto legible.');
   return {
     code: reservationCode(lines),
     guestName: guestName(lines),
     roomNumber: roomNumber(lines),
-    checkInDate: dateFromLabel(lines, [/\bLLEGADA\b/i, /\bARRIVAL\b/i, /\bCHECK[- ]?IN\b/i]),
+    checkInDate: dateFromLabel(lines, [/\bENTRADA\b/i, /\bLLEGADA\b/i, /\bARRIVAL\b/i, /\bCHECK[- ]?IN\b/i]),
     checkOutDate: dateFromLabel(lines, [/\bSALIDA\b/i, /\bDEPARTURE\b/i, /\bCHECK[- ]?OUT\b/i]),
     channel: channel(lines),
     rawText: lines.join('\n').slice(0, 12_000),
   };
+}
+
+export async function extractReservationPdf(data: Uint8Array): Promise<ReservationPdfExtract> {
+  const fragments = await readPdfFragments(data);
+  const lines = linesFromFragments(fragments);
+  return parseReservationLines(lines);
 }
 
 export async function createReservationPdfDraft(

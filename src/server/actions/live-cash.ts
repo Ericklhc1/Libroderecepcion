@@ -1,7 +1,16 @@
 'use server';
 
 import { randomUUID } from 'node:crypto';
-import { AuditAction, EntryStatus, EntryType, Priority } from '@prisma/client';
+import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
+  AuditAction,
+  EntryStatus,
+  EntryType,
+  NotificationType,
+  Priority,
+} from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
@@ -10,6 +19,7 @@ import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { notify } from '@/server/notifications';
 import { saveLiveCashAudit } from '@/server/services/live-cash';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
@@ -67,6 +77,70 @@ const movementSchema = z.object({
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
+type ManualMovementInput = z.infer<typeof movementSchema>;
+
+async function applyAuthorizedManualMovement(
+  user: Awaited<ReturnType<typeof requirePermission>>,
+  input: ManualMovementInput,
+  shiftId: string,
+) {
+  const movementId = randomUUID();
+  const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
+  const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO "CashMovement" (
+        "id", "kind", "direction", "currency", "amount", "shiftId",
+        "createdById", "reference", "notes"
+      ) VALUES (
+        ${movementId}, ${kind}, ${input.direction}, ${input.currency}, ${input.amount},
+        ${shiftId}, ${user.id}, ${input.reference}, ${input.notes}
+      )
+    `;
+
+    await tx.operationalEntry.create({
+      data: {
+        type: EntryType.CAJA,
+        status: EntryStatus.RESUELTO,
+        title: `${verb} de caja · ${input.reference}`,
+        description: `${verb} autorizado de ${input.currency} ${input.amount}. Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+        category: kind,
+        priority: Priority.BAJA,
+        ownerId: user.id,
+        shiftId,
+        occurredAt: new Date(),
+        tags: ['caja', input.direction.toLowerCase(), 'autorizado-supervision'],
+        requiresFollowUp: false,
+        resolution: 'Movimiento autorizado y registrado en Caja.',
+        createdById: user.id,
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'CashMovement',
+        entityId: movementId,
+        action: AuditAction.CREAR,
+        user,
+        summary: `${verb} de caja autorizado ${input.currency} ${input.amount} · ${input.reference}`,
+        after: {
+          direction: input.direction,
+          currency: input.currency,
+          amount: input.amount,
+          reference: input.reference,
+          notes: input.notes,
+          shiftId,
+          authorizedBy: user.id,
+        },
+      },
+      tx,
+    );
+  });
+
+  return movementId;
+}
+
 export async function createManualCashMovementAction(
   _state: ActionState | null,
   formData: FormData,
@@ -74,71 +148,107 @@ export async function createManualCashMovementAction(
   return runAction(async () => {
     const user = await requirePermission('room.manage');
     const input = parseOrThrow(movementSchema, formDataToObject(formData));
-    const shift = await getMyOpenShift(user.id);
+    const shift = await getMyOpenShift(user.id) ?? await getCurrentShift();
     if (!shift) {
-      throw new RuleError('Debes abrir o recibir el turno antes de registrar movimientos de caja.');
+      throw new RuleError('Debe existir un turno operativo antes de registrar movimientos de caja.');
     }
 
-    const movementId = randomUUID();
-    const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
     const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
+    if (user.roleKey === ROLE_KEYS.SUPERVISOR) {
+      const movementId = await applyAuthorizedManualMovement(user, input, shift.id);
+      revalidatePath('/caja');
+      revalidatePath('/libro');
+      revalidatePath('/turno');
+      return {
+        ok: true as const,
+        message: `${verb} autorizado y registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`,
+        id: movementId,
+      };
+    }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        INSERT INTO "CashMovement" (
-          "id", "kind", "direction", "currency", "amount", "shiftId",
-          "createdById", "reference", "notes"
-        ) VALUES (
-          ${movementId}, ${kind}, ${input.direction}, ${input.currency}, ${input.amount},
-          ${shift.id}, ${user.id}, ${input.reference}, ${input.notes}
-        )
-      `;
-
-      await tx.operationalEntry.create({
+    const request = await prisma.$transaction(async (tx) => {
+      const entry = await tx.operationalEntry.create({
         data: {
           type: EntryType.CAJA,
-          status: EntryStatus.RESUELTO,
-          title: `${verb} de caja · ${input.reference}`,
-          description: `${verb} manual de ${input.currency} ${input.amount}. Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
-          category: kind,
-          priority: Priority.BAJA,
+          status: EntryStatus.PENDIENTE,
+          title: `Solicitud de ${verb.toLowerCase()} de caja · ${input.reference}`,
+          description:
+            `${verb} solicitado por ${input.currency} ${input.amount}. ` +
+            `Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+          category: 'AJUSTE_CAJA_SOLICITADO',
+          priority: Priority.ALTA,
           ownerId: user.id,
           shiftId: shift.id,
           occurredAt: new Date(),
-          tags: ['caja', input.direction.toLowerCase()],
-          requiresFollowUp: false,
-          resolution: 'Movimiento registrado en Caja viva.',
+          tags: [
+            'caja',
+            'autorizacion-pendiente',
+            `direccion-${input.direction}`,
+            `moneda-${input.currency}`,
+            `monto-${input.amount}`,
+            `referencia-${encodeURIComponent(input.reference)}`,
+            ...(input.notes ? [`notas-${encodeURIComponent(input.notes)}`] : []),
+          ],
+          requiresFollowUp: true,
           createdById: user.id,
         },
+        select: { id: true, seq: true },
+      });
+
+      const alert = await tx.alert.create({
+        data: {
+          type: AlertType.OTRO,
+          level: AlertLevel.CRITICA,
+          status: AlertStatus.NUEVA,
+          title: `Autorizar ${verb.toLowerCase()} de Caja`,
+          message: `${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}. Solicitado por ${user.name}.`,
+          entryId: entry.id,
+          dedupeKey: `cash-manual:${entry.id}`,
+          auto: false,
+          createdById: user.id,
+        },
+        select: { id: true },
       });
 
       await recordAudit(
         {
-          entity: 'CashMovement',
-          entityId: movementId,
+          entity: 'OperationalEntry',
+          entityId: entry.id,
           action: AuditAction.CREAR,
           user,
-          summary: `${verb} de caja ${input.currency} ${input.amount} · ${input.reference}`,
-          after: {
-            direction: input.direction,
-            currency: input.currency,
-            amount: input.amount,
-            reference: input.reference,
-            notes: input.notes,
-            shiftId: shift.id,
-          },
+          summary: `Solicitud de autorización: ${verb} ${input.currency} ${input.amount} · ${input.reference}`,
+          after: { shiftId: shift.id, alertId: alert.id, status: 'PENDIENTE_SUPERVISION' },
         },
         tx,
       );
+
+      return { entry, alert };
     });
+
+    const supervisors = await prisma.user.findMany({
+      where: { active: true, deletedAt: null, role: { key: ROLE_KEYS.SUPERVISOR } },
+      select: { id: true },
+    });
+    await notify(
+      supervisors.map((supervisor) => ({
+        userId: supervisor.id,
+        type: NotificationType.ACCION_REQUERIDA,
+        title: `Autorizar ${verb.toLowerCase()} de Caja`,
+        body: `${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}`,
+        link: '/notificaciones',
+        entity: 'Alert',
+        entityId: request.alert.id,
+      })),
+    );
 
     revalidatePath('/caja');
     revalidatePath('/libro');
-    revalidatePath('/turno');
+    revalidatePath('/supervision');
+    revalidatePath('/notificaciones');
     return {
       ok: true as const,
-      message: `${verb} registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`,
-      id: movementId,
+      message: `${verb} solicitado. No modifica Caja hasta que un Supervisor lo autorice.`,
+      id: request.entry.id,
     };
   });
 }

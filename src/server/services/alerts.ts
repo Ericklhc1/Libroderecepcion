@@ -86,13 +86,6 @@ function decodeTag(value: string | null): string | null {
   }
 }
 
-/**
- * Una solicitud manual de Caja no modifica dinero hasta que Supervisión pulsa
- * «Autorizar». La propia alerta es la compuerta y el registro operativo guarda
- * los datos estructurados de la solicitud. La actualización condicional de la
- * entrada actúa como candado para que dos clics concurrentes no dupliquen el
- * movimiento.
- */
 async function applyCashManualApproval(user: CurrentUser, entryId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const entry = await tx.operationalEntry.findFirst({
@@ -302,7 +295,7 @@ export async function softDeleteAlert(
   user: CurrentUser,
   input: { id: string; reason: string },
 ) {
-  const alert = await loadAlert(id);
+  const alert = await loadAlert(input.id);
   const deleted = await prisma.alert.update({
     where: { id: input.id },
     data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },

@@ -62,6 +62,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['room.view'],
   },
   {
+    id: 'nueva-reserva',
+    title: 'Cargar una nueva reserva',
+    description:
+      'Adjunta el PDF de una reserva individual, revisa los datos detectados y confirma antes de incorporarla. El ID de reserva evita duplicados y conserva una sola ficha canónica.',
+    route: '/huespedes/nueva-reserva',
+    target: ROUTE_TARGET,
+    anyOf: ['pms.import'],
+  },
+  {
     id: 'huespedes-reservas',
     title: 'Huéspedes & reservas',
     description:
@@ -89,6 +98,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['room.view'],
   },
   {
+    id: 'cierre-caja',
+    title: 'Cierre de Caja',
+    description:
+      'Antes de finalizar el turno, aquí haces el arqueo físico, resuelves diferencias y congelas una fotografía auditable de la Caja.',
+    route: '/caja/cierre',
+    target: ROUTE_TARGET,
+    anyOf: ['shift.handover'],
+  },
+  {
     id: 'turno',
     title: 'Turno',
     description:
@@ -114,6 +132,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     route: '/supervision',
     target: ROUTE_TARGET,
     anyOf: ['supervision.view', 'shift.manage'],
+  },
+  {
+    id: 'informes-supervision',
+    title: 'Informes de Supervisión',
+    description:
+      'Genera informes de estado operativo, multas y gimnasio por rango de fechas, con salida en PDF y envío por correo cuando corresponde.',
+    route: '/supervision/informes',
+    target: ROUTE_TARGET,
+    anyOf: ['supervision.view'],
   },
   {
     id: 'historial',

@@ -10,17 +10,21 @@ import { canSend, smtpIsImplicitTls } from '@/domain/mail-config';
  * La configuración sale de la base si está, y del entorno si no. La
  * precedencia se decide acá y sólo acá, así que la consola de administración y
  * el envío real no pueden discrepar sobre qué servidor se está usando.
- *
- * `html` es opcional a propósito: los correos históricos de credenciales
- * siguen funcionando en texto plano, mientras que los registros operativos
- * pueden enviarse como ficha legible sin crear un segundo transporte.
  */
 
+export type MailAttachment = {
+  filename: string;
+  content: Buffer | Uint8Array;
+  contentType?: string;
+};
+
 export type MailMessage = {
+  /** Nodemailer admite uno o varios destinatarios separados por coma. */
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: MailAttachment[];
 };
 
 export type MailResult =
@@ -121,6 +125,11 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      attachments: message.attachments?.map((attachment) => ({
+        filename: attachment.filename,
+        content: Buffer.from(attachment.content),
+        contentType: attachment.contentType,
+      })),
     });
     return { sent: true, to: message.to };
   } catch (error) {

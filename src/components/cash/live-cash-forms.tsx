@@ -10,7 +10,7 @@ import {
 } from '@/server/actions/live-cash';
 
 function formatFolio(folio: number) {
-  return String(folio).padStart(6, '0');
+  return String(folio).padStart(4, '0');
 }
 
 export function ManualCashMovementForm() {
@@ -66,9 +66,27 @@ export function LiveCashAuditForm({ currency }: { currency: string }) {
       <Field label={`Total físico ${currency}`} name="countedAmount" required>
         <Input name="countedAmount" inputMode="decimal" required placeholder="0" />
       </Field>
-      <Field label="Observaciones" name="notes">
-        <Textarea name="notes" rows={2} placeholder="Opcional" />
+      <Field
+        label="Si existe una diferencia"
+        name="reconcile"
+        required
+        hint="Sí crea un ajuste trazable para que el saldo esperado coincida con el efectivo contado. No conserva la diferencia para investigación."
+      >
+        <Select
+          name="reconcile"
+          defaultValue="NO"
+          options={[
+            { value: 'NO', label: 'No · conservar la diferencia' },
+            { value: 'SI', label: 'Sí · actualizar saldo y eliminar diferencia' },
+          ]}
+        />
       </Field>
+      <Field label="Observaciones" name="notes">
+        <Textarea name="notes" rows={2} placeholder="Explica la diferencia o el ajuste, si corresponde." />
+      </Field>
+      <p className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800 ring-1 ring-orange-200">
+        La opción de reconciliar sólo está disponible para Supervisor y nunca borra el descuadre: registra la auditoría original y luego el ajuste que lo corrige.
+      </p>
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Auditando…">Registrar auditoría</SubmitButton>
       </div>
@@ -80,7 +98,7 @@ export function VoidGymPassDialog({ id, folio }: { id: string; folio: number }) 
   return (
     <Dialog
       title={`Anular folio ${formatFolio(folio)}`}
-      description="El folio no se elimina ni se reutiliza. Si fue pagado en efectivo, se registra la salida correspondiente de Caja viva."
+      description="El folio no se elimina ni se reutiliza. La anulación conserva toda la trazabilidad del pase."
       triggerVariant="ghost"
       triggerSize="sm"
       width="sm"

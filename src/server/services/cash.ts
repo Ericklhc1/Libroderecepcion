@@ -351,7 +351,6 @@ export async function recordCashTransfer(
     await tx.alert.create({
       data: {
         type: AlertType.OTRO,
-        // La validación es obligatoria y debe ser visible en Supervisión.
         level: AlertLevel.CRITICA,
         status: AlertStatus.NUEVA,
         title: 'Validar egreso a tesorería',
@@ -458,15 +457,26 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
   problems.push(
     ...cashHandoverProblems({
       statuses: state.declared.statuses,
-      // Si el administrador desactiva esta validación, el descuadre se conserva
-      // y se muestra, pero no bloquea por falta de texto explicativo.
       hasNotes: !requireDifferenceNote || Boolean(state.declared.notes),
     }),
   );
 
-  const missing = state.elements.filter((element) => element.required && !element.declared);
-  if (missing.length > 0) {
-    problems.push(`Falta declarar: ${missing.map((element) => element.name).join(', ')}.`);
+  /*
+    El catálogo distingue elementos obligatorios de elementos opcionales.
+    - Si falta un elemento obligatorio y todavía no se registró una ausencia
+      justificada, se conserva el bloqueo histórico: obliga al usuario a pasar
+      por el formulario y declarar qué ocurrió.
+    - Cuando el usuario declara explícitamente «ningún elemento» con una
+      justificación, esa nota queda en los elementos, Supervisión recibe una
+      alerta y el cierre deja de bloquearse aunque la validación siga pendiente.
+    - Si el catálogo sólo contiene elementos opcionales, omitirlos no bloquea.
+  */
+  if (state.elements.length > 0 && !state.elements.some((element) => element.declared)) {
+    const hasJustification = state.elements.some((element) => Boolean(element.notes?.trim()));
+    const requiredMissing = state.elements.filter((element) => element.required);
+    if (!hasJustification && requiredMissing.length > 0) {
+      problems.push(`Falta declarar: ${requiredMissing.map((element) => element.name).join(', ')}.`);
+    }
   }
 
   const pendingTransfers = state.transfers.filter(
@@ -493,7 +503,10 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
     );
   }
 
-  const missing = state.elements.filter((element) => element.required && !element.confirmed);
+  // Quien recibe confirma únicamente lo que efectivamente fue declarado por
+  // quien entrega; un catálogo activo no significa que todos sus elementos
+  // tengan que circular en cada turno.
+  const missing = state.elements.filter((element) => element.declared && !element.confirmed);
   if (missing.length > 0) {
     problems.push(`Confirma que recibes: ${missing.map((element) => element.name).join(', ')}.`);
   }

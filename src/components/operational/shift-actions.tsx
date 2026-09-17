@@ -14,14 +14,7 @@ import {
 } from '@/server/actions/shifts';
 import { SHIFT_WINDOW_LABEL } from '@/domain/shift';
 
-/**
- * Entrar al mesón.
- *
- * **Un botón para las dos cosas.** Si no hay turno abierto, lo abre; si ya hay
- * uno, se suma a ése. Quien llega no tiene por qué saber cuál de los dos casos
- * es, y ofrecerle la elección era pedirle que decidiera algo que el sistema ya
- * sabe. El tipo se propone según el reloj y se puede cambiar.
- */
+/** Entrar al mesón: si no hay turno, lo abre; si ya hay uno, se suma. */
 export function OpenShiftForm({
   suggestedType,
   joining,
@@ -86,12 +79,6 @@ export function AddShiftMemberForm({
   );
 }
 
-/**
- * Confirmación de recepción de la entrega anterior.
- *
- * El botón se deshabilita mientras la acción corre y el servidor rechaza una
- * segunda confirmación, de modo que una entrega no puede recibirse dos veces.
- */
 export function ReceiveHandoverForm({
   shiftId,
   handoverId,
@@ -173,13 +160,29 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
   );
 }
 
+/**
+ * El cierre final tiene dos pasos visibles y la base de datos refuerza el
+ * orden. Si Caja está habilitada, el segundo botón no puede completar el
+ * cierre hasta que exista un cierre de Caja vigente.
+ */
 export function CloseShiftForm({ shiftId }: { shiftId: string }) {
   return (
-    <ActionForm action={closeShiftAction} hideSuccess className="space-y-0">
-      <input type="hidden" name="shiftId" value={shiftId} />
-      <SubmitButton variant="secondary" pendingLabel="Cerrando…">
-        Cerrar turno
-      </SubmitButton>
-    </ActionForm>
+    <div className="space-y-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200">
+      <Link
+        href="/caja/cierre"
+        className="flex items-center justify-center rounded-lg bg-petrol-700 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-800"
+      >
+        1. Revisar y cerrar Caja
+      </Link>
+      <ActionForm action={closeShiftAction} hideSuccess className="space-y-0">
+        <input type="hidden" name="shiftId" value={shiftId} />
+        <SubmitButton variant="secondary" pendingLabel="Cerrando…">
+          2. Cerrar turno
+        </SubmitButton>
+      </ActionForm>
+      <p className="text-[0.7rem] leading-snug text-slate-500">
+        Si existe fondo de Caja y aún no está cuadrado/cerrado, el servidor rechazará el cierre del turno.
+      </p>
+    </div>
   );
 }

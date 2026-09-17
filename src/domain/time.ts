@@ -64,6 +64,71 @@ export function hotelParts(date: Date): {
 }
 
 /**
+ * Convierte una fecha y hora DE PARED del hotel a un instante UTC real.
+ *
+ * No se codifica UTC-3 ni UTC-4: Santiago cambia por horario de verano. La
+ * conversión converge comparando la hora deseada con la que `Intl` observa en
+ * la zona del hotel. Esto evita que un Late Checkout de las 17:00 termine a
+ * las 16:00/18:00 cuando cambie el huso.
+ */
+export function hotelWallDateTime(
+  dateKey: string,
+  hour: number,
+  minute = 0,
+): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) throw new Error(`Fecha local del hotel inválida: ${dateKey}`);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    throw new Error(`Hora local del hotel inválida: ${hour}`);
+  }
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+    throw new Error(`Minuto local del hotel inválido: ${minute}`);
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const targetWall = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  let guess = targetWall;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const observed = hotelParts(new Date(guess));
+    const observedWall = Date.UTC(
+      Number(observed.year),
+      Number(observed.month) - 1,
+      Number(observed.day),
+      Number(observed.hour),
+      Number(observed.minute),
+      0,
+      0,
+    );
+    const correction = targetWall - observedWall;
+    guess += correction;
+    if (correction === 0) break;
+  }
+
+  return new Date(guess);
+}
+
+/**
+ * Suma noches según el calendario del hotel y conserva la hora local original.
+ * A diferencia de sumar `24h`, no se corre una hora al cruzar un cambio de DST.
+ */
+export function addHotelCalendarDays(date: Date, days: number): Date {
+  if (!Number.isInteger(days)) throw new Error('Los días a sumar deben ser enteros.');
+  const parts = hotelParts(date);
+  const calendar = new Date(
+    Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + days),
+  );
+  const nextKey = [
+    calendar.getUTCFullYear(),
+    String(calendar.getUTCMonth() + 1).padStart(2, '0'),
+    String(calendar.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  return hotelWallDateTime(nextKey, Number(parts.hour), Number(parts.minute));
+}
+
+/**
  * La fecha operativa a la que pertenece un momento, en la zona del hotel.
  *
  * Se usa para agrupar por día. Con la zona del proceso, un registro de las

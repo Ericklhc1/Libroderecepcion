@@ -1,5 +1,6 @@
 import 'server-only';
-import { AlertStatus, AuditAction } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
 import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -72,6 +73,106 @@ async function loadAlert(id: string) {
   return alert;
 }
 
+function tagValue(tags: string[], prefix: string): string | null {
+  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
+}
+
+function decodeTag(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Autoriza una solicitud de movimiento sin permitir doble aplicación.
+ * EN_ESPERA → EN_CURSO funciona como un candado transaccional; sólo el proceso
+ * que reclama la fila inserta el movimiento. Después queda RESUELTO y marcado
+ * con `ajuste-aplicado` para que un reintento sea idempotente.
+ */
+async function applyCashManualApproval(user: CurrentUser, entryId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.operationalEntry.findFirst({
+      where: { id: entryId, deletedAt: null, category: 'AJUSTE_CAJA_SOLICITADO' },
+      select: { id: true, status: true, shiftId: true, tags: true, title: true },
+    });
+    if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
+    if (entry.tags.includes('ajuste-aplicado')) return;
+    if (!entry.shiftId) throw new RuleError('La solicitud no está vinculada a un turno.');
+
+    const direction = tagValue(entry.tags, 'direccion-');
+    const currency = tagValue(entry.tags, 'moneda-');
+    const amount = Number(tagValue(entry.tags, 'monto-'));
+    const reference = decodeTag(tagValue(entry.tags, 'referencia-')) ?? entry.title;
+    const notes = decodeTag(tagValue(entry.tags, 'notas-'));
+    if (
+      (direction !== 'ENTRADA' && direction !== 'SALIDA') ||
+      (currency !== 'CLP' && currency !== 'USD') ||
+      !(amount > 0)
+    ) {
+      throw new RuleError('La solicitud de Caja no contiene datos válidos para autorizarse.');
+    }
+
+    const claimed = await tx.operationalEntry.updateMany({
+      where: { id: entry.id, status: EntryStatus.EN_ESPERA },
+      data: { status: EntryStatus.EN_CURSO },
+    });
+    if (claimed.count === 0) {
+      const refreshed = await tx.operationalEntry.findUnique({
+        where: { id: entry.id },
+        select: { status: true, tags: true },
+      });
+      if (refreshed?.tags.includes('ajuste-aplicado')) return;
+      throw new RuleError('La solicitud de Caja ya no está pendiente de autorización.');
+    }
+
+    const movementId = randomUUID();
+    const kind = direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
+    await tx.$executeRaw`
+      INSERT INTO "CashMovement" (
+        "id", "kind", "direction", "currency", "amount", "shiftId",
+        "createdById", "reference", "notes"
+      ) VALUES (
+        ${movementId}, ${kind}, ${direction}, ${currency}, ${amount},
+        ${entry.shiftId}, ${user.id}, ${reference}, ${notes}
+      )
+    `;
+
+    await tx.operationalEntry.update({
+      where: { id: entry.id },
+      data: {
+        status: EntryStatus.RESUELTO,
+        resolution: `Movimiento autorizado por Supervisor ${user.name}.`,
+        requiresFollowUp: false,
+        closedAt: new Date(),
+        closedById: user.id,
+        tags: { push: 'ajuste-aplicado' },
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'CashMovement',
+        entityId: movementId,
+        action: AuditAction.CREAR,
+        summary: `Movimiento de Caja autorizado por Supervisor: ${direction} ${amount} ${currency} · ${reference}`,
+        user,
+        after: {
+          direction,
+          currency,
+          amount,
+          reference,
+          requestEntryId: entry.id,
+          shiftId: entry.shiftId,
+        },
+      },
+      tx,
+    );
+  });
+}
+
 export async function acknowledgeAlert(user: CurrentUser, id: string) {
   const alert = await loadAlert(id);
   if (alert.status === AlertStatus.RESUELTA) {
@@ -139,29 +240,35 @@ export async function resolveAlert(
   const alert = await loadAlert(input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
-  /*
-    Las alertas que equivalen a una aprobación formal no heredan simplemente
-    `alert.manage`: el rol que toma la decisión es parte de la regla de negocio.
-  */
-  if (
-    alert.dedupeKey?.startsWith('cash-transfer:') &&
-    user.roleKey !== ROLE_KEYS.SUPERVISOR
-  ) {
+  const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:') === true;
+  const cashManual = alert.dedupeKey?.startsWith('cash-manual:') === true;
+  const noElements = alert.dedupeKey?.startsWith('handover-elements-none:') === true;
+  const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:') === true;
+
+  if ((cashTransfer || cashManual) && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
     throw new RuleError(
-      'Los egresos a tesorería sólo pueden ser validados por un Supervisor desde su cuenta.',
+      'Los movimientos de Caja sólo pueden ser autorizados por un Supervisor desde su cuenta.',
     );
   }
 
-  if (
-    alert.dedupeKey?.startsWith('shift-validation:') &&
-    user.roleKey !== ROLE_KEYS.SUPERVISOR &&
-    !user.isSystemAdmin
-  ) {
+  if (noElements && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
+    throw new RuleError(
+      'Una entrega sin elementos físicos sólo puede ser validada por un Supervisor.',
+    );
+  }
+
+  if (shiftValidation && user.roleKey !== ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin) {
     throw new RuleError(
       'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
     );
   }
 
+  if (cashManual) {
+    if (!alert.entryId) throw new RuleError('La solicitud de Caja no tiene un registro vinculado.');
+    await applyCashManualApproval(user, alert.entryId);
+  }
+
+  const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;
   const updated = await prisma.alert.update({
     where: { id: input.id },
     data: {
@@ -170,6 +277,7 @@ export async function resolveAlert(
       resolvedAt: new Date(),
       resolutionNote: input.note ?? null,
       snoozedUntil: null,
+      ...(checkoutDismissed ? { auto: false } : {}),
     },
     include: alertInclude,
   });
@@ -177,14 +285,18 @@ export async function resolveAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.CERRAR,
-    summary: alert.dedupeKey?.startsWith('cash-transfer:')
+    summary: cashTransfer
       ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
-      : alert.dedupeKey?.startsWith('shift-validation:')
-        ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-        : `Alerta resuelta: ${alert.title}`,
+      : cashManual
+        ? `Movimiento manual de Caja autorizado por Supervisor: ${alert.title}`
+        : noElements
+          ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
+          : shiftValidation
+            ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+            : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
-    after: { status: AlertStatus.RESUELTA },
+    after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
     reason: input.note ?? null,
   });
   return updated;

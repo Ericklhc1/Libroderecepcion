@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Banknote, Dumbbell } from 'lucide-react';
+import { Dumbbell } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
-import { ActionForm, Field, Select } from '@/components/ui/form';
+import { ActionForm, Field, Input } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { createGymPassAction } from '@/server/actions/live-cash';
 
@@ -16,14 +15,11 @@ export type GymPassContext = {
 
 export function GymPassDialog({
   context,
-  prices,
 }: {
   context: GymPassContext;
-  prices: { CLP: number; USD: number };
+  /** Compatibilidad temporal con llamadas antiguas; el pase ya no tiene precio. */
+  prices?: { CLP: number; USD: number };
 }) {
-  const [currency, setCurrency] = useState<'CLP' | 'USD'>('CLP');
-  const price = currency === 'CLP' ? prices.CLP : prices.USD;
-
   return (
     <Dialog
       triggerVariant="secondary"
@@ -35,7 +31,7 @@ export function GymPassDialog({
         </>
       }
       title={`Pase de gimnasio · habitación ${context.roomNumber}`}
-      description="Disponible sólo para huéspedes IN_HOUSE o CHECK_OUT cuya salida todavía no se ha confirmado."
+      description="Genera un folio por cada pax. El pase es informativo y no crea ingresos ni egresos en Caja."
     >
       <ActionForm action={createGymPassAction} closeOnSuccess resetOnSuccess>
         <input type="hidden" name="stayId" value={context.stayId} />
@@ -46,46 +42,29 @@ export function GymPassDialog({
           <p className="text-xs tabular text-slate-500">Reserva {context.reservationCode}</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Moneda" name="currency" required>
-            <Select
-              name="currency"
-              value={currency}
-              onChange={(event) => setCurrency(event.target.value as 'CLP' | 'USD')}
-              options={[
-                { value: 'CLP', label: `CLP $${prices.CLP.toLocaleString('es-CL')}` },
-                { value: 'USD', label: `USD ${prices.USD}` },
-              ]}
-            />
-          </Field>
-          <Field label="Medio de pago" name="paymentMethod" required>
-            <Select
-              name="paymentMethod"
-              defaultValue="EFECTIVO"
-              options={[
-                { value: 'EFECTIVO', label: 'Efectivo' },
-                { value: 'TARJETA', label: 'Tarjeta' },
-                { value: 'OTRO', label: 'Otro' },
-              ]}
-            />
-          </Field>
+        <Field
+          label="Cantidad de pax"
+          name="pax"
+          required
+          hint="1 pax = 1 folio. La cantidad de habitaciones no cambia este cálculo."
+        >
+          <Input
+            name="pax"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={20}
+            step={1}
+            defaultValue={1}
+            required
+          />
+        </Field>
+
+        <div className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-petrol-900 ring-1 ring-gold-200">
+          Los folios nuevos usan cuatro dígitos y comienzan en 1000. Se generan de forma correlativa y nunca dependen de un precio o medio de pago.
         </div>
 
-        <div className="flex items-center justify-between rounded-lg border border-gold-200 bg-gold-50 px-4 py-3">
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-petrol-900">
-            <Banknote className="h-4 w-4" aria-hidden="true" />
-            Total
-          </span>
-          <strong className="tabular text-lg text-petrol-900">
-            {currency} {price.toLocaleString('es-CL')}
-          </strong>
-        </div>
-
-        <p className="text-xs text-slate-500">
-          Se generará un folio correlativo de seis dígitos. Si el pago es en efectivo, el monto entra automáticamente a Caja.
-        </p>
-
-        <SubmitButton pendingLabel="Generando…">Generar folio</SubmitButton>
+        <SubmitButton pendingLabel="Generando…">Generar pase de gimnasio</SubmitButton>
       </ActionForm>
     </Dialog>
   );

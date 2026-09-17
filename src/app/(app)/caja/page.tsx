@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { ArrowRight, Banknote, Dumbbell, PlusCircle, Scale, ShieldCheck } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
-import { formatGymFolio } from '@/server/services/live-cash';
-import { getLiveCashStateWithGym as getLiveCashState } from '@/server/services/gym-pass';
+import {
+  formatGymFolio,
+  getLiveCashStateWithGym as getLiveCashState,
+} from '@/server/services/gym-pass';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
@@ -20,8 +22,8 @@ export const dynamic = 'force-dynamic';
 const MOVEMENT_LABEL: Record<string, string> = {
   GARANTIA_INGRESO: 'Garantía recibida',
   GARANTIA_DEVOLUCION: 'Garantía devuelta',
-  VENTA_GIMNASIO: 'Pase gimnasio',
-  ANULACION_GIMNASIO: 'Anulación gimnasio',
+  VENTA_GIMNASIO: 'Pase gimnasio histórico',
+  ANULACION_GIMNASIO: 'Anulación gimnasio histórica',
   AJUSTE_ENTRADA: 'Ingreso manual',
   AJUSTE_SALIDA: 'Egreso manual',
 };
@@ -45,8 +47,8 @@ export default async function LiveCashPage() {
         <div>
           <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Saldo físico esperado, garantías en custodia, ventas y auditorías. Disponible durante
-            todo el turno; el cierre sólo vuelve a comprobarlo.
+            Saldo físico esperado, garantías en custodia, movimientos y auditorías. Los folios de
+            gimnasio se muestran aquí como información y no modifican la caja.
           </p>
         </div>
         {canOperate ? (
@@ -71,7 +73,7 @@ export default async function LiveCashPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-petrol-800 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-700"
             >
               <Dumbbell className="h-4 w-4" aria-hidden="true" />
-              Vender pase desde habitación
+              Generar pase desde habitación
             </Link>
           </div>
         ) : null}
@@ -247,7 +249,7 @@ export default async function LiveCashPage() {
             <Dumbbell className="h-4 w-4 text-petrol-600" aria-hidden="true" />
             <div>
               <h2 className="font-semibold text-petrol-900">Folios de gimnasio</h2>
-              <p className="text-xs text-slate-500">Correlativos únicos de seis dígitos.</p>
+              <p className="text-xs text-slate-500">Correlativos únicos de cuatro dígitos · 1 pax = 1 folio.</p>
             </div>
           </div>
           {canOperate ? (
@@ -260,38 +262,42 @@ export default async function LiveCashPage() {
           <EmptyState message="Todavía no se han emitido folios." />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {state.gymPasses.map((pass) => (
-              <li key={pass.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-lg font-bold tabular tracking-wider text-petrol-900">
-                      {formatGymFolio(pass.folio)}
-                    </span>
-                    <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>
-                      {human(pass.status)}
-                    </Badge>
-                    <Chip>{pass.paymentMethod === 'EFECTIVO' ? 'Efectivo' : human(pass.paymentMethod)}</Chip>
+            {state.gymPasses.map((pass) => {
+              const legacyPaidPass = pass.amount > 0 && Boolean(pass.currency);
+              return (
+                <li key={pass.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-bold tabular tracking-wider text-petrol-900">
+                        {formatGymFolio(pass.folio)}
+                      </span>
+                      <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>
+                        {human(pass.status)}
+                      </Badge>
+                      {legacyPaidPass ? <Chip>Folio histórico con cobro</Chip> : <Chip>Informativo</Chip>}
+                    </div>
+                    <p className="mt-0.5 text-sm text-slate-700">
+                      Hab. {pass.roomNumber} · {pass.guestName} · rva. {pass.reservationCode}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {pass.receptionistName} · {formatDateTime(pass.issuedAt)}
+                      {legacyPaidPass ? ` · ${amount(pass.currency, pass.amount)}` : ''}
+                    </p>
+                    {pass.voidReason ? <p className="mt-1 text-xs text-red-700">Anulado: {pass.voidReason}</p> : null}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-700">
-                    Hab. {pass.roomNumber} · {pass.guestName} · rva. {pass.reservationCode}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {pass.receptionistName} · {formatDateTime(pass.issuedAt)} · {amount(pass.currency, pass.amount)}
-                  </p>
-                  {pass.voidReason ? <p className="mt-1 text-xs text-red-700">Anulado: {pass.voidReason}</p> : null}
-                </div>
-                {canOperate && pass.status === 'EMITIDO' ? (
-                  <div className="no-print"><VoidGymPassDialog id={pass.id} folio={pass.folio} /></div>
-                ) : null}
-              </li>
-            ))}
+                  {canOperate && pass.status === 'EMITIDO' ? (
+                    <div className="no-print"><VoidGymPassDialog id={pass.id} folio={pass.folio} /></div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
 
       <p className="flex items-center gap-2 text-xs text-slate-500">
         <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-        Caja viva no reemplaza el arqueo de entrega: lo alimenta. El cierre sigue siendo la validación final entre turnos.
+        Los folios de gimnasio son información operativa. Sólo garantías y movimientos reales alteran el saldo físico de Caja.
       </p>
     </div>
   );

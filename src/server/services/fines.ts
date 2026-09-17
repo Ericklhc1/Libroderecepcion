@@ -116,6 +116,7 @@ export async function createFine(
       stainType: input.stainType?.trim() || null,
       reason: input.reason!.trim(),
       guestStatement: input.guestStatement?.trim() || null,
+      quantity: input.quantity ?? 1,
       amount:
         input.amount !== null && input.amount !== undefined
           ? new Prisma.Decimal(input.amount)
@@ -137,6 +138,7 @@ export async function createFine(
       linenKind: input.linenKind ?? null,
       itemDetail: input.itemDetail ?? null,
       stainType: input.stainType ?? null,
+      quantity: input.quantity ?? 1,
     })}. Reserva ${input.reservationCode} · ${input.guestName}. Motivo: ${input.reason}`,
   });
 

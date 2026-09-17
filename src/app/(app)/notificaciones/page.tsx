@@ -1,51 +1,190 @@
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, Search } from 'lucide-react';
+import type { Prisma } from '@prisma/client';
 import { requirePageUser } from '@/server/auth/guard';
+import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
+import { ROLE_KEYS } from '@/lib/permissions';
+import { LIVE_ALERT_WHERE } from '@/server/services/alert-engine';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
-import { Chip } from '@/components/ui/badge';
-import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
+import { Badge, Chip } from '@/components/ui/badge';
+import {
+  ALERT_LEVEL_LABEL,
+  ALERT_LEVEL_TONE,
+  NOTIFICATION_TYPE_LABEL,
+} from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
+import {
+  ResolveAlertQuickForm,
+  Snooze30AlertForm,
+} from '@/components/operational/alert-actions';
 import { MarkAllReadForm, MarkOneReadForm } from './notification-actions';
 
 export const metadata = { title: 'Notificaciones' };
 export const dynamic = 'force-dynamic';
 
-export default async function NotificationsPage() {
-  const user = await requirePageUser();
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-  // Filtrado por usuario: nadie puede ver notificaciones ajenas.
-  const notifications = await prisma.notification.findMany({
-    where: { userId: user.id },
-    orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
-    take: 100,
-  });
+export default async function NotificationsPage({ searchParams }: { searchParams: SearchParams }) {
+  const user = await requirePageUser();
+  const params = await searchParams;
+  const query = typeof params.q === 'string' ? params.q.trim() : '';
+  const canManageAlerts = hasPermission(user, 'alert.manage');
+  const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
+  const canValidateClosure = isSupervisor || user.isSystemAdmin;
+  const now = new Date();
+
+  const notificationWhere: Prisma.NotificationWhereInput = {
+    userId: user.id,
+    ...(query
+      ? {
+          OR: [
+            { title: { contains: query, mode: 'insensitive' } },
+            { body: { contains: query, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+
+  const actionKinds: Prisma.AlertWhereInput[] = [
+    { dedupeKey: { startsWith: 'checkout-unconfirmed:' } },
+  ];
+  if (isSupervisor) actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
+  if (canValidateClosure) actionKinds.push({ dedupeKey: { startsWith: 'shift-validation:' } });
+
+  const [notifications, actionableAlerts] = await Promise.all([
+    prisma.notification.findMany({
+      where: notificationWhere,
+      orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
+      take: 100,
+    }),
+    canManageAlerts
+      ? prisma.alert.findMany({
+          where: {
+            ...LIVE_ALERT_WHERE(now),
+            OR: actionKinds,
+            ...(query
+              ? {
+                  AND: [
+                    {
+                      OR: [
+                        { title: { contains: query, mode: 'insensitive' } },
+                        { message: { contains: query, mode: 'insensitive' } },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
+          take: 100,
+        })
+      : Promise.resolve([]),
+  ]);
 
   const unread = notifications.filter((n) => n.readAt === null);
+  const checkoutAlerts = actionableAlerts.filter((alert) =>
+    alert.dedupeKey?.startsWith('checkout-unconfirmed:'),
+  );
+  const approvalAlerts = actionableAlerts.filter(
+    (alert) =>
+      alert.dedupeKey?.startsWith('cash-transfer:') ||
+      alert.dedupeKey?.startsWith('shift-validation:'),
+  );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900">
             <Bell className="h-5 w-5 text-petrol-600" aria-hidden="true" />
-            Notificaciones
+            Centro de notificaciones
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            {unread.length > 0
-              ? `Tienes ${unread.length} notificación(es) sin leer.`
-              : 'Estás al día.'}
+            Avisos personales y acciones operativas que puedes resolver o posponer desde aquí.
           </p>
         </div>
         {unread.length > 0 ? <MarkAllReadForm /> : null}
       </header>
 
+      <form method="get" className="flex gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-200">
+        <label className="relative flex-1">
+          <span className="sr-only">Filtrar notificaciones</span>
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+          <input
+            name="q"
+            defaultValue={query}
+            placeholder="Filtrar por habitación, reserva, huésped, concepto…"
+            className="input-base w-full pl-9"
+          />
+        </label>
+        <button type="submit" className="rounded-lg bg-petrol-700 px-3 py-2 text-sm font-medium text-white hover:bg-petrol-800">
+          Filtrar
+        </button>
+        {query ? (
+          <Link href="/notificaciones" className="rounded-lg px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50">
+            Limpiar
+          </Link>
+        ) : null}
+      </form>
+
+      {checkoutAlerts.length > 0 ? (
+        <Card>
+          <CardHeader title="Check-outs por gestionar" count={checkoutAlerts.length} />
+          <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+            No son tarjetas persistentes del tablero. Gestiona el aviso aquí: resuélvelo o posponlo 30 minutos.
+          </p>
+          <ul className="divide-y divide-slate-100">
+            {checkoutAlerts.map((alert) => (
+              <li key={alert.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={ALERT_LEVEL_TONE[alert.level]}>{ALERT_LEVEL_LABEL[alert.level]}</Badge>
+                    <time className="text-xs tabular text-slate-400">{formatDateTime(alert.createdAt)}</time>
+                  </div>
+                  <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
+                  {alert.message ? <p className="mt-0.5 text-sm text-slate-600">{alert.message}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-2 no-print">
+                  <Snooze30AlertForm alertId={alert.id} />
+                  <ResolveAlertQuickForm alertId={alert.id} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {approvalAlerts.length > 0 ? (
+        <Card>
+          <CardHeader title="Autorizaciones y validaciones" count={approvalAlerts.length} />
+          <ul className="divide-y divide-slate-100">
+            {approvalAlerts.map((alert) => {
+              const cash = alert.dedupeKey?.startsWith('cash-transfer:');
+              return (
+                <li key={alert.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="atencion">{cash ? 'Caja' : 'Cierre de turno'}</Badge>
+                      <time className="text-xs tabular text-slate-400">{formatDateTime(alert.createdAt)}</time>
+                    </div>
+                    <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
+                    {alert.message ? <p className="mt-0.5 text-sm text-slate-600">{alert.message}</p> : null}
+                  </div>
+                  <ResolveAlertQuickForm alertId={alert.id} label={cash ? 'Autorizar' : 'Validar cierre'} />
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      ) : null}
+
       <Card>
-        <CardHeader title="Bandeja" count={notifications.length} />
+        <CardHeader title="Avisos personales" count={notifications.length} />
         {notifications.length === 0 ? (
           <EmptyState
-            message="No tienes notificaciones."
-            hint="Recibirás avisos al asignarte tareas, ante incidencias críticas, vencimientos y entregas disponibles."
+            message={query ? 'No hay avisos que coincidan con el filtro.' : 'No tienes notificaciones.'}
+            hint="Recibirás avisos por tareas, incidencias, vencimientos, entregas y solicitudes de autorización."
           />
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -81,9 +220,7 @@ export default async function NotificationsPage() {
                     </Link>
                   ) : null}
                 </div>
-                {notification.readAt === null ? (
-                  <MarkOneReadForm id={notification.id} />
-                ) : null}
+                {notification.readAt === null ? <MarkOneReadForm id={notification.id} /> : null}
               </li>
             ))}
           </ul>
@@ -91,8 +228,7 @@ export default async function NotificationsPage() {
       </Card>
 
       <p className="pb-2 text-xs text-slate-400">
-        Los avisos son internos. La arquitectura queda preparada para agregar correo o WhatsApp sin
-        modificar los módulos operativos.
+        Las alertas operativas siguen conservando trazabilidad, pero las que requieren una acción inmediata se administran desde esta bandeja.
       </p>
     </div>
   );

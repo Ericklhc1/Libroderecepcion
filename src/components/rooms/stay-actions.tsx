@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { KeyRound, LogIn, LogOut } from 'lucide-react';
+import { CalendarClock, KeyRound, LogIn, LogOut } from 'lucide-react';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { confirmCheckInAction } from '@/server/actions/rooms';
-import { completeStayCheckoutAction } from '@/server/actions/stay-lifecycle';
+import {
+  completeStayCheckoutAction,
+  modifyStayAction,
+} from '@/server/actions/stay-lifecycle';
 
 export function StayActions({
   kind,
@@ -25,6 +28,7 @@ export function StayActions({
 }) {
   const [keyDecision, setKeyDecision] = useState<'return' | 'none'>('return');
   const [returnedCount, setReturnedCount] = useState(Math.max(assignedKeyCount, 1));
+  const [stayMode, setStayMode] = useState<'LATE_CHECKOUT' | 'EXTEND'>('LATE_CHECKOUT');
 
   if (kind === 'checkout' || kind === 'early-checkout') {
     const early = kind === 'early-checkout';
@@ -32,7 +36,78 @@ export function StayActions({
       assignedKeyCount === 0 ? 0 : keyDecision === 'none' ? 0 : Math.min(returnedCount, assignedKeyCount);
 
     return (
-      <div className="mt-3">
+      <div className="mt-3 space-y-2">
+        <Dialog
+          title={`Modificar estadía · habitación ${roomNumber}`}
+          description={
+            early
+              ? `${guest} está IN_HOUSE. Puedes aplicar Late Checkout hasta las 17:00 o extender noches sin crear otra reserva.`
+              : `${guest} figura con check-out pendiente. Si extiendes o aplicas Late Checkout, vuelve a IN_HOUSE y conserva el mismo ID de reserva.`
+          }
+          triggerVariant="secondary"
+          triggerSize="sm"
+          triggerClassName="w-full"
+          trigger={
+            <>
+              <CalendarClock className="h-4 w-4" aria-hidden="true" />
+              Modificar estadía
+            </>
+          }
+        >
+          <ActionForm action={modifyStayAction} closeOnSuccess>
+            <input type="hidden" name="stayId" value={stayId} />
+            <Field label="Modificación" name="mode" required>
+              <select
+                name="mode"
+                value={stayMode}
+                onChange={(event) =>
+                  setStayMode(event.currentTarget.value as 'LATE_CHECKOUT' | 'EXTEND')
+                }
+                className="input-base"
+              >
+                <option value="LATE_CHECKOUT">LC / Late · salida hoy a las 17:00</option>
+                <option value="EXTEND">Extender · agregar noches</option>
+              </select>
+            </Field>
+
+            {stayMode === 'EXTEND' ? (
+              <Field
+                label="Cantidad de noches"
+                name="nights"
+                required
+                hint="La nueva salida se calcula sobre la fecha de salida vigente."
+              >
+                <Input
+                  name="nights"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={30}
+                  step={1}
+                  defaultValue={1}
+                  required
+                />
+              </Field>
+            ) : (
+              <div className="rounded-lg bg-gold-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-gold-200">
+                El vencimiento de la estadía se moverá a las <strong>17:00</strong> de la fecha de salida actual.
+              </div>
+            )}
+
+            <Field
+              label="Observación"
+              name="note"
+              hint="Opcional. El Libro publicará automáticamente Información anterior → Información nueva."
+            >
+              <Input name="note" maxLength={300} placeholder="Motivo o detalle adicional" />
+            </Field>
+
+            <SubmitButton className="w-full" pendingLabel="Actualizando…">
+              Confirmar modificación
+            </SubmitButton>
+          </ActionForm>
+        </Dialog>
+
         <Dialog
           title={early ? `Check-out anticipado de la ${roomNumber}` : `Confirmar la salida de la ${roomNumber}`}
           description={

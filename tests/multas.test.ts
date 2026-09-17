@@ -112,6 +112,13 @@ describe('formulario de multa', () => {
     expect(fineProblems({ ...EJEMPLO, amount: 0 }).map((p) => p.field)).toContain('amount');
     expect(fineProblems({ ...EJEMPLO, amount: -5 }).map((p) => p.field)).toContain('amount');
   });
+
+  it('la cantidad es opcional, pero si viene debe ser entero ≥ 1', () => {
+    expect(fineProblems({ ...EJEMPLO, quantity: null })).toEqual([]);
+    expect(fineProblems({ ...EJEMPLO, quantity: 3 })).toEqual([]);
+    expect(fineProblems({ ...EJEMPLO, quantity: 0 }).map((p) => p.field)).toContain('quantity');
+    expect(fineProblems({ ...EJEMPLO, quantity: 1.5 }).map((p) => p.field)).toContain('quantity');
+  });
 });
 
 describe('estados de la multa', () => {
@@ -173,6 +180,17 @@ describe('resumen de una línea', () => {
       itemDetail: 'Secador de pelo',
     });
     expect(texto).toBe('Hab. 301 · Secador de pelo');
+  });
+
+  it('muestra unidades cuando la cantidad es mayor que 1', () => {
+    const texto = fineSummary({
+      roomNumber: '527',
+      kind: 'BLANCO',
+      linenKind: 'TOALLA_MANO',
+      stainType: 'Vino',
+      quantity: 3,
+    });
+    expect(texto).toBe('Hab. 527 · Toalla de mano · 3 unidades · Vino');
   });
 
   it('cada tipo de blanco tiene su nombre en español', () => {
@@ -388,7 +406,7 @@ describe('multas contra la base', () => {
 
     await linkFineToGuarantee(supervisor, { fineId: multa.id, guaranteeId: garantia.id });
 
-    const fila = await prisma.fine.findUniqueOrThrow({ where: { id: multa.id } });
+    const fila = await prisma.fine.findUniqueOrThrow({ where: { id: multa.id });
     expect(fila.guaranteeId).toBe(garantia.id);
   });
 
@@ -434,5 +452,28 @@ describe('multas contra la base', () => {
     const abiertas = await listOpenFines();
     expect(abiertas.map((f) => f.id)).toContain(abierta.id);
     expect(abiertas.map((f) => f.id)).not.toContain(cerrada.id);
+  });
+
+  it('persiste quantity cuando se indica y usa 1 si se omite', async () => {
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+    const base = {
+      roomNumber: '527',
+      reservationCode: '7486899',
+      guestName: 'Angela Holzhauer',
+      kind: 'BLANCO' as const,
+      linenKind: 'TOALLA_MANO' as const,
+      stainType: 'Vino',
+      reason: 'Mancha irrecuperable.',
+    };
+
+    const conCantidad = await createFine(supervisor, { ...base, quantity: 3 });
+    expect(conCantidad.quantity).toBe(3);
+    const filaCon = await prisma.fine.findUniqueOrThrow({ where: { id: conCantidad.id } });
+    expect(filaCon.quantity).toBe(3);
+
+    const sinCantidad = await createFine(supervisor, base);
+    expect(sinCantidad.quantity).toBe(1);
+    const filaSin = await prisma.fine.findUniqueOrThrow({ where: { id: sinCantidad.id } });
+    expect(filaSin.quantity).toBe(1);
   });
 });

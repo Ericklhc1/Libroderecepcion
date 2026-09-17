@@ -4,9 +4,9 @@ import { parseReservationLines } from '@/server/services/reservation-pdf';
 describe('lector de reserva PDF FNSRooms', () => {
   it('extrae con precisión ID, huésped, habitación, fechas y canal aunque el PDF mezcle columnas', () => {
     const parsed = parseReservationLines([
-      'ID: 7531122',
+      'ID: 9001234',
       'Confirmada Check-in Cobrado Check-out',
-      'Datos de la reserva. ID: 7531122',
+      'Datos de la reserva. ID: 9001234',
       'Alojamiento: Hotel Ejemplo',
       'Fecha de la reserva: 14/09/2026 19:29:40',
       'Localizador: 5790334310',
@@ -26,7 +26,7 @@ describe('lector de reserva PDF FNSRooms', () => {
       '14897766 Doble Matrimonial Tarifa estándar AD CL$ 56.926 14/09/2026 15/09/2026 (1N) 2 405 María Ejemplo Soto Otro Huésped',
     ]);
 
-    expect(parsed.code).toBe('7531122');
+    expect(parsed.code).toBe('9001234');
     expect(parsed.guestName).toBe('María Ejemplo Soto');
     expect(parsed.roomNumber).toBe('405');
     expect(parsed.checkInDate).toBe('2026-09-14');
@@ -36,7 +36,7 @@ describe('lector de reserva PDF FNSRooms', () => {
 
   it('no confunde dirección, teléfono ni importes con habitación o canal', () => {
     const parsed = parseReservationLines([
-      'Datos de la reserva. ID: 7531122',
+      'Datos de la reserva. ID: 9001234',
       'Canal: Booking Dirección: Calle Ejemplo 123',
       'Entrada: 14/09/2026 Salida: 15/09/2026',
       'Datos del cliente Nombre: María Ejemplo Soto Email: huesped@example.com Teléfono: +56911111111 Dirección: Calle Ejemplo 123',

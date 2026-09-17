@@ -139,16 +139,21 @@ export async function resolveAlert(
   const alert = await loadAlert(input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
-  /*
-    Las alertas que equivalen a una aprobación formal no heredan simplemente
-    `alert.manage`: el rol que toma la decisión es parte de la regla de negocio.
-  */
   if (
     alert.dedupeKey?.startsWith('cash-transfer:') &&
     user.roleKey !== ROLE_KEYS.SUPERVISOR
   ) {
     throw new RuleError(
       'Los egresos a tesorería sólo pueden ser validados por un Supervisor desde su cuenta.',
+    );
+  }
+
+  if (
+    alert.dedupeKey?.startsWith('handover-elements-none:') &&
+    user.roleKey !== ROLE_KEYS.SUPERVISOR
+  ) {
+    throw new RuleError(
+      'Una entrega sin elementos físicos sólo puede ser validada por un Supervisor.',
     );
   }
 
@@ -179,9 +184,11 @@ export async function resolveAlert(
     action: AuditAction.CERRAR,
     summary: alert.dedupeKey?.startsWith('cash-transfer:')
       ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
-      : alert.dedupeKey?.startsWith('shift-validation:')
-        ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-        : `Alerta resuelta: ${alert.title}`,
+      : alert.dedupeKey?.startsWith('handover-elements-none:')
+        ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
+        : alert.dedupeKey?.startsWith('shift-validation:')
+          ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+          : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.RESUELTA },

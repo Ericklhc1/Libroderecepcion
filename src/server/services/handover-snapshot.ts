@@ -185,6 +185,7 @@ export async function buildHandoverSnapshot(
         priority: true,
         dueAt: true,
         entryId: true,
+        entry: { select: { seq: true, title: true } },
         assignee: { select: { name: true } },
       },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
@@ -220,6 +221,7 @@ export async function buildHandoverSnapshot(
         scheduledAt: true,
         status: true,
         entryId: true,
+        entry: { select: { seq: true, title: true } },
         owner: { select: { name: true } },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -375,8 +377,6 @@ export async function buildHandoverSnapshot(
     });
   }
 
-  const listedEntryIds = new Set(entries.map((entry) => entry.id));
-
   for (const entry of entries) {
     const who = entry.guest
       ? ` · ${entry.guest.fullName}${entry.guest.roomNumber ? ` (hab. ${entry.guest.roomNumber})` : ''}`
@@ -429,36 +429,32 @@ export async function buildHandoverSnapshot(
   }
 
   for (const task of tasks) {
-    // Si la tarea forma parte de una novedad abierta, la entrega muestra el
-    // caso una sola vez. La tarea sigue viva dentro de la ficha del caso.
-    if (task.entryId && listedEntryIds.has(task.entryId)) continue;
-
     const overdue = task.dueAt !== null && task.dueAt.getTime() < now.getTime();
     items.push({
       section: SECTIONS.tareas,
       level: overdue ? HandoverLevel.URGENTE : PRIORITY_TO_LEVEL[task.priority],
       title: `#${task.seq} ${task.title}`,
       detail: [
+        task.entry ? `Caso #${task.entry.seq}: ${task.entry.title}` : null,
         `Prioridad ${PRIORITY_LABEL[task.priority]}`,
         task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar',
         task.dueAt ? `${overdue ? 'VENCIDA' : 'Vence'}: ${fmt(task.dueAt)}` : 'Sin fecha límite',
-      ].join(' · '),
+      ]
+        .filter(Boolean)
+        .join(' · '),
       refType: 'task',
       refId: task.id,
     });
   }
 
   for (const followUp of followUps) {
-    // Igual que las tareas: un seguimiento ligado a una novedad abierta no se
-    // repite como asunto independiente en la entrega.
-    if (followUp.entryId && listedEntryIds.has(followUp.entryId)) continue;
-
     const overdue = followUp.status === FollowUpStatus.VENCIDO;
     items.push({
       section: SECTIONS.seguimientos,
       level: overdue ? HandoverLevel.URGENTE : HandoverLevel.IMPORTANTE,
       title: followUp.action,
       detail: [
+        followUp.entry ? `Caso #${followUp.entry.seq}: ${followUp.entry.title}` : null,
         followUp.nextAction ? `Próxima acción: ${followUp.nextAction}` : null,
         `Responsable: ${followUp.owner.name}`,
         followUp.scheduledAt

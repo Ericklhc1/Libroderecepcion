@@ -1,12 +1,22 @@
 # Depuración integral 2026-09-17
 
-Este archivo marca el inicio de la consolidación posterior a la auditoría integral del Libro Operativo de Recepción.
+Estado de salida de la pasada de consolidación:
 
-Objetivos de esta pasada:
-- una sola ruta canónica de importación PMS;
+- una sola ruta canónica de importación PMS: `/huespedes/importar`;
 - autorización de Supervisión coherente entre navegación y servidor;
-- ciclo de turno sin cierre directo desde ACTIVO;
-- sincronización PMS autoritativa para estado/fechas/habitación de la reserva;
-- consolidación del endpoint de Fronti;
-- alineación de permisos persistidos con la matriz declarada;
-- saneamiento de Caja y validaciones de egresos/entrega.
+- ciclo de turno sin cierre directo desde `ACTIVO`;
+- sincronización PMS autoritativa para estado, fechas y habitación de la reserva, usando el ID exacto como identidad;
+- datos personales enriquecidos en Recepción se conservan cuando el PMS sólo aporta una representación menos completa;
+- endpoint canónico de Fronti consolidado;
+- matriz de permisos del código y de la base alineada mediante migración;
+- Caja configurable y validaciones de egresos/entrega consolidadas;
+- revisión posterior de cierres preparada mediante alerta auditada;
+- pruebas antiguas actualizadas únicamente donde contradecían las reglas operativas consolidadas.
+
+## Verificación previa a promoción
+
+La pasada funcional alcanzó Compuerta verde con lint, TypeScript, regresiones y build correctos. El Preview de Vercel quedó READY y la base Preview de Neon recibió las migraciones nuevas; se verificaron la matriz de permisos y el trigger de validación posterior del cierre.
+
+Antes de promocionar Producción se creó un snapshot de seguridad de la rama `production` de Neon.
+
+La producción no debe considerarse validada hasta comprobar el deployment posterior al merge, la aplicación de migraciones y los smoke tests finales.

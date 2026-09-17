@@ -149,10 +149,11 @@ export async function saveHandoverUsdRateAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = usdRateSchema.parse(formDataToObject(formData));
+    const usdRateCLP = input.usdRateCLP;
 
     // Declarar dólar es opcional. Un formulario vacío no debe convertirse en 0
     // ni generar un error de validación que ensucie los logs de producción.
-    if (input.usdRateCLP === undefined) {
+    if (usdRateCLP === undefined) {
       return { ok: true as const, message: 'No se declaró un nuevo valor de dólar.' };
     }
 
@@ -181,39 +182,39 @@ export async function saveHandoverUsdRateAction(
         where: { key: 'reception.usdRateCLP' },
         create: {
           key: 'reception.usdRateCLP',
-          value: input.usdRateCLP,
+          value: usdRateCLP,
           category: 'recepción',
           description: 'Valor operativo vigente del dólar en pesos chilenos que usa Recepción.',
           updatedById: user.id,
         },
-        update: { value: input.usdRateCLP, updatedById: user.id },
+        update: { value: usdRateCLP, updatedById: user.id },
       });
       await tx.systemSetting.upsert({
         where: { key: perHandoverKey },
         create: {
           key: perHandoverKey,
-          value: input.usdRateCLP,
+          value: usdRateCLP,
           category: 'caja-historica',
           description: `Tipo de cambio USD/CLP utilizado en la entrega ${input.handoverId}.`,
           updatedById: user.id,
         },
-        update: { value: input.usdRateCLP, updatedById: user.id },
+        update: { value: usdRateCLP, updatedById: user.id },
       });
       await recordAudit(
         {
           entity: 'ShiftHandover',
           entityId: input.handoverId,
           action: AuditAction.CONFIGURAR,
-          summary: `Tipo de cambio declarado para el turno: USD 1 = CLP ${input.usdRateCLP}.`,
+          summary: `Tipo de cambio declarado para el turno: USD 1 = CLP ${usdRateCLP}.`,
           user,
-          after: { usdRateCLP: input.usdRateCLP, historicalSetting: perHandoverKey },
+          after: { usdRateCLP, historicalSetting: perHandoverKey },
         },
         tx,
       );
     });
 
     revalidatePath(`/turno/entrega/${input.handoverId}`);
-    return { ok: true as const, message: `Dólar declarado: USD 1 = CLP ${input.usdRateCLP}.` };
+    return { ok: true as const, message: `Dólar declarado: USD 1 = CLP ${usdRateCLP}.` };
   });
 }
 

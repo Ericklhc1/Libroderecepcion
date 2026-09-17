@@ -462,15 +462,20 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
   );
 
   /*
-    Los elementos físicos ya no son un bloqueo rígido por catálogo. El emisor
-    puede declarar sólo los que realmente entrega. Si no entrega ninguno, debe
-    dejar una justificación; esa ausencia se revisa después por Supervisión,
-    pero no impide cerrar la operación.
+    El catálogo distingue elementos obligatorios de elementos opcionales.
+    - Si falta un elemento obligatorio y todavía no se registró una ausencia
+      justificada, se conserva el bloqueo histórico: obliga al usuario a pasar
+      por el formulario y declarar qué ocurrió.
+    - Cuando el usuario declara explícitamente «ningún elemento» con una
+      justificación, esa nota queda en los elementos, Supervisión recibe una
+      alerta y el cierre deja de bloquearse aunque la validación siga pendiente.
+    - Si el catálogo sólo contiene elementos opcionales, omitirlos no bloquea.
   */
   if (state.elements.length > 0 && !state.elements.some((element) => element.declared)) {
     const hasJustification = state.elements.some((element) => Boolean(element.notes?.trim()));
-    if (!hasJustification) {
-      problems.push('Selecciona al menos un elemento o justifica por qué no se entrega ninguno.');
+    const requiredMissing = state.elements.filter((element) => element.required);
+    if (!hasJustification && requiredMissing.length > 0) {
+      problems.push(`Falta declarar: ${requiredMissing.map((element) => element.name).join(', ')}.`);
     }
   }
 

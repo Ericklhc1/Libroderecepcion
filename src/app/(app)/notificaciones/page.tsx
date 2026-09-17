@@ -51,6 +51,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   ];
   if (isSupervisor) {
     actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
+    actionKinds.push({ dedupeKey: { startsWith: 'cash-manual:' } });
     actionKinds.push({ dedupeKey: { startsWith: 'handover-elements-none:' } });
   }
   if (canValidateClosure) actionKinds.push({ dedupeKey: { startsWith: 'shift-validation:' } });
@@ -90,6 +91,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const approvalAlerts = actionableAlerts.filter(
     (alert) =>
       alert.dedupeKey?.startsWith('cash-transfer:') ||
+      alert.dedupeKey?.startsWith('cash-manual:') ||
       alert.dedupeKey?.startsWith('handover-elements-none:') ||
       alert.dedupeKey?.startsWith('shift-validation:'),
   );
@@ -162,8 +164,10 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           <CardHeader title="Autorizaciones y validaciones" count={approvalAlerts.length} />
           <ul className="divide-y divide-slate-100">
             {approvalAlerts.map((alert) => {
-              const cash = alert.dedupeKey?.startsWith('cash-transfer:');
+              const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:');
+              const cashManual = alert.dedupeKey?.startsWith('cash-manual:');
               const noElements = alert.dedupeKey?.startsWith('handover-elements-none:');
+              const cash = cashTransfer || cashManual;
               const label = cash
                 ? 'Autorizar'
                 : noElements

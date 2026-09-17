@@ -40,3 +40,28 @@ DO $$ BEGIN
     FOREIGN KEY ("reopenedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- Invariante de base de datos: ninguna ruta de código puede saltarse Caja.
+-- Esto protege también cierres automáticos, scripts y futuras acciones que
+-- actualicen el estado del turno sin pasar por la interfaz actual.
+CREATE OR REPLACE FUNCTION "require_shift_cash_closure"()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW."status" IN ('ENTREGA_ENVIADA', 'CERRADO')
+     AND NEW."status" IS DISTINCT FROM OLD."status"
+     AND NOT EXISTS (
+       SELECT 1
+       FROM "ShiftCashClosure" c
+       WHERE c."shiftId" = NEW."id" AND c."reopenedAt" IS NULL
+     ) THEN
+    RAISE EXCEPTION 'Antes de enviar o cerrar el turno debes cerrar Caja.'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "Shift_caja_cerrada_antes_de_entregar" ON "Shift";
+CREATE TRIGGER "Shift_caja_cerrada_antes_de_entregar"
+BEFORE UPDATE OF "status" ON "Shift"
+FOR EACH ROW EXECUTE FUNCTION "require_shift_cash_closure"();

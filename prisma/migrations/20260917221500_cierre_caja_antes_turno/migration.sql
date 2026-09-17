@@ -1,6 +1,6 @@
 -- Cierre de Caja independiente del cierre de Turno.
 -- La fotografía queda congelada para auditoría y el turno sólo puede cerrarse
--- después de que Caja haya quedado confirmada.
+-- después de que Caja haya quedado confirmada cuando existe fondo operativo.
 CREATE TABLE IF NOT EXISTS "ShiftCashClosure" (
   "id" TEXT NOT NULL,
   "shiftId" TEXT NOT NULL,
@@ -41,20 +41,22 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- Invariante de base de datos: ninguna ruta de código puede saltarse Caja.
--- Esto protege también cierres automáticos, scripts y futuras acciones que
--- actualicen el estado del turno sin pasar por la interfaz actual.
+-- Invariante de base de datos: ninguna ruta de código puede saltarse Caja al
+-- cerrar definitivamente un turno. La entrega puede enviarse antes: es el paso
+-- final CERRADO el que exige Caja confirmada. Si el hotel no tiene fondo
+-- activo, Caja está deshabilitada y no se introduce un bloqueo artificial.
 CREATE OR REPLACE FUNCTION "require_shift_cash_closure"()
 RETURNS trigger AS $$
 BEGIN
-  IF NEW."status" IN ('ENTREGA_ENVIADA', 'CERRADO')
+  IF NEW."status" = 'CERRADO'
      AND NEW."status" IS DISTINCT FROM OLD."status"
+     AND EXISTS (SELECT 1 FROM "CashFund" f WHERE f."active" = TRUE)
      AND NOT EXISTS (
        SELECT 1
        FROM "ShiftCashClosure" c
        WHERE c."shiftId" = NEW."id" AND c."reopenedAt" IS NULL
      ) THEN
-    RAISE EXCEPTION 'Antes de enviar o cerrar el turno debes cerrar Caja.'
+    RAISE EXCEPTION 'Antes de cerrar el turno debes cerrar Caja.'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
@@ -62,6 +64,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS "Shift_caja_cerrada_antes_de_entregar" ON "Shift";
-CREATE TRIGGER "Shift_caja_cerrada_antes_de_entregar"
+DROP TRIGGER IF EXISTS "Shift_caja_cerrada_antes_de_cerrar" ON "Shift";
+CREATE TRIGGER "Shift_caja_cerrada_antes_de_cerrar"
 BEFORE UPDATE OF "status" ON "Shift"
 FOR EACH ROW EXECUTE FUNCTION "require_shift_cash_closure"();

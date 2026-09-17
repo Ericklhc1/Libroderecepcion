@@ -22,6 +22,7 @@ import { runAlertEngine } from '@/server/services/alert-engine';
 function refresh() {
   revalidatePath('/');
   revalidatePath('/alertas');
+  revalidatePath('/notificaciones');
   revalidatePath('/libro');
   revalidatePath('/supervision');
 }

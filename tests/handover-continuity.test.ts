@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EntryStatus, EntryType, Priority, ShiftType, TaskStatus } from '@prisma/client';
+import { EntryStatus, EntryType, Priority, Severity, ShiftType, TaskStatus } from '@prisma/client';
 import {
   ROLE_KEYS,
   createUser,
@@ -70,6 +70,7 @@ describe('continuidad de la entrega de turno', () => {
       title: 'Garantía pendiente en la 415',
       description: 'Falta regularizar la garantía de la reserva.',
       priority: Priority.ALTA,
+      severity: Severity.ALTA,
       tags: [],
       requiresFollowUp: true,
     });

@@ -6,6 +6,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
+import { ROLE_KEYS } from '@/lib/permissions';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -138,6 +139,20 @@ export async function resolveAlert(
   const alert = await loadAlert(input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
+  /*
+    Una alerta de egreso no es una alerta operativa común: RESOLVERLA equivale
+    a aprobar dinero que sale de caja. Esa decisión sólo la puede tomar el rol
+    Supervisor desde su propia cuenta. `alert.manage` por sí solo no alcanza.
+  */
+  if (
+    alert.dedupeKey?.startsWith('cash-transfer:') &&
+    user.roleKey !== ROLE_KEYS.SUPERVISOR
+  ) {
+    throw new RuleError(
+      'Los egresos a tesorería sólo pueden ser validados por un Supervisor desde su cuenta.',
+    );
+  }
+
   // Las alertas automáticas se regeneran si la condición persiste: se avisa.
   const updated = await prisma.alert.update({
     where: { id: input.id },
@@ -154,7 +169,9 @@ export async function resolveAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.CERRAR,
-    summary: `Alerta resuelta: ${alert.title}`,
+    summary: alert.dedupeKey?.startsWith('cash-transfer:')
+      ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
+      : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.RESUELTA },

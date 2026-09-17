@@ -17,6 +17,11 @@ export type ReservationCoreSyncResult = {
 };
 
 function derivedReservationStatus(statuses: RoomStayStatus[]): ReservationStatus {
+  /*
+    Una reserva multihabitación puede tener una habitación saliendo mientras
+    otra sigue alojada. Mientras exista al menos una IN_HOUSE, la reserva sigue
+    en casa; luego se prioriza una entrada pendiente y finalmente la salida.
+  */
   if (statuses.includes(RoomStayStatus.IN_HOUSE)) return ReservationStatus.EN_CASA;
   if (statuses.includes(RoomStayStatus.CHECK_IN)) return ReservationStatus.CONFIRMADA;
   if (statuses.includes(RoomStayStatus.CHECK_OUT)) return ReservationStatus.SALIDA;
@@ -33,17 +38,72 @@ function lastDate(dates: Array<Date | null>): Date | null {
   return values.length ? new Date(Math.max(...values.map((date) => date.getTime()))) : null;
 }
 
+function normalizedName(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function nameScore(value: string | null | undefined): number {
+  const name = (value ?? '').trim();
+  if (!name) return 0;
+  const tokens = name.split(/\s+/).filter(Boolean).length;
+  const letters = (name.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) ?? []).length;
+  return tokens * 20 + letters;
+}
+
+/**
+ * Entradas puede traer «Cliente» y Salidas suele traer nombre+apellido.
+ * El ID de reserva manda siempre; el nombre sólo enriquece la ficha.
+ *
+ * Sin una marca histórica fiable de «editado manualmente», el criterio es
+ * deliberadamente conservador: sólo sustituimos un nombre por otro que aporte
+ * claramente más información. Nunca se usa el nombre para decidir identidad.
+ */
+function shouldUpgradeGuestName(current: string, candidate: string | null): boolean {
+  if (!candidate?.trim()) return false;
+  if (normalizedName(current) === normalizedName(candidate)) return false;
+  return nameScore(candidate) >= nameScore(current) + 8;
+}
+
+function primaryGuestName(
+  stays: Array<{ status: RoomStayStatus; guestNames: string[]; createdAt?: Date }>,
+): string | null {
+  const statusPriority: RoomStayStatus[] = [
+    RoomStayStatus.CHECK_OUT,
+    RoomStayStatus.IN_HOUSE,
+    RoomStayStatus.CHECK_IN,
+  ];
+
+  for (const status of statusPriority) {
+    const candidate = stays.find(
+      (stay) => stay.status === status && stay.guestNames.some((name) => name.trim()),
+    );
+    const name = candidate?.guestNames.find((value) => value.trim())?.trim();
+    if (name) return name;
+  }
+
+  return stays
+    .flatMap((stay) => stay.guestNames)
+    .map((name) => name.trim())
+    .find(Boolean) ?? null;
+}
+
 /**
  * Convierte las estadías normalizadas del PMS en el núcleo interno del hotel:
  * Huésped -> Reserva -> Estadía.
  *
- * La reserva se identifica SIEMPRE por el código que entrega el PMS. El nombre
- * nunca se usa como clave de identidad. Para una reserva nueva se crea una
- * ficha de huésped propia; para una reserva ya existente se conserva cualquier
- * dato que una persona haya completado y sólo se rellenan huecos.
+ * REGLA DE IDENTIDAD:
+ *   1. código/ID exacto de reserva = identidad de la reserva;
+ *   2. ID + habitación = ocupación física concreta;
+ *   3. nombre = dato descriptivo/enriquecible, nunca clave.
  *
- * Esto hace que Garantías, Caja, Multas, Libro, Llaves y Habitaciones puedan
- * consumir la misma reserva en vez de copiar nombre/código por separado.
+ * Los campos que el PMS conoce objetivamente (estado, fechas y habitación)
+ * vuelven a sincronizarse en cada carga. Antes sólo se rellenaban huecos y una
+ * reserva podía quedarse EN_CASA después de que el informe ya dijera SALIDA.
  */
 export async function syncReservationCoreFromPms(
   db: Db = prisma,
@@ -64,6 +124,7 @@ export async function syncReservationCoreFromPms(
       departureDate: true,
       channel: true,
       status: true,
+      createdAt: true,
     },
   });
 
@@ -85,6 +146,7 @@ export async function syncReservationCoreFromPms(
       id: true,
       code: true,
       guestId: true,
+      guest: { select: { id: true, fullName: true } },
       roomNumber: true,
       checkIn: true,
       checkOut: true,
@@ -102,12 +164,19 @@ export async function syncReservationCoreFromPms(
   };
 
   for (const [code, reservationStays] of byCode) {
-    const primaryName = reservationStays.find((stay) => stay.guestNames[0]?.trim())?.guestNames[0]?.trim() ?? null;
-    const rooms = [...new Set(reservationStays.map((stay) => stay.room?.number).filter((room): room is string => Boolean(room)))];
+    const primaryName = primaryGuestName(reservationStays);
+    const rooms = [
+      ...new Set(
+        reservationStays
+          .map((stay) => stay.room?.number)
+          .filter((room): room is string => Boolean(room)),
+      ),
+    ];
+    // Una reserva multihabitación no tiene una habitación única a nivel reserva.
     const roomNumber = rooms.length === 1 ? rooms[0] : null;
     const checkIn = firstDate(reservationStays.map((stay) => stay.arrivalDate));
     const checkOut = lastDate(reservationStays.map((stay) => stay.departureDate));
-    const channel = reservationStays.find((stay) => stay.channel?.trim())?.channel ?? null;
+    const channel = reservationStays.find((stay) => stay.channel?.trim())?.channel?.trim() ?? null;
     const status = derivedReservationStatus(reservationStays.map((stay) => stay.status));
 
     let reservation = reservationByCode.get(code) ?? null;
@@ -116,7 +185,7 @@ export async function syncReservationCoreFromPms(
       const guest = primaryName
         ? await db.guestReference.create({
             data: { fullName: primaryName, roomNumber },
-            select: { id: true },
+            select: { id: true, fullName: true },
           })
         : null;
       if (guest) result.guestsCreated += 1;
@@ -135,6 +204,7 @@ export async function syncReservationCoreFromPms(
           id: true,
           code: true,
           guestId: true,
+          guest: { select: { id: true, fullName: true } },
           roomNumber: true,
           checkIn: true,
           checkOut: true,
@@ -153,28 +223,40 @@ export async function syncReservationCoreFromPms(
         });
         guestId = guest.id;
         result.guestsCreated += 1;
+      } else if (reservation.guest && primaryName && shouldUpgradeGuestName(reservation.guest.fullName, primaryName)) {
+        await db.guestReference.update({
+          where: { id: reservation.guest.id },
+          data: { fullName: primaryName, roomNumber },
+        });
       }
 
-      const data: Prisma.ReservationReferenceUpdateInput = {};
+      const data: Prisma.ReservationReferenceUpdateInput = {
+        // PMS es fuente de verdad para estos campos; `null` también informa que
+        // una reserva es multihabitación o que el dato ya no aplica.
+        roomNumber,
+        checkIn,
+        checkOut,
+        status,
+        ...(channel ? { channel } : {}),
+      };
       if (!reservation.guestId && guestId) data.guest = { connect: { id: guestId } };
-      if (!reservation.roomNumber && roomNumber) data.roomNumber = roomNumber;
-      if (!reservation.checkIn && checkIn) data.checkIn = checkIn;
-      if (!reservation.checkOut && checkOut) data.checkOut = checkOut;
-      if (!reservation.channel && channel) data.channel = channel;
-      if (reservation.status === ReservationStatus.PENDIENTE && status !== ReservationStatus.PENDIENTE) {
-        data.status = status;
-      }
 
-      if (Object.keys(data).length > 0) {
-        await db.reservationReference.update({ where: { id: reservation.id }, data });
-        result.reservationsUpdated += 1;
-      }
+      await db.reservationReference.update({ where: { id: reservation.id }, data });
+      result.reservationsUpdated += 1;
     }
 
+    /*
+      El vínculo también se corrige, no sólo se completa. Si una estadía quedó
+      enlazada a una referencia incorrecta en una versión antigua, el ID exacto
+      de reserva la vuelve a llevar a la referencia canónica.
+    */
     const linked = await db.roomStay.updateMany({
       where: {
         id: { in: reservationStays.map((stay) => stay.id) },
-        reservationRefId: null,
+        OR: [
+          { reservationRefId: null },
+          { reservationRefId: { not: reservation.id } },
+        ],
       },
       data: { reservationRefId: reservation.id },
     });

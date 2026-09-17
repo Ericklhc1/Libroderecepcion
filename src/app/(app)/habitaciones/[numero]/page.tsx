@@ -430,6 +430,7 @@ export default async function RoomDetailPage({
                             linenKind: fine.linenKind,
                             itemDetail: fine.itemDetail,
                             stainType: fine.stainType,
+                            quantity: fine.quantity,
                           })}
                         </p>
                         <FineBadge status={fine.status as FineStatusValue} />

@@ -1,20 +1,22 @@
 import { EntryType } from '@prisma/client';
-import { AlertTriangle, NotebookPen } from 'lucide-react';
+import { AlertTriangle, ListChecks, NotebookPen, Repeat } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { EntryForm } from '@/components/forms/entry-form';
+import { TaskForm } from '@/components/forms/task-form';
+import { FollowUpForm } from '@/components/forms/followup-form';
 import { createEntryAction } from '@/server/actions/entries';
+import { createTaskAction } from '@/server/actions/tasks';
+import { createFollowUpAction } from '@/server/actions/followups';
 import { getFormOptions } from '@/server/services/options';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
- * Acciones rápidas del mesón.
+ * Acciones rápidas siempre visibles: las cuatro cosas que un recepcionista
+ * necesita registrar sin navegar a otra pantalla.
  *
- * Una tarea y un seguimiento no son hechos aislados cuando nacen de una
- * incidencia: son pasos de ese mismo caso. Por eso no se crean desde la barra
- * global. Se registran dentro del detalle de la novedad/incidencia, donde el
- * vínculo queda explícito y el recepcionista no tiene que reconstruirlo a
- * mano. Las tareas realmente independientes conservan su servicio y pueden
- * seguir creándose desde su contexto especializado.
+ * Cuando una tarea o un seguimiento nace de una novedad/incidencia, se crea
+ * desde la ficha de ese caso para conservar el vínculo. Estas acciones globales
+ * siguen existiendo para trabajo realmente independiente.
  */
 export async function QuickActions({
   user,
@@ -64,6 +66,40 @@ export async function QuickActions({
             defaultType={EntryType.INCIDENCIA}
             lockType
           />
+        </Dialog>
+      ) : null}
+
+      {can('task.create') ? (
+        <Dialog
+          title="Nueva tarea"
+          description="Para trabajo independiente. Si nace de una novedad, créala desde la ficha de ese caso."
+          triggerVariant="secondary"
+          triggerSize={compact ? 'sm' : 'md'}
+          trigger={
+            <>
+              <ListChecks className="h-4 w-4" aria-hidden="true" />
+              Nueva tarea
+            </>
+          }
+        >
+          <TaskForm action={createTaskAction} options={options} defaultAssigneeId={user.id} />
+        </Dialog>
+      ) : null}
+
+      {can('followup.create') ? (
+        <Dialog
+          title="Nuevo seguimiento"
+          description="Para seguimiento independiente. Si pertenece a un caso, regístralo desde la ficha correspondiente."
+          triggerVariant="secondary"
+          triggerSize={compact ? 'sm' : 'md'}
+          trigger={
+            <>
+              <Repeat className="h-4 w-4" aria-hidden="true" />
+              Nuevo seguimiento
+            </>
+          }
+        >
+          <FollowUpForm action={createFollowUpAction} options={options} defaultOwnerId={user.id} />
         </Dialog>
       ) : null}
     </div>

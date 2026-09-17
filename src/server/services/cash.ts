@@ -322,7 +322,7 @@ export async function recordCashTransfer(
 
   const currency = params.currency.trim().toUpperCase();
   if (!CASH_CURRENCIES.includes(currency as (typeof CASH_CURRENCIES)[number])) {
-    throw new RuleError('Caja sólo admite CLP o USD.');
+    throw new RuleError('El código de divisa debe tener tres letras; Caja sólo admite CLP o USD.');
   }
 
   return prisma.$transaction(async (tx) => {

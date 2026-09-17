@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarClock, KeyRound, LogIn, LogOut } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, KeyRound, LogIn, LogOut } from 'lucide-react';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -17,6 +17,7 @@ export function StayActions({
   guest,
   roomNumber,
   availableKeys = [],
+  roomOptions = [],
   assignedKeyCount = 0,
 }: {
   kind: 'checkout' | 'early-checkout' | 'checkin';
@@ -24,11 +25,12 @@ export function StayActions({
   guest: string;
   roomNumber: string;
   availableKeys?: Array<{ value: string; label: string }>;
+  roomOptions?: Array<{ value: string; label: string }>;
   assignedKeyCount?: number;
 }) {
   const [keyDecision, setKeyDecision] = useState<'return' | 'none'>('return');
   const [returnedCount, setReturnedCount] = useState(Math.max(assignedKeyCount, 1));
-  const [stayMode, setStayMode] = useState<'LATE_CHECKOUT' | 'EXTEND'>('LATE_CHECKOUT');
+  const [stayMode, setStayMode] = useState<'LATE_CHECKOUT' | 'EXTEND' | 'ROOM_MOVE'>('LATE_CHECKOUT');
 
   if (kind === 'checkout' || kind === 'early-checkout') {
     const early = kind === 'early-checkout';
@@ -41,8 +43,8 @@ export function StayActions({
           title={`Modificar estadía · habitación ${roomNumber}`}
           description={
             early
-              ? `${guest} está IN_HOUSE. Puedes aplicar Late Checkout hasta las 17:00 o extender noches sin crear otra reserva.`
-              : `${guest} figura con check-out pendiente. Si extiendes o aplicas Late Checkout, vuelve a IN_HOUSE y conserva el mismo ID de reserva.`
+              ? `${guest} está IN_HOUSE. Puedes aplicar Late Checkout, extender noches o hacer Room move sin crear otra reserva.`
+              : `${guest} figura con check-out pendiente. Puedes extender, aplicar Late Checkout o hacer Room move conservando el mismo ID.`
           }
           triggerVariant="secondary"
           triggerSize="sm"
@@ -61,12 +63,15 @@ export function StayActions({
                 name="mode"
                 value={stayMode}
                 onChange={(event) =>
-                  setStayMode(event.currentTarget.value as 'LATE_CHECKOUT' | 'EXTEND')
+                  setStayMode(
+                    event.currentTarget.value as 'LATE_CHECKOUT' | 'EXTEND' | 'ROOM_MOVE',
+                  )
                 }
                 className="input-base"
               >
                 <option value="LATE_CHECKOUT">LC / Late · salida hoy a las 17:00</option>
                 <option value="EXTEND">Extender · agregar noches</option>
+                <option value="ROOM_MOVE">Room move · cambiar de habitación</option>
               </select>
             </Field>
 
@@ -88,6 +93,32 @@ export function StayActions({
                   required
                 />
               </Field>
+            ) : stayMode === 'ROOM_MOVE' ? (
+              <>
+                <Field
+                  label="Nueva habitación"
+                  name="targetRoomId"
+                  required
+                  hint="La habitación de origen queda en el historial y la nueva continúa la misma reserva."
+                >
+                  <Select
+                    name="targetRoomId"
+                    placeholder="Seleccionar habitación de destino"
+                    options={roomOptions}
+                    required
+                  />
+                </Field>
+                <div className="rounded-lg bg-petrol-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-petrol-100">
+                  <div className="flex items-start gap-2">
+                    <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <p>
+                      El Room move conserva el mismo ID y la garantía. La habitación anterior
+                      mantiene su historial hasta el cambio y los pendientes de la reserva siguen
+                      al huésped.
+                    </p>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="rounded-lg bg-gold-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-gold-200">
                 El vencimiento de la estadía se moverá a las <strong>17:00</strong> de la fecha de salida actual.
@@ -215,7 +246,45 @@ export function StayActions({
   }
 
   return (
-    <div className="mt-3">
+    <div className="mt-3 space-y-2">
+      <Dialog
+        title={`Modificar estadía · habitación ${roomNumber}`}
+        description={`${guest} todavía está en check-in. Puedes reasignar la habitación sin cambiar el ID de reserva.`}
+        triggerVariant="secondary"
+        triggerSize="sm"
+        triggerClassName="w-full"
+        trigger={
+          <>
+            <CalendarClock className="h-4 w-4" aria-hidden="true" />
+            Modificar estadía
+          </>
+        }
+      >
+        <ActionForm action={modifyStayAction} closeOnSuccess>
+          <input type="hidden" name="stayId" value={stayId} />
+          <input type="hidden" name="mode" value="ROOM_MOVE" />
+          <Field
+            label="Nueva habitación"
+            name="targetRoomId"
+            required
+            hint="La asignación anterior queda en historial; la nueva conserva el mismo ID."
+          >
+            <Select
+              name="targetRoomId"
+              placeholder="Seleccionar habitación de destino"
+              options={roomOptions}
+              required
+            />
+          </Field>
+          <Field label="Observación" name="note">
+            <Input name="note" maxLength={300} placeholder="Motivo del cambio de habitación" />
+          </Field>
+          <SubmitButton className="w-full" pendingLabel="Moviendo…">
+            Confirmar Room move
+          </SubmitButton>
+        </ActionForm>
+      </Dialog>
+
       <Dialog
         title={`Confirmar el check-in de la ${roomNumber}`}
         description={`${guest} pasa a in house y recibe su llave. Hasta este momento no tiene ninguna.`}

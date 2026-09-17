@@ -4,12 +4,13 @@ import { ArrowLeft, BedDouble, Banknote, ShieldCheck } from 'lucide-react';
 import { requirePageAnyPermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
-import { getReservationProfile } from '@/server/services/reservation-core';
+import { getReservationOperationalContext } from '@/server/services/reservation-context';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
 import { ReservationDialog } from '../../guest-forms';
 import { GuaranteeDialog, GuaranteeStateDialog } from '../../guarantee-forms';
+import { ReservationAntenna } from './reservation-antenna';
 import {
   GUARANTEE_STATUS_LABEL,
   GUARANTEE_STATUS_TONE,
@@ -29,7 +30,7 @@ export default async function ReservationProfilePage({ params }: { params: Promi
   const user = await requirePageAnyPermission(['guest.view', 'guest.manage']);
   const { id } = await params;
   const [reservation, guests] = await Promise.all([
-    getReservationProfile(id),
+    getReservationOperationalContext(id),
     prisma.guestReference.findMany({
       where: { deletedAt: null },
       orderBy: { fullName: 'asc' },
@@ -98,6 +99,8 @@ export default async function ReservationProfilePage({ params }: { params: Promi
         <Card><div className="p-4"><p className="text-xs text-slate-500">Salida</p><p className="mt-1 font-semibold text-petrol-900">{formatDateTime(reservation.checkOut)}</p></div></Card>
         <Card><div className="p-4"><p className="text-xs text-slate-500">Canal</p><p className="mt-1 font-semibold text-petrol-900">{reservation.channel ?? '—'}</p></div></Card>
       </div>
+
+      <ReservationAntenna reservation={reservation} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>

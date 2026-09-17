@@ -136,7 +136,10 @@ export async function recordCashTransferAction(
 
 const usdRateSchema = z.object({
   handoverId: z.string().min(1),
-  usdRateCLP: z.coerce.number().positive('El valor del dólar debe ser mayor que cero'),
+  usdRateCLP: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().positive('El valor del dólar debe ser mayor que cero').optional(),
+  ),
 });
 
 export async function saveHandoverUsdRateAction(
@@ -146,6 +149,13 @@ export async function saveHandoverUsdRateAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = usdRateSchema.parse(formDataToObject(formData));
+
+    // Declarar dólar es opcional. Un formulario vacío no debe convertirse en 0
+    // ni generar un error de validación que ensucie los logs de producción.
+    if (input.usdRateCLP === undefined) {
+      return { ok: true as const, message: 'No se declaró un nuevo valor de dólar.' };
+    }
+
     const handover = await prisma.shiftHandover.findUnique({
       where: { id: input.handoverId },
       include: { fromShift: { include: { assignments: true } } },
@@ -158,14 +168,33 @@ export async function saveHandoverUsdRateAction(
       throw new RuleError('Sólo quien está en el turno puede declarar el dólar de la entrega.');
     }
 
+    const perHandoverKey = `handover.usdRateCLP.${input.handoverId}`;
+
     await prisma.$transaction(async (tx) => {
+      /*
+        Dos valores distintos a propósito:
+        - reception.usdRateCLP = valor operativo vigente para formularios nuevos;
+        - handover.usdRateCLP.<id> = fotografía histórica de ESTA entrega.
+        Cambiar el dólar mañana no reescribe un cierre anterior.
+      */
       await tx.systemSetting.upsert({
         where: { key: 'reception.usdRateCLP' },
         create: {
           key: 'reception.usdRateCLP',
           value: input.usdRateCLP,
           category: 'recepción',
-          description: 'Valor operativo del dólar en pesos chilenos que usa Recepción.',
+          description: 'Valor operativo vigente del dólar en pesos chilenos que usa Recepción.',
+          updatedById: user.id,
+        },
+        update: { value: input.usdRateCLP, updatedById: user.id },
+      });
+      await tx.systemSetting.upsert({
+        where: { key: perHandoverKey },
+        create: {
+          key: perHandoverKey,
+          value: input.usdRateCLP,
+          category: 'caja-historica',
+          description: `Tipo de cambio USD/CLP utilizado en la entrega ${input.handoverId}.`,
           updatedById: user.id,
         },
         update: { value: input.usdRateCLP, updatedById: user.id },
@@ -177,7 +206,7 @@ export async function saveHandoverUsdRateAction(
           action: AuditAction.CONFIGURAR,
           summary: `Tipo de cambio declarado para el turno: USD 1 = CLP ${input.usdRateCLP}.`,
           user,
-          after: { usdRateCLP: input.usdRateCLP },
+          after: { usdRateCLP: input.usdRateCLP, historicalSetting: perHandoverKey },
         },
         tx,
       );

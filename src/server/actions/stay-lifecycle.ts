@@ -30,6 +30,7 @@ import {
   getCheckoutKeyContext,
   resolveCheckoutKeyReturn,
 } from '@/server/services/checkout-keys';
+import { moveStayToRoom } from '@/server/services/room-occupancy';
 
 async function inheritPendingStayContext(stayId: string) {
   const stay = await prisma.roomStay.findUnique({
@@ -295,7 +296,8 @@ export async function completeStayCheckoutAction(
 
 const modifyStaySchema = z.object({
   stayId: z.string().min(1),
-  mode: z.enum(['LATE_CHECKOUT', 'EXTEND']),
+  mode: z.enum(['LATE_CHECKOUT', 'EXTEND', 'ROOM_MOVE']),
+  targetRoomId: z.string().trim().optional(),
   nights: z.preprocess(
     (value) => (value === '' || value === null || value === undefined ? undefined : value),
     z.coerce.number().int().min(1).max(30).optional(),
@@ -320,6 +322,26 @@ export async function modifyStayAction(
     const input = parseOrThrow(modifyStaySchema, formDataToObject(formData));
     if (input.mode === 'EXTEND' && !input.nights) {
       throw new RuleError('Indica cuántas noches se extiende la estadía.');
+    }
+    if (input.mode === 'ROOM_MOVE') {
+      if (!input.targetRoomId) {
+        throw new RuleError('Selecciona la habitación de destino.');
+      }
+      const moved = await moveStayToRoom(user, {
+        stayId: input.stayId,
+        targetRoomId: input.targetRoomId,
+        note: input.note?.trim() || null,
+      });
+      refresh(moved.sourceRoom);
+      refresh(moved.targetRoom);
+      return {
+        ok: true as const,
+        message:
+          'Room move aplicado: habitación ' + moved.sourceRoom + ' → ' + moved.targetRoom +
+          '. La reserva ' + moved.reservationCode +
+          ' conserva su historial, pendientes y garantía.' +
+          (moved.keyCode ? ' Nueva llave: ' + moved.keyCode + '.' : ''),
+      };
     }
 
     const stay = await prisma.roomStay.findFirst({

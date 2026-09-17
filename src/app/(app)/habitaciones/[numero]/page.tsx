@@ -27,6 +27,7 @@ import { fineSummary, type FineStatusValue } from '@/domain/fines';
 import { EntryForm } from '@/components/forms/entry-form';
 import { createEntryAction } from '@/server/actions/entries';
 import { StayActions } from '@/components/rooms/stay-actions';
+import { AddGuestToRoomDialog } from '@/components/rooms/add-guest-dialog';
 import { RoomKeys } from '@/components/rooms/room-keys';
 import { GUARANTEE_STATUS_LABEL, GUARANTEE_STATUS_TONE } from '@/domain/labels';
 import {
@@ -226,6 +227,13 @@ export default async function RoomDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canManage ? (
+            <AddGuestToRoomDialog
+              roomId={room.id}
+              roomNumber={room.number}
+              reservations={options.reservations}
+            />
+          ) : null}
           {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
           {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
           {canManage && gymContext ? (
@@ -262,6 +270,7 @@ export default async function RoomDetailPage({
               guest={primaryGuest(snapshot.outgoing)}
               roomNumber={room.number}
               assignedKeyCount={outgoingKeyContext.count}
+              roomOptions={options.rooms.filter((option) => option.value !== room.id)}
             />
           ) : null}
           {snapshot.outgoing && canDeleteStay ? (
@@ -281,6 +290,7 @@ export default async function RoomDetailPage({
               guest={primaryGuest(snapshot.current)}
               roomNumber={room.number}
               assignedKeyCount={currentKeyContext.count}
+              roomOptions={options.rooms.filter((option) => option.value !== room.id)}
             />
           ) : null}
           {snapshot.current && canDeleteStay ? (
@@ -315,6 +325,7 @@ export default async function RoomDetailPage({
                 guest={primaryGuest(snapshot.incoming)}
                 roomNumber={room.number}
                 availableKeys={availableKeys}
+                roomOptions={options.rooms.filter((option) => option.value !== room.id)}
               />
             )
           ) : null}

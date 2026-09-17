@@ -50,6 +50,34 @@ export function SnoozeAlertForm({ alertId }: { alertId: string }) {
   );
 }
 
+/** Acción directa del centro de notificaciones: el caso operativo más frecuente. */
+export function Snooze30AlertForm({ alertId }: { alertId: string }) {
+  return (
+    <ActionForm action={snoozeAlertAction} hideSuccess className="space-y-0">
+      <input type="hidden" name="id" value={alertId} />
+      <input type="hidden" name="snoozeMinutes" value="30" />
+      <SubmitButton variant="secondary" size="sm" pendingLabel="Posponiendo…">
+        Posponer 30 min
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+/**
+ * Resolver sin abrir otro modal. Se reserva para alertas cuyo propio texto ya
+ * define exactamente qué se está resolviendo (p. ej. un check-out pendiente).
+ */
+export function ResolveAlertQuickForm({ alertId, label = 'Resuelto' }: { alertId: string; label?: string }) {
+  return (
+    <ActionForm action={resolveAlertAction} hideSuccess className="space-y-0">
+      <input type="hidden" name="id" value={alertId} />
+      <SubmitButton variant="gold" size="sm" pendingLabel="Resolviendo…">
+        {label}
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function ResolveAlertDialog({ alertId, auto }: { alertId: string; auto: boolean }) {
   return (
     <Dialog

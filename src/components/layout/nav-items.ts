@@ -75,6 +75,12 @@ const PRIMARY: NavItem[] = [
 
 /** Consultas de apoyo: se usan a diario, pero no son el flujo principal. */
 const SECONDARY: NavItem[] = [
+  {
+    href: '/caja/cierre',
+    label: 'Cierre de Caja',
+    icon: 'key',
+    anyOf: ['shift.handover'],
+  },
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'] },
   {
     href: '/huespedes',

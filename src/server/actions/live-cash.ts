@@ -170,7 +170,7 @@ export async function createManualCashMovementAction(
       const entry = await tx.operationalEntry.create({
         data: {
           type: EntryType.CAJA,
-          status: EntryStatus.PENDIENTE,
+          status: EntryStatus.EN_ESPERA,
           title: `Solicitud de ${verb.toLowerCase()} de caja · ${input.reference}`,
           description:
             `${verb} solicitado por ${input.currency} ${input.amount}. ` +

@@ -1,12 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { AuditAction, HandoverStatus } from '@prisma/client';
+import { AuditAction, HandoverStatus, NotificationType } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
+import { ROLE_KEYS } from '@/lib/permissions';
+import { notify } from '@/server/notifications';
 import { recordAudit } from '@/server/audit';
 import {
   markHandoverElements,
@@ -119,7 +121,7 @@ export async function recordCashTransferAction(
       return { ok: true as const, message: 'Sin egreso a tesorería: monto 0.' };
     }
 
-    await recordCashTransfer(user, {
+    const transfer = await recordCashTransfer(user, {
       handoverId: input.handoverId,
       currency: input.currency,
       amount: input.amount,
@@ -127,13 +129,41 @@ export async function recordCashTransferAction(
       notes: input.notes ?? null,
     });
 
+    /*
+      Crear la Alert conserva la regla y la auditoría; notificar a los
+      Supervisores evita el fallo de UX que dejaba la autorización escondida
+      hasta que alguien entraba por casualidad a Alertas/Supervisión.
+    */
+    const supervisors = await prisma.user.findMany({
+      where: {
+        active: true,
+        deletedAt: null,
+        role: { key: ROLE_KEYS.SUPERVISOR },
+      },
+      select: { id: true },
+    });
+    await notify(
+      supervisors.map((supervisor) => ({
+        userId: supervisor.id,
+        type: NotificationType.ACCION_REQUERIDA,
+        title: 'Autorizar egreso de Caja',
+        body: `Egreso de ${input.amount.toLocaleString('es-CL')} ${input.currency}${
+          input.reference ? ` · comprobante ${input.reference}` : ''
+        }.`,
+        link: '/notificaciones',
+        entity: 'CashTransfer',
+        entityId: transfer.id,
+      })),
+    );
+
     revalidatePath('/turno');
     revalidatePath('/caja');
     revalidatePath('/supervision');
+    revalidatePath('/notificaciones');
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado y enviado a validación de Supervisión.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió la solicitud de autorización.`,
     };
   });
 }
@@ -142,7 +172,7 @@ const usdRateSchema = z.object({
   handoverId: z.string().min(1),
   usdRateCLP: z.preprocess(
     (value) => (value === '' || value === null || value === undefined ? undefined : value),
-    z.coerce.number().positive('El valor del dólar debe ser mayor que cero').optional(),
+    z.coerce.number().int('El valor del dólar se declara en pesos enteros.').positive('El valor del dólar debe ser mayor que cero').optional(),
   ),
 });
 

@@ -11,6 +11,7 @@ import {
   ReservationStatus,
   RoomStayStage,
   RoomStayStatus,
+  ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
 import type { Priority, Severity } from '@prisma/client';
@@ -87,9 +88,9 @@ function fmt(date: Date | null | undefined): string {
 }
 
 type SnapshotOptions = {
-  /** Turno que está cerrando: permite contar lo resuelto en ESTE turno. */
+  /** Turno que está cerrando. `null` desactiva deliberadamente el contexto de turno. */
   shiftId?: string | null;
-  /** Las métricas se congelan sólo al preparar la entrega, no en previews genéricos. */
+  /** Las métricas se congelan al preparar una entrega, no en previews sin turno. */
   includeMetrics?: boolean;
 };
 
@@ -113,6 +114,36 @@ export async function buildHandoverSnapshot(
 ): Promise<SnapshotItem[]> {
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
+
+  /*
+    `prepareHandover` ya se ejecuta mientras existe UN solo turno en curso.
+    La base lo garantiza con su índice parcial, así que cuando el llamador no
+    pasa `shiftId` podemos recuperar ese contexto sin adivinar franjas ni crear
+    otra fuente de verdad. Los tests genéricos, sin turno abierto, siguen viendo
+    exactamente el mismo snapshot de pendientes que antes.
+  */
+  const currentShiftId =
+    options.shiftId !== undefined
+      ? options.shiftId
+      : (
+          await prisma.shift.findFirst({
+            where: {
+              archivedAt: null,
+              status: {
+                in: [
+                  ShiftStatus.INICIADO,
+                  ShiftStatus.ACTIVO,
+                  ShiftStatus.PREPARANDO_ENTREGA,
+                  ShiftStatus.ENTREGA_ENVIADA,
+                  ShiftStatus.RECIBIDO,
+                ],
+              },
+            },
+            orderBy: { actualStart: 'desc' },
+            select: { id: true },
+          })
+        )?.id ?? null;
+  const includeMetrics = options.includeMetrics ?? currentShiftId !== null;
 
   const [
     entries,
@@ -277,10 +308,10 @@ export async function buildHandoverSnapshot(
       orderBy: { createdAt: 'asc' },
       take: 100,
     }),
-    options.shiftId
+    currentShiftId
       ? prisma.operationalEntry.findMany({
           where: {
-            shiftId: options.shiftId,
+            shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },
           },
@@ -298,10 +329,10 @@ export async function buildHandoverSnapshot(
           take: 150,
         })
       : Promise.resolve([]),
-    options.shiftId
+    currentShiftId
       ? prisma.task.findMany({
           where: {
-            shiftId: options.shiftId,
+            shiftId: currentShiftId,
             deletedAt: null,
             entryId: null,
             status: TaskStatus.COMPLETADA,
@@ -594,7 +625,7 @@ export async function buildHandoverSnapshot(
     });
   }
 
-  if (options.includeMetrics) {
+  if (includeMetrics) {
     const [rooms, usdRateCLP] = await Promise.all([
       listRoomsWithState(),
       getSettingNumber('reception.usdRateCLP', 0),

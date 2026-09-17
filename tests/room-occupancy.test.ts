@@ -22,7 +22,7 @@ import {
 } from '@/server/services/room-occupancy';
 import { confirmCheckOut, getRoomDetail } from '@/server/services/rooms';
 
-async function createReservation(user: CurrentUser, code: string, guestName: string) {
+async function createReservation(code: string, guestName: string) {
   const guest = await prisma.guestReference.create({
     data: { fullName: guestName },
   });
@@ -57,7 +57,7 @@ describe('asignación manual y room move', () => {
   });
 
   it('añade una reserva a una habitación como ocupada sin inventar otra identidad', async () => {
-    const reservation = await createReservation(receptionist, '9001001', 'Huésped Manual');
+    const reservation = await createReservation('9001001', 'Huésped Manual');
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '421' } });
 
     await attachReservationToRoom(receptionist, {
@@ -77,7 +77,7 @@ describe('asignación manual y room move', () => {
   });
 
   it('room move cierra el segmento anterior, abre el nuevo y conserva la garantía', async () => {
-    const reservation = await createReservation(receptionist, '9001002', 'Huésped Move');
+    const reservation = await createReservation('9001002', 'Huésped Move');
     const source = await prisma.room.findUniqueOrThrow({ where: { number: '421' } });
     const target = await prisma.room.findUniqueOrThrow({ where: { number: '422' } });
 
@@ -139,7 +139,7 @@ describe('asignación manual y room move', () => {
   });
 
   it('confirmar una salida anterior no finaliza una reentrada del mismo ID', async () => {
-    const reservation = await createReservation(receptionist, '9001003', 'Huésped Reentrada');
+    const reservation = await createReservation('9001003', 'Huésped Reentrada');
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '421' } });
     const businessDate = new Date('2026-09-17T00:00:00.000Z');
 

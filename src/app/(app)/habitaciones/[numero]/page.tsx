@@ -7,6 +7,7 @@ import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { getRoomDetail } from '@/server/services/rooms';
 import { listAvailableKeys } from '@/server/services/keys';
+import { getCheckoutKeyContext } from '@/server/services/checkout-keys';
 import { getFormOptions } from '@/server/services/options';
 import { getGymPassContextForRoom } from '@/server/services/gym-pass';
 import { gymPrices } from '@/server/services/live-cash';
@@ -169,6 +170,15 @@ export default async function RoomDetailPage({
   ]);
 
   const { snapshot } = room;
+  const [outgoingKeyContext, currentKeyContext] = await Promise.all([
+    snapshot.outgoing
+      ? getCheckoutKeyContext(snapshot.outgoing.id)
+      : Promise.resolve({ count: 0, codes: [] as string[] }),
+    snapshot.current
+      ? getCheckoutKeyContext(snapshot.current.id)
+      : Promise.resolve({ count: 0, codes: [] as string[] }),
+  ]);
+
   const canManage = hasPermission(user, 'room.manage');
   /*
     Reparación, no operación: sólo el Administrador de sistema. Aparece en las
@@ -216,10 +226,6 @@ export default async function RoomDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/*
-            El reseteo vive en la cabecera, no junto a una estadía concreta: lo
-            que se repara es la habitación entera, no una fila.
-          */}
           {canResetRoom ? <ResetRoomDialog roomNumber={room.number} /> : null}
           {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
           {canManage && gymContext ? (
@@ -255,6 +261,7 @@ export default async function RoomDetailPage({
               stayId={snapshot.outgoing.id}
               guest={primaryGuest(snapshot.outgoing)}
               roomNumber={room.number}
+              assignedKeyCount={outgoingKeyContext.count}
             />
           ) : null}
           {snapshot.outgoing && canDeleteStay ? (
@@ -267,6 +274,15 @@ export default async function RoomDetailPage({
         </Layer>
 
         <Layer title="Actual" stay={snapshot.current}>
+          {snapshot.current && canManage ? (
+            <StayActions
+              kind="early-checkout"
+              stayId={snapshot.current.id}
+              guest={primaryGuest(snapshot.current)}
+              roomNumber={room.number}
+              assignedKeyCount={currentKeyContext.count}
+            />
+          ) : null}
           {snapshot.current && canDeleteStay ? (
             <DeleteStayDialog
               stayId={snapshot.current.id}
@@ -312,11 +328,6 @@ export default async function RoomDetailPage({
         </Layer>
       </div>
 
-      {/*
-        Contexto de la cuenta. Aparece sólo cuando la estadía se pudo vincular
-        a una reserva interna por su código: el PMS sigue siendo la fuente del
-        movimiento, y esto es lo que el hotel sabe del cobro.
-      */}
       {room.reservations.length > 0 ? (
         <Card>
           <CardHeader title="Reserva y garantía" count={room.reservations.length} />
@@ -399,15 +410,9 @@ export default async function RoomDetailPage({
         canAssign={canKeys}
         canStock={hasPermission(user, 'key.stock')}
         availableKeys={availableKeys}
-        /* `current` es la estadía IN_HOUSE: la condición para entregar la llave. */
         hasGuestInside={Boolean(snapshot.current)}
       />
 
-      {/*
-        Las multas de la habitación. Se muestran aunque estén cerradas: cuando
-        un huésped discute un cobro, lo que importa es poder ver el historial
-        completo de la habitación, no sólo lo que sigue abierto.
-      */}
       {fines.length > 0 || canFine ? (
         <Card>
           <CardHeader title="Multas de la habitación" count={fines.length} />

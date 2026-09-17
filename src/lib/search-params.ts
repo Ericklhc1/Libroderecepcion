@@ -20,6 +20,10 @@ function date(value: string | undefined, endOfDay = false): Date | null {
 /**
  * Traduce los parámetros de la URL a filtros del libro. Los valores no
  * reconocidos se ignoran: la URL nunca puede provocar una consulta inválida.
+ *
+ * La búsqueda global documenta `@habitación`. Ese prefijo no es texto libre:
+ * se convierte al filtro canónico de habitación. Así `@415` encuentra todo el
+ * contexto de la 415 aunque el registro no repita el número en título/texto.
  */
 export function parseBookFilters(
   params: RawSearchParams,
@@ -28,6 +32,8 @@ export function parseBookFilters(
   const estado = one(params.estado);
   const tipo = one(params.tipo);
   const clase = one(params.clase);
+  const rawQ = one(params.q)?.trim();
+  const roomFromGlobalSearch = rawQ?.match(/^@\s*([0-9]+)$/)?.[1];
 
   const kinds: BookKind[] | undefined =
     clase && ['entry', 'task', 'followup', 'alert', 'fine'].includes(clase)
@@ -36,7 +42,7 @@ export function parseBookFilters(
 
   return {
     ...defaults,
-    q: one(params.q),
+    q: roomFromGlobalSearch ? undefined : rawQ,
     from: date(one(params.desde)),
     to: date(one(params.hasta), true),
     shiftId: one(params.turno) ?? null,
@@ -46,7 +52,7 @@ export function parseBookFilters(
     status: estado && estado !== 'abiertos' ? estado : null,
     priority: one(params.prioridad) ?? null,
     ownerId: one(params.responsable) ?? null,
-    room: one(params.habitacion) ?? null,
+    room: one(params.habitacion) ?? roomFromGlobalSearch ?? null,
     reservation: one(params.reserva) ?? null,
     onlyOpen: estado === 'abiertos' ? true : defaults.onlyOpen,
     includeDeleted: one(params.eliminados) === '1' ? true : defaults.includeDeleted,

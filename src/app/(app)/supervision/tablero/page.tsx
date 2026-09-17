@@ -45,13 +45,11 @@ const RESULT_TONE = {
 export default async function AssignmentBoardPage() {
   const user = await requirePageUser();
   /*
-    El tablero es la herramienta de quien reparte trabajo. Gerencia lo
-    consulta con `supervision.view`, pero los botones de asignar necesitan
-    `task.assign`, así que la pantalla sirve para las dos cosas.
+    El tablero comparte exactamente la puerta de Supervisión: consultar o
+    administrar turnos. `incident.manage` no concede acceso lateral por URL.
   */
   if (
     !hasPermission(user, 'supervision.view') &&
-    !hasPermission(user, 'incident.manage') &&
     !hasPermission(user, 'shift.manage')
   ) {
     redirect('/sin-permisos');

@@ -1,20 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { EntryStatus, RoomStayStage, RoomStayStatus } from '@prisma/client';
+import { RoomStayStage, RoomStayStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { confirmCheckOut, softDeleteStay } from '@/server/services/rooms';
-
-const OPEN_ENTRY_STATUSES: EntryStatus[] = [
-  EntryStatus.ABIERTO,
-  EntryStatus.EN_PROGRESO,
-  EntryStatus.ESCALADO,
-  EntryStatus.REABIERTO,
-];
 
 async function inheritPendingStayContext(stayId: string) {
   const stay = await prisma.roomStay.findUnique({
@@ -28,17 +22,11 @@ async function inheritPendingStayContext(stayId: string) {
   });
   if (!stay?.roomId) return;
 
-  /*
-   * Al terminar una estadía, un pendiente deja de ser "de la habitación" y
-   * pasa a ser "de la estadía pasada". No se cierra ni se borra: sigue abierto
-   * en Libro/entregas hasta que alguien lo resuelva. Al quitar roomId evitamos
-   * que el siguiente huésped herede visualmente el problema del anterior.
-   */
   await prisma.operationalEntry.updateMany({
     where: {
       roomId: stay.roomId,
       deletedAt: null,
-      status: { in: OPEN_ENTRY_STATUSES },
+      status: { in: ENTRY_OPEN_STATUSES },
       ...(stay.reservationRefId
         ? { OR: [{ reservationId: stay.reservationRefId }, { reservationId: null }] }
         : {}),
@@ -81,7 +69,7 @@ export async function completeStayCheckoutAction(
     });
     if (!stay) throw new RuleError('Esa estadía no existe o fue eliminada.');
     if (stay.stage === RoomStayStage.FINALIZADO) throw new RuleError('Esa salida ya fue confirmada.');
-    if (![RoomStayStatus.IN_HOUSE, RoomStayStatus.CHECK_OUT].includes(stay.status)) {
+    if (stay.status !== RoomStayStatus.IN_HOUSE && stay.status !== RoomStayStatus.CHECK_OUT) {
       throw new RuleError('Sólo se puede dar salida a una estadía in house o en check-out.');
     }
 

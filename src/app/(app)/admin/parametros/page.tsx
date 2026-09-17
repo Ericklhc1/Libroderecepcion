@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getAllSettings } from '@/server/services/settings';
+import { prisma } from '@/lib/prisma';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { SettingForm } from '../admin-forms';
+import { CashConfigForm } from '@/components/admin/cash-config-form';
 import { formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Parámetros' };
@@ -18,9 +20,11 @@ function kindOf(value: unknown): 'boolean' | 'number' | 'string' {
 
 export default async function SettingsPage() {
   await requirePagePermission('system.configure');
-  const settings = (await getAllSettings()).filter(
-    (setting) => !setting.key.startsWith('fronti.'),
-  );
+  const [allSettings, cashFunds] = await Promise.all([
+    getAllSettings(),
+    prisma.cashFund.findMany({ where: { currency: { in: ['CLP', 'USD'] } } }),
+  ]);
+  const settings = allSettings.filter((setting) => !setting.key.startsWith('fronti.'));
 
   const byCategory = Array.from(
     settings.reduce((map, setting) => {
@@ -30,6 +34,9 @@ export default async function SettingsPage() {
       return map;
     }, new Map<string, typeof settings>()),
   );
+
+  const clpMinimum = Number(cashFunds.find((fund) => fund.currency === 'CLP')?.amount ?? 100000);
+  const usdMinimum = Number(cashFunds.find((fund) => fund.currency === 'USD')?.amount ?? 0);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -48,6 +55,13 @@ export default async function SettingsPage() {
           necesidad de desplegar. La configuración de Fronti se administra desde su sección propia.
         </p>
       </header>
+
+      <Card>
+        <CardHeader title="Caja" />
+        <div className="px-4 py-4">
+          <CashConfigForm clpMinimum={clpMinimum} usdMinimum={usdMinimum} />
+        </div>
+      </Card>
 
       {byCategory.map(([category, list]) => (
         <Card key={category}>

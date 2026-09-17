@@ -135,19 +135,11 @@ export function PrepareHandoverForm({ shiftId }: { shiftId: string }) {
 
 export function SendHandoverForm({ shiftId }: { shiftId: string }) {
   return (
-    <ActionForm action={sendHandoverAction} hideSuccess>
+    <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
       <input type="hidden" name="shiftId" value={shiftId} />
-      <Field
-        label="Nota de cierre para el turno siguiente"
-        name="notes"
-        hint="Lo más importante, en pocas líneas. El resumen automático ya va incluido."
-      >
-        <Textarea
-          name="notes"
-          rows={3}
-          placeholder="Prioridad de la tarde: llegada VIP de la 402 y regularizar el pago de la 215."
-        />
-      </Field>
+      <p className="text-xs text-slate-500">
+        La nota para el turno siguiente se guarda arriba como Observación + Siguiente acción. Aquí sólo se confirma el envío.
+      </p>
       <SubmitButton variant="gold" pendingLabel="Enviando…">
         Enviar entrega al turno siguiente
       </SubmitButton>
@@ -168,11 +160,8 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
 
 export function CloseShiftForm({ shiftId }: { shiftId: string }) {
   return (
-    <ActionForm action={closeShiftAction} hideSuccess>
+    <ActionForm action={closeShiftAction} hideSuccess className="space-y-0">
       <input type="hidden" name="shiftId" value={shiftId} />
-      <Field label="Observaciones de cierre" name="notes">
-        <Textarea name="notes" rows={2} />
-      </Field>
       <SubmitButton variant="secondary" pendingLabel="Cerrando…">
         Cerrar turno
       </SubmitButton>

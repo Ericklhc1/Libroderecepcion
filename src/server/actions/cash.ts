@@ -1,10 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { AuditAction, HandoverStatus } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
+import { prisma } from '@/lib/prisma';
+import { recordAudit } from '@/server/audit';
 import {
   markHandoverElements,
   recordCashTransfer,
@@ -95,8 +98,8 @@ export async function confirmCashCountAction(
 
 const transferSchema = z.object({
   handoverId: z.string().min(1),
-  currency: z.string().trim().toUpperCase().length(3, 'La divisa lleva tres letras'),
-  amount: z.coerce.number().positive('El monto debe ser mayor que cero'),
+  currency: z.enum(['CLP', 'USD']),
+  amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
   reference: z.string().trim().max(60).optional(),
   notes: z.string().trim().max(500).optional(),
 });
@@ -109,6 +112,10 @@ export async function recordCashTransferAction(
     const user = await requirePermission('shift.handover');
     const input = transferSchema.parse(formDataToObject(formData));
 
+    if (input.amount === 0) {
+      return { ok: true as const, message: 'Sin egreso a tesorería: monto 0.' };
+    }
+
     await recordCashTransfer(user, {
       handoverId: input.handoverId,
       currency: input.currency,
@@ -118,11 +125,66 @@ export async function recordCashTransferAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/supervision');
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado y enviado a validación de Supervisión.`,
     };
+  });
+}
+
+const usdRateSchema = z.object({
+  handoverId: z.string().min(1),
+  usdRateCLP: z.coerce.number().positive('El valor del dólar debe ser mayor que cero'),
+});
+
+export async function saveHandoverUsdRateAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.handover');
+    const input = usdRateSchema.parse(formDataToObject(formData));
+    const handover = await prisma.shiftHandover.findUnique({
+      where: { id: input.handoverId },
+      include: { fromShift: { include: { assignments: true } } },
+    });
+    if (!handover) throw new RuleError('La entrega indicada no existe.');
+    if (handover.status !== HandoverStatus.BORRADOR) {
+      throw new RuleError('El dólar del turno se declara antes de enviar la entrega.');
+    }
+    if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+      throw new RuleError('Sólo quien está en el turno puede declarar el dólar de la entrega.');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.systemSetting.upsert({
+        where: { key: 'reception.usdRateCLP' },
+        create: {
+          key: 'reception.usdRateCLP',
+          value: input.usdRateCLP,
+          category: 'recepción',
+          description: 'Valor operativo del dólar en pesos chilenos que usa Recepción.',
+          updatedById: user.id,
+        },
+        update: { value: input.usdRateCLP, updatedById: user.id },
+      });
+      await recordAudit(
+        {
+          entity: 'ShiftHandover',
+          entityId: input.handoverId,
+          action: AuditAction.CONFIGURAR,
+          summary: `Tipo de cambio declarado para el turno: USD 1 = CLP ${input.usdRateCLP}.`,
+          user,
+          after: { usdRateCLP: input.usdRateCLP },
+        },
+        tx,
+      );
+    });
+
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
+    return { ok: true as const, message: `Dólar declarado: USD 1 = CLP ${input.usdRateCLP}.` };
   });
 }
 

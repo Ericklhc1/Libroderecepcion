@@ -41,6 +41,14 @@ const createSchema = z.object({
   stainType: zOptionalString,
   reason: zRequiredString(2000, 'El motivo del cobro'),
   guestStatement: zOptionalString,
+  quantity: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === '' || value === undefined || value === null) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }),
   amount: z
     .union([z.string(), z.number()])
     .optional()
@@ -71,6 +79,7 @@ export async function createFineAction(
       stainType: input.stainType ?? null,
       reason: input.reason,
       guestStatement: input.guestStatement ?? null,
+      quantity: input.quantity,
       amount: input.amount,
     });
 

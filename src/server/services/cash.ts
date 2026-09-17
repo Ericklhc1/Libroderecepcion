@@ -351,7 +351,6 @@ export async function recordCashTransfer(
     await tx.alert.create({
       data: {
         type: AlertType.OTRO,
-        // La validación es obligatoria y debe ser visible en Supervisión.
         level: AlertLevel.CRITICA,
         status: AlertStatus.NUEVA,
         title: 'Validar egreso a tesorería',
@@ -458,15 +457,21 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
   problems.push(
     ...cashHandoverProblems({
       statuses: state.declared.statuses,
-      // Si el administrador desactiva esta validación, el descuadre se conserva
-      // y se muestra, pero no bloquea por falta de texto explicativo.
       hasNotes: !requireDifferenceNote || Boolean(state.declared.notes),
     }),
   );
 
-  const missing = state.elements.filter((element) => element.required && !element.declared);
-  if (missing.length > 0) {
-    problems.push(`Falta declarar: ${missing.map((element) => element.name).join(', ')}.`);
+  /*
+    Los elementos físicos ya no son un bloqueo rígido por catálogo. El emisor
+    puede declarar sólo los que realmente entrega. Si no entrega ninguno, debe
+    dejar una justificación; esa ausencia se revisa después por Supervisión,
+    pero no impide cerrar la operación.
+  */
+  if (state.elements.length > 0 && !state.elements.some((element) => element.declared)) {
+    const hasJustification = state.elements.some((element) => Boolean(element.notes?.trim()));
+    if (!hasJustification) {
+      problems.push('Selecciona al menos un elemento o justifica por qué no se entrega ninguno.');
+    }
   }
 
   const pendingTransfers = state.transfers.filter(
@@ -493,7 +498,10 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
     );
   }
 
-  const missing = state.elements.filter((element) => element.required && !element.confirmed);
+  // Quien recibe confirma únicamente lo que efectivamente fue declarado por
+  // quien entrega; un catálogo activo no significa que todos sus elementos
+  // tengan que circular en cada turno.
+  const missing = state.elements.filter((element) => element.declared && !element.confirmed);
   if (missing.length > 0) {
     problems.push(`Confirma que recibes: ${missing.map((element) => element.name).join(', ')}.`);
   }

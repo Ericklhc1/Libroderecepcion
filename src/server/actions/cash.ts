@@ -13,6 +13,7 @@ import {
   recordCashTransfer,
   saveCashCount,
 } from '@/server/services/cash';
+import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
 
 /**
@@ -69,6 +70,7 @@ export async function declareCashCountAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
     revalidatePath(`/turno/entrega/${handoverId}`);
     return { ok: true as const, message: summarise(statuses) };
   });
@@ -91,6 +93,7 @@ export async function confirmCashCountAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
     revalidatePath(`/turno/entrega/${handoverId}`);
     return { ok: true as const, message: summarise(statuses) };
   });
@@ -125,6 +128,7 @@ export async function recordCashTransferAction(
     });
 
     revalidatePath('/turno');
+    revalidatePath('/caja');
     revalidatePath('/supervision');
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
@@ -155,6 +159,12 @@ export async function saveHandoverUsdRateAction(
     // ni generar un error de validación que ensucie los logs de producción.
     if (usdRateCLP === undefined) {
       return { ok: true as const, message: 'No se declaró un nuevo valor de dólar.' };
+    }
+
+    if (!(await getSettingBool('cash.usdRateEnabled', true))) {
+      throw new RuleError(
+        'La declaración de tipo de cambio está desactivada en la configuración de Caja.',
+      );
     }
 
     const handover = await prisma.shiftHandover.findUnique({
@@ -213,6 +223,7 @@ export async function saveHandoverUsdRateAction(
       );
     });
 
+    revalidatePath('/caja');
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return { ok: true as const, message: `Dólar declarado: USD 1 = CLP ${usdRateCLP}.` };
   });

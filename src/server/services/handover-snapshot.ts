@@ -54,7 +54,7 @@ const SECTIONS = {
   multas: 'Multas pendientes',
   reservas: 'Reservas que requieren acción',
   cobros: 'Cobros pendientes',
-  garantias: 'Garantías pendientes',
+  garantias: 'Garantías (resumen de reserva)',
   huespedes: 'Solicitudes de huéspedes',
   mantenimiento: 'Mantenimiento',
   estadoHotel: 'Estado del hotel',
@@ -200,6 +200,7 @@ export async function buildHandoverSnapshot(
         title: true,
         message: true,
         auto: true,
+        dedupeKey: true,
         entryId: true,
         taskId: true,
         followUpId: true,
@@ -595,15 +596,20 @@ export async function buildHandoverSnapshot(
     task: new Set(tasks.map((t) => t.id)),
     followUp: new Set(followUps.map((f) => f.id)),
     reservation: new Set(reservations.map((r) => r.id)),
+    checkoutStay: new Set(departures.map((departure) => departure.id)),
   };
 
   for (const alert of alerts) {
+    const checkoutStayId = alert.dedupeKey?.startsWith('checkout-unconfirmed:')
+      ? alert.dedupeKey.slice('checkout-unconfirmed:'.length)
+      : null;
     const alreadyListed =
       alert.auto &&
       ((alert.entryId !== null && listed.entry.has(alert.entryId)) ||
         (alert.taskId !== null && listed.task.has(alert.taskId)) ||
         (alert.followUpId !== null && listed.followUp.has(alert.followUpId)) ||
-        (alert.reservationId !== null && listed.reservation.has(alert.reservationId)));
+        (alert.reservationId !== null && listed.reservation.has(alert.reservationId)) ||
+        (checkoutStayId !== null && listed.checkoutStay.has(checkoutStayId)));
     if (alreadyListed) continue;
 
     items.push({

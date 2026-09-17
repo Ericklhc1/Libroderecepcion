@@ -65,10 +65,19 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'huespedes-reservas',
     title: 'Huéspedes & reservas',
     description:
-      'Aquí nace el contexto del huésped y de la reserva. También se cargan y revisan los PDF de actividad; al aplicarlos, la información se refleja donde corresponda.',
+      'Aquí vive la ficha de cada huésped y reserva. Fechas, habitación, garantías, saldos y actividad conectada se reflejan desde este contexto donde haga falta.',
     route: '/huespedes',
     target: ROUTE_TARGET,
-    anyOf: ['guest.view', 'guest.manage', 'pms.import'],
+    anyOf: ['guest.view', 'guest.manage'],
+  },
+  {
+    id: 'carga-reservas',
+    title: 'Cargar información de Huéspedes & reservas',
+    description:
+      'Aquí adjuntas y revisas los PDF de actividad. Nada se aplica sin revisión; al confirmar, reservas, habitaciones, llaves y demás vistas reciben el contexto que les corresponde.',
+    route: '/huespedes/importar',
+    target: ROUTE_TARGET,
+    anyOf: ['pms.import'],
   },
   {
     id: 'caja',

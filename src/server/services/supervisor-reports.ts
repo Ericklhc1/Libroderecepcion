@@ -17,6 +17,17 @@ export type SupervisorReport = {
   lines: string[];
 };
 
+const OPEN_ENTRY_STATUSES = new Set<EntryStatus>([
+  EntryStatus.ABIERTO,
+  EntryStatus.EN_CURSO,
+  EntryStatus.EN_ESPERA,
+]);
+const OPEN_TASK_STATUSES = new Set<TaskStatus>([
+  TaskStatus.PENDIENTE,
+  TaskStatus.EN_CURSO,
+  TaskStatus.BLOQUEADA,
+]);
+
 function dateKey(date: Date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -135,10 +146,10 @@ export async function buildSupervisorReport(
   const taskTotal = tasks.reduce((sum, row) => sum + row._count._all, 0);
   const alertTotal = alerts.reduce((sum, row) => sum + row._count._all, 0);
   const openEntries = entries
-    .filter((row) => [EntryStatus.ABIERTO, EntryStatus.EN_CURSO, EntryStatus.EN_ESPERA].includes(row.status))
+    .filter((row) => OPEN_ENTRY_STATUSES.has(row.status))
     .reduce((sum, row) => sum + row._count._all, 0);
   const openTasks = tasks
-    .filter((row) => [TaskStatus.PENDIENTE, TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA].includes(row.status))
+    .filter((row) => OPEN_TASK_STATUSES.has(row.status))
     .reduce((sum, row) => sum + row._count._all, 0);
   const openAlerts = alerts
     .filter((row) => row.status !== AlertStatus.RESUELTA)

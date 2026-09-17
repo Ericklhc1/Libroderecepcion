@@ -1,0 +1,23 @@
+name: patch-fine-quantity-slice
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gpt/auditoria-operativa-integrada-20260916
+      - name: Apply Fine.quantity schema + page wiring
+        run: python3 .github/scripts/patch_fine_quantity.py
+      - name: Commit and push
+        run: |
+          git config user.name "Ericklhc1"
+          git config user.email "elhc1996@gmail.com"
+          git add prisma/schema.prisma "src/app/(app)/habitaciones/[numero]/page.tsx"
+          git status
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "feat(fines): schema quantity + fineSummary wiring"
+          git push origin HEAD:gpt/auditoria-operativa-integrada-20260916

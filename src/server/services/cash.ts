@@ -25,6 +25,7 @@ import {
   type FundStatus,
 } from '@/domain/cash';
 import { OPEN_GUARANTEE_STATES } from '@/domain/guarantees';
+import { getSettingBool } from '@/server/services/settings';
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof prisma;
@@ -311,9 +312,19 @@ export async function recordCashTransfer(
     notes?: string | null;
   },
 ) {
+  if (!(await getSettingBool('cash.treasuryTransfersEnabled', true))) {
+    throw new RuleError('Los egresos a tesorería están desactivados en la configuración de Caja.');
+  }
   if (!(params.amount > 0)) {
     throw new RuleError('El monto del egreso debe ser mayor que cero.');
   }
+  if (
+    (await getSettingBool('cash.transferReceiptRequired', false)) &&
+    !params.reference?.trim()
+  ) {
+    throw new RuleError('La configuración de Caja exige indicar el comprobante del egreso.');
+  }
+
   const handover = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
     select: { id: true },
@@ -322,7 +333,7 @@ export async function recordCashTransfer(
 
   const currency = params.currency.trim().toUpperCase();
   if (!CASH_CURRENCIES.includes(currency as (typeof CASH_CURRENCIES)[number])) {
-    throw new RuleError('El código de divisa debe tener tres letras; Caja sólo admite CLP o USD.');
+    throw new RuleError('Caja sólo admite CLP o USD.');
   }
 
   return prisma.$transaction(async (tx) => {
@@ -340,7 +351,8 @@ export async function recordCashTransfer(
     await tx.alert.create({
       data: {
         type: AlertType.OTRO,
-        level: AlertLevel.ATENCION,
+        // La validación es obligatoria y debe ser visible en Supervisión.
+        level: AlertLevel.CRITICA,
         status: AlertStatus.NUEVA,
         title: 'Validar egreso a tesorería',
         message: `Validar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
@@ -442,10 +454,13 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     return problems;
   }
 
+  const requireDifferenceNote = await getSettingBool('cash.requireDifferenceNote', true);
   problems.push(
     ...cashHandoverProblems({
       statuses: state.declared.statuses,
-      hasNotes: Boolean(state.declared.notes),
+      // Si el administrador desactiva esta validación, el descuadre se conserva
+      // y se muestra, pero no bloquea por falta de texto explicativo.
+      hasNotes: !requireDifferenceNote || Boolean(state.declared.notes),
     }),
   );
 
@@ -454,7 +469,9 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     problems.push(`Falta declarar: ${missing.map((element) => element.name).join(', ')}.`);
   }
 
-  const pendingTransfers = state.transfers.filter((transfer) => transfer.amount > 0 && !transfer.approved);
+  const pendingTransfers = state.transfers.filter(
+    (transfer) => transfer.amount > 0 && !transfer.approved,
+  );
   if (pendingTransfers.length > 0) {
     problems.push(
       `Hay ${pendingTransfers.length} egreso(s) a tesorería pendiente(s) de validación por Supervisión.`,

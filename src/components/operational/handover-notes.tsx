@@ -12,7 +12,7 @@ import { saveSingleHandoverNoteAction } from '@/server/actions/handover-note';
 /** Una sola nota operativa para el turno siguiente. Volver a guardar reemplaza la anterior. */
 export function AddHandoverNoteForm({ handoverId }: { handoverId: string }) {
   return (
-    <ActionForm action={saveSingleHandoverNoteAction} resetOnSuccess hideSuccess>
+    <ActionForm action={saveSingleHandoverNoteAction} hideSuccess>
       <input type="hidden" name="handoverId" value={handoverId} />
       <Field label="Observación" name="observation" required>
         <Textarea
@@ -33,7 +33,7 @@ export function AddHandoverNoteForm({ handoverId }: { handoverId: string }) {
         />
       </Field>
       <p className="text-xs text-slate-500">
-        Sólo existe una nota manual por entrega. Guardarla nuevamente reemplaza la anterior.
+        Sólo existe una nota manual por entrega. Al guardar, el texto se conserva en el formulario para que puedas revisarlo o reemplazarlo; no vuelve a quedar vacío y obligatorio.
       </p>
       <div className="flex justify-end">
         <SubmitButton size="sm" pendingLabel="Guardando…">

@@ -1,1 +1,1 @@
-@file:///workspace/fines-slice/multas.test.ts
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';

@@ -43,7 +43,9 @@ function linesFromFragments(
   }
   return [...grouped.entries()]
     .map(([key, values]) => {
-      const [page, y] = key.split(':').map(Number);
+      const parts = key.split(':').map(Number);
+      const page = parts[0] ?? 0;
+      const y = parts[1] ?? 0;
       return {
         page,
         y,
@@ -86,9 +88,6 @@ function reservationCode(lines: string[]): string | null {
     }
   }
 
-  // FNS suele usar identificadores numéricos largos. Sólo se usa como último
-  // recurso y exige contexto de reserva en la misma línea para no confundir
-  // montos, teléfonos o fechas con un ID.
   for (const line of lines) {
     if (!/reserva|reservation|confirmaci[oó]n/i.test(line)) continue;
     const code = line.match(/\b\d{6,12}\b/)?.[0];
@@ -102,7 +101,10 @@ function dateFromLabel(lines: string[], labels: RegExp[]): string | null {
   const source = raw ?? lines.find((line) => labels.some((label) => label.test(line))) ?? '';
   const match = source.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
   if (!match) return null;
-  const [, day, month, year] = match;
+  const day = match[1];
+  const month = match[2];
+  const year = match[3];
+  if (!day || !month || !year) return null;
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
@@ -256,7 +258,7 @@ export async function applyReservationPdfDraft(
     return reservation;
   });
 
-  return { ...result, created: !previous };
+  return { reservationId: result.id, code: result.code, created: !previous };
 }
 
 export async function discardReservationPdfDraft(user: CurrentUser, id: string): Promise<void> {

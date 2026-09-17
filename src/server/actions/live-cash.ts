@@ -15,8 +15,7 @@ import { getMyOpenShift } from '@/server/services/shifts';
 
 const gymPassSchema = z.object({
   stayId: z.string().min(1),
-  currency: z.enum(['CLP', 'USD']),
-  paymentMethod: z.enum(['EFECTIVO', 'TARJETA', 'OTRO']),
+  pax: z.coerce.number().int().min(1, 'Indica al menos 1 pax.').max(20, 'Máximo 20 pax por emisión.'),
 });
 
 export async function createGymPassAction(
@@ -26,14 +25,15 @@ export async function createGymPassAction(
   return runAction(async () => {
     const user = await requirePermission('room.manage');
     const input = parseOrThrow(gymPassSchema, formDataToObject(formData));
-    const pass = await createGymPass(user, input);
+    const result = await createGymPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/libro');
     revalidatePath('/habitaciones');
+    const folios = result.passes.map((pass) => pass.formattedFolio).join(', ');
     return {
       ok: true as const,
-      message: `Folio ${pass.formattedFolio} generado. Escríbelo en el pase físico.`,
-      id: pass.id,
+      message: `${result.passes.length} folio(s) generado(s): ${folios}.`,
+      id: result.id,
     };
   });
 }

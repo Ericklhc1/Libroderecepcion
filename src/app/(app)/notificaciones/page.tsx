@@ -49,8 +49,24 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const actionKinds: Prisma.AlertWhereInput[] = [
     { dedupeKey: { startsWith: 'checkout-unconfirmed:' } },
   ];
-  if (isSupervisor) actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
+  if (isSupervisor) {
+    actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
+    actionKinds.push({ dedupeKey: { startsWith: 'handover-elements-none:' } });
+  }
   if (canValidateClosure) actionKinds.push({ dedupeKey: { startsWith: 'shift-validation:' } });
+
+  const alertFilters: Prisma.AlertWhereInput[] = [
+    LIVE_ALERT_WHERE(now),
+    { OR: actionKinds },
+  ];
+  if (query) {
+    alertFilters.push({
+      OR: [
+        { title: { contains: query, mode: 'insensitive' } },
+        { message: { contains: query, mode: 'insensitive' } },
+      ],
+    });
+  }
 
   const [notifications, actionableAlerts] = await Promise.all([
     prisma.notification.findMany({
@@ -60,22 +76,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
     }),
     canManageAlerts
       ? prisma.alert.findMany({
-          where: {
-            ...LIVE_ALERT_WHERE(now),
-            OR: actionKinds,
-            ...(query
-              ? {
-                  AND: [
-                    {
-                      OR: [
-                        { title: { contains: query, mode: 'insensitive' } },
-                        { message: { contains: query, mode: 'insensitive' } },
-                      ],
-                    },
-                  ],
-                }
-              : {}),
-          },
+          where: { AND: alertFilters },
           orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
           take: 100,
         })
@@ -89,6 +90,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const approvalAlerts = actionableAlerts.filter(
     (alert) =>
       alert.dedupeKey?.startsWith('cash-transfer:') ||
+      alert.dedupeKey?.startsWith('handover-elements-none:') ||
       alert.dedupeKey?.startsWith('shift-validation:'),
   );
 
@@ -161,17 +163,24 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           <ul className="divide-y divide-slate-100">
             {approvalAlerts.map((alert) => {
               const cash = alert.dedupeKey?.startsWith('cash-transfer:');
+              const noElements = alert.dedupeKey?.startsWith('handover-elements-none:');
+              const label = cash
+                ? 'Autorizar'
+                : noElements
+                  ? 'Validar justificación'
+                  : 'Validar cierre';
+              const category = cash ? 'Caja' : noElements ? 'Entrega' : 'Cierre de turno';
               return (
                 <li key={alert.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="atencion">{cash ? 'Caja' : 'Cierre de turno'}</Badge>
+                      <Badge tone="atencion">{category}</Badge>
                       <time className="text-xs tabular text-slate-400">{formatDateTime(alert.createdAt)}</time>
                     </div>
                     <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
                     {alert.message ? <p className="mt-0.5 text-sm text-slate-600">{alert.message}</p> : null}
                   </div>
-                  <ResolveAlertQuickForm alertId={alert.id} label={cash ? 'Autorizar' : 'Validar cierre'} />
+                  <ResolveAlertQuickForm alertId={alert.id} label={label} />
                 </li>
               );
             })}

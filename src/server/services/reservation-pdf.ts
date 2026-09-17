@@ -102,15 +102,24 @@ function reservationCode(lines: string[]): string | null {
 }
 
 function dateFromLabel(lines: string[], labels: RegExp[]): string | null {
-  const raw = candidateAfterLabel(lines, labels);
-  const source = raw ?? lines.find((line) => labels.some((label) => label.test(line))) ?? '';
-  const match = source.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
-  if (!match) return null;
-  const day = match[1];
-  const month = match[2];
-  const year = match[3];
-  if (!day || !month || !year) return null;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  // La prioridad es la del tipo de campo, no la primera palabra que aparezca
+  // visualmente en el PDF. FNSRooms imprime arriba "Check-in Cobrado Check-out"
+  // como estados y más abajo los campos autoritativos "Entrada:" / "Salida:".
+  for (const label of labels) {
+    for (const line of lines) {
+      const found = line.match(label);
+      if (!found || found.index === undefined) continue;
+      const rest = line.slice(found.index + found[0].length).replace(/^[\s:#.\-–—]+/, '').trim();
+      const match = rest.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
+      if (!match) continue;
+      const day = match[1];
+      const month = match[2];
+      const year = match[3];
+      if (!day || !month || !year) continue;
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+  return null;
 }
 
 function cleanFieldValue(value: string | null | undefined, max = 160): string | null {

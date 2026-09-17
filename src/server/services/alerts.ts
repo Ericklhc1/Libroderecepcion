@@ -1,5 +1,6 @@
 import 'server-only';
-import { AlertStatus, AuditAction } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
 import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -72,6 +73,102 @@ async function loadAlert(id: string) {
   return alert;
 }
 
+function tagValue(tags: string[], prefix: string): string | null {
+  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
+}
+
+function decodeTag(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Una solicitud manual de Caja no modifica dinero hasta que Supervisión pulsa
+ * «Autorizar». La propia alerta es la compuerta y el registro operativo guarda
+ * los datos estructurados de la solicitud. La actualización condicional de la
+ * entrada actúa como candado para que dos clics concurrentes no dupliquen el
+ * movimiento.
+ */
+async function applyCashManualApproval(user: CurrentUser, entryId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.operationalEntry.findFirst({
+      where: { id: entryId, deletedAt: null, category: 'AJUSTE_CAJA_SOLICITADO' },
+      select: { id: true, status: true, shiftId: true, tags: true, title: true },
+    });
+    if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
+    if (entry.tags.includes('ajuste-aplicado')) return;
+    if (!entry.shiftId) throw new RuleError('La solicitud no está vinculada a un turno.');
+
+    const direction = tagValue(entry.tags, 'direccion-');
+    const currency = tagValue(entry.tags, 'moneda-');
+    const amount = Number(tagValue(entry.tags, 'monto-'));
+    const reference = decodeTag(tagValue(entry.tags, 'referencia-')) ?? entry.title;
+    const notes = decodeTag(tagValue(entry.tags, 'notas-'));
+    if (
+      (direction !== 'ENTRADA' && direction !== 'SALIDA') ||
+      (currency !== 'CLP' && currency !== 'USD') ||
+      !(amount > 0)
+    ) {
+      throw new RuleError('La solicitud de Caja no contiene datos válidos para autorizarse.');
+    }
+
+    const claimed = await tx.operationalEntry.updateMany({
+      where: { id: entry.id, status: EntryStatus.PENDIENTE },
+      data: {
+        status: EntryStatus.RESUELTO,
+        resolution: `Movimiento autorizado por Supervisor ${user.name}.`,
+        requiresFollowUp: false,
+        closedAt: new Date(),
+        closedById: user.id,
+        tags: { push: 'ajuste-aplicado' },
+      },
+    });
+    if (claimed.count === 0) {
+      const refreshed = await tx.operationalEntry.findUnique({
+        where: { id: entry.id },
+        select: { tags: true },
+      });
+      if (refreshed?.tags.includes('ajuste-aplicado')) return;
+      throw new RuleError('La solicitud de Caja ya no está pendiente de autorización.');
+    }
+
+    const movementId = randomUUID();
+    const kind = direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
+    await tx.$executeRaw`
+      INSERT INTO "CashMovement" (
+        "id", "kind", "direction", "currency", "amount", "shiftId",
+        "createdById", "reference", "notes"
+      ) VALUES (
+        ${movementId}, ${kind}, ${direction}, ${currency}, ${amount},
+        ${entry.shiftId}, ${user.id}, ${reference}, ${notes}
+      )
+    `;
+
+    await recordAudit(
+      {
+        entity: 'CashMovement',
+        entityId: movementId,
+        action: AuditAction.CREAR,
+        summary: `Movimiento de Caja autorizado por Supervisor: ${direction} ${amount} ${currency} · ${reference}`,
+        user,
+        after: {
+          direction,
+          currency,
+          amount,
+          reference,
+          requestEntryId: entry.id,
+          shiftId: entry.shiftId,
+        },
+      },
+      tx,
+    );
+  });
+}
+
 export async function acknowledgeAlert(user: CurrentUser, id: string) {
   const alert = await loadAlert(id);
   if (alert.status === AlertStatus.RESUELTA) {
@@ -139,32 +236,32 @@ export async function resolveAlert(
   const alert = await loadAlert(input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
-  if (
-    alert.dedupeKey?.startsWith('cash-transfer:') &&
-    user.roleKey !== ROLE_KEYS.SUPERVISOR
-  ) {
+  const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:') === true;
+  const cashManual = alert.dedupeKey?.startsWith('cash-manual:') === true;
+  const noElements = alert.dedupeKey?.startsWith('handover-elements-none:') === true;
+  const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:') === true;
+
+  if ((cashTransfer || cashManual) && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
     throw new RuleError(
-      'Los egresos a tesorería sólo pueden ser validados por un Supervisor desde su cuenta.',
+      'Los movimientos de Caja sólo pueden ser autorizados por un Supervisor desde su cuenta.',
     );
   }
 
-  if (
-    alert.dedupeKey?.startsWith('handover-elements-none:') &&
-    user.roleKey !== ROLE_KEYS.SUPERVISOR
-  ) {
+  if (noElements && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
     throw new RuleError(
       'Una entrega sin elementos físicos sólo puede ser validada por un Supervisor.',
     );
   }
 
-  if (
-    alert.dedupeKey?.startsWith('shift-validation:') &&
-    user.roleKey !== ROLE_KEYS.SUPERVISOR &&
-    !user.isSystemAdmin
-  ) {
+  if (shiftValidation && user.roleKey !== ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin) {
     throw new RuleError(
       'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
     );
+  }
+
+  if (cashManual) {
+    if (!alert.entryId) throw new RuleError('La solicitud de Caja no tiene un registro vinculado.');
+    await applyCashManualApproval(user, alert.entryId);
   }
 
   const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;
@@ -176,13 +273,6 @@ export async function resolveAlert(
       resolvedAt: new Date(),
       resolutionNote: input.note ?? null,
       snoozedUntil: null,
-      /*
-        Un check-out marcado explícitamente como «Resuelto» desde el centro de
-        notificaciones es una decisión humana sobre ESE aviso. Se conserva el
-        dedupeKey pero deja de ser una alerta automática para que el motor no
-        lo reabra en el siguiente refresco mientras la ficha física se termina
-        de actualizar. La restricción única del dedupeKey impide recrearlo.
-      */
       ...(checkoutDismissed ? { auto: false } : {}),
     },
     include: alertInclude,
@@ -191,13 +281,15 @@ export async function resolveAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.CERRAR,
-    summary: alert.dedupeKey?.startsWith('cash-transfer:')
+    summary: cashTransfer
       ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
-      : alert.dedupeKey?.startsWith('handover-elements-none:')
-        ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
-        : alert.dedupeKey?.startsWith('shift-validation:')
-          ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-          : `Alerta resuelta: ${alert.title}`,
+      : cashManual
+        ? `Movimiento manual de Caja autorizado por Supervisor: ${alert.title}`
+        : noElements
+          ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
+          : shiftValidation
+            ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+            : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
@@ -210,7 +302,7 @@ export async function softDeleteAlert(
   user: CurrentUser,
   input: { id: string; reason: string },
 ) {
-  const alert = await loadAlert(input.id);
+  const alert = await loadAlert(id);
   const deleted = await prisma.alert.update({
     where: { id: input.id },
     data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },

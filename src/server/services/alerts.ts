@@ -140,9 +140,8 @@ export async function resolveAlert(
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
   /*
-    Una alerta de egreso no es una alerta operativa común: RESOLVERLA equivale
-    a aprobar dinero que sale de caja. Esa decisión sólo la puede tomar el rol
-    Supervisor desde su propia cuenta. `alert.manage` por sí solo no alcanza.
+    Las alertas que equivalen a una aprobación formal no heredan simplemente
+    `alert.manage`: el rol que toma la decisión es parte de la regla de negocio.
   */
   if (
     alert.dedupeKey?.startsWith('cash-transfer:') &&
@@ -153,7 +152,16 @@ export async function resolveAlert(
     );
   }
 
-  // Las alertas automáticas se regeneran si la condición persiste: se avisa.
+  if (
+    alert.dedupeKey?.startsWith('shift-validation:') &&
+    user.roleKey !== ROLE_KEYS.SUPERVISOR &&
+    !user.isSystemAdmin
+  ) {
+    throw new RuleError(
+      'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
+    );
+  }
+
   const updated = await prisma.alert.update({
     where: { id: input.id },
     data: {
@@ -171,7 +179,9 @@ export async function resolveAlert(
     action: AuditAction.CERRAR,
     summary: alert.dedupeKey?.startsWith('cash-transfer:')
       ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
-      : `Alerta resuelta: ${alert.title}`,
+      : alert.dedupeKey?.startsWith('shift-validation:')
+        ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+        : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.RESUELTA },

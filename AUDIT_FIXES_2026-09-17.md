@@ -15,7 +15,9 @@ Estado de salida de la pasada de consolidación:
 
 ## Verificación previa a promoción
 
-La pasada funcional alcanzó Compuerta verde con lint, TypeScript, regresiones y build correctos. El Preview de Vercel quedó READY y la base Preview de Neon recibió las migraciones nuevas; se verificaron la matriz de permisos y el trigger de validación posterior del cierre.
+La pasada funcional alcanzó Compuerta verde con lint, TypeScript, regresiones y build correctos en el commit funcional `2a7534e7234e145d6cbed25c68a0b9d65d7d42da`. Los commits posteriores de este archivo son únicamente documentación y deben volver a pasar la misma Compuerta antes del merge.
+
+El Preview de Vercel quedó READY y la base Preview de Neon recibió las migraciones nuevas; se verificaron la matriz de permisos y el trigger de validación posterior del cierre.
 
 Antes de promocionar Producción se creó el snapshot de seguridad Neon `snap-steep-base-acewwx3p` sobre la rama `production`.
 

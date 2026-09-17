@@ -274,6 +274,14 @@ export async function confirmCheckOut(
           deletedAt: null,
           status: RoomStayStatus.IN_HOUSE,
           stage: { not: RoomStayStage.FINALIZADO },
+          /*
+            Sólo se cierra la representación IN_HOUSE de la MISMA ocupación.
+            Una reserva puede salir y volver a entrar el mismo día con el mismo
+            ID (caso real 421): esa nueva estadía tiene otras fechas y debe
+            permanecer activa.
+          */
+          arrivalDate: stay.arrivalDate,
+          departureDate: stay.departureDate,
         },
         select: { id: true },
       });

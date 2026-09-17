@@ -4,21 +4,13 @@ import { describe, expect, it } from 'vitest';
 /**
  * El worker de pdf.js tiene que viajar a la función desplegada.
  *
- * Error real de producción: al subir los tres informes, los tres fallaban con
+ * Error real de producción: al subir los informes, fallaban con
  * «Setting up fake worker failed: Cannot find module .../pdf.worker.mjs».
  *
- * En local nunca podía verse: el archivo está en node_modules y todo
- * funcionaba. El worker se carga en tiempo de ejecución, no con un `import`
- * estático, así que el trazador de Next no lo veía y no lo copiaba. Sólo
- * viajaba `pdf.mjs`.
- *
- * Esta prueba mira el manifiesto de archivos que Next genera para cada
- * función (`*.nft.json`): es exactamente la lista que se despliega, de modo
- * que comprueba el empaquetado sin necesidad de desplegar.
+ * La importación PMS tiene una sola ruta canónica: /huespedes/importar.
  */
 const RUTAS_QUE_LEEN_PDF = [
-  '.next/server/app/(app)/habitaciones/importar/page.js.nft.json',
-  '.next/server/app/(app)/turno/page.js.nft.json',
+  '.next/server/app/(app)/huespedes/importar/page.js.nft.json',
 ];
 
 describe('empaquetado del lector de PDF', () => {
@@ -36,18 +28,13 @@ describe('empaquetado del lector de PDF', () => {
     }
   });
 
-  it('la configuración declara el worker para ambas rutas', () => {
-    /*
-      Se comprueba también sobre la configuración, porque el manifiesto sólo
-      existe después de compilar y esta prueba debe fallar igual cuando
-      alguien quite la declaración sin volver a compilar.
-    */
+  it('la configuración declara el worker para la ruta canónica', () => {
     const config = readFileSync('next.config.mjs', 'utf-8');
     expect(config).toContain('outputFileTracingIncludes');
-    for (const ruta of ['/turno', '/habitaciones/importar']) {
-      const bloque = config.slice(config.indexOf('outputFileTracingIncludes'));
-      expect(bloque).toContain(`'${ruta}'`);
-    }
+    const bloque = config.slice(config.indexOf('outputFileTracingIncludes'));
+    expect(bloque).toContain("'/huespedes/importar'");
+    expect(bloque).not.toContain("'/habitaciones/importar'");
+    expect(bloque).not.toContain("'/turno'");
     expect(config).toContain('pdfjs-dist/legacy/build/pdf.worker.mjs');
   });
 

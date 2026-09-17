@@ -14,9 +14,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { getMyOpenShift } from './shifts';
 import {
-  formatGymFolio,
   getLiveCashState,
-  gymPrices,
   insertCashMovement,
   type GymPassRow,
   type GymPaymentMethod,
@@ -24,7 +22,7 @@ import {
 } from './live-cash';
 
 const ACTIVE_GUEST_STAGES = [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO];
-const ELIGIBLE_GUEST_STATUSES = [RoomStayStatus.IN_HOUSE, RoomStayStatus.CHECK_OUT];
+const ELIGIBLE_GUEST_STATUSES = [RoomStayStatus.IN_HOUSE];
 
 export type GymPassRoomContext = {
   stayId: string;
@@ -33,6 +31,10 @@ export type GymPassRoomContext = {
   guestName: string;
 };
 
+export function formatGymFolio(folio: number): string {
+  return String(folio).padStart(4, '0');
+}
+
 function tagValue(tags: string[], prefix: string): string | null {
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
 }
@@ -40,25 +42,20 @@ function tagValue(tags: string[], prefix: string): string | null {
 export async function getGymPassContextForRoom(
   roomNumber: string,
 ): Promise<GymPassRoomContext | null> {
-  const stays = await prisma.roomStay.findMany({
+  const stay = await prisma.roomStay.findFirst({
     where: {
       deletedAt: null,
       room: { number: roomNumber },
       status: { in: ELIGIBLE_GUEST_STATUSES },
       stage: { in: ACTIVE_GUEST_STAGES },
     },
+    orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }],
     select: {
       id: true,
-      status: true,
       reservationId: true,
       guestNames: true,
     },
   });
-
-  const stay =
-    stays.find((item) => item.status === RoomStayStatus.IN_HOUSE) ??
-    stays.find((item) => item.status === RoomStayStatus.CHECK_OUT) ??
-    null;
 
   if (!stay) return null;
 
@@ -74,11 +71,19 @@ export async function createGymPass(
   user: CurrentUser,
   params: {
     stayId: string;
-    currency: 'CLP' | 'USD';
-    paymentMethod: GymPaymentMethod;
+    pax: number;
   },
-): Promise<{ id: string; folio: number; formattedFolio: string }> {
-  const [stay, prices, shift] = await Promise.all([
+): Promise<{
+  id: string;
+  folio: number;
+  formattedFolio: string;
+  passes: Array<{ id: string; folio: number; formattedFolio: string }>;
+}> {
+  if (!Number.isInteger(params.pax) || params.pax < 1 || params.pax > 20) {
+    throw new RuleError('La cantidad de pax debe ser un número entero entre 1 y 20.');
+  }
+
+  const [stay, shift] = await Promise.all([
     prisma.roomStay.findFirst({
       where: {
         id: params.stayId,
@@ -94,112 +99,90 @@ export async function createGymPass(
         room: { select: { id: true, number: true } },
       },
     }),
-    gymPrices(),
     getMyOpenShift(user.id),
   ]);
 
   if (!stay) {
-    throw new RuleError(
-      'El pase de gimnasio sólo se puede vender a huéspedes IN_HOUSE o CHECK_OUT cuya salida todavía no haya sido confirmada.',
-    );
+    throw new RuleError('Los pases de gimnasio sólo se generan para huéspedes IN_HOUSE.');
   }
-  /*
-    La habitación se saca a una constante propia, y no es estilo: el guard no
-    basta. `stay.room` es opcional, y el estrechamiento que produce este `if`
-    se pierde al entrar en el `$transaction` de más abajo, porque es otra
-    función. `tsc --noEmit` daba cinco «'stay.room' is possibly null» por eso,
-    y el `next build` no los mostraba. Con la constante el estrechamiento
-    sobrevive y el fallo sería visible acá, antes de abrir la transacción.
-  */
   const room = stay.room;
   if (!room) throw new NotFoundError('La estadía no tiene habitación asociada.');
-  if (!shift) throw new RuleError('Debes estar asignado al turno vigente para vender un pase.');
+  if (!shift) throw new RuleError('Debes estar asignado al turno vigente para generar un pase.');
 
   const guestName = stay.guestNames[0]?.trim() || 'Huésped';
-  const amount = params.currency === 'CLP' ? prices.CLP : prices.USD;
-  if (!(amount > 0)) throw new RuleError('El precio del pase no está configurado correctamente.');
 
-  return prisma.$transaction(async (tx) => {
-    const sequence = await tx.$queryRaw<Array<{ folio: bigint }>>`
-      SELECT nextval('"gym_pass_folio_seq"') AS "folio"
-    `;
-    const folio = Number(sequence[0]?.folio);
-    if (!Number.isSafeInteger(folio) || folio < 1 || folio > 999999) {
-      throw new RuleError('No quedan folios de gimnasio disponibles.');
-    }
-    const formattedFolio = formatGymFolio(folio);
+  const passes = await prisma.$transaction(async (tx) => {
+    const created: Array<{ id: string; folio: number; formattedFolio: string }> = [];
 
-    const entry = await tx.operationalEntry.create({
-      data: {
-        type: EntryType.CAJA,
-        status: EntryStatus.RESUELTO,
-        title: `Pase gimnasio ${formattedFolio}`,
-        description:
-          `Pase de gimnasio emitido. Folio ${formattedFolio}. ` +
-          `Reserva ${stay.reservationId}. Huésped ${guestName}. ` +
-          `Habitación ${room.number}. ${params.currency} ${amount}. ` +
-          `Pago: ${params.paymentMethod.toLowerCase()}.`,
-        category: 'PASE_GIMNASIO',
-        roomId: room.id,
-        reservationId: stay.reservationRefId,
-        priority: Priority.BAJA,
-        ownerId: user.id,
-        shiftId: shift.id,
-        occurredAt: new Date(),
-        tags: [
-          'gimnasio',
-          `folio-${formattedFolio}`,
-          `reserva-${stay.reservationId}`,
-          `stay-${stay.id}`,
-          `moneda-${params.currency}`,
-          `monto-${amount}`,
-          `pago-${params.paymentMethod}`,
-        ],
-        requiresFollowUp: false,
-        resolution: `Folio ${formattedFolio} emitido.`,
-        createdById: user.id,
-      },
-      select: { id: true },
-    });
+    for (let index = 0; index < params.pax; index += 1) {
+      const sequence = await tx.$queryRaw<Array<{ folio: bigint }>>`
+        SELECT nextval('"gym_pass_folio_seq"') AS "folio"
+      `;
+      const folio = Number(sequence[0]?.folio);
+      if (!Number.isSafeInteger(folio) || folio < 1000 || folio > 9999) {
+        throw new RuleError('No quedan folios de gimnasio de cuatro dígitos disponibles.');
+      }
+      const formattedFolio = formatGymFolio(folio);
 
-    if (params.paymentMethod === 'EFECTIVO') {
-      await insertCashMovement(tx, {
-        userId: user.id,
-        kind: 'VENTA_GIMNASIO',
-        direction: 'ENTRADA',
-        currency: params.currency,
-        amount,
-        shiftId: shift.id,
-        roomId: room.id,
-        reservationReferenceId: stay.reservationRefId,
-        reference: `Folio ${formattedFolio} · reserva ${stay.reservationId}`,
-        notes: `Pase de gimnasio · ${guestName} · registro ${entry.id}`,
-      });
-    }
-
-    await recordAudit(
-      {
-        entity: 'OperationalEntry',
-        entityId: entry.id,
-        action: AuditAction.CREAR,
-        user,
-        summary: `Pase de gimnasio ${formattedFolio} · hab. ${room.number} · reserva ${stay.reservationId} · ${params.currency} ${amount}`,
-        after: {
-          folio: formattedFolio,
-          stayId: stay.id,
-          roomNumber: room.number,
-          reservationCode: stay.reservationId,
-          guestName,
-          currency: params.currency,
-          amount,
-          paymentMethod: params.paymentMethod,
+      const entry = await tx.operationalEntry.create({
+        data: {
+          type: EntryType.HUESPED,
+          status: EntryStatus.RESUELTO,
+          title: `Pase gimnasio ${formattedFolio}`,
+          description:
+            `Pase de gimnasio emitido. Folio ${formattedFolio}. ` +
+            `Reserva ${stay.reservationId}. Huésped ${guestName}. ` +
+            `Habitación ${room.number}. Pax ${index + 1} de ${params.pax}.`,
+          category: 'PASE_GIMNASIO',
+          roomId: room.id,
+          reservationId: stay.reservationRefId,
+          priority: Priority.BAJA,
+          ownerId: user.id,
+          shiftId: shift.id,
+          occurredAt: new Date(),
+          tags: [
+            'gimnasio',
+            `folio-${formattedFolio}`,
+            `reserva-${stay.reservationId}`,
+            `stay-${stay.id}`,
+            `pax-${index + 1}`,
+            `pax-total-${params.pax}`,
+          ],
+          requiresFollowUp: false,
+          resolution: `Folio ${formattedFolio} emitido.`,
+          createdById: user.id,
         },
-      },
-      tx,
-    );
+        select: { id: true },
+      });
 
-    return { id: entry.id, folio, formattedFolio };
+      await recordAudit(
+        {
+          entity: 'OperationalEntry',
+          entityId: entry.id,
+          action: AuditAction.CREAR,
+          user,
+          summary: `Pase de gimnasio ${formattedFolio} · hab. ${room.number} · reserva ${stay.reservationId}`,
+          after: {
+            folio: formattedFolio,
+            stayId: stay.id,
+            roomNumber: room.number,
+            reservationCode: stay.reservationId,
+            guestName,
+            paxIndex: index + 1,
+            paxTotal: params.pax,
+          },
+        },
+        tx,
+      );
+
+      created.push({ id: entry.id, folio, formattedFolio });
+    }
+
+    return created;
   });
+
+  const first = passes[0]!;
+  return { ...first, passes };
 }
 
 export async function voidGymPass(
@@ -219,7 +202,7 @@ export async function voidGymPass(
   const amount = Number(tagValue(entry.tags, 'monto-'));
   const paymentMethod = tagValue(entry.tags, 'pago-') as GymPaymentMethod | null;
   const reservationCode = tagValue(entry.tags, 'reserva-');
-  if (!folio || !currency || !(amount > 0) || !paymentMethod) {
+  if (!folio) {
     throw new RuleError('El folio no tiene datos suficientes para anularse de forma segura.');
   }
 
@@ -235,7 +218,8 @@ export async function voidGymPass(
       },
     });
 
-    if (paymentMethod === 'EFECTIVO') {
+    /* Compatibilidad con folios históricos que sí representaban una venta. */
+    if (currency && amount > 0 && paymentMethod === 'EFECTIVO') {
       const reversalReference = `Anulación folio ${folio}`;
       const existing = await tx.$queryRaw<Array<{ exists: boolean }>>`
         SELECT EXISTS(
@@ -289,13 +273,12 @@ async function listGymPassRows(limit: number): Promise<GymPassRow[]> {
   return entries.flatMap((entry) => {
     const folioText = tagValue(entry.tags, 'folio-');
     const reservationCode = tagValue(entry.tags, 'reserva-');
-    const currency = tagValue(entry.tags, 'moneda-');
-    const amount = Number(tagValue(entry.tags, 'monto-'));
-    const paymentMethod = tagValue(entry.tags, 'pago-') as GymPaymentMethod | null;
-    if (!folioText || !reservationCode || !currency || !(amount > 0) || !paymentMethod || !entry.room) {
-      return [];
-    }
+    if (!folioText || !reservationCode || !entry.room) return [];
 
+    const currency = tagValue(entry.tags, 'moneda-') ?? '';
+    const rawAmount = tagValue(entry.tags, 'monto-');
+    const amount = rawAmount ? Number(rawAmount) : 0;
+    const paymentMethod = (tagValue(entry.tags, 'pago-') as GymPaymentMethod | null) ?? 'OTRO';
     const folio = Number(folioText);
     const guestMatch = entry.description.match(/Huésped (.*?)\. Habitación/);
     return [{
@@ -306,12 +289,12 @@ async function listGymPassRows(limit: number): Promise<GymPassRow[]> {
       guestName: guestMatch?.[1] ?? 'Huésped',
       receptionistName: entry.createdBy.name,
       currency,
-      amount,
+      amount: Number.isFinite(amount) ? amount : 0,
       paymentMethod,
       status: entry.tags.includes('anulado') ? 'ANULADO' as const : 'EMITIDO' as const,
       issuedAt: entry.occurredAt,
       voidReason: entry.tags.includes('anulado')
-        ? entry.resolution?.replace(/^Folio \d{6} anulado:\s*/, '') ?? null
+        ? entry.resolution?.replace(/^Folio \d{4,6} anulado:\s*/, '') ?? null
         : null,
     }];
   });

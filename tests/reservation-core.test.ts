@@ -94,7 +94,7 @@ describe('núcleo PMS de huéspedes y reservas', () => {
     expect(await prisma.guestReference.count({ where: { fullName: 'Huésped Único' } })).toBe(1);
   });
 
-  it('conserva la información completada manualmente en una reserva existente', async () => {
+  it('conserva datos personales validados, pero PMS manda en la operación de la reserva', async () => {
     const guest = await prisma.guestReference.create({
       data: { fullName: 'Nombre Validado en Recepción', phone: '+56 9 1234 5678' },
     });
@@ -122,12 +122,17 @@ describe('núcleo PMS de huéspedes y reservas', () => {
       where: { code: 'MANUAL-001' },
       include: { guest: true },
     });
+
+    // Identidad y datos personales enriquecidos en Recepción no se degradan.
     expect(reservation.guest?.fullName).toBe('Nombre Validado en Recepción');
     expect(reservation.guest?.phone).toBe('+56 9 1234 5678');
-    expect(reservation.roomNumber).toBe('429');
-    expect(reservation.checkIn?.getTime()).toBe(manualCheckIn.getTime());
-    expect(reservation.channel).toBe('Empresa convenio');
-    expect(reservation.status).toBe(ReservationStatus.EN_CASA);
+
+    // Estado físico/operativo y fechas vienen del PMS para evitar fichas obsoletas.
+    expect(reservation.roomNumber).toBe('403');
+    expect(reservation.checkIn?.getTime()).toBe(new Date('2026-09-17T00:00:00.000Z').getTime());
+    expect(reservation.checkOut?.getTime()).toBe(new Date('2026-09-19T00:00:00.000Z').getTime());
+    expect(reservation.channel).toBe('OTA');
+    expect(reservation.status).toBe(ReservationStatus.CONFIRMADA);
   });
 
   it('una reserva con varias habitaciones sigue siendo una sola reserva', async () => {

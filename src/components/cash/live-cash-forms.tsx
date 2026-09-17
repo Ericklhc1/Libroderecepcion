@@ -10,7 +10,7 @@ import {
 } from '@/server/actions/live-cash';
 
 function formatFolio(folio: number) {
-  return String(folio).padStart(6, '0');
+  return String(folio).padStart(4, '0');
 }
 
 export function ManualCashMovementForm() {
@@ -80,7 +80,7 @@ export function VoidGymPassDialog({ id, folio }: { id: string; folio: number }) 
   return (
     <Dialog
       title={`Anular folio ${formatFolio(folio)}`}
-      description="El folio no se elimina ni se reutiliza. Si fue pagado en efectivo, se registra la salida correspondiente de Caja viva."
+      description="El folio no se elimina ni se reutiliza. La anulación conserva toda la trazabilidad del pase."
       triggerVariant="ghost"
       triggerSize="sm"
       width="sm"

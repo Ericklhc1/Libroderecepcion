@@ -167,6 +167,7 @@ export async function resolveAlert(
     );
   }
 
+  const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;
   const updated = await prisma.alert.update({
     where: { id: input.id },
     data: {
@@ -175,6 +176,14 @@ export async function resolveAlert(
       resolvedAt: new Date(),
       resolutionNote: input.note ?? null,
       snoozedUntil: null,
+      /*
+        Un check-out marcado explícitamente como «Resuelto» desde el centro de
+        notificaciones es una decisión humana sobre ESE aviso. Se conserva el
+        dedupeKey pero deja de ser una alerta automática para que el motor no
+        lo reabra en el siguiente refresco mientras la ficha física se termina
+        de actualizar. La restricción única del dedupeKey impide recrearlo.
+      */
+      ...(checkoutDismissed ? { auto: false } : {}),
     },
     include: alertInclude,
   });
@@ -191,7 +200,7 @@ export async function resolveAlert(
           : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
-    after: { status: AlertStatus.RESUELTA },
+    after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
     reason: input.note ?? null,
   });
   return updated;

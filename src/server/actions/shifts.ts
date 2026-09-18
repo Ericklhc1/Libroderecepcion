@@ -12,7 +12,7 @@ import {
   type ActionState,
 } from '@/server/action';
 import { shiftScheduleSchema } from '@/server/schemas';
-import { requirePermission } from '@/server/auth/guard';
+import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import {
@@ -59,14 +59,12 @@ export async function openShiftAction(
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
 
-    const { shift, joined } = await openShift(user, { type: input.type });
+    const { shift } = await openShift(user, { type: input.type });
     refresh(shift.id);
 
     return {
       ok: true as const,
-      message: joined
-        ? `Te sumaste al turno de ${SHIFT_TYPE_LABEL[shift.type]} que ya estaba abierto.`
-        : `Turno de ${SHIFT_TYPE_LABEL[shift.type]} abierto (${SHIFT_WINDOW_LABEL[shift.type]}). Revisa y confirma el cierre anterior.`,
+      message: `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto (${SHIFT_WINDOW_LABEL[shift.type]}).`,
     };
   });
 }
@@ -249,11 +247,17 @@ export async function closeShiftAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.manage');
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
+    const user = await requirePermissionOrOwner('shift.manage', async () => {
+      const shift = await prisma.shift.findUnique({
+        where: { id: input.shiftId },
+        select: { assignments: { select: { userId: true } } },
+      });
+      return shift?.assignments.map((assignment) => assignment.userId) ?? [];
+    });
     await closeShift(user, input);
     refresh(input.shiftId);
-    return { ok: true as const, message: 'Recuperación administrativa: turno cerrado y auditado.' };
+    return { ok: true as const, message: 'Turno cerrado y enviado a revisión posterior.' };
   });
 }
 
@@ -434,9 +438,16 @@ export async function cancelShiftAction(
     if (shift.status !== ShiftStatus.PROGRAMADO) {
       throw new RuleError('Sólo pueden anularse turnos que aún no han iniciado.');
     }
-    await prisma.shift.update({
-      where: { id: shift.id },
-      data: { status: ShiftStatus.ANULADO, notes: input.reason },
+    await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.shift.update({
+        where: { id: shift.id },
+        data: { status: ShiftStatus.ANULADO, notes: input.reason, actualEnd: shift.actualEnd ?? now },
+      });
+      await tx.shiftAssignment.updateMany({
+        where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
+        data: { leftAt: now },
+      });
     });
     await recordAudit({
       entity: 'Shift',

@@ -1,6 +1,8 @@
 import 'server-only';
 import {
+  AlertLevel,
   AlertStatus,
+  AlertType,
   AssignmentRole,
   AuditAction,
   HandoverLevel,
@@ -28,15 +30,18 @@ import {
   shiftTypeAt,
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { fromMinor } from '@/domain/cash';
 import { buildHandoverSnapshot, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
   cashBlockersForSending,
+  confirmHandoverCash,
   ensureHandoverElements,
+  getHandoverCashState,
+  isCashAlreadyReceived,
   isCashEnabled,
 } from './cash';
-import { getShiftCashClosure } from './cash-closure';
 
 /** Fecha operativa (medianoche local) usada como clave de turno. */
 export function operationalDate(now = new Date()): Date {
@@ -135,6 +140,52 @@ export async function getMyOpenShift(userId: string) {
   });
 }
 
+/** Participación operativa real: es la que impide entrar simultáneamente en otro turno. */
+export async function getMyActiveShift(userId: string) {
+  return prisma.shift.findFirst({
+    where: {
+      status: { in: OCCUPYING_SHIFT_STATUSES },
+      assignments: {
+        some: {
+          userId,
+          activatedAt: { not: null },
+          leftAt: null,
+        },
+      },
+    },
+    include: shiftInclude,
+    orderBy: [{ actualStart: 'desc' }, { createdAt: 'desc' }],
+  });
+}
+
+/** Turno ya entregado que la persona aún puede cerrar, aunque ya no esté activa en él. */
+export async function getMyPendingClosureShift(userId: string) {
+  return prisma.shift.findFirst({
+    where: {
+      status: ShiftStatus.ENTREGA_ENVIADA,
+      assignments: { some: { userId } },
+      archivedAt: null,
+    },
+    include: shiftInclude,
+    orderBy: [{ updatedAt: 'desc' }],
+  });
+}
+
+async function endParticipation(
+  tx: Prisma.TransactionClient,
+  shiftId: string,
+  at: Date,
+): Promise<void> {
+  await tx.shiftAssignment.updateMany({
+    where: {
+      shiftId,
+      activatedAt: { not: null },
+      leftAt: null,
+    },
+    data: { leftAt: at },
+  });
+}
+
 /**
  * ============================ TURNOS: EL MODELO =============================
  *
@@ -150,18 +201,12 @@ export async function getMyOpenShift(userId: string) {
  *    nada que recibir ni podía cerrar. La adyacencia entre franjas **se
  *    eliminó**: ya no existe `nextShiftSlot` ni `previousShiftSlot`.
  *
- * 3. **Un solo turno en curso a la vez**, para todo el hotel. Si hay uno
- *    abierto, se trabaja sobre ése: quien llega se suma, no abre otro. Lo
- *    garantiza un índice único parcial en la base
- *    (`Shift_un_solo_turno_en_curso`); acá se comprueba además para poder
- *    explicarlo en lenguaje operativo en lugar de mostrar un error de índice.
- *
- * Como consecuencia de (3), **la entrega pendiente es única**: no hay que
- * deducir de qué turno viene, es la que está enviada y sin recibir. Eso es lo
- * que hace que recibir vuelva a funcionar.
+ * 3. **Los turnos pueden solaparse.** Cada persona mantiene una sola
+ *    participación activa, garantizada por ShiftAssignment. El entrante abre
+ *    su propio turno aunque el saliente siga preparando o cerrando el suyo.
  */
 
-/** El turno en curso, si hay alguno. Es único en todo el hotel. */
+/** Cualquier turno en curso. Se conserva para tableros agregados; ya no es único. */
 export async function getCurrentShift(): Promise<ShiftWithDetail | null> {
   return prisma.shift.findFirst({
     where: { status: { in: OCCUPYING_SHIFT_STATUSES } },
@@ -194,12 +239,15 @@ export async function getShiftsAwaitingReceipt(): Promise<ShiftWithDetail[]> {
  *
  * `exceptShiftId` evita que un turno se reciba a sí mismo.
  */
-export async function getPendingHandover(exceptShiftId?: string | null) {
+export async function getPendingHandover(targetShiftId?: string | null) {
   return prisma.shiftHandover.findFirst({
     where: {
       status: HandoverStatus.ENVIADA,
       receivedAt: null,
-      ...(exceptShiftId ? { fromShiftId: { not: exceptShiftId } } : {}),
+      ...(targetShiftId ? { fromShiftId: { not: targetShiftId } } : {}),
+      ...(targetShiftId
+        ? { OR: [{ toShiftId: null }, { toShiftId: targetShiftId }] }
+        : { toShiftId: null }),
     },
     include: {
       issuedBy: { select: { id: true, name: true } },
@@ -207,6 +255,35 @@ export async function getPendingHandover(exceptShiftId?: string | null) {
       items: { orderBy: [{ level: 'asc' }, { order: 'asc' }] },
     },
     orderBy: { issuedAt: 'asc' },
+  });
+}
+
+/**
+ * Caja declarada que todavía no fue recibida.
+ *
+ * Puede existir con la entrega completa aún en BORRADOR. Ese desacople es
+ * deliberado: la Caja se transfiere primero y la entrega operativa puede seguir
+ * preparándose después.
+ */
+export async function getPendingCashHandover(targetShiftId?: string | null) {
+  return prisma.shiftHandover.findFirst({
+    where: {
+      status: { in: [HandoverStatus.BORRADOR, HandoverStatus.ENVIADA] },
+      ...(targetShiftId ? { fromShiftId: { not: targetShiftId } } : {}),
+      ...(targetShiftId
+        ? { OR: [{ toShiftId: null }, { toShiftId: targetShiftId }] }
+        : { toShiftId: null }),
+      cashCounts: {
+        some: { kind: 'DECLARADO' },
+        none: { kind: 'CONFIRMADO' },
+      },
+    },
+    include: {
+      issuedBy: { select: { id: true, name: true } },
+      fromShift: true,
+      items: { orderBy: [{ level: 'asc' }, { order: 'asc' }] },
+    },
+    orderBy: { createdAt: 'asc' },
   });
 }
 
@@ -221,8 +298,10 @@ export type ShiftDesk = {
   current: ShiftWithDetail | null;
   /** Si el usuario es parte del turno en curso. */
   iAmIn: boolean;
-  /** Entrega esperando recepción. */
+  /** Entrega operativa esperando recepción. */
   pending: Awaited<ReturnType<typeof getPendingHandover>>;
+  /** Caja declarada que puede recibirse antes de terminar la entrega. */
+  cashPending: Awaited<ReturnType<typeof getPendingCashHandover>>;
   /** Turnos que entregaron y esperan a alguien. */
   awaitingReceipt: ShiftWithDetail[];
   /** Tipo sugerido para un turno nuevo, según el reloj. */
@@ -232,16 +311,20 @@ export type ShiftDesk = {
 
 export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
   const [current, awaitingReceipt] = await Promise.all([
-    getCurrentShift(),
+    getMyActiveShift(user.id),
     getShiftsAwaitingReceipt(),
   ]);
-  const pending = await getPendingHandover(current?.id ?? null);
+  const [pending, cashPending] = await Promise.all([
+    getPendingHandover(current?.id ?? null),
+    getPendingCashHandover(current?.id ?? null),
+  ]);
   const suggestedType = shiftTypeAt();
 
   return {
     current,
-    iAmIn: Boolean(current?.assignments.some((a) => a.userId === user.id)),
+    iAmIn: Boolean(current),
     pending,
+    cashPending,
     awaitingReceipt,
     suggestedType,
     suggestedWindow: SHIFT_WINDOW_LABEL[suggestedType],
@@ -354,22 +437,10 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
 }
 
 /**
- * Abre un turno nuevo, o suma a quien llega al que ya está abierto.
+ * Abre el turno propio de quien entra al mesón.
  *
- * **Es un solo gesto y a propósito.** Antes había que programar la franja y
- * después tomarla, y esa separación era la fuente del enredo: franjas
- * programadas que nadie tomaba, franjas sin programar que nadie podía tomar.
- * Acá quien entra al mesón dice «entro» y el sistema decide qué significa:
- *
- *   · No hay turno abierto  → se crea uno y esta persona es la titular.
- *   · Ya hay uno abierto    → se suma como apoyo. **Nunca se abre un segundo.**
- *
- * Lo segundo es la regla que pidió el hotel: si hay un turno abierto se trabaja
- * sobre ése. Abrir turnos en paralelo es cómo se pierde la trazabilidad de
- * quién tenía la caja.
- *
- * La carrera entre dos personas pulsando a la vez la resuelve el índice único
- * parcial de la base; acá se traduce a un mensaje que se entiende.
+ * Otro turno puede seguir ACTIVO o PREPARANDO_ENTREGA: el solapamiento es
+ * normal durante el relevo. La única exclusividad es por persona.
  */
 export async function openShift(
   user: CurrentUser,
@@ -381,124 +452,118 @@ export async function openShift(
     );
   }
 
-  const existing = await getCurrentShift();
-  if (existing) {
-    // Ya hay turno: se trabaja sobre ése. Sumarse es idempotente.
-    if (existing.assignments.some((a) => a.userId === user.id)) {
-      return { shift: existing, joined: false };
-    }
-    await addShiftMember(user, { shiftId: existing.id, userId: user.id });
-    return { shift: await getShiftById(existing.id), joined: true };
-  }
+  const mine = await getMyActiveShift(user.id);
+  if (mine) return { shift: mine, joined: false };
 
   const type = input.type ?? shiftTypeAt();
   const day = operationalDate(input.date ?? new Date());
   const window = plannedWindow(day, type);
 
-  const created = await prisma.$transaction(async (tx) => {
-    /*
-      Si alguien programó esta franja a mano, se reutiliza su fila en lugar de
-      crear otra: conserva sus notas y a quien la programó.
-    */
-    const programmed = await tx.shift.findFirst({
-      where: { date: day, type, status: ShiftStatus.PROGRAMADO, archivedAt: null },
-      orderBy: { createdAt: 'asc' },
-    });
+  const created = await prisma
+    .$transaction(async (tx) => {
+      const now = new Date();
+      const programmed = await tx.shift.findFirst({
+        where: {
+          date: day,
+          type,
+          status: ShiftStatus.PROGRAMADO,
+          archivedAt: null,
+          OR: [
+            { assignments: { some: { userId: user.id } } },
+            { assignments: { none: {} } },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+      });
 
-    const shift = programmed
-      ? await tx.shift.update({
-          where: { id: programmed.id },
-          data: {
-            status: ShiftStatus.INICIADO,
-            actualStart: new Date(),
-            startedById: user.id,
-            plannedStart: window.start,
-            plannedEnd: window.end,
-          },
-        })
-      : await tx.shift.create({
-          data: {
-            date: day,
-            type,
-            status: ShiftStatus.INICIADO,
-            plannedStart: window.start,
-            plannedEnd: window.end,
-            actualStart: new Date(),
-            createdById: user.id,
-            startedById: user.id,
-          },
-        });
+      const shift = programmed
+        ? await tx.shift.update({
+            where: { id: programmed.id },
+            data: {
+              status: ShiftStatus.INICIADO,
+              actualStart: now,
+              startedById: user.id,
+              plannedStart: window.start,
+              plannedEnd: window.end,
+            },
+          })
+        : await tx.shift.create({
+            data: {
+              date: day,
+              type,
+              status: ShiftStatus.INICIADO,
+              plannedStart: window.start,
+              plannedEnd: window.end,
+              actualStart: now,
+              createdById: user.id,
+              startedById: user.id,
+            },
+          });
 
-    /*
-      Un turno programado a mano PUEDE VENIR YA CON GENTE asignada: el
-      supervisor pudo dejar nombres puestos al crearlo. Así que la asignación
-      se hace idempotente y el papel se decide por lo que ya hay, en lugar de
-      dar por hecho que el turno está vacío. Lo encontraron las pruebas del
-      ciclo: `create` reventaba con «Unique constraint failed» al reutilizar
-      un turno que ya tenía a esta persona.
-    */
-    const yaAsignados = await tx.shiftAssignment.count({ where: { shiftId: shift.id } });
-    await tx.shiftAssignment.upsert({
-      where: { shiftId_userId: { shiftId: shift.id, userId: user.id } },
-      create: {
-        shiftId: shift.id,
-        userId: user.id,
-        role: yaAsignados === 0 ? AssignmentRole.TITULAR : AssignmentRole.APOYO,
-      },
-      update: {},
-    });
+      const yaAsignados = await tx.shiftAssignment.count({ where: { shiftId: shift.id } });
+      await tx.shiftAssignment.upsert({
+        where: { shiftId_userId: { shiftId: shift.id, userId: user.id } },
+        create: {
+          shiftId: shift.id,
+          userId: user.id,
+          role: yaAsignados === 0 ? AssignmentRole.TITULAR : AssignmentRole.APOYO,
+          activatedAt: now,
+          leftAt: null,
+        },
+        update: { activatedAt: now, leftAt: null },
+      });
 
-    await recordAudit(
-      {
-        entity: 'Shift',
-        entityId: shift.id,
-        action: AuditAction.TURNO_INICIAR,
-        summary:
-          `Turno de ${SHIFT_TYPE_LABEL[type]} abierto (${SHIFT_WINDOW_LABEL[type]}) ` +
-          `el ${day.toLocaleDateString('es-CL')}`,
-        user,
-        after: { status: ShiftStatus.INICIADO, type, date: day },
-      },
-      tx,
-    );
-
-    return shift;
-  }).catch((error: unknown) => {
-    /*
-      El índice único parcial `Shift_un_solo_turno_en_curso` es quien de verdad
-      impide dos turnos a la vez. Si salta, alguien abrió el suyo en el instante
-      entre la consulta y la escritura: no es un error del usuario.
-    */
-    const message = error instanceof Error ? error.message : '';
-    if (message.includes('Shift_un_solo_turno_en_curso')) {
-      throw new RuleError(
-        'Alguien abrió un turno hace un instante. Actualiza la pantalla: se trabaja sobre ese turno.',
+      await recordAudit(
+        {
+          entity: 'Shift',
+          entityId: shift.id,
+          action: AuditAction.TURNO_INICIAR,
+          summary:
+            `Turno de ${SHIFT_TYPE_LABEL[type]} abierto (${SHIFT_WINDOW_LABEL[type]}) ` +
+            `el ${day.toLocaleDateString('es-CL')}`,
+          user,
+          after: { status: ShiftStatus.INICIADO, type, date: day },
+        },
+        tx,
       );
-    }
-    throw error;
-  });
+
+      return shift;
+    })
+    .catch((error: unknown) => {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+      const message = error instanceof Error ? error.message : '';
+      if (
+        code === 'P2002' ||
+        message.includes('ShiftAssignment_una_participacion_activa_por_usuario')
+      ) {
+        throw new RuleError(
+          'Ya participas activamente en otro turno. Finaliza esa participación antes de abrir uno nuevo.',
+        );
+      }
+      throw error;
+    });
 
   return { shift: await getShiftById(created.id), joined: false };
 }
 
 /**
- * Suma a alguien al turno en curso.
- *
- * Lo puede hacer quien está en el turno —el mesón se refuerza solo, sin pedir
- * permiso a nadie— o quien supervisa (`shift.manage`). No se puede sumar a
- * alguien a un turno terminado: eso sería reescribir quién estuvo.
+ * Suma a alguien a este turno. La persona no puede estar activa en otro.
  */
 export async function addShiftMember(
   actor: CurrentUser,
   input: { shiftId: string; userId: string },
 ): Promise<void> {
   const shift = await getShiftById(input.shiftId);
-
-  if (FINISHED_SHIFT_STATUSES.includes(shift.status)) {
-    throw new RuleError('Ese turno ya terminó: no se le puede sumar gente.');
+  if (!OCCUPYING_SHIFT_STATUSES.includes(shift.status)) {
+    throw new RuleError('Sólo se puede sumar gente a un turno en curso.');
   }
 
-  const actorIsIn = shift.assignments.some((a) => a.userId === actor.id);
+  const actorIsIn = shift.assignments.some(
+    (a) => a.userId === actor.id && a.activatedAt && !a.leftAt,
+  );
   const actorSupervises = actor.permissions.includes('shift.manage');
   if (!actorIsIn && !actorSupervises && actor.id !== input.userId) {
     throw new RuleError('Sólo quien está en el turno o quien lo supervisa puede sumar gente.');
@@ -515,180 +580,376 @@ export async function addShiftMember(
     );
   }
 
-  if (shift.assignments.some((a) => a.userId === input.userId)) return;
+  if (
+    shift.assignments.some(
+      (a) => a.userId === input.userId && a.activatedAt && !a.leftAt,
+    )
+  ) {
+    return;
+  }
 
-  /*
-    El primero en entrar es TITULAR; el resto, APOYO. El titular es quien
-    responde por la caja, y no puede haber dos.
-  */
-  const role = shift.assignments.length === 0 ? AssignmentRole.TITULAR : AssignmentRole.APOYO;
+  const role =
+    shift.assignments.filter((a) => a.activatedAt && !a.leftAt).length === 0
+      ? AssignmentRole.TITULAR
+      : AssignmentRole.APOYO;
 
-  await prisma.shiftAssignment.create({
-    data: { shiftId: shift.id, userId: input.userId, role },
+  await prisma
+    .$transaction(async (tx) => {
+      const now = new Date();
+      await tx.shiftAssignment.upsert({
+        where: { shiftId_userId: { shiftId: shift.id, userId: input.userId } },
+        create: {
+          shiftId: shift.id,
+          userId: input.userId,
+          role,
+          activatedAt: now,
+          leftAt: null,
+        },
+        update: { activatedAt: now, leftAt: null },
+      });
+
+      await recordAudit(
+        {
+          entity: 'Shift',
+          entityId: shift.id,
+          action: AuditAction.EDITAR,
+          user: actor,
+          summary: `${person.name} se sumó al turno como ${
+            role === AssignmentRole.TITULAR ? 'titular' : 'apoyo'
+          }`,
+        },
+        tx,
+      );
+    })
+    .catch((error: unknown) => {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+      if (code === 'P2002') {
+        throw new RuleError(
+          `${person.name} ya participa activamente en otro turno.`,
+        );
+      }
+      throw error;
+    });
+}
+
+/**
+ * Recibe la Caja del turno saliente. Puede ocurrir con la entrega aún BORRADOR.
+ */
+export async function receiveShiftCash(
+  user: CurrentUser,
+  params: {
+    shiftId: string;
+    handoverId: string;
+    quantities: Record<string, number>;
+    notes?: string | null;
+  },
+): Promise<{
+  shift: ShiftWithDetail;
+  statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'];
+  discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'];
+}> {
+  const shift = await getShiftById(params.shiftId);
+  const activeAssignment = shift.assignments.some(
+    (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
+  );
+  if (!activeAssignment) throw new RuleError('No estás participando activamente en este turno.');
+  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(shift.status)) {
+    throw new RuleError('La Caja sólo se recibe al iniciar o durante un turno activo.');
+  }
+
+  const handover = await prisma.shiftHandover.findUnique({
+    where: { id: params.handoverId },
+    select: {
+      id: true,
+      status: true,
+      fromShiftId: true,
+      toShiftId: true,
+      issuedById: true,
+      isDemo: true,
+    },
   });
+  if (!handover) throw new NotFoundError('La entrega indicada no existe.');
+  if (handover.fromShiftId === shift.id) {
+    throw new RuleError('Un turno no puede recibir su propia Caja.');
+  }
+  if (![HandoverStatus.BORRADOR, HandoverStatus.ENVIADA].includes(handover.status)) {
+    throw new RuleError('Esa Caja ya no está disponible para recepción.');
+  }
+  if (handover.toShiftId && handover.toShiftId !== shift.id) {
+    throw new RuleError('Esa Caja ya fue reclamada por otro turno.');
+  }
+
+  let statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'] = [];
+  let discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'] = [];
+
+  await prisma
+    .$transaction(async (tx) => {
+      if (!handover.toShiftId) {
+        const claim = await tx.shiftHandover.updateMany({
+          where: { id: handover.id, toShiftId: null },
+          data: { toShiftId: shift.id },
+        });
+        if (claim.count === 0) {
+          throw new RuleError('Esa Caja ya fue reclamada por otro turno.');
+        }
+      }
+
+      const confirmed = await confirmHandoverCash(tx, user, {
+        handoverId: handover.id,
+        quantities: params.quantities,
+        notes: params.notes,
+      });
+      statuses = confirmed.statuses;
+      discrepancies = confirmed.discrepancies;
+
+      if (discrepancies.length > 0) {
+        const detail = discrepancies
+          .map(
+            (row) =>
+              `${row.differenceMinor > 0 ? 'sobra ' : 'falta '}${fromMinor(
+                Math.abs(row.differenceMinor),
+                row.currency,
+              )} ${row.currency}`,
+          )
+          .join('; ');
+        const dedupeKey = `cash-difference:${handover.id}`;
+        const alert = await tx.alert.upsert({
+          where: { dedupeKey },
+          create: {
+            type: AlertType.OTRO,
+            level: AlertLevel.CRITICA,
+            status: AlertStatus.NUEVA,
+            title: 'Diferencia de caja en el relevo',
+            message: `La Caja recibida por ${user.name} no coincide con lo declarado: ${detail}. Revisar con ambos turnos.`,
+            handoverId: handover.id,
+            dedupeKey,
+            auto: false,
+            createdById: user.id,
+            isDemo: handover.isDemo,
+          },
+          update: {
+            status: AlertStatus.NUEVA,
+            message: `La Caja recibida por ${user.name} no coincide con lo declarado: ${detail}. Revisar con ambos turnos.`,
+            resolvedAt: null,
+            resolvedById: null,
+            resolutionNote: null,
+            deletedAt: null,
+          },
+        });
+
+        const supervisors = await tx.user.findMany({
+          where: {
+            active: true,
+            deletedAt: null,
+            role: {
+              permissions: { some: { permission: { key: 'supervision.view' } } },
+            },
+          },
+          select: { id: true },
+        });
+        await notify(
+          supervisors.map((person) => ({
+            userId: person.id,
+            type: NotificationType.ACCION_REQUERIDA,
+            title: 'Revisar diferencia de Caja',
+            body: detail,
+            link: '/notificaciones',
+            entity: 'Alert',
+            entityId: alert.id,
+            isDemo: handover.isDemo,
+          })),
+          tx,
+        );
+      }
+
+      if (shift.status === ShiftStatus.INICIADO) {
+        await tx.shift.updateMany({
+          where: { id: shift.id, status: ShiftStatus.INICIADO },
+          data: { status: ShiftStatus.ACTIVO },
+        });
+      }
+
+      await recordAudit(
+        {
+          entity: 'Shift',
+          entityId: shift.id,
+          action: AuditAction.TURNO_RECIBIR,
+          summary:
+            `Caja recibida por ${user.name}` +
+            (discrepancies.length ? ' con diferencia' : ' sin diferencias'),
+          user,
+          after: { handoverId: handover.id, cashReceivedAt: new Date() },
+        },
+        tx,
+      );
+    })
+    .catch((error: unknown) => {
+      if (isCashAlreadyReceived(error)) {
+        throw new RuleError('Esa Caja ya fue recibida por otro turno.');
+      }
+      throw error;
+    });
+
+  return {
+    shift: await getShiftById(shift.id),
+    statuses,
+    discrepancies,
+  };
+}
+
+/** Activa el turno cuando no existe una Caja previa que recibir. */
+export async function activateShift(
+  user: CurrentUser,
+  params: { shiftId: string },
+): Promise<ShiftWithDetail> {
+  const shift = await getShiftById(params.shiftId);
+  const activeAssignment = shift.assignments.some(
+    (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
+  );
+  if (!activeAssignment) throw new RuleError('No estás participando activamente en este turno.');
+  if (shift.status === ShiftStatus.ACTIVO) return shift;
+  assertTransition(shift.status, ShiftStatus.ACTIVO);
+
+  if (await isCashEnabled()) {
+    const cashPending = await getPendingCashHandover(shift.id);
+    if (cashPending) {
+      throw new RuleError(
+        'Hay una Caja declarada esperando recepción. Recuéntala antes de comenzar la operación.',
+      );
+    }
+  }
+
+  const changed = await prisma.shift.updateMany({
+    where: { id: shift.id, status: ShiftStatus.INICIADO },
+    data: { status: ShiftStatus.ACTIVO },
+  });
+  if (changed.count === 0) {
+    throw new RuleError('Ese turno acaba de cambiar de estado. Actualiza la pantalla.');
+  }
 
   await recordAudit({
     entity: 'Shift',
     entityId: shift.id,
-    action: AuditAction.EDITAR,
-    user: actor,
-    summary: `${person.name} se sumó al turno como ${role === AssignmentRole.TITULAR ? 'titular' : 'apoyo'}`,
+    action: AuditAction.TURNO_RECIBIR,
+    summary: 'Turno activado sin Caja previa que recibir',
+    user,
+    before: { status: ShiftStatus.INICIADO },
+    after: { status: ShiftStatus.ACTIVO },
   });
+  return getShiftById(shift.id);
 }
 
 /**
- * Paso 2: confirmar la recepción de la entrega anterior.
- *
- * Si no hay entrega pendiente (primer turno del ciclo o turno anterior sin
- * entrega), el turno pasa a ACTIVO igualmente, pero el hecho queda auditado.
+ * Recibe la entrega operativa completa. No recibe la Caja y no cierra al saliente.
  */
 export async function receiveHandover(
   user: CurrentUser,
   params: { shiftId: string; handoverId?: string | null; observations?: string | null },
 ) {
   const shift = await getShiftById(params.shiftId);
-  if (!shift.assignments.some((a) => a.userId === user.id)) {
-    throw new RuleError('No estás asignado a este turno.');
+  const activeAssignment = shift.assignments.some(
+    (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
+  );
+  if (!activeAssignment) throw new RuleError('No estás participando activamente en este turno.');
+
+  if (!params.handoverId) {
+    return activateShift(user, { shiftId: shift.id });
   }
 
-  const incoming = await getPendingHandover(shift.id);
-
-  // La entrega se valida antes que el estado del turno: así el mensaje explica
-  // el problema real ("ya fue recibida", "no existe") en lugar de hablar de
-  // transiciones de estado.
-  if (params.handoverId && (!incoming || incoming.id !== params.handoverId)) {
-    const already = await prisma.shiftHandover.findUnique({
-      where: { id: params.handoverId },
-      select: { id: true, status: true },
-    });
-    if (!already) throw new NotFoundError('La entrega indicada no existe.');
-    if (already.status === HandoverStatus.RECIBIDA) {
-      throw new RuleError('Esa entrega ya fue recibida y confirmada.');
-    }
-    throw new RuleError('La entrega indicada no corresponde a este turno.');
+  const incoming = await prisma.shiftHandover.findUnique({
+    where: { id: params.handoverId },
+    include: {
+      issuedBy: { select: { id: true, name: true } },
+      fromShift: true,
+      items: { orderBy: [{ level: 'asc' }, { order: 'asc' }] },
+    },
+  });
+  if (!incoming) throw new NotFoundError('La entrega indicada no existe.');
+  if (incoming.fromShiftId === shift.id) {
+    throw new RuleError('Un turno no puede recibir su propia entrega.');
+  }
+  if (incoming.status === HandoverStatus.RECIBIDA || incoming.receivedAt) {
+    throw new RuleError('Esa entrega ya fue recibida y confirmada.');
+  }
+  if (incoming.status !== HandoverStatus.ENVIADA) {
+    throw new RuleError('La entrega operativa todavía no fue enviada.');
+  }
+  if (incoming.toShiftId && incoming.toShiftId !== shift.id) {
+    throw new RuleError('Esa entrega ya está asociada a otro turno.');
+  }
+  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(shift.status)) {
+    throw new RuleError('Tu turno debe estar iniciado o activo para recibir una entrega.');
   }
 
-  assertTransition(shift.status, ShiftStatus.ACTIVO);
+  const cashProblems = await cashBlockersForReceiving(incoming.id);
+  if (cashProblems.length) throw new RuleError(cashProblems.join(' '));
 
-  /*
-    Recibir el turno es recibir la caja. Quien entra recuenta el fondo fijo y
-    confirma los elementos ANTES de que la entrega se marque como recibida:
-    después ya no hay a quién preguntarle por una diferencia.
-
-    Sólo aplica cuando hay una entrega concreta que recibir. El primer turno
-    del ciclo no tiene nada que contar, y si el hotel no configuró fondo fijo
-    la lista viene vacía y la recepción funciona como siempre.
-  */
-  if (incoming) {
-    const cashProblems = await cashBlockersForReceiving(incoming.id);
-    if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
-  }
-
-  /*
-    Regla canónica: RECIBIR es el cierre operativo del turno saliente.
-    No existe un segundo botón «Cerrar turno». Si Caja está habilitada, el
-    turno saliente debe tener un cierre de Caja vigente antes de poder recibir.
-  */
-  if (incoming && (await isCashEnabled())) {
-    const cashClosure = await getShiftCashClosure(incoming.fromShiftId);
-    if (!cashClosure || cashClosure.reopenedAt) {
-      throw new RuleError(
-        'El turno saliente debe cerrar Caja antes de que puedas confirmar la recepción.',
-      );
-    }
-  }
-
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const now = new Date();
-
-    if (incoming) {
-      // Guarda de concurrencia: sólo una transacción puede pasar de ENVIADA.
-      const claim = await tx.shiftHandover.updateMany({
-        where: { id: incoming.id, status: HandoverStatus.ENVIADA },
-        data: {
-          status: HandoverStatus.RECIBIDA,
-          receivedById: user.id,
-          receivedAt: now,
-          receiverSessionId: user.sessionId,
-          receiverObservations: params.observations ?? null,
-          toShiftId: incoming.toShiftId ?? shift.id,
-        },
-      });
-      if (claim.count === 0) {
-        throw new RuleError('Esa entrega ya fue recibida por otro usuario.');
-      }
-
-      const fromShift = await tx.shift.findUnique({
-        where: { id: incoming.fromShiftId },
-        select: { id: true, status: true, type: true, date: true },
-      });
-      if (fromShift && fromShift.status === ShiftStatus.ENTREGA_ENVIADA) {
-        await tx.shift.update({
-          where: { id: fromShift.id },
-          data: {
-            status: ShiftStatus.CERRADO,
-            actualEnd: now,
-            closedById: user.id,
-          },
-        });
-        await recordAudit(
-          {
-            entity: 'Shift',
-            entityId: fromShift.id,
-            action: AuditAction.TURNO_CERRAR,
-            summary: 'Turno cerrado automáticamente tras la confirmación de recepción',
-            user,
-            before: { status: fromShift.status },
-            after: { status: ShiftStatus.CERRADO },
-          },
-          tx,
-        );
-        await ensureClosureValidationTask(tx, fromShift.id, user.id);
-      }
-
-      // Las alertas de entrega pendiente dejan de aplicar.
-      await tx.alert.updateMany({
-        where: { handoverId: incoming.id, auto: true, status: { not: AlertStatus.RESUELTA } },
-        data: {
-          status: AlertStatus.RESUELTA,
-          resolvedAt: now,
-          resolvedById: user.id,
-          resolutionNote: 'Entrega recibida.',
-        },
-      });
-
-      await notify(
-        {
-          userId: incoming.issuedById,
-          type: NotificationType.ACCION_REQUERIDA,
-          title: 'Tu entrega de turno fue recibida',
-          body: `${user.name} confirmó la recepción de la entrega.`,
-          link: `/turno/entrega/${incoming.id}`,
-          entity: 'ShiftHandover',
-          entityId: incoming.id,
-        },
-        tx,
-      );
+    const claim = await tx.shiftHandover.updateMany({
+      where: {
+        id: incoming.id,
+        status: HandoverStatus.ENVIADA,
+        receivedAt: null,
+        OR: [{ toShiftId: null }, { toShiftId: shift.id }],
+      },
+      data: {
+        status: HandoverStatus.RECIBIDA,
+        receivedById: user.id,
+        receivedAt: now,
+        receiverSessionId: user.sessionId,
+        receiverObservations: params.observations ?? null,
+        toShiftId: shift.id,
+      },
+    });
+    if (claim.count === 0) {
+      throw new RuleError('Esa entrega ya fue recibida por otro usuario o turno.');
     }
 
-    const updated = await tx.shift.update({
-      where: { id: shift.id, status: ShiftStatus.INICIADO },
-      data: { status: ShiftStatus.ACTIVO },
+    if (shift.status === ShiftStatus.INICIADO) {
+      await tx.shift.updateMany({
+        where: { id: shift.id, status: ShiftStatus.INICIADO },
+        data: { status: ShiftStatus.ACTIVO },
+      });
+    }
+
+    await tx.alert.updateMany({
+      where: { handoverId: incoming.id, auto: true, status: { not: AlertStatus.RESUELTA } },
+      data: {
+        status: AlertStatus.RESUELTA,
+        resolvedAt: now,
+        resolvedById: user.id,
+        resolutionNote: 'Entrega operativa recibida.',
+      },
     });
+
+    await notify(
+      {
+        userId: incoming.issuedById,
+        type: NotificationType.ACCION_REQUERIDA,
+        title: 'Tu entrega de turno fue recibida',
+        body: `${user.name} confirmó la recepción de la entrega operativa.`,
+        link: `/turno/entrega/${incoming.id}`,
+        entity: 'ShiftHandover',
+        entityId: incoming.id,
+      },
+      tx,
+    );
 
     await recordAudit(
       {
         entity: 'Shift',
         entityId: shift.id,
         action: AuditAction.TURNO_RECIBIR,
-        summary: incoming
-          ? `Recepción de turno confirmada (entrega ${incoming.id})`
-          : 'Turno activado sin entrega previa pendiente',
+        summary: `Entrega operativa recibida (entrega ${incoming.id})`,
         user,
-        before: { status: ShiftStatus.INICIADO },
+        before: { status: shift.status },
         after: {
-          status: ShiftStatus.ACTIVO,
-          handoverId: incoming?.id ?? null,
+          status: shift.status === ShiftStatus.INICIADO ? ShiftStatus.ACTIVO : shift.status,
+          handoverId: incoming.id,
           observations: params.observations ?? null,
           sessionId: user.sessionId,
         },
@@ -696,9 +957,9 @@ export async function receiveHandover(
       },
       tx,
     );
-
-    return updated;
   });
+
+  return getShiftById(shift.id);
 }
 
 /** Paso 3: abrir la preparación de la entrega, generando el resumen automático. */
@@ -727,10 +988,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
 
   return prisma.$transaction(async (tx) => {
     const handover = shift.handoverOut
-      ? await tx.shiftHandover.update({
-          where: { id: shift.handoverOut.id },
-          data: { toShiftId: null },
-        })
+      ? shift.handoverOut
       : await tx.shiftHandover.create({
           data: {
             fromShiftId: shift.id,
@@ -831,8 +1089,7 @@ export async function sendHandover(
         issuedById: user.id,
         issuerSessionId: user.sessionId,
         notes: params.notes ?? handover.notes,
-        // Queda sin destino: lo fija quien la reciba desde la bandeja.
-        toShiftId: null,
+        // Si la Caja ya fue recibida, toShiftId ya identifica al entrante y se conserva.
         // Fotografía inmutable de lo entregado.
         snapshot: {
           generatedAt: now.toISOString(),
@@ -864,6 +1121,9 @@ export async function sendHandover(
       where: { id: shift.id, status: ShiftStatus.PREPARANDO_ENTREGA },
       data: { status: ShiftStatus.ENTREGA_ENVIADA },
     });
+    // ENVIAR termina la participación operativa: el usuario ya puede abrir
+    // otro turno aunque éste siga pendiente de cierre formal.
+    await endParticipation(tx, shift.id, now);
 
     await recordAudit(
       {
@@ -912,7 +1172,12 @@ export async function sendHandover(
   });
 }
 
-/** Paso 5: cerrar el turno. */
+/**
+ * Paso 5: cierre autónomo del turno saliente.
+ *
+ * La entrega ya fue enviada. No se espera la recepción del turno siguiente.
+ * La validación de Supervisión es posterior y no bloquea.
+ */
 export async function closeShift(
   user: CurrentUser,
   params: { shiftId: string; notes?: string | null },
@@ -921,32 +1186,39 @@ export async function closeShift(
   const isOwner = shift.assignments.some((a) => a.userId === user.id);
   const canManage = user.permissions.includes('shift.manage');
   if (!isOwner && !canManage) {
-    throw new RuleError('Sólo quien está en el turno o un supervisor puede cerrarlo.');
+    throw new RuleError('Sólo quien estuvo en el turno o un supervisor puede cerrarlo.');
   }
 
   const handoverStatus: 'NONE' | HandoverStatus = shift.handoverOut
     ? shift.handoverOut.status
     : 'NONE';
-
-  // Ya no depende de que exista «el turno siguiente»: depende de la entrega.
   assertCanClose({ status: shift.status, handoverStatus });
 
   return prisma.$transaction(async (tx) => {
-    const closed = await tx.shift.update({
-      where: { id: shift.id },
+    const now = new Date();
+    const claim = await tx.shift.updateMany({
+      where: { id: shift.id, status: shift.status },
       data: {
         status: ShiftStatus.CERRADO,
-        actualEnd: new Date(),
+        actualEnd: now,
         closedById: user.id,
         notes: params.notes ?? shift.notes,
       },
     });
+    if (claim.count === 0) {
+      throw new RuleError('Ese turno acaba de cambiar de estado. Actualiza la pantalla.');
+    }
+
+    await endParticipation(tx, shift.id, now);
+
     await recordAudit(
       {
         entity: 'Shift',
         entityId: shift.id,
         action: AuditAction.TURNO_CERRAR,
-        summary: `Recuperación administrativa: turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} cerrado por ${user.name}`,
+        summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString(
+          'es-CL',
+        )} cerrado por ${user.name}`,
         user,
         before: { status: shift.status },
         after: { status: ShiftStatus.CERRADO },
@@ -955,7 +1227,7 @@ export async function closeShift(
       tx,
     );
     await ensureClosureValidationTask(tx, shift.id, user.id);
-    return closed;
+    return tx.shift.findUniqueOrThrow({ where: { id: shift.id } });
   });
 }
 
@@ -968,6 +1240,11 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
   assertTransition(shift.status, ShiftStatus.ACTIVO);
   if (shift.handoverOut && shift.handoverOut.status !== HandoverStatus.BORRADOR) {
     throw new RuleError('La entrega ya fue enviada: no puede cancelarse.');
+  }
+  if (shift.handoverOut?.toShiftId) {
+    throw new RuleError(
+      'La Caja de esta entrega ya fue reclamada por el turno entrante. La preparación ya no puede cancelarse.',
+    );
   }
   return prisma.$transaction(async (tx) => {
     if (shift.handoverOut) {

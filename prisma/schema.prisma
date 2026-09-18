@@ -509,12 +509,10 @@ model Shift {
    * por dia, y de ahi salia la idea de «programar» los turnos. Los turnos se
    * crean a voluntad, asi que puede haber dos turnos de dia el mismo dia
    * (una cobertura partida, un relevo adelantado).
-   * La invariante que SI se exige es «un solo turno en curso a la vez», y la
-   * garantiza un indice unico PARCIAL que Prisma no sabe expresar:
-   * `Shift_un_solo_turno_en_curso`, creado en la migracion
-   * 20260916170000_turnos_dia_noche. Vive en SQL a proposito; el servicio
-   * tambien lo comprueba para dar un mensaje legible, pero quien impide la
-   * carrera entre dos recepcionistas es el indice.
+   * Los turnos pueden solaparse. La invariante operativa es por persona:
+   * nadie puede participar activamente en dos turnos distintos a la vez.
+   * Esa garantía vive en ShiftAssignment mediante un índice único parcial
+   * creado en SQL porque Prisma no expresa índices parciales.
    */
   @@index([status])
   @@index([date])
@@ -522,16 +520,21 @@ model Shift {
 }
 
 model ShiftAssignment {
-  id        String         @id @default(cuid())
-  shiftId   String
-  shift     Shift          @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      AssignmentRole @default(TITULAR)
-  createdAt DateTime       @default(now())
+  id          String         @id @default(cuid())
+  shiftId     String
+  shift       Shift          @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        AssignmentRole @default(TITULAR)
+  /// Inicio real de la participación. Una asignación PROGRAMADA puede existir sin activarse.
+  activatedAt DateTime?
+  /// Fin real de la participación. Mientras sea nulo, la persona ocupa su único turno activo.
+  leftAt      DateTime?
+  createdAt   DateTime       @default(now())
 
   @@unique([shiftId, userId])
   @@index([userId])
+  @@index([shiftId, activatedAt, leftAt])
 }
 
 model ShiftHandover {

@@ -4,7 +4,7 @@
 > `PROJECT_CONTEXT.md` y `docs/ARQUITECTURA.md`. Aquí sólo se responde «en qué
 > punto está cada bloque».
 
-Actualizado: **2026-09-18** · `preproduction` en `347026a`
+Actualizado: **2026-09-18** · rama `refactor/turnos-solapados-caja` desde `e351f39`
 
 ## Estados canónicos
 
@@ -76,10 +76,10 @@ graph TD
   TURNO --> FRONTI
 
   classDef val fill:#d7f0dd,stroke:#2f7d4f,color:#123
-  classDef diag fill:#fde9c8,stroke:#b5761a,color:#123
+  classDef dev fill:#dbeafe,stroke:#2563eb,color:#123
   classDef pend fill:#eceff3,stroke:#8a94a3,color:#123
   class STG val
-  class TURNO,CAJA diag
+  class TURNO,CAJA dev
   class PMS,RES,LIBRO,HAB,ENTREGA,SUP,ALERTA,AUD,AUTH,FRONTI pend
 ```
 
@@ -88,7 +88,7 @@ graph TD
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura de staging | `VALIDADO_STAGING` | #56 · #57 | Proyecto Neon aislado, 35 migraciones, seed sintético, cero datos de Production |
-| Turnos + transferencia de Caja | `DIAGNOSTICO` | **iteración en curso** | Diagnóstico entregado; sin código |
+| Turnos + transferencia de Caja | `EN_DESARROLLO` | `refactor/turnos-solapados-caja` | Dominio, migración y flujo de Caja en implementación |
 | ID FNS transversal | `PENDIENTE` | — | |
 | Simplificación del Libro | `PENDIENTE` | — | |
 | Caja unificada | `PENDIENTE` | — | |
@@ -98,13 +98,13 @@ graph TD
 
 ## Iteración actual
 
-**Turnos solapados + transferencia explícita de Caja** — `DIAGNOSTICO`
+**Turnos solapados + transferencia explícita de Caja** — `EN_DESARROLLO`
 
 Un recepcionista entrante debe poder abrir su propio turno sin esperar el cierre
 del saliente. La única transferencia obligatoria entre turnos es Caja, trazada y
 sin autorización previa de Supervisión.
 
-- Rama prevista: `refactor/turnos-solapados-caja` desde `347026a`
+- Rama: `refactor/turnos-solapados-caja` desde `e351f39`
 - PR: sin abrir
 - Cambio estructural: **la unicidad global por hotel se reemplaza por
   exclusividad de participación activa por usuario, garantizada en base de datos

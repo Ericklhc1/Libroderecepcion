@@ -3,11 +3,28 @@ import { redirect } from 'next/navigation';
 import { AuthError, ForbiddenError } from '@/server/errors';
 import type { PermissionKey } from '@/lib/permissions';
 import { getCurrentUser, hasPermission, type CurrentUser } from './current-user';
+import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
-/** Para acciones de servidor: lanza si no hay sesión válida. */
-export async function requireUser(): Promise<CurrentUser> {
+/** Autenticación pura para los flujos previos al acceso: contraseña y términos. */
+export async function requireAuthenticatedUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) throw new AuthError();
+  return user;
+}
+
+/**
+ * Para acciones operativas: además de sesión válida exige completar los
+ * requisitos de primer acceso. Esto evita saltarse la pantalla llamando una
+ * Server Action directamente.
+ */
+export async function requireUser(): Promise<CurrentUser> {
+  const user = await requireAuthenticatedUser();
+  if (user.mustChangePassword) {
+    throw new ForbiddenError('Debes definir tu contraseña personal antes de continuar.');
+  }
+  if (!(await hasAcceptedCurrentTerms(user.id))) {
+    throw new ForbiddenError('Debes aceptar los términos vigentes antes de utilizar el Libro.');
+  }
   return user;
 }
 
@@ -58,7 +75,7 @@ export async function requirePermissionOrOwner(
 
 /** Para páginas: redirige a /login o /sin-permisos en lugar de lanzar. */
 export async function requirePageUser(): Promise<CurrentUser> {
-  const user = await getCurrentUser();
+  const user = await requireAuthenticatedUser().catch(() => null);
   if (!user) redirect('/login');
   return user;
 }

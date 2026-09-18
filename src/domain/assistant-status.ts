@@ -27,7 +27,7 @@
  * identificador deja de ser válido, se cambia en una línea y no hay que buscar
  * en qué archivo estaba escondido. `FRONTI_MODEL` lo sigue pudiendo pisar.
  */
-export const DEFAULT_ASSISTANT_MODEL = 'qwen/qwen3.6-27b';
+export const DEFAULT_ASSISTANT_MODEL = 'openai/gpt-oss-120b';
 
 /** Cuánto se espera al proveedor de inferencia antes de darlo por perdido. */
 export const ASSISTANT_TIMEOUT_MS = 30_000;

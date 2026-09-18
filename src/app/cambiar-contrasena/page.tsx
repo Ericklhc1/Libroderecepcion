@@ -6,7 +6,7 @@ import { ChangePasswordForm } from './change-password-form';
 export const metadata = { title: 'Cambiar contraseña' };
 
 export default async function ChangePasswordPage() {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowIncompleteAccess: true });
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">

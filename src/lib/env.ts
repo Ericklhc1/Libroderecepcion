@@ -15,7 +15,7 @@ const schema = z.object({
   SEED_DEMO_PASSWORD: z.string().min(8).default('Demo2024!'),
   HOTEL_TIMEZONE: z.string().default('America/Santiago'),
 
-  // Fronti es proveedor-agnóstico. El modelo open-weight es Qwen3 por defecto.
+  // Fronti es proveedor-agnóstico. Usa un modelo open-weight por defecto.
   // Groq es el backend hospedado inicial; FRONTI_BASE_URL permite apuntar el
   // mismo código a un servidor vLLM autohospedado sin reescribir el agente.
   FRONTI_PROVIDER: z.enum(['groq', 'vllm', 'openai']).default('groq'),

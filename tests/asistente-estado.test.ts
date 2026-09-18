@@ -186,18 +186,17 @@ describe('los tres estados de la salud', () => {
     });
   });
 
-  it('el endpoint distingue los tres estados y no un booleano', () => {
+  it('el endpoint delega los estados al dominio y sondea el proveedor real', () => {
     /*
-      Se comprueba sobre el código porque lo que falla acá es el CONTRATO del
-      endpoint: antes devolvía `openaiConfigured: Boolean(OPENAI_API_KEY)`, que
-      responde «hay una clave escrita» cuando la pregunta es «sirve».
+      El endpoint ya no repite los literales NO_CONFIGURADO/CON_FALLO:
+      assistantHealthFromFailure es la única fuente de verdad para esos estados.
+      Lo importante es que delegue ahí y que el único estado construido
+      directamente sea OK tras un sondeo exitoso.
     */
     const source = readFileSync('src/app/api/health/asistente/route.ts', 'utf-8');
-    for (const estado of ['NO_CONFIGURADO', 'OK', 'CON_FALLO']) {
-      expect(source, `falta el estado ${estado}`).toContain(estado);
-    }
-    // Y el sondeo tiene que preguntar de verdad, con plazo.
+    expect(source).toContain('assistantHealthFromFailure');
     expect(source).toContain('probeFrontiProvider');
+    expect(source).toContain("estado: 'OK'");
     // Sin exponer credenciales ni el modelo en la respuesta.
     expect(source).not.toMatch(/apiKey|GROQ_API_KEY|OPENAI_API_KEY|FRONTI_API_KEY/);
   });

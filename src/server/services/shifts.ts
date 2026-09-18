@@ -28,14 +28,11 @@ import {
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { buildHandoverSnapshot, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
-import { getSettingBool } from './settings';
 import {
   cashBlockersForReceiving,
   cashBlockersForSending,
   ensureHandoverElements,
-  isCashEnabled,
 } from './cash';
-import { getShiftCashClosure } from './cash-closure';
 
 /** Fecha operativa (medianoche local) usada como clave de turno. */
 export function operationalDate(now = new Date()): Date {
@@ -523,19 +520,6 @@ export async function receiveHandover(
     if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
   }
 
-  const autoClose = await getSettingBool('shift.autoCloseOnReceive', true);
-  /*
-    Una entrega histórica puede haberse enviado antes de que existiera el cierre
-    independiente de Caja. Si Caja está habilitada, recibirla no debe romper el
-    flujo intentando cerrar un turno cuya Caja sigue abierta: queda RECIBIDO y
-    se cierra después de cuadrar Caja. Las entregas nuevas con Caja ya cerrada
-    conservan el cierre automático configurado.
-  */
-  let closeIncomingOnReceive = autoClose;
-  if (incoming && autoClose && (await isCashEnabled())) {
-    const cashClosure = await getShiftCashClosure(incoming.fromShiftId);
-    closeIncomingOnReceive = Boolean(cashClosure && !cashClosure.reopenedAt);
-  }
 
   return prisma.$transaction(async (tx) => {
     const now = new Date();
@@ -565,21 +549,19 @@ export async function receiveHandover(
         await tx.shift.update({
           where: { id: fromShift.id },
           data: {
-            status: closeIncomingOnReceive ? ShiftStatus.CERRADO : ShiftStatus.RECIBIDO,
-            ...(closeIncomingOnReceive ? { actualEnd: now } : {}),
+            status: ShiftStatus.CERRADO,
+            actualEnd: now,
           },
         });
         await recordAudit(
           {
             entity: 'Shift',
             entityId: fromShift.id,
-            action: closeIncomingOnReceive ? AuditAction.TURNO_CERRAR : AuditAction.CAMBIO_ESTADO,
-            summary: closeIncomingOnReceive
-              ? 'Turno cerrado automáticamente tras la confirmación de recepción'
-              : 'Turno marcado como recibido por el turno siguiente',
+            action: AuditAction.TURNO_CERRAR,
+            summary: 'Turno cerrado automáticamente tras la confirmación de recepción',
             user,
             before: { status: fromShift.status },
-            after: { status: closeIncomingOnReceive ? ShiftStatus.CERRADO : ShiftStatus.RECIBIDO },
+            after: { status: ShiftStatus.CERRADO },
           },
           tx,
         );
@@ -851,7 +833,7 @@ export async function sendHandover(
   });
 }
 
-/** Paso 5: cerrar el turno. */
+/** Recuperación administrativa: cierre manual fuera del flujo operativo normal. */
 export async function closeShift(
   user: CurrentUser,
   params: { shiftId: string; notes?: string | null },

@@ -27,14 +27,21 @@ La fuente de verdad es el código + esquema + base conectada. La conversación h
 ## Producción y datos
 
 Producción:
-- hosting: Netlify, proyecto `libroderecepcion`
+- hosting oficial: Vercel, proyecto `libroderecepcion`
 - base: Neon, rama `production`
-- `main` es la rama de release
+- `main` es la rama de release y es la única rama que Vercel puede desplegar automáticamente
+
+Staging / pruebas reales:
+- hosting: Netlify, proyecto `libroderecepcion`
+- rama canónica: `preproduction`
+- base: Neon `development`
+- Netlify nunca debe usar Neon Production
 
 Desarrollo:
-- Codespaces/Cursor debe trabajar en una rama distinta de `main`
+- Codespaces/Cursor trabaja en una rama distinta de `main`
 - base permitida: Neon `development`
-- previews/branch deploys jamás deben escribir en Neon Production
+- flujo: feature → PR a `preproduction` → Compuerta → Netlify → validación real → PR `preproduction` a `main` → Vercel
+- cada Production verificada en Vercel debe quedar respaldada con un tag `production-*`
 
 Prohibido:
 - `prisma migrate reset`, `db:reset`, TRUNCATE, DROP o borrados masivos contra Production
@@ -55,7 +62,8 @@ Prohibido:
 - Cierre PMS exige `ACTIVIDAD + SALIDAS + IN_HOUSE`, frescos (≤15 min según timestamp impreso por FNS).
 - Todo cierre crea validación posterior crítica asignada a `EHerrera`.
 - La validación administrativa no bloquea el siguiente turno.
-- La IA futura interpreta lenguaje y llama operaciones determinísticas; no inventa reglas operativas.
+- La IA interpreta lenguaje y llama operaciones determinísticas; no inventa reglas operativas.
+- Fronti debe reportar fallos e ideas de mejora no triviales a Supervisor + Administrador de sistema con evidencia concreta y sin duplicar avisos.
 
 ## Protocolo ChatGPT ↔ Copilot
 

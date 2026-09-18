@@ -22,18 +22,17 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
-  { href: '/libro', label: 'Libro operativo', icon: 'book', mobile: true },
-  { href: '/habitaciones', label: 'Habitaciones', icon: 'room', anyOf: ['room.view'], mobile: true },
-  { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
   {
-    href: '/turno', label: 'Turno', icon: 'shift',
+    href: '/turno', label: 'Mi turno', icon: 'shift',
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'], mobile: true,
   },
+  { href: '/habitaciones', label: 'Habitaciones', icon: 'room', anyOf: ['room.view'], mobile: true },
+  { href: '/libro', label: 'Libro operativo', icon: 'book', mobile: true },
+  { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
   { href: '/supervision', label: 'Supervisión', icon: 'supervision', anyOf: ['supervision.view', 'shift.manage'], mobile: true },
 ];
 
 const SECONDARY: NavItem[] = [
-  { href: '/caja/cierre', label: 'Cierre de Caja', icon: 'key', anyOf: ['shift.handover'] },
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'] },
   { href: '/huespedes', label: 'Huéspedes y reservas', icon: 'guest', anyOf: ['guest.view', 'guest.manage'] },
   { href: '/huespedes/nueva-reserva', label: 'Cargar nueva reserva', icon: 'guest', anyOf: ['pms.import'] },

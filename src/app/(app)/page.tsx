@@ -40,6 +40,7 @@ import {
 } from '@/domain/rooms';
 import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
+import { OperationalBriefButton } from '@/components/operational/operational-brief';
 import {
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -252,6 +253,37 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      <Card>
+        <CardHeader
+          title="Inteligencia operativa"
+          count={data.attention.length}
+          action={<OperationalBriefButton />}
+        />
+        {data.attention.length === 0 ? (
+          <EmptyState
+            message="No hay condiciones prioritarias activas."
+            hint="La bandeja se construye con reglas del Libro; Fronti sólo la interpreta."
+          />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {data.attention.slice(0, 6).map((item) => (
+              <li key={item.id}>
+                <Link href={item.href} className="block px-4 py-3 hover:bg-slate-50">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={item.tone}>{item.tone === 'critico' ? 'Prioridad inmediata' : item.tone === 'atencion' ? 'Requiere atención' : 'Pendiente'}</Badge>
+                    <span className="text-sm font-semibold text-petrol-900">{item.title}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600">{item.reason}</p>
+                  <p className="mt-0.5 text-xs font-medium text-petrol-700">
+                    Siguiente acción: {item.action}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* --------------------------- Pendientes críticos --------------------------- */}

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { FollowUpStatus, Priority } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
@@ -18,10 +18,11 @@ import {
   type FineKindValue,
   type LinenKindValue,
 } from '@/domain/fines';
-import { getRoomDetail, confirmCheckOut } from '@/server/services/rooms';
+import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask } from '@/server/services/tasks';
+import { reportFrontiFinding } from './fronti-findings';
 import {
   frontiToolSettingForFunction,
   getFrontiConfig,
@@ -61,14 +62,16 @@ type OpenAIResponse = {
 
 type PendingAction =
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'confirm_checkouts';
       expiresAt: number;
       args: { roomNumbers: string[]; note?: string | null };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_reminder';
       expiresAt: number;
@@ -80,7 +83,8 @@ type PendingAction =
       };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_fine';
       expiresAt: number;
@@ -189,6 +193,26 @@ const TOOL_DEFINITIONS = [
   },
   {
     type: 'function',
+    name: 'reportar_hallazgo',
+    description:
+      'Reporta a Supervisor y Administrador de sistema un fallo concreto o una mejora de proceso detectada por Fronti. Úsala sólo con evidencia específica y accionable; no para preferencias de estilo, ideas vagas ni duplicados.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['FALLO', 'MEJORA'] },
+        severity: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        area: { type: 'string', minLength: 2, maxLength: 120 },
+        title: { type: 'string', minLength: 4, maxLength: 200 },
+        evidence: { type: 'string', minLength: 8, maxLength: 1200 },
+        recommendation: { type: ['string', 'null'], maxLength: 1200 },
+      },
+      required: ['kind', 'severity', 'area', 'title', 'evidence', 'recommendation'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'proponer_multa',
     description:
       'Prepara una multa para una habitación usando el contexto real de la estadía. Requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes.',
@@ -243,12 +267,14 @@ const TOOL_DEFINITIONS = [
 
 function enabledToolDefinitions(config: FrontiConfig) {
   return TOOL_DEFINITIONS.filter((definition) => {
+    if (definition.name === 'reportar_hallazgo') return true;
     const key = frontiToolSettingForFunction(definition.name);
     return key ? config.tools[key] : false;
   });
 }
 
 function assertToolEnabled(config: FrontiConfig, functionName: string) {
+  if (functionName === 'reportar_hallazgo') return;
   const key = frontiToolSettingForFunction(functionName);
   if (!key || !config.tools[key]) {
     throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
@@ -292,13 +318,41 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   } catch {
     throw new Error('La confirmación no es válida.');
   }
-  if (parsed.version !== 1 || parsed.userId !== user.id) {
+  if (parsed.version !== 2 || !parsed.nonce || parsed.userId !== user.id) {
     throw new Error('Esta confirmación pertenece a otra sesión.');
   }
   if (parsed.expiresAt < Date.now()) {
     throw new Error('La confirmación venció. Vuelve a pedir la acción.');
   }
   return parsed;
+}
+
+async function claimConfirmation(pending: PendingAction): Promise<void> {
+  try {
+    await prisma.assistantActionReceipt.create({
+      data: {
+        nonce: pending.nonce,
+        userId: pending.userId,
+        action: pending.action,
+      },
+    });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      throw new Error('Esta confirmación ya fue usada. Vuelve a pedir la acción si necesitas repetirla.');
+    }
+    throw error;
+  }
+}
+
+async function releaseConfirmationClaim(pending: PendingAction): Promise<void> {
+  await prisma.assistantActionReceipt.deleteMany({
+    where: { nonce: pending.nonce, userId: pending.userId },
+  });
 }
 
 function makeConfirmation(
@@ -310,7 +364,8 @@ function makeConfirmation(
   risk: AssistantConfirmation['risk'],
 ): AssistantConfirmation {
   const payload = {
-    version: 1,
+    version: 2,
+    nonce: randomUUID(),
     userId: user.id,
     expiresAt: Date.now() + CONFIRMATION_TTL_MS,
     action,
@@ -366,40 +421,17 @@ async function prioritiesTool(user: CurrentUser) {
   const data = await getDashboardData(user);
   return {
     counters: data.counters,
-    rooms: data.roomsNeedingAction.map((room) => ({
-      room: room.number,
-      state: room.snapshot.state,
-      openIncidents: room.openIncidents,
-      keysOut: room.snapshot.keysOut.length,
+    attention: data.attention.map((item, index) => ({
+      order: index + 1,
+      kind: item.kind,
+      level: item.tone,
+      title: item.title,
+      reason: item.reason,
+      nextAction: item.action,
+      href: item.href,
     })),
-    overdueTasks: data.overdueTasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      priority: task.priority,
-      dueAt: task.dueAt,
-      assignee: task.assignee?.name ?? null,
-    })),
-    alerts: data.alerts.map((alert) => ({
-      id: alert.id,
-      level: alert.level,
-      title: alert.title,
-      message: alert.message,
-      dueAt: alert.dueAt,
-    })),
-    followUps: data.followUps.map((followUp) => ({
-      id: followUp.id,
-      action: followUp.action,
-      scheduledAt: followUp.scheduledAt,
-      status: followUp.status,
-      owner: followUp.owner?.name ?? null,
-    })),
-    criticalEntries: data.criticalEntries.map((entry) => ({
-      seq: entry.seq,
-      title: entry.title,
-      priority: entry.priority,
-      dueAt: entry.dueAt,
-      owner: entry.owner?.name ?? null,
-    })),
+    instruction:
+      'Este orden ya fue calculado por el motor determinístico del Libro. No lo reordenes ni inventes prioridades nuevas.',
   };
 }
 
@@ -655,6 +687,24 @@ async function executeTool(
       return reminderProposalTool(user, args);
     case 'proponer_multa':
       return fineProposalTool(user, args);
+    case 'reportar_hallazgo':
+      return reportFrontiFinding(user, {
+        kind: args.kind === 'MEJORA' ? 'MEJORA' : 'FALLO',
+        severity:
+          args.severity === 'BAJA' ||
+          args.severity === 'MEDIA' ||
+          args.severity === 'ALTA' ||
+          args.severity === 'CRITICA'
+            ? args.severity
+            : 'MEDIA',
+        area: String(args.area ?? ''),
+        title: String(args.title ?? ''),
+        evidence: String(args.evidence ?? ''),
+        recommendation:
+          typeof args.recommendation === 'string' && args.recommendation.trim()
+            ? args.recommendation
+            : null,
+      });
     default:
       throw new Error('La herramienta solicitada no existe.');
   }
@@ -724,6 +774,7 @@ async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenA
         'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
         `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
         'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
+        'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
         'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
         `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`,
       input,
@@ -896,7 +947,9 @@ export async function executeReceptionConfirmation(
   }
 
   const pending = verifyAction(token, user);
+  await claimConfirmation(pending);
 
+  try {
   if (pending.action === 'create_reminder') {
     assertToolEnabled(config, 'proponer_recordatorio');
     requireToolPermission(user, 'task.create');
@@ -956,10 +1009,15 @@ export async function executeReceptionConfirmation(
     validated.push({ roomNumber, stayId: room.snapshot.outgoing.id });
   }
 
-  const completed: string[] = [];
-  for (const item of validated) {
-    await confirmCheckOut(user, { stayId: item.stayId, note: pending.args.note ?? null });
-    completed.push(item.roomNumber);
+  await confirmCheckOutBatch(user, {
+    items: validated.map((item) => ({
+      stayId: item.stayId,
+      note: pending.args.note ?? null,
+    })),
+  });
+  return { reply: `Check-out confirmado: ${validated.map((item) => item.roomNumber).join(', ')}.` };
+  } catch (error) {
+    await releaseConfirmationClaim(pending);
+    throw error;
   }
-  return { reply: `Check-out confirmado: ${completed.join(', ')}.` };
 }

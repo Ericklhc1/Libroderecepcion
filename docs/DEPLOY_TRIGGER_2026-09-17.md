@@ -9,3 +9,5 @@ Netlify: relanzar build con AUTH_SECRET configurado.
 Netlify: relanzar build con AUTH_SECRET disponible en todos los scopes.
 
 Netlify: forzar build del HEAD actual con fix de sesión robusta.
+
+Netlify: relanzar con AUTH_SECRET verificado en producción/runtime.

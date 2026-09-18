@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
+import { env } from '@/lib/env';
 import { getAllSettings } from '@/server/services/settings';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
@@ -196,7 +197,7 @@ export default async function FrontiAdminPage() {
           </div>
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
             <p className="text-xs text-slate-500">Zona horaria</p>
-            <p className="mt-1 text-sm font-semibold text-petrol-900">America/Santiago</p>
+            <p className="mt-1 text-sm font-semibold text-petrol-900">{env().HOTEL_TIMEZONE}</p>
           </div>
         </div>
       </Card>

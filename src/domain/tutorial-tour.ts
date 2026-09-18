@@ -98,11 +98,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['room.view'],
   },
   {
-    id: 'cierre-caja',
-    title: 'Cierre de Caja',
+    id: 'preparar-entrega',
+    title: 'Preparar entrega',
     description:
-      'Antes de finalizar el turno, aquí haces el arqueo físico, resuelves diferencias y congelas una fotografía auditable de la Caja.',
-    route: '/caja/cierre',
+      'El arqueo y la transferencia de Caja forman parte del cierre del turno. Desde Mi turno preparas la entrega, declaras Caja y continúas aunque el relevo todavía no haya terminado su cierre.',
+    route: '/turno',
     target: ROUTE_TARGET,
     anyOf: ['shift.handover'],
   },
@@ -110,7 +110,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'turno',
     title: 'Turno',
     description:
-      'Turno se concentra en abrir, recibir y entregar. Al confirmar la recepción, el turno saliente se cierra automáticamente y queda pendiente de validación de jefatura.',
+      'Mi turno concentra apertura, operación, preparación de entrega, transferencia de Caja y cierre. El turno entrante puede abrirse mientras el saliente termina, y la recepción de Caja no cierra automáticamente al turno anterior.',
     route: '/turno',
     target: ROUTE_TARGET,
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],

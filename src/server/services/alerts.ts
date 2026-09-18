@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
+import { AlertStatus, AuditAction, EntryStatus, TaskStatus } from '@prisma/client';
 import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -8,6 +8,14 @@ import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
+
+export const CLOSURE_VALIDATOR_USERNAME = 'EHerrera';
+
+function assertClosureValidator(user: CurrentUser) {
+  if (user.username.toLowerCase() !== CLOSURE_VALIDATOR_USERNAME.toLowerCase()) {
+    throw new RuleError('La validación de cierre está asignada exclusivamente a Erick Herrera.');
+  }
+}
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -257,10 +265,8 @@ export async function resolveAlert(
     );
   }
 
-  if (shiftValidation && user.roleKey !== ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin) {
-    throw new RuleError(
-      'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
-    );
+  if (shiftValidation) {
+    assertClosureValidator(user);
   }
 
   if (cashManual) {
@@ -281,6 +287,21 @@ export async function resolveAlert(
     },
     include: alertInclude,
   });
+  if (shiftValidation) {
+    await prisma.task.updateMany({
+      where: {
+        alertId: input.id,
+        deletedAt: null,
+        status: { notIn: [TaskStatus.COMPLETADA, TaskStatus.CANCELADA] },
+      },
+      data: {
+        status: TaskStatus.COMPLETADA,
+        completedAt: new Date(),
+        completedById: user.id,
+      },
+    });
+  }
+
   await recordAudit({
     entity: 'Alert',
     entityId: input.id,
@@ -292,7 +313,7 @@ export async function resolveAlert(
         : noElements
           ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
           : shiftValidation
-            ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+            ? `Cierre de turno validado por Erick Herrera: ${alert.title}`
             : `Alerta resuelta: ${alert.title}`,
     user,
     before: { status: alert.status },
@@ -301,6 +322,59 @@ export async function resolveAlert(
   });
   return updated;
 }
+
+export async function returnClosureValidation(
+  user: CurrentUser,
+  input: { id: string; note: string },
+) {
+  const alert = await loadAlert(input.id);
+  if (!alert.dedupeKey?.startsWith('shift-validation:')) {
+    throw new RuleError('Esta acción sólo aplica a validaciones de cierre.');
+  }
+  assertClosureValidator(user);
+
+  const note = input.note.trim();
+  if (!note) {
+    throw new RuleError('La observación es obligatoria para devolver un cierre.');
+  }
+
+  const updated = await prisma.alert.update({
+    where: { id: input.id },
+    data: {
+      status: AlertStatus.VISTA,
+      acknowledgedById: user.id,
+      acknowledgedAt: new Date(),
+      resolvedById: null,
+      resolvedAt: null,
+      resolutionNote: `Devuelto para corrección: ${note}`,
+      snoozedUntil: null,
+    },
+    include: alertInclude,
+  });
+
+  await prisma.task.updateMany({
+    where: { alertId: input.id, deletedAt: null },
+    data: {
+      status: TaskStatus.PENDIENTE,
+      completedAt: null,
+      completedById: null,
+    },
+  });
+
+  await recordAudit({
+    entity: 'Alert',
+    entityId: input.id,
+    action: AuditAction.CAMBIO_ESTADO,
+    summary: `Cierre devuelto para corrección por Erick Herrera: ${alert.title}`,
+    user,
+    before: { status: alert.status },
+    after: { status: AlertStatus.VISTA },
+    reason: note,
+  });
+
+  return updated;
+}
+
 
 export async function softDeleteAlert(
   user: CurrentUser,

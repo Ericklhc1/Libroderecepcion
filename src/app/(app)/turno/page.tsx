@@ -17,7 +17,6 @@ import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
-  CloseShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -106,7 +105,7 @@ export default async function ShiftPage() {
         <div>
           <h1 className="text-xl font-semibold text-petrol-900">Mi turno</h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Inicio, recepción, operación, entrega y cierre.
+            Inicio, recepción, operación y entrega. La recepción del relevo cierra el turno saliente.
           </p>
         </div>
         {user.permissions.includes('shift.manage') ? (
@@ -234,15 +233,7 @@ export default async function ShiftPage() {
 
                 <div className="flex flex-col gap-2">
                   {shift.status === ShiftStatus.ACTIVO ? (
-                    <>
-                      <PrepareHandoverForm shiftId={shift.id} />
-                      {/*
-                        Cerrar sin entregar sigue siendo posible —hay turnos que
-                        no relevan a nadie— pero el camino principal es
-                        entregar: el cierre queda en la bandeja.
-                      */}
-                      <CloseShiftForm shiftId={shift.id} />
-                    </>
+                    <PrepareHandoverForm shiftId={shift.id} />
                   ) : null}
                   {shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
                     <>
@@ -255,9 +246,6 @@ export default async function ShiftPage() {
                       </Link>
                       <CancelPreparationForm shiftId={shift.id} />
                     </>
-                  ) : null}
-                  {shift.status === ShiftStatus.RECIBIDO ? (
-                    <CloseShiftForm shiftId={shift.id} />
                   ) : null}
                 </div>
               </div>

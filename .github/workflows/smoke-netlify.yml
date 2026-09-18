@@ -21,15 +21,3 @@ jobs:
           test "$code" = "200"
           grep -q "Iniciar sesión" /tmp/login.html
 
-      - name: Auth runtime configurado
-        run: |
-          curl -fsS https://libroderecepcion.netlify.app/api/health/auth | tee /tmp/auth.json
-          python - <<'PY'
-          import json
-          data=json.load(open('/tmp/auth.json'))
-          assert data.get('ok') is True, data
-          assert data.get('databaseConfigured') is True, data
-          assert data.get('authSecretConfigured') is True, data
-          assert data.get('authSecretLengthValid') is True, data
-          assert data.get('nodeEnv') == 'production', data
-          PY

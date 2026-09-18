@@ -32,11 +32,11 @@ Se consolidó Cierre Operativo V2:
 
 Netlify está conectado al repositorio y se comprobó un deploy disparado desde Codespaces.
 
-Todavía debe tratarse como tarea prioritaria dejar Codespaces aislado de Production:
-- trabajar en rama distinta de `main`;
-- configurar Codespaces para Neon `development`;
-- usar Netlify Preview/branch deploy para pruebas;
-- no permitir que un entorno de desarrollo use credenciales Production.
+Desde 2026-09-18:
+- `DATABASE_URL` y `DIRECT_DATABASE_URL` de contextos `dev`, `branch-deploy` y `deploy-preview` apuntan a Neon `development`;
+- Production conserva Neon `production`;
+- el trabajo funcional debe seguir usando rama distinta de `main`;
+- Production no se usa como entorno de prueba.
 
 ## Decisiones de continuidad
 
@@ -49,17 +49,18 @@ Todavía debe tratarse como tarea prioritaria dejar Codespaces aislado de Produc
 
 ## Pendientes inmediatos
 
-- [ ] Confirmar y configurar Neon `development` dentro del Codespace sin exponer la connection string.
-- [ ] Separar claramente variables Netlify Production vs Preview/branch deploy.
+- [x] Separar Netlify Preview/branch deploy de Neon Production.
+- [x] Retirar el endpoint temporal de diagnóstico de auth.
 - [ ] Evitar que el hook de Codespaces dispare Production durante trabajo experimental.
 - [ ] Revisar documentación histórica que aún describe Vercel como hosting primario.
-- [ ] Retirar el endpoint temporal de diagnóstico de auth cuando ya no sea necesario.
 - [ ] Rotar la contraseña de la cuenta que fue compartida accidentalmente en una conversación, sin registrar la nueva credencial aquí.
 
 ## Siguiente acción
 
-Configurar el Codespace como entorno de desarrollo seguro:
-`rama de trabajo → Neon development → pruebas locales → Netlify Preview → PR → Compuerta → main → Production`.
+Continuar desde ChatGPT como agente principal con:
+`rama de trabajo → Neon development → pruebas → Netlify Preview → PR → Compuerta → main → Production`.
+
+El puente de Copilot queda disponible como apoyo, pero no es requisito para continuar.
 
 ## Mensaje para Copilot
 

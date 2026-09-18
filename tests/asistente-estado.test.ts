@@ -244,6 +244,15 @@ describe('el modelo y el plazo están declarados', () => {
     expect(source).toContain('AbortSignal.timeout(ASSISTANT_TIMEOUT_MS)');
   });
 
+  it('normaliza credenciales copiadas desde paneles antes de enviarlas al proveedor', () => {
+    const source = readFileSync('src/lib/env.ts', 'utf-8');
+    expect(source).toContain('const secretEnv = z.preprocess');
+    expect(source).toContain('value.trim()');
+    expect(source).toContain('GROQ_API_KEY: secretEnv');
+    expect(source).toContain('FRONTI_API_KEY: secretEnv');
+    expect(source).toContain('OPENAI_API_KEY: secretEnv');
+  });
+
   it('el endpoint de conversación responde con el estado de la causa', () => {
     const source = readFileSync('src/app/api/fronti/route.ts', 'utf-8');
     expect(source).toContain('AssistantError');

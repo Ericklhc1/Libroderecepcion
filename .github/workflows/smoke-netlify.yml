@@ -1,23 +1,37 @@
-name: Smoke Netlify Production
+name: Smoke Netlify Staging
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/smoke-netlify.yml'
   workflow_dispatch:
+    inputs:
+      staging_url:
+        description: 'URL del Deploy Preview/Branch Deploy de Netlify'
+        required: true
+        type: string
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Esperar propagación
-        run: sleep 10
+      - name: Validar URL de staging
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
+        run: |
+          case "$STAGING_URL" in
+            https://*.netlify.app) ;;
+            *) echo "La URL debe ser un deploy de netlify.app"; exit 1 ;;
+          esac
 
       - name: Login responde
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
         run: |
-          code=$(curl -sS -o /tmp/login.html -w "%{http_code}" https://libroderecepcion.netlify.app/login)
+          code=$(curl -sS -L -o /tmp/login.html -w "%{http_code}" "$STAGING_URL/login")
           test "$code" = "200"
           grep -q "Iniciar sesión" /tmp/login.html
 
+      - name: Reportar versión
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
+        run: |
+          curl -fsSL "$STAGING_URL/api/health/version" | jq -e '.ok == true and .provider == "netlify"'

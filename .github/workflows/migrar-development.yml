@@ -1,0 +1,156 @@
+# Alinea Neon `development` con las migraciones del repositorio.
+#
+# POR QUÉ EXISTE. El contenedor del agente no tiene salida TCP al puerto 5432 y
+# los endpoints de Neon están fuera de su política de egreso, así que
+# `prisma migrate deploy` no se puede ejecutar desde allí. Este runner sí tiene
+# red. Se usa Prisma, nunca SQL a mano, para que `_prisma_migrations` quede
+# correcto.
+#
+# CÓMO SE DISPARA. Con un push a esta rama técnica que toque `ops/RUN_MIGRATION`.
+# El archivo de workflow por sí solo NO lo dispara: así puede subirse y quedar
+# esperando a que existan los secretos, sin ejecuciones en rojo.
+#
+# NUNCA TOCA PRODUCTION. Tres barreras de identidad antes de migrar, y el job
+# aborta si el destino no es el endpoint declarado de `development`.
+
+name: Migrar Neon development
+
+on:
+  push:
+    branches: [tech/migrar-development]
+    paths:
+      - 'ops/RUN_MIGRATION'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrar-development
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    name: prisma migrate deploy sobre development
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+
+    env:
+      DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+      DIRECT_DATABASE_URL: ${{ secrets.DEV_DIRECT_DATABASE_URL }}
+      EXPECTED_HOST_STEM: ${{ vars.DEV_DB_HOST_STEM }}
+
+    steps:
+      - name: Enmascarar secretos en el registro
+        run: |
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$DIRECT_DATABASE_URL"
+
+      - name: Exigir secretos y variable
+        run: |
+          fallo=0
+          [ -n "$DATABASE_URL" ]        || { echo "FALLO: falta el secreto DEV_DATABASE_URL.";        fallo=1; }
+          [ -n "$DIRECT_DATABASE_URL" ] || { echo "FALLO: falta el secreto DEV_DIRECT_DATABASE_URL."; fallo=1; }
+          [ -n "$EXPECTED_HOST_STEM" ]  || { echo "FALLO: falta la variable DEV_DB_HOST_STEM.";       fallo=1; }
+          [ "$fallo" = 0 ] || exit 1
+          echo "PASS: secretos y variable presentes."
+
+      - name: Código del commit exacto
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verificar que el destino es development
+        run: |
+          mkdir -p .ci
+          cat > .ci/destino.mjs <<'JS'
+          const esperado = process.env.EXPECTED_HOST_STEM;
+          const tallo = (h) => {
+            const [p, ...r] = h.split('.');
+            return [p.replace(/-pooler$/, ''), ...r].join('.');
+          };
+          let fallo = false;
+          for (const [etiqueta, crudo] of [
+            ['pooled', process.env.DATABASE_URL],
+            ['directa', process.env.DIRECT_DATABASE_URL],
+          ]) {
+            let url;
+            try { url = new URL(crudo); } catch {
+              console.error(`FALLO [${etiqueta}]: no es una URL válida.`); fallo = true; continue;
+            }
+            if (tallo(url.hostname) !== esperado) {
+              console.error(`FALLO [${etiqueta}]: el host NO coincide con DEV_DB_HOST_STEM.`);
+              console.error('Abortado: el destino no es la rama development.');
+              fallo = true;
+            } else {
+              console.log(`PASS  [${etiqueta}]: host coincide con development.`);
+            }
+          }
+          if (fallo) process.exit(1);
+          JS
+          node .ci/destino.mjs
+
+      - name: Dependencias
+        run: npm ci
+
+      - name: Cliente Prisma
+        run: npx prisma generate
+
+      - name: Estado ANTES
+        run: npx prisma migrate status || true
+
+      - name: Aplicar migraciones
+        run: npx prisma migrate deploy
+
+      - name: Estado DESPUÉS
+        run: npx prisma migrate status
+
+      - name: Verificar esquema resultante
+        run: |
+          cat > .ci/verificar.mjs <<'JS'
+          import { PrismaClient } from '@prisma/client';
+          import { readdirSync } from 'node:fs';
+          const prisma = new PrismaClient();
+          let fallo = false;
+
+          const enDisco = readdirSync('prisma/migrations').filter((d) => /^\d/.test(d)).sort();
+          const filas = await prisma.$queryRaw`
+            SELECT migration_name::text AS nombre FROM _prisma_migrations
+            WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
+          const aplicadas = filas.map((f) => f.nombre).sort();
+          console.log(`migraciones en el repositorio: ${enDisco.length}`);
+          console.log(`migraciones aplicadas:         ${aplicadas.length}`);
+          const faltan = enDisco.filter((n) => !aplicadas.includes(n));
+          if (faltan.length) { console.error('FALLO sin aplicar: ' + faltan.join(', ')); fallo = true; }
+
+          const [obj] = await prisma.$queryRaw`
+            SELECT to_regclass('public."LegalAcceptance"')::text        AS legal,
+                   to_regclass('public."AssistantActionReceipt"')::text AS receipt,
+                   (SELECT count(*)::int FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='ShiftAssignment'
+                       AND column_name IN ('activatedAt','leftAt'))     AS cols,
+                   (SELECT count(*)::int FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid
+                     WHERE t.typname='NotificationType' AND e.enumlabel='FRONTI_HALLAZGO') AS enumv`;
+          console.log('LegalAcceptance:', obj.legal ?? 'AUSENTE');
+          console.log('AssistantActionReceipt:', obj.receipt ?? 'AUSENTE');
+          console.log('ShiftAssignment.activatedAt/leftAt:', obj.cols, 'de 2');
+          console.log('NotificationType.FRONTI_HALLAZGO:', obj.enumv, 'de 1');
+          if (!obj.legal || !obj.receipt || obj.cols !== 2 || obj.enumv !== 1) {
+            console.error('FALLO: falta algún objeto esperado.'); fallo = true;
+          }
+
+          await prisma.$disconnect();
+          if (fallo) process.exit(1);
+          console.log('PASS: development alineada con el repositorio.');
+          JS
+          node .ci/verificar.mjs
+
+      - name: Limpiar scripts temporales
+        if: always()
+        run: rm -rf .ci

@@ -110,10 +110,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'turno',
     title: 'Turno',
     description:
-      'Turno se concentra en abrir, recibir, entregar y cerrar. Al final reúne lo ocurrido para que el relevo y la impresión sean una fotografía clara de la jornada.',
+      'Turno concentra el ciclo operativo: abrir, recibir y entregar. Al confirmar la recepción del relevo, el turno saliente se cierra automáticamente y queda pendiente de validación de jefatura.',
     route: '/turno',
     target: ROUTE_TARGET,
-    anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
+    anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.manage'],
   },
   {
     id: 'llaves',

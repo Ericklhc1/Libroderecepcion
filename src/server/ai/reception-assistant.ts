@@ -8,8 +8,6 @@ import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import {
   ASSISTANT_FAILURE_MESSAGE,
-  ASSISTANT_TIMEOUT_MS,
-  classifyAssistantFailure,
   type AssistantFailure,
 } from '@/domain/assistant-status';
 import {
@@ -28,6 +26,13 @@ import {
   getFrontiConfig,
   type FrontiConfig,
 } from './fronti-config';
+import {
+  chatWithFrontiProvider,
+  FrontiProviderError,
+  resolveFrontiProvider,
+  type FrontiChatMessage,
+  type FrontiToolDefinition,
+} from './fronti-provider';
 
 export type AssistantMessage = {
   role: 'user' | 'assistant';
@@ -44,20 +49,6 @@ export type AssistantConfirmation = {
 export type AssistantResult = {
   reply: string;
   confirmations: AssistantConfirmation[];
-};
-
-type OpenAIOutputItem = {
-  type?: string;
-  call_id?: string;
-  name?: string;
-  arguments?: string;
-  content?: Array<{ type?: string; text?: string }>;
-  [key: string]: unknown;
-};
-
-type OpenAIResponse = {
-  output?: OpenAIOutputItem[];
-  error?: { message?: string };
 };
 
 type PendingAction =
@@ -730,126 +721,46 @@ export class AssistantError extends Error {
   }
 }
 
-function responseText(response: OpenAIResponse): string {
-  const chunks: string[] = [];
-  for (const item of response.output ?? []) {
-    if (item.type !== 'message') continue;
-    for (const content of item.content ?? []) {
-      if (content.type === 'output_text' && content.text) chunks.push(content.text);
-    }
-  }
-  return chunks.join('\n').trim();
+function systemInstructions(config: FrontiConfig): string {
+  return (
+    `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
+    'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
+    'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
+    'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
+    'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
+    `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
+    'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
+    'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
+    'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
+    `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`
+  );
 }
 
-async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenAIResponse> {
-  const key = env().OPENAI_API_KEY;
-  if (!key) {
-    throw new AssistantError('SIN_CLAVE');
-  }
-
-  const tools = enabledToolDefinitions(config);
-  let response: Response;
-  try {
-    response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
+function chatTools(config: FrontiConfig): FrontiToolDefinition[] {
+  return enabledToolDefinitions(config).map((definition) => ({
+    type: 'function',
+    function: {
+      name: definition.name,
+      description: definition.description,
+      parameters: definition.parameters as unknown as Record<string, unknown>,
+      strict: definition.strict,
     },
-    /*
-      Sin plazo, una llamada colgada dejaba la pantalla del mesón esperando
-      indefinidamente: no había timeout explícito y el `fetch` de Node no trae
-      ninguno por omisión.
-    */
-    signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
-    body: JSON.stringify({
-      model: config.model,
-      store: false,
-      reasoning: { effort: config.reasoningEffort },
-      instructions:
-        `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
-        'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
-        'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
-        'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
-        'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
-        `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
-        'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
-        'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
-        'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
-        `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`,
-      input,
-      tools: tools.length ? tools : undefined,
-      tool_choice: tools.length ? 'auto' : undefined,
-      parallel_tool_calls: false,
-    }),
-    cache: 'no-store',
-    });
-  } catch (error) {
-    /*
-      Acá sólo caen los fallos de transporte: plazo agotado o sin red. Un
-      estado HTTP de error NO lanza, se comprueba más abajo.
-    */
-    const aborted = error instanceof Error && error.name === 'TimeoutError';
-    throw new AssistantError(
-      classifyAssistantFailure({ aborted, network: !aborted }),
-      error instanceof Error ? error : undefined,
-    );
-  }
-
-  /*
-    El cuerpo puede no ser JSON —una pasarela caída devuelve HTML— así que
-    parsear no puede tumbar la clasificación del fallo.
-  */
-  let payload: OpenAIResponse | null = null;
-  try {
-    payload = (await response.json()) as OpenAIResponse;
-  } catch {
-    payload = null;
-  }
-
-  if (!response.ok) {
-    const apiError = payload?.error as
-      | { message?: string; code?: string; type?: string }
-      | undefined;
-    throw new AssistantError(
-      classifyAssistantFailure({
-        status: response.status,
-        code: apiError?.code ?? apiError?.type ?? null,
-        message: apiError?.message ?? null,
-      }),
-    );
-  }
-
-  if (!payload) throw new AssistantError('CAIDO');
-  return payload;
+  }));
 }
 
-/**
- * Convierte el historial en la entrada que espera la API de respuestas.
- *
- * El tipo de la parte de contenido DEPENDE DEL ROL, y ahí estaba el fallo:
- * todos los mensajes salían como `input_text`, también los del asistente, y
- * para ésos la API sólo acepta `output_text`. La respuesta era un 400 con
- * «Invalid value: 'input_text'. Supported values are: 'output_text' and
- * 'refusal'.», que el pop-up pintaba tal cual en el chat del mesón.
- *
- * No era un caso raro: el saludo de Fronti es un mensaje de asistente y viaja
- * en el historial, así que la conversación fallaba desde la PRIMERA pregunta.
- * Fronti nunca contestó nada en producción.
- *
- * `responseText` ya leía `output_text` al interpretar la respuesta, de modo que
- * el archivo conocía la regla en un sentido y no en el otro.
- */
-function messagesAsInput(messages: AssistantMessage[], limit: number): unknown[] {
-  return messages.slice(-limit).map((message) => ({
-    role: message.role,
-    content: [
-      {
-        type: message.role === 'assistant' ? 'output_text' : 'input_text',
-        text: message.content,
-      },
-    ],
-  }));
+function messagesAsChat(
+  messages: AssistantMessage[],
+  config: FrontiConfig,
+): FrontiChatMessage[] {
+  return [
+    { role: 'system', content: systemInstructions(config) },
+    ...messages.slice(-(config.modelHistoryLimit + 3)).map(
+      (message): FrontiChatMessage => ({
+        role: message.role,
+        content: message.content,
+      }),
+    ),
+  ];
 }
 
 export async function runReceptionAssistant(
@@ -861,42 +772,54 @@ export async function runReceptionAssistant(
     throw new AssistantError('DESACTIVADO');
   }
 
-  let input = messagesAsInput(messages, config.modelHistoryLimit + 3);
+  const provider = resolveFrontiProvider(config);
+  const tools = chatTools(config);
+  let chat = messagesAsChat(messages, config);
   const confirmations: AssistantConfirmation[] = [];
 
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
-    const response = await callOpenAI(input, config);
-    const calls = (response.output ?? []).filter(
-      (item): item is OpenAIOutputItem & { call_id: string; name: string; arguments: string } =>
-        item.type === 'function_call' &&
-        typeof item.call_id === 'string' &&
-        typeof item.name === 'string' &&
-        typeof item.arguments === 'string',
-    );
+    let response;
+    try {
+      response = await chatWithFrontiProvider({
+        provider,
+        messages: chat,
+        tools,
+      });
+    } catch (error) {
+      if (error instanceof FrontiProviderError) {
+        throw new AssistantError(error.failure, error);
+      }
+      throw error;
+    }
 
-    if (!calls.length) {
+    if (!response.toolCalls.length) {
       return {
-        reply: responseText(response) || 'No pude formular una respuesta. Intenta decirlo de otra forma.',
+        reply:
+          response.text ||
+          'No pude formular una respuesta. Intenta decirlo de otra forma.',
         confirmations,
       };
     }
 
-    const toolOutputs: Array<Record<string, unknown>> = [];
-    for (const call of calls) {
+    const toolMessages: FrontiChatMessage[] = [];
+    for (const call of response.toolCalls) {
       let args: Record<string, unknown>;
       try {
-        args = JSON.parse(call.arguments) as Record<string, unknown>;
+        args = JSON.parse(call.function.arguments) as Record<string, unknown>;
       } catch {
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({ ok: false, error: 'Los parámetros no eran JSON válido.' }),
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({
+            ok: false,
+            error: 'Los parámetros no eran JSON válido.',
+          }),
         });
         continue;
       }
 
       try {
-        const result = await executeTool(user, call.name, args, config);
+        const result = await executeTool(user, call.function.name, args, config);
         let modelResult: unknown = result;
         if (
           result &&
@@ -908,31 +831,40 @@ export async function runReceptionAssistant(
           confirmations.push(card);
           modelResult = {
             ...(result as Record<string, unknown>),
-            confirmation: { title: card.title, detail: card.detail, risk: card.risk },
+            confirmation: {
+              title: card.title,
+              detail: card.detail,
+              risk: card.risk,
+            },
           };
         }
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({ ok: true, result: modelResult }),
+
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({ ok: true, result: modelResult }),
         });
       } catch (error) {
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({
             ok: false,
-            error: error instanceof Error ? error.message : 'La operación no pudo completarse.',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'La operación no pudo completarse.',
           }),
         });
       }
     }
 
-    input = [...input, ...calls, ...toolOutputs];
+    chat = [...chat, response.assistantMessage, ...toolMessages];
   }
 
   return {
-    reply: 'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
+    reply:
+      'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
     confirmations,
   };
 }

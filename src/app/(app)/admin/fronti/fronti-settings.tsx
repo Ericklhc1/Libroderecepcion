@@ -30,7 +30,8 @@ function labelFor(key: string): string {
     'fronti.displayName': 'Nombre visible',
     'fronti.welcomeMessage': 'Mensaje de bienvenida',
     'fronti.extraInstructions': 'Instrucciones adicionales',
-    'fronti.model': 'Modelo de OpenAI',
+    'fronti.provider': 'Proveedor de IA',
+    'fronti.model': 'Modelo',
     'fronti.reasoningEffort': 'Esfuerzo de razonamiento',
     'fronti.memoryRetentionDays': 'Memoria personal',
     'fronti.shiftMemoryHours': 'Memoria del turno',
@@ -79,6 +80,12 @@ export function FrontiSettingControl({ setting }: { setting: FrontiSettingRow })
           <select name="value" defaultValue={value} className="input-base max-w-xs">
             <option value="true">Activado</option>
             <option value="false">Desactivado</option>
+          </select>
+        ) : setting.key === 'fronti.provider' ? (
+          <select name="value" defaultValue={value} className="input-base max-w-xs">
+            <option value="groq">Groq · Qwen hospedado</option>
+            <option value="vllm">vLLM · autohospedado</option>
+            <option value="openai">OpenAI · fallback</option>
           </select>
         ) : setting.key === 'fronti.reasoningEffort' ? (
           <select name="value" defaultValue={value} className="input-base max-w-xs">

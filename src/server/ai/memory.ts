@@ -2,11 +2,15 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
-import { env } from '@/lib/env';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { getMyOpenShift } from '@/server/services/shifts';
 import type { AssistantMessage } from './reception-assistant';
 import { getFrontiConfig } from './fronti-config';
+import {
+  chatWithFrontiProvider,
+  providerIsConfigured,
+  resolveFrontiProvider,
+} from './fronti-provider';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const AI_MEMORY_RETENTION_DAYS = 30;
@@ -361,14 +365,6 @@ async function upsertMemory(
   `;
 }
 
-type MemoryExtractionResponse = {
-  output?: Array<{
-    type?: string;
-    name?: string;
-    arguments?: string;
-  }>;
-};
-
 export async function extractAndStoreMemories(
   user: CurrentUser,
   conversationId: string,
@@ -376,43 +372,38 @@ export async function extractAndStoreMemories(
   assistantReply: string,
 ): Promise<void> {
   if (!shouldPersist(userMessage) || userMessage.trim().length < 8) return;
-  const key = env().OPENAI_API_KEY;
-  if (!key) return;
 
   try {
     const config = await getFrontiConfig();
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        store: false,
-        reasoning: { effort: config.reasoningEffort },
-        instructions:
-          'Extrae sólo contexto conversacional que pueda ser útil después en la operación de recepción. ' +
-          'No guardes contraseñas, claves, tokens, números completos de tarjetas, CVV/CVC ni secretos. ' +
-          'No dupliques como memoria datos que deberían consultarse como fuente de verdad en tareas, multas, garantías, habitaciones o reservas. ' +
-          `PERSONAL sirve para contexto útil al mismo usuario durante hasta ${config.memoryRetentionDays} días. TURNO sirve sólo para contexto útil al turno actual. ` +
-          'Si no hay nada que merezca recordarse, devuelve una lista vacía. Resume sin adornos y minimiza datos personales.',
-        input: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text: `Mensaje del usuario:\n${userMessage}\n\nRespuesta del asistente:\n${assistantReply}`,
-              },
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: 'function',
+    const provider = resolveFrontiProvider(config);
+    if (!providerIsConfigured(provider)) return;
+
+    const response = await chatWithFrontiProvider({
+      provider,
+      toolChoice: 'required',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Extrae sólo contexto conversacional que pueda ser útil después en la operación de recepción. ' +
+            'No guardes contraseñas, claves, tokens, números completos de tarjetas, CVV/CVC ni secretos. ' +
+            'No dupliques como memoria datos que deberían consultarse como fuente de verdad en tareas, multas, garantías, habitaciones o reservas. ' +
+            `PERSONAL sirve para contexto útil al mismo usuario durante hasta ${config.memoryRetentionDays} días. TURNO sirve sólo para contexto útil al turno actual. ` +
+            'Si no hay nada que merezca recordarse, devuelve una lista vacía. Resume sin adornos y minimiza datos personales.',
+        },
+        {
+          role: 'user',
+          content:
+            `Mensaje del usuario:\n${userMessage}\n\nRespuesta del asistente:\n${assistantReply}`,
+        },
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
             name: 'extraer_memorias',
-            description: 'Devuelve hasta tres memorias contextuales útiles o una lista vacía.',
+            description:
+              'Devuelve hasta tres memorias contextuales útiles o una lista vacía.',
             strict: true,
             parameters: {
               type: 'object',
@@ -429,7 +420,13 @@ export async function extractAndStoreMemories(
                       entityId: { type: ['string', 'null'] },
                       importance: { type: 'integer', minimum: 1, maximum: 5 },
                     },
-                    required: ['scope', 'summary', 'entityType', 'entityId', 'importance'],
+                    required: [
+                      'scope',
+                      'summary',
+                      'entityType',
+                      'entityId',
+                      'importance',
+                    ],
                     additionalProperties: false,
                   },
                 },
@@ -438,21 +435,18 @@ export async function extractAndStoreMemories(
               additionalProperties: false,
             },
           },
-        ],
-        tool_choice: 'required',
-        parallel_tool_calls: false,
-      }),
-      cache: 'no-store',
+        },
+      ],
     });
 
-    if (!response.ok) return;
-    const payload = (await response.json()) as MemoryExtractionResponse;
-    const call = payload.output?.find(
-      (item) => item.type === 'function_call' && item.name === 'extraer_memorias' && item.arguments,
+    const call = response.toolCalls.find(
+      (item) =>
+        item.function.name === 'extraer_memorias' &&
+        typeof item.function.arguments === 'string',
     );
-    if (!call?.arguments) return;
+    if (!call?.function.arguments) return;
 
-    const parsed = JSON.parse(call.arguments) as {
+    const parsed = JSON.parse(call.function.arguments) as {
       memories?: Array<{
         scope?: 'PERSONAL' | 'TURNO';
         summary?: string;

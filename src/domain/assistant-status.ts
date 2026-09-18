@@ -2,7 +2,7 @@
  * Por qué puede fallar Fronti, y qué se le dice al mesón cuando falla.
  *
  * Antes no había nada de esto: cualquier fallo de la API se convertía en una
- * excepción con el mensaje que viniera de OpenAI, el endpoint lo devolvía como
+ * excepción con el mensaje que viniera del proveedor de IA, el endpoint lo devolvía como
  * HTTP 400 y el pop-up lo pintaba tal cual en el chat. Eso tiene tres
  * problemas, y los tres importan en un mesón:
  *
@@ -25,23 +25,23 @@
  * Vive acá y no como literal dentro del esquema de variables de entorno para
  * que exista un valor por omisión explícito y localizable: si mañana el
  * identificador deja de ser válido, se cambia en una línea y no hay que buscar
- * en qué archivo estaba escondido. `OPENAI_MODEL` lo sigue pudiendo pisar.
+ * en qué archivo estaba escondido. `FRONTI_MODEL` lo sigue pudiendo pisar.
  */
-export const DEFAULT_ASSISTANT_MODEL = 'gpt-5.6-luna';
+export const DEFAULT_ASSISTANT_MODEL = 'openai/gpt-oss-120b';
 
-/** Cuánto se espera a OpenAI antes de darlo por perdido. */
+/** Cuánto se espera al proveedor de inferencia antes de darlo por perdido. */
 export const ASSISTANT_TIMEOUT_MS = 30_000;
 
 /**
  * Las causas de fallo que el sistema sabe nombrar.
  *
- * No son los códigos de OpenAI: son las situaciones que cambian lo que hay que
+ * No son los códigos del proveedor de IA: son las situaciones que cambian lo que hay que
  * HACER. Dos códigos distintos que exigen la misma acción son una sola causa.
  */
 export type AssistantFailure =
   /** No hay clave configurada: Fronti nunca estuvo encendido. */
   | 'SIN_CLAVE'
-  /** Hay clave, y OpenAI la rechaza. */
+  /** Hay clave, y el proveedor de IA la rechaza. */
   | 'CLAVE_RECHAZADA'
   /** La clave sirve, pero el modelo configurado no existe para esta cuenta. */
   | 'MODELO_DESCONOCIDO'
@@ -49,12 +49,12 @@ export type AssistantFailure =
   | 'CUOTA'
   /** Demasiadas consultas a la vez: se pasa esperando. */
   | 'SATURADO'
-  /** OpenAI está con problemas. */
+  /** El proveedor de IA está con problemas. */
   | 'CAIDO'
   /** No contestó dentro del plazo, o no hubo red. */
   | 'SIN_RESPUESTA'
   /**
-   * La API rechazó NUESTRA petición: el fallo es del Libro, no de OpenAI.
+   * La API rechazó NUESTRA petición: el fallo es del Libro, no del proveedor de IA.
    *
    * Existe porque un caso real lo pedía. Fronti respondía «Invalid value:
    * 'input_text'. Supported values are: 'output_text' and 'refusal'.» a toda
@@ -74,21 +74,21 @@ export type AssistantFailure =
  */
 export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
   SIN_CLAVE:
-    'Fronti todavía no está configurado. Avisa al Administrador de sistema: falta la clave de OpenAI. El Libro funciona igual sin él.',
+    'Fronti todavía no está configurado. Avisa al Administrador de sistema: falta la credencial del proveedor de IA. El Libro funciona igual sin él.',
   CLAVE_RECHAZADA:
-    'OpenAI rechazó la clave de Fronti. Esto no se arregla desde el mesón: avisa al Administrador de sistema. El Libro funciona igual sin él.',
+    'El proveedor de IA rechazó la credencial de Fronti. Esto no se arregla desde el mesón: avisa al Administrador de sistema. El Libro funciona igual sin él.',
   MODELO_DESCONOCIDO:
-    'OpenAI no reconoce el modelo configurado para Fronti. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
+    'El proveedor de IA no reconoce el modelo configurado para Fronti. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
   CUOTA:
-    'La cuenta de OpenAI se quedó sin saldo, así que Fronti no puede responder. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
+    'La cuenta del proveedor de IA se quedó sin saldo, así que Fronti no puede responder. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
   SATURADO:
     'Fronti está recibiendo muchas consultas a la vez. Espera unos segundos y vuelve a preguntar.',
   CAIDO:
-    'OpenAI está con problemas en este momento. Vuelve a intentarlo en un rato; el Libro no depende de Fronti.',
+    'El proveedor de IA está con problemas en este momento. Vuelve a intentarlo en un rato; el Libro no depende de Fronti.',
   SIN_RESPUESTA:
     'Fronti tardó demasiado en responder. Vuelve a preguntar; si sigue igual, sigue trabajando sin él.',
   PETICION_INVALIDA:
-    'Fronti no pudo armar la consulta. Es un error del Libro, no de OpenAI, así que insistir no lo arregla: avisa al Administrador de sistema. El Libro funciona igual sin él.',
+    'Fronti no pudo armar la consulta. Es un error del Libro, no del proveedor de IA, así que insistir no lo arregla: avisa al Administrador de sistema. El Libro funciona igual sin él.',
   DESACTIVADO: 'Fronti está desactivado por el Administrador de sistema.',
 };
 
@@ -127,7 +127,7 @@ export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
   CAIDO: 502,
   SIN_RESPUESTA: 504,
   /*
-    500 y no 400: el 400 lo devolvió OpenAI porque NUESTRA petición estaba
+    500 y no 400: el 400 lo devolvió el proveedor de IA porque NUESTRA petición estaba
     mal, así que hacia quien pregunta esto es un error del servidor. Decirle
     400 al mesón sería culparlo de un fallo del Libro.
   */
@@ -135,8 +135,8 @@ export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
   DESACTIVADO: 503,
 };
 
-/** Lo que se le puede sacar a una respuesta fallida de OpenAI. */
-export type OpenAIFailureSignal = {
+/** Lo que se le puede sacar a una respuesta fallida del proveedor de IA. */
+export type ProviderFailureSignal = {
   /** Estado HTTP, si hubo respuesta. */
   status?: number | null;
   /** `error.code` o `error.type` del cuerpo, si vino. */
@@ -150,16 +150,16 @@ export type OpenAIFailureSignal = {
 };
 
 /**
- * Traduce lo que devolvió OpenAI a una de las causas de arriba.
+ * Traduce lo que devolvió el proveedor de IA a una de las causas de arriba.
  *
  * El orden de las comprobaciones no es libre. `insufficient_quota` llega con
  * estado 429, igual que el límite de velocidad, y son cosas opuestas —una se
  * arregla pagando y la otra esperando— así que el código se mira ANTES que el
- * estado. Lo mismo con el modelo: OpenAI lo rechaza con 404 unas veces y con
+ * estado. Lo mismo con el modelo: el proveedor de IA lo rechaza con 404 unas veces y con
  * 400 otras, según el endpoint, de modo que tampoco se puede decidir sólo por
  * el estado.
  */
-export function classifyAssistantFailure(signal: OpenAIFailureSignal): AssistantFailure {
+export function classifyAssistantFailure(signal: ProviderFailureSignal): AssistantFailure {
   if (signal.aborted) return 'SIN_RESPUESTA';
   if (signal.network) return 'SIN_RESPUESTA';
 
@@ -181,7 +181,7 @@ export function classifyAssistantFailure(signal: OpenAIFailureSignal): Assistant
     por nosotros. Sólo se atribuye al modelo si el mensaje lo nombra.
 
     Lo demás es NUESTRO error, y eso hay que decirlo: un 400 significa que
-    OpenAI entendió la petición y la rechazó, así que el proveedor está
+    el proveedor de IA entendió la petición y la rechazó, así que el proveedor está
     perfectamente. Llamarlo caída mandaría a esperar un arreglo que no va a
     llegar solo. Fue exactamente lo que pasó con `input_text`.
   */

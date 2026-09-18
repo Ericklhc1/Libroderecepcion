@@ -11,10 +11,14 @@ import {
   Wrench,
 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
-import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
+import { env } from '@/lib/env';
 import { getAllSettings } from '@/server/services/settings';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
+import {
+  providerIsConfigured,
+  resolveFrontiProvider,
+} from '@/server/ai/fronti-provider';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import {
   FrontiMaintenanceActions,
@@ -43,9 +47,9 @@ const GROUPS = [
   {
     id: 'modelo',
     title: 'Modelo',
-    description: 'Modelo de OpenAI y esfuerzo de razonamiento. La clave API nunca se muestra aquí.',
+    description: 'Proveedor, modelo y preferencia de razonamiento. Las credenciales nunca se muestran aquí.',
     icon: Brain,
-    keys: ['fronti.model', 'fronti.reasoningEffort'],
+    keys: ['fronti.provider', 'fronti.model', 'fronti.reasoningEffort'],
   },
   {
     id: 'memoria',
@@ -122,6 +126,8 @@ export default async function FrontiAdminPage() {
     })) satisfies FrontiSettingRow[];
   const settingsByKey = byKey(settings);
   const activeTools = Object.values(config.tools).filter(Boolean).length;
+  const provider = resolveFrontiProvider(config);
+  const providerConfigured = providerIsConfigured(provider);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -167,10 +173,18 @@ export default async function FrontiAdminPage() {
         <CardHeader title="Diagnóstico" />
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
-            <p className="text-xs text-slate-500">OpenAI</p>
+            <p className="text-xs text-slate-500">Proveedor de IA</p>
             <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-petrol-900">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-              {env().OPENAI_API_KEY ? 'Configurado' : 'Sin clave'}
+              <CheckCircle2
+                className={`h-4 w-4 ${providerConfigured ? 'text-emerald-600' : 'text-amber-600'}`}
+                aria-hidden="true"
+              />
+              {config.provider === 'groq'
+                ? 'Groq'
+                : config.provider === 'vllm'
+                  ? 'vLLM'
+                  : 'OpenAI fallback'}
+              {providerConfigured ? ' · configurado' : ' · sin configurar'}
             </p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">

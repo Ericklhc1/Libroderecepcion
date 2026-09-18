@@ -62,8 +62,8 @@ describe('clasificación de fallos del asistente', () => {
 
   /*
     Ésta es la prueba que importa hoy: `gpt-5.6-luna` es el modelo por omisión
-    y no se pudo verificar contra la documentación de OpenAI desde este
-    entorno. Si el identificador resultara equivocado, OpenAI responde 400
+    y no se pudo verificar contra la documentación de el proveedor desde este
+    entorno. Si el identificador resultara equivocado, el proveedor responde 400
     nombrando el modelo, y el sistema tiene que decir «el modelo no existe» y
     no «el proveedor está caído»: lo primero se arregla, lo segundo se espera.
   */
@@ -71,7 +71,7 @@ describe('clasificación de fallos del asistente', () => {
     expect(
       classifyAssistantFailure({
         status: 400,
-        message: "The model 'gpt-5.6-luna' does not exist or you do not have access to it.",
+        message: "The model 'modelo-inexistente' does not exist or you do not have access to it.",
       }),
     ).toBe('MODELO_DESCONOCIDO');
   });
@@ -86,12 +86,12 @@ describe('clasificación de fallos del asistente', () => {
     contestó nada.
 
     Lo que se prueba acá es la CLASIFICACIÓN, que es la otra mitad del
-    problema: un 400 así no es una caída de OpenAI —entendió la petición y la
+    problema: un 400 así no es una caída de el proveedor —entendió la petición y la
     rechazó con razón— sino un error del Libro. Si se llamara caída, el mesón
     leería «vuelve a intentarlo en un rato» para algo que no se arregla nunca
     solo.
   */
-  it('el error real de input_text se atribuye al Libro, no a OpenAI', () => {
+  it('el error real de input_text se atribuye al Libro, no a el proveedor', () => {
     expect(
       classifyAssistantFailure({
         status: 400,
@@ -186,21 +186,19 @@ describe('los tres estados de la salud', () => {
     });
   });
 
-  it('el endpoint distingue los tres estados y no un booleano', () => {
+  it('el endpoint delega los estados al dominio y sondea el proveedor real', () => {
     /*
-      Se comprueba sobre el código porque lo que falla acá es el CONTRATO del
-      endpoint: antes devolvía `openaiConfigured: Boolean(OPENAI_API_KEY)`, que
-      responde «hay una clave escrita» cuando la pregunta es «sirve».
+      El endpoint ya no repite los literales NO_CONFIGURADO/CON_FALLO:
+      assistantHealthFromFailure es la única fuente de verdad para esos estados.
+      Lo importante es que delegue ahí y que el único estado construido
+      directamente sea OK tras un sondeo exitoso.
     */
     const source = readFileSync('src/app/api/health/asistente/route.ts', 'utf-8');
-    for (const estado of ['NO_CONFIGURADO', 'OK', 'CON_FALLO']) {
-      expect(source, `falta el estado ${estado}`).toContain(estado);
-    }
-    // Y el sondeo tiene que preguntar de verdad, con plazo.
-    expect(source).toContain('api.openai.com/v1/models/');
-    expect(source).toContain('AbortSignal.timeout');
-    // Sin exponer la clave ni el modelo en la respuesta.
-    expect(source).not.toMatch(/json\([^)]*modelo/i);
+    expect(source).toContain('assistantHealthFromFailure');
+    expect(source).toContain('probeFrontiProvider');
+    expect(source).toContain("estado: 'OK'");
+    // Sin exponer credenciales ni el modelo en la respuesta.
+    expect(source).not.toMatch(/apiKey|GROQ_API_KEY|OPENAI_API_KEY|FRONTI_API_KEY/);
   });
 });
 
@@ -223,33 +221,27 @@ describe('el modelo y el plazo están declarados', () => {
   it('la llamada al asistente tiene plazo explícito', () => {
     // El `fetch` de Node no trae plazo: sin esto, una llamada colgada dejaba
     // la pantalla del mesón esperando para siempre.
-    const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf-8');
+    const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf-8');
     expect(source).toContain('AbortSignal.timeout(ASSISTANT_TIMEOUT_MS)');
     expect(ASSISTANT_TIMEOUT_MS).toBeGreaterThan(0);
     expect(ASSISTANT_TIMEOUT_MS).toBeLessThanOrEqual(60_000);
   });
 
-  /*
-    La causa raíz, comprobada sobre el código.
-
-    `messagesAsInput` no se exporta —es interno del servicio— así que se
-    inspecciona la fuente. Vale la pena aunque sea indirecto: es el fallo que
-    dejó a Fronti sin contestar NADA en producción, y su forma es fácil de
-    reintroducir, porque «input» suena a lo correcto para todo lo que se
-    manda.
-  */
-  it('el historial manda output_text para el asistente e input_text para el resto', () => {
+  it('el loop de Fronti usa el adaptador y no llama directamente a un proveedor', () => {
     const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf-8');
-    const fn = source.slice(
-      source.indexOf('function messagesAsInput'),
-      source.indexOf('export async function runReceptionAssistant'),
-    );
+    expect(source).toContain('chatWithFrontiProvider');
+    expect(source).toContain('resolveFrontiProvider');
+    expect(source).not.toContain('api.openai.com');
+    expect(source).not.toContain('api.groq.com');
+  });
 
-    expect(fn, 'no se encontró messagesAsInput').toContain('messagesAsInput');
-    // El tipo tiene que DEPENDER del rol, no ser una constante.
-    expect(fn).toContain("'output_text'");
-    expect(fn).toContain("'input_text'");
-    expect(fn).toMatch(/role === 'assistant'/);
+  it('el adaptador soporta Groq, vLLM y fallback OpenAI sin filtrar secretos', () => {
+    const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf-8');
+    expect(source).toContain("provider === 'vllm'");
+    expect(source).toContain("provider === 'openai'");
+    expect(source).toContain('api.groq.com/openai/v1');
+    expect(source).toContain('/chat/completions');
+    expect(source).toContain('AbortSignal.timeout(ASSISTANT_TIMEOUT_MS)');
   });
 
   it('el endpoint de conversación responde con el estado de la causa', () => {

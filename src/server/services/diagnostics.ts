@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { recordAudit } from '@/server/audit';
 import { linkStaysToReservations } from '@/server/services/pms-import';
+import { getSettingBool } from '@/server/services/settings';
 
 type DuplicateAlertGroup = {
   signature: string;
@@ -245,8 +246,14 @@ export async function repairSafeDiagnostics(
   let staysLinked = 0;
   let reservationRoomsCorrected = 0;
 
+  const [repairDuplicateAlerts, repairReservationLinks, repairRoomProjection] = await Promise.all([
+    getSettingBool('diagnostics.safeRepairDuplicateAlerts', true),
+    getSettingBool('diagnostics.safeRepairReservationLinks', true),
+    getSettingBool('diagnostics.safeRepairRoomProjection', true),
+  ]);
+
   await prisma.$transaction(async (tx) => {
-    for (const group of report.duplicateAlerts.filter((item) => item.safeToRepair)) {
+    if (repairDuplicateAlerts) for (const group of report.duplicateAlerts.filter((item) => item.safeToRepair)) {
       const [, ...duplicateIds] = group.ids;
       if (duplicateIds.length === 0) continue;
       const updated = await tx.alert.updateMany({
@@ -259,9 +266,11 @@ export async function repairSafeDiagnostics(
       duplicateAlertsRemoved += updated.count;
     }
 
-    staysLinked = await linkStaysToReservations(tx);
+    if (repairReservationLinks) {
+      staysLinked = await linkStaysToReservations(tx);
+    }
 
-    for (const mismatch of report.reservationRoomMismatches) {
+    if (repairRoomProjection) for (const mismatch of report.reservationRoomMismatches) {
       await tx.reservationReference.update({
         where: { id: mismatch.reservationRefId },
         data: { roomNumber: mismatch.expectedRoomNumber },

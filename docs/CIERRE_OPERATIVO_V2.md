@@ -101,7 +101,7 @@ El motor debe producir condiciones/acciones explicables y alimentar una Bandeja 
 
 ## Seguridad de despliegue
 
-Vercel es Production y sólo despliega `main` contra Neon `production`. Netlify es staging/prueba real y usa Neon `development`; nunca debe recibir credenciales de Production. Ningún preview/desarrollo puede migrar o ejecutar código con escritura si no tiene una conexión aislada. La promoción exige Compuerta verde + validación funcional en Netlify antes de entrar a `main`.
+Vercel sirve Production desde `main` y puede generar previews de otras ramas. Netlify es staging/prueba real y usa Neon `development`; nunca debe recibir credenciales de Production. Ningún preview/desarrollo puede migrar o ejecutar código con escritura si no tiene una conexión aislada. La promoción exige Compuerta verde + validación funcional en Netlify antes de entrar a `main`.
 
 ## Criterios de aceptación mínimos
 

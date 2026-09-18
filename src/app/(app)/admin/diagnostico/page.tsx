@@ -4,7 +4,7 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { getDiagnosticReport } from '@/server/services/diagnostics';
 import { getSettingBool } from '@/server/services/settings';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
-import { Badge, Chip } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { repairDiagnosticsAction } from '@/server/actions/diagnostics';

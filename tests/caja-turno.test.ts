@@ -77,6 +77,35 @@ async function openShift(user: CurrentUser, type: ShiftType) {
   return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
 }
 
+/**
+ * Estas pruebas aíslan el recuento de recepción y los elementos físicos.
+ * Desde Cierre V2, Recibir también cierra el turno saliente, por lo que la
+ * precondición de Caja cerrada debe existir antes de llegar a esas validaciones.
+ * Se materializa una fotografía mínima de prueba; el cierre real se valida en
+ * cierre-caja.test.ts.
+ */
+async function markShiftCashClosedForTest(shiftId: string, userId: string) {
+  const id = `test-cash-closure-${shiftId}`;
+  const snapshot = JSON.stringify({ test: true, shiftId });
+  await prisma.$executeRaw`
+    INSERT INTO "ShiftCashClosure" (
+      "id", "shiftId", "closedById", "closedAt", "snapshot",
+      "notes", "reopenedAt", "reopenedById", "reopenReason"
+    ) VALUES (
+      ${id}, ${shiftId}, ${userId}, NOW(), ${snapshot}::jsonb,
+      'Fixture de Cierre V2', NULL, NULL, NULL
+    )
+    ON CONFLICT ("shiftId") DO UPDATE SET
+      "closedById" = EXCLUDED."closedById",
+      "closedAt" = EXCLUDED."closedAt",
+      "snapshot" = EXCLUDED."snapshot",
+      "notes" = EXCLUDED."notes",
+      "reopenedAt" = NULL,
+      "reopenedById" = NULL,
+      "reopenReason" = NULL
+  `;
+}
+
 describe('caja en la entrega de turno', () => {
   let saliente: CurrentUser & { username: string };
   let entrante: CurrentUser & { username: string };
@@ -189,6 +218,7 @@ describe('caja en la entrega de turno', () => {
       quantities: await exactFundQuantities(),
     });
     await sendHandover(saliente, { shiftId: manana.id });
+    await markShiftCashClosedForTest(manana.id, saliente.id);
 
     const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
 
@@ -376,6 +406,7 @@ describe('elementos que viajan con la caja', () => {
       marks: { [state.elements[0]!.id]: true },
     });
     await sendHandover(saliente, { shiftId: manana.id });
+    await markShiftCashClosedForTest(manana.id, saliente.id);
 
     const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
     await saveCashCount(entrante, { handoverId: handover.id, kind: 'CONFIRMADO', quantities });

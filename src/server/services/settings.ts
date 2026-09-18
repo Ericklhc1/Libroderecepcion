@@ -102,7 +102,7 @@ export const DEFAULT_SETTINGS = {
     description: 'Proveedor de inferencia: Groq, vLLM autohospedado u OpenAI como fallback explícito.',
   },
   'fronti.model': {
-    value: 'qwen/qwen3.6-27b',
+    value: 'openai/gpt-oss-120b',
     category: 'fronti',
     description: 'Modelo utilizado por Fronti. Qwen3 es el modelo open-weight por defecto.',
   },

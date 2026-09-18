@@ -45,6 +45,7 @@ export type ReportMeta = {
   kindSource: string | null;
   title: string | null;
   reportDate: string | null;
+  reportGeneratedAt: string | null;
   columns: Array<{ header: string; field: string }>;
   unmapped: string[];
   declaredTotals: Array<{ label: string; numbers: number[] }>;
@@ -197,6 +198,7 @@ export async function prepareImport(
           kindSource: null,
           title: structured.title,
           reportDate: structured.reportDate,
+          reportGeneratedAt: structured.reportGeneratedAt,
           columns: structured.columns.map((column) => ({
             header: column.header,
             field: column.field,
@@ -221,6 +223,7 @@ export async function prepareImport(
         kindSource: normalized.kindSource,
         title: normalized.title,
         reportDate: normalized.reportDate ? normalized.reportDate.toISOString() : null,
+        reportGeneratedAt: structured.reportGeneratedAt,
         columns: normalized.columns.map((column) => ({
           header: column.header,
           field: column.field,
@@ -238,6 +241,7 @@ export async function prepareImport(
         kindSource: null,
         title: null,
         reportDate: null,
+        reportGeneratedAt: null,
         columns: [],
         unmapped: [],
         declaredTotals: [],

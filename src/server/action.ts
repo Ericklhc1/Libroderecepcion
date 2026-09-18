@@ -76,11 +76,31 @@ export async function runAction(
   try {
     return await fn();
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      const flat = error.flatten();
+      return {
+        ok: false,
+        error: error.issues[0]?.message ?? 'Revisa los campos indicados.',
+        fieldErrors: flat.fieldErrors as Record<string, string[]>,
+      };
+    }
     if (error instanceof ValidationError) {
       return { ok: false, error: error.message, fieldErrors: error.fieldErrors };
     }
     if (error instanceof AppError) {
       return { ok: false, error: error.message };
+    }
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    ) {
+      console.warn('[acción] conflicto de unicidad evitado');
+      return {
+        ok: false,
+        error: 'Ya existe un registro con esos datos. Revisa los valores e intenta nuevamente.',
+      };
     }
     // Permite que redirect()/notFound() de Next.js sigan su curso.
     if (

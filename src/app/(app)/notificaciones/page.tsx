@@ -15,6 +15,7 @@ import {
 } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
 import {
+  ClosureValidationActions,
   ResolveAlertQuickForm,
   Snooze30AlertForm,
 } from '@/components/operational/alert-actions';
@@ -31,7 +32,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const canManageAlerts = hasPermission(user, 'alert.manage');
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
-  const canValidateClosure = isSupervisor || user.isSystemAdmin;
+  const canValidateClosure = user.username.toLowerCase() === 'eherrera';
   const now = new Date();
 
   const notificationWhere: Prisma.NotificationWhereInput = {
@@ -167,6 +168,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:');
               const cashManual = alert.dedupeKey?.startsWith('cash-manual:');
               const noElements = alert.dedupeKey?.startsWith('handover-elements-none:');
+              const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:');
               const cash = cashTransfer || cashManual;
               const label = cash
                 ? 'Autorizar'
@@ -184,7 +186,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                     <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
                     {alert.message ? <p className="mt-0.5 text-sm text-slate-600">{alert.message}</p> : null}
                   </div>
-                  <ResolveAlertQuickForm alertId={alert.id} label={label} />
+                  {shiftValidation ? (
+                    <ClosureValidationActions alertId={alert.id} />
+                  ) : (
+                    <ResolveAlertQuickForm alertId={alert.id} label={label} />
+                  )}
                 </li>
               );
             })}

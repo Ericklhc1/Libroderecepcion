@@ -43,7 +43,7 @@ En Codespaces:
 Un Preview que no tenga DB aislada debe fallar de forma segura antes de escribir datos.
 
 Despliegue:
-- Vercel = Production oficial; sólo `main`.
+- Vercel = Production oficial en `main`; los previews de otras ramas están permitidos.
 - Netlify = staging/prueba real; rama `preproduction`; Neon `development`.
 - No promociones a `main` sin Compuerta verde + validación en Netlify.
 - Tras una Production Vercel sana, debe existir un tag `production-*` recuperable.

@@ -22,6 +22,7 @@ import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask } from '@/server/services/tasks';
+import { reportFrontiFinding } from './fronti-findings';
 import {
   frontiToolSettingForFunction,
   getFrontiConfig,
@@ -192,6 +193,26 @@ const TOOL_DEFINITIONS = [
   },
   {
     type: 'function',
+    name: 'reportar_hallazgo',
+    description:
+      'Reporta a Supervisor y Administrador de sistema un fallo concreto o una mejora de proceso detectada por Fronti. Úsala sólo con evidencia específica y accionable; no para preferencias de estilo, ideas vagas ni duplicados.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['FALLO', 'MEJORA'] },
+        severity: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        area: { type: 'string', minLength: 2, maxLength: 120 },
+        title: { type: 'string', minLength: 4, maxLength: 200 },
+        evidence: { type: 'string', minLength: 8, maxLength: 1200 },
+        recommendation: { type: ['string', 'null'], maxLength: 1200 },
+      },
+      required: ['kind', 'severity', 'area', 'title', 'evidence', 'recommendation'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'proponer_multa',
     description:
       'Prepara una multa para una habitación usando el contexto real de la estadía. Requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes.',
@@ -246,12 +267,14 @@ const TOOL_DEFINITIONS = [
 
 function enabledToolDefinitions(config: FrontiConfig) {
   return TOOL_DEFINITIONS.filter((definition) => {
+    if (definition.name === 'reportar_hallazgo') return true;
     const key = frontiToolSettingForFunction(definition.name);
     return key ? config.tools[key] : false;
   });
 }
 
 function assertToolEnabled(config: FrontiConfig, functionName: string) {
+  if (functionName === 'reportar_hallazgo') return;
   const key = frontiToolSettingForFunction(functionName);
   if (!key || !config.tools[key]) {
     throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
@@ -664,6 +687,24 @@ async function executeTool(
       return reminderProposalTool(user, args);
     case 'proponer_multa':
       return fineProposalTool(user, args);
+    case 'reportar_hallazgo':
+      return reportFrontiFinding(user, {
+        kind: args.kind === 'MEJORA' ? 'MEJORA' : 'FALLO',
+        severity:
+          args.severity === 'BAJA' ||
+          args.severity === 'MEDIA' ||
+          args.severity === 'ALTA' ||
+          args.severity === 'CRITICA'
+            ? args.severity
+            : 'MEDIA',
+        area: String(args.area ?? ''),
+        title: String(args.title ?? ''),
+        evidence: String(args.evidence ?? ''),
+        recommendation:
+          typeof args.recommendation === 'string' && args.recommendation.trim()
+            ? args.recommendation
+            : null,
+      });
     default:
       throw new Error('La herramienta solicitada no existe.');
   }
@@ -733,6 +774,7 @@ async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenA
         'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
         `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
         'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
+        'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
         'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
         `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`,
       input,

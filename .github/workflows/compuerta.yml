@@ -3,9 +3,11 @@ name: Compuerta
 on:
   push:
     branches:
-      - gpt/auditoria-operativa-integrada-20260916
+      - preproduction
+      - main
   pull_request:
     branches:
+      - preproduction
       - main
 
 concurrency:
@@ -34,10 +36,7 @@ jobs:
           --health-retries=10
 
     env:
-      # Base efímera del runner: nunca toca Neon ni Production.
       TEST_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public
-      # Mismo PostgreSQL efímero para el código probado, con una cadena distinta
-      # para conservar la protección de tests/global-setup.ts contra Production.
       DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
       DIRECT_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
       AUTH_SECRET: compuerta-local-no-produccion

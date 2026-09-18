@@ -262,9 +262,9 @@ export default async function HandoverPage({
         shiftId={handover.fromShiftId}
         state={cashState}
         formalClosure={formalCashClosure ? {
-          closedAt: formalCashClosure.closedAt,
+          closedAt: formalCashClosure.closedAt.toISOString(),
           closedByName: formalCashClosure.closedByName,
-          reopenedAt: formalCashClosure.reopenedAt,
+          reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
         } : null}
         denominations={denominations.map((denomination) => ({
           id: denomination.id,

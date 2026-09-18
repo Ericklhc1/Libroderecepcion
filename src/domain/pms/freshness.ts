@@ -21,10 +21,17 @@ function zonedParts(date: Date): Parts {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hourCycle: 'h23',
   });
-  const p = Object.fromEntries(
-    formatter.formatToParts(date).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)]),
-  );
-  return { year: p.year, month: p.month, day: p.day, hour: p.hour, minute: p.minute, second: p.second };
+  const formatted = formatter.formatToParts(date);
+  const numberPart = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(formatted.find((part) => part.type === type)?.value ?? Number.NaN);
+  return {
+    year: numberPart('year'),
+    month: numberPart('month'),
+    day: numberPart('day'),
+    hour: numberPart('hour'),
+    minute: numberPart('minute'),
+    second: numberPart('second'),
+  };
 }
 
 function localSerial(p: Parts): number {

@@ -71,3 +71,21 @@ jobs:
         env:
           NODE_ENV: production
         run: npm run build
+
+      - name: Empaquetar fuente validada de preproduction
+        if: ${{ github.ref == 'refs/heads/preproduction' }}
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=.next \
+            -czf /tmp/preproduction-source.tgz .
+
+      - name: Conservar fuente validada para staging
+        if: ${{ github.ref == 'refs/heads/preproduction' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: preproduction-source
+          path: /tmp/preproduction-source.tgz
+          retention-days: 1
+          if-no-files-found: error

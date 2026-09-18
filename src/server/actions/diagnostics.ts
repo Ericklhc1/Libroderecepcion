@@ -1,5 +1,6 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { AuditAction } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -52,7 +53,7 @@ export async function reportRuntimeErrorAction(input: {
   const user = await requireAuthenticatedUser().catch(() => null);
   await recordAudit({
     entity: 'RuntimeError',
-    entityId: parsed.data.digest || crypto.randomUUID(),
+    entityId: parsed.data.digest || randomUUID(),
     action: AuditAction.CREAR,
     user,
     summary: parsed.data.message || 'Error de ejecución sin mensaje',

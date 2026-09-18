@@ -20,7 +20,6 @@ import { recordAudit } from '@/server/audit';
 import { notify } from '@/server/notifications';
 import type { CurrentUser } from '@/server/auth/current-user';
 import {
-  FINISHED_SHIFT_STATUSES,
   OCCUPYING_SHIFT_STATUSES,
   SHIFT_TYPE_LABEL,
   SHIFT_WINDOW_LABEL,
@@ -38,7 +37,6 @@ import {
   cashBlockersForSending,
   confirmHandoverCash,
   ensureHandoverElements,
-  getHandoverCashState,
   isCashAlreadyReceived,
   isCashEnabled,
 } from './cash';

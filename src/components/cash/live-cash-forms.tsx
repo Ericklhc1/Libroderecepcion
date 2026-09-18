@@ -5,6 +5,7 @@ import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
   createManualCashMovementAction,
+  returnCashGuaranteeAction,
   saveLiveCashAuditAction,
   voidGymPassAction,
 } from '@/server/actions/live-cash';
@@ -123,6 +124,33 @@ export function LiveCashAuditForm({
   );
 }
 
+
+export function ReturnCashGuaranteeForm({
+  guaranteeId,
+  reservationCode,
+}: {
+  guaranteeId: string;
+  reservationCode: string;
+}) {
+  return (
+    <ActionForm
+      action={returnCashGuaranteeAction}
+      className="space-y-0"
+      hideSuccess
+      refreshOnSuccess
+    >
+      <input type="hidden" name="guaranteeId" value={guaranteeId} />
+      <SubmitButton
+        variant="secondary"
+        size="sm"
+        pendingLabel="Devolviendo…"
+        title={`Devolver garantía · ID ${reservationCode}`}
+      >
+        Devolver garantía
+      </SubmitButton>
+    </ActionForm>
+  );
+}
 
 export function VoidGymPassDialog({ id, folio }: { id: string; folio: number }) {
   return (

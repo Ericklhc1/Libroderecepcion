@@ -1,7 +1,11 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
+import { AuditAction } from '@prisma/client';
 import { z } from 'zod';
 import { AppError, ValidationError } from '@/server/errors';
 import { normalizeTags } from '@/domain/tags';
+import { recordAudit } from '@/server/audit';
+import { getSettingBool } from '@/server/services/settings';
 
 /**
  * Credenciales que sólo se pueden leer una vez.
@@ -113,9 +117,37 @@ export async function runAction(
       throw error;
     }
     console.error('[acción] error inesperado', error);
+    try {
+      if (await getSettingBool('diagnostics.runtimeCaptureEnabled', true)) {
+        const runtimeError = error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack?.slice(0, 8000) ?? null,
+            }
+          : {
+              name: 'UnknownError',
+              message: String(error),
+              stack: null,
+            };
+        await recordAudit({
+          entity: 'RuntimeError',
+          entityId: randomUUID(),
+          action: AuditAction.CREAR,
+          summary: runtimeError.message.slice(0, 2000) || 'Error inesperado en acción de servidor',
+          after: {
+            source: 'server-action',
+            name: runtimeError.name,
+            stack: runtimeError.stack,
+          },
+        });
+      }
+    } catch (captureError) {
+      console.error('[diagnóstico] no se pudo registrar el error de ejecución', captureError);
+    }
     return {
       ok: false,
-      error: 'Ocurrió un error inesperado. Intenta nuevamente.',
+      error: 'Ocurrió un error inesperado. El incidente quedó registrado para diagnóstico.',
     };
   }
 }

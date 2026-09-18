@@ -5,6 +5,7 @@ import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
   createManualCashMovementAction,
+  returnCashGuaranteeAction,
   saveLiveCashAuditAction,
   voidGymPassAction,
 } from '@/server/actions/live-cash';
@@ -59,37 +60,94 @@ export function ManualCashMovementForm() {
   );
 }
 
-export function LiveCashAuditForm({ currency }: { currency: string }) {
+export function LiveCashAuditForm({
+  currency,
+  denominations,
+}: {
+  currency: string;
+  denominations: Array<{ id: string; value: number; medium: 'BILLETE' | 'MONEDA' }>;
+}) {
+  const bills = denominations.filter((row) => row.medium === 'BILLETE');
+  const coins = denominations.filter((row) => row.medium === 'MONEDA');
+
+  const rows = (items: typeof denominations, label: string) =>
+    items.length ? (
+      <fieldset className="overflow-hidden rounded-xl ring-1 ring-slate-200">
+        <legend className="sr-only">{label}</legend>
+        <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {label}
+        </p>
+        <div className="divide-y divide-slate-100">
+          {items.map((denomination) => (
+            <label
+              key={denomination.id}
+              className="grid grid-cols-[1fr_7rem] items-center gap-3 px-3 py-2"
+            >
+              <span className="text-sm font-medium tabular text-petrol-900">
+                {currency} {denomination.value.toLocaleString('es-CL')}
+              </span>
+              <Input
+                name={`d_${denomination.id}`}
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                placeholder="0"
+                className="h-9 text-right tabular"
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    ) : null;
+
   return (
     <ActionForm action={saveLiveCashAuditAction} className="space-y-3" resetOnSuccess>
       <input type="hidden" name="currency" value={currency} />
-      <Field label={`Total físico ${currency}`} name="countedAmount" required>
-        <Input name="countedAmount" inputMode="decimal" required placeholder="0" />
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        Cuenta físicamente la Caja por billetes y monedas. El total se calcula a partir de las cantidades; no se escribe a mano.
+      </p>
+      <div className="space-y-3">
+        {rows(bills, 'Billetes')}
+        {rows(coins, 'Monedas')}
+      </div>
+      <Field label="Observaciones" name="notes" hint="Opcional. Úsalo para explicar una diferencia.">
+        <Textarea name="notes" rows={2} maxLength={1000} placeholder="Ej.: faltan CLP 2.000 al corroborar." />
       </Field>
-      <Field
-        label="Si existe una diferencia"
-        name="reconcile"
-        required
-        hint="Sí crea un ajuste trazable para que el saldo esperado coincida con el efectivo contado. No conserva la diferencia para investigación."
-      >
-        <Select
-          name="reconcile"
-          defaultValue="NO"
-          options={[
-            { value: 'NO', label: 'No · conservar la diferencia' },
-            { value: 'SI', label: 'Sí · actualizar saldo y eliminar diferencia' },
-          ]}
-        />
-      </Field>
-      <Field label="Observaciones" name="notes">
-        <Textarea name="notes" rows={2} placeholder="Explica la diferencia o el ajuste, si corresponde." />
-      </Field>
-      <p className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800 ring-1 ring-orange-200">
-        La opción de reconciliar sólo está disponible para Supervisor y nunca borra el descuadre: registra la auditoría original y luego el ajuste que lo corrige.
+      <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
+        Corroborar no ajusta ni «hace cuadrar» la Caja. Si existe una diferencia, queda registrada y visible para seguimiento.
       </p>
       <div className="flex justify-end">
-        <SubmitButton pendingLabel="Auditando…">Registrar auditoría</SubmitButton>
+        <SubmitButton pendingLabel="Corroborando…">Guardar corroboración</SubmitButton>
       </div>
+    </ActionForm>
+  );
+}
+
+
+export function ReturnCashGuaranteeForm({
+  guaranteeId,
+  reservationCode,
+}: {
+  guaranteeId: string;
+  reservationCode: string;
+}) {
+  return (
+    <ActionForm
+      action={returnCashGuaranteeAction}
+      className="space-y-0"
+      hideSuccess
+      refreshOnSuccess
+    >
+      <input type="hidden" name="guaranteeId" value={guaranteeId} />
+      <SubmitButton
+        variant="secondary"
+        size="sm"
+        pendingLabel="Devolviendo…"
+        title={`Devolver garantía · ID ${reservationCode}`}
+      >
+        Devolver garantía
+      </SubmitButton>
     </ActionForm>
   );
 }

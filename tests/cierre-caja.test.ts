@@ -8,8 +8,8 @@ import {
   resetOperationalData,
   seedCatalog,
 } from './helpers';
-import { receiveHandover } from '@/server/services/shifts';
-import { saveLiveCashAudit } from '@/server/services/live-cash';
+import { prepareHandover, receiveHandover } from '@/server/services/shifts';
+import { saveCashCount } from '@/server/services/cash';
 import {
   closeShiftCash,
   getShiftCashClosure,
@@ -46,17 +46,24 @@ describe('cierre de Caja previo al cierre del turno', () => {
     ).rejects.toThrow(/cerrar Caja/i);
   });
 
-  it('exige un arqueo del turno y luego congela una fotografía cuadrada', async () => {
+  it('usa el arqueo formal por denominación de la entrega y congela su fotografía', async () => {
     const shift = await activeShift(recepcionista);
     await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    const denomination = await prisma.cashDenomination.upsert({
+      where: { currency_value: { currency: 'CLP', value: 100_000 } },
+      create: { currency: 'CLP', value: 100_000, medium: 'BILLETE', order: 0 },
+      update: { active: true },
+    });
+    const handover = await prepareHandover(recepcionista, shift.id);
 
     await expect(closeShiftCash(recepcionista, { shiftId: shift.id })).rejects.toThrow(
-      /Falta auditar la Caja de CLP/i,
+      /Falta el arqueo formal por denominación/i,
     );
 
-    await saveLiveCashAudit(recepcionista, {
-      currency: 'CLP',
-      countedAmount: 100_000,
+    await saveCashCount(recepcionista, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities: { [denomination.id]: 1 },
       notes: 'Conteo final conforme.',
     });
 
@@ -79,7 +86,17 @@ describe('cierre de Caja previo al cierre del turno', () => {
   it('una reapertura invalida el cierre anterior hasta volver a cuadrar y cerrar Caja', async () => {
     const shift = await activeShift(recepcionista);
     await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
-    await saveLiveCashAudit(recepcionista, { currency: 'CLP', countedAmount: 100_000 });
+    const denomination = await prisma.cashDenomination.upsert({
+      where: { currency_value: { currency: 'CLP', value: 100_000 } },
+      create: { currency: 'CLP', value: 100_000, medium: 'BILLETE', order: 0 },
+      update: { active: true },
+    });
+    const handover = await prepareHandover(recepcionista, shift.id);
+    await saveCashCount(recepcionista, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities: { [denomination.id]: 1 },
+    });
     await closeShiftCash(recepcionista, { shiftId: shift.id });
 
     await reopenShiftCash(supervisor, {

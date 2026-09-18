@@ -162,7 +162,7 @@ export async function recordCashTransferAction(
       supervisors.map((supervisor) => ({
         userId: supervisor.id,
         type: NotificationType.ACCION_REQUERIDA,
-        title: 'Autorizar egreso de Caja',
+        title: 'Revisar egreso de Caja',
         body: `Egreso de ${input.amount.toLocaleString('es-CL')} ${input.currency}${
           input.reference ? ` · comprobante ${input.reference}` : ''
         }.`,
@@ -179,7 +179,7 @@ export async function recordCashTransferAction(
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió la solicitud de autorización.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió el aviso para revisión.`,
     };
   });
 }

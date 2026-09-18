@@ -88,7 +88,7 @@ graph TD
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura de staging | `VALIDADO_STAGING` | #56 · #57 | Proyecto Neon aislado, 35 migraciones, seed sintético, cero datos de Production |
-| Turnos + transferencia de Caja | `EN_DESARROLLO` | `refactor/turnos-solapados-caja` | Dominio, migración y flujo de Caja en implementación |
+| Turnos + transferencia de Caja | `PR_ABIERTO` | #59 | Implementación en revisión; aún no validada en staging |
 | ID FNS transversal | `PENDIENTE` | — | |
 | Simplificación del Libro | `PENDIENTE` | — | |
 | Caja unificada | `PENDIENTE` | — | |
@@ -98,14 +98,14 @@ graph TD
 
 ## Iteración actual
 
-**Turnos solapados + transferencia explícita de Caja** — `EN_DESARROLLO`
+**Turnos solapados + transferencia explícita de Caja** — `PR_ABIERTO`
 
 Un recepcionista entrante debe poder abrir su propio turno sin esperar el cierre
 del saliente. La única transferencia obligatoria entre turnos es Caja, trazada y
 sin autorización previa de Supervisión.
 
 - Rama: `refactor/turnos-solapados-caja` desde `e351f39`
-- PR: sin abrir
+- PR: #59 (borrador; NO mergear todavía)
 - Cambio estructural: **la unicidad global por hotel se reemplaza por
   exclusividad de participación activa por usuario, garantizada en base de datos
   sobre `ShiftAssignment`.** Se retira el índice

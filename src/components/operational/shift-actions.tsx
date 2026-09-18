@@ -6,6 +6,7 @@ import { SubmitButton } from '@/components/ui/button';
 import {
   addShiftMemberAction,
   cancelHandoverPreparationAction,
+  closeShiftAction,
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
@@ -13,41 +14,27 @@ import {
 } from '@/server/actions/shifts';
 import { SHIFT_WINDOW_LABEL } from '@/domain/shift';
 
-/** Entrar al mesón: si no hay turno, lo abre; si ya hay uno, se suma. */
-export function OpenShiftForm({
-  suggestedType,
-  joining,
-}: {
-  suggestedType: 'DIA' | 'NOCHE';
-  joining: boolean;
-}) {
+/** Entrar al mesón abre el turno propio; otros turnos pueden seguir cerrando. */
+export function OpenShiftForm({ suggestedType }: { suggestedType: 'DIA' | 'NOCHE' }) {
   return (
     <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess>
-      {joining ? (
-        <SubmitButton variant="gold" pendingLabel="Entrando…">
-          Sumarme al turno abierto
-        </SubmitButton>
-      ) : (
-        <>
-          <Field
-            label="Turno"
-            name="type"
-            hint={`Propuesto según la hora: ${SHIFT_WINDOW_LABEL[suggestedType]}.`}
-          >
-            <Select
-              name="type"
-              defaultValue={suggestedType}
-              options={[
-                { value: 'DIA', label: `Día · ${SHIFT_WINDOW_LABEL.DIA}` },
-                { value: 'NOCHE', label: `Noche · ${SHIFT_WINDOW_LABEL.NOCHE}` },
-              ]}
-            />
-          </Field>
-          <SubmitButton variant="gold" pendingLabel="Abriendo…">
-            Abrir mi turno
-          </SubmitButton>
-        </>
-      )}
+      <Field
+        label="Turno"
+        name="type"
+        hint={`Propuesto según la hora: ${SHIFT_WINDOW_LABEL[suggestedType]}.`}
+      >
+        <Select
+          name="type"
+          defaultValue={suggestedType}
+          options={[
+            { value: 'DIA', label: `Día · ${SHIFT_WINDOW_LABEL.DIA}` },
+            { value: 'NOCHE', label: `Noche · ${SHIFT_WINDOW_LABEL.NOCHE}` },
+          ]}
+        />
+      </Field>
+      <SubmitButton variant="gold" pendingLabel="Abriendo…">
+        Abrir mi turno
+      </SubmitButton>
     </ActionForm>
   );
 }
@@ -103,7 +90,7 @@ export function ReceiveHandoverForm({
         <Textarea name="observations" rows={2} placeholder="Recibido conforme…" />
       </Field>
       <SubmitButton variant="gold" pendingLabel="Confirmando…">
-        {hasHandover ? 'Confirmar recepción del turno' : 'Activar turno sin entrega previa'}
+        {hasHandover ? 'Confirmar recepción operativa' : 'Activar turno sin entrega previa'}
       </SubmitButton>
     </ActionForm>
   );
@@ -145,6 +132,17 @@ export function SendHandoverForm({ shiftId }: { shiftId: string }) {
         </SubmitButton>
       </ActionForm>
     </div>
+  );
+}
+
+export function CloseShiftForm({ shiftId }: { shiftId: string }) {
+  return (
+    <ActionForm action={closeShiftAction} hideSuccess refreshOnSuccess className="space-y-0">
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <SubmitButton variant="gold" pendingLabel="Cerrando…">
+        Cerrar mi turno
+      </SubmitButton>
+    </ActionForm>
   );
 }
 

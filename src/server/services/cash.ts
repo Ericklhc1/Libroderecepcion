@@ -463,8 +463,8 @@ export async function recordCashTransfer(
         type: AlertType.OTRO,
         level: AlertLevel.CRITICA,
         status: AlertStatus.NUEVA,
-        title: 'Validar egreso a tesorería',
-        message: `Validar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
+        title: 'Revisar egreso a tesorería',
+        message: `Revisar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
         handoverId: params.handoverId,
         dedupeKey: `cash-transfer:${transfer.id}`,
         auto: false,
@@ -479,7 +479,7 @@ export async function recordCashTransfer(
         action: AuditAction.CREAR,
         summary: `Egreso a tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
-        }; pendiente de validación de Supervisión.`,
+        }; pendiente de revisión de Supervisión.`,
         user,
       },
       tx,

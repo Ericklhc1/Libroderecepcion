@@ -5,7 +5,7 @@ import { ArrowLeft, CheckCircle2, Clock, Send, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getHistory } from '@/server/services/history';
-import { getMyOpenShift } from '@/server/services/shifts';
+import { getMyActiveShift } from '@/server/services/shifts';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { CashBox } from '@/components/operational/cash-box';
@@ -63,11 +63,11 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const [history, cashState, denominations, myOpenShift] = await Promise.all([
+  const [history, cashState, denominations, myActiveShift] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
-    getMyOpenShift(user.id),
+    getMyActiveShift(user.id),
   ]);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
@@ -83,25 +83,31 @@ export default async function HandoverPage({
   const inboxReceiver = Boolean(
     handover.status === HandoverStatus.ENVIADA &&
       !handover.toShiftId &&
-      myOpenShift &&
-      myOpenShift.id !== handover.fromShiftId &&
-      myOpenShift.assignments.some((a) => a.userId === user.id),
+      myActiveShift &&
+      myActiveShift.id !== handover.fromShiftId &&
+      myActiveShift.assignments.some((a) => a.userId === user.id),
   );
   const isReceiver = linkedReceiver || inboxReceiver;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
 
   /*
-    Quién cuenta la caja: el emisor declara mientras la entrega es borrador; el
-    receptor recuenta mientras está enviada y sin recibir. Fuera de esos dos
-    casos —una entrega ya recibida, o alguien que sólo mira— la caja es de
-    lectura: recontar después no tiene a quién preguntarle por la diferencia.
+    La Caja se puede recibir antes que la entrega operativa: basta un arqueo
+    declarado y un turno entrante activo distinto del saliente.
   */
+  const canReceiveCash = Boolean(
+    myActiveShift &&
+      myActiveShift.id !== handover.fromShiftId &&
+      cashState.declared &&
+      !cashState.confirmed &&
+      (handover.status === HandoverStatus.BORRADOR ||
+        handover.status === HandoverStatus.ENVIADA) &&
+      (!handover.toShiftId || handover.toShiftId === myActiveShift.id) &&
+      user.permissions.includes('shift.receive'),
+  );
   const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
     ? 'emisor'
-    : isReceiver &&
-        handover.status === HandoverStatus.ENVIADA &&
-        user.permissions.includes('shift.receive')
+    : canReceiveCash
       ? 'receptor'
       : 'lector';
 
@@ -246,8 +252,8 @@ export default async function HandoverPage({
       </Card>
 
       {/*
-        La caja va ANTES de los puntos de la entrega: es lo primero que
-        cuenta quien entrega y lo primero que recuenta quien recibe.
+        La Caja puede transferirse mientras la entrega completa sigue en borrador.
+        Es la única recepción obligatoria para que el turno entrante continúe.
       */}
       <CashBox
         handoverId={handover.id}
@@ -358,7 +364,7 @@ export default async function HandoverPage({
         <Card className="no-print">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
             <p className="text-sm text-slate-700">
-              Esta entrega está disponible para tu turno. Recuenta la caja y los elementos y luego confírmala desde Mi turno.
+              Esta entrega operativa está disponible para tu turno. La Caja se recibe por separado; los elementos físicos pendientes no bloquean.
             </p>
             <Link
               href="/turno"

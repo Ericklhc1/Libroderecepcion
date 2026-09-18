@@ -163,6 +163,10 @@ export async function runFactoryReset(
       });
 
       count('Notificaciones', await tx.notification.deleteMany());
+      count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());
+      count('Mensajes de Fronti', await tx.ai_message.deleteMany());
+      count('Memorias de Fronti', await tx.ai_memory.deleteMany());
+      count('Conversaciones de Fronti', await tx.ai_conversation.deleteMany());
       count('Adjuntos', await tx.attachment.deleteMany());
       count('Comentarios', await tx.comment.deleteMany());
       count('Pasos de tarea', await tx.taskChecklistItem.deleteMany());

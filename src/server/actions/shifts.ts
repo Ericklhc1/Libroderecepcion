@@ -191,10 +191,10 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
       IN_HOUSE: 'In house',
     };
     const missing = validation.missing.map((kind) => labels[kind] ?? kind);
-    const invalid = validation.invalid.map(
-      ({ kind, freshness }) =>
-        `${labels[kind] ?? kind} (${freshness.status === 'VENCIDO' ? 'vencido' : 'fecha/hora inválida'})`,
-    );
+    const invalid = validation.invalid.map(({ kind, freshness }) => {
+      const label = kind ? (labels[kind] ?? kind) : 'Informe';
+      return `${label} (${freshness.status === 'VENCIDO' ? 'vencido' : 'fecha/hora inválida'})`;
+    });
     const details = [
       missing.length ? `Falta: ${missing.join(', ')}` : null,
       invalid.length ? `Reemplaza: ${invalid.join(', ')}` : null,

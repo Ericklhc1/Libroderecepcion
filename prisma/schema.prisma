@@ -371,6 +371,7 @@ model User {
   cashAudits            CashAudit[]         @relation("cashAuditCountedBy")
   gymPassesIssued       GymPass[]           @relation("gymPassReceptionist")
   gymPassesVoided       GymPass[]           @relation("gymPassVoidedBy")
+  assistantActionReceipts AssistantActionReceipt[]
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -404,6 +405,24 @@ model LoginAttempt {
   createdAt  DateTime @default(now())
 
   @@index([identifier, createdAt])
+}
+
+/**
+ * Recibo de una confirmación ejecutable emitida por Fronti.
+ *
+ * El nonce vive en el token firmado y sólo puede reclamarse una vez. Esto
+ * impide que un doble clic, reintento del navegador o replay cree dos tareas,
+ * multas u otras acciones mutables.
+ */
+model AssistantActionReceipt {
+  id        String   @id @default(cuid())
+  nonce     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // ================================= ÁREAS ==================================

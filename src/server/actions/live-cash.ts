@@ -255,8 +255,6 @@ export async function createManualCashMovementAction(
 
 const auditSchema = z.object({
   currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
-  countedAmount: z.coerce.number().nonnegative(),
-  reconcile: z.enum(['SI', 'NO']).default('NO'),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
@@ -265,86 +263,60 @@ export async function saveLiveCashAuditAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('supervision.view');
-    if (user.roleKey !== ROLE_KEYS.SUPERVISOR) {
-      throw new RuleError('La reconciliación de Caja sólo puede realizarla un Supervisor.');
-    }
-
+    const user = await requirePermission('room.manage');
     const input = parseOrThrow(auditSchema, formDataToObject(formData));
-    const result = await saveLiveCashAudit(user, input);
-    const difference = result.difference;
-    let reconciled = false;
 
-    if (difference !== 0 && input.reconcile === 'SI') {
-      const shift = await getCurrentShift();
-      if (!shift) {
-        throw new RuleError('No existe un turno operativo al que asociar el ajuste de cuadratura.');
+    const quantityEntries = [...formData.entries()]
+      .filter(([key]) => key.startsWith('d_'))
+      .map(([key, raw]) => ({
+        denominationId: key.slice(2),
+        quantity: raw === '' ? 0 : Number(raw),
+      }));
+
+    for (const row of quantityEntries) {
+      if (!Number.isInteger(row.quantity) || row.quantity < 0) {
+        throw new RuleError('Las cantidades por denominación deben ser números enteros no negativos.');
       }
-
-      const direction = difference > 0 ? 'ENTRADA' : 'SALIDA';
-      const kind = difference > 0 ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
-      const adjustment = Math.abs(difference);
-      const movementId = randomUUID();
-      const reference = `Ajuste autorizado por Supervisión · auditoría ${input.currency}`;
-
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`
-          INSERT INTO "CashMovement" (
-            "id", "kind", "direction", "currency", "amount", "shiftId",
-            "createdById", "reference", "notes"
-          ) VALUES (
-            ${movementId}, ${kind}, ${direction}, ${input.currency}, ${adjustment},
-            ${shift.id}, ${user.id}, ${reference}, ${input.notes}
-          )
-        `;
-
-        await tx.operationalEntry.create({
-          data: {
-            type: EntryType.CAJA,
-            status: EntryStatus.RESUELTO,
-            title: `Ajuste de cuadratura ${input.currency}`,
-            description:
-              `Supervisión actualizó el saldo esperado para hacerlo coincidir con el conteo físico. ` +
-              `Esperado anterior: ${result.expected}. Contado: ${input.countedAmount}. ` +
-              `Ajuste: ${direction === 'ENTRADA' ? '+' : '−'}${adjustment} ${input.currency}.`,
-            category: kind,
-            priority: Priority.MEDIA,
-            ownerId: user.id,
-            shiftId: shift.id,
-            occurredAt: new Date(),
-            tags: ['caja', 'cuadratura', 'ajuste-supervision'],
-            requiresFollowUp: false,
-            resolution: 'Diferencia reconciliada por Supervisión.',
-            createdById: user.id,
-          },
-        });
-
-        await recordAudit(
-          {
-            entity: 'CashMovement',
-            entityId: movementId,
-            action: AuditAction.CONFIGURAR,
-            user,
-            summary: `Supervisor reconcilió Caja ${input.currency}: ajuste ${direction} ${adjustment}`,
-            before: { expected: result.expected, counted: input.countedAmount, difference },
-            after: { expected: input.countedAmount, difference: 0 },
-            reason: input.notes,
-          },
-          tx,
-        );
-      });
-      reconciled = true;
     }
+
+    const denominationIds = quantityEntries.map((row) => row.denominationId);
+    const denominations = denominationIds.length
+      ? await prisma.cashDenomination.findMany({
+          where: {
+            id: { in: denominationIds },
+            active: true,
+            currency: input.currency,
+          },
+          select: { id: true, value: true },
+        })
+      : [];
+
+    if (denominations.length !== denominationIds.length) {
+      throw new RuleError('El conteo contiene una denominación inválida para esa divisa.');
+    }
+
+    const byId = new Map(denominations.map((row) => [row.id, Number(row.value)]));
+    const countedAmount = quantityEntries.reduce(
+      (total, row) => total + (byId.get(row.denominationId) ?? 0) * row.quantity,
+      0,
+    );
+
+    const result = await saveLiveCashAudit(user, {
+      currency: input.currency,
+      countedAmount,
+      notes: input.notes,
+    });
 
     revalidatePath('/caja');
     revalidatePath('/libro');
     revalidatePath('/turno');
-    const message =
-      difference === 0
-        ? `Caja ${input.currency} auditada: cuadra exactamente.`
-        : reconciled
-          ? `Caja ${input.currency} auditada y reconciliada por Supervisión. Diferencia eliminada mediante ajuste trazable.`
-          : `Caja ${input.currency} auditada: diferencia ${difference > 0 ? '+' : ''}${difference}. Se conserva sin modificar el saldo esperado.`;
-    return { ok: true as const, message };
+
+    return {
+      ok: true as const,
+      message:
+        result.difference === 0
+          ? `Caja ${input.currency} corroborada por denominación: cuadra exactamente.`
+          : `Caja ${input.currency} corroborada por denominación: diferencia ${result.difference > 0 ? '+' : ''}${result.difference}. La diferencia queda registrada y no bloquea la operación.`,
+    };
   });
 }

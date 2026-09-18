@@ -1,19 +1,25 @@
 import 'server-only';
 
-import { ReservationStatus, RoomStayStage } from '@prisma/client';
+import { ReservationStatus, RoomStayStage, RoomStayStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 const ACTIVE_STAGES = [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO];
 
-export type ReservationFolderStay = {
+export type ReservationFolderPhase = {
   stayId: string;
-  reservationRefId: string | null;
-  fnsId: string;
-  guestName: string | null;
   status: string;
   stage: string;
   arrivalDate: Date | null;
   departureDate: Date | null;
+};
+
+export type ReservationFolderId = {
+  reservationRefId: string | null;
+  fnsId: string;
+  guestName: string | null;
+  /** Estado visible de la carpeta ID. Las fases originales se conservan abajo. */
+  status: string;
+  phases: ReservationFolderPhase[];
   records: {
     entries: number;
     guarantees: number;
@@ -26,8 +32,20 @@ export type ReservationRoomFolder = {
   roomId: string;
   roomNumber: string;
   floor: number | null;
-  stays: ReservationFolderStay[];
+  reservations: ReservationFolderId[];
 };
+
+function visibleStatus(statuses: RoomStayStatus[]): RoomStayStatus {
+  /*
+    Una misma reserva puede aparecer simultáneamente en IN_HOUSE y CHECK_OUT
+    porque el PMS describe hechos, no una única etiqueta mutable. Para la
+    carpeta operativa manda lo que recepción tiene que resolver a continuación:
+    salida > in house > entrada.
+  */
+  if (statuses.includes(RoomStayStatus.CHECK_OUT)) return RoomStayStatus.CHECK_OUT;
+  if (statuses.includes(RoomStayStatus.IN_HOUSE)) return RoomStayStatus.IN_HOUSE;
+  return RoomStayStatus.CHECK_IN;
+}
 
 export async function listReservationFolders(): Promise<{
   rooms: ReservationRoomFolder[];
@@ -53,7 +71,7 @@ export async function listReservationFolders(): Promise<{
             deletedAt: null,
             stage: { in: ACTIVE_STAGES },
           },
-          orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+          orderBy: [{ createdAt: 'asc' }],
           select: {
             id: true,
             reservationId: true,
@@ -113,30 +131,47 @@ export async function listReservationFolders(): Promise<{
   ]);
 
   return {
-    rooms: rooms.map((room) => ({
-      roomId: room.id,
-      roomNumber: room.number,
-      floor: room.floor,
-      stays: room.stays.map((stay) => ({
-        stayId: stay.id,
-        reservationRefId: stay.reservationRefId,
-        fnsId: stay.reservationRef?.code ?? stay.reservationId,
-        guestName:
-          stay.reservationRef?.guest?.fullName ??
-          stay.guestNames.find((name) => name.trim()) ??
-          null,
-        status: stay.status,
-        stage: stay.stage,
-        arrivalDate: stay.arrivalDate,
-        departureDate: stay.departureDate,
-        records: {
-          entries: stay.reservationRef?._count.entries ?? 0,
-          guarantees: stay.reservationRef?._count.guarantees ?? 0,
-          cashMovements: stay.reservationRef?._count.cashMovements ?? 0,
-          fines: stay.reservationRef?._count.fines ?? 0,
-        },
-      })),
-    })),
+    rooms: rooms.map((room) => {
+      const byFns = new Map<string, typeof room.stays>();
+      for (const stay of room.stays) {
+        const fnsId = stay.reservationRef?.code ?? stay.reservationId;
+        const list = byFns.get(fnsId) ?? [];
+        list.push(stay);
+        byFns.set(fnsId, list);
+      }
+
+      return {
+        roomId: room.id,
+        roomNumber: room.number,
+        floor: room.floor,
+        reservations: [...byFns.entries()].map(([fnsId, stays]) => {
+          const first = stays[0]!;
+          const reservationRef = stays.find((stay) => stay.reservationRef)?.reservationRef ?? null;
+          return {
+            reservationRefId: reservationRef?.id ?? first.reservationRefId,
+            fnsId,
+            guestName:
+              reservationRef?.guest?.fullName ??
+              stays.flatMap((stay) => stay.guestNames).find((name) => name.trim()) ??
+              null,
+            status: visibleStatus(stays.map((stay) => stay.status)),
+            phases: stays.map((stay) => ({
+              stayId: stay.id,
+              status: stay.status,
+              stage: stay.stage,
+              arrivalDate: stay.arrivalDate,
+              departureDate: stay.departureDate,
+            })),
+            records: {
+              entries: reservationRef?._count.entries ?? 0,
+              guarantees: reservationRef?._count.guarantees ?? 0,
+              cashMovements: reservationRef?._count.cashMovements ?? 0,
+              fines: reservationRef?._count.fines ?? 0,
+            },
+          };
+        }),
+      };
+    }),
     unassigned: unassigned.map((reservation) => ({
       reservationRefId: reservation.id,
       fnsId: reservation.code,

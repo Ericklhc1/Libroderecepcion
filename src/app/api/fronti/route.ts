@@ -23,6 +23,7 @@ import {
 } from '@/server/ai/memory';
 import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,11 +50,20 @@ function expiredResponse() {
   );
 }
 
+function termsRequiredResponse() {
+  return NextResponse.json(
+    { error: 'Debes aceptar los términos vigentes antes de utilizar Fronti.' },
+    { status: 403, headers: noStoreHeaders() },
+  );
+}
+
 async function authenticatedUser() {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user || user.mustChangePassword) return null;
   const alive = await refreshSession(user.id, user.sessionId);
-  return alive ? user : null;
+  if (!alive) return null;
+  if (!(await hasAcceptedCurrentTerms(user.id))) return null;
+  return user;
 }
 
 function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
@@ -68,6 +78,9 @@ function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return expiredResponse();
+  if (user.mustChangePassword || !(await hasAcceptedCurrentTerms(user.id))) {
+    return termsRequiredResponse();
+  }
 
   const config = await getFrontiConfig();
   const url = new URL(request.url);

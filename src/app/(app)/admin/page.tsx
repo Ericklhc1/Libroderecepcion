@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+  Bug,
   Building2,
   ClipboardList,
   KeyRound,
@@ -63,6 +64,13 @@ const SECTIONS: Array<{
     description: 'Configuración del sistema y reglas operativas.',
     permission: 'system.configure',
     icon: Settings,
+  },
+  {
+    href: '/admin/diagnostico',
+    title: 'Diagnóstico y reparación',
+    description: 'Detectar errores de ejecución, duplicados e inconsistencias y aplicar reparaciones seguras.',
+    permission: 'system.configure',
+    icon: Bug,
   },
   {
     href: '/admin/correo',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AiAttribution } from '@/components/ai/ai-attribution';
 import {
   Check,
   Loader2,
@@ -475,6 +476,7 @@ export function FrontiAssistant() {
             <p className="mt-1.5 text-center text-[0.61rem] leading-4 text-slate-400">
               Memoria personal {retentionDays} días · “No guardes esto: …” evita memoria · acciones sensibles requieren confirmación.
             </p>
+            <AiAttribution className="mt-1 opacity-80" />
           </div>
         </section>
       ) : (

@@ -654,7 +654,7 @@ export async function receiveShiftCash(
     (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
   );
   if (!activeAssignment) throw new RuleError('No estás participando activamente en este turno.');
-  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(shift.status)) {
+  if (shift.status !== ShiftStatus.INICIADO && shift.status !== ShiftStatus.ACTIVO) {
     throw new RuleError('La Caja sólo se recibe al iniciar o durante un turno activo.');
   }
 
@@ -673,7 +673,7 @@ export async function receiveShiftCash(
   if (handover.fromShiftId === shift.id) {
     throw new RuleError('Un turno no puede recibir su propia Caja.');
   }
-  if (![HandoverStatus.BORRADOR, HandoverStatus.ENVIADA].includes(handover.status)) {
+  if (handover.status !== HandoverStatus.BORRADOR && handover.status !== HandoverStatus.ENVIADA) {
     throw new RuleError('Esa Caja ya no está disponible para recepción.');
   }
   if (handover.toShiftId && handover.toShiftId !== shift.id) {
@@ -878,7 +878,7 @@ export async function receiveHandover(
   if (incoming.toShiftId && incoming.toShiftId !== shift.id) {
     throw new RuleError('Esa entrega ya está asociada a otro turno.');
   }
-  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(shift.status)) {
+  if (shift.status !== ShiftStatus.INICIADO && shift.status !== ShiftStatus.ACTIVO) {
     throw new RuleError('Tu turno debe estar iniciado o activo para recibir una entrega.');
   }
 

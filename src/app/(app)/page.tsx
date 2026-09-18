@@ -106,7 +106,7 @@ export default async function DashboardPage() {
                   {!user.roleOperational
                     ? 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'
                     : data.nextShift
-                      ? 'Hay un turno abierto: súmate a ése. No se abren turnos en paralelo.'
+                      ? 'Hay otro turno en curso. Puedes abrir el tuyo: durante el relevo los turnos se solapan.'
                       : data.incoming
                         ? 'Hay un cierre esperando en la bandeja: abre tu turno para revisarlo y recibir la caja.'
                         : 'Abre tu turno para empezar.'}
@@ -117,11 +117,7 @@ export default async function DashboardPage() {
 
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
             {!shift && user.roleOperational ? (
-              <OpenShiftForm
-                suggestedType={shiftTypeAt()}
-                /* Si ya hay uno abierto, el único gesto posible es sumarse. */
-                joining={Boolean(data.nextShift)}
-              />
+              <OpenShiftForm suggestedType={shiftTypeAt()} />
             ) : null}
 
             {shift && shift.status === ShiftStatus.ACTIVO ? (

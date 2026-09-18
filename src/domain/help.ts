@@ -119,14 +119,14 @@ export const HELP_TOPICS: HelpTopic[] = [
       'En Turno, pulsa preparar la entrega: el resumen se genera solo.',
       'Agrega las notas que el sistema no puede saber, clasificadas por urgencia.',
       'Cuenta la caja y declara los elementos.',
-      'Envía la entrega. El turno siguiente tiene que confirmarla.',
+      'Envía la entrega. Cuando el turno siguiente confirma la recepción, tu turno se cierra automáticamente.',
     ],
     caveat:
       'Si la caja no cuadra con el fondo fijo, hay que explicar la diferencia antes de ' +
       'entregar. Un faltante existe y se declara; lo que no se admite es el silencio.',
     route: '/turno',
     anyOf: ['shift.handover'],
-    keywords: ['entregar', 'entrega', 'cerrar', 'turno', 'resumen', 'traspaso'],
+    keywords: ['entregar', 'entrega', 'cierre', 'turno', 'resumen', 'traspaso', 'recibir'],
     action: 'regenerar-entrega',
     tutorial: true,
   },

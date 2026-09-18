@@ -49,6 +49,56 @@ export const DEFAULT_SETTINGS = {
     category: 'recepción',
     description: 'Hora límite de check-out; desde esta hora se alertan salidas sin confirmar.',
   },
+  'home.operationalFeedLimit': {
+    value: 12,
+    category: 'inicio',
+    description: 'Máximo de eventos recientes que muestra la ventana operativa de Inicio.',
+  },
+  'alerts.dashboardLimit': {
+    value: 10,
+    category: 'alertas',
+    description: 'Máximo de alertas activas que se muestran directamente en Inicio.',
+  },
+  'reservations.showEmptyRooms': {
+    value: true,
+    category: 'reservas',
+    description: 'Muestra carpetas de habitaciones aunque no tengan un ID FNS activo.',
+  },
+  'reservations.showUnassigned': {
+    value: true,
+    category: 'reservas',
+    description: 'Muestra la bandeja de reservas con ID FNS pero sin habitación asignada.',
+  },
+  'keys.pendingReturnWarningHours': {
+    value: 2,
+    category: 'llaves',
+    description: 'Horas tras las que una llave pendiente de devolución se considera atrasada.',
+  },
+  'diagnostics.enabled': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Habilita el Centro de diagnóstico y reparación para el Administrador de sistema.',
+  },
+  'diagnostics.runtimeCaptureEnabled': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Registra errores de ejecución de la interfaz para analizarlos desde Administración.',
+  },
+  'diagnostics.safeRepairDuplicateAlerts': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite a la reparación segura depurar alertas duplicadas exactas sin comentarios ni tareas.',
+  },
+  'diagnostics.safeRepairReservationLinks': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite volver a vincular estadías con la reserva correcta usando exclusivamente el ID FNS.',
+  },
+  'diagnostics.safeRepairRoomProjection': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite corregir la habitación proyectada de una reserva cuando sus estadías activas son inequívocas.',
+  },
 
   // Caja: las divisas son fijas (CLP y USD); estas reglas deciden qué módulos
   // están activos y qué validaciones aplican en la operación.

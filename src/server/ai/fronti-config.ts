@@ -2,6 +2,7 @@ import 'server-only';
 
 import { env } from '@/lib/env';
 import { getAllSettings } from '@/server/services/settings';
+import type { FrontiProviderName } from './fronti-provider';
 
 export type FrontiToolKey =
   | 'room'
@@ -13,6 +14,7 @@ export type FrontiToolKey =
 
 export type FrontiConfig = {
   enabled: boolean;
+  provider: FrontiProviderName;
   displayName: string;
   welcomeMessage: string;
   extraInstructions: string;
@@ -29,6 +31,10 @@ export type FrontiConfig = {
 function clamp(value: number, min: number, max: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function provider(value: string): FrontiProviderName {
+  return value === 'vllm' || value === 'openai' ? value : 'groq';
 }
 
 function reasoning(value: string): 'low' | 'medium' | 'high' {
@@ -57,6 +63,7 @@ export async function getFrontiConfig(): Promise<FrontiConfig> {
 
   return {
     enabled: bool('fronti.enabled', true),
+    provider: provider(string('fronti.provider', env().FRONTI_PROVIDER)),
     displayName: string('fronti.displayName', 'Fronti').slice(0, 40),
     welcomeMessage: string(
       'fronti.welcomeMessage',
@@ -66,7 +73,7 @@ export async function getFrontiConfig(): Promise<FrontiConfig> {
       'fronti.extraInstructions',
       'Prioriza claridad, brevedad y seguridad operacional. Si un dato puede haber cambiado, verifícalo con las herramientas del Libro antes de responder.',
     ).slice(0, 4000),
-    model: string('fronti.model', env().OPENAI_MODEL).slice(0, 120),
+    model: string('fronti.model', env().FRONTI_MODEL).slice(0, 120),
     reasoningEffort: reasoning(string('fronti.reasoningEffort', 'low')),
     memoryRetentionDays: clamp(number('fronti.memoryRetentionDays', 30), 1, 90, 30),
     shiftMemoryHours: clamp(number('fronti.shiftMemoryHours', 36), 1, 72, 36),

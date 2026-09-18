@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { FollowUpStatus, Priority } from '@prisma/client';
+import { EntryType, FollowUpStatus, Priority, Severity, TaskStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
@@ -19,7 +19,9 @@ import {
 import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
-import { createTask } from '@/server/services/tasks';
+import { createTask, changeTaskStatus } from '@/server/services/tasks';
+import { createEntry } from '@/server/services/entries';
+import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
 import { reportFrontiFinding } from './fronti-findings';
 import {
   frontiToolSettingForFunction,
@@ -89,6 +91,33 @@ type PendingAction =
         guestStatement?: string | null;
         amount?: number | null;
         currency?: string;
+      };
+    }
+  | {
+      version: 2;
+      nonce: string;
+      userId: string;
+      action: 'create_entry';
+      expiresAt: number;
+      args: {
+        type: 'NOVEDAD' | 'INCIDENCIA';
+        title: string;
+        description: string;
+        roomNumber?: string | null;
+        priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+        severity?: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA' | null;
+        requiresFollowUp: boolean;
+      };
+    }
+  | {
+      version: 2;
+      nonce: string;
+      userId: string;
+      action: 'complete_task';
+      expiresAt: number;
+      args: {
+        taskId: string;
+        reason?: string | null;
       };
     };
 
@@ -184,6 +213,55 @@ const TOOL_DEFINITIONS = [
   },
   {
     type: 'function',
+    name: 'proponer_registro',
+    description:
+      'Prepara una novedad o incidencia del Libro siguiendo la instrucción del usuario. Si se conoce una habitación, úsala. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['NOVEDAD', 'INCIDENCIA'] },
+        title: { type: 'string', minLength: 3, maxLength: 200 },
+        description: { type: 'string', minLength: 3, maxLength: 4000 },
+        roomNumber: { type: ['string', 'null'] },
+        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        severity: {
+          type: ['string', 'null'],
+          enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null],
+        },
+        requiresFollowUp: { type: 'boolean' },
+      },
+      required: [
+        'type',
+        'title',
+        'description',
+        'roomNumber',
+        'priority',
+        'severity',
+        'requiresFollowUp',
+      ],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'proponer_resolver_tarea',
+    description:
+      'Prepara la finalización de una tarea existente. Identifica la tarea por id interno o por número T#. Requiere permiso task.close y confirmación antes de modificarla.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        taskId: { type: ['string', 'null'] },
+        taskSeq: { type: ['integer', 'null'], minimum: 1 },
+        reason: { type: ['string', 'null'], maxLength: 1000 },
+      },
+      required: ['taskId', 'taskSeq', 'reason'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'reportar_hallazgo',
     description:
       'Reporta a Supervisor y Administrador de sistema un fallo concreto o una mejora de proceso detectada por Fronti. Úsala sólo con evidencia específica y accionable; no para preferencias de estilo, ideas vagas ni duplicados.',
@@ -258,14 +336,22 @@ const TOOL_DEFINITIONS = [
 
 function enabledToolDefinitions(config: FrontiConfig) {
   return TOOL_DEFINITIONS.filter((definition) => {
-    if (definition.name === 'reportar_hallazgo') return true;
+    if (
+      definition.name === 'reportar_hallazgo' ||
+      definition.name === 'proponer_registro' ||
+      definition.name === 'proponer_resolver_tarea'
+    ) return true;
     const key = frontiToolSettingForFunction(definition.name);
     return key ? config.tools[key] : false;
   });
 }
 
 function assertToolEnabled(config: FrontiConfig, functionName: string) {
-  if (functionName === 'reportar_hallazgo') return;
+  if (
+    functionName === 'reportar_hallazgo' ||
+    functionName === 'proponer_registro' ||
+    functionName === 'proponer_resolver_tarea'
+  ) return;
   const key = frontiToolSettingForFunction(functionName);
   if (!key || !config.tools[key]) {
     throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
@@ -348,7 +434,7 @@ async function releaseConfirmationClaim(pending: PendingAction): Promise<void> {
 
 function makeConfirmation(
   user: CurrentUser,
-  action: 'confirm_checkouts' | 'create_reminder' | 'create_fine',
+  action: PendingAction['action'],
   args: PendingAction['args'],
   title: string,
   detail: string,
@@ -592,6 +678,124 @@ async function reminderProposalTool(user: CurrentUser, args: Record<string, unkn
   };
 }
 
+async function entryProposalTool(user: CurrentUser, args: Record<string, unknown>) {
+  const type = args.type === 'INCIDENCIA' ? EntryType.INCIDENCIA : EntryType.NOVEDAD;
+  requireToolPermission(user, type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create');
+
+  const title = String(args.title ?? '').trim();
+  const description = String(args.description ?? '').trim();
+  if (title.length < 3 || description.length < 3) {
+    throw new Error('El registro necesita título y descripción.');
+  }
+
+  const priority = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.priority))
+    ? (String(args.priority) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
+    : 'MEDIA';
+  const severity =
+    args.severity && ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.severity))
+      ? (String(args.severity) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
+      : null;
+
+  if (type === EntryType.INCIDENCIA && !severity) {
+    return {
+      status: 'needs_info',
+      missing: [{ field: 'severity', message: 'Indica la gravedad de la incidencia.' }],
+      instruction: 'Pide sólo la gravedad faltante; no la inventes.',
+    };
+  }
+
+  const roomNumber =
+    typeof args.roomNumber === 'string' && args.roomNumber.trim()
+      ? cleanRoomNumber(args.roomNumber)
+      : null;
+  if (roomNumber) {
+    const exists = await prisma.room.findFirst({
+      where: { number: roomNumber, active: true },
+      select: { id: true },
+    });
+    if (!exists) throw new Error(`La habitación ${roomNumber} no existe o está inactiva.`);
+  }
+
+  const requiresFollowUp =
+    type === EntryType.INCIDENCIA ? true : Boolean(args.requiresFollowUp);
+
+  const confirmation = makeConfirmation(
+    user,
+    'create_entry',
+    {
+      type,
+      title,
+      description,
+      roomNumber,
+      priority,
+      severity,
+      requiresFollowUp,
+    },
+    type === EntryType.INCIDENCIA ? 'Crear incidencia' : 'Crear novedad',
+    `${title}${roomNumber ? ` · Hab. ${roomNumber}` : ''} · Prioridad ${priority.toLowerCase()}`,
+    type === EntryType.INCIDENCIA && priority === 'CRITICA' ? 'high' : 'normal',
+  );
+
+  return {
+    status: 'confirmation_required',
+    message: 'El registro está preparado y todavía no se ha creado.',
+    confirmation,
+  };
+}
+
+async function completeTaskProposalTool(
+  user: CurrentUser,
+  args: Record<string, unknown>,
+) {
+  requireToolPermission(user, 'task.close');
+
+  const taskId =
+    typeof args.taskId === 'string' && args.taskId.trim() ? args.taskId.trim() : null;
+  const taskSeq =
+    typeof args.taskSeq === 'number' && Number.isInteger(args.taskSeq) && args.taskSeq > 0
+      ? args.taskSeq
+      : null;
+  if (!taskId && !taskSeq) {
+    return {
+      status: 'needs_info',
+      missing: [{ field: 'task', message: 'Indica qué tarea quieres completar.' }],
+      instruction: 'Pide sólo la referencia T# o identifica la tarea desde el contexto de pantalla.',
+    };
+  }
+
+  const task = await prisma.task.findFirst({
+    where: {
+      deletedAt: null,
+      ...(taskId ? { id: taskId } : { seq: taskSeq as number }),
+    },
+    select: { id: true, seq: true, title: true, status: true },
+  });
+  if (!task) throw new Error('No encontré esa tarea.');
+  if (task.status === TaskStatus.COMPLETADA) {
+    return { status: 'already_done', message: `La tarea T#${task.seq} ya está completada.` };
+  }
+  if (task.status === TaskStatus.CANCELADA) {
+    throw new Error(`La tarea T#${task.seq} está cancelada y no puede completarse directamente.`);
+  }
+
+  const reason =
+    typeof args.reason === 'string' && args.reason.trim() ? args.reason.trim() : null;
+
+  const confirmation = makeConfirmation(
+    user,
+    'complete_task',
+    { taskId: task.id, reason },
+    `Completar tarea T#${task.seq}`,
+    task.title,
+    'normal',
+  );
+  return {
+    status: 'confirmation_required',
+    message: 'La tarea está preparada para completarse y todavía no se ha modificado.',
+    confirmation,
+  };
+}
+
 async function fineProposalTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'incident.manage');
   const roomNumber = cleanRoomNumber(args.roomNumber);
@@ -678,6 +882,10 @@ async function executeTool(
       return reminderProposalTool(user, args);
     case 'proponer_multa':
       return fineProposalTool(user, args);
+    case 'proponer_registro':
+      return entryProposalTool(user, args);
+    case 'proponer_resolver_tarea':
+      return completeTaskProposalTool(user, args);
     case 'reportar_hallazgo':
       return reportFrontiFinding(user, {
         kind: args.kind === 'MEJORA' ? 'MEJORA' : 'FALLO',
@@ -728,6 +936,7 @@ function systemInstructions(config: FrontiConfig): string {
     'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
     'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
+    'Sigue las instrucciones operativas del usuario usando herramientas: puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs según sus permisos. Si recibes contexto de pantalla, úsalo para resolver referencias como «esta habitación» o «esta tarea», pero verifica la entidad real antes de escribir. ' +
     `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
     'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
     'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
@@ -928,6 +1137,63 @@ export async function executeReceptionConfirmation(
       currency: pending.args.currency ?? 'CLP',
     });
     return { reply: `Multa registrada para la habitación ${pending.args.roomNumber}. ID ${fine.id}.` };
+  }
+
+  if (pending.action === 'create_entry') {
+    const type =
+      pending.args.type === 'INCIDENCIA' ? EntryType.INCIDENCIA : EntryType.NOVEDAD;
+    requireToolPermission(
+      user,
+      type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create',
+    );
+
+    const room = pending.args.roomNumber
+      ? await prisma.room.findFirst({
+          where: { number: pending.args.roomNumber, active: true },
+          select: { id: true },
+        })
+      : null;
+    if (pending.args.roomNumber && !room) {
+      throw new Error(`La habitación ${pending.args.roomNumber} dejó de estar disponible.`);
+    }
+
+    const entry = await createEntry(user, {
+      type,
+      title: pending.args.title,
+      description: pending.args.description,
+      category: null,
+      departmentId: user.departmentId,
+      roomId: room?.id ?? null,
+      priority: Priority[pending.args.priority],
+      ownerId: null,
+      occurredAt: null,
+      dueAt: null,
+      tags: ['fronti'],
+      requiresFollowUp: pending.args.requiresFollowUp,
+      guestId: null,
+      reservationId: null,
+      severity:
+        type === EntryType.INCIDENCIA && pending.args.severity
+          ? Severity[pending.args.severity]
+          : undefined,
+      immediateAction: null,
+    });
+    if (type === EntryType.INCIDENCIA) {
+      await ensureIncidentWorkflow(entry.id);
+    }
+    return {
+      reply: `${type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.seq} creada: ${entry.title}.`,
+    };
+  }
+
+  if (pending.action === 'complete_task') {
+    requireToolPermission(user, 'task.close');
+    const task = await changeTaskStatus(user, {
+      id: pending.args.taskId,
+      status: TaskStatus.COMPLETADA,
+      reason: pending.args.reason ?? 'Completada mediante Fronti.',
+    });
+    return { reply: `Tarea T#${task.seq} completada: ${task.title}.` };
   }
 
   assertToolEnabled(config, 'proponer_checkouts');

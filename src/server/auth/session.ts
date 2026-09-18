@@ -2,22 +2,46 @@ import 'server-only';
 import { cookies, headers } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { prisma } from '@/lib/prisma';
-import { env } from '@/lib/env';
+import { AppError } from '@/server/errors';
 
 export const SESSION_COOKIE = 'lor_session';
 
 type SessionPayload = { sub: string; sid: string };
 
-function secretKey(): Uint8Array {
-  return new TextEncoder().encode(env().AUTH_SECRET);
+function authSecretKey(): Uint8Array {
+  const value = process.env.AUTH_SECRET?.trim();
+  if (!value || value.length < 32) {
+    throw new AppError(
+      'La autenticación no está configurada correctamente. Código: AUTH_CONFIG.',
+      'AUTH_CONFIG',
+    );
+  }
+  return new TextEncoder().encode(value);
 }
 
-async function signSessionToken(userId: string, sessionId: string, expiresAt: Date): Promise<string> {
+function sessionTtlHours(): number {
+  const raw = process.env.SESSION_TTL_HOURS?.trim();
+  if (!raw) return 12;
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0 || value > 168) {
+    console.warn('[auth] SESSION_TTL_HOURS inválido; se usa 12 horas');
+    return 12;
+  }
+  return value;
+}
+
+async function signSessionToken(
+  userId: string,
+  sessionId: string,
+  expiresAt: Date,
+  key: Uint8Array = authSecretKey(),
+): Promise<string> {
   return new SignJWT({ sub: userId, sid: sessionId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
-    .sign(secretKey());
+    .sign(key);
 }
 
 /**
@@ -28,20 +52,51 @@ export async function createSession(
   userId: string,
   meta: { ip?: string | null; userAgent?: string | null } = {},
 ): Promise<{ token: string; sessionId: string; expiresAt: Date }> {
-  const ttlHours = env().SESSION_TTL_HOURS;
-  const expiresAt = new Date(Date.now() + ttlHours * 3600_000);
+  // Valida la clave antes de tocar la base, para no dejar sesiones huérfanas
+  // si el entorno de autenticación está incompleto.
+  const key = authSecretKey();
+  const expiresAt = new Date(Date.now() + sessionTtlHours() * 3600_000);
 
-  const session = await prisma.session.create({
-    data: {
-      userId,
-      expiresAt,
-      ip: meta.ip ?? null,
-      userAgent: meta.userAgent ?? null,
-    },
-  });
+  let session;
+  try {
+    session = await prisma.session.create({
+      data: {
+        userId,
+        expiresAt,
+        ip: meta.ip ?? null,
+        userAgent: meta.userAgent ?? null,
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[auth] no se pudo persistir la sesión',
+      error instanceof Error ? error.message : 'error no identificado',
+    );
+    throw new AppError(
+      'No se pudo crear la sesión. Código: SESSION_DB.',
+      'SESSION_DB',
+    );
+  }
 
-  const token = await signSessionToken(userId, session.id, expiresAt);
-  return { token, sessionId: session.id, expiresAt };
+  try {
+    const token = await signSessionToken(userId, session.id, expiresAt, key);
+    return { token, sessionId: session.id, expiresAt };
+  } catch (error) {
+    // Si la firma falla después de persistir, revoca la fila recién creada para
+    // no dejar una sesión válida sin cookie asociada.
+    await prisma.session
+      .update({ where: { id: session.id }, data: { revokedAt: new Date() } })
+      .catch(() => null);
+
+    console.error(
+      '[auth] no se pudo firmar la sesión',
+      error instanceof Error ? error.message : 'error no identificado',
+    );
+    throw new AppError(
+      'No se pudo firmar la sesión. Código: SESSION_SIGN.',
+      'SESSION_SIGN',
+    );
+  }
 }
 
 export async function writeSessionCookie(token: string, expiresAt: Date) {
@@ -72,7 +127,7 @@ export async function readSessionToken(
 ): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secretKey(), {
+    const { payload } = await jwtVerify(token, authSecretKey(), {
       algorithms: ['HS256'],
     });
     const sub = typeof payload.sub === 'string' ? payload.sub : null;
@@ -98,7 +153,7 @@ export async function readSessionToken(
  */
 export async function refreshSession(userId: string, sessionId: string): Promise<boolean> {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + env().SESSION_TTL_HOURS * 3600_000);
+  const expiresAt = new Date(now.getTime() + sessionTtlHours() * 3600_000);
   const updated = await prisma.session.updateMany({
     where: {
       id: sessionId,

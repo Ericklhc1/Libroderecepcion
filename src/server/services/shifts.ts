@@ -169,7 +169,7 @@ export async function getMyPendingClosureShift(userId: string) {
   });
 }
 
-async function endParticipation(
+export async function endShiftParticipation(
   tx: Prisma.TransactionClient,
   shiftId: string,
   at: Date,
@@ -1129,7 +1129,7 @@ export async function sendHandover(
     });
     // ENVIAR termina la participación operativa: el usuario ya puede abrir
     // otro turno aunque éste siga pendiente de cierre formal.
-    await endParticipation(tx, shift.id, now);
+    await endShiftParticipation(tx, shift.id, now);
 
     await recordAudit(
       {
@@ -1215,7 +1215,7 @@ export async function closeShift(
       throw new RuleError('Ese turno acaba de cambiar de estado. Actualiza la pantalla.');
     }
 
-    await endParticipation(tx, shift.id, now);
+    await endShiftParticipation(tx, shift.id, now);
 
     await recordAudit(
       {

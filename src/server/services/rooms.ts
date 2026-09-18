@@ -227,91 +227,104 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
   };
 }
 
-export async function confirmCheckOut(
+type CheckOutTransactionResult = {
+  stay: {
+    id: string;
+    reservationId: string;
+    guestNames: string[];
+  };
+  roomNumber: string | null;
+  pendingKeys: number;
+};
+
+async function confirmCheckOutInTransaction(
+  tx: Prisma.TransactionClient,
   user: CurrentUser,
   input: { stayId: string; note?: string | null },
-): Promise<{ roomNumber: string | null; pendingKeys: number }> {
-  const result = await prisma.$transaction(async (tx) => {
-    const stay = await tx.roomStay.findFirst({
-      where: { id: input.stayId, deletedAt: null },
-      include: { room: { select: { id: true, number: true } } },
-    });
-    if (!stay) throw new NotFoundError('Esa estadía no existe o fue eliminada.');
-    if (stay.status !== RoomStayStatus.CHECK_OUT) {
-      throw new RuleError('Sólo se puede confirmar la salida de una estadía en check-out.');
-    }
-    if (stay.stage === RoomStayStage.FINALIZADO) {
-      throw new RuleError('Esa salida ya fue confirmada.');
-    }
+): Promise<CheckOutTransactionResult> {
+  const stay = await tx.roomStay.findFirst({
+    where: { id: input.stayId, deletedAt: null },
+    include: { room: { select: { id: true, number: true } } },
+  });
+  if (!stay) throw new NotFoundError('Esa estadía no existe o fue eliminada.');
+  if (stay.status !== RoomStayStatus.CHECK_OUT) {
+    throw new RuleError('Sólo se puede confirmar la salida de una estadía en check-out.');
+  }
+  if (stay.stage === RoomStayStage.FINALIZADO) {
+    throw new RuleError('Esa salida ya fue confirmada.');
+  }
 
-    const now = new Date();
-    const updated = await tx.roomStay.updateMany({
-      where: { id: stay.id, stage: { not: RoomStayStage.FINALIZADO } },
+  const now = new Date();
+  const updated = await tx.roomStay.updateMany({
+    where: { id: stay.id, stage: { not: RoomStayStage.FINALIZADO } },
+    data: {
+      stage: RoomStayStage.FINALIZADO,
+      confirmedAt: now,
+      confirmedById: user.id,
+      touchedManually: true,
+      note: input.note ?? stay.note,
+    },
+  });
+  if (updated.count === 0) throw new RuleError('Esa salida ya fue confirmada.');
+
+  /*
+    Salir de la habitación y devolver una llave son dos hechos distintos.
+    El C/O libera la habitación; cualquier llave que siga en manos del
+    huésped queda pendiente y sólo vuelve al inventario cuando recepción la
+    recibe con `returnKey`.
+  */
+  const stayIds = new Set<string>([stay.id]);
+  if (stay.roomId) {
+    const inHouseStays = await tx.roomStay.findMany({
+      where: {
+        roomId: stay.roomId,
+        reservationId: stay.reservationId,
+        deletedAt: null,
+        status: RoomStayStatus.IN_HOUSE,
+        stage: { not: RoomStayStage.FINALIZADO },
+        arrivalDate: stay.arrivalDate,
+        departureDate: stay.departureDate,
+      },
+      select: { id: true },
+    });
+    for (const sibling of inHouseStays) stayIds.add(sibling.id);
+
+    await tx.roomStay.updateMany({
+      where: { id: { in: inHouseStays.map((sibling) => sibling.id) } },
       data: {
         stage: RoomStayStage.FINALIZADO,
         confirmedAt: now,
         confirmedById: user.id,
-        touchedManually: true,
-        note: input.note ?? stay.note,
       },
     });
-    if (updated.count === 0) throw new RuleError('Esa salida ya fue confirmada.');
+  }
 
-    /*
-      Salir de la habitación y devolver una llave son dos hechos distintos.
-      El C/O libera la habitación; cualquier llave que siga en manos del
-      huésped queda pendiente y sólo vuelve al inventario cuando recepción la
-      recibe con `returnKey`. Antes se liberaba acá y el sistema inventaba una
-      devolución física que podía no haber ocurrido.
-    */
-    const stayIds = new Set<string>([stay.id]);
-    let closedInHouse = 0;
-    if (stay.roomId) {
-      const inHouseStays = await tx.roomStay.findMany({
-        where: {
-          roomId: stay.roomId,
-          reservationId: stay.reservationId,
-          deletedAt: null,
-          status: RoomStayStatus.IN_HOUSE,
-          stage: { not: RoomStayStage.FINALIZADO },
-          /*
-            Sólo se cierra la representación IN_HOUSE de la MISMA ocupación.
-            Una reserva puede salir y volver a entrar el mismo día con el mismo
-            ID (caso real 421): esa nueva estadía tiene otras fechas y debe
-            permanecer activa.
-          */
-          arrivalDate: stay.arrivalDate,
-          departureDate: stay.departureDate,
-        },
-        select: { id: true },
-      });
-      for (const sibling of inHouseStays) stayIds.add(sibling.id);
+  for (const stayId of stayIds) {
+    await markKeysPendingReturn(tx, user, stayId);
+  }
 
-      const siblings = await tx.roomStay.updateMany({
-        where: { id: { in: inHouseStays.map((sibling) => sibling.id) } },
-        data: {
-          stage: RoomStayStage.FINALIZADO,
-          confirmedAt: now,
-          confirmedById: user.id,
-        },
-      });
-      closedInHouse = siblings.count;
-    }
-
-    for (const stayId of stayIds) {
-      await markKeysPendingReturn(tx, user, stayId);
-    }
-
-    const pendingKeys = await tx.roomKey.count({
-      where: {
-        stayId: { in: [...stayIds] },
-        status: KeyStatus.PENDIENTE_DEVOLUCION,
-      },
-    });
-
-    return { stay, roomNumber: stay.room?.number ?? null, closedInHouse, pendingKeys };
+  const pendingKeys = await tx.roomKey.count({
+    where: {
+      stayId: { in: [...stayIds] },
+      status: KeyStatus.PENDIENTE_DEVOLUCION,
+    },
   });
 
+  return {
+    stay: {
+      id: stay.id,
+      reservationId: stay.reservationId,
+      guestNames: stay.guestNames,
+    },
+    roomNumber: stay.room?.number ?? null,
+    pendingKeys,
+  };
+}
+
+async function auditConfirmedCheckOut(
+  user: CurrentUser,
+  result: CheckOutTransactionResult,
+): Promise<void> {
   await recordAudit({
     entity: 'RoomStay',
     entityId: result.stay.id,
@@ -323,8 +336,54 @@ export async function confirmCheckOut(
       (result.pendingKeys > 0 ? ` · ${result.pendingKeys} llave(s) por recibir` : ''),
     after: { stage: RoomStayStage.FINALIZADO, pendingKeys: result.pendingKeys },
   });
+}
 
+export async function confirmCheckOut(
+  user: CurrentUser,
+  input: { stayId: string; note?: string | null },
+): Promise<{ roomNumber: string | null; pendingKeys: number }> {
+  const result = await prisma.$transaction((tx) =>
+    confirmCheckOutInTransaction(tx, user, input),
+  );
+
+  await auditConfirmedCheckOut(user, result);
   return { roomNumber: result.roomNumber, pendingKeys: result.pendingKeys };
+}
+
+/**
+ * Confirma un lote de salidas como una sola operación.
+ *
+ * Es la ruta canónica para consumidores que ejecutan más de un check-out
+ * (incluida la IA). Si una sola estadía deja de ser válida mientras se ejecuta
+ * el lote, PostgreSQL revierte TODAS las salidas del lote.
+ */
+export async function confirmCheckOutBatch(
+  user: CurrentUser,
+  input: { items: Array<{ stayId: string; note?: string | null }> },
+): Promise<Array<{ roomNumber: string | null; pendingKeys: number }>> {
+  if (input.items.length === 0) throw new RuleError('El lote de check-out está vacío.');
+
+  const ids = input.items.map((item) => item.stayId);
+  if (new Set(ids).size !== ids.length) {
+    throw new RuleError('El lote contiene la misma salida más de una vez.');
+  }
+
+  const results = await prisma.$transaction(async (tx) => {
+    const completed: CheckOutTransactionResult[] = [];
+    for (const item of input.items) {
+      completed.push(await confirmCheckOutInTransaction(tx, user, item));
+    }
+    return completed;
+  });
+
+  for (const result of results) {
+    await auditConfirmedCheckOut(user, result);
+  }
+
+  return results.map((result) => ({
+    roomNumber: result.roomNumber,
+    pendingKeys: result.pendingKeys,
+  }));
 }
 
 /**

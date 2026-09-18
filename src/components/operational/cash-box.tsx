@@ -15,6 +15,7 @@ import {
 } from '@/server/actions/cash';
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
+import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
 
 export type DenominationOption = {
   id: string;
@@ -260,12 +261,12 @@ export function CashBox({
   return (
     <Card>
       <CardHeader
-        title="Caja, garantías y elementos"
+        title="Cierre formal de Caja"
         action={state.discrepancies.length > 0 ? <Badge tone="atencion">Diferencia entre conteos</Badge> : null}
       />
       <div className="space-y-4 px-4 py-4">
         <p className="text-xs text-slate-500">
-          Divisas operativas: CLP y USD. Caja mínima:{' '}
+          Este es el arqueo formal del turno: se cuenta por denominación, congela la Caja que se entrega y conserva garantías, elementos y egresos asociados. Divisas operativas: CLP y USD. Caja mínima:{' '}
           {state.funds.map((fund) => `${fund.currency} ${fund.amount.toLocaleString('es-CL')}`).join(' · ')}.
           Estos mínimos se configuran desde Administración → Parámetros.
         </p>
@@ -336,11 +337,19 @@ export function CashBox({
                       {guarantee.guestName ?? 'Huésped sin nombre'}
                       {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                     </p>
-                    <p className="text-xs text-slate-500">ID / reserva {guarantee.reservationCode} · {guarantee.state.toLowerCase().replaceAll('_', ' ')}</p>
+                    <p className="text-xs text-slate-500">ID FNS {guarantee.reservationCode} · {guarantee.state.toLowerCase().replaceAll('_', ' ')}</p>
                   </div>
-                  <span className="font-semibold tabular text-petrol-900">
-                    {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="font-semibold tabular text-petrol-900">
+                      {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
+                    </span>
+                    {role !== 'lector' ? (
+                      <ReturnCashGuaranteeForm
+                        guaranteeId={guarantee.id}
+                        reservationCode={guarantee.reservationCode}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

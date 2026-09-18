@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Comments } from '@/components/operational/comments';
 import {
   AcknowledgeAlertForm,
+  ClosureValidationActions,
   CreateAlertDialog,
   ResolveAlertDialog,
   RunEngineForm,
@@ -141,7 +142,10 @@ export default async function AlertsPage({
         </Card>
       ) : (
         <ul className="space-y-3">
-          {alerts.map((alert) => (
+          {alerts.map((alert) => {
+          const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:') === true;
+          const canValidateThisClosure = shiftValidation && user.username.toLowerCase() === 'eherrera';
+          return (
             <li key={alert.id} id={alert.id}>
               <Card className={selected === alert.id ? 'ring-2 ring-gold-400' : undefined}>
                 <div className="px-4 py-4">
@@ -219,27 +223,37 @@ export default async function AlertsPage({
 
                 {canManage && alert.status !== AlertStatus.RESUELTA ? (
                   <div className="flex flex-wrap items-end gap-2 border-t border-slate-200 px-4 py-3 no-print">
-                    {alert.status === AlertStatus.NUEVA ? (
-                      <AcknowledgeAlertForm alertId={alert.id} />
-                    ) : null}
-                    <SnoozeAlertForm alertId={alert.id} />
-                    <ResolveAlertDialog alertId={alert.id} auto={alert.auto} />
-                    {user.permissions.includes('task.create') ? (
-                      <Dialog
-                        title="Crear tarea desde la alerta"
-                        triggerVariant="secondary"
-                        triggerSize="sm"
-                        trigger="Crear tarea"
-                      >
-                        <TaskForm
-                          action={createTaskAction}
-                          options={options}
-                          alertId={alert.id}
-                          defaultAssigneeId={user.id}
-                          showOrigin={false}
-                        />
-                      </Dialog>
-                    ) : null}
+                    {shiftValidation ? (
+                      canValidateThisClosure ? (
+                        <ClosureValidationActions alertId={alert.id} />
+                      ) : (
+                        <p className="text-xs text-slate-500">Validación asignada a Erick Herrera.</p>
+                      )
+                    ) : (
+                      <>
+                        {alert.status === AlertStatus.NUEVA ? (
+                          <AcknowledgeAlertForm alertId={alert.id} />
+                        ) : null}
+                        <SnoozeAlertForm alertId={alert.id} />
+                        <ResolveAlertDialog alertId={alert.id} auto={alert.auto} />
+                        {user.permissions.includes('task.create') ? (
+                          <Dialog
+                            title="Crear tarea desde la alerta"
+                            triggerVariant="secondary"
+                            triggerSize="sm"
+                            trigger="Crear tarea"
+                          >
+                            <TaskForm
+                              action={createTaskAction}
+                              options={options}
+                              alertId={alert.id}
+                              defaultAssigneeId={user.id}
+                              showOrigin={false}
+                            />
+                          </Dialog>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
 
@@ -269,7 +283,8 @@ export default async function AlertsPage({
                 )}
               </Card>
             </li>
-          ))}
+          );
+          })}
         </ul>
       )}
     </div>

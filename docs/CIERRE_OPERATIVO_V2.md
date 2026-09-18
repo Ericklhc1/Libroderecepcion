@@ -99,6 +99,10 @@ ESTADÍA + PMS + HABITACIÓN + GARANTÍA + LLAVES + CAJA + TURNO + PENDIENTES + 
 
 El motor debe producir condiciones/acciones explicables y alimentar una Bandeja de Atención universal. La IA futura interpreta lenguaje y solicita acciones al motor; no inventa ni sustituye reglas operacionales.
 
+## Seguridad de despliegue
+
+Los despliegues Preview deben usar una rama Neon aislada creada para el Preview; nunca la base de Production. La integración Vercel ↔ Neon debe publicar DATABASE_URL y DATABASE_URL_UNPOOLED antes de ejecutar migraciones. Si no hay conexión aislada, el Preview debe fallar de forma segura antes de migrar o compilar.
+
 ## Criterios de aceptación mínimos
 
 1. Caja cerrada es precondición real para avanzar.

@@ -26,20 +26,18 @@ const PRIMARY: NavItem[] = [
     href: '/turno', label: 'Mi turno', icon: 'shift',
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'], mobile: true,
   },
-  { href: '/habitaciones', label: 'Habitaciones', icon: 'room', anyOf: ['room.view'], mobile: true },
-  { href: '/libro', label: 'Libro operativo', icon: 'book', mobile: true },
+  {
+    href: '/reservas', label: 'Reservas', icon: 'guest',
+    anyOf: ['room.view', 'guest.view', 'guest.manage'], mobile: true,
+  },
   { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
-  { href: '/supervision', label: 'Supervisión', icon: 'supervision', anyOf: ['supervision.view', 'shift.manage'], mobile: true },
+  { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'], mobile: true },
 ];
 
-const SECONDARY: NavItem[] = [
-  { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'] },
-  { href: '/huespedes', label: 'Huéspedes y reservas', icon: 'guest', anyOf: ['guest.view', 'guest.manage'] },
-  { href: '/huespedes/nueva-reserva', label: 'Cargar nueva reserva', icon: 'guest', anyOf: ['pms.import'] },
-  { href: '/supervision/informes', label: 'Informes de Supervisión', icon: 'metrics', anyOf: ['supervision.view'] },
-  { href: '/historial', label: 'Historial', icon: 'history' },
-  { href: '/indicadores', label: 'Indicadores', icon: 'metrics', anyOf: ['metrics.view'] },
-];
+// Libro, Supervisión, Historial e Indicadores siguen existiendo como vistas
+// especializadas y accesos contextuales. Ya no compiten como módulos raíz:
+// el menú operativo refleja el modelo Inicio → Turno → Reservas → Caja → Llaves.
+const SECONDARY: NavItem[] = [];
 
 const SYSTEM: NavItem[] = [
   { href: '/admin', label: 'Administración', icon: 'admin', anyOf: ['user.manage', 'role.manage', 'system.configure', 'audit.view'] },

@@ -115,6 +115,14 @@ export async function getReservationOperationalContext(id: string) {
   });
 }
 
+export async function getReservationOperationalContextByCode(code: string) {
+  const reservation = await prisma.reservationReference.findFirst({
+    where: { code, deletedAt: null },
+    select: { id: true },
+  });
+  return reservation ? getReservationOperationalContext(reservation.id) : null;
+}
+
 export type ReservationOperationalContext = NonNullable<
   Awaited<ReturnType<typeof getReservationOperationalContext>>
 >;

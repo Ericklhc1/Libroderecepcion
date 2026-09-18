@@ -45,6 +45,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: '[data-tour="global-search"]',
   },
   {
+    id: 'reservas',
+    title: 'Reservas',
+    description:
+      'Reservas es la carpeta principal de la operación: cada habitación contiene sus ID FNS activos y cada ID reúne estadía, Caja, garantías, novedades, incidencias, comentarios, llaves e historial.',
+    route: '/reservas',
+    target: ROUTE_TARGET,
+    anyOf: ['room.view', 'guest.view', 'guest.manage'],
+  },
+  {
     id: 'libro',
     title: 'Libro operativo',
     description:

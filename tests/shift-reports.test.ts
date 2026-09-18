@@ -13,12 +13,11 @@ import { getShiftReportsState } from '@/server/services/pms-import';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
- * Los tres informes del PMS como paso del inicio de turno.
+ * Estado de cargas PMS.
  *
- * El turno necesita responder una pregunta: ¿están cargados los informes del
- * día que se va a operar? Lo delicado es que la fecha de un lote sale del
- * propio informe, no del reloj: si alguien carga los de ayer, la pantalla no
- * puede dar el día por cubierto.
+ * La fecha del informe es contexto histórico, no una fecha de caducidad. El
+ * último lote aplicado sigue siendo válido hasta que una carga nueva lo
+ * sustituye.
  */
 describe('informes del turno', () => {
   let user: CurrentUser;
@@ -63,30 +62,22 @@ describe('informes del turno', () => {
     const state = await getShiftReportsState();
     expect(state.applied).toBeNull();
     expect(state.draft).toBeNull();
-    expect(state.today).toEqual(midnight(new Date()));
   });
 
-  it('un lote aplicado hoy cubre el día y trae sus recuentos', async () => {
+  it('un lote aplicado trae sus recuentos', async () => {
     await batch({ businessDate: midnight(new Date()), status: PmsImportStatus.APLICADO });
 
     const state = await getShiftReportsState();
-    expect(state.applied?.isToday).toBe(true);
     expect(state.applied?.counts).toEqual({ checkIn: 13, inHouse: 30, checkOut: 14 });
     expect(state.applied?.appliedByName).toBe('Recepción mañana');
   });
 
-  it('un lote aplicado de ayer NO cubre el día', async () => {
-    /*
-      Este es el caso que importa: el informe se aplicó, pero es de otro día.
-      Dar el día por cubierto dejaría al turno operando con el tablero de
-      ayer sin que nadie se enterara.
-    */
+  it('un lote antiguo sigue siendo válido y conserva su fecha de negocio', async () => {
     const yesterday = midnight(new Date(Date.now() - 24 * 3_600_000));
     await batch({ businessDate: yesterday, status: PmsImportStatus.APLICADO });
 
     const state = await getShiftReportsState();
     expect(state.applied).not.toBeNull();
-    expect(state.applied?.isToday).toBe(false);
     expect(midnight(state.applied!.businessDate)).toEqual(yesterday);
   });
 
@@ -107,7 +98,6 @@ describe('informes del turno', () => {
     // Ambos se informan: la pantalla prioriza el borrador, pero el servicio
     // no esconde que ya hay un lote aplicado.
     expect(state.draft).not.toBeNull();
-    expect(state.applied?.isToday).toBe(true);
   });
 
   it('un lote descartado no cuenta como cargado', async () => {

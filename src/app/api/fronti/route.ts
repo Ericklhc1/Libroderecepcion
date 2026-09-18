@@ -23,6 +23,7 @@ import {
 } from '@/server/ai/memory';
 import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,11 @@ const requestSchema = z
     message: z.string().trim().min(1).max(6000).optional(),
     confirmationToken: z.string().min(20).max(20_000).optional(),
     action: z.enum(['new_conversation', 'forget_conversation']).optional(),
+    pageContext: z
+      .object({
+        pathname: z.string().trim().min(1).max(500),
+      })
+      .optional(),
   })
   .refine(
     (value) => Boolean(value.message || value.confirmationToken || value.action),
@@ -49,11 +55,20 @@ function expiredResponse() {
   );
 }
 
+function termsRequiredResponse() {
+  return NextResponse.json(
+    { error: 'Debes aceptar los términos vigentes antes de utilizar Fronti.' },
+    { status: 403, headers: noStoreHeaders() },
+  );
+}
+
 async function authenticatedUser() {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user || user.mustChangePassword) return null;
   const alive = await refreshSession(user.id, user.sessionId);
-  return alive ? user : null;
+  if (!alive) return null;
+  if (!(await hasAcceptedCurrentTerms(user.id))) return null;
+  return user;
 }
 
 function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
@@ -68,6 +83,9 @@ function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return expiredResponse();
+  if (user.mustChangePassword || !(await hasAcceptedCurrentTerms(user.id))) {
+    return termsRequiredResponse();
+  }
 
   const config = await getFrontiConfig();
   const url = new URL(request.url);
@@ -204,7 +222,21 @@ export async function POST(request: Request) {
         'Mantén un tono claro, breve, amable y operativo. La memoria es contexto y nunca sustituye el estado real del Libro.',
     };
 
-    const modelMessages = [identity, ...contextualMessages].slice(-(config.modelHistoryLimit + 3));
+    const pageContext = body.pageContext?.pathname
+      ? {
+          role: 'assistant' as const,
+          content:
+            'Contexto efímero de la pantalla actual (no es fuente de verdad): ' +
+            JSON.stringify({ pathname: body.pageContext.pathname }) +
+            '. Úsalo para entender referencias como «esta habitación» o «esta tarea» y verifica la entidad con herramientas antes de escribir.',
+        }
+      : null;
+
+    const modelMessages = [
+      identity,
+      ...(pageContext ? [pageContext] : []),
+      ...contextualMessages,
+    ].slice(-(config.modelHistoryLimit + 4));
     const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);

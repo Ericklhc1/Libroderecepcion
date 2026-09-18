@@ -1,4 +1,69 @@
+# Despliegue y promoción
+
+## Política obligatoria de entornos
+
+Desde 2026-09-18 el proyecto tiene dos funciones de hosting claramente
+separadas:
+
+- **Vercel = Production principal.** La rama `main` representa lo que está
+  autorizado para operar en el hotel.
+- **Netlify = staging y pruebas reales.** Los cambios se prueban primero allí.
+  Netlify usa exclusivamente la rama `development` de Neon y un
+  `AUTH_SECRET` distinto a Production.
+- **Neon Production** sólo se usa desde Vercel Production.
+- **Neon development** se usa desde Netlify para implementar, migrar y probar
+  sin escribir datos reales.
+
+El flujo normal es:
+
+```
+feature
+  ↓
+preproduction
+  ↓
+Netlify + Neon development
+  ↓  validación funcional real
+main
+  ↓
+Vercel + Neon Production
+  ↓  verificación del commit servido
+tag production-AAAAMMDD-HHMMSS
+```
+
+### Regla de promoción
+
+Un cambio **no entra a `main`** sólo porque compile. Para promoverlo a
+Production deben cumplirse, en este orden:
+
+1. Compuerta de GitHub verde: Prisma, lint, tipos, regresiones y build.
+2. Merge a `preproduction`.
+3. Deploy Preview/Branch Deploy de Netlify sobre Neon development.
+4. Prueba funcional real en Netlify.
+5. PR `preproduction → main`.
+6. Vercel debe desplegar y servir exactamente el SHA de `main`.
+7. El smoke de Production debe responder correctamente.
+8. Sólo entonces se crea automáticamente un tag
+   `production-AAAAMMDD-HHMMSS`, que es el respaldo recuperable de esa
+   versión.
+
+Si Vercel no sirve el commit esperado o falla el smoke, el workflow
+`Respaldo Vercel Production` falla y **no crea un tag falso**.
+
+### Rollback
+
+Los tags `production-*` representan versiones que efectivamente fueron
+servidas y verificadas en Vercel. Ante una regresión:
+
+- se identifica el último tag sano;
+- se restaura/promueve ese commit;
+- nunca se toma un commit sin tag como «Production conocida»;
+- los cambios de base de datos se evalúan por separado: un rollback de código
+  no implica deshacer datos o migraciones automáticamente.
+
+---
+
 # Poner el sistema en línea
+
 
 Esta guía deja la aplicación Next.js funcionando en un dominio público, con
 inicio de sesión por contraseña y base de datos PostgreSQL.
@@ -122,12 +187,14 @@ el arranque ejecute `npm run vercel-build` (o `prisma migrate deploy` antes de
 
 ## Después del despliegue
 
-- **Copias de seguridad**: actívalas en el proveedor de la base de datos. Es lo
-  único que no depende de la aplicación.
-- **Dominio propio**: se agrega en el panel de Vercel; el sistema no requiere
-  configuración adicional.
-- **Actualizaciones**: cada `git push` a la rama conectada despliega de nuevo y
-  aplica las migraciones pendientes.
+- **Respaldo de código de Production**: automático. Cada versión que Vercel
+  sirve correctamente recibe un tag `production-*`.
+- **Copias de seguridad de datos**: siguen siendo responsabilidad de Neon; el
+  tag de Git no sustituye un respaldo de la base.
+- **Dominio propio**: se agrega en Vercel; Vercel es el destino oficial de
+  Production.
+- **Actualizaciones**: nunca se promueven directamente desde una rama feature a
+  `main`; pasan por `preproduction` y Netlify.
 - **Cambiar el nombre del hotel**: Administración → Parámetros.
 
 ## Si algo falla

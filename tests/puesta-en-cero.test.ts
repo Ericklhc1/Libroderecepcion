@@ -9,6 +9,7 @@ import {
 import { openShift } from '@/server/services/shifts';
 import { createEntry } from '@/server/services/entries';
 import { RuleError } from '@/server/errors';
+import { TERMS_DOCUMENT, TERMS_VERSION } from '@/domain/legal';
 import {
   ROLE_KEYS,
   closeAllShifts,
@@ -200,10 +201,18 @@ describe('dejar el sistema en cero', () => {
     expect(quedan[0]!.id).toBe(admin.id);
   });
 
-  it('sin marcar «borrar cuentas», el equipo se conserva', async () => {
+  it('sin marcar «borrar cuentas», el equipo y sus aceptaciones legales se conservan', async () => {
     await conDatosDePrueba();
     const antes = await prisma.user.count();
     expect(antes).toBeGreaterThan(1);
+
+    await prisma.legalAcceptance.create({
+      data: {
+        userId: admin.id,
+        document: TERMS_DOCUMENT,
+        version: TERMS_VERSION,
+      },
+    });
 
     await runFactoryReset(admin, {
       phrase: RESET_PHRASE,
@@ -211,6 +220,67 @@ describe('dejar el sistema en cero', () => {
     });
 
     expect(await prisma.user.count()).toBe(antes);
+    expect(
+      await prisma.legalAcceptance.count({
+        where: { userId: admin.id, document: TERMS_DOCUMENT, version: TERMS_VERSION },
+      }),
+    ).toBe(1);
+  });
+
+  it('conserva usuarios pero borra memoria, conversaciones y confirmaciones de Fronti', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción con memoria',
+    });
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await prisma.ai_conversation.create({
+      data: {
+        id: 'conv-reset-fronti',
+        user_id: receptionist.id,
+        session_id: 'session-reset-fronti',
+        expires_at: expiresAt,
+      },
+    });
+    await prisma.ai_message.create({
+      data: {
+        id: 'msg-reset-fronti',
+        conversation_id: 'conv-reset-fronti',
+        role: 'user',
+        content: 'dato de prueba que debe desaparecer',
+        expires_at: expiresAt,
+      },
+    });
+    await prisma.ai_memory.create({
+      data: {
+        id: 'mem-reset-fronti',
+        user_id: receptionist.id,
+        conversation_id: 'conv-reset-fronti',
+        scope: 'PERSONAL',
+        summary: 'memoria de prueba que debe desaparecer',
+        expires_at: expiresAt,
+      },
+    });
+    await prisma.assistantActionReceipt.create({
+      data: {
+        nonce: 'nonce-reset-fronti',
+        userId: receptionist.id,
+        action: 'create_reminder',
+      },
+    });
+
+    const usersBefore = await prisma.user.count();
+
+    await runFactoryReset(admin, {
+      phrase: RESET_PHRASE,
+      scope: { includeStays: true, includeUsers: false },
+    });
+
+    expect(await prisma.user.count()).toBe(usersBefore);
+    expect(await prisma.ai_message.count()).toBe(0);
+    expect(await prisma.ai_memory.count()).toBe(0);
+    expect(await prisma.ai_conversation.count()).toBe(0);
+    expect(await prisma.assistantActionReceipt.count()).toBe(0);
   });
 
   it('sin marcar «borrar estadías», el tablero de habitaciones se conserva', async () => {

@@ -101,7 +101,7 @@ El motor debe producir condiciones/acciones explicables y alimentar una Bandeja 
 
 ## Seguridad de despliegue
 
-Los despliegues Preview/branch deploy deben usar una rama Neon aislada o la rama Neon `development`; nunca la base de Production. En Netlify, `DATABASE_URL` y `DIRECT_DATABASE_URL` de Production deben quedar limitadas al contexto de producción. Preview/desarrollo debe fallar de forma segura antes de migrar o ejecutar código con escritura si no tiene una conexión aislada.
+Vercel es Production y sólo despliega `main` contra Neon `production`. Netlify es staging/prueba real y usa Neon `development`; nunca debe recibir credenciales de Production. Ningún preview/desarrollo puede migrar o ejecutar código con escritura si no tiene una conexión aislada. La promoción exige Compuerta verde + validación funcional en Netlify antes de entrar a `main`.
 
 ## Criterios de aceptación mínimos
 

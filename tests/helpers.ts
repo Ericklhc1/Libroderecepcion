@@ -1,4 +1,4 @@
-import { AssignmentRole, PrismaClient, ShiftStatus, ShiftType } from '@prisma/client';
+import { AssignmentRole, KeyStatus, PrismaClient, ShiftStatus, ShiftType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { ROLE_KEYS, type PermissionKey, type RoleKey } from '@/lib/permissions';
 import { seedCatalog as domainSeedCatalog } from '@/domain/catalog';
@@ -25,7 +25,14 @@ export async function resetOperationalData() {
 
   await prisma.$transaction([
     prisma.keyMovement.deleteMany(),
-    prisma.roomKey.updateMany({ data: { stayId: null } }),
+    prisma.roomKey.updateMany({
+      data: {
+        stayId: null,
+        status: KeyStatus.DISPONIBLE,
+        assignedAt: null,
+        assignedById: null,
+      },
+    }),
     prisma.roomStay.deleteMany(),
     prisma.pmsImportBatch.deleteMany(),
     prisma.notification.deleteMany(),
@@ -39,6 +46,7 @@ export async function resetOperationalData() {
     prisma.cashMovement.deleteMany(),
     prisma.cashAudit.deleteMany(),
     prisma.gymPass.deleteMany(),
+    prisma.assistantActionReceipt.deleteMany(),
     prisma.ai_message.deleteMany(),
     prisma.ai_memory.deleteMany(),
     prisma.ai_conversation.deleteMany(),

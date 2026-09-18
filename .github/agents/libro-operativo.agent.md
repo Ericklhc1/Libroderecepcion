@@ -42,6 +42,12 @@ En Codespaces:
 
 Un Preview que no tenga DB aislada debe fallar de forma segura antes de escribir datos.
 
+Despliegue:
+- Vercel = Production oficial; sólo `main`.
+- Netlify = staging/prueba real; rama `preproduction`; Neon `development`.
+- No promociones a `main` sin Compuerta verde + validación en Netlify.
+- Tras una Production Vercel sana, debe existir un tag `production-*` recuperable.
+
 ### Reglas hoteleras nucleares
 
 Respeta las decisiones vigentes de `PROJECT_CONTEXT.md` y `docs/CIERRE_OPERATIVO_V2.md`, especialmente:

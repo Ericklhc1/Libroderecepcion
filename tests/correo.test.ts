@@ -152,8 +152,11 @@ describe('cifrado de secretos en reposo', () => {
   it('un texto alterado no se abre: devuelve null, no basura', () => {
     const sealed = sealSecret('clave', 'mail/smtp');
     const parts = sealed.split('.');
-    // Se cambia un carácter del texto cifrado.
-    const tampered = [parts[0], parts[1], parts[2], `${parts[3]!.slice(0, -1)}A`].join('.');
+    // Alteramos un byte REAL del ciphertext. Cambiar un carácter por una
+    // constante era flaky: si el carácter aleatorio ya era ése, no cambiaba nada.
+    const payload = Buffer.from(parts[3]!, 'base64url');
+    payload[0] = payload[0]! ^ 1;
+    const tampered = [parts[0], parts[1], parts[2], payload.toString('base64url')].join('.');
     expect(openSecret(tampered, 'mail/smtp')).toBeNull();
   });
 

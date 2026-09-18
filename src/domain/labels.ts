@@ -287,6 +287,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   COMENTARIO: 'Nuevo comentario',
   MENCION: 'Te mencionaron',
   ACCION_REQUERIDA: 'Acción requerida',
+  FRONTI_HALLAZGO: 'Hallazgo de Fronti',
 };
 
 /** Vencido = tiene fecha límite pasada y sigue abierto. */

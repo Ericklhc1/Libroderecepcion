@@ -1,15 +1,13 @@
 import 'server-only';
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { FollowUpStatus, Priority } from '@prisma/client';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { EntryType, FollowUpStatus, Priority, Severity, TaskStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import {
   ASSISTANT_FAILURE_MESSAGE,
-  ASSISTANT_TIMEOUT_MS,
-  classifyAssistantFailure,
   type AssistantFailure,
 } from '@/domain/assistant-status';
 import {
@@ -18,15 +16,25 @@ import {
   type FineKindValue,
   type LinenKindValue,
 } from '@/domain/fines';
-import { getRoomDetail, confirmCheckOut } from '@/server/services/rooms';
+import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
-import { createTask } from '@/server/services/tasks';
+import { createTask, changeTaskStatus } from '@/server/services/tasks';
+import { createEntry } from '@/server/services/entries';
+import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
+import { reportFrontiFinding } from './fronti-findings';
 import {
   frontiToolSettingForFunction,
   getFrontiConfig,
   type FrontiConfig,
 } from './fronti-config';
+import {
+  chatWithFrontiProvider,
+  FrontiProviderError,
+  resolveFrontiProvider,
+  type FrontiChatMessage,
+  type FrontiToolDefinition,
+} from './fronti-provider';
 
 export type AssistantMessage = {
   role: 'user' | 'assistant';
@@ -45,30 +53,18 @@ export type AssistantResult = {
   confirmations: AssistantConfirmation[];
 };
 
-type OpenAIOutputItem = {
-  type?: string;
-  call_id?: string;
-  name?: string;
-  arguments?: string;
-  content?: Array<{ type?: string; text?: string }>;
-  [key: string]: unknown;
-};
-
-type OpenAIResponse = {
-  output?: OpenAIOutputItem[];
-  error?: { message?: string };
-};
-
 type PendingAction =
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'confirm_checkouts';
       expiresAt: number;
       args: { roomNumbers: string[]; note?: string | null };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_reminder';
       expiresAt: number;
@@ -80,7 +76,8 @@ type PendingAction =
       };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_fine';
       expiresAt: number;
@@ -94,6 +91,33 @@ type PendingAction =
         guestStatement?: string | null;
         amount?: number | null;
         currency?: string;
+      };
+    }
+  | {
+      version: 2;
+      nonce: string;
+      userId: string;
+      action: 'create_entry';
+      expiresAt: number;
+      args: {
+        type: 'NOVEDAD' | 'INCIDENCIA';
+        title: string;
+        description: string;
+        roomNumber?: string | null;
+        priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+        severity?: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA' | null;
+        requiresFollowUp: boolean;
+      };
+    }
+  | {
+      version: 2;
+      nonce: string;
+      userId: string;
+      action: 'complete_task';
+      expiresAt: number;
+      args: {
+        taskId: string;
+        reason?: string | null;
       };
     };
 
@@ -189,6 +213,75 @@ const TOOL_DEFINITIONS = [
   },
   {
     type: 'function',
+    name: 'proponer_registro',
+    description:
+      'Prepara una novedad o incidencia del Libro siguiendo la instrucción del usuario. Si se conoce una habitación, úsala. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['NOVEDAD', 'INCIDENCIA'] },
+        title: { type: 'string', minLength: 3, maxLength: 200 },
+        description: { type: 'string', minLength: 3, maxLength: 4000 },
+        roomNumber: { type: ['string', 'null'] },
+        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        severity: {
+          type: ['string', 'null'],
+          enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null],
+        },
+        requiresFollowUp: { type: 'boolean' },
+      },
+      required: [
+        'type',
+        'title',
+        'description',
+        'roomNumber',
+        'priority',
+        'severity',
+        'requiresFollowUp',
+      ],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'proponer_resolver_tarea',
+    description:
+      'Prepara la finalización de una tarea existente. Identifica la tarea por id interno o por número T#. Requiere permiso task.close y confirmación antes de modificarla.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        taskId: { type: ['string', 'null'] },
+        taskSeq: { type: ['integer', 'null'], minimum: 1 },
+        reason: { type: ['string', 'null'], maxLength: 1000 },
+      },
+      required: ['taskId', 'taskSeq', 'reason'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'reportar_hallazgo',
+    description:
+      'Reporta a Supervisor y Administrador de sistema un fallo concreto o una mejora de proceso detectada por Fronti. Úsala sólo con evidencia específica y accionable; no para preferencias de estilo, ideas vagas ni duplicados.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['FALLO', 'MEJORA'] },
+        severity: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        area: { type: 'string', minLength: 2, maxLength: 120 },
+        title: { type: 'string', minLength: 4, maxLength: 200 },
+        evidence: { type: 'string', minLength: 8, maxLength: 1200 },
+        recommendation: { type: ['string', 'null'], maxLength: 1200 },
+      },
+      required: ['kind', 'severity', 'area', 'title', 'evidence', 'recommendation'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'proponer_multa',
     description:
       'Prepara una multa para una habitación usando el contexto real de la estadía. Requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes.',
@@ -243,12 +336,22 @@ const TOOL_DEFINITIONS = [
 
 function enabledToolDefinitions(config: FrontiConfig) {
   return TOOL_DEFINITIONS.filter((definition) => {
+    if (
+      definition.name === 'reportar_hallazgo' ||
+      definition.name === 'proponer_registro' ||
+      definition.name === 'proponer_resolver_tarea'
+    ) return true;
     const key = frontiToolSettingForFunction(definition.name);
     return key ? config.tools[key] : false;
   });
 }
 
 function assertToolEnabled(config: FrontiConfig, functionName: string) {
+  if (
+    functionName === 'reportar_hallazgo' ||
+    functionName === 'proponer_registro' ||
+    functionName === 'proponer_resolver_tarea'
+  ) return;
   const key = frontiToolSettingForFunction(functionName);
   if (!key || !config.tools[key]) {
     throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
@@ -292,7 +395,7 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   } catch {
     throw new Error('La confirmación no es válida.');
   }
-  if (parsed.version !== 1 || parsed.userId !== user.id) {
+  if (parsed.version !== 2 || !parsed.nonce || parsed.userId !== user.id) {
     throw new Error('Esta confirmación pertenece a otra sesión.');
   }
   if (parsed.expiresAt < Date.now()) {
@@ -301,16 +404,45 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   return parsed;
 }
 
+async function claimConfirmation(pending: PendingAction): Promise<void> {
+  try {
+    await prisma.assistantActionReceipt.create({
+      data: {
+        nonce: pending.nonce,
+        userId: pending.userId,
+        action: pending.action,
+      },
+    });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      throw new Error('Esta confirmación ya fue usada. Vuelve a pedir la acción si necesitas repetirla.');
+    }
+    throw error;
+  }
+}
+
+async function releaseConfirmationClaim(pending: PendingAction): Promise<void> {
+  await prisma.assistantActionReceipt.deleteMany({
+    where: { nonce: pending.nonce, userId: pending.userId },
+  });
+}
+
 function makeConfirmation(
   user: CurrentUser,
-  action: 'confirm_checkouts' | 'create_reminder' | 'create_fine',
+  action: PendingAction['action'],
   args: PendingAction['args'],
   title: string,
   detail: string,
   risk: AssistantConfirmation['risk'],
 ): AssistantConfirmation {
   const payload = {
-    version: 1,
+    version: 2,
+    nonce: randomUUID(),
     userId: user.id,
     expiresAt: Date.now() + CONFIRMATION_TTL_MS,
     action,
@@ -366,40 +498,17 @@ async function prioritiesTool(user: CurrentUser) {
   const data = await getDashboardData(user);
   return {
     counters: data.counters,
-    rooms: data.roomsNeedingAction.map((room) => ({
-      room: room.number,
-      state: room.snapshot.state,
-      openIncidents: room.openIncidents,
-      keysOut: room.snapshot.keysOut.length,
+    attention: data.attention.map((item, index) => ({
+      order: index + 1,
+      kind: item.kind,
+      level: item.tone,
+      title: item.title,
+      reason: item.reason,
+      nextAction: item.action,
+      href: item.href,
     })),
-    overdueTasks: data.overdueTasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      priority: task.priority,
-      dueAt: task.dueAt,
-      assignee: task.assignee?.name ?? null,
-    })),
-    alerts: data.alerts.map((alert) => ({
-      id: alert.id,
-      level: alert.level,
-      title: alert.title,
-      message: alert.message,
-      dueAt: alert.dueAt,
-    })),
-    followUps: data.followUps.map((followUp) => ({
-      id: followUp.id,
-      action: followUp.action,
-      scheduledAt: followUp.scheduledAt,
-      status: followUp.status,
-      owner: followUp.owner?.name ?? null,
-    })),
-    criticalEntries: data.criticalEntries.map((entry) => ({
-      seq: entry.seq,
-      title: entry.title,
-      priority: entry.priority,
-      dueAt: entry.dueAt,
-      owner: entry.owner?.name ?? null,
-    })),
+    instruction:
+      'Este orden ya fue calculado por el motor determinístico del Libro. No lo reordenes ni inventes prioridades nuevas.',
   };
 }
 
@@ -569,6 +678,124 @@ async function reminderProposalTool(user: CurrentUser, args: Record<string, unkn
   };
 }
 
+async function entryProposalTool(user: CurrentUser, args: Record<string, unknown>) {
+  const type = args.type === 'INCIDENCIA' ? EntryType.INCIDENCIA : EntryType.NOVEDAD;
+  requireToolPermission(user, type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create');
+
+  const title = String(args.title ?? '').trim();
+  const description = String(args.description ?? '').trim();
+  if (title.length < 3 || description.length < 3) {
+    throw new Error('El registro necesita título y descripción.');
+  }
+
+  const priority = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.priority))
+    ? (String(args.priority) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
+    : 'MEDIA';
+  const severity =
+    args.severity && ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.severity))
+      ? (String(args.severity) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
+      : null;
+
+  if (type === EntryType.INCIDENCIA && !severity) {
+    return {
+      status: 'needs_info',
+      missing: [{ field: 'severity', message: 'Indica la gravedad de la incidencia.' }],
+      instruction: 'Pide sólo la gravedad faltante; no la inventes.',
+    };
+  }
+
+  const roomNumber =
+    typeof args.roomNumber === 'string' && args.roomNumber.trim()
+      ? cleanRoomNumber(args.roomNumber)
+      : null;
+  if (roomNumber) {
+    const exists = await prisma.room.findFirst({
+      where: { number: roomNumber, active: true },
+      select: { id: true },
+    });
+    if (!exists) throw new Error(`La habitación ${roomNumber} no existe o está inactiva.`);
+  }
+
+  const requiresFollowUp =
+    type === EntryType.INCIDENCIA ? true : Boolean(args.requiresFollowUp);
+
+  const confirmation = makeConfirmation(
+    user,
+    'create_entry',
+    {
+      type,
+      title,
+      description,
+      roomNumber,
+      priority,
+      severity,
+      requiresFollowUp,
+    },
+    type === EntryType.INCIDENCIA ? 'Crear incidencia' : 'Crear novedad',
+    `${title}${roomNumber ? ` · Hab. ${roomNumber}` : ''} · Prioridad ${priority.toLowerCase()}`,
+    type === EntryType.INCIDENCIA && priority === 'CRITICA' ? 'high' : 'normal',
+  );
+
+  return {
+    status: 'confirmation_required',
+    message: 'El registro está preparado y todavía no se ha creado.',
+    confirmation,
+  };
+}
+
+async function completeTaskProposalTool(
+  user: CurrentUser,
+  args: Record<string, unknown>,
+) {
+  requireToolPermission(user, 'task.close');
+
+  const taskId =
+    typeof args.taskId === 'string' && args.taskId.trim() ? args.taskId.trim() : null;
+  const taskSeq =
+    typeof args.taskSeq === 'number' && Number.isInteger(args.taskSeq) && args.taskSeq > 0
+      ? args.taskSeq
+      : null;
+  if (!taskId && !taskSeq) {
+    return {
+      status: 'needs_info',
+      missing: [{ field: 'task', message: 'Indica qué tarea quieres completar.' }],
+      instruction: 'Pide sólo la referencia T# o identifica la tarea desde el contexto de pantalla.',
+    };
+  }
+
+  const task = await prisma.task.findFirst({
+    where: {
+      deletedAt: null,
+      ...(taskId ? { id: taskId } : { seq: taskSeq as number }),
+    },
+    select: { id: true, seq: true, title: true, status: true },
+  });
+  if (!task) throw new Error('No encontré esa tarea.');
+  if (task.status === TaskStatus.COMPLETADA) {
+    return { status: 'already_done', message: `La tarea T#${task.seq} ya está completada.` };
+  }
+  if (task.status === TaskStatus.CANCELADA) {
+    throw new Error(`La tarea T#${task.seq} está cancelada y no puede completarse directamente.`);
+  }
+
+  const reason =
+    typeof args.reason === 'string' && args.reason.trim() ? args.reason.trim() : null;
+
+  const confirmation = makeConfirmation(
+    user,
+    'complete_task',
+    { taskId: task.id, reason },
+    `Completar tarea T#${task.seq}`,
+    task.title,
+    'normal',
+  );
+  return {
+    status: 'confirmation_required',
+    message: 'La tarea está preparada para completarse y todavía no se ha modificado.',
+    confirmation,
+  };
+}
+
 async function fineProposalTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'incident.manage');
   const roomNumber = cleanRoomNumber(args.roomNumber);
@@ -655,6 +882,28 @@ async function executeTool(
       return reminderProposalTool(user, args);
     case 'proponer_multa':
       return fineProposalTool(user, args);
+    case 'proponer_registro':
+      return entryProposalTool(user, args);
+    case 'proponer_resolver_tarea':
+      return completeTaskProposalTool(user, args);
+    case 'reportar_hallazgo':
+      return reportFrontiFinding(user, {
+        kind: args.kind === 'MEJORA' ? 'MEJORA' : 'FALLO',
+        severity:
+          args.severity === 'BAJA' ||
+          args.severity === 'MEDIA' ||
+          args.severity === 'ALTA' ||
+          args.severity === 'CRITICA'
+            ? args.severity
+            : 'MEDIA',
+        area: String(args.area ?? ''),
+        title: String(args.title ?? ''),
+        evidence: String(args.evidence ?? ''),
+        recommendation:
+          typeof args.recommendation === 'string' && args.recommendation.trim()
+            ? args.recommendation
+            : null,
+      });
     default:
       throw new Error('La herramienta solicitada no existe.');
   }
@@ -680,125 +929,47 @@ export class AssistantError extends Error {
   }
 }
 
-function responseText(response: OpenAIResponse): string {
-  const chunks: string[] = [];
-  for (const item of response.output ?? []) {
-    if (item.type !== 'message') continue;
-    for (const content of item.content ?? []) {
-      if (content.type === 'output_text' && content.text) chunks.push(content.text);
-    }
-  }
-  return chunks.join('\n').trim();
+function systemInstructions(config: FrontiConfig): string {
+  return (
+    `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
+    'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
+    'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
+    'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
+    'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
+    'Sigue las instrucciones operativas del usuario usando herramientas: puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs según sus permisos. Si recibes contexto de pantalla, úsalo para resolver referencias como «esta habitación» o «esta tarea», pero verifica la entidad real antes de escribir. ' +
+    `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
+    'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
+    'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
+    'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
+    `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`
+  );
 }
 
-async function callOpenAI(input: unknown[], config: FrontiConfig): Promise<OpenAIResponse> {
-  const key = env().OPENAI_API_KEY;
-  if (!key) {
-    throw new AssistantError('SIN_CLAVE');
-  }
-
-  const tools = enabledToolDefinitions(config);
-  let response: Response;
-  try {
-    response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
+function chatTools(config: FrontiConfig): FrontiToolDefinition[] {
+  return enabledToolDefinitions(config).map((definition) => ({
+    type: 'function',
+    function: {
+      name: definition.name,
+      description: definition.description,
+      parameters: definition.parameters as unknown as Record<string, unknown>,
+      strict: definition.strict,
     },
-    /*
-      Sin plazo, una llamada colgada dejaba la pantalla del mesón esperando
-      indefinidamente: no había timeout explícito y el `fetch` de Node no trae
-      ninguno por omisión.
-    */
-    signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
-    body: JSON.stringify({
-      model: config.model,
-      store: false,
-      reasoning: { effort: config.reasoningEffort },
-      instructions:
-        `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
-        'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
-        'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
-        'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
-        'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
-        `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
-        'Para prioridades, usa los datos de las herramientas: vencido/crítico y bloqueos operativos primero. ' +
-        'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
-        `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`,
-      input,
-      tools: tools.length ? tools : undefined,
-      tool_choice: tools.length ? 'auto' : undefined,
-      parallel_tool_calls: false,
-    }),
-    cache: 'no-store',
-    });
-  } catch (error) {
-    /*
-      Acá sólo caen los fallos de transporte: plazo agotado o sin red. Un
-      estado HTTP de error NO lanza, se comprueba más abajo.
-    */
-    const aborted = error instanceof Error && error.name === 'TimeoutError';
-    throw new AssistantError(
-      classifyAssistantFailure({ aborted, network: !aborted }),
-      error instanceof Error ? error : undefined,
-    );
-  }
-
-  /*
-    El cuerpo puede no ser JSON —una pasarela caída devuelve HTML— así que
-    parsear no puede tumbar la clasificación del fallo.
-  */
-  let payload: OpenAIResponse | null = null;
-  try {
-    payload = (await response.json()) as OpenAIResponse;
-  } catch {
-    payload = null;
-  }
-
-  if (!response.ok) {
-    const apiError = payload?.error as
-      | { message?: string; code?: string; type?: string }
-      | undefined;
-    throw new AssistantError(
-      classifyAssistantFailure({
-        status: response.status,
-        code: apiError?.code ?? apiError?.type ?? null,
-        message: apiError?.message ?? null,
-      }),
-    );
-  }
-
-  if (!payload) throw new AssistantError('CAIDO');
-  return payload;
+  }));
 }
 
-/**
- * Convierte el historial en la entrada que espera la API de respuestas.
- *
- * El tipo de la parte de contenido DEPENDE DEL ROL, y ahí estaba el fallo:
- * todos los mensajes salían como `input_text`, también los del asistente, y
- * para ésos la API sólo acepta `output_text`. La respuesta era un 400 con
- * «Invalid value: 'input_text'. Supported values are: 'output_text' and
- * 'refusal'.», que el pop-up pintaba tal cual en el chat del mesón.
- *
- * No era un caso raro: el saludo de Fronti es un mensaje de asistente y viaja
- * en el historial, así que la conversación fallaba desde la PRIMERA pregunta.
- * Fronti nunca contestó nada en producción.
- *
- * `responseText` ya leía `output_text` al interpretar la respuesta, de modo que
- * el archivo conocía la regla en un sentido y no en el otro.
- */
-function messagesAsInput(messages: AssistantMessage[], limit: number): unknown[] {
-  return messages.slice(-limit).map((message) => ({
-    role: message.role,
-    content: [
-      {
-        type: message.role === 'assistant' ? 'output_text' : 'input_text',
-        text: message.content,
-      },
-    ],
-  }));
+function messagesAsChat(
+  messages: AssistantMessage[],
+  config: FrontiConfig,
+): FrontiChatMessage[] {
+  return [
+    { role: 'system', content: systemInstructions(config) },
+    ...messages.slice(-(config.modelHistoryLimit + 3)).map(
+      (message): FrontiChatMessage => ({
+        role: message.role,
+        content: message.content,
+      }),
+    ),
+  ];
 }
 
 export async function runReceptionAssistant(
@@ -810,42 +981,54 @@ export async function runReceptionAssistant(
     throw new AssistantError('DESACTIVADO');
   }
 
-  let input = messagesAsInput(messages, config.modelHistoryLimit + 3);
+  const provider = resolveFrontiProvider(config);
+  const tools = chatTools(config);
+  let chat = messagesAsChat(messages, config);
   const confirmations: AssistantConfirmation[] = [];
 
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
-    const response = await callOpenAI(input, config);
-    const calls = (response.output ?? []).filter(
-      (item): item is OpenAIOutputItem & { call_id: string; name: string; arguments: string } =>
-        item.type === 'function_call' &&
-        typeof item.call_id === 'string' &&
-        typeof item.name === 'string' &&
-        typeof item.arguments === 'string',
-    );
+    let response;
+    try {
+      response = await chatWithFrontiProvider({
+        provider,
+        messages: chat,
+        tools,
+      });
+    } catch (error) {
+      if (error instanceof FrontiProviderError) {
+        throw new AssistantError(error.failure, error);
+      }
+      throw error;
+    }
 
-    if (!calls.length) {
+    if (!response.toolCalls.length) {
       return {
-        reply: responseText(response) || 'No pude formular una respuesta. Intenta decirlo de otra forma.',
+        reply:
+          response.text ||
+          'No pude formular una respuesta. Intenta decirlo de otra forma.',
         confirmations,
       };
     }
 
-    const toolOutputs: Array<Record<string, unknown>> = [];
-    for (const call of calls) {
+    const toolMessages: FrontiChatMessage[] = [];
+    for (const call of response.toolCalls) {
       let args: Record<string, unknown>;
       try {
-        args = JSON.parse(call.arguments) as Record<string, unknown>;
+        args = JSON.parse(call.function.arguments) as Record<string, unknown>;
       } catch {
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({ ok: false, error: 'Los parámetros no eran JSON válido.' }),
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({
+            ok: false,
+            error: 'Los parámetros no eran JSON válido.',
+          }),
         });
         continue;
       }
 
       try {
-        const result = await executeTool(user, call.name, args, config);
+        const result = await executeTool(user, call.function.name, args, config);
         let modelResult: unknown = result;
         if (
           result &&
@@ -857,31 +1040,40 @@ export async function runReceptionAssistant(
           confirmations.push(card);
           modelResult = {
             ...(result as Record<string, unknown>),
-            confirmation: { title: card.title, detail: card.detail, risk: card.risk },
+            confirmation: {
+              title: card.title,
+              detail: card.detail,
+              risk: card.risk,
+            },
           };
         }
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({ ok: true, result: modelResult }),
+
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({ ok: true, result: modelResult }),
         });
       } catch (error) {
-        toolOutputs.push({
-          type: 'function_call_output',
-          call_id: call.call_id,
-          output: JSON.stringify({
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({
             ok: false,
-            error: error instanceof Error ? error.message : 'La operación no pudo completarse.',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'La operación no pudo completarse.',
           }),
         });
       }
     }
 
-    input = [...input, ...calls, ...toolOutputs];
+    chat = [...chat, response.assistantMessage, ...toolMessages];
   }
 
   return {
-    reply: 'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
+    reply:
+      'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
     confirmations,
   };
 }
@@ -896,7 +1088,9 @@ export async function executeReceptionConfirmation(
   }
 
   const pending = verifyAction(token, user);
+  await claimConfirmation(pending);
 
+  try {
   if (pending.action === 'create_reminder') {
     assertToolEnabled(config, 'proponer_recordatorio');
     requireToolPermission(user, 'task.create');
@@ -945,6 +1139,63 @@ export async function executeReceptionConfirmation(
     return { reply: `Multa registrada para la habitación ${pending.args.roomNumber}. ID ${fine.id}.` };
   }
 
+  if (pending.action === 'create_entry') {
+    const type =
+      pending.args.type === 'INCIDENCIA' ? EntryType.INCIDENCIA : EntryType.NOVEDAD;
+    requireToolPermission(
+      user,
+      type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create',
+    );
+
+    const room = pending.args.roomNumber
+      ? await prisma.room.findFirst({
+          where: { number: pending.args.roomNumber, active: true },
+          select: { id: true },
+        })
+      : null;
+    if (pending.args.roomNumber && !room) {
+      throw new Error(`La habitación ${pending.args.roomNumber} dejó de estar disponible.`);
+    }
+
+    const entry = await createEntry(user, {
+      type,
+      title: pending.args.title,
+      description: pending.args.description,
+      category: null,
+      departmentId: user.departmentId,
+      roomId: room?.id ?? null,
+      priority: Priority[pending.args.priority],
+      ownerId: null,
+      occurredAt: null,
+      dueAt: null,
+      tags: ['fronti'],
+      requiresFollowUp: pending.args.requiresFollowUp,
+      guestId: null,
+      reservationId: null,
+      severity:
+        type === EntryType.INCIDENCIA && pending.args.severity
+          ? Severity[pending.args.severity]
+          : undefined,
+      immediateAction: null,
+    });
+    if (type === EntryType.INCIDENCIA) {
+      await ensureIncidentWorkflow(entry.id);
+    }
+    return {
+      reply: `${type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.seq} creada: ${entry.title}.`,
+    };
+  }
+
+  if (pending.action === 'complete_task') {
+    requireToolPermission(user, 'task.close');
+    const task = await changeTaskStatus(user, {
+      id: pending.args.taskId,
+      status: TaskStatus.COMPLETADA,
+      reason: pending.args.reason ?? 'Completada mediante Fronti.',
+    });
+    return { reply: `Tarea T#${task.seq} completada: ${task.title}.` };
+  }
+
   assertToolEnabled(config, 'proponer_checkouts');
   requireToolPermission(user, 'room.manage');
   const validated: Array<{ roomNumber: string; stayId: string }> = [];
@@ -956,10 +1207,15 @@ export async function executeReceptionConfirmation(
     validated.push({ roomNumber, stayId: room.snapshot.outgoing.id });
   }
 
-  const completed: string[] = [];
-  for (const item of validated) {
-    await confirmCheckOut(user, { stayId: item.stayId, note: pending.args.note ?? null });
-    completed.push(item.roomNumber);
+  await confirmCheckOutBatch(user, {
+    items: validated.map((item) => ({
+      stayId: item.stayId,
+      note: pending.args.note ?? null,
+    })),
+  });
+  return { reply: `Check-out confirmado: ${validated.map((item) => item.roomNumber).join(', ')}.` };
+  } catch (error) {
+    await releaseConfirmationClaim(pending);
+    throw error;
   }
-  return { reply: `Check-out confirmado: ${completed.join(', ')}.` };
 }

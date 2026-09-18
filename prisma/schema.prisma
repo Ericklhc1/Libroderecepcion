@@ -241,6 +241,7 @@ enum NotificationType {
    */
   MENCION
   ACCION_REQUERIDA
+  FRONTI_HALLAZGO
 }
 
 // =============================== IDENTIDAD ================================
@@ -371,6 +372,8 @@ model User {
   cashAudits            CashAudit[]         @relation("cashAuditCountedBy")
   gymPassesIssued       GymPass[]           @relation("gymPassReceptionist")
   gymPassesVoided       GymPass[]           @relation("gymPassVoidedBy")
+  assistantActionReceipts AssistantActionReceipt[]
+  legalAcceptances        LegalAcceptance[]
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -404,6 +407,45 @@ model LoginAttempt {
   createdAt  DateTime @default(now())
 
   @@index([identifier, createdAt])
+}
+
+/**
+ * Recibo de una confirmación ejecutable emitida por Fronti.
+ *
+ * El nonce vive en el token firmado y sólo puede reclamarse una vez. Esto
+ * impide que un doble clic, reintento del navegador o replay cree dos tareas,
+ * multas u otras acciones mutables.
+ */
+model AssistantActionReceipt {
+  id        String   @id @default(cuid())
+  nonce     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/**
+ * Aceptación versionada de documentos internos.
+ *
+ * No se guarda el texto completo por usuario: el documento vive versionado en
+ * código y esta fila prueba qué versión aceptó, cuándo y desde qué contexto.
+ */
+model LegalAcceptance {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document  String
+  version   String
+  acceptedAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+
+  @@unique([userId, document, version])
+  @@index([document, version])
+  @@index([acceptedAt])
 }
 
 // ================================= ÁREAS ==================================

@@ -15,18 +15,19 @@ const schema = z.object({
   SEED_DEMO_PASSWORD: z.string().min(8).default('Demo2024!'),
   HOTEL_TIMEZONE: z.string().default('America/Santiago'),
 
-  // Asistente IA. La clave es opcional para que el Libro pueda desplegar sin
-  // IA; el endpoint informa claramente si todavía no fue configurada.
-  // Nunca se expone al cliente: sólo la consume el servidor.
+  // Fronti es proveedor-agnóstico. Usa un modelo open-weight por defecto.
+  // Groq es el backend hospedado inicial; FRONTI_BASE_URL permite apuntar el
+  // mismo código a un servidor vLLM autohospedado sin reescribir el agente.
+  FRONTI_PROVIDER: z.enum(['groq', 'vllm', 'openai']).default('groq'),
+  FRONTI_MODEL: z.string().min(1).default(DEFAULT_ASSISTANT_MODEL),
+  GROQ_API_KEY: z.string().min(1).optional(),
+  FRONTI_BASE_URL: z.string().url().optional(),
+  FRONTI_API_KEY: z.string().min(1).optional(),
+
+  // Compatibilidad temporal. OpenAI deja de ser la dependencia estructural,
+  // pero puede mantenerse como fallback explícito durante la transición.
   OPENAI_API_KEY: z.string().min(1).optional(),
-  /*
-    El valor por omisión sale de una constante declarada en el dominio y no de
-    un literal acá: si el identificador del modelo deja de ser válido, se
-    cambia en un solo lugar. `/api/health/asistente` avisa si OpenAI no lo
-    reconoce, así que un identificador equivocado se detecta en una petición y
-    no cuando alguien le pregunta algo a Fronti.
-  */
-  OPENAI_MODEL: z.string().min(1).default(DEFAULT_ASSISTANT_MODEL),
+  OPENAI_MODEL: z.string().min(1).optional(),
 
   // Correo saliente. Opcional: si falta, el sistema muestra la clave en
   // pantalla en lugar de enviarla, y lo dice.

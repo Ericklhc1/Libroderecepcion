@@ -7,7 +7,8 @@ en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.
 
 Next.js 15 (App Router, Server Components, Server Actions) · React 19 ·
 TypeScript estricto · Prisma 6 · PostgreSQL en **Neon** (`sa-east-1`) ·
-desplegado en **Netlify** · Tailwind · Vitest contra PostgreSQL real.
+**Vercel** como Production · **Netlify** como staging/pruebas reales · Tailwind ·
+Vitest contra PostgreSQL real.
 
 No cambiar de stack. No reconstruir. No crear otro proyecto.
 
@@ -439,10 +440,11 @@ conserva su modelo y sus reglas.
 
 ## Rendimiento: lo aprendido en producción
 
-La base está en `sa-east-1` y Production se sirve desde **Netlify**. El proyecto
-venía de Vercel y conserva compatibilidad/configuración histórica para ese proveedor,
-pero Netlify es ahora el hosting principal. La lección importante permanece: la
-latencia entre función y base puede convertir consultas encadenadas en un problema
+La base está en `sa-east-1`. Production se sirve desde **Vercel** y Netlify es
+exclusivamente staging/pruebas reales contra Neon `development`. Vercel sólo debe
+desplegar automáticamente `main`; Netlify nunca debe escribir en Neon Production.
+La lección de rendimiento permanece: la latencia entre función y base puede convertir
+consultas encadenadas en un problema
 operativo. De ahí vienen varias reglas de rendimiento que no deben revertirse:
 
 1. **Nunca una consulta por fila.** La siembra hacía 230 `upsert` y agotaba la

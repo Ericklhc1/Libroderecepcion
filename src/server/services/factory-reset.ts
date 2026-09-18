@@ -68,6 +68,9 @@ export async function getResetPreview() {
     cashCounts,
     notifications,
     auditLogs,
+    frontiConversations,
+    frontiMemories,
+    frontiConfirmations,
     users,
     assignedKeys,
   ] = await Promise.all([
@@ -89,6 +92,9 @@ export async function getResetPreview() {
     prisma.cashCount.count(),
     prisma.notification.count(),
     prisma.auditLog.count(),
+    prisma.ai_conversation.count(),
+    prisma.ai_memory.count(),
+    prisma.assistantActionReceipt.count(),
     prisma.user.count(),
     prisma.roomKey.count({ where: { stayId: { not: null } } }),
   ]);
@@ -112,6 +118,9 @@ export async function getResetPreview() {
     cashCounts,
     notifications,
     auditLogs,
+    frontiConversations,
+    frontiMemories,
+    frontiConfirmations,
     users,
     assignedKeys,
   };
@@ -163,6 +172,10 @@ export async function runFactoryReset(
       });
 
       count('Notificaciones', await tx.notification.deleteMany());
+      count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());
+      count('Mensajes de Fronti', await tx.ai_message.deleteMany());
+      count('Memorias de Fronti', await tx.ai_memory.deleteMany());
+      count('Conversaciones de Fronti', await tx.ai_conversation.deleteMany());
       count('Adjuntos', await tx.attachment.deleteMany());
       count('Comentarios', await tx.comment.deleteMany());
       count('Pasos de tarea', await tx.taskChecklistItem.deleteMany());

@@ -94,6 +94,7 @@ export function resolveFrontiProvider(input: {
       baseUrl: 'https://api.openai.com/v1',
       apiKey: runtime.OPENAI_API_KEY ?? null,
       model: runtime.OPENAI_MODEL?.trim() || input.model,
+      reasoningEffort: input.reasoningEffort,
     };
   }
 
@@ -102,6 +103,7 @@ export function resolveFrontiProvider(input: {
     baseUrl: 'https://api.groq.com/openai/v1',
     apiKey: runtime.GROQ_API_KEY ?? null,
     model: input.model,
+    reasoningEffort: input.reasoningEffort,
   };
 }
 

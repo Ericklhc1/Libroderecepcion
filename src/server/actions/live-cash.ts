@@ -8,6 +8,7 @@ import {
   AuditAction,
   EntryStatus,
   EntryType,
+  GuaranteeState,
   NotificationType,
   Priority,
 } from '@prisma/client';
@@ -21,6 +22,7 @@ import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { notify } from '@/server/notifications';
 import { saveLiveCashAudit } from '@/server/services/live-cash';
+import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 
@@ -249,6 +251,36 @@ export async function createManualCashMovementAction(
       ok: true as const,
       message: `${verb} solicitado. No modifica Caja hasta que un Supervisor lo autorice.`,
       id: request.entry.id,
+    };
+  });
+}
+
+const returnGuaranteeSchema = z.object({
+  guaranteeId: z.string().min(1),
+});
+
+export async function returnCashGuaranteeAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('guest.manage');
+    const input = parseOrThrow(returnGuaranteeSchema, formDataToObject(formData));
+
+    await changeGuaranteeState(user, {
+      id: input.guaranteeId,
+      state: GuaranteeState.DEVUELTA,
+    });
+
+    revalidatePath('/caja');
+    revalidatePath('/habitaciones');
+    revalidatePath('/huespedes');
+    revalidatePath('/turno');
+    revalidatePath('/libro');
+
+    return {
+      ok: true as const,
+      message: 'Garantía devuelta. El efectivo salió de Caja y quedó registrado con trazabilidad.',
     };
   });
 }

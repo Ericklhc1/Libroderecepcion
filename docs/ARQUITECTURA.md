@@ -74,8 +74,8 @@ PROGRAMADO → INICIADO → ACTIVO → PREPARANDO_ENTREGA → ENTREGA_ENVIADA
 
 Reglas adicionales, verificadas con pruebas:
 
-- No se puede cerrar un turno sin enviar la entrega si existe turno siguiente.
-- No se puede cerrar mientras la entrega enviada no sea confirmada.
+- El flujo operativo normal no ofrece cierre manual: preparar, enviar y recibir son el camino canónico.
+- La recepción confirmada cierra el turno saliente en la misma transacción y registra la hora real.
 - Una entrega no puede recibirse dos veces (guarda de concurrencia por
   `updateMany` sobre el estado esperado, dentro de la transacción).
 - No se puede recibir una entrega inexistente ni una que no corresponda al
@@ -86,11 +86,11 @@ Reglas adicionales, verificadas con pruebas:
 ### Decisión: cierre automático al recibir
 
 Cuando el turno siguiente confirma la recepción, el turno saliente pasa a
-`CERRADO` en la misma transacción. En una recepción real el turno saliente ya
-se fue a casa; obligarlo a volver a cerrar dejaría turnos colgados. El estado
-`RECIBIDO` sigue existiendo y se usa cuando el parámetro
-`shift.autoCloseOnReceive` está desactivado, y el cierre manual permanece
-disponible para el último turno del ciclo (sin turno siguiente).
+`CERRADO` en la misma transacción, con `actualEnd` y `closedById` reales.
+No existe un segundo gesto operativo «Cerrar turno». El servicio de cierre
+manual se conserva únicamente como mecanismo administrativo de recuperación,
+fuera de la interfaz habitual. Todo cierre crea además la validación posterior
+de jefatura asignada a Erick Herrera; esa revisión no bloquea el turno entrante.
 
 ## Motor de alertas
 

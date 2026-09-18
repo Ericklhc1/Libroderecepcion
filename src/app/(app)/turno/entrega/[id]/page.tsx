@@ -10,6 +10,7 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { CashBox } from '@/components/operational/cash-box';
 import { getHandoverCashState, listDenominations } from '@/server/services/cash';
+import { getShiftCashClosure } from '@/server/services/cash-closure';
 import { CashCountKind } from '@prisma/client';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
@@ -63,11 +64,12 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const [history, cashState, denominations, myActiveShift] = await Promise.all([
+  const [history, cashState, denominations, myActiveShift, formalCashClosure] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
     getMyActiveShift(user.id),
+    getShiftCashClosure(handover.fromShiftId),
   ]);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
@@ -257,7 +259,13 @@ export default async function HandoverPage({
       */}
       <CashBox
         handoverId={handover.id}
+        shiftId={handover.fromShiftId}
         state={cashState}
+        formalClosure={formalCashClosure ? {
+          closedAt: formalCashClosure.closedAt.toISOString(),
+          closedByName: formalCashClosure.closedByName,
+          reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
+        } : null}
         denominations={denominations.map((denomination) => ({
           id: denomination.id,
           currency: denomination.currency,

@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/dialog';
 import {
   LiveCashAuditForm,
   ManualCashMovementForm,
+  ReturnCashGuaranteeForm,
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
 import { formatDateTime } from '@/lib/format';
@@ -127,7 +128,16 @@ export default async function LiveCashPage() {
                       </>
                     }
                   >
-                    <LiveCashAuditForm currency={item.currency} />
+                    <LiveCashAuditForm
+                      currency={item.currency}
+                      denominations={state.denominations
+                        .filter((row) => row.currency === item.currency)
+                        .map((row) => ({
+                          id: row.id,
+                          value: row.value,
+                          medium: row.medium,
+                        }))}
+                    />
                   </Dialog>
                 </div>
               </div>
@@ -152,14 +162,22 @@ export default async function LiveCashPage() {
                         {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                       </p>
                       <p className="text-xs tabular text-slate-500">
-                        Reserva {guarantee.reservationCode} · {formatDateTime(guarantee.createdAt)}
+                        ID FNS {guarantee.reservationCode} · {formatDateTime(guarantee.createdAt)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold tabular text-petrol-900">
-                        {amount(guarantee.currency, guarantee.amount)}
-                      </p>
-                      <Chip>{human(guarantee.state)}</Chip>
+                    <div className="flex flex-col items-end gap-2 text-right">
+                      <div>
+                        <p className="font-semibold tabular text-petrol-900">
+                          {amount(guarantee.currency, guarantee.amount)}
+                        </p>
+                        <Chip>{human(guarantee.state)}</Chip>
+                      </div>
+                      {canOperate ? (
+                        <ReturnCashGuaranteeForm
+                          guaranteeId={guarantee.id}
+                          reservationCode={guarantee.reservationCode}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </li>

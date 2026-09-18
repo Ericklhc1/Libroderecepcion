@@ -15,6 +15,7 @@ import { applyImport, getImportPreview, prepareImport } from '@/server/services/
 import {
   confirmCheckIn,
   confirmCheckOut,
+  confirmCheckOutBatch,
   getRoomDetail,
   listRoomsWithState,
 } from '@/server/services/rooms';
@@ -322,6 +323,26 @@ describe('habitaciones y llaves', () => {
       const still = await prisma.roomStay.findUniqueOrThrow({ where: { id: incoming.id } });
       expect(still.status).toBe(RoomStayStatus.CHECK_IN);
       expect(still.stage).toBe(RoomStayStage.PENDIENTE);
+    });
+
+    it('el check-out múltiple es atómico: si una salida falla no confirma las anteriores', async () => {
+      const first = await stayFor('408', RoomStayStatus.CHECK_OUT);
+      const second = await stayFor('414', RoomStayStatus.CHECK_OUT);
+
+      // Simula que otra acción confirmó la segunda salida justo antes del lote.
+      await prisma.roomStay.update({
+        where: { id: second.id },
+        data: { stage: RoomStayStage.FINALIZADO },
+      });
+
+      await expect(
+        confirmCheckOutBatch(receptionist, {
+          items: [{ stayId: first.id }, { stayId: second.id }],
+        }),
+      ).rejects.toBeInstanceOf(RuleError);
+
+      const rolledBack = await prisma.roomStay.findUniqueOrThrow({ where: { id: first.id } });
+      expect(rolledBack.stage).toBe(RoomStayStage.PENDIENTE);
     });
 
     it('confirmada la salida, la entrada queda libre para entrar aunque falte la llave', async () => {

@@ -57,6 +57,9 @@ function parseValue(key: SettingKey, raw: string): unknown {
   if (key === 'fronti.extraInstructions' && value.length > 4000) {
     throw new RuleError('Las instrucciones adicionales no pueden superar 4000 caracteres.');
   }
+  if (key === 'fronti.provider' && !['groq', 'vllm', 'openai'].includes(value)) {
+    throw new RuleError('El proveedor debe ser groq, vllm u openai.');
+  }
   if (key === 'fronti.model' && value.length > 120) {
     throw new RuleError('El identificador del modelo no puede superar 120 caracteres.');
   }

@@ -47,6 +47,14 @@ const GROUPS: Array<{ title: string; keys: Array<[string, keyof Awaited<ReturnTy
     ],
   },
   {
+    title: 'Inteligencia artificial',
+    keys: [
+      ['Conversaciones de Fronti', 'frontiConversations'],
+      ['Memorias de Fronti', 'frontiMemories'],
+      ['Confirmaciones ejecutables', 'frontiConfirmations'],
+    ],
+  },
+  {
     title: 'Otros',
     keys: [
       ['Notificaciones', 'notifications'],
@@ -132,9 +140,10 @@ export default async function FactoryResetPage() {
             parámetros del sistema.
           </p>
           <p className="mt-2">
-            Y <strong>tu cuenta</strong> ({user.name}). Nunca se borra la cuenta que
-            ejecuta la puesta en cero: si se borrara, el hotel se quedaría sin forma de
-            entrar a su propio sistema.
+            Las <strong>cuentas de usuario</strong> se conservan si dejas sin marcar
+            «Borrar las demás cuentas». Tu cuenta ({user.name}) nunca se borra.
+            La memoria y las conversaciones de Fronti sí se limpian siempre: forman parte
+            del estado operativo que estás dejando en cero.
           </p>
           <p className="mt-2 text-xs text-slate-500">
             Las llaves no se borran —están numeradas y cuestan dinero— pero se

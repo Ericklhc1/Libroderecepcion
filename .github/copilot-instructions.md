@@ -29,7 +29,7 @@ La fuente de verdad es el código + esquema + base conectada. La conversación h
 Producción:
 - hosting oficial: Vercel, proyecto `libroderecepcion`
 - base: Neon, rama `production`
-- `main` es la rama de release y es la única rama que Vercel puede desplegar automáticamente
+- `main` es la rama de release y la única que se considera Production; Vercel puede generar previews de otras ramas
 
 Staging / pruebas reales:
 - hosting: Netlify, proyecto `libroderecepcion`

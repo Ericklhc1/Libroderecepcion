@@ -13,7 +13,7 @@
 - Rama de staging: `preproduction`
 - Base de staging/desarrollo: Neon `development`
 - Netlify quedó aislado de Neon Production
-- Vercel quedó configurado para desplegar automáticamente sólo `main`
+- Vercel puede generar previews de ramas; sólo `main` representa Production
 - Compuerta corre en PR/push de `preproduction` y `main`
 - Pipeline: feature → preproduction → Netlify → validación → main → Vercel → tag `production-*`
 - Production no fue promovida durante la auditoría de IA; continúa intacta hasta validar staging
@@ -35,7 +35,7 @@ Se consolidó Cierre Operativo V2:
 
 Desde 2026-09-18:
 - Netlify es exclusivamente staging/prueba real y sus conexiones apuntan a Neon `development`;
-- Vercel es exclusivamente Production y `main` es su única rama de despliegue automático;
+- Vercel aloja Production en `main` y puede generar previews de ramas de trabajo;
 - `preproduction` es la rama canónica de staging;
 - el trabajo funcional se hace en ramas feature y entra primero por PR a `preproduction`;
 - Production no se usa como entorno de prueba;
@@ -54,7 +54,7 @@ Desde 2026-09-18:
 
 - [x] Separar Netlify de Neon Production.
 - [x] Retirar el endpoint temporal de diagnóstico de auth.
-- [x] Evitar que ramas de trabajo/preproduction disparen builds de Vercel.
+- [x] Retirar la política rígida que intentaba bloquear previews de Vercel por rama.
 - [x] Restaurar Vercel como hosting oficial de Production y Netlify como staging.
 - [x] Integrar Fronti al Inicio con bandeja determinística y briefing contextual.
 - [x] Fronti reporta fallos/mejoras a Supervisor + Administrador con deduplicación.

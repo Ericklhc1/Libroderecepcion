@@ -17,7 +17,7 @@ export const metadata = { title: 'Términos de uso' };
 export const dynamic = 'force-dynamic';
 
 export default async function AcceptTermsPage() {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowIncompleteAccess: true });
 
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (await hasAcceptedCurrentTerms(user.id)) redirect('/');

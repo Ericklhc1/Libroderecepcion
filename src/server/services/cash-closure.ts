@@ -112,8 +112,9 @@ export async function closeShiftCash(
       'Primero inicia la preparación de entrega. El cierre formal de Caja pertenece a esa entrega.',
     );
   }
+  const handoverId = shift.handoverOut.id;
 
-  const state = await getHandoverCashState(shift.handoverOut.id);
+  const state = await getHandoverCashState(handoverId);
   if (state.enabled && !state.declared) {
     throw new RuleError(
       'Falta el arqueo formal por denominación. Cuenta CLP y USD dentro de la preparación de entrega.',
@@ -124,7 +125,7 @@ export async function closeShiftCash(
     ? await prisma.cashCount.findUnique({
         where: {
           handoverId_kind: {
-            handoverId: shift.handoverOut.id,
+            handoverId,
             kind: CashCountKind.DECLARADO,
           },
         },
@@ -149,7 +150,7 @@ export async function closeShiftCash(
       expected: fromMinor(status.fundMinor, status.currency),
       counted: fromMinor(status.countedMinor, status.currency),
       difference: fromMinor(status.differenceMinor, status.currency),
-      auditId: declaredCount?.id ?? `handover:${shift.handoverOut!.id}`,
+      auditId: declaredCount?.id ?? `handover:${handoverId}`,
       auditedAt: (declaredCount?.countedAt ?? new Date()).toISOString(),
     })),
     openCashGuarantees: state.cashGuarantees.length,
@@ -191,11 +192,11 @@ export async function closeShiftCash(
         where: { dedupeKey: `cash-formal-close:${shift.id}` },
         create: {
           type: AlertType.OTRO,
-          level: AlertLevel.ALTA,
+          level: AlertLevel.ATENCION,
           status: AlertStatus.NUEVA,
           title: 'Revisar diferencia en cierre formal de Caja',
           message: `${detail}. El turno puede continuar; la diferencia quedó declarada y auditada.`,
-          handoverId: shift.handoverOut.id,
+          handoverId,
           dedupeKey: `cash-formal-close:${shift.id}`,
           auto: true,
           createdById: user.id,

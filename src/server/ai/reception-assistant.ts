@@ -18,7 +18,7 @@ import {
   type FineKindValue,
   type LinenKindValue,
 } from '@/domain/fines';
-import { getRoomDetail, confirmCheckOut } from '@/server/services/rooms';
+import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask } from '@/server/services/tasks';
@@ -956,10 +956,11 @@ export async function executeReceptionConfirmation(
     validated.push({ roomNumber, stayId: room.snapshot.outgoing.id });
   }
 
-  const completed: string[] = [];
-  for (const item of validated) {
-    await confirmCheckOut(user, { stayId: item.stayId, note: pending.args.note ?? null });
-    completed.push(item.roomNumber);
-  }
-  return { reply: `Check-out confirmado: ${completed.join(', ')}.` };
+  await confirmCheckOutBatch(user, {
+    items: validated.map((item) => ({
+      stayId: item.stayId,
+      note: pending.args.note ?? null,
+    })),
+  });
+  return { reply: `Check-out confirmado: ${validated.map((item) => item.roomNumber).join(', ')}.` };
 }

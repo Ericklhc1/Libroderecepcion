@@ -32,6 +32,7 @@ import {
   plannedWindow,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
+import { validateClosureReportSet } from '@/domain/pms/freshness';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -127,7 +128,7 @@ export async function prepareHandoverAction(
     return {
       ok: true as const,
       message:
-        'Cierre iniciado. Vuelve a cargar Entradas, In house y Salidas, revisa las discrepancias y después completa caja y novedades.',
+        'Cierre iniciado. Vuelve a cargar Actividad, Salidas e In house, revisa las discrepancias y después completa caja y novedades.',
       id: handover.id,
     };
   });
@@ -166,31 +167,42 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
   });
   if (!latest) {
     throw new RuleError(
-      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Entradas, In house y Salidas. Deben ser posteriores al inicio del cierre.',
+      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Actividad, Salidas e In house. Deben ser posteriores al inicio del cierre y tener una antigüedad máxima de 15 minutos.',
     );
   }
 
-  const kinds = new Set(
-    (Array.isArray(latest.reports) ? latest.reports : [])
-      .map((report) =>
-        report && typeof report === 'object' && 'kind' in report
-          ? String((report as { kind?: unknown }).kind ?? '')
-          : '',
-      )
-      .filter(Boolean),
-  );
-  const requiredReports: ReadonlyArray<readonly [string, string]> = [
-    ['ENTRADAS', 'Entradas'],
-    ['IN_HOUSE', 'In house'],
-    ['SALIDAS', 'Salidas'],
-  ];
-  const missing = requiredReports.filter(([kind]) => !kinds.has(kind));
+  const reports = (Array.isArray(latest.reports) ? latest.reports : []).map((report) => {
+    if (!report || typeof report !== 'object') {
+      return { kind: null, reportGeneratedAt: null };
+    }
+    const row = report as { kind?: unknown; reportGeneratedAt?: unknown };
+    return {
+      kind: typeof row.kind === 'string' ? row.kind : null,
+      reportGeneratedAt:
+        typeof row.reportGeneratedAt === 'string' ? row.reportGeneratedAt : null,
+    };
+  });
 
-  if (missing.length > 0) {
+  const validation = validateClosureReportSet(reports);
+  if (!validation.valid) {
+    const labels: Record<string, string> = {
+      ACTIVIDAD: 'Actividad',
+      SALIDAS: 'Salidas',
+      IN_HOUSE: 'In house',
+    };
+    const missing = validation.missing.map((kind) => labels[kind] ?? kind);
+    const invalid = validation.invalid.map(({ kind, freshness }) => {
+      const label = kind ? (labels[kind] ?? kind) : 'Informe';
+      return `${label} (${freshness.status === 'VENCIDO' ? 'vencido' : 'fecha/hora inválida'})`;
+    });
+    const details = [
+      missing.length ? `Falta: ${missing.join(', ')}` : null,
+      invalid.length ? `Reemplaza: ${invalid.join(', ')}` : null,
+    ]
+      .filter(Boolean)
+      .join('. ');
     throw new RuleError(
-      `La validación de cierre está incompleta. Falta cargar: ${missing
-        .map(([, label]) => label)
-        .join(', ')}.`,
+      `El cierre requiere Actividad, Salidas e In house generados por FNS hace no más de 15 minutos. ${details}`,
     );
   }
 }
@@ -237,11 +249,11 @@ export async function closeShiftAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.close');
+    const user = await requirePermission('shift.manage');
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
     await closeShift(user, input);
     refresh(input.shiftId);
-    return { ok: true as const, message: 'Turno cerrado.' };
+    return { ok: true as const, message: 'Recuperación administrativa: turno cerrado y auditado.' };
   });
 }
 

@@ -87,10 +87,11 @@ Reglas adicionales, verificadas con pruebas:
 
 Cuando el turno siguiente confirma la recepción, el turno saliente pasa a
 `CERRADO` en la misma transacción. En una recepción real el turno saliente ya
-se fue a casa; obligarlo a volver a cerrar dejaría turnos colgados. El estado
-`RECIBIDO` sigue existiendo y se usa cuando el parámetro
-`shift.autoCloseOnReceive` está desactivado, y el cierre manual permanece
-disponible para el último turno del ciclo (sin turno siguiente).
+se fue a casa; obligarlo a volver a cerrar dejaría turnos colgados. El estado `RECIBIDO` se conserva únicamente por compatibilidad con datos históricos.
+En el flujo operativo actual, confirmar la recepción cierra el turno saliente en la
+misma transacción y registra su hora real de término. No existe un cierre manual
+posterior para Recepción; cualquier estado histórico incoherente se corrige mediante
+un mecanismo administrativo auditado.
 
 ## Motor de alertas
 

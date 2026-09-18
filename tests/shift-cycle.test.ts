@@ -24,6 +24,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
 describe('ciclo de turno de punta a punta', () => {
   let morning: CurrentUser;
   let evening: CurrentUser;
+  let validator: CurrentUser;
 
   beforeAll(async () => {
     await seedCatalog();
@@ -33,6 +34,11 @@ describe('ciclo de turno de punta a punta', () => {
     await resetOperationalData();
     morning = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno mañana' });
     evening = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno tarde' });
+    validator = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      name: 'Erick Herrera',
+      username: 'EHerrera',
+    });
   });
 
   it('recorre programado → iniciado → activo → entrega → recibido → cerrado', async () => {
@@ -89,6 +95,18 @@ describe('ciclo de turno de punta a punta', () => {
 
     const closedA = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
     expect(closedA.status).toBe(ShiftStatus.CERRADO);
+    expect(closedA.actualEnd).not.toBeNull();
+
+    const validationAlert = await prisma.alert.findUnique({
+      where: { dedupeKey: `shift-validation:${shiftA.id}` },
+    });
+    expect(validationAlert).not.toBeNull();
+    const validationTask = await prisma.task.findFirst({
+      where: { alertId: validationAlert!.id },
+    });
+    expect(validationTask?.assigneeId).toBe(validator.id);
+    expect(validationTask?.priority).toBe('CRITICA');
+    expect(validationTask?.origin).toBe('ALERTA');
 
     const notification = await prisma.notification.findFirst({
       where: { userId: morning.id, entity: 'ShiftHandover' },
@@ -139,6 +157,7 @@ describe('invariantes del turno', () => {
   let morning: CurrentUser;
   let evening: CurrentUser;
   let supervisor: CurrentUser;
+  let validator: CurrentUser;
 
   beforeAll(async () => {
     await seedCatalog();
@@ -149,6 +168,11 @@ describe('invariantes del turno', () => {
     morning = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno mañana' });
     evening = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno tarde' });
     supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+    validator = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      name: 'Erick Herrera',
+      username: 'EHerrera',
+    });
   });
 
   it('no permite iniciar dos veces el mismo turno', async () => {
@@ -327,7 +351,7 @@ describe('invariantes del turno', () => {
     await expect(cancelHandoverPreparation(morning, shiftA.id)).rejects.toThrow(RuleError);
   });
 
-  it('el supervisor puede cerrar un turno ajeno sólo después de una entrega recibida', async () => {
+  it('recibir cierra siempre; el cierre manual queda sólo como recuperación administrativa', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.NOCHE });
 
@@ -336,21 +360,29 @@ describe('invariantes del turno', () => {
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
 
-    await prisma.systemSetting.upsert({
-      where: { key: 'shift.autoCloseOnReceive' },
-      create: { key: 'shift.autoCloseOnReceive', value: false, category: 'turnos' },
-      update: { value: false },
-    });
-
     await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
-    const beforeClose = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
-    expect(beforeClose.status).toBe(ShiftStatus.RECIBIDO);
+    const canonical = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
+    expect(canonical.status).toBe(ShiftStatus.CERRADO);
 
-    const closed = await closeShift(supervisor, { shiftId: shiftA.id });
-    expect(closed.status).toBe(ShiftStatus.CERRADO);
-    expect(closed.closedById).toBe(supervisor.id);
+    // Simula un registro histórico pre-V2 que quedó RECIBIDO. Sólo supervisión
+    // puede usar el mecanismo de recuperación; no existe botón operativo.
+    await prisma.shift.update({
+      where: { id: shiftA.id },
+      data: { status: ShiftStatus.RECIBIDO, actualEnd: null, closedById: null },
+    });
+    const recovered = await closeShift(supervisor, {
+      shiftId: shiftA.id,
+      notes: 'Recuperación de estado histórico.',
+    });
+    expect(recovered.status).toBe(ShiftStatus.CERRADO);
+
+    const task = await prisma.task.findFirst({
+      where: { shiftId: shiftA.id, title: 'Validar cierre de turno' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(task?.assigneeId).toBe(validator.id);
   });
 
   it('un tercero sin permisos de supervisión no puede cerrar un turno ajeno', async () => {

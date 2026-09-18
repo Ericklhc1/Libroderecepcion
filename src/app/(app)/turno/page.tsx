@@ -17,7 +17,6 @@ import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
-  CloseShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -236,12 +235,9 @@ export default async function ShiftPage() {
                   {shift.status === ShiftStatus.ACTIVO ? (
                     <>
                       <PrepareHandoverForm shiftId={shift.id} />
-                      {/*
-                        Cerrar sin entregar sigue siendo posible —hay turnos que
-                        no relevan a nadie— pero el camino principal es
-                        entregar: el cierre queda en la bandeja.
-                      */}
-                      <CloseShiftForm shiftId={shift.id} />
+                      <p className="max-w-sm text-xs text-slate-500">
+                        El cierre operativo continúa con la entrega. No existe un cierre manual separado.
+                      </p>
                     </>
                   ) : null}
                   {shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
@@ -257,7 +253,9 @@ export default async function ShiftPage() {
                     </>
                   ) : null}
                   {shift.status === ShiftStatus.RECIBIDO ? (
-                    <CloseShiftForm shiftId={shift.id} />
+                    <p className="max-w-sm rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+                      Estado histórico recibido. Requiere recuperación administrativa; no existe cierre manual en operación.
+                    </p>
                   ) : null}
                 </div>
               </div>

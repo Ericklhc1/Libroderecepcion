@@ -12,7 +12,7 @@ Esta iteración parte de la versión de Producción posterior a la auditoría in
 
 ## Caja y cierre
 
-1. Caja se cierra en `/caja` antes de cerrar el turno. El turno no puede cerrar mientras la Caja del turno siga abierta.
+1. Caja se cierra antes de enviar/recibir el relevo. Al confirmar la recepción, el turno saliente se cierra automáticamente; no existe un segundo cierre manual operativo.
 2. Conteos CLP/USD, diferencias, egresos, ingresos, garantías en efectivo y elementos físicos pertenecen a Caja. La entrega de turno consume el resultado del cierre de Caja; no vuelve a pedir el mismo conteo.
 3. Ingreso/egreso es vocabulario reservado a movimientos que cambian el efectivo esperado de Caja. Otros montos del Libro son informativos.
 4. Todo ajuste, ingreso o egreso manual que no sea movimiento automático de una garantía requiere autorización de Supervisor. La solicitud debe verse inmediatamente en Supervisión y en notificaciones.

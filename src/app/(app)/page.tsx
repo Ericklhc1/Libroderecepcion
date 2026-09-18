@@ -41,7 +41,6 @@ import {
 import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import {
-  CloseShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
   OpenShiftForm,
@@ -127,7 +126,6 @@ export default async function DashboardPage() {
             {shift && shift.status === ShiftStatus.ACTIVO ? (
               <>
                 <PrepareHandoverForm shiftId={shift.id} />
-                {!data.nextShift ? <CloseShiftForm shiftId={shift.id} /> : null}
               </>
             ) : null}
 
@@ -145,10 +143,6 @@ export default async function DashboardPage() {
               <p className="max-w-xs rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200">
                 Entrega enviada. Tu turno se cierra cuando el turno siguiente confirme la recepción.
               </p>
-            ) : null}
-
-            {shift && shift.status === ShiftStatus.RECIBIDO ? (
-              <CloseShiftForm shiftId={shift.id} />
             ) : null}
 
             <Link

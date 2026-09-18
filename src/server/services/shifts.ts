@@ -6,7 +6,9 @@ import {
   HandoverLevel,
   HandoverStatus,
   NotificationType,
+  Priority,
   ShiftStatus,
+  TaskOrigin,
 } from '@prisma/client';
 // `ShiftType` sólo se usa como tipo: los valores los da `shiftTypeAt`.
 import type { Prisma, ShiftType } from '@prisma/client';
@@ -28,7 +30,6 @@ import {
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { buildHandoverSnapshot, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
-import { getSettingBool } from './settings';
 import {
   cashBlockersForReceiving,
   cashBlockersForSending,
@@ -56,6 +57,66 @@ export const shiftInclude = {
 } satisfies Prisma.ShiftInclude;
 
 export type ShiftWithDetail = Prisma.ShiftGetPayload<{ include: typeof shiftInclude }>;
+
+
+const CLOSURE_VALIDATOR_USERNAME = 'EHerrera';
+
+async function ensureClosureValidationTask(
+  tx: Prisma.TransactionClient,
+  shiftId: string,
+  createdById: string,
+) {
+  const [alert, validator] = await Promise.all([
+    tx.alert.findUnique({
+      where: { dedupeKey: `shift-validation:${shiftId}` },
+      select: { id: true, title: true, message: true },
+    }),
+    tx.user.findFirst({
+      where: {
+        username: { equals: CLOSURE_VALIDATOR_USERNAME, mode: 'insensitive' },
+        active: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!alert || !validator) return;
+
+  const existing = await tx.task.findFirst({
+    where: { alertId: alert.id, deletedAt: null },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await tx.task.update({
+      where: { id: existing.id },
+      data: {
+        assigneeId: validator.id,
+        priority: Priority.CRITICA,
+        origin: TaskOrigin.ALERTA,
+      },
+    });
+    return;
+  }
+
+  await tx.task.create({
+    data: {
+      title: 'Validar cierre de turno',
+      description:
+        alert.message ??
+        'Revisión posterior obligatoria del cierre: informes, caja, elementos y trazabilidad.',
+      status: 'PENDIENTE',
+      priority: Priority.CRITICA,
+      origin: TaskOrigin.ALERTA,
+      assigneeId: validator.id,
+      createdById,
+      shiftId,
+      alertId: alert.id,
+      tags: ['cierre-turno', 'validacion-jefatura'],
+    },
+  });
+}
 
 /**
  * Turno que el usuario tiene abierto ahora mismo, si alguno.
@@ -523,18 +584,18 @@ export async function receiveHandover(
     if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
   }
 
-  const autoClose = await getSettingBool('shift.autoCloseOnReceive', true);
   /*
-    Una entrega histórica puede haberse enviado antes de que existiera el cierre
-    independiente de Caja. Si Caja está habilitada, recibirla no debe romper el
-    flujo intentando cerrar un turno cuya Caja sigue abierta: queda RECIBIDO y
-    se cierra después de cuadrar Caja. Las entregas nuevas con Caja ya cerrada
-    conservan el cierre automático configurado.
+    Regla canónica: RECIBIR es el cierre operativo del turno saliente.
+    No existe un segundo botón «Cerrar turno». Si Caja está habilitada, el
+    turno saliente debe tener un cierre de Caja vigente antes de poder recibir.
   */
-  let closeIncomingOnReceive = autoClose;
-  if (incoming && autoClose && (await isCashEnabled())) {
+  if (incoming && (await isCashEnabled())) {
     const cashClosure = await getShiftCashClosure(incoming.fromShiftId);
-    closeIncomingOnReceive = Boolean(cashClosure && !cashClosure.reopenedAt);
+    if (!cashClosure || cashClosure.reopenedAt) {
+      throw new RuleError(
+        'El turno saliente debe cerrar Caja antes de que puedas confirmar la recepción.',
+      );
+    }
   }
 
   return prisma.$transaction(async (tx) => {
@@ -565,24 +626,24 @@ export async function receiveHandover(
         await tx.shift.update({
           where: { id: fromShift.id },
           data: {
-            status: closeIncomingOnReceive ? ShiftStatus.CERRADO : ShiftStatus.RECIBIDO,
-            ...(closeIncomingOnReceive ? { actualEnd: now } : {}),
+            status: ShiftStatus.CERRADO,
+            actualEnd: now,
+            closedById: user.id,
           },
         });
         await recordAudit(
           {
             entity: 'Shift',
             entityId: fromShift.id,
-            action: closeIncomingOnReceive ? AuditAction.TURNO_CERRAR : AuditAction.CAMBIO_ESTADO,
-            summary: closeIncomingOnReceive
-              ? 'Turno cerrado automáticamente tras la confirmación de recepción'
-              : 'Turno marcado como recibido por el turno siguiente',
+            action: AuditAction.TURNO_CERRAR,
+            summary: 'Turno cerrado automáticamente tras la confirmación de recepción',
             user,
             before: { status: fromShift.status },
-            after: { status: closeIncomingOnReceive ? ShiftStatus.CERRADO : ShiftStatus.RECIBIDO },
+            after: { status: ShiftStatus.CERRADO },
           },
           tx,
         );
+        await ensureClosureValidationTask(tx, fromShift.id, user.id);
       }
 
       // Las alertas de entrega pendiente dejan de aplicar.
@@ -885,7 +946,7 @@ export async function closeShift(
         entity: 'Shift',
         entityId: shift.id,
         action: AuditAction.TURNO_CERRAR,
-        summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} cerrado por ${user.name}`,
+        summary: `Recuperación administrativa: turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} cerrado por ${user.name}`,
         user,
         before: { status: shift.status },
         after: { status: ShiftStatus.CERRADO },
@@ -893,6 +954,7 @@ export async function closeShift(
       },
       tx,
     );
+    await ensureClosureValidationTask(tx, shift.id, user.id);
     return closed;
   });
 }

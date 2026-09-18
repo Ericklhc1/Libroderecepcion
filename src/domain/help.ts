@@ -83,7 +83,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: '¿Dónde subo los tres informes del PMS?',
     steps: [
       'Entra a Turno: la primera tarjeta es la de los informes.',
-      'Adjunta los tres PDF: entradas, in house y salidas.',
+      'Para el cierre adjunta Actividad, Salidas e In house. Entradas sigue disponible para otros flujos del PMS.',
       'Revisa la propuesta antes de aplicarla: nada se sobrescribe sin que alguien lo vea.',
       'Aplica. De ahí sale el estado de las 89 habitaciones, la cola y las llaves.',
     ],
@@ -92,7 +92,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'día por cubierto, y el sistema lo dice.',
     route: '/turno',
     anyOf: ['pms.import'],
-    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'entradas', 'salidas', 'in house'],
+    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'actividad', 'entradas', 'salidas', 'in house'],
     tutorial: true,
   },
   {
@@ -119,14 +119,14 @@ export const HELP_TOPICS: HelpTopic[] = [
       'En Turno, pulsa preparar la entrega: el resumen se genera solo.',
       'Agrega las notas que el sistema no puede saber, clasificadas por urgencia.',
       'Cuenta la caja y declara los elementos.',
-      'Envía la entrega. El turno siguiente tiene que confirmarla.',
+      'Envía la entrega. Cuando el turno siguiente confirma la recepción, tu turno se cierra automáticamente.',
     ],
     caveat:
       'Si la caja no cuadra con el fondo fijo, hay que explicar la diferencia antes de ' +
       'entregar. Un faltante existe y se declara; lo que no se admite es el silencio.',
     route: '/turno',
     anyOf: ['shift.handover'],
-    keywords: ['entregar', 'entrega', 'cerrar', 'turno', 'resumen', 'traspaso'],
+    keywords: ['entregar', 'entrega', 'cierre', 'turno', 'resumen', 'traspaso', 'recibir'],
     action: 'regenerar-entrega',
     tutorial: true,
   },

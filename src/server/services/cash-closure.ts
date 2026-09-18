@@ -56,14 +56,6 @@ type ClosureRow = {
   snapshot: CashSnapshot;
 };
 
-type AuditRow = {
-  id: string;
-  currency: string;
-  countedAmount: Prisma.Decimal;
-  difference: Prisma.Decimal;
-  createdAt: Date;
-};
-
 const CLOSEABLE_SHIFT_STATUSES = [
   ShiftStatus.INICIADO,
   ShiftStatus.ACTIVO,

@@ -9,7 +9,7 @@ import { getFrontiConfig } from './fronti-config';
 import {
   chatWithFrontiProvider,
   providerIsConfigured,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
 } from './fronti-provider';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -375,7 +375,7 @@ export async function extractAndStoreMemories(
 
   try {
     const config = await getFrontiConfig();
-    const provider = resolveFrontiProvider(config);
+    const provider = await resolveFrontiProviderRuntime(config);
     if (!providerIsConfigured(provider)) return;
 
     const response = await chatWithFrontiProvider({

@@ -104,7 +104,7 @@ export const DEFAULT_SETTINGS = {
   'fronti.model': {
     value: 'openai/gpt-oss-120b',
     category: 'fronti',
-    description: 'Modelo utilizado por Fronti. Qwen3 es el modelo open-weight por defecto.',
+    description: 'Modelo utilizado por Fronti. El valor por defecto es un modelo open-weight con tool calling.',
   },
   'fronti.reasoningEffort': {
     value: 'low',

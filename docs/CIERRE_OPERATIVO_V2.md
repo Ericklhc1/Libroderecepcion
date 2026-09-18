@@ -101,7 +101,7 @@ El motor debe producir condiciones/acciones explicables y alimentar una Bandeja 
 
 ## Seguridad de despliegue
 
-Los despliegues Preview deben usar una rama Neon aislada creada para el Preview; nunca la base de Production. La integración Vercel ↔ Neon debe publicar DATABASE_URL y DATABASE_URL_UNPOOLED antes de ejecutar migraciones. Si no hay conexión aislada, el Preview debe fallar de forma segura antes de migrar o compilar.
+Los despliegues Preview/branch deploy deben usar una rama Neon aislada o la rama Neon `development`; nunca la base de Production. En Netlify, `DATABASE_URL` y `DIRECT_DATABASE_URL` de Production deben quedar limitadas al contexto de producción. Preview/desarrollo debe fallar de forma segura antes de migrar o ejecutar código con escritura si no tiene una conexión aislada.
 
 ## Criterios de aceptación mínimos
 

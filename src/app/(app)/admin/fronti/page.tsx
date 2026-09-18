@@ -17,7 +17,7 @@ import { getAllSettings } from '@/server/services/settings';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
   providerIsConfigured,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import {
@@ -126,7 +126,7 @@ export default async function FrontiAdminPage() {
     })) satisfies FrontiSettingRow[];
   const settingsByKey = byKey(settings);
   const activeTools = Object.values(config.tools).filter(Boolean).length;
-  const provider = resolveFrontiProvider(config);
+  const provider = await resolveFrontiProviderRuntime(config);
   const providerConfigured = providerIsConfigured(provider);
 
   return (

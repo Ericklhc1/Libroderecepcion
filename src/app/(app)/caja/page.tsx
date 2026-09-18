@@ -47,7 +47,7 @@ export default async function LiveCashPage() {
         <div>
           <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Saldo físico esperado, garantías en custodia, movimientos y auditorías. Los folios de
+            Saldo físico esperado, garantías en custodia, movimientos y corroboraciones. Los folios de
             gimnasio se muestran aquí como información y no modifican la caja.
           </p>
         </div>
@@ -115,7 +115,7 @@ export default async function LiveCashPage() {
                 </dl>
                 <div className="mt-3 no-print">
                   <Dialog
-                    title={`Auditar caja ${item.currency}`}
+                    title={`Corroborar caja ${item.currency}`}
                     description={`El sistema espera ${amount(item.currency, item.expected)}. Cuenta lo que existe físicamente ahora.`}
                     triggerVariant="secondary"
                     triggerSize="sm"
@@ -123,7 +123,7 @@ export default async function LiveCashPage() {
                     trigger={
                       <>
                         <Scale className="h-4 w-4" aria-hidden="true" />
-                        Auditar ahora
+                        Corroborar ahora
                       </>
                     }
                   >
@@ -169,9 +169,9 @@ export default async function LiveCashPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Últimas auditorías" count={state.audits.length} />
+          <CardHeader title="Últimas corroboraciones" count={state.audits.length} />
           {state.audits.length === 0 ? (
-            <EmptyState message="Todavía no se ha auditado la caja desde esta pantalla." />
+            <EmptyState message="Todavía no se ha corroborado la caja desde esta pantalla." />
           ) : (
             <ul className="divide-y divide-slate-100">
               {state.audits.map((audit) => (

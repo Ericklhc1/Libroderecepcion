@@ -398,40 +398,17 @@ async function prioritiesTool(user: CurrentUser) {
   const data = await getDashboardData(user);
   return {
     counters: data.counters,
-    rooms: data.roomsNeedingAction.map((room) => ({
-      room: room.number,
-      state: room.snapshot.state,
-      openIncidents: room.openIncidents,
-      keysOut: room.snapshot.keysOut.length,
+    attention: data.attention.map((item, index) => ({
+      order: index + 1,
+      kind: item.kind,
+      level: item.tone,
+      title: item.title,
+      reason: item.reason,
+      nextAction: item.action,
+      href: item.href,
     })),
-    overdueTasks: data.overdueTasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      priority: task.priority,
-      dueAt: task.dueAt,
-      assignee: task.assignee?.name ?? null,
-    })),
-    alerts: data.alerts.map((alert) => ({
-      id: alert.id,
-      level: alert.level,
-      title: alert.title,
-      message: alert.message,
-      dueAt: alert.dueAt,
-    })),
-    followUps: data.followUps.map((followUp) => ({
-      id: followUp.id,
-      action: followUp.action,
-      scheduledAt: followUp.scheduledAt,
-      status: followUp.status,
-      owner: followUp.owner?.name ?? null,
-    })),
-    criticalEntries: data.criticalEntries.map((entry) => ({
-      seq: entry.seq,
-      title: entry.title,
-      priority: entry.priority,
-      dueAt: entry.dueAt,
-      owner: entry.owner?.name ?? null,
-    })),
+    instruction:
+      'Este orden ya fue calculado por el motor determinístico del Libro. No lo reordenes ni inventes prioridades nuevas.',
   };
 }
 

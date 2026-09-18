@@ -76,3 +76,24 @@ Trabaja desde este estado. Antes de cambiar código, comprueba que el Codespace 
 ## Mensaje para ChatGPT
 
 Copilot debe actualizar este documento cuando termine trabajo significativo. ChatGPT puede leerlo desde GitHub y continuar desde la sección **Siguiente acción**.
+
+
+## Cambio de proveedor IA — 2026-09-18
+
+Fronti dejó de depender estructuralmente de OpenAI.
+
+Arquitectura:
+- motor operativo, permisos, herramientas, confirmaciones y memoria siguen en el Libro;
+- capa de inferencia desacoplada en `src/server/ai/fronti-provider.ts`;
+- proveedor inicial de staging: Groq;
+- modelo inicial estable: `openai/gpt-oss-120b` (open-weight);
+- vLLM queda soportado como backend autohospedable mediante `FRONTI_BASE_URL`;
+- OpenAI queda sólo como fallback explícito, no como dependencia obligatoria.
+
+Netlify staging tiene `GROQ_API_KEY`, `FRONTI_PROVIDER=groq` y
+`FRONTI_MODEL=openai/gpt-oss-120b`. Vercel Production aún NO recibe esta
+configuración: primero debe validarse en preproduction/Netlify.
+
+Fronti principal, briefing operativo y extracción de memoria usan el mismo
+adaptador. No debe existir una llamada directa a `api.openai.com` fuera del
+fallback explícito del adaptador.

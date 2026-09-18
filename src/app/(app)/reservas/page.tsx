@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BedDouble, FileUp, Folder, FolderOpen, Plus, Search } from 'lucide-react';
+import { FileUp, Folder, FolderOpen, Search } from 'lucide-react';
 import { requirePageAnyPermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';

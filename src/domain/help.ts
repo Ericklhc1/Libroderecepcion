@@ -83,7 +83,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: '¿Dónde subo los tres informes del PMS?',
     steps: [
       'Entra a Turno: la primera tarjeta es la de los informes.',
-      'Adjunta los tres PDF: entradas, in house y salidas.',
+      'Para el cierre adjunta Actividad, Salidas e In house. Entradas sigue disponible para otros flujos del PMS.',
       'Revisa la propuesta antes de aplicarla: nada se sobrescribe sin que alguien lo vea.',
       'Aplica. De ahí sale el estado de las 89 habitaciones, la cola y las llaves.',
     ],
@@ -92,7 +92,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'día por cubierto, y el sistema lo dice.',
     route: '/turno',
     anyOf: ['pms.import'],
-    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'entradas', 'salidas', 'in house'],
+    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'actividad', 'entradas', 'salidas', 'in house'],
     tutorial: true,
   },
   {

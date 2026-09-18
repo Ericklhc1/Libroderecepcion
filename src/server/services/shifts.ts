@@ -551,6 +551,7 @@ export async function receiveHandover(
           data: {
             status: ShiftStatus.CERRADO,
             actualEnd: now,
+            closedById: user.id,
           },
         });
         await recordAudit(

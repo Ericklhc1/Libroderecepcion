@@ -32,6 +32,7 @@ import {
   plannedWindow,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
+import { validateClosureReportSet } from '@/domain/pms/freshness';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -127,7 +128,7 @@ export async function prepareHandoverAction(
     return {
       ok: true as const,
       message:
-        'Cierre iniciado. Vuelve a cargar Entradas, In house y Salidas, revisa las discrepancias y después completa caja y novedades.',
+        'Cierre iniciado. Vuelve a cargar Actividad, In house y Salidas, revisa las discrepancias y después completa caja y novedades.',
       id: handover.id,
     };
   });
@@ -166,31 +167,32 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
   });
   if (!latest) {
     throw new RuleError(
-      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Entradas, In house y Salidas. Deben ser posteriores al inicio del cierre.',
+      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Actividad, In house y Salidas. Deben ser posteriores al inicio del cierre.',
     );
   }
 
-  const kinds = new Set(
-    (Array.isArray(latest.reports) ? latest.reports : [])
-      .map((report) =>
-        report && typeof report === 'object' && 'kind' in report
-          ? String((report as { kind?: unknown }).kind ?? '')
-          : '',
-      )
-      .filter(Boolean),
-  );
-  const requiredReports: ReadonlyArray<readonly [string, string]> = [
-    ['ENTRADAS', 'Entradas'],
-    ['IN_HOUSE', 'In house'],
-    ['SALIDAS', 'Salidas'],
-  ];
-  const missing = requiredReports.filter(([kind]) => !kinds.has(kind));
+  const reports = (Array.isArray(latest.reports) ? latest.reports : [])
+    .filter((report): report is { kind?: unknown; reportGeneratedAt?: unknown } =>
+      Boolean(report && typeof report === 'object'),
+    )
+    .map((report) => ({
+      kind: typeof report.kind === 'string' ? report.kind : null,
+      reportGeneratedAt:
+        typeof report.reportGeneratedAt === 'string' ? report.reportGeneratedAt : null,
+    }));
 
-  if (missing.length > 0) {
+  const validation = validateClosureReportSet(reports);
+  if (!validation.valid) {
+    const missing = validation.missing.length > 0
+      ? `Falta cargar: ${validation.missing.join(', ')}.`
+      : '';
+    const invalid = validation.invalid.length > 0
+      ? ` Reemplaza los informes vencidos o inválidos: ${validation.invalid
+          .map((item) => item.kind)
+          .join(', ')}.`
+      : '';
     throw new RuleError(
-      `La validación de cierre está incompleta. Falta cargar: ${missing
-        .map(([, label]) => label)
-        .join(', ')}.`,
+      `La validación de cierre está incompleta. ${missing}${invalid}`.trim(),
     );
   }
 }
@@ -237,11 +239,11 @@ export async function closeShiftAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.close');
+    const user = await requirePermission('shift.manage');
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
     await closeShift(user, input);
     refresh(input.shiftId);
-    return { ok: true as const, message: 'Turno cerrado.' };
+    return { ok: true as const, message: 'Cierre administrativo aplicado y auditado.' };
   });
 }
 

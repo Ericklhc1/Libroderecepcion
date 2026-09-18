@@ -7,7 +7,7 @@ import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/s
 import { loginSchema, passwordChangeSchema } from '@/server/schemas';
 import { clearSessionCookie, requestMeta, revokeSession, writeSessionCookie } from '@/server/auth/session';
 import { getCurrentUser } from '@/server/auth/current-user';
-import { requireUser } from '@/server/auth/guard';
+import { requireAuthenticatedUser } from '@/server/auth/guard';
 import { recordAudit } from '@/server/audit';
 import { authenticate, changeOwnPassword } from '@/server/services/auth';
 
@@ -56,7 +56,7 @@ export async function changePasswordAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireAuthenticatedUser();
     const input = parseOrThrow(passwordChangeSchema, formDataToObject(formData));
 
     const session = await changeOwnPassword(user, input);

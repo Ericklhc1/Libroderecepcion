@@ -24,7 +24,7 @@ import {
 import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
-import { getSettingNumber } from './settings';
+import { getSettingNumber, getSettingNumbers } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 
 let lastEngineRun = 0;
@@ -71,6 +71,18 @@ export async function getDashboardData(user: CurrentUser) {
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
+  const dashboardLimits = await getSettingNumbers([
+    'home.operationalFeedLimit',
+    'alerts.dashboardLimit',
+  ] as const);
+  const operationalFeedLimit = Math.max(
+    1,
+    Math.min(50, Math.trunc(dashboardLimits['home.operationalFeedLimit'] ?? 12)),
+  );
+  const alertDashboardLimit = Math.max(
+    1,
+    Math.min(50, Math.trunc(dashboardLimits['alerts.dashboardLimit'] ?? 10)),
+  );
 
   const [
     awaitingReceipt,
@@ -143,7 +155,7 @@ export async function getDashboardData(user: CurrentUser) {
         reservation: { select: { code: true } },
       },
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
-      take: 8,
+      take: alertDashboardLimit,
     }),
     prisma.followUp.findMany({
       where: {
@@ -164,7 +176,7 @@ export async function getDashboardData(user: CurrentUser) {
         department: { select: { name: true } },
       },
       orderBy: { occurredAt: 'desc' },
-      take: 6,
+      take: operationalFeedLimit,
     }),
     // Última entrega que recibió el turno en curso (o el usuario).
     prisma.shiftHandover.findFirst({

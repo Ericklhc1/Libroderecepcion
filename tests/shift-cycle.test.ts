@@ -55,7 +55,7 @@ describe('ciclo de turno de punta a punta', () => {
     const activationLog = await prisma.auditLog.findFirst({
       where: { entity: 'Shift', entityId: shiftA.id, action: 'TURNO_RECIBIR' },
     });
-    expect(activationLog?.summary).toContain('sin entrega previa');
+    expect(activationLog?.summary).toContain('sin Caja previa');
 
     const draft = await prepareHandover(morning, shiftA.id);
     expect(draft.status).toBe(HandoverStatus.BORRADOR);

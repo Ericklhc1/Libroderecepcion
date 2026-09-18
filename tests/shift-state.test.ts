@@ -24,6 +24,8 @@ describe('máquina de estados del turno', () => {
     expect(
       canTransition(ShiftStatus.PREPARANDO_ENTREGA, ShiftStatus.ENTREGA_ENVIADA),
     ).toBe(true);
+    expect(canTransition(ShiftStatus.ENTREGA_ENVIADA, ShiftStatus.CERRADO)).toBe(true);
+    // Compatibilidad histórica: RECIBIDO se conserva, aunque ya no sea requisito.
     expect(canTransition(ShiftStatus.ENTREGA_ENVIADA, ShiftStatus.RECIBIDO)).toBe(true);
     expect(canTransition(ShiftStatus.RECIBIDO, ShiftStatus.CERRADO)).toBe(true);
   });
@@ -32,7 +34,6 @@ describe('máquina de estados del turno', () => {
     expect(canTransition(ShiftStatus.PROGRAMADO, ShiftStatus.ACTIVO)).toBe(false);
     expect(canTransition(ShiftStatus.PROGRAMADO, ShiftStatus.CERRADO)).toBe(false);
     expect(canTransition(ShiftStatus.INICIADO, ShiftStatus.ENTREGA_ENVIADA)).toBe(false);
-    expect(canTransition(ShiftStatus.ENTREGA_ENVIADA, ShiftStatus.CERRADO)).toBe(false);
     expect(canTransition(ShiftStatus.ACTIVO, ShiftStatus.ENTREGA_ENVIADA)).toBe(false);
     expect(canTransition(ShiftStatus.ACTIVO, ShiftStatus.CERRADO)).toBe(false);
   });
@@ -56,10 +57,9 @@ describe('máquina de estados del turno', () => {
 
 describe('regla de cierre de turno', () => {
   /*
-    El cierre manual ya no sirve como atajo desde ACTIVO. El contrato operativo
-    es único: preparar entrega -> actualizar informes -> caja/elementos ->
-    enviar -> recibir -> cerrar. Así la capa de dominio y la interfaz no pueden
-    divergir ni dejar un cierre sin fotografía del PMS.
+    El cierre no sirve como atajo desde ACTIVO. El contrato del saliente es:
+    preparar entrega -> actualizar informes -> caja/elementos -> enviar -> cerrar.
+    La recepción del turno siguiente es independiente y no bloquea ese cierre.
   */
   it('bloquea el cierre de un turno que no inició la entrega', () => {
     expect(() =>
@@ -76,10 +76,10 @@ describe('regla de cierre de turno', () => {
     ).toThrow(/primero prepara la entrega/i);
   });
 
-  it('mientras el cierre espera en la bandeja, el turno no se cierra a mano', () => {
+  it('con la entrega enviada, el saliente puede cerrar sin esperar recepción', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.ENTREGA_ENVIADA, handoverStatus: 'ENVIADA' }),
-    ).toThrow(/bandeja/);
+    ).not.toThrow();
   });
 
   it('permite cerrar cuando la entrega fue recibida', () => {

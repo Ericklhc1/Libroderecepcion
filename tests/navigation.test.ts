@@ -28,10 +28,10 @@ describe('menú principal', () => {
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // qué ocurre ahora
-      '/libro', // qué tengo pendiente
+      '/turno', // qué estoy operando / qué debo entregar
       '/habitaciones', // qué ocurre en cada habitación
+      '/libro', // qué tengo pendiente
       '/caja', // qué hay en caja ahora mismo
-      '/turno', // qué debo entregar
       '/supervision', // qué debo revisar
     ]);
   });

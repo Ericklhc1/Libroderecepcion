@@ -4,7 +4,7 @@
 > `PROJECT_CONTEXT.md` y `docs/ARQUITECTURA.md`. Aquí sólo se responde «en qué
 > punto está cada bloque».
 
-Actualizado: **2026-09-18** · rama `refactor/turnos-solapados-caja` desde `e351f39`
+Actualizado: **2026-09-18** · corrección de coherencia visual tras release `bafa406`
 
 ## Estados canónicos
 
@@ -79,7 +79,8 @@ graph TD
   classDef dev fill:#dbeafe,stroke:#2563eb,color:#123
   classDef pend fill:#eceff3,stroke:#8a94a3,color:#123
   class STG val
-  class TURNO,CAJA dev
+  class TURNO val
+  class CAJA dev
   class PMS,RES,LIBRO,HAB,ENTREGA,SUP,ALERTA,AUD,AUTH,FRONTI pend
 ```
 
@@ -88,24 +89,24 @@ graph TD
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura de staging | `VALIDADO_STAGING` | #56 · #57 | Proyecto Neon aislado, 35 migraciones, seed sintético, cero datos de Production |
-| Turnos + transferencia de Caja | `PR_ABIERTO` | #59 | Implementación en revisión; aún no validada en staging |
+| Turnos + transferencia de Caja | `PRODUCTION` | #59 · #60 | Lógica desplegada en Vercel Production; se corrige navegación heredada |
 | ID FNS transversal | `PENDIENTE` | — | |
 | Simplificación del Libro | `PENDIENTE` | — | |
-| Caja unificada | `PENDIENTE` | — | |
+| Caja unificada | `EN_DESARROLLO` | corrección de navegación | Se retira el cierre de Caja como módulo visible independiente; la consolidación funcional continúa |
 | Habitaciones + Reservas | `PENDIENTE` | — | |
 | Preparar entrega | `PENDIENTE` | — | |
 | Validación integral en staging | `PENDIENTE` | — | Depende de todo lo anterior |
 
 ## Iteración actual
 
-**Turnos solapados + transferencia explícita de Caja** — `PR_ABIERTO`
+**Coherencia de navegación + Caja integrada en turno** — `EN_DESARROLLO`
 
 Un recepcionista entrante debe poder abrir su propio turno sin esperar el cierre
 del saliente. La única transferencia obligatoria entre turnos es Caja, trazada y
 sin autorización previa de Supervisión.
 
-- Rama: `refactor/turnos-solapados-caja` desde `e351f39`
-- PR: #59 (borrador; NO mergear todavía)
+- Release anterior: #59 → #60 → Vercel Production `bafa406`
+- Corrección actual: menú y tutorial deben dejar de presentar `Cierre de Caja` como módulo independiente
 - Cambio estructural: **la unicidad global por hotel se reemplaza por
   exclusividad de participación activa por usuario, garantizada en base de datos
   sobre `ShiftAssignment`.** Se retira el índice
@@ -124,8 +125,7 @@ sin autorización previa de Supervisión.
 
 ## Pendiente de staging
 
-Nada desplegado a la espera de prueba funcional. El primer candidato será la
-iteración de turnos + caja cuando su PR se mergee a `preproduction`.
+La lógica de turnos + Caja ya está en Production. La corrección actual elimina restos visuales heredados que contradicen el nuevo flujo.
 
 ## Bloqueos conocidos
 
@@ -135,7 +135,7 @@ iteración de turnos + caja cuando su PR se mergee a `preproduction`.
 | `DATABASE_URL` de Preview con alcance por rama en Vercel | Todo preview de una rama nueva falla en el build | Desactivar previews o corregir el alcance de la variable |
 | Integración Neon–Vercel | Cada preview clona la rama `production`: hoy hay 6 ramas Neon con copia de datos reales | Desactivar el branching de preview en la integración |
 | Netlify apunta a `main` en contexto `production` | Staging no está donde debe: la rama canónica debe ser `preproduction` | Cambio de rama canónica en el panel de Netlify |
-| Vercel Production desalineado | Sirve `827fe9b`; `main` está en `cc5f6eb` | Relanzar Production sobre el SHA de `main` |
+| Vercel Production | Alineado con `main@bafa406` y con respaldo recuperable | — |
 
 ## Regla de mantenimiento
 

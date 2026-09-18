@@ -6,7 +6,8 @@ Desde 2026-09-18 el proyecto tiene dos funciones de hosting claramente
 separadas:
 
 - **Vercel = Production principal.** La rama `main` representa lo que está
-  autorizado para operar en el hotel.
+  autorizado para operar en el hotel. Vercel puede generar previews de otras
+  ramas; esos previews no se consideran Production.
 - **Netlify = staging y pruebas reales.** Los cambios se prueban primero allí.
   Netlify usa exclusivamente la rama `development` de Neon y un
   `AUTH_SECRET` distinto a Production.

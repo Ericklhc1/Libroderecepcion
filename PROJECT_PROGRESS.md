@@ -106,8 +106,12 @@ sin autorización previa de Supervisión.
 
 - Rama prevista: `refactor/turnos-solapados-caja` desde `347026a`
 - PR: sin abrir
-- Cambio estructural: se retira el índice `Shift_un_solo_turno_en_curso` y se
-  reemplaza por unicidad **por iniciador** en lugar de por hotel
+- Cambio estructural: **la unicidad global por hotel se reemplaza por
+  exclusividad de participación activa por usuario, garantizada en base de datos
+  sobre `ShiftAssignment`.** Se retira el índice
+  `Shift_un_solo_turno_en_curso`; una persona no puede participar activamente en
+  dos turnos a la vez, sea TITULAR o APOYO, y lo impide PostgreSQL, no el
+  servicio
 
 ## Ya validado
 

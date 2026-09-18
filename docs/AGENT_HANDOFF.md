@@ -6,14 +6,17 @@
 ## Estado actual
 
 - Fecha de referencia: 2026-09-18
-- Producción: Netlify `libroderecepcion`
-- Rama de producción: `main`
-- Base de producción: Neon `production`
-- Base destinada a desarrollo: Neon `development`
-- Último release funcional conocido: `9deb7fa4914812a03d6649d335bd99ea74000798`
-- Estado del release: Netlify READY
-- Compuerta previa al merge: verde
-- Login Netlify + Neon: verificado funcionando
+- Production oficial: Vercel `libroderecepcion`
+- Rama de Production: `main`
+- Base de Production: Neon `production`
+- Staging real: Netlify `libroderecepcion`
+- Rama de staging: `preproduction`
+- Base de staging/desarrollo: Neon `development`
+- Netlify quedó aislado de Neon Production
+- Vercel quedó configurado para desplegar automáticamente sólo `main`
+- Compuerta corre en PR/push de `preproduction` y `main`
+- Pipeline: feature → preproduction → Netlify → validación → main → Vercel → tag `production-*`
+- Production no fue promovida durante la auditoría de IA; continúa intacta hasta validar staging
 
 ## Último bloque consolidado
 
@@ -30,13 +33,13 @@ Se consolidó Cierre Operativo V2:
 
 ## Infraestructura de desarrollo
 
-Netlify está conectado al repositorio y se comprobó un deploy disparado desde Codespaces.
-
 Desde 2026-09-18:
-- `DATABASE_URL` y `DIRECT_DATABASE_URL` de contextos `dev`, `branch-deploy` y `deploy-preview` apuntan a Neon `development`;
-- Production conserva Neon `production`;
-- el trabajo funcional debe seguir usando rama distinta de `main`;
-- Production no se usa como entorno de prueba.
+- Netlify es exclusivamente staging/prueba real y sus conexiones apuntan a Neon `development`;
+- Vercel es exclusivamente Production y `main` es su única rama de despliegue automático;
+- `preproduction` es la rama canónica de staging;
+- el trabajo funcional se hace en ramas feature y entra primero por PR a `preproduction`;
+- Production no se usa como entorno de prueba;
+- el repo incluye un empaquetado de `preproduction` para poder desplegar exactamente el SHA validado.
 
 ## Decisiones de continuidad
 
@@ -49,16 +52,20 @@ Desde 2026-09-18:
 
 ## Pendientes inmediatos
 
-- [x] Separar Netlify Preview/branch deploy de Neon Production.
+- [x] Separar Netlify de Neon Production.
 - [x] Retirar el endpoint temporal de diagnóstico de auth.
-- [ ] Evitar que el hook de Codespaces dispare Production durante trabajo experimental.
-- [ ] Revisar documentación histórica que aún describe Vercel como hosting primario.
+- [x] Evitar que ramas de trabajo/preproduction disparen builds de Vercel.
+- [x] Restaurar Vercel como hosting oficial de Production y Netlify como staging.
+- [x] Integrar Fronti al Inicio con bandeja determinística y briefing contextual.
+- [x] Fronti reporta fallos/mejoras a Supervisor + Administrador con deduplicación.
+- [ ] Terminar el disparo automático de `preproduction` hacia Netlify sin paso manual.
+- [ ] Integrar Fronti en ficha de Habitación, Turno y Supervisión.
 - [ ] Rotar la contraseña de la cuenta que fue compartida accidentalmente en una conversación, sin registrar la nueva credencial aquí.
 
 ## Siguiente acción
 
 Continuar desde ChatGPT como agente principal con:
-`rama de trabajo → Neon development → pruebas → Netlify Preview → PR → Compuerta → main → Production`.
+`feature → PR preproduction → Compuerta → Netlify + Neon development → validación → PR main → Vercel + Neon Production → tag production-*`.
 
 El puente de Copilot queda disponible como apoyo, pero no es requisito para continuar.
 

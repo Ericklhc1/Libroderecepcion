@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import {
   alertActionSchema,
@@ -13,6 +14,7 @@ import {
   acknowledgeAlert,
   createManualAlert,
   resolveAlert,
+  returnClosureValidation,
   restoreAlert,
   snoozeAlert,
   softDeleteAlert,
@@ -78,6 +80,42 @@ export async function resolveAlertAction(
     return { ok: true as const, message: 'Alerta resuelta.' };
   });
 }
+
+export async function validateClosureAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('alert.manage');
+    const input = parseOrThrow(
+      z.object({ id: z.string().min(1), note: z.string().trim().max(1000).optional() }),
+      formDataToObject(formData),
+    );
+    await resolveAlert(user, input);
+    refresh();
+    return { ok: true as const, message: 'Cierre validado por jefatura.' };
+  });
+}
+
+export async function returnClosureValidationAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('alert.manage');
+    const input = parseOrThrow(
+      z.object({
+        id: z.string().min(1),
+        note: z.string().trim().min(3, 'Escribe la corrección requerida.').max(1000),
+      }),
+      formDataToObject(formData),
+    );
+    await returnClosureValidation(user, input);
+    refresh();
+    return { ok: true as const, message: 'Cierre devuelto para corrección.' };
+  });
+}
+
 
 export async function deleteAlertAction(
   _state: ActionState | null,

@@ -8,12 +8,6 @@ export const DEFAULT_SETTINGS = {
     category: 'general',
     description: 'Nombre del hotel que se muestra en la cabecera.',
   },
-  'shift.autoCloseOnReceive': {
-    value: true,
-    category: 'turnos',
-    description:
-      'Cierra automáticamente el turno saliente cuando el turno siguiente confirma la recepción de la entrega.',
-  },
   'shift.handoverReminderMinutes': {
     value: 60,
     category: 'turnos',

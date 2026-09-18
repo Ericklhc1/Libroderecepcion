@@ -242,7 +242,7 @@ describe('dejar el sistema en cero', () => {
         id: 'mem-reset-fronti',
         user_id: receptionist.id,
         conversation_id: 'conv-reset-fronti',
-        scope: 'personal',
+        scope: 'PERSONAL',
         summary: 'memoria de prueba que debe desaparecer',
         expires_at: expiresAt,
       },

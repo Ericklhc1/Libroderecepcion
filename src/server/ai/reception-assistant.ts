@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { FollowUpStatus, Priority } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
@@ -61,14 +61,16 @@ type OpenAIResponse = {
 
 type PendingAction =
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'confirm_checkouts';
       expiresAt: number;
       args: { roomNumbers: string[]; note?: string | null };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_reminder';
       expiresAt: number;
@@ -80,7 +82,8 @@ type PendingAction =
       };
     }
   | {
-      version: 1;
+      version: 2;
+      nonce: string;
       userId: string;
       action: 'create_fine';
       expiresAt: number;
@@ -292,13 +295,41 @@ function verifyAction(token: string, user: CurrentUser): PendingAction {
   } catch {
     throw new Error('La confirmación no es válida.');
   }
-  if (parsed.version !== 1 || parsed.userId !== user.id) {
+  if (parsed.version !== 2 || !parsed.nonce || parsed.userId !== user.id) {
     throw new Error('Esta confirmación pertenece a otra sesión.');
   }
   if (parsed.expiresAt < Date.now()) {
     throw new Error('La confirmación venció. Vuelve a pedir la acción.');
   }
   return parsed;
+}
+
+async function claimConfirmation(pending: PendingAction): Promise<void> {
+  try {
+    await prisma.assistantActionReceipt.create({
+      data: {
+        nonce: pending.nonce,
+        userId: pending.userId,
+        action: pending.action,
+      },
+    });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      throw new Error('Esta confirmación ya fue usada. Vuelve a pedir la acción si necesitas repetirla.');
+    }
+    throw error;
+  }
+}
+
+async function releaseConfirmationClaim(pending: PendingAction): Promise<void> {
+  await prisma.assistantActionReceipt.deleteMany({
+    where: { nonce: pending.nonce, userId: pending.userId },
+  });
 }
 
 function makeConfirmation(
@@ -310,7 +341,8 @@ function makeConfirmation(
   risk: AssistantConfirmation['risk'],
 ): AssistantConfirmation {
   const payload = {
-    version: 1,
+    version: 2,
+    nonce: randomUUID(),
     userId: user.id,
     expiresAt: Date.now() + CONFIRMATION_TTL_MS,
     action,
@@ -896,7 +928,9 @@ export async function executeReceptionConfirmation(
   }
 
   const pending = verifyAction(token, user);
+  await claimConfirmation(pending);
 
+  try {
   if (pending.action === 'create_reminder') {
     assertToolEnabled(config, 'proponer_recordatorio');
     requireToolPermission(user, 'task.create');
@@ -963,4 +997,8 @@ export async function executeReceptionConfirmation(
     })),
   });
   return { reply: `Check-out confirmado: ${validated.map((item) => item.roomNumber).join(', ')}.` };
+  } catch (error) {
+    await releaseConfirmationClaim(pending);
+    throw error;
+  }
 }

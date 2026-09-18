@@ -250,7 +250,7 @@ export default async function ShiftPage() {
                     <>
                       <PrepareHandoverForm shiftId={shift.id} />
                       <p className="max-w-sm text-xs text-slate-500">
-                        El cierre operativo continúa con la entrega. No existe un cierre manual separado.
+                        Prepara y envía la entrega. Después podrás cerrar tu turno sin esperar la confirmación del siguiente.
                       </p>
                     </>
                   ) : null}
@@ -281,12 +281,13 @@ export default async function ShiftPage() {
               {shift.status === ShiftStatus.ENTREGA_ENVIADA ? (
                 <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 ring-1 ring-sky-200">
                   Entrega enviada{shift.handoverOut?.issuedAt ? ` ${relativeTime(shift.handoverOut.issuedAt)}` : ''}.
-                  El turno se cierra cuando el turno siguiente confirme la recepción.
+                  Tu participación operativa ya terminó. Puedes cerrar este turno sin esperar la confirmación del siguiente.
                 </p>
               ) : null}
             </div>
 
-            {shift.status === ShiftStatus.INICIADO ? (
+            {shift.status === ShiftStatus.INICIADO ||
+            (shift.status === ShiftStatus.ACTIVO && (cashIncoming || incoming)) ? (
               <div className="border-t border-slate-200 bg-gold-50/60 px-4 py-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-petrol-900">
                   <Inbox className="h-4 w-4" aria-hidden="true" />
@@ -325,7 +326,7 @@ export default async function ShiftPage() {
                       />
                     </div>
                   </>
-                ) : (
+                ) : shift.status === ShiftStatus.INICIADO ? (
                   <>
                     <p className="mt-1 text-sm text-slate-700">
                       No hay Caja ni entrega pendiente para este turno.
@@ -334,7 +335,7 @@ export default async function ShiftPage() {
                       <ReceiveHandoverForm shiftId={shift.id} hasHandover={false} />
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
             ) : null}
           </Card>

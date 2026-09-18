@@ -16,6 +16,7 @@ import {
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
 import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
+import { closeShiftCashAction } from '@/server/actions/cash-closure';
 
 export type DenominationOption = {
   id: string;
@@ -245,16 +246,24 @@ function ElementsForm({
 
 export function CashBox({
   handoverId,
+  shiftId,
   state,
   denominations,
   previous,
   role,
+  formalClosure,
 }: {
   handoverId: string;
+  shiftId: string;
   state: HandoverCashState;
   denominations: DenominationOption[];
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
+  formalClosure: {
+    closedAt: Date;
+    closedByName: string;
+    reopenedAt: Date | null;
+  } | null;
 }) {
   if (!state.enabled) return null;
 
@@ -414,6 +423,35 @@ export function CashBox({
               previous={previous}
             />
           </div>
+        ) : null}
+
+        {role === 'emisor' && state.declared ? (
+          <section className="rounded-xl bg-gold-50 p-3 ring-1 ring-gold-200 no-print">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-petrol-900">Confirmación del cierre formal</h3>
+                {formalClosure && !formalClosure.reopenedAt ? (
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Confirmado por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Congela este arqueo como cierre formal del turno. Una diferencia declarada no requiere autorización de Supervisión.
+                  </p>
+                )}
+              </div>
+              {formalClosure && !formalClosure.reopenedAt ? (
+                <Badge tone="resuelto">Cierre formal confirmado</Badge>
+              ) : (
+                <ActionForm action={closeShiftCashAction} className="space-y-0" refreshOnSuccess>
+                  <input type="hidden" name="shiftId" value={shiftId} />
+                  <SubmitButton variant="gold" pendingLabel="Confirmando…">
+                    Confirmar cierre formal
+                  </SubmitButton>
+                </ActionForm>
+              )}
+            </div>
+          </section>
         ) : null}
 
         {role === 'emisor' ? (

@@ -241,6 +241,7 @@ enum NotificationType {
    */
   MENCION
   ACCION_REQUERIDA
+  FRONTI_HALLAZGO
 }
 
 // =============================== IDENTIDAD ================================

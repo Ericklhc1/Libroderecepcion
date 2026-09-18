@@ -157,7 +157,6 @@ describe('ciclo de turno de punta a punta', () => {
 describe('invariantes del turno', () => {
   let morning: CurrentUser;
   let evening: CurrentUser;
-  let supervisor: CurrentUser;
   let validator: CurrentUser;
 
   beforeAll(async () => {
@@ -168,7 +167,6 @@ describe('invariantes del turno', () => {
     await resetOperationalData();
     morning = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno mañana' });
     evening = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno tarde' });
-    supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     validator = await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       name: 'Erick Herrera',
@@ -389,7 +387,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     await expect(closeShift(evening, { shiftId: shift.id })).rejects.toThrow(
-      /Sólo quien está en el turno o un supervisor/,
+      /Sólo quien estuvo en el turno o un supervisor/,
     );
   });
 

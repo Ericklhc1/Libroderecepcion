@@ -22,6 +22,7 @@ import {
   recordCashTransfer,
   saveCashCount,
 } from '@/server/services/cash';
+import { getMyActiveShift, receiveShiftCash } from '@/server/services/shifts';
 import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
 
@@ -94,17 +95,30 @@ export async function confirmCashCountAction(
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
 
-    const { statuses } = await saveCashCount(user, {
+    const shift = await getMyActiveShift(user.id);
+    if (!shift) {
+      throw new RuleError('Abre tu turno antes de recibir la Caja.');
+    }
+    const result = await receiveShiftCash(user, {
+      shiftId: shift.id,
       handoverId,
-      kind: 'CONFIRMADO',
       quantities: quantitiesFrom(formData),
       notes: typeof notes === 'string' ? notes : null,
     });
 
     revalidatePath('/turno');
     revalidatePath('/caja');
+    revalidatePath('/supervision');
+    revalidatePath('/notificaciones');
     revalidatePath(`/turno/entrega/${handoverId}`);
-    return { ok: true as const, message: summarise(statuses) };
+    return {
+      ok: true as const,
+      message:
+        summarise(result.statuses) +
+        (result.discrepancies.length
+          ? ' Hay una diferencia registrada para revisión de Supervisión.'
+          : ' Caja recibida sin diferencias.'),
+    };
   });
 }
 
@@ -148,7 +162,7 @@ export async function recordCashTransferAction(
       supervisors.map((supervisor) => ({
         userId: supervisor.id,
         type: NotificationType.ACCION_REQUERIDA,
-        title: 'Autorizar egreso de Caja',
+        title: 'Revisar egreso de Caja',
         body: `Egreso de ${input.amount.toLocaleString('es-CL')} ${input.currency}${
           input.reference ? ` · comprobante ${input.reference}` : ''
         }.`,
@@ -165,7 +179,7 @@ export async function recordCashTransferAction(
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió la solicitud de autorización.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió el aviso para revisión.`,
     };
   });
 }

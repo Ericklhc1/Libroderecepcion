@@ -4,7 +4,8 @@ import { CalendarClock, Inbox, Send, Users } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import {
-  getMyOpenShift,
+  getMyActiveShift,
+  getMyPendingClosureShift,
   getShiftBriefing,
   getShiftDesk,
 } from '@/server/services/shifts';
@@ -17,6 +18,7 @@ import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
+  CloseShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -54,9 +56,9 @@ export const maxDuration = 60;
 
 export default async function ShiftPage() {
   const user = await requirePageUser();
-  const shift = await getMyOpenShift(user.id);
+  const shift = await getMyActiveShift(user.id);
 
-  const [desk, reportsState, recentShifts] = await Promise.all([
+  const [desk, reportsState, recentShifts, pendingClosure] = await Promise.all([
     getShiftDesk(user),
     getShiftReportsState(),
     prisma.shift.findMany({
@@ -68,14 +70,15 @@ export default async function ShiftPage() {
       orderBy: [{ date: 'desc' }, { type: 'desc' }],
       take: 8,
     }),
+    getMyPendingClosureShift(user.id),
   ]);
 
   const [briefing, metrics] = shift
     ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
     : [null, null];
 
-  // La entrega que espera recepción: única, porque hay un turno a la vez.
   const incoming = desk.pending;
+  const cashIncoming = desk.cashPending;
 
   /*
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
@@ -91,7 +94,9 @@ export default async function ShiftPage() {
             deletedAt: null,
             active: true,
             role: { operational: true },
-            assignments: { none: { shiftId: shift!.id } },
+            assignments: {
+              none: { activatedAt: { not: null }, leftAt: null },
+            },
           },
           select: { id: true, name: true, username: true },
           orderBy: { name: 'asc' },
@@ -118,11 +123,38 @@ export default async function ShiftPage() {
         ) : null}
       </header>
 
+      {pendingClosure && pendingClosure.id !== shift?.id ? (
+        <Card>
+          <CardHeader title="Turno anterior pendiente de cierre" />
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+            <div>
+              <p className="text-sm font-medium text-petrol-900">
+                {SHIFT_TYPE_LABEL[pendingClosure.type]} · {formatDate(pendingClosure.date)}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                La entrega ya fue enviada. Puedes cerrar este turno sin esperar a que el
+                siguiente confirme la recepción.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {pendingClosure.handoverOut ? (
+                <Link
+                  href={`/turno/entrega/${pendingClosure.handoverOut.id}`}
+                  className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50"
+                >
+                  Ver entrega
+                </Link>
+              ) : null}
+              <CloseShiftForm shiftId={pendingClosure.id} />
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       {/*
         Los tres informes del PMS son el primer gesto del turno: de ellos sale
         el estado de las 89 habitaciones, la regla de cola y el inventario de
-        llaves. Se muestra tanto antes de iniciar el turno como durante él,
-        porque el PMS puede emitir informes nuevos a media jornada.
+        llaves.
       */}
       <ShiftReports
         state={reportsState}
@@ -133,12 +165,6 @@ export default async function ShiftPage() {
         <Card>
           <CardHeader title="Entrar al turno" />
           <div className="space-y-3 px-4 py-4">
-            {/*
-              Los turnos no están preestablecidos: no hay una lista de franjas
-              que elegir. Hay dos ventanas fijas y un solo turno en curso, así
-              que sólo caben dos situaciones —abrir el mío, o sumarme al que ya
-              está abierto— y el botón resuelve la que toque.
-            */}
             {!user.roleOperational ? (
               <EmptyState
                 message="El Administrador de sistema no participa en el ciclo de turnos."
@@ -146,41 +172,29 @@ export default async function ShiftPage() {
               />
             ) : (
               <>
-                {desk.current ? (
+                {cashIncoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
                     <p className="font-medium text-petrol-900">
-                      Hay un turno abierto: {SHIFT_TYPE_LABEL[desk.current.type]} ·{' '}
-                      {formatDate(desk.current.date)}
+                      El turno saliente ya declaró la Caja
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {desk.current.assignments.map((a) => a.user.name).join(', ')} ·{' '}
-                      {SHIFT_STATUS_LABEL[desk.current.status]}. Se trabaja sobre ése: no se
-                      abren turnos en paralelo.
+                      Abre tu turno propio. Después podrás recontar y recibir esa Caja sin
+                      esperar a que el saliente termine su entrega operativa.
                     </p>
                   </div>
-                ) : desk.pending ? (
+                ) : incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
-                    <p className="font-medium text-petrol-900">
-                      Hay un cierre esperando en la bandeja
-                    </p>
+                    <p className="font-medium text-petrol-900">Hay una entrega operativa pendiente</p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {SHIFT_TYPE_LABEL[desk.pending.fromShift.type]} del{' '}
-                      {formatDate(desk.pending.fromShift.date)}, entregado por{' '}
-                      {desk.pending.issuedBy.name}
-                      {desk.pending.issuedAt ? ` a las ${formatTime(desk.pending.issuedAt)}` : ''}.
-                      Abre tu turno para revisarlo y recibir la caja.
+                      Abre tu turno propio para revisarla. El turno saliente no bloquea tu apertura.
                     </p>
                   </div>
                 ) : (
                   <p className="text-sm text-slate-600">
-                    No hay ningún cierre pendiente. Abre tu turno para empezar.
+                    Abre tu turno para empezar. Otro turno puede seguir cerrando en paralelo.
                   </p>
                 )}
-
-                <OpenShiftForm
-                  suggestedType={desk.suggestedType}
-                  joining={Boolean(desk.current)}
-                />
+                <OpenShiftForm suggestedType={desk.suggestedType} />
               </>
             )}
           </div>
@@ -236,7 +250,7 @@ export default async function ShiftPage() {
                     <>
                       <PrepareHandoverForm shiftId={shift.id} />
                       <p className="max-w-sm text-xs text-slate-500">
-                        El cierre operativo continúa con la entrega. No existe un cierre manual separado.
+                        Prepara y envía la entrega. Después podrás cerrar tu turno sin esperar la confirmación del siguiente.
                       </p>
                     </>
                   ) : null}
@@ -267,40 +281,61 @@ export default async function ShiftPage() {
               {shift.status === ShiftStatus.ENTREGA_ENVIADA ? (
                 <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 ring-1 ring-sky-200">
                   Entrega enviada{shift.handoverOut?.issuedAt ? ` ${relativeTime(shift.handoverOut.issuedAt)}` : ''}.
-                  El turno se cierra cuando el turno siguiente confirme la recepción.
+                  Tu participación operativa ya terminó. Puedes cerrar este turno sin esperar la confirmación del siguiente.
                 </p>
               ) : null}
             </div>
 
-            {shift.status === ShiftStatus.INICIADO ? (
+            {shift.status === ShiftStatus.INICIADO ||
+            (shift.status === ShiftStatus.ACTIVO && (cashIncoming || incoming)) ? (
               <div className="border-t border-slate-200 bg-gold-50/60 px-4 py-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-petrol-900">
                   <Inbox className="h-4 w-4" aria-hidden="true" />
                   Confirmar recepción
                 </h3>
-                {incoming ? (
-                  <p className="mt-1 text-sm text-slate-700">
-                    Entrega de {incoming.issuedBy.name} · turno{' '}
-                    {SHIFT_TYPE_LABEL[incoming.fromShift.type]} ·{' '}
+                {cashIncoming ? (
+                  <>
+                    <p className="mt-1 text-sm text-slate-700">
+                      La Caja del turno anterior ya está declarada. Recuéntala primero; no
+                      necesitas esperar a que la entrega completa sea enviada.
+                    </p>
                     <Link
-                      href={`/turno/entrega/${incoming.id}`}
-                      className="font-medium text-petrol-700 hover:underline"
+                      href={`/turno/entrega/${cashIncoming.id}`}
+                      className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
                     >
-                      ver los {incoming.items.length} puntos
+                      Recontar y recibir Caja
                     </Link>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-slate-700">
-                    No hay entrega pendiente para este turno.
-                  </p>
-                )}
-                <div className="mt-3 max-w-lg">
-                  <ReceiveHandoverForm
-                    shiftId={shift.id}
-                    handoverId={incoming?.id}
-                    hasHandover={Boolean(incoming)}
-                  />
-                </div>
+                  </>
+                ) : incoming ? (
+                  <>
+                    <p className="mt-1 text-sm text-slate-700">
+                      Entrega de {incoming.issuedBy.name} · turno{' '}
+                      {SHIFT_TYPE_LABEL[incoming.fromShift.type]} ·{' '}
+                      <Link
+                        href={`/turno/entrega/${incoming.id}`}
+                        className="font-medium text-petrol-700 hover:underline"
+                      >
+                        ver los {incoming.items.length} puntos
+                      </Link>
+                    </p>
+                    <div className="mt-3 max-w-lg">
+                      <ReceiveHandoverForm
+                        shiftId={shift.id}
+                        handoverId={incoming.id}
+                        hasHandover
+                      />
+                    </div>
+                  </>
+                ) : shift.status === ShiftStatus.INICIADO ? (
+                  <>
+                    <p className="mt-1 text-sm text-slate-700">
+                      No hay Caja ni entrega pendiente para este turno.
+                    </p>
+                    <div className="mt-3 max-w-lg">
+                      <ReceiveHandoverForm shiftId={shift.id} hasHandover={false} />
+                    </div>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </Card>

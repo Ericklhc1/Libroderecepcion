@@ -301,7 +301,124 @@ export async function saveCashCount(
   return { statuses };
 }
 
-/** Egreso a tesorería. Todo monto real requiere validación de Supervisión. */
+/**
+ * Arqueo CONFIRMADO de una entrega, dentro de una transacción ajena.
+ *
+ * Es la mitad «caja» de la recepción de caja; la mitad «turno» vive en
+ * `shifts.receiveShiftCash`, que es quien orquesta.
+ *
+ * Diferencia importante con `saveCashCount`: acá se usa `create` y **no**
+ * `deleteMany` + `create`. Eso convierte al índice `@@unique([handoverId,
+ * kind])` en la garantía de base de datos de que **una caja se recibe una sola
+ * vez**: si dos turnos entrantes intentan reclamarla a la vez, el segundo
+ * choca contra el índice en lugar de sobrescribir el arqueo del primero.
+ *
+ * Devuelve las diferencias respecto al arqueo declarado. No bloquea por
+ * ellas: quien decide qué hacer con una diferencia es Supervisión, después.
+ */
+export async function confirmHandoverCash(
+  tx: Tx,
+  user: CurrentUser,
+  params: {
+    handoverId: string;
+    quantities: Record<string, number>;
+    notes?: string | null;
+  },
+): Promise<{
+  statuses: FundStatus[];
+  discrepancies: ReturnType<typeof countDiscrepancies>;
+}> {
+  const entries = Object.entries(params.quantities).filter(([, quantity]) => quantity > 0);
+  assertValidQuantities(entries.map(([, quantity]) => ({ quantity })));
+
+  const denominations = await tx.cashDenomination.findMany({
+    where: {
+      id: { in: entries.map(([id]) => id) },
+      currency: { in: [...CASH_CURRENCIES] },
+    },
+  });
+  if (denominations.length !== entries.length) {
+    throw new RuleError(
+      'El arqueo incluye una denominación que no existe o una divisa no habilitada.',
+    );
+  }
+
+  const declared = await tx.cashCount.findFirst({
+    where: { handoverId: params.handoverId, kind: CashCountKind.DECLARADO },
+    include: { lines: { include: { denomination: true } } },
+  });
+  if (!declared) {
+    throw new RuleError(
+      'El turno saliente todavía no hizo su arqueo de caja. No hay nada que recibir.',
+    );
+  }
+
+  const lines = entries.map(([denominationId, quantity]) => {
+    const denomination = denominations.find((row) => row.id === denominationId)!;
+    return { denominationId, quantity, denomination };
+  });
+
+  const funds = await listFunds(tx);
+  const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
+
+  await tx.cashCount.create({
+    data: {
+      handoverId: params.handoverId,
+      kind: CashCountKind.CONFIRMADO,
+      countedById: user.id,
+      notes: params.notes?.trim() || null,
+      lines: {
+        createMany: {
+          data: lines.map((line) => ({
+            denominationId: line.denominationId,
+            quantity: line.quantity,
+          })),
+        },
+      },
+    },
+  });
+
+  const discrepancies = countDiscrepancies(countedLines(declared.lines), countedLines(lines));
+
+  await recordAudit(
+    {
+      entity: 'CashCount',
+      entityId: params.handoverId,
+      action: AuditAction.CREAR,
+      summary:
+        `Caja recibida por ${user.name}: ` +
+        statuses
+          .map((status) => `${fromMinor(status.countedMinor, status.currency)} ${status.currency}`)
+          .join(', ') +
+        (discrepancies.length > 0
+          ? ` · diferencia ${discrepancies
+              .map(
+                (row) =>
+                  `${row.differenceMinor > 0 ? '+' : ''}${fromMinor(
+                    row.differenceMinor,
+                    row.currency,
+                  )} ${row.currency}`,
+              )
+              .join(', ')}`
+          : ' · sin diferencias'),
+      user,
+    },
+    tx,
+  );
+
+  return { statuses, discrepancies };
+}
+
+/** Reconoce el choque del índice que impide recibir dos veces la misma caja. */
+export function isCashAlreadyReceived(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    JSON.stringify(error.meta ?? {}).includes('handoverId')
+  );
+}
+
+/** Egreso a tesorería. Queda registrado y auditado; Supervisión revisa después. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -479,18 +596,26 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     }
   }
 
-  const pendingTransfers = state.transfers.filter(
-    (transfer) => transfer.amount > 0 && !transfer.approved,
-  );
-  if (pendingTransfers.length > 0) {
-    problems.push(
-      `Hay ${pendingTransfers.length} egreso(s) a tesorería pendiente(s) de validación por Supervisión.`,
-    );
-  }
+  /*
+    Acá había un bloqueo por egresos a tesorería sin validar por Supervisión.
+    Se retiró: la revisión de Supervisión es POSTERIOR y no paraliza la
+    operación. Cada egreso ya genera su alerta crítica en `recordCashTransfer`
+    y queda auditado; el turno no se queda detenido esperando a que alguien la
+    mire.
+  */
 
   return problems;
 }
 
+/**
+ * Lo único que impide confirmar la entrega operativa: no haber recibido la caja.
+ *
+ * **Sólo Caja bloquea.** Llaves, elementos físicos, observaciones y cualquier
+ * otra diferencia se siguen registrando y pueden generar alerta o seguimiento,
+ * pero no detienen al turno entrante. Antes sí lo hacían: faltaba confirmar un
+ * elemento declarado y la recepción entera se quedaba trabada, cuando lo que
+ * hace falta para operar es el dinero, no el dispensador de cinta.
+ */
 export async function cashBlockersForReceiving(handoverId: string): Promise<string[]> {
   if (!(await isCashEnabled())) return [];
 
@@ -499,16 +624,23 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
 
   if (!state.confirmed) {
     problems.push(
-      'Cuenta la caja y confirma el fondo fijo antes de recibir el turno. Si no coincide con lo declarado, la diferencia queda registrada.',
+      'Recibe la caja antes de confirmar la entrega. Si el conteo no coincide con lo declarado, la diferencia queda registrada y Supervisión la revisa después.',
     );
   }
 
-  // Quien recibe confirma únicamente lo que efectivamente fue declarado por
-  // quien entrega; un catálogo activo no significa que todos sus elementos
-  // tengan que circular en cada turno.
-  const missing = state.elements.filter((element) => element.declared && !element.confirmed);
-  if (missing.length > 0) {
-    problems.push(`Confirma que recibes: ${missing.map((element) => element.name).join(', ')}.`);
-  }
   return problems;
+}
+
+/**
+ * Elementos físicos declarados que el turno entrante todavía no confirmó.
+ *
+ * Informativo, nunca bloqueante: sirve para mostrarlos en pantalla y para
+ * dejar seguimiento. Reemplaza al bloqueo que antes vivía dentro de
+ * `cashBlockersForReceiving`.
+ */
+export async function pendingHandoverElements(handoverId: string): Promise<string[]> {
+  const state = await getHandoverCashState(handoverId);
+  return state.elements
+    .filter((element) => element.declared && !element.confirmed)
+    .map((element) => element.name);
 }

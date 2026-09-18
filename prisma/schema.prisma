@@ -509,12 +509,16 @@ model Shift {
    * por dia, y de ahi salia la idea de «programar» los turnos. Los turnos se
    * crean a voluntad, asi que puede haber dos turnos de dia el mismo dia
    * (una cobertura partida, un relevo adelantado).
-   * La invariante que SI se exige es «un solo turno en curso a la vez», y la
-   * garantiza un indice unico PARCIAL que Prisma no sabe expresar:
-   * `Shift_un_solo_turno_en_curso`, creado en la migracion
-   * 20260916170000_turnos_dia_noche. Vive en SQL a proposito; el servicio
-   * tambien lo comprueba para dar un mensaje legible, pero quien impide la
-   * carrera entre dos recepcionistas es el indice.
+   *
+   * TAMPOCO hay unicidad de «un solo turno en curso». El indice
+   * `Shift_un_solo_turno_en_curso` se retiro en la migracion
+   * 20260918163000_turnos_solapados_caja: obligaba al recepcionista entrante a
+   * esperar el cierre completo del saliente, que es justo lo que habia que
+   * eliminar. Los turnos se solapan a proposito.
+   *
+   * La invariante que reemplaza a aquella no vive aca: vive en
+   * `ShiftAssignment`, y es «una persona no puede participar activamente en
+   * dos turnos a la vez», TITULAR o APOYO.
    */
   @@index([status])
   @@index([date])
@@ -530,8 +534,37 @@ model ShiftAssignment {
   role      AssignmentRole @default(TITULAR)
   createdAt DateTime       @default(now())
 
+  /// Momento en que la persona entró de verdad al turno.
+  ///
+  /// `null` = asignación programada: el supervisor dejó el nombre puesto pero
+  /// esa persona todavía no está en el mesón, así que no le impide entrar a
+  /// otro turno.
+  activatedAt DateTime?
+
+  /// Momento en que dejó de participar operativamente.
+  ///
+  /// Se fija al enviar la entrega, al cerrar y al anular. Mientras
+  /// `activatedAt` no sea nulo y esto sí lo sea, la participación está ACTIVA.
+  leftAt      DateTime?
+
   @@unique([shiftId, userId])
   @@index([userId])
+  /**
+   * UNA PERSONA, UNA PARTICIPACIÓN ACTIVA.
+   *
+   * La invariante del proyecto dejó de ser «un solo turno en el hotel» y pasó
+   * a ser «una persona no puede estar activa en dos turnos a la vez», sea
+   * TITULAR o APOYO. Los turnos SÍ pueden solaparse: el saliente prepara su
+   * entrega mientras el entrante ya opera.
+   *
+   * La garantiza un índice único PARCIAL que Prisma no sabe expresar:
+   * `ShiftAssignment_participacion_activa_por_usuario`, sobre (`userId`) con
+   * `WHERE "activatedAt" IS NOT NULL AND "leftAt" IS NULL`. Vive en SQL a
+   * propósito, en la migración 20260918163000_turnos_solapados_caja. El
+   * servicio también lo comprueba para dar un mensaje legible, pero quien
+   * impide la carrera entre dos pestañas es el índice.
+   */
+  @@index([userId, leftAt])
 }
 
 model ShiftHandover {

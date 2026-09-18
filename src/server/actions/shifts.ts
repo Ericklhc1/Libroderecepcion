@@ -434,9 +434,14 @@ export async function cancelShiftAction(
     if (shift.status !== ShiftStatus.PROGRAMADO) {
       throw new RuleError('Sólo pueden anularse turnos que aún no han iniciado.');
     }
-    await prisma.shift.update({
-      where: { id: shift.id },
-      data: { status: ShiftStatus.ANULADO, notes: input.reason },
+    await prisma.$transaction(async (tx) => {
+      await tx.shift.update({
+        where: { id: shift.id },
+        data: { status: ShiftStatus.ANULADO, notes: input.reason },
+      });
+      // Anular libera a quien estuviera activo: si no, quedaría sin poder
+      // abrir ningún otro turno.
+      await endParticipation(tx, shift.id, new Date());
     });
     await recordAudit({
       entity: 'Shift',

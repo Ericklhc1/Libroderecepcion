@@ -5,14 +5,22 @@ import { RuleError } from '@/server/errors';
  * Máquina de estados del turno.
  *
  *   PROGRAMADO → INICIADO → ACTIVO → PREPARANDO_ENTREGA → ENTREGA_ENVIADA
- *              → RECIBIDO → CERRADO
+ *              → CERRADO
+ *
+ * El ciclo canónico del turno saliente termina en CERRADO **por su cuenta**,
+ * después de enviar su entrega. Que otra persona reciba esa entrega más tarde
+ * NO es condición para cerrar: antes lo era, y de ahí venía el atasco.
+ *
+ * `RECIBIDO` se conserva sólo por compatibilidad histórica: hay turnos viejos
+ * con ese estado y quitarlo del enum exigiría una migración destructiva sin
+ * ganancia. No es parte del flujo nuevo y nada lo exige.
  *
  * Toda transición se valida en servidor. Cualquier combinación ausente de este
  * mapa es un estado contradictorio y se rechaza.
  */
 export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   [ShiftStatus.PROGRAMADO]: [ShiftStatus.INICIADO, ShiftStatus.ANULADO],
-  // INICIADO: el turno arrancó pero aún no confirmó la entrega anterior.
+  // INICIADO: el turno arrancó pero aún no recibió la caja anterior.
   [ShiftStatus.INICIADO]: [ShiftStatus.ACTIVO],
   [ShiftStatus.ACTIVO]: [ShiftStatus.PREPARANDO_ENTREGA],
   // Permite volver atrás si la entrega se preparó por error.
@@ -20,26 +28,44 @@ export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
     ShiftStatus.ENTREGA_ENVIADA,
     ShiftStatus.ACTIVO,
   ],
-  [ShiftStatus.ENTREGA_ENVIADA]: [ShiftStatus.RECIBIDO],
+  /*
+    ENTREGA_ENVIADA cierra directamente. `RECIBIDO` sigue admitido como paso
+    intermedio para no romper turnos históricos que quedaron ahí, pero el
+    camino normal es ENTREGA_ENVIADA → CERRADO.
+  */
+  [ShiftStatus.ENTREGA_ENVIADA]: [ShiftStatus.CERRADO, ShiftStatus.RECIBIDO],
   [ShiftStatus.RECIBIDO]: [ShiftStatus.CERRADO],
   [ShiftStatus.CERRADO]: [],
   [ShiftStatus.ANULADO]: [],
 };
 
 /**
- * Estados en los que el turno está EN CURSO y por lo tanto **bloquea abrir
- * otro**. La regla es global, no por usuario: en el hotel hay un solo mesón.
+ * Estados en los que el turno está EN CURSO.
  *
- * `ENTREGA_ENVIADA` queda deliberadamente fuera. Un turno que ya envió su
- * cierre está esperando en la bandeja a que alguien lo reciba, y ese alguien
- * necesita abrir su turno para recibirlo: si bloqueara, el relevo sería
- * imposible y es exactamente el atasco que había.
+ * **Ya no bloquea abrir otro turno.** Varios turnos pueden estar en curso a la
+ * vez: el saliente preparando su entrega y el entrante ya operando. Lo que no
+ * puede repetirse es una *persona*, y eso lo garantiza el índice único parcial
+ * `ShiftAssignment_participacion_activa_por_usuario`, no esta lista.
+ *
+ * `ENTREGA_ENVIADA` queda fuera: ese turno ya no está en el mesón, está
+ * esperando cerrarse.
  */
-export const OCCUPYING_SHIFT_STATUSES: ShiftStatus[] = [
+export const IN_PROGRESS_SHIFT_STATUSES: ShiftStatus[] = [
   ShiftStatus.INICIADO,
   ShiftStatus.ACTIVO,
   ShiftStatus.PREPARANDO_ENTREGA,
 ];
+
+/**
+ * Nombre anterior de `IN_PROGRESS_SHIFT_STATUSES`.
+ *
+ * Se conserva porque el nombre viejo decía «ocupa el mesón, nadie más puede
+ * abrir», y eso ya no es cierto. Queda como alias para no tocar llamadores que
+ * sólo preguntan «¿está en curso?».
+ *
+ * @deprecated Usa `IN_PROGRESS_SHIFT_STATUSES`.
+ */
+export const OCCUPYING_SHIFT_STATUSES = IN_PROGRESS_SHIFT_STATUSES;
 
 /** Estados en los que el turno ya no admite registros operativos nuevos. */
 export const FINISHED_SHIFT_STATUSES: ShiftStatus[] = [
@@ -114,14 +140,19 @@ export function assertTransition(from: ShiftStatus, to: ShiftStatus): void {
 /**
  * Regla de cierre.
  *
- * Un cierre operativo siempre recorre la misma secuencia: preparar entrega,
- * actualizar los informes, completar caja/elementos, enviar y recibir. El
- * cierre directo desde ACTIVO se eliminó porque abría una segunda ruta capaz
- * de saltarse precisamente esas validaciones.
+ * Un cierre operativo recorre la misma secuencia de siempre: preparar la
+ * entrega, actualizar los informes, cuadrar la caja, revisar novedades y
+ * enviarla. Lo que cambia es el final: **el turno cierra por su cuenta en
+ * cuanto su entrega está enviada.**
  *
- * Un turno abierto por error se resuelve desde Administración mediante la
- * retirada/anulación auditada del Administrador de sistema; no mediante un
- * «cierre rápido» que parezca un cierre operativo válido.
+ * Antes había que esperar a que otra persona la recibiera, y eso paralizaba el
+ * cierre cuando nadie llegaba a recibir o cuando el relevo tardaba. Recibir la
+ * caja es asunto del turno entrante; cerrar es asunto del saliente. Que la
+ * entrega ya esté recibida tampoco estorba: también cierra.
+ *
+ * El cierre directo desde ACTIVO sigue prohibido: abriría una ruta capaz de
+ * saltarse el arqueo, los informes y las novedades. Un turno abierto por error
+ * se resuelve desde Administración con retirada o anulación auditada.
  */
 export function assertCanClose(params: {
   status: ShiftStatus;
@@ -133,19 +164,13 @@ export function assertCanClose(params: {
     throw new RuleError('El turno ya está cerrado.');
   }
 
-  if (handoverStatus === 'ENVIADA') {
-    throw new RuleError(
-      'El cierre está en la bandeja esperando que el turno siguiente confirme la recepción.',
-    );
-  }
-
-  if (handoverStatus === 'RECIBIDA' && status === ShiftStatus.RECIBIDO) {
+  if (handoverStatus === 'ENVIADA' || handoverStatus === 'RECIBIDA') {
     assertTransition(status, ShiftStatus.CERRADO);
     return;
   }
 
   throw new RuleError(
-    'Para cerrar el turno primero prepara la entrega, actualiza los informes, completa caja y elementos, envíala y espera la confirmación del turno entrante.',
+    'Para cerrar el turno primero prepara la entrega, actualiza los informes, cuadra la caja, revisa las novedades y envíala.',
   );
 }
 

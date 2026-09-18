@@ -53,6 +53,7 @@ export type FrontiProviderConfig = {
   baseUrl: string;
   apiKey: string | null;
   model: string;
+  reasoningEffort: 'low' | 'medium' | 'high';
 };
 
 export class FrontiProviderError extends Error {
@@ -73,6 +74,7 @@ function trimSlash(value: string): string {
 export function resolveFrontiProvider(input: {
   provider: FrontiProviderName;
   model: string;
+  reasoningEffort: 'low' | 'medium' | 'high';
 }): FrontiProviderConfig {
   const runtime = env();
 
@@ -82,6 +84,7 @@ export function resolveFrontiProvider(input: {
       baseUrl: trimSlash(runtime.FRONTI_BASE_URL ?? ''),
       apiKey: runtime.FRONTI_API_KEY ?? null,
       model: input.model,
+      reasoningEffort: input.reasoningEffort,
     };
   }
 
@@ -166,7 +169,13 @@ export async function chatWithFrontiProvider(args: {
         tools: args.tools?.length ? args.tools : undefined,
         tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
         parallel_tool_calls: false,
-        temperature: 0.1,
+        ...(args.provider.provider === 'groq' &&
+        args.provider.model.startsWith('openai/gpt-oss-')
+          ? {
+              reasoning_effort: args.provider.reasoningEffort,
+              include_reasoning: false,
+            }
+          : {}),
       }),
     });
   } catch (error) {

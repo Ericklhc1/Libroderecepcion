@@ -7,3 +7,5 @@ Netlify: relanzar build con variables de Neon configuradas.
 Netlify: relanzar build con AUTH_SECRET configurado.
 
 Netlify: relanzar build con AUTH_SECRET disponible en todos los scopes.
+
+Netlify: forzar build del HEAD actual con fix de sesión robusta.

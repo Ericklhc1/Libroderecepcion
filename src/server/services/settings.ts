@@ -251,6 +251,30 @@ export async function getSettingString(
   return typeof value === 'string' && value.length > 0 ? value : fallback;
 }
 
+/**
+ * Lee varios parámetros numéricos en un solo viaje a la base.
+ * Útil para pantallas calientes como Inicio: evita añadir esperas paralelas
+ * sólo para recuperar límites configurables.
+ */
+export async function getSettingNumbers(
+  keys: readonly SettingKey[],
+): Promise<Record<string, number>> {
+  const rows = await prisma.systemSetting.findMany({
+    where: { key: { in: [...keys] } },
+    select: { key: true, value: true },
+  });
+  const byKey = new Map(rows.map((row) => [row.key, row.value]));
+
+  return Object.fromEntries(
+    keys.map((key) => {
+      const fallback = Number(DEFAULT_SETTINGS[key].value);
+      const raw = byKey.has(key) ? byKey.get(key) : DEFAULT_SETTINGS[key].value;
+      const parsed = typeof raw === 'number' ? raw : Number(raw);
+      return [key, Number.isFinite(parsed) ? parsed : (Number.isFinite(fallback) ? fallback : 0)];
+    }),
+  );
+}
+
 export async function getAllSettings() {
   const rows = await prisma.systemSetting.findMany({ orderBy: { key: 'asc' } });
   const byKey = new Map(rows.map((r) => [r.key, r]));

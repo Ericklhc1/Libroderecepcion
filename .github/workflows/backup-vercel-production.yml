@@ -1,7 +1,9 @@
 name: Respaldo Vercel Production
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Compuerta"]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -9,17 +11,19 @@ permissions:
 
 jobs:
   backup:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Código
+      - name: Código verificado
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Esperar a que Vercel sirva este commit
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
           PRODUCTION_URL: https://libroderecepcion.vercel.app
         run: |
           ok=0
@@ -51,7 +55,7 @@ jobs:
 
       - name: Crear respaldo recuperable
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

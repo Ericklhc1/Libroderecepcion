@@ -9,6 +9,7 @@ import {
 import { openShift } from '@/server/services/shifts';
 import { createEntry } from '@/server/services/entries';
 import { RuleError } from '@/server/errors';
+import { TERMS_DOCUMENT, TERMS_VERSION } from '@/domain/legal';
 import {
   ROLE_KEYS,
   closeAllShifts,

@@ -18,7 +18,8 @@
     "db:reset": "prisma migrate reset --force",
     "demo:purge": "tsx scripts/purge-demo.ts",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "vercel-build": "tsx scripts/vercel-build.ts",
+    "deploy-build": "tsx scripts/deploy-build.ts",
+    "vercel-build": "tsx scripts/deploy-build.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

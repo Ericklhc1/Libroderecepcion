@@ -17,7 +17,6 @@ import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
-  CloseShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -241,8 +240,7 @@ export default async function ShiftPage() {
                         no relevan a nadie— pero el camino principal es
                         entregar: el cierre queda en la bandeja.
                       */}
-                      <CloseShiftForm shiftId={shift.id} />
-                    </>
+</>
                   ) : null}
                   {shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
                     <>
@@ -257,8 +255,7 @@ export default async function ShiftPage() {
                     </>
                   ) : null}
                   {shift.status === ShiftStatus.RECIBIDO ? (
-                    <CloseShiftForm shiftId={shift.id} />
-                  ) : null}
+) : null}
                 </div>
               </div>
 

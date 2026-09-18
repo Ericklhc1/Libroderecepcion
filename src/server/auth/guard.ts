@@ -73,10 +73,25 @@ export async function requirePermissionOrOwner(
   );
 }
 
-/** Para páginas: redirige a /login o /sin-permisos en lugar de lanzar. */
-export async function requirePageUser(): Promise<CurrentUser> {
+/**
+ * Para páginas: redirige antes de que la página empiece a cargar servicios
+ * operativos. Next puede renderizar layout y page en paralelo; por eso la
+ * puerta de primer acceso no puede vivir sólo en el layout.
+ *
+ * `allowIncompleteAccess` se usa exclusivamente en las dos pantallas previas
+ * al acceso operativo: cambiar contraseña y aceptar términos.
+ */
+export async function requirePageUser(
+  options: { allowIncompleteAccess?: boolean } = {},
+): Promise<CurrentUser> {
   const user = await requireAuthenticatedUser().catch(() => null);
   if (!user) redirect('/login');
+
+  if (!options.allowIncompleteAccess) {
+    if (user.mustChangePassword) redirect('/cambiar-contrasena');
+    if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
+  }
+
   return user;
 }
 

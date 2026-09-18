@@ -15,9 +15,9 @@ Qué se puede hacer en ella:
   el correo existe, y bloqueo temporal tras cinco intentos fallidos.
 - Recorrer el ciclo completo del turno: iniciar, recibir la entrega anterior,
   registrar novedades, preparar la entrega (con resumen automático), agregar
-  notas manuales, enviarla y cerrar el turno.
-- Comprobar las reglas: intentar cerrar el turno sin entregar, recibir dos
-  veces la misma entrega o cerrar una incidencia sin resolución devuelve el
+  notas manuales y enviarla; la recepción del relevo cierra el turno saliente.
+- Comprobar las reglas: recibir dos veces la misma entrega, omitir condiciones
+  obligatorias del cierre o cerrar una incidencia sin resolución devuelve el
   mismo mensaje que la aplicación.
 - Cambiar de usuario (recepcionista, supervisor, auditor nocturno,
   administrador) y ver cómo cambian el menú y las acciones disponibles.

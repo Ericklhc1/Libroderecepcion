@@ -46,7 +46,7 @@ export default async function ReservationsPage() {
     label: `${guest.fullName}${guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}`,
   }));
 
-  const activeIds = folders.rooms.reduce((total, room) => total + room.stays.length, 0);
+  const activeIds = folders.rooms.reduce((total, room) => total + room.reservations.length, 0);
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -129,14 +129,14 @@ export default async function ReservationsPage() {
                 {room.floor ? <Chip>Piso {room.floor}</Chip> : null}
               </div>
 
-              {room.stays.length === 0 ? (
+              {room.reservations.length === 0 ? (
                 <div className="px-3 py-5">
                   <EmptyState message="Sin ID activo." />
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {room.stays.map((stay) => (
-                    <li key={stay.stayId}>
+                  {room.reservations.map((stay) => (
+                    <li key={stay.fnsId}>
                       <Link
                         href={`/reservas/${encodeURIComponent(stay.fnsId)}`}
                         className="block px-3 py-3 hover:bg-slate-50"

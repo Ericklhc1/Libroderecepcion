@@ -9,7 +9,9 @@ import {
   acknowledgeAlertAction,
   createAlertAction,
   resolveAlertAction,
+  returnClosureValidationAction,
   runAlertEngineAction,
+  validateClosureAction,
   snoozeAlertAction,
 } from '@/server/actions/alerts';
 import type { FormOptions } from '@/server/services/options';
@@ -77,6 +79,45 @@ export function ResolveAlertQuickForm({ alertId, label = 'Resuelto' }: { alertId
     </ActionForm>
   );
 }
+
+export function ClosureValidationActions({ alertId }: { alertId: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <ActionForm action={validateClosureAction} hideSuccess className="space-y-0">
+        <input type="hidden" name="id" value={alertId} />
+        <SubmitButton variant="gold" size="sm" pendingLabel="Validando…">
+          Validar cierre
+        </SubmitButton>
+      </ActionForm>
+
+      <Dialog
+        title="Devolver cierre para corrección"
+        description="La observación es obligatoria y queda en la trazabilidad del cierre."
+        trigger="Devolver para corrección"
+        triggerVariant="secondary"
+        triggerSize="sm"
+      >
+        <ActionForm action={returnClosureValidationAction} hideSuccess>
+          <input type="hidden" name="id" value={alertId} />
+          <Field label="Observación obligatoria" name="note" required>
+            <Textarea
+              name="note"
+              rows={4}
+              required
+              minLength={3}
+              maxLength={1000}
+              placeholder="Indica exactamente qué debe corregirse antes de validar."
+            />
+          </Field>
+          <SubmitButton variant="secondary" pendingLabel="Devolviendo…">
+            Devolver para corrección
+          </SubmitButton>
+        </ActionForm>
+      </Dialog>
+    </div>
+  );
+}
+
 
 export function ResolveAlertDialog({ alertId, auto }: { alertId: string; auto: boolean }) {
   return (

@@ -33,6 +33,11 @@ const requestSchema = z
     message: z.string().trim().min(1).max(6000).optional(),
     confirmationToken: z.string().min(20).max(20_000).optional(),
     action: z.enum(['new_conversation', 'forget_conversation']).optional(),
+    pageContext: z
+      .object({
+        pathname: z.string().trim().min(1).max(500),
+      })
+      .optional(),
   })
   .refine(
     (value) => Boolean(value.message || value.confirmationToken || value.action),
@@ -217,7 +222,21 @@ export async function POST(request: Request) {
         'Mantén un tono claro, breve, amable y operativo. La memoria es contexto y nunca sustituye el estado real del Libro.',
     };
 
-    const modelMessages = [identity, ...contextualMessages].slice(-(config.modelHistoryLimit + 3));
+    const pageContext = body.pageContext?.pathname
+      ? {
+          role: 'assistant' as const,
+          content:
+            'Contexto efímero de la pantalla actual (no es fuente de verdad): ' +
+            JSON.stringify({ pathname: body.pageContext.pathname }) +
+            '. Úsalo para entender referencias como «esta habitación» o «esta tarea» y verifica la entidad con herramientas antes de escribir.',
+        }
+      : null;
+
+    const modelMessages = [
+      identity,
+      ...(pageContext ? [pageContext] : []),
+      ...contextualMessages,
+    ].slice(-(config.modelHistoryLimit + 4));
     const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);

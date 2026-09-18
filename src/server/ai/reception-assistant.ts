@@ -29,7 +29,7 @@ import {
 import {
   chatWithFrontiProvider,
   FrontiProviderError,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
   type FrontiChatMessage,
   type FrontiToolDefinition,
 } from './fronti-provider';
@@ -772,7 +772,7 @@ export async function runReceptionAssistant(
     throw new AssistantError('DESACTIVADO');
   }
 
-  const provider = resolveFrontiProvider(config);
+  const provider = await resolveFrontiProviderRuntime(config);
   const tools = chatTools(config);
   let chat = messagesAsChat(messages, config);
   const confirmations: AssistantConfirmation[] = [];

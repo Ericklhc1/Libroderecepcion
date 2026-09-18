@@ -41,6 +41,8 @@ export type StructuredReport = {
   kindSource: 'título' | 'columnas' | null;
   title: string | null;
   reportDate: string | null;
+  /** Timestamp exacto impreso por FNS, sin interpretar zona horaria. */
+  reportGeneratedAt: string | null;
   columns: DetectedColumn[];
   /** Encabezados que el diccionario no reconoció; se muestran en la revisión. */
   unmapped: Array<{ header: string; x: number }>;
@@ -275,6 +277,13 @@ function detectKindFromColumns(columns: DetectedColumn[]): ReportKind | null {
 
 const DATE_IN_TEXT = /(\d{1,2}\/\d{1,2}\/\d{4})/g;
 
+function findReportGeneratedAt(lines: Line[]): string | null {
+  const generated = lines.find((line) => /informe generado/i.test(lineText(line)));
+  if (!generated) return null;
+  const match = lineText(generated).match(GENERATED_AT_IN_TEXT);
+  return match ? `${match[1]} ${match[2]}` : null;
+}
+
 function findReportDate(lines: Line[]): string | null {
   const generated = lines.find((line) => /informe generado/i.test(lineText(line)));
   const fromGenerated = generated ? lineText(generated).match(DATE_IN_TEXT) : null;
@@ -333,6 +342,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
   });
   const title = titleLine ? lineText(titleLine) : null;
   const reportDate = findReportDate(lines);
+  const reportGeneratedAt = findReportGeneratedAt(lines);
 
   let columns: DetectedColumn[] = [];
   let unmapped: Array<{ header: string; x: number }> = [];
@@ -451,6 +461,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     kindSource: kind ? (fromTitle ? 'título' : 'columnas') : null,
     title,
     reportDate,
+    reportGeneratedAt,
     columns,
     unmapped,
     records,

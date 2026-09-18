@@ -75,6 +75,21 @@ describe('términos versionados del Libro', () => {
     expect(source).toContain("redirect('/aceptar-terminos')");
   });
 
+  it('las páginas operativas cortan antes de cargar servicios si faltan requisitos de acceso', () => {
+    const guard = readFileSync('src/server/auth/guard.ts', 'utf-8');
+    const passwordPage = readFileSync('src/app/cambiar-contrasena/page.tsx', 'utf-8');
+    const termsPage = readFileSync('src/app/aceptar-terminos/page.tsx', 'utf-8');
+
+    expect(guard).toContain('allowIncompleteAccess');
+    expect(guard).toContain("redirect('/cambiar-contrasena')");
+    expect(guard).toContain("redirect('/aceptar-terminos')");
+    expect(guard).toContain('hasAcceptedCurrentTerms(user.id)');
+
+    // Sólo estas dos pantallas pueden renderizar antes de completar el primer acceso.
+    expect(passwordPage).toContain('allowIncompleteAccess: true');
+    expect(termsPage).toContain('allowIncompleteAccess: true');
+  });
+
   it('la atribución LLM es única y se reutiliza en las interfaces de IA', () => {
     const fronti = readFileSync('src/components/layout/fronti-assistant.tsx', 'utf-8');
     const brief = readFileSync('src/components/operational/operational-brief.tsx', 'utf-8');

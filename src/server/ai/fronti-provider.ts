@@ -140,6 +140,7 @@ export async function chatWithFrontiProvider(args: {
   provider: FrontiProviderConfig;
   messages: FrontiChatMessage[];
   tools?: FrontiToolDefinition[];
+  toolChoice?: 'auto' | 'required' | 'none';
 }): Promise<{
   text: string;
   toolCalls: FrontiToolCall[];
@@ -163,7 +164,7 @@ export async function chatWithFrontiProvider(args: {
         model: args.provider.model,
         messages: args.messages,
         tools: args.tools?.length ? args.tools : undefined,
-        tool_choice: args.tools?.length ? 'auto' : undefined,
+        tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
         parallel_tool_calls: false,
         temperature: 0.1,
       }),

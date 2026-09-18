@@ -1,0 +1,35 @@
+name: Smoke Netlify Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/smoke-netlify.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Esperar propagación
+        run: sleep 10
+
+      - name: Login responde
+        run: |
+          code=$(curl -sS -o /tmp/login.html -w "%{http_code}" https://libroderecepcion.netlify.app/login)
+          test "$code" = "200"
+          grep -q "Iniciar sesión" /tmp/login.html
+
+      - name: Auth runtime configurado
+        run: |
+          curl -fsS https://libroderecepcion.netlify.app/api/health/auth | tee /tmp/auth.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/auth.json'))
+          assert data.get('ok') is True, data
+          assert data.get('databaseConfigured') is True, data
+          assert data.get('authSecretConfigured') is True, data
+          assert data.get('authSecretLengthValid') is True, data
+          assert data.get('nodeEnv') == 'production', data
+          PY

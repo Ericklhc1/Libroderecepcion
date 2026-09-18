@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { AiAttribution } from '@/components/ai/ai-attribution';
 import {
   Check,
@@ -88,6 +89,7 @@ function welcomeMessages(config: ClientConfig): ChatMessage[] {
 }
 
 export function FrontiAssistant() {
+  const pathname = usePathname();
   const [config, setConfig] = useState<ClientConfig>(DEFAULT_CONFIG);
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -249,7 +251,10 @@ export function FrontiAssistant() {
     lastActivityRef.current = Date.now();
 
     try {
-      const payload = await request({ message: content });
+      const payload = await request({
+        message: content,
+        pageContext: { pathname },
+      });
       if (payload.reset) {
         setMessages([
           ...welcomeMessages(config),

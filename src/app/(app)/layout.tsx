@@ -20,6 +20,7 @@ import { logoutAction } from '@/server/actions/auth';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
+import { AiAttribution } from '@/components/ai/ai-attribution';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -146,6 +147,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
 
         <main className="min-w-0 flex-1 px-4 pb-24 pt-4 lg:pb-8">{children}</main>
+        <AiAttribution className="px-4 pb-24 lg:pb-4" />
       </div>
 
       <MobileNav items={items} badges={badges} />

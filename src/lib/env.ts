@@ -2,6 +2,16 @@ import { z } from 'zod';
 import { normalizeDatabaseEnv } from './database-url';
 import { DEFAULT_ASSISTANT_MODEL } from '@/domain/assistant-status';
 
+const secretEnv = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    const unquoted = trimmed.match(/^(["'])(.*)\1$/s)?.[2] ?? trimmed;
+    return unquoted.trim();
+  },
+  z.string().min(1),
+).optional();
+
 /**
  * Validación de variables de entorno. Falla temprano y con mensaje claro si
  * falta configuración crítica. Nunca se exponen al cliente.
@@ -20,13 +30,13 @@ const schema = z.object({
   // mismo código a un servidor vLLM autohospedado sin reescribir el agente.
   FRONTI_PROVIDER: z.enum(['groq', 'vllm', 'openai']).default('groq'),
   FRONTI_MODEL: z.string().min(1).default(DEFAULT_ASSISTANT_MODEL),
-  GROQ_API_KEY: z.string().min(1).optional(),
+  GROQ_API_KEY: secretEnv,
   FRONTI_BASE_URL: z.string().url().optional(),
-  FRONTI_API_KEY: z.string().min(1).optional(),
+  FRONTI_API_KEY: secretEnv,
 
   // Compatibilidad temporal. OpenAI deja de ser la dependencia estructural,
   // pero puede mantenerse como fallback explícito durante la transición.
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: secretEnv,
   OPENAI_MODEL: z.string().min(1).optional(),
 
   // Correo saliente. Opcional: si falta, el sistema muestra la clave en

@@ -41,7 +41,6 @@ import {
 import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import {
-  CloseShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
   OpenShiftForm,
@@ -125,10 +124,7 @@ export default async function DashboardPage() {
             ) : null}
 
             {shift && shift.status === ShiftStatus.ACTIVO ? (
-              <>
-                <PrepareHandoverForm shiftId={shift.id} />
-                {!data.nextShift ? <CloseShiftForm shiftId={shift.id} /> : null}
-              </>
+              <PrepareHandoverForm shiftId={shift.id} />
             ) : null}
 
             {shift && shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
@@ -147,9 +143,6 @@ export default async function DashboardPage() {
               </p>
             ) : null}
 
-            {shift && shift.status === ShiftStatus.RECIBIDO ? (
-              <CloseShiftForm shiftId={shift.id} />
-            ) : null}
 
             <Link
               href="/turno"

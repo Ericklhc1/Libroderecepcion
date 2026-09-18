@@ -10,6 +10,10 @@
 # El archivo de workflow por sí solo NO lo dispara: así puede subirse y quedar
 # esperando a que existan los secretos, sin ejecuciones en rojo.
 #
+# Usa secretos de REPOSITORIO, no de Environment: el Environment `staging`
+# tiene las ramas desplegables restringidas a `preproduction` y rechazaría este
+# job, que corre en una rama técnica.
+#
 # NUNCA TOCA PRODUCTION. Tres barreras de identidad antes de migrar, y el job
 # aborta si el destino no es el endpoint declarado de `development`.
 
@@ -33,7 +37,6 @@ jobs:
     name: prisma migrate deploy sobre development
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: staging
 
     env:
       DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}

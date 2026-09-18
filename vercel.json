@@ -8,11 +8,5 @@
       "path": "/api/cron/ai-memory",
       "schedule": "17 6 * * *"
     }
-  ],
-  "git": {
-    "deploymentEnabled": {
-      "*": false,
-      "main": true
-    }
-  }
+  ]
 }

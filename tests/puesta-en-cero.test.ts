@@ -200,10 +200,18 @@ describe('dejar el sistema en cero', () => {
     expect(quedan[0]!.id).toBe(admin.id);
   });
 
-  it('sin marcar «borrar cuentas», el equipo se conserva', async () => {
+  it('sin marcar «borrar cuentas», el equipo y sus aceptaciones legales se conservan', async () => {
     await conDatosDePrueba();
     const antes = await prisma.user.count();
     expect(antes).toBeGreaterThan(1);
+
+    await prisma.legalAcceptance.create({
+      data: {
+        userId: admin.id,
+        document: TERMS_DOCUMENT,
+        version: TERMS_VERSION,
+      },
+    });
 
     await runFactoryReset(admin, {
       phrase: RESET_PHRASE,
@@ -211,6 +219,11 @@ describe('dejar el sistema en cero', () => {
     });
 
     expect(await prisma.user.count()).toBe(antes);
+    expect(
+      await prisma.legalAcceptance.count({
+        where: { userId: admin.id, document: TERMS_DOCUMENT, version: TERMS_VERSION },
+      }),
+    ).toBe(1);
   });
 
   it('conserva usuarios pero borra memoria, conversaciones y confirmaciones de Fronti', async () => {

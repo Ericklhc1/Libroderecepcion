@@ -19,6 +19,7 @@ import { QuickActions } from '@/components/layout/quick-actions';
 import { logoutAction } from '@/server/actions/auth';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
+import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -27,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect('/login');
   }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
+  if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
 
   const [hotelName, alerts, unreadNotifications, myOpenTasks, blocking, tutorialRow] =
     await Promise.all([

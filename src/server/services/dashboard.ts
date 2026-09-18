@@ -24,7 +24,7 @@ import {
 import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
-import { getSettingNumber } from './settings';
+import { getSettingNumber, getSettingNumbers } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 
 let lastEngineRun = 0;
@@ -71,12 +71,18 @@ export async function getDashboardData(user: CurrentUser) {
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
-  const [operationalFeedLimitRaw, alertDashboardLimitRaw] = await Promise.all([
-    getSettingNumber('home.operationalFeedLimit', 12),
-    getSettingNumber('alerts.dashboardLimit', 10),
-  ]);
-  const operationalFeedLimit = Math.max(1, Math.min(50, Math.trunc(operationalFeedLimitRaw)));
-  const alertDashboardLimit = Math.max(1, Math.min(50, Math.trunc(alertDashboardLimitRaw)));
+  const dashboardLimits = await getSettingNumbers([
+    'home.operationalFeedLimit',
+    'alerts.dashboardLimit',
+  ] as const);
+  const operationalFeedLimit = Math.max(
+    1,
+    Math.min(50, Math.trunc(dashboardLimits['home.operationalFeedLimit'] ?? 12)),
+  );
+  const alertDashboardLimit = Math.max(
+    1,
+    Math.min(50, Math.trunc(dashboardLimits['alerts.dashboardLimit'] ?? 10)),
+  );
 
   const [
     awaitingReceipt,

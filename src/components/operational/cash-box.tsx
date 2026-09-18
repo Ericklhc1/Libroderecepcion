@@ -260,9 +260,9 @@ export function CashBox({
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
   formalClosure: {
-    closedAt: Date;
+    closedAt: string;
     closedByName: string;
-    reopenedAt: Date | null;
+    reopenedAt: string | null;
   } | null;
 }) {
   if (!state.enabled) return null;

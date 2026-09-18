@@ -11,7 +11,7 @@ import {
   type AssistantFailure,
 } from '@/domain/assistant-status';
 
-/** Las ocho causas, para no repetirlas en cada prueba. */
+/** Las causas conocidas, para no repetirlas en cada prueba. */
 const CAUSAS: AssistantFailure[] = [
   'SIN_CLAVE',
   'CLAVE_RECHAZADA',
@@ -20,6 +20,7 @@ const CAUSAS: AssistantFailure[] = [
   'SATURADO',
   'CAIDO',
   'SIN_RESPUESTA',
+  'PETICION_INVALIDA',
   'DESACTIVADO',
 ];
 
@@ -255,5 +256,16 @@ describe('el modelo y el plazo están declarados', () => {
     const source = readFileSync('src/app/api/fronti/route.ts', 'utf-8');
     expect(source).toContain('AssistantError');
     expect(source).toContain('ASSISTANT_FAILURE_STATUS');
+  });
+
+  it('las confirmaciones mutables son de un solo uso persistente', () => {
+    const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf-8');
+    const schema = readFileSync('prisma/schema.prisma', 'utf-8');
+
+    expect(source).toContain('nonce: randomUUID()');
+    expect(source).toContain('assistantActionReceipt.create');
+    expect(source).toContain('claimConfirmation(pending)');
+    expect(schema).toContain('model AssistantActionReceipt');
+    expect(schema).toContain('nonce     String   @unique');
   });
 });

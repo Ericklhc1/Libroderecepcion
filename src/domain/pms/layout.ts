@@ -276,6 +276,7 @@ function detectKindFromColumns(columns: DetectedColumn[]): ReportKind | null {
 }
 
 const DATE_IN_TEXT = /(\d{1,2}\/\d{1,2}\/\d{4})/g;
+const GENERATED_AT_IN_TEXT = /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}:\d{2}:\d{2})/;
 
 function findReportGeneratedAt(lines: Line[]): string | null {
   const generated = lines.find((line) => /informe generado/i.test(lineText(line)));

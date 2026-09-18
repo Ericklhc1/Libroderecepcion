@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Sparkles, RefreshCw } from 'lucide-react';
+import { AiAttribution } from '@/components/ai/ai-attribution';
 
 type BriefResponse = {
   brief?: string;
@@ -63,6 +64,7 @@ export function OperationalBriefButton() {
               Análisis contextual · {new Date(generatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
             </p>
           ) : null}
+          <AiAttribution className="mt-2 justify-start text-left opacity-80" />
         </div>
       ) : null}
 

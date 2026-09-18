@@ -441,8 +441,8 @@ conserva su modelo y sus reglas.
 ## Rendimiento: lo aprendido en producción
 
 La base está en `sa-east-1`. Production se sirve desde **Vercel** y Netlify es
-exclusivamente staging/pruebas reales contra Neon `development`. Vercel sólo debe
-desplegar automáticamente `main`; Netlify nunca debe escribir en Neon Production.
+staging/pruebas reales contra Neon `development`. Vercel puede generar previews de
+ramas; sólo `main` se considera Production. Netlify nunca debe escribir en Neon Production.
 La lección de rendimiento permanece: la latencia entre función y base puede convertir
 consultas encadenadas en un problema
 operativo. De ahí vienen varias reglas de rendimiento que no deben revertirse:

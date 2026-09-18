@@ -171,15 +171,15 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
     );
   }
 
-  const reports = (Array.isArray(latest.reports) ? latest.reports : [])
-    .filter((report): report is { kind?: unknown; reportGeneratedAt?: unknown } =>
-      Boolean(report && typeof report === 'object'),
-    )
-    .map((report) => ({
-      kind: typeof report.kind === 'string' ? report.kind : null,
+  const reports = (Array.isArray(latest.reports) ? latest.reports : []).flatMap((report) => {
+    if (!report || typeof report !== 'object' || Array.isArray(report)) return [];
+    const row = report as Record<string, unknown>;
+    return [{
+      kind: typeof row.kind === 'string' ? row.kind : null,
       reportGeneratedAt:
-        typeof report.reportGeneratedAt === 'string' ? report.reportGeneratedAt : null,
-    }));
+        typeof row.reportGeneratedAt === 'string' ? row.reportGeneratedAt : null,
+    }];
+  });
 
   const validation = validateClosureReportSet(reports);
   if (!validation.valid) {
@@ -210,7 +210,7 @@ export async function sendHandoverAction(
     revalidatePath(`/turno/entrega/${handover.id}`);
     return {
       ok: true as const,
-      message: 'Entrega enviada. Queda en la bandeja para recepción y validación de Supervisión.',
+      message: 'Entrega enviada. Queda en la bandeja para recepción; al recibirse se cerrará el turno saliente y quedará pendiente la validación de jefatura.',
       id: handover.id,
     };
   });

@@ -71,6 +71,12 @@ export async function getDashboardData(user: CurrentUser) {
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
+  const [operationalFeedLimitRaw, alertDashboardLimitRaw] = await Promise.all([
+    getSettingNumber('home.operationalFeedLimit', 12),
+    getSettingNumber('alerts.dashboardLimit', 10),
+  ]);
+  const operationalFeedLimit = Math.max(1, Math.min(50, Math.trunc(operationalFeedLimitRaw)));
+  const alertDashboardLimit = Math.max(1, Math.min(50, Math.trunc(alertDashboardLimitRaw)));
 
   const [
     awaitingReceipt,
@@ -143,7 +149,7 @@ export async function getDashboardData(user: CurrentUser) {
         reservation: { select: { code: true } },
       },
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
-      take: 8,
+      take: alertDashboardLimit,
     }),
     prisma.followUp.findMany({
       where: {
@@ -164,7 +170,7 @@ export async function getDashboardData(user: CurrentUser) {
         department: { select: { name: true } },
       },
       orderBy: { occurredAt: 'desc' },
-      take: 6,
+      take: operationalFeedLimit,
     }),
     // Última entrega que recibió el turno en curso (o el usuario).
     prisma.shiftHandover.findFirst({

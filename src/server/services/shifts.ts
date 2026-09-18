@@ -221,9 +221,17 @@ export async function getCurrentShift(): Promise<ShiftWithDetail | null> {
  */
 export async function getShiftsAwaitingReceipt(): Promise<ShiftWithDetail[]> {
   return prisma.shift.findMany({
-    where: { status: ShiftStatus.ENTREGA_ENVIADA, archivedAt: null },
+    where: {
+      archivedAt: null,
+      handoverOut: {
+        is: {
+          status: HandoverStatus.ENVIADA,
+          receivedAt: null,
+        },
+      },
+    },
     include: shiftInclude,
-    orderBy: { actualEnd: 'asc' },
+    orderBy: [{ actualEnd: 'asc' }, { updatedAt: 'asc' }],
   });
 }
 

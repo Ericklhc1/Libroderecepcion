@@ -15,6 +15,8 @@ import {
 } from '@/server/actions/cash';
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
+import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
+import { closeShiftCashAction } from '@/server/actions/cash-closure';
 
 export type DenominationOption = {
   id: string;
@@ -244,28 +246,36 @@ function ElementsForm({
 
 export function CashBox({
   handoverId,
+  shiftId,
   state,
   denominations,
   previous,
   role,
+  formalClosure,
 }: {
   handoverId: string;
+  shiftId: string;
   state: HandoverCashState;
   denominations: DenominationOption[];
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
+  formalClosure: {
+    closedAt: string;
+    closedByName: string;
+    reopenedAt: string | null;
+  } | null;
 }) {
   if (!state.enabled) return null;
 
   return (
     <Card>
       <CardHeader
-        title="Caja, garantías y elementos"
+        title="Cierre formal de Caja"
         action={state.discrepancies.length > 0 ? <Badge tone="atencion">Diferencia entre conteos</Badge> : null}
       />
       <div className="space-y-4 px-4 py-4">
         <p className="text-xs text-slate-500">
-          Divisas operativas: CLP y USD. Caja mínima:{' '}
+          Este es el arqueo formal del turno: se cuenta por denominación, congela la Caja que se entrega y conserva garantías, elementos y egresos asociados. Divisas operativas: CLP y USD. Caja mínima:{' '}
           {state.funds.map((fund) => `${fund.currency} ${fund.amount.toLocaleString('es-CL')}`).join(' · ')}.
           Estos mínimos se configuran desde Administración → Parámetros.
         </p>
@@ -336,11 +346,19 @@ export function CashBox({
                       {guarantee.guestName ?? 'Huésped sin nombre'}
                       {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                     </p>
-                    <p className="text-xs text-slate-500">ID / reserva {guarantee.reservationCode} · {guarantee.state.toLowerCase().replaceAll('_', ' ')}</p>
+                    <p className="text-xs text-slate-500">ID FNS {guarantee.reservationCode} · {guarantee.state.toLowerCase().replaceAll('_', ' ')}</p>
                   </div>
-                  <span className="font-semibold tabular text-petrol-900">
-                    {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="font-semibold tabular text-petrol-900">
+                      {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
+                    </span>
+                    {role !== 'lector' ? (
+                      <ReturnCashGuaranteeForm
+                        guaranteeId={guarantee.id}
+                        reservationCode={guarantee.reservationCode}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -405,6 +423,35 @@ export function CashBox({
               previous={previous}
             />
           </div>
+        ) : null}
+
+        {role === 'emisor' && state.declared ? (
+          <section className="rounded-xl bg-gold-50 p-3 ring-1 ring-gold-200 no-print">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-petrol-900">Confirmación del cierre formal</h3>
+                {formalClosure && !formalClosure.reopenedAt ? (
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Confirmado por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Congela este arqueo como cierre formal del turno. Una diferencia declarada no requiere autorización de Supervisión.
+                  </p>
+                )}
+              </div>
+              {formalClosure && !formalClosure.reopenedAt ? (
+                <Badge tone="resuelto">Cierre formal confirmado</Badge>
+              ) : (
+                <ActionForm action={closeShiftCashAction} className="space-y-0" refreshOnSuccess>
+                  <input type="hidden" name="shiftId" value={shiftId} />
+                  <SubmitButton variant="gold" pendingLabel="Confirmando…">
+                    Confirmar cierre formal
+                  </SubmitButton>
+                </ActionForm>
+              )}
+            </div>
+          </section>
         ) : null}
 
         {role === 'emisor' ? (

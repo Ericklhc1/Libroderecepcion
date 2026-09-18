@@ -25,6 +25,7 @@ import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
 import { getSettingNumber } from './settings';
+import { buildOperationalAttention } from '@/domain/operational-attention';
 
 let lastEngineRun = 0;
 const ENGINE_THROTTLE_MS = 60_000;
@@ -272,6 +273,38 @@ export async function getDashboardData(user: CurrentUser) {
     roomsNeedingAction: roomsNeedingAction.length,
   };
 
+  const attention = buildOperationalAttention({
+    rooms: roomsNeedingAction.map((room) => ({
+      number: room.number,
+      state: room.snapshot.state,
+      openIncidents: room.openIncidents,
+      keysOut: room.snapshot.keysOut.length,
+    })),
+    alerts: alerts.map((alert) => ({
+      id: alert.id,
+      level: alert.level,
+      title: alert.title,
+      message: alert.message,
+    })),
+    overdueTasks: overdueTasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      priority: task.priority,
+    })),
+    criticalEntries: criticalEntries.map((entry) => ({
+      id: entry.id,
+      seq: entry.seq,
+      title: entry.title,
+      priority: entry.priority,
+      overdue: Boolean(entry.dueAt && entry.dueAt < now),
+    })),
+    followUps: followUps.map((followUp) => ({
+      id: followUp.id,
+      action: followUp.action,
+      status: followUp.status,
+    })),
+  });
+
   return {
     now,
     myShift,
@@ -288,6 +321,7 @@ export async function getDashboardData(user: CurrentUser) {
     latestEntries,
     lastReceivedHandover,
     roomsNeedingAction,
+    attention,
     operational: {
       occupiedRooms,
       totalRooms: allRooms.length,

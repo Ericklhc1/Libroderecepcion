@@ -6,7 +6,6 @@ import { SubmitButton } from '@/components/ui/button';
 import {
   addShiftMemberAction,
   cancelHandoverPreparationAction,
-  closeShiftAction,
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
@@ -127,7 +126,7 @@ export function SendHandoverForm({ shiftId }: { shiftId: string }) {
       <div className="rounded-lg bg-gold-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-gold-200">
         <p className="font-medium">Antes de enviar: actualiza la fotografía PMS.</p>
         <p className="mt-0.5 text-xs text-slate-600">
-          El cierre exige una carga nueva de Entradas, In house y Salidas posterior al inicio de la entrega.
+          El cierre exige una carga nueva de Actividad, In house y Salidas posterior al inicio de la entrega.
         </p>
         <Link
           href="/huespedes/importar?volverA=turno"
@@ -157,32 +156,5 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
         Cancelar preparación
       </SubmitButton>
     </ActionForm>
-  );
-}
-
-/**
- * El cierre final tiene dos pasos visibles y la base de datos refuerza el
- * orden. Si Caja está habilitada, el segundo botón no puede completar el
- * cierre hasta que exista un cierre de Caja vigente.
- */
-export function CloseShiftForm({ shiftId }: { shiftId: string }) {
-  return (
-    <div className="space-y-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200">
-      <Link
-        href="/caja/cierre"
-        className="flex items-center justify-center rounded-lg bg-petrol-700 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-800"
-      >
-        1. Revisar y cerrar Caja
-      </Link>
-      <ActionForm action={closeShiftAction} hideSuccess className="space-y-0">
-        <input type="hidden" name="shiftId" value={shiftId} />
-        <SubmitButton variant="secondary" pendingLabel="Cerrando…">
-          2. Cerrar turno
-        </SubmitButton>
-      </ActionForm>
-      <p className="text-[0.7rem] leading-snug text-slate-500">
-        Si existe fondo de Caja y aún no está cuadrado/cerrado, el servidor rechazará el cierre del turno.
-      </p>
-    </div>
   );
 }

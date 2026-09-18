@@ -9,6 +9,7 @@ import { requirePermission } from '@/server/auth/guard';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import { endShiftParticipation } from '@/server/services/shifts';
 
 const schema = z.object({
   shiftId: z.string().min(1),
@@ -88,10 +89,7 @@ export async function removeShiftFromOperationAction(
         },
       });
       if (forced) {
-        await tx.shiftAssignment.updateMany({
-          where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
-          data: { leftAt: now },
-        });
+        await endShiftParticipation(tx, shift.id, now);
       }
 
       await recordAudit(

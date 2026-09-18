@@ -49,6 +49,56 @@ export const DEFAULT_SETTINGS = {
     category: 'recepción',
     description: 'Hora límite de check-out; desde esta hora se alertan salidas sin confirmar.',
   },
+  'home.operationalFeedLimit': {
+    value: 12,
+    category: 'inicio',
+    description: 'Máximo de eventos recientes que muestra la ventana operativa de Inicio.',
+  },
+  'alerts.dashboardLimit': {
+    value: 10,
+    category: 'alertas',
+    description: 'Máximo de alertas activas que se muestran directamente en Inicio.',
+  },
+  'reservations.showEmptyRooms': {
+    value: true,
+    category: 'reservas',
+    description: 'Muestra carpetas de habitaciones aunque no tengan un ID FNS activo.',
+  },
+  'reservations.showUnassigned': {
+    value: true,
+    category: 'reservas',
+    description: 'Muestra la bandeja de reservas con ID FNS pero sin habitación asignada.',
+  },
+  'keys.pendingReturnWarningHours': {
+    value: 2,
+    category: 'llaves',
+    description: 'Horas tras las que una llave pendiente de devolución se considera atrasada.',
+  },
+  'diagnostics.enabled': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Habilita el Centro de diagnóstico y reparación para el Administrador de sistema.',
+  },
+  'diagnostics.runtimeCaptureEnabled': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Registra errores de ejecución de la interfaz para analizarlos desde Administración.',
+  },
+  'diagnostics.safeRepairDuplicateAlerts': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite a la reparación segura depurar alertas duplicadas exactas sin comentarios ni tareas.',
+  },
+  'diagnostics.safeRepairReservationLinks': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite volver a vincular estadías con la reserva correcta usando exclusivamente el ID FNS.',
+  },
+  'diagnostics.safeRepairRoomProjection': {
+    value: true,
+    category: 'diagnóstico',
+    description: 'Permite corregir la habitación proyectada de una reserva cuando sus estadías activas son inequívocas.',
+  },
 
   // Caja: las divisas son fijas (CLP y USD); estas reglas deciden qué módulos
   // están activos y qué validaciones aplican en la operación.
@@ -199,6 +249,30 @@ export async function getSettingString(
 ): Promise<string> {
   const value = await readSetting(key).catch(() => fallback);
   return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+/**
+ * Lee varios parámetros numéricos en un solo viaje a la base.
+ * Útil para pantallas calientes como Inicio: evita añadir esperas paralelas
+ * sólo para recuperar límites configurables.
+ */
+export async function getSettingNumbers(
+  keys: readonly SettingKey[],
+): Promise<Record<string, number>> {
+  const rows = await prisma.systemSetting.findMany({
+    where: { key: { in: [...keys] } },
+    select: { key: true, value: true },
+  });
+  const byKey = new Map(rows.map((row) => [row.key, row.value]));
+
+  return Object.fromEntries(
+    keys.map((key) => {
+      const fallback = Number(DEFAULT_SETTINGS[key].value);
+      const raw = byKey.has(key) ? byKey.get(key) : DEFAULT_SETTINGS[key].value;
+      const parsed = typeof raw === 'number' ? raw : Number(raw);
+      return [key, Number.isFinite(parsed) ? parsed : (Number.isFinite(fallback) ? fallback : 0)];
+    }),
+  );
 }
 
 export async function getAllSettings() {

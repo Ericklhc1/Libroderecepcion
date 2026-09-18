@@ -23,16 +23,15 @@ describe('menú principal', () => {
     }
   });
 
-  it('responde a las seis preguntas operativas en el grupo principal', () => {
+  it('expone sólo los cinco módulos operativos canónicos', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
-      '/', // qué ocurre ahora
-      '/turno', // qué estoy operando / qué debo entregar
-      '/habitaciones', // qué ocurre en cada habitación
-      '/libro', // qué tengo pendiente
-      '/caja', // qué hay en caja ahora mismo
-      '/supervision', // qué debo revisar
+      '/', // ventana operativa
+      '/turno', // fotografía del turno
+      '/reservas', // carpeta raíz por habitación e ID FNS
+      '/caja', // centralización financiera
+      '/llaves', // inventario y trazabilidad de llaves
     ]);
   });
 
@@ -69,16 +68,15 @@ describe('menú principal', () => {
 });
 
 describe('visibilidad por rol', () => {
-  it('el Recepcionista no ve Supervisión', () => {
+  it('el Recepcionista ve los cinco módulos operativos', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).not.toContain('/supervision');
-    expect(hrefs).toContain('/libro');
-    expect(hrefs).toContain('/habitaciones');
+    expect(hrefs).toEqual(['/', '/turno', '/reservas', '/caja', '/llaves']);
   });
 
-  it('el Supervisor ve Supervisión', () => {
-    const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]).map((i) => i.href);
-    expect(hrefs).toContain('/supervision');
+  it('Supervisión sigue siendo una capacidad, no un módulo raíz', () => {
+    const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
+    expect(permissions).toContain('supervision.view');
+    expect(visibleNavItems(permissions).map((i) => i.href)).not.toContain('/supervision');
   });
 
   /*
@@ -189,9 +187,9 @@ describe('todo el menú es alcanzable en móvil', () => {
     const visibles = visibleNavItems(permissions);
     const enBarra = visibles.filter((item) => item.mobile).slice(0, MOBILE_SLOTS);
 
-    // La barra es el flujo principal: consulta no compite por ese espacio.
+    // Llaves ahora sí forma parte del flujo principal, pero es el quinto
+    // módulo: con cuatro slots queda detrás de «Más» en móvil.
     expect(enBarra.map((item) => item.href)).not.toContain('/llaves');
-    // Pero existe y es visible, así que «Más» la ofrece.
     expect(visibles.map((item) => item.href)).toContain('/llaves');
   });
 });

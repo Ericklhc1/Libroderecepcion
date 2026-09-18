@@ -70,6 +70,12 @@ export type CashAuditRow = {
 };
 
 export type LiveCashState = {
+  denominations: Array<{
+    id: string;
+    currency: string;
+    value: number;
+    medium: 'BILLETE' | 'MONEDA';
+  }>;
   currencies: Array<{
     currency: string;
     fund: number;
@@ -530,7 +536,12 @@ export async function saveLiveCashAudit(
 }
 
 export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
-  const [funds, totals, movementRows, guarantees, gymRows, auditRows] = await Promise.all([
+  const [denominations, funds, totals, movementRows, guarantees, gymRows, auditRows] = await Promise.all([
+    prisma.cashDenomination.findMany({
+      where: { active: true, currency: { in: ['CLP', 'USD'] } },
+      select: { id: true, currency: true, value: true, medium: true },
+      orderBy: [{ currency: 'asc' }, { value: 'desc' }],
+    }),
     prisma.cashFund.findMany({
       where: { active: true },
       select: { currency: true, amount: true },
@@ -652,6 +663,12 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
     }));
 
   return {
+    denominations: denominations.map((row) => ({
+      id: row.id,
+      currency: row.currency,
+      value: decimal(row.value),
+      medium: row.medium,
+    })),
     currencies,
     movements: movementRows.map((row) => ({ ...row, amount: decimal(row.amount) })),
     cashGuarantees: guarantees.map((row) => ({

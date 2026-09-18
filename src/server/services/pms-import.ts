@@ -1100,29 +1100,20 @@ export async function listImportBatches(limit = 20) {
 }
 
 /**
- * Estado de los informes para el inicio de turno.
+ * Estado de los informes PMS.
  *
- * Responde una sola pregunta: ¿están cargados los informes del día que se va
- * a operar? De ahí salen los tres casos —sin cargar, con un borrador
- * esperando revisión, o ya aplicados— y nada más.
- *
- * Importante: la fecha de un lote sale **del propio informe**, no del reloj.
- * Por eso no se filtra por la fecha de hoy: se toma el último lote y se
- * compara su fecha con el día operativo. Así, si alguien carga los informes
- * de ayer, la pantalla lo dice en lugar de dar el día por cubierto.
+ * Los informes no caducan por edad ni dejan de ser válidos por cambiar el día.
+ * Se conserva su fecha de negocio como dato histórico y siempre se muestra el
+ * último lote aplicado hasta que otro lo sustituye.
  */
 export type ShiftReportsState = {
-  /** Día operativo en curso, para comparar con la fecha del último lote. */
-  today: Date;
-  /** Último lote aplicado, sea de hoy o no. */
+  /** Último lote aplicado, sin límite temporal de validez. */
   applied: {
     id: string;
     businessDate: Date;
     appliedAt: Date | null;
     appliedByName: string | null;
     counts: { checkIn: number; inHouse: number; checkOut: number };
-    /** `false` cuando el informe aplicado es de otro día. */
-    isToday: boolean;
   } | null;
   /** Borrador leído y pendiente de revisar, si hay alguno. */
   draft: {
@@ -1188,9 +1179,7 @@ export async function linkStaysToReservations(
   return vinculadas;
 }
 
-export async function getShiftReportsState(now = new Date()): Promise<ShiftReportsState> {
-  const today = midnight(now);
-
+export async function getShiftReportsState(): Promise<ShiftReportsState> {
   // Un solo viaje: los últimos lotes, de los que se toma el primero aplicado
   // y el primer borrador. Ordena por el índice de `createdAt`.
   const batches = await prisma.pmsImportBatch.findMany({
@@ -1223,7 +1212,6 @@ export async function getShiftReportsState(now = new Date()): Promise<ShiftRepor
   };
 
   return {
-    today,
     applied: applied
       ? {
           id: applied.id,
@@ -1231,7 +1219,6 @@ export async function getShiftReportsState(now = new Date()): Promise<ShiftRepor
           appliedAt: applied.appliedAt,
           appliedByName: applied.appliedBy?.name ?? null,
           counts: countsOf(applied.summary),
-          isToday: midnight(applied.businessDate).getTime() === today.getTime(),
         }
       : null,
     draft: draft

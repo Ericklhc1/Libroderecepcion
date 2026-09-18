@@ -1,14 +1,21 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
-import { AuditAction, ShiftStatus } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
+import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
+  AuditAction,
+  CashCountKind,
+  ShiftStatus,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ROLE_KEYS } from '@/lib/permissions';
-import { getLiveCashState } from './live-cash';
+import { fromMinor } from '@/domain/cash';
+import { getHandoverCashState } from './cash';
 
 type CashSnapshot = {
   shiftId: string;
@@ -48,14 +55,6 @@ type ClosureRow = {
   snapshot: CashSnapshot;
 };
 
-type AuditRow = {
-  id: string;
-  currency: string;
-  countedAmount: Prisma.Decimal;
-  difference: Prisma.Decimal;
-  createdAt: Date;
-};
-
 const CLOSEABLE_SHIFT_STATUSES = [
   ShiftStatus.INICIADO,
   ShiftStatus.ACTIVO,
@@ -80,7 +79,7 @@ export async function assertShiftCashClosed(shiftId: string): Promise<ShiftCashC
   const closure = await getShiftCashClosure(shiftId);
   if (!closure || closure.reopenedAt) {
     throw new RuleError(
-      'Antes de cerrar o enviar el turno debes cerrar Caja. Audita cada divisa, resuelve cualquier diferencia y confirma el cierre de Caja.',
+      'Antes de cerrar o enviar el turno debes completar el cierre formal de Caja desde la preparación de entrega.',
     );
   }
   return closure;
@@ -92,7 +91,10 @@ export async function closeShiftCash(
 ): Promise<ShiftCashClosure> {
   const shift = await prisma.shift.findUnique({
     where: { id: params.shiftId },
-    include: { assignments: { select: { userId: true } } },
+    include: {
+      assignments: { select: { userId: true } },
+      handoverOut: { select: { id: true } },
+    },
   });
   if (!shift) throw new NotFoundError('El turno no existe.');
   if (!CLOSEABLE_SHIFT_STATUSES.includes(shift.status as (typeof CLOSEABLE_SHIFT_STATUSES)[number])) {
@@ -105,56 +107,58 @@ export async function closeShiftCash(
     throw new RuleError('Sólo el personal del turno, Supervisión o el Administrador de sistema puede cerrar su Caja.');
   }
 
-  const state = await getLiveCashState(100);
-  const since = shift.actualStart ?? shift.createdAt;
-  const latestAudits = await prisma.$queryRaw<AuditRow[]>`
-    SELECT DISTINCT ON ("currency")
-      "id", "currency", "countedAmount", "difference", "createdAt"
-    FROM "CashAudit"
-    WHERE "createdAt" >= ${since}
-    ORDER BY "currency", "createdAt" DESC
-  `;
-  const auditByCurrency = new Map(latestAudits.map((audit) => [audit.currency, audit]));
-
-  const missing = state.currencies
-    .filter((currency) => !auditByCurrency.has(currency.currency))
-    .map((currency) => currency.currency);
-  if (missing.length > 0) {
+  if (!shift.handoverOut) {
     throw new RuleError(
-      `Falta auditar la Caja de ${missing.join(', ')} durante este turno. Haz el conteo físico antes de cerrarla.`,
+      'Primero inicia la preparación de entrega. El cierre formal de Caja pertenece a esa entrega.',
+    );
+  }
+  const handoverId = shift.handoverOut.id;
+
+  const state = await getHandoverCashState(handoverId);
+  if (state.enabled && !state.declared) {
+    throw new RuleError(
+      'Falta el arqueo formal por denominación. Cuenta CLP y USD dentro de la preparación de entrega.',
     );
   }
 
-  const differences = state.currencies.flatMap((currency) => {
-    const audit = auditByCurrency.get(currency.currency);
-    if (!audit) return [];
-    const difference = Number(audit.difference);
-    return difference === 0 ? [] : [`${currency.currency} ${difference > 0 ? '+' : ''}${difference}`];
-  });
-  if (differences.length > 0) {
+  const declaredCount = state.enabled
+    ? await prisma.cashCount.findUnique({
+        where: {
+          handoverId_kind: {
+            handoverId,
+            kind: CashCountKind.DECLARADO,
+          },
+        },
+        select: { id: true, countedAt: true },
+      })
+    : null;
+
+  const unbalanced = state.declared?.statuses.filter((status) => !status.balanced) ?? [];
+  if (unbalanced.length > 0 && !state.declared?.notes?.trim() && !params.notes?.trim()) {
     throw new RuleError(
-      `Caja todavía tiene diferencias (${differences.join(' · ')}). Supervisión debe reconciliarlas o volver a auditar antes del cierre.`,
+      'La Caja tiene una diferencia. Explica el descuadre antes de confirmar el cierre formal; no requiere autorización de Supervisión.',
     );
   }
 
   const snapshot: CashSnapshot = {
     shiftId: shift.id,
     capturedAt: new Date().toISOString(),
-    currencies: state.currencies.map((currency) => {
-      const audit = auditByCurrency.get(currency.currency)!;
-      return {
-        ...currency,
-        counted: Number(audit.countedAmount),
-        difference: Number(audit.difference),
-        auditId: audit.id,
-        auditedAt: audit.createdAt.toISOString(),
-      };
-    }),
+    currencies: (state.declared?.statuses ?? []).map((status) => ({
+      currency: status.currency,
+      fund: fromMinor(status.fundMinor, status.currency),
+      netMovements: fromMinor(status.differenceMinor, status.currency),
+      expected: fromMinor(status.fundMinor, status.currency),
+      counted: fromMinor(status.countedMinor, status.currency),
+      difference: fromMinor(status.differenceMinor, status.currency),
+      auditId: declaredCount?.id ?? `handover:${handoverId}`,
+      auditedAt: (declaredCount?.countedAt ?? new Date()).toISOString(),
+    })),
     openCashGuarantees: state.cashGuarantees.length,
   };
+
   const id = randomUUID();
   const snapshotJson = JSON.stringify(snapshot);
-  const notes = params.notes?.trim() || null;
+  const notes = params.notes?.trim() || state.declared?.notes?.trim() || null;
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
@@ -176,13 +180,46 @@ export async function closeShiftCash(
         "reopenReason" = NULL
     `;
 
+    if (unbalanced.length > 0) {
+      const detail = unbalanced
+        .map((status) => {
+          const diff = fromMinor(status.differenceMinor, status.currency);
+          return `${status.currency} ${diff > 0 ? '+' : ''}${diff}`;
+        })
+        .join(' · ');
+
+      await tx.alert.upsert({
+        where: { dedupeKey: `cash-formal-close:${shift.id}` },
+        create: {
+          type: AlertType.OTRO,
+          level: AlertLevel.ATENCION,
+          status: AlertStatus.NUEVA,
+          title: 'Revisar diferencia en cierre formal de Caja',
+          message: `${detail}. El turno puede continuar; la diferencia quedó declarada y auditada.`,
+          handoverId,
+          dedupeKey: `cash-formal-close:${shift.id}`,
+          auto: true,
+          createdById: user.id,
+        },
+        update: {
+          status: AlertStatus.NUEVA,
+          message: `${detail}. El turno puede continuar; la diferencia quedó declarada y auditada.`,
+          deletedAt: null,
+        },
+      });
+    }
+
     await recordAudit(
       {
         entity: 'ShiftCashClosure',
         entityId: shift.id,
         action: AuditAction.CERRAR,
         user,
-        summary: `Caja del turno cerrada y cuadrada: ${snapshot.currencies.map((currency) => `${currency.currency} ${currency.counted}`).join(' · ') || 'sin divisas activas'}.`,
+        summary:
+          `Cierre formal de Caja confirmado: ${snapshot.currencies
+            .map((currency) => `${currency.currency} ${currency.counted}`)
+            .join(' · ') || 'sin divisas activas'}` +
+          (unbalanced.length > 0 ? ' · con diferencia informada a Supervisión.' : ' · sin diferencias.'),
         after: snapshot,
         reason: notes,
       },

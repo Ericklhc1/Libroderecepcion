@@ -19,6 +19,7 @@ import {
   addShiftMember,
   cancelHandoverPreparation,
   closeShift,
+  endShiftParticipation,
   getShiftById,
   openShift,
   prepareHandover,
@@ -444,10 +445,7 @@ export async function cancelShiftAction(
         where: { id: shift.id },
         data: { status: ShiftStatus.ANULADO, notes: input.reason, actualEnd: shift.actualEnd ?? now },
       });
-      await tx.shiftAssignment.updateMany({
-        where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
-        data: { leftAt: now },
-      });
+      await endShiftParticipation(tx, shift.id, now);
     });
     await recordAudit({
       entity: 'Shift',

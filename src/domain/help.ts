@@ -67,8 +67,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     steps: [
       'Entra a Turno.',
       'Los turnos no se reparten de antemano: aparece la franja que corresponde al reloj.',
-      'Si el turno anterior dejó un cierre sin confirmar, aparece primero y destacado.',
-      'Pulsa «Tomar turno» o «Tomar y revisar cierre».',
+      'Si el turno anterior dejó una entrega pendiente, aparece primero y destacada.',
+      'Abre o toma el turno y confirma la recepción cuando Caja y elementos estén conformes.',
     ],
     caveat:
       'Si dos personas pulsan a la vez, la segunda recibe un aviso: el turno queda de quien ' +
@@ -83,7 +83,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: '¿Dónde subo los tres informes del PMS?',
     steps: [
       'Entra a Turno: la primera tarjeta es la de los informes.',
-      'Adjunta los tres PDF: entradas, in house y salidas.',
+      'Para el cierre adjunta Actividad, In house y Salidas. Entradas puede seguir usándose para otros flujos, pero no sustituye ninguno de esos tres.',
       'Revisa la propuesta antes de aplicarla: nada se sobrescribe sin que alguien lo vea.',
       'Aplica. De ahí sale el estado de las 89 habitaciones, la cola y las llaves.',
     ],
@@ -92,7 +92,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'día por cubierto, y el sistema lo dice.',
     route: '/turno',
     anyOf: ['pms.import'],
-    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'entradas', 'salidas', 'in house'],
+    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'actividad', 'entradas', 'salidas', 'in house'],
     tutorial: true,
   },
   {
@@ -119,11 +119,11 @@ export const HELP_TOPICS: HelpTopic[] = [
       'En Turno, pulsa preparar la entrega: el resumen se genera solo.',
       'Agrega las notas que el sistema no puede saber, clasificadas por urgencia.',
       'Cuenta la caja y declara los elementos.',
-      'Envía la entrega. El turno siguiente tiene que confirmarla.',
+      'Envía la entrega. El turno siguiente la confirma; esa recepción cierra automáticamente tu turno con la hora real.',
     ],
     caveat:
-      'Si la caja no cuadra con el fondo fijo, hay que explicar la diferencia antes de ' +
-      'entregar. Un faltante existe y se declara; lo que no se admite es el silencio.',
+      'No existe un botón operativo separado para «Cerrar turno»: el cierre saliente ocurre al recibir el relevo. ' +
+      'Si la caja no cuadra con el fondo fijo, la diferencia se resuelve o documenta antes de entregar.',
     route: '/turno',
     anyOf: ['shift.handover'],
     keywords: ['entregar', 'entrega', 'cerrar', 'turno', 'resumen', 'traspaso'],

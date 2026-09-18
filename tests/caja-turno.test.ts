@@ -11,6 +11,7 @@ import {
 import {
   prepareHandover,
   receiveHandover,
+  receiveShiftCash,
   sendHandover,
 } from '@/server/services/shifts';
 import {
@@ -75,35 +76,6 @@ async function openShift(user: CurrentUser, type: ShiftType) {
   const shift = await openShiftAs(user, { type });
   await receiveHandover(user, { shiftId: shift.id });
   return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
-}
-
-/**
- * Estas pruebas aíslan el recuento de recepción y los elementos físicos.
- * Desde Cierre V2, Recibir también cierra el turno saliente, por lo que la
- * precondición de Caja cerrada debe existir antes de llegar a esas validaciones.
- * Se materializa una fotografía mínima de prueba; el cierre real se valida en
- * cierre-caja.test.ts.
- */
-async function markShiftCashClosedForTest(shiftId: string, userId: string) {
-  const id = `test-cash-closure-${shiftId}`;
-  const snapshot = JSON.stringify({ test: true, shiftId });
-  await prisma.$executeRaw`
-    INSERT INTO "ShiftCashClosure" (
-      "id", "shiftId", "closedById", "closedAt", "snapshot",
-      "notes", "reopenedAt", "reopenedById", "reopenReason"
-    ) VALUES (
-      ${id}, ${shiftId}, ${userId}, NOW(), ${snapshot}::jsonb,
-      'Fixture de Cierre V2', NULL, NULL, NULL
-    )
-    ON CONFLICT ("shiftId") DO UPDATE SET
-      "closedById" = EXCLUDED."closedById",
-      "closedAt" = EXCLUDED."closedAt",
-      "snapshot" = EXCLUDED."snapshot",
-      "notes" = EXCLUDED."notes",
-      "reopenedAt" = NULL,
-      "reopenedById" = NULL,
-      "reopenReason" = NULL
-  `;
 }
 
 describe('caja en la entrega de turno', () => {
@@ -208,35 +180,35 @@ describe('caja en la entrega de turno', () => {
     expect(counts).toHaveLength(1);
   });
 
-  it('quien recibe tiene que contar la caja antes de confirmar la recepción', async () => {
+  it('el entrante recibe la Caja mientras la entrega completa sigue en BORRADOR', async () => {
     await seedFunds();
     const manana = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, manana.id);
+    const quantities = await exactFundQuantities();
     await saveCashCount(saliente, {
       handoverId: handover.id,
       kind: 'DECLARADO',
-      quantities: await exactFundQuantities(),
+      quantities,
     });
-    await sendHandover(saliente, { shiftId: manana.id });
-    await markShiftCashClosedForTest(manana.id, saliente.id);
 
     const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
-
-    await expect(receiveHandover(entrante, { shiftId: tarde.id })).rejects.toThrow(
-      /Cuenta la caja y confirma el fondo fijo/,
-    );
-
-    await saveCashCount(entrante, {
+    const result = await receiveShiftCash(entrante, {
+      shiftId: tarde.id,
       handoverId: handover.id,
-      kind: 'CONFIRMADO',
-      quantities: await exactFundQuantities(),
+      quantities,
     });
 
-    const received = await receiveHandover(entrante, { shiftId: tarde.id });
-    expect(received.status).toBe('ACTIVO');
+    expect(result.shift.status).toBe('ACTIVO');
+    const stillDraft = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(stillDraft.status).toBe(HandoverStatus.BORRADOR);
+    expect(stillDraft.receivedAt).toBeNull();
+    expect(stillDraft.toShiftId).toBe(tarde.id);
+
+    const outgoing = await prisma.shift.findUniqueOrThrow({ where: { id: manana.id } });
+    expect(outgoing.status).toBe('PREPARANDO_ENTREGA');
   });
 
-  it('la diferencia entre los dos conteos se calcula y no se almacena', async () => {
+  it('la diferencia se calcula, genera alerta y no bloquea al entrante', async () => {
     await seedFunds();
     const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
@@ -251,18 +223,26 @@ describe('caja en la entrega de turno', () => {
       quantities: { [clp20.id]: 5 },
       notes: 'Sin dólares en caja.',
     });
-    await saveCashCount(entrante, {
+
+    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
+    const result = await receiveShiftCash(entrante, {
+      shiftId: tarde.id,
       handoverId: handover.id,
-      kind: 'CONFIRMADO',
       quantities: { [clp20.id]: 4 },
       notes: 'Conté un billete menos.',
     });
 
-    const state = await getHandoverCashState(handover.id);
+    expect(result.shift.status).toBe('ACTIVO');
+    expect(result.discrepancies).toHaveLength(1);
+    expect(result.discrepancies[0]?.differenceMinor).toBe(-20_000);
 
-    expect(state.discrepancies).toHaveLength(1);
+    const state = await getHandoverCashState(handover.id);
     expect(state.discrepancies[0]?.currency).toBe('CLP');
-    expect(state.discrepancies[0]?.differenceMinor).toBe(-20_000);
+
+    const alert = await prisma.alert.findUnique({
+      where: { dedupeKey: `cash-difference:${handover.id}` },
+    });
+    expect(alert?.status).toBe('NUEVA');
 
     const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'CashCount'
@@ -289,6 +269,29 @@ describe('caja en la entrega de turno', () => {
     expect(state.transfers[0]?.currency).toBe('CLP');
     expect(state.transfers[0]?.amount).toBe(260_000);
     expect(state.transfers[0]?.reference).toBe('SOBRE-0912');
+  });
+
+  it('un egreso pendiente de revisión de Supervisión no bloquea el envío', async () => {
+    await seedFunds();
+    const shift = await openShift(saliente, ShiftType.DIA);
+    const handover = await prepareHandover(saliente, shift.id);
+    const quantities = await exactFundQuantities();
+
+    await saveCashCount(saliente, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities,
+    });
+    await recordCashTransfer(saliente, {
+      handoverId: handover.id,
+      currency: 'CLP',
+      amount: 10_000,
+      reference: 'SOBRE-PENDIENTE',
+    });
+
+    expect(await cashBlockersForSending(handover.id)).toEqual([]);
+    const sent = await sendHandover(saliente, { shiftId: shift.id });
+    expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
 
   it('un egreso sin monto o con divisa inválida se rechaza', async () => {
@@ -390,7 +393,7 @@ describe('elementos que viajan con la caja', () => {
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
   });
 
-  it('quien recibe confirma los elementos, y sin eso no recibe', async () => {
+  it('los elementos físicos pendientes no bloquean Caja ni recepción operativa', async () => {
     await seedFunds();
     await seedElement('Radio de turno');
 
@@ -399,31 +402,32 @@ describe('elementos que viajan con la caja', () => {
     const quantities = await exactFundQuantities();
     await saveCashCount(saliente, { handoverId: handover.id, kind: 'DECLARADO', quantities });
 
-    let state = await getHandoverCashState(handover.id);
+    const state = await getHandoverCashState(handover.id);
     await markHandoverElements(saliente, {
       handoverId: handover.id,
       field: 'declared',
       marks: { [state.elements[0]!.id]: true },
     });
-    await sendHandover(saliente, { shiftId: manana.id });
-    await markShiftCashClosedForTest(manana.id, saliente.id);
 
     const tarde = await openShiftAs(entrante, { type: ShiftType.DIA });
-    await saveCashCount(entrante, { handoverId: handover.id, kind: 'CONFIRMADO', quantities });
-
-    await expect(receiveHandover(entrante, { shiftId: tarde.id })).rejects.toThrow(
-      /Confirma que recibes: Radio de turno/,
-    );
-
-    state = await getHandoverCashState(handover.id);
-    await markHandoverElements(entrante, {
+    await receiveShiftCash(entrante, {
+      shiftId: tarde.id,
       handoverId: handover.id,
-      field: 'confirmed',
-      marks: { [state.elements[0]!.id]: true },
+      quantities,
     });
 
-    const received = await receiveHandover(entrante, { shiftId: tarde.id });
+    const sent = await sendHandover(saliente, { shiftId: manana.id });
+    expect(await cashBlockersForReceiving(handover.id)).toEqual([]);
+
+    const received = await receiveHandover(entrante, {
+      shiftId: tarde.id,
+      handoverId: sent.id,
+    });
     expect(received.status).toBe('ACTIVO');
+
+    const after = await getHandoverCashState(handover.id);
+    expect(after.elements[0]?.declared).toBe(true);
+    expect(after.elements[0]?.confirmed).toBe(false);
   });
 
   it('marcar un elemento de otra entrega no hace nada', async () => {

@@ -5,3 +5,5 @@ Commit directo a main para solicitar un nuevo despliegue de Production con el es
 Netlify: relanzar build con variables de Neon configuradas.
 
 Netlify: relanzar build con AUTH_SECRET configurado.
+
+Netlify: relanzar build con AUTH_SECRET disponible en todos los scopes.

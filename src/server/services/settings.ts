@@ -96,15 +96,20 @@ export const DEFAULT_SETTINGS = {
     category: 'fronti',
     description: 'Instrucciones adicionales de comportamiento para Fronti.',
   },
-  'fronti.model': {
-    value: 'gpt-5.6-luna',
+  'fronti.provider': {
+    value: 'groq',
     category: 'fronti',
-    description: 'Modelo de OpenAI utilizado por Fronti. La clave API sigue protegida en el servidor.',
+    description: 'Proveedor de inferencia: Groq, vLLM autohospedado u OpenAI como fallback explícito.',
+  },
+  'fronti.model': {
+    value: 'qwen/qwen3.6-27b',
+    category: 'fronti',
+    description: 'Modelo utilizado por Fronti. Qwen3 es el modelo open-weight por defecto.',
   },
   'fronti.reasoningEffort': {
     value: 'low',
     category: 'fronti',
-    description: 'Esfuerzo de razonamiento: low, medium o high.',
+    description: 'Preferencia de razonamiento para proveedores/modelos que la soporten.',
   },
   'fronti.memoryRetentionDays': {
     value: 30,

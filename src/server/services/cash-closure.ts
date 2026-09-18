@@ -9,7 +9,6 @@ import {
   CashCountKind,
   ShiftStatus,
 } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';

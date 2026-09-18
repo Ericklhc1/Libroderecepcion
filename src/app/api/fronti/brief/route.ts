@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { refreshSession } from '@/server/auth/session';
+import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import {
   generateOperationalBrief,
   OperationalBriefError,
@@ -21,6 +22,13 @@ export async function POST() {
     return NextResponse.json(
       { error: 'Tu sesión venció. Vuelve a iniciar sesión.' },
       { status: 401, headers },
+    );
+  }
+
+  if (user.mustChangePassword || !(await hasAcceptedCurrentTerms(user.id))) {
+    return NextResponse.json(
+      { error: 'Debes aceptar los términos vigentes antes de utilizar Fronti.' },
+      { status: 403, headers },
     );
   }
 

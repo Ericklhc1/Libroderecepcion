@@ -178,10 +178,21 @@ export async function openShiftAs(
 
 /** Limpia la pizarra sin disparar reglas de cierre real de Caja. */
 export async function closeAllShifts() {
-  await prisma.shift.updateMany({
-    where: { status: { in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA] } },
-    data: { status: ShiftStatus.ANULADO },
-  });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.shiftAssignment.updateMany({
+      where: { activatedAt: { not: null }, leftAt: null },
+      data: { leftAt: now },
+    }),
+    prisma.shift.updateMany({
+      where: {
+        status: {
+          in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA],
+        },
+      },
+      data: { status: ShiftStatus.ANULADO, actualEnd: now },
+    }),
+  ]);
 }
 
 export { ROLE_KEYS, ShiftStatus, ShiftType };

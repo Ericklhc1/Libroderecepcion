@@ -87,6 +87,12 @@ export async function removeShiftFromOperationAction(
             : {}),
         },
       });
+      if (forced) {
+        await tx.shiftAssignment.updateMany({
+          where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
+          data: { leftAt: now },
+        });
+      }
 
       await recordAudit(
         {

@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { HandoverStatus, ShiftStatus, ShiftType } from '@prisma/client';
 import {
   addShiftMember,
+  closeShift,
   getCurrentShift,
   getMyOpenShift,
   getPendingHandover,
@@ -34,14 +35,14 @@ import {
  *
  * 1. **Dos ventanas fijas.** Cubierto en `shift-state.test.ts` (dominio puro).
  * 2. **Nada preestablecido.** Abrir el turno es un solo gesto, sin programar.
- * 3. **UN turno en curso a la vez.** Es la regla que el hotel pidió y la que
- *    evita que se pierda quién tenía la caja.
- * 4. **La entrega pendiente es única y se encuentra siempre.** Éste es el
+ * 3. **Turnos solapados.** Personas distintas pueden operar turnos distintos durante el relevo.
+ * 4. **Una sola participación activa por persona.** La base lo garantiza.
+ * 5. **La entrega pendiente se encuentra siempre.** Éste es el
  *    fallo que el usuario reportó: «no se puede recibir ni confirmar». Antes
  *    la entrega se buscaba por adyacencia de franjas y desaparecía en cuanto
  *    la cadena tenía un hueco.
  */
-describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () => {
+describe('modelo de turnos: dos ventanas, solapables y exclusivos por persona', () => {
   beforeAll(async () => {
     await resetOperationalData();
     await seedCatalog();
@@ -84,32 +85,37 @@ describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () 
     expect(shift.type).toBe(hour >= 7 && hour < 20 ? ShiftType.DIA : ShiftType.NOCHE);
   });
 
-  it('si ya hay un turno abierto, el segundo que entra SE SUMA en lugar de abrir otro', async () => {
+  it('si ya hay un turno abierto, el segundo abre SU PROPIO turno', async () => {
     const primero = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const segundo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
 
     const abierto = await openShift(primero, { type: ShiftType.DIA });
     const siguiente = await openShift(segundo, { type: ShiftType.NOCHE });
 
-    expect(siguiente.joined).toBe(true);
-    expect(siguiente.shift.id).toBe(abierto.shift.id);
-    expect(siguiente.shift.type).toBe(ShiftType.DIA);
+    expect(siguiente.joined).toBe(false);
+    expect(siguiente.shift.id).not.toBe(abierto.shift.id);
+    expect(siguiente.shift.type).toBe(ShiftType.NOCHE);
 
     const enCurso = await prisma.shift.count({
       where: { status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA'] } },
     });
-    expect(enCurso).toBe(1);
-    expect(siguiente.shift.assignments).toHaveLength(2);
+    expect(enCurso).toBe(2);
+    expect(abierto.shift.assignments).toHaveLength(1);
+    expect(siguiente.shift.assignments).toHaveLength(1);
   });
 
-  it('el primero es titular y quien se suma es apoyo', async () => {
+  it('el apoyo se suma explícitamente y conserva su rol', async () => {
     const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
 
-    await openShift(titular, { type: ShiftType.DIA });
-    const { shift } = await openShift(apoyo, {});
+    const { shift } = await openShift(titular, { type: ShiftType.DIA });
+    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
 
-    const roles = new Map(shift.assignments.map((a) => [a.userId, a.role]));
+    const actualizado = await prisma.shift.findUniqueOrThrow({
+      where: { id: shift.id },
+      include: { assignments: true },
+    });
+    const roles = new Map(actualizado.assignments.map((a) => [a.userId, a.role]));
     expect(roles.get(titular.id)).toBe('TITULAR');
     expect(roles.get(apoyo.id)).toBe('APOYO');
   });
@@ -124,21 +130,29 @@ describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () 
     expect(segunda.shift.assignments).toHaveLength(1);
   });
 
-  it('la base impide dos turnos en curso, no sólo el servicio', async () => {
+  it('la base impide que la misma persona participe activamente en dos turnos', async () => {
     const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     await openShift(receptionist, { type: ShiftType.DIA });
 
     const date = new Date();
     date.setHours(0, 0, 0, 0);
+    const otro = await prisma.shift.create({
+      data: {
+        date,
+        type: ShiftType.NOCHE,
+        status: ShiftStatus.ACTIVO,
+        plannedStart: date,
+        plannedEnd: date,
+      },
+    });
 
     await expect(
-      prisma.shift.create({
+      prisma.shiftAssignment.create({
         data: {
-          date,
-          type: ShiftType.NOCHE,
-          status: ShiftStatus.ACTIVO,
-          plannedStart: date,
-          plannedEnd: date,
+          shiftId: otro.id,
+          userId: receptionist.id,
+          role: 'APOYO',
+          activatedAt: new Date(),
         },
       }),
     ).rejects.toThrow();
@@ -219,7 +233,7 @@ describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () 
 
     await expect(
       addShiftMember(titular, { shiftId: shift.id, userId: refuerzo.id }),
-    ).rejects.toThrow(/ya terminó/);
+    ).rejects.toThrow(/Sólo se puede sumar gente a un turno en curso/);
   });
 
   it('un rol no operativo no se puede sumar al turno', async () => {
@@ -267,7 +281,10 @@ describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () 
     expect(recibida.receivedById).toBe(entrante.id);
     expect(recibida.toShiftId).toBe(segundo.id);
 
-    const cerrado = await prisma.shift.findUniqueOrThrow({ where: { id: primero.id } });
+    const salienteAunPendiente = await prisma.shift.findUniqueOrThrow({ where: { id: primero.id } });
+    expect(salienteAunPendiente.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
+
+    const cerrado = await closeShift(saliente, { shiftId: primero.id });
     expect(cerrado.status).toBe(ShiftStatus.CERRADO);
     const activo = await getCurrentShift();
     expect(activo?.id).toBe(segundo.id);
@@ -320,7 +337,7 @@ describe('modelo de turnos: dos ventanas, creados a voluntad, uno a la vez', () 
     expect(mia.iAmIn).toBe(true);
 
     const ajena = await getShiftDesk(afuera);
-    expect(ajena.current).not.toBeNull();
+    expect(ajena.current).toBeNull();
     expect(ajena.iAmIn).toBe(false);
   });
 

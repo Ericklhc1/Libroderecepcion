@@ -385,7 +385,7 @@ export function CashBox({
                     {transfer.reference ? ` · comprobante ${transfer.reference}` : ''} · {transfer.createdByName}
                   </span>
                   <Badge tone={transfer.approved ? 'resuelto' : 'pendiente'}>
-                    {transfer.approved ? 'Validado por Supervisión' : 'Pendiente de Supervisión'}
+                    {transfer.approved ? 'Revisado por Supervisión' : 'Pendiente de revisión'}
                   </Badge>
                 </li>
               ))}
@@ -438,7 +438,7 @@ export function CashBox({
             <div className="border-t border-slate-100 pt-3 no-print">
               <h3 className="mb-1 text-sm font-semibold text-petrol-900">Egreso de Caja a tesorería</h3>
               <p className="mb-2 text-xs text-slate-500">
-                Es un movimiento real de Caja. Todo monto mayor que 0 genera una solicitud inmediata de autorización a Supervisión.
+                Es un movimiento real de Caja. Todo monto mayor que 0 genera un aviso inmediato para revisión de Supervisión; no bloquea la operación.
               </p>
               <ActionForm action={recordCashTransferAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />

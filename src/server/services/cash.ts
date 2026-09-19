@@ -203,7 +203,7 @@ export async function getHandoverCashState(
       amount: Number(transfer.amount),
       reference: transfer.reference,
       createdByName: transfer.createdBy.name,
-      approved: approvalByTransfer.get(transfer.id) === true,
+      approved: approvalByTransfer.has(transfer.id) ? approvalByTransfer.get(transfer.id) === true : true,
     })),
     elements: elements.map((element) => ({
       id: element.id,

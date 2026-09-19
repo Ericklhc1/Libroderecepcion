@@ -131,9 +131,9 @@ describe('informe in house', () => {
   it('resuelve la llegada sin año contra la fecha del informe', () => {
     const stay = normalized.stays.find((s) => s.roomNumber === '608');
     // El informe imprime "28/08" y la fecha del informe es 14/09/2026.
-    expect(stay?.arrivalDate?.getFullYear()).toBe(2026);
-    expect(stay?.arrivalDate?.getMonth()).toBe(7);
-    expect(stay?.arrivalDate?.getDate()).toBe(28);
+    expect(stay?.arrivalDate?.getUTCFullYear()).toBe(2026);
+    expect(stay?.arrivalDate?.getUTCMonth()).toBe(7);
+    expect(stay?.arrivalDate?.getUTCDate()).toBe(28);
   });
 
   it('no confunde el pie del informe con un huésped más', () => {

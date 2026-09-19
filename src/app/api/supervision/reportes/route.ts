@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const report = await buildSupervisorReport(rawType, range);
   const pdf = createTextPdf({
     title: report.title,
-    subtitle: `${range.from.toLocaleDateString('es-CL')} a ${range.to.toLocaleDateString('es-CL')}`,
+    subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,
     lines: [...report.summary, '', ...report.lines],
   });
   return new Response(new Uint8Array(pdf), {

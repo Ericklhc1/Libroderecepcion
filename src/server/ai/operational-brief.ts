@@ -46,10 +46,13 @@ export async function generateOperationalBrief(user: CurrentUser) {
       brief: 'No hay condiciones prioritarias activas en este momento.',
       generatedAt: new Date(),
       attention,
+      actions: [],
     };
   }
 
-  const compact = attention.slice(0, 8).map((item, index) => ({
+  const actionable = attention.slice(0, 4);
+  const compact = actionable.map((item, index) => ({
+    id: `A${index + 1}`,
     order: index + 1,
     level: item.tone,
     title: item.title,
@@ -70,8 +73,9 @@ export async function generateOperationalBrief(user: CurrentUser) {
             'Recibirás una lista YA PRIORIZADA por reglas determinísticas del Libro. ' +
             'No cambies el orden, no inventes hechos, huéspedes, montos, reservas ni estados. ' +
             'Resume en español claro y ejecutivo qué exige atención ahora y por qué. ' +
-            'Usa como máximo 4 puntos breves. No agregues saludo ni despedida. ' +
-            'Si dos elementos dependen entre sí, puedes explicarlo, pero nunca crear una dependencia no indicada.',
+            'Devuelve exactamente un punto por cada elemento recibido, en el mismo orden, sin agruparlos. ' +
+            'Comienza cada punto con su identificador [A1], [A2], etc. No agregues saludo ni despedida. ' +
+            'Cada punto debe describir el problema y la solución indicada en nextAction; no inventes otra acción. ',
         },
         {
           role: 'user',
@@ -94,5 +98,12 @@ export async function generateOperationalBrief(user: CurrentUser) {
     brief: result.text || 'No pude resumir la bandeja en este momento.',
     generatedAt: new Date(),
     attention,
+    actions: actionable.map((item, index) => ({
+      id: `A${index + 1}`,
+      title: item.title,
+      detail: item.action,
+      href: item.href,
+      tone: item.tone,
+    })),
   };
 }

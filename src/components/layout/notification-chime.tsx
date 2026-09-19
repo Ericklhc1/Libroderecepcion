@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { getUnreadCounts } from '@/server/actions/notifications';
 
 /**
  * El aviso sonoro de las notificaciones.
@@ -205,7 +204,17 @@ export function NotificationChime({
 
   const check = useCallback(async () => {
     try {
-      const counts = await getUnreadCounts();
+      const response = await fetch('/api/notifications/unread', {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (response.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      if (!response.ok) return;
+
+      const counts = (await response.json()) as Counts;
       const previous = seen.current;
 
       const newNotifications = counts.notifications > previous.notifications;

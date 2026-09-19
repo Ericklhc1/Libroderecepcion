@@ -12,7 +12,8 @@
   "git": {
     "deploymentEnabled": {
       "**": false,
-      "main": true
+      "main": true,
+      "feature/contexto-transversal-20260919": true
     }
   }
 }

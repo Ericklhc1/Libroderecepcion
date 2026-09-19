@@ -10,6 +10,7 @@ import type { ColumnField } from './columns';
 import type { RawRecord, ReportKind, StructuredReport } from './layout';
 import { parseMoney, type Money } from './money';
 import { parsePaymentType, type ParsedPayment } from './payment';
+import { hotelCalendarDate } from '@/domain/time';
 
 /** Estado operativo que aporta cada informe. */
 export type OperationalStatus = 'CHECK_IN' | 'IN_HOUSE' | 'CHECK_OUT';
@@ -124,9 +125,12 @@ function parseFullDate(value: string): Date | null {
   const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return null;
   const [, day, month, year] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   if (Number.isNaN(date.getTime())) return null;
-  if (date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return null;
+  if (
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day)
+  ) return null;
   return date;
 }
 
@@ -141,12 +145,16 @@ function parseShortDate(value: string, reference: Date | null): Date | null {
   const match = value.match(/^(\d{1,2})\/(\d{1,2})$/);
   if (!match) return null;
   const [, day, month] = match;
-  const base = reference ?? new Date();
-  const candidate = new Date(base.getFullYear(), Number(month) - 1, Number(day));
+  const base = reference ?? hotelCalendarDate();
+  const candidate = new Date(
+    Date.UTC(base.getUTCFullYear(), Number(month) - 1, Number(day)),
+  );
   if (Number.isNaN(candidate.getTime())) return null;
   const sixMonths = 1000 * 60 * 60 * 24 * 183;
   if (candidate.getTime() - base.getTime() > sixMonths) {
-    return new Date(base.getFullYear() - 1, Number(month) - 1, Number(day));
+    return new Date(
+      Date.UTC(base.getUTCFullYear() - 1, Number(month) - 1, Number(day)),
+    );
   }
   return candidate;
 }

@@ -7,6 +7,7 @@ import { RuleError } from '@/server/errors';
 import { sendMail } from '@/server/mail';
 import { buildSupervisorReport, reportDateRange } from '@/server/services/supervisor-reports';
 import { createTextPdf } from '@/server/reports/simple-pdf';
+import { formatDate } from '@/lib/format';
 
 const schema = z.object({
   type: z.enum(['gimnasio', 'multas', 'estado']),
@@ -37,7 +38,7 @@ export async function sendSupervisorReportAction(
     const report = await buildSupervisorReport(input.type, range);
     const pdf = createTextPdf({
       title: report.title,
-      subtitle: `${range.from.toLocaleDateString('es-CL')} a ${range.to.toLocaleDateString('es-CL')}`,
+      subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,
       lines: [...report.summary, '', ...report.lines],
     });
     const result = await sendMail({

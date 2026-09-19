@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatDateTime } from '@/lib/format';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { diffFields, recordAudit } from '@/server/audit';
 import { notify } from '@/server/notifications';
@@ -112,7 +113,7 @@ export async function createFollowUp(
           type: NotificationType.ACCION_REQUERIDA,
           title: `Seguimiento a tu cargo: ${created.action}`,
           body: created.scheduledAt
-            ? `Programado para el ${created.scheduledAt.toLocaleString('es-CL')}.`
+            ? `Programado para el ${formatDateTime(created.scheduledAt)}.`
             : 'Sin fecha programada.',
           link: created.entryId ? `/libro/${created.entryId}` : `/seguimientos`,
           entity: 'FollowUp',
@@ -242,7 +243,7 @@ export async function raiseOverdueFollowUpAlert(followUpId: string) {
       type: AlertType.SEGUIMIENTO_VENCIDO,
       level: AlertLevel.ATENCION,
       title: `Seguimiento vencido: ${followUp.action}`,
-      message: `Estaba programado para el ${followUp.scheduledAt.toLocaleString('es-CL')}.`,
+      message: `Estaba programado para el ${formatDateTime(followUp.scheduledAt)}.`,
       dueAt: followUp.scheduledAt,
       followUpId: followUp.id,
       entryId: followUp.entryId,

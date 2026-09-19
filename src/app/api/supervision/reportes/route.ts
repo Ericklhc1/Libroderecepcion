@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { buildSupervisorReport, reportDateRange, type SupervisorReportType } from '@/server/services/supervisor-reports';
 import { createTextPdf } from '@/server/reports/simple-pdf';
+import { formatDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const report = await buildSupervisorReport(rawType, range);
   const pdf = createTextPdf({
     title: report.title,
-    subtitle: `${range.from.toLocaleDateString('es-CL')} a ${range.to.toLocaleDateString('es-CL')}`,
+    subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,
     lines: [...report.summary, '', ...report.lines],
   });
   return new Response(new Uint8Array(pdf), {

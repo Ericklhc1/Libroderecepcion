@@ -12,7 +12,7 @@ import {
   HANDOVER_STATUS_TONE,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, windowHours } from '@/domain/shift';
-import { formatCalendarDate, formatTime } from '@/lib/format';
+import { formatDate, formatTime } from '@/lib/format';
 
 export const metadata = { title: 'Historial de turnos' };
 export const dynamic = 'force-dynamic';
@@ -79,7 +79,7 @@ export default async function ShiftAdminPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-petrol-900">
-                      {SHIFT_TYPE_LABEL[shift.type]} · {formatCalendarDate(shift.date)}
+                      {SHIFT_TYPE_LABEL[shift.type]} · {formatDate(shift.date)}
                     </p>
                     <Badge tone={STATUS_TONE[shift.status]}>
                       {SHIFT_STATUS_LABEL[shift.status]}

@@ -13,7 +13,8 @@ import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
- * Gerencia de operaciones: sólo consulta, salvo como responsable.
+ * Gerencia de operaciones: consulta, salvo como responsable y la reparación
+ * global de conflictos expresamente autorizada.
  *
  * Lo que estas pruebas protegen es la frontera. Que no se le cuele un permiso
  * de escritura por descuido al agregar uno nuevo al catálogo, que pueda
@@ -31,16 +32,11 @@ const SOLO_LECTURA: PermissionKey[] = [
 ];
 
 describe('rol de gerencia', () => {
-  it('no tiene ni un permiso de escritura', () => {
+  it('sólo tiene una excepción de escritura: resolver conflictos globales', () => {
     const suyos = ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT];
     const escritura = suyos.filter((p) => !SOLO_LECTURA.includes(p));
 
-    /*
-      Esta prueba es la que importa: si mañana alguien agrega un permiso al
-      catálogo y se lo concede a Gerencia sin pensarlo, falla acá y no en
-      producción.
-    */
-    expect(escritura, `Gerencia recibió permisos de escritura: ${escritura.join(', ')}`).toEqual([]);
+    expect(escritura).toEqual(['conflict.resolve_all']);
   });
 
   it('no puede operar turnos, llaves ni habitaciones', () => {
@@ -64,6 +60,19 @@ describe('rol de gerencia', () => {
     ] as PermissionKey[]) {
       expect(suyos, `Gerencia no debería tener ${prohibido}`).not.toContain(prohibido);
     }
+  });
+
+  it('la resolución global pertenece sólo a Administrador, Supervisor y Gerencia', () => {
+    const conPermiso = Object.entries(ROLE_PERMISSIONS)
+      .filter(([, permissions]) =>
+        (permissions as readonly string[]).includes('conflict.resolve_all'),
+      )
+      .map(([role]) => role)
+      .sort();
+
+    expect(conPermiso).toEqual(
+      [ROLE_KEYS.SYSTEM_ADMIN, ROLE_KEYS.SUPERVISOR, ROLE_KEYS.MANAGEMENT].sort(),
+    );
   });
 
   it('cada permiso que tiene existe en el catálogo', () => {

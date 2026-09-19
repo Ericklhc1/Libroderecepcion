@@ -13,6 +13,7 @@ import {
   CloseAnnouncementDialog,
   NewAnnouncementDialog,
 } from './announcements';
+import { ResolveAllConflictsDialog } from '@/components/rooms/resolve-all-conflicts';
 
 export const metadata = { title: 'Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -79,6 +80,7 @@ export default async function SupervisionPage() {
   }
 
   const canAnnounce = hasPermission(user, 'announcement.manage');
+  const canResolveAllConflicts = hasPermission(user, 'conflict.resolve_all');
 
   const [{ blocks, total, now }, announcements, operationalUsers] = await Promise.all([
     getSupervisionData(),
@@ -115,6 +117,9 @@ export default async function SupervisionPage() {
           >
             Tablero de asignación y checklists
           </Link>
+          {canResolveAllConflicts && conflicts > 0 ? (
+            <ResolveAllConflictsDialog count={conflicts} />
+          ) : null}
           <p className="text-xs text-slate-500">Al {now.toLocaleString('es-CL')}</p>
         </div>
       </header>

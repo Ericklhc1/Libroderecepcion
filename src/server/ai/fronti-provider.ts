@@ -144,11 +144,13 @@ export type FrontiProviderConfig = {
 
 export class FrontiProviderError extends Error {
   readonly failure: AssistantFailure;
+  readonly detail: string | null;
 
-  constructor(failure: AssistantFailure, cause?: Error) {
+  constructor(failure: AssistantFailure, cause?: Error, detail?: string | null) {
     super(failure);
     this.name = 'FrontiProviderError';
     this.failure = failure;
+    this.detail = detail?.trim() || null;
     if (cause) this.cause = cause;
   }
 }
@@ -271,7 +273,14 @@ export async function chatWithFrontiProvider(args: {
         args.provider.model.startsWith('openai/gpt-oss-')
           ? {
               reasoning_effort: args.provider.reasoningEffort,
-              include_reasoning: false,
+              /*
+               * Groq exige reasoning_format="hidden" (o "parsed") cuando
+               * GPT-OSS usa tool calling. include_reasoning=false sirve para
+               * respuestas de texto, pero combinado con tools provoca un 400
+               * de petición inválida. Fronti usa herramientas en toda
+               * conversación operativa, por lo que este campo es obligatorio.
+               */
+              reasoning_format: 'hidden',
             }
           : {}),
       }),
@@ -286,7 +295,7 @@ export async function chatWithFrontiProvider(args: {
 
   if (!response.ok) {
     const failure = await parseFailure(response);
-    throw new FrontiProviderError(failure.failure);
+    throw new FrontiProviderError(failure.failure, undefined, failure.detail);
   }
 
   let payload: ChatCompletionPayload;

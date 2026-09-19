@@ -9,6 +9,7 @@ import {
   softDeleteSchema,
 } from '@/server/schemas';
 import { requirePermission } from '@/server/auth/guard';
+import { prisma } from '@/lib/prisma';
 import {
   acknowledgeAlert,
   createManualAlert,

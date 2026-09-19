@@ -52,6 +52,16 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Validar infraestructura oficial
+        run: |
+          test -f vercel.json
+          test ! -f netlify.toml
+          test ! -d .netlify
+          if grep -RIl --exclude-dir=node_modules --exclude-dir=.git --exclude='*.md' --exclude='package-lock.json' -E 'netlify\.app|NETLIFY_|@netlify/' src prisma .github package.json 2>/dev/null; then
+            echo 'Se detectó una dependencia o configuración activa de Netlify. La infraestructura oficial es GitHub + Vercel + Neon.'
+            exit 1
+          fi
+
       - name: Validar versión
         env:
           EVENT_NAME: ${{ github.event_name }}

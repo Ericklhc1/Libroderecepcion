@@ -42,7 +42,7 @@ import {
   TASK_STATUS_TONE,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, SHIFT_WINDOW_LABEL } from '@/domain/shift';
-import { formatCalendarDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
+import { formatCalendarDate, formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 
 export const metadata = { title: 'Turno' };
 export const dynamic = 'force-dynamic';

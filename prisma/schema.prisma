@@ -1470,6 +1470,8 @@ model CashTransfer {
   createdById String
   createdBy   User          @relation("cashTransferBy", fields: [createdById], references: [id])
   createdAt   DateTime      @default(now())
+  /// Reflejo del egreso en la Caja central. Nulo sólo mientras espera aprobación.
+  cashMovement CashMovement?
 
   @@index([handoverId])
   @@index([currency])
@@ -1801,8 +1803,9 @@ model CashMovement {
   guestId                 String?
   reservationReferenceId  String?
   guaranteeId             String?
-  gymPassId              String?
-  createdById            String
+  gymPassId               String?
+  cashTransferId          String?               @unique
+  createdById             String
   reference              String?
   notes                  String?
   createdAt              DateTime              @default(now())
@@ -1814,6 +1817,7 @@ model CashMovement {
   voidedBy               User?                 @relation("cashMovementVoidedBy", fields: [voidedById], references: [id])
   guarantee              Guarantee?            @relation(fields: [guaranteeId], references: [id])
   gymPass                GymPass?              @relation(fields: [gymPassId], references: [id])
+  cashTransfer           CashTransfer?          @relation(fields: [cashTransferId], references: [id])
   reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
   room                   Room?                 @relation(fields: [roomId], references: [id])
   stay                   RoomStay?             @relation(fields: [stayId], references: [id])

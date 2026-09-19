@@ -5,34 +5,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requireUser } from '@/server/auth/guard';
-import { countLiveAlerts, runAlertEngine } from '@/server/services/alert-engine';
-
-const ALERT_REFRESH_MS = 60_000;
-let lastAlertRefresh = 0;
-
-/**
- * Mantiene el motor al día mientras haya una sesión abierta, incluso si nadie
- * navega. El aviso sonoro consulta esta acción cada 20 s; el motor se limita a
- * una ejecución por minuto por instancia para no convertir ese sondeo ligero
- * en una batería de consultas en cada pestaña.
- *
- * Esto importa especialmente para reglas horarias —como el check-out desde las
- * 11:00—: la alerta debe aparecer y sonar aunque el recepcionista lleve rato en
- * la misma pantalla.
- */
-async function refreshAlertsIfDue(): Promise<void> {
-  const now = Date.now();
-  if (now - lastAlertRefresh < ALERT_REFRESH_MS) return;
-
-  lastAlertRefresh = now;
-  try {
-    await runAlertEngine(new Date(now));
-  } catch (error) {
-    // La siguiente consulta puede reintentar. El sonido nunca debe romper la UI.
-    lastAlertRefresh = 0;
-    console.error('[alertas] no se pudo refrescar el motor desde el sondeo', error);
-  }
-}
+import { getUnreadCountsForUser } from '@/server/services/notification-poll';
 
 /**
  * Cuántas cosas sin leer hay ahora mismo.
@@ -51,13 +24,7 @@ export async function getUnreadCounts(): Promise<{
   alerts: number;
 }> {
   const user = await requireUser();
-  await refreshAlertsIfDue();
-
-  const [notifications, alerts] = await Promise.all([
-    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
-    countLiveAlerts(),
-  ]);
-  return { notifications, alerts };
+  return getUnreadCountsForUser(user.id);
 }
 
 const markSchema = z.object({ id: z.string().min(1).optional() });

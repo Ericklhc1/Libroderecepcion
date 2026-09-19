@@ -4,7 +4,7 @@
 > `PROJECT_CONTEXT.md` y `docs/ARQUITECTURA.md`. Aquí sólo se responde «en qué
 > punto está cada bloque».
 
-Actualizado: **2026-09-18** · corrección de coherencia visual tras release `bafa406`
+Actualizado: **2026-09-18** · consolidación sobre Production `main@9555c977`
 
 ## Estados canónicos
 
@@ -90,29 +90,27 @@ graph TD
 |---|---|---|---|
 | Infraestructura de staging | `VALIDADO_STAGING` | #56 · #57 | Proyecto Neon aislado, 35 migraciones, seed sintético, cero datos de Production |
 | Turnos + transferencia de Caja | `PRODUCTION` | #59 · #60 | Lógica desplegada en Vercel Production; se corrige navegación heredada |
-| ID FNS transversal | `PENDIENTE` | — | |
-| Simplificación del Libro | `PENDIENTE` | — | |
-| Caja unificada | `EN_DESARROLLO` | corrección de navegación | Se retira el cierre de Caja como módulo visible independiente; la consolidación funcional continúa |
-| Habitaciones + Reservas | `PENDIENTE` | — | |
-| Preparar entrega | `PENDIENTE` | — | |
-| Validación integral en staging | `PENDIENTE` | — | Depende de todo lo anterior |
+| ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Núcleo de Reservas/RoomStay consolidado por ID FNS y proyectado a Production |
+| Simplificación del Libro | `PENDIENTE` | — | Siguiente bloque funcional después de cerrar la consolidación técnica |
+| Caja unificada | `PRODUCTION` | #63 · #67 · #68 | Cierre formal, arqueo por denominación, garantías y flujo integrado desplegados |
+| Habitaciones + Reservas | `PRODUCTION` | #64 · #68 | Núcleo operativo por habitación e ID FNS desplegado |
+| Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y el flujo queda coherente con turnos solapados |
+| Credenciales de Fronti | `EN_DESARROLLO` | rama `fix/fronti-provider-credentials-consolidado` | Rescata WIP abandonado: credenciales cifradas administrables sin desplegar |
 
 ## Iteración actual
 
-**Coherencia de navegación + Caja integrada en turno** — `EN_DESARROLLO`
+**Consolidación de Fronti sobre Production** — `EN_DESARROLLO`
 
-Un recepcionista entrante debe poder abrir su propio turno sin esperar el cierre
-del saliente. La única transferencia obligatoria entre turnos es Caja, trazada y
-sin autorización previa de Supervisión.
+La auditoría de ramas confirmó que los bloques funcionales principales ya están en
+`main`; las ramas antiguas son mayormente historia divergida y no se deben remezclar.
+El único WIP útil detectado fuera de Production es la gestión de credenciales de
+proveedor de Fronti. Se está reimplementando sobre el `main` actual, no por cherry-pick.
 
-- Release anterior: #59 → #60 → Vercel Production `bafa406`
-- Corrección actual: menú y tutorial deben dejar de presentar `Cierre de Caja` como módulo independiente
-- Cambio estructural: **la unicidad global por hotel se reemplaza por
-  exclusividad de participación activa por usuario, garantizada en base de datos
-  sobre `ShiftAssignment`.** Se retira el índice
-  `Shift_un_solo_turno_en_curso`; una persona no puede participar activamente en
-  dos turnos a la vez, sea TITULAR o APOYO, y lo impide PostgreSQL, no el
-  servicio
+Regla vigente de despliegue:
+
+`rama de trabajo → PR/Compuerta → main → Vercel Production → Neon production`
+
+No hay previews automáticos de Vercel y no se crean ramas Neon por rama Git.
 
 ## Ya validado
 
@@ -131,11 +129,13 @@ La lógica de turnos + Caja ya está en Production. La corrección actual elimin
 
 | Bloqueo | Efecto | Se desbloquea con |
 |---|---|---|
-| Neon en plan **Free** | La rama `production` **no puede protegerse** (cupo de ramas protegidas = 0) y la retención de historial queda en 6 h | Cambio de plan |
-| `DATABASE_URL` de Preview con alcance por rama en Vercel | Todo preview de una rama nueva falla en el build | Desactivar previews o corregir el alcance de la variable |
-| Integración Neon–Vercel | Cada preview clona la rama `production`: hoy hay 6 ramas Neon con copia de datos reales | Desactivar el branching de preview en la integración |
-| Netlify apunta a `main` en contexto `production` | Staging no está donde debe: la rama canónica debe ser `preproduction` | Cambio de rama canónica en el panel de Netlify |
-| Vercel Production | Alineado con `main@bafa406` y con respaldo recuperable | — |
+| Neon en plan **Free** | La rama `production` no puede protegerse y la retención de historial queda limitada | Cambio de plan |
+| Límite diario de deployments Vercel Free | Un exceso de despliegues puede bloquear nuevos builds durante la ventana diaria | Evitar previews; sólo `main` despliega automáticamente |
+| Credencial del proveedor Fronti | Hoy depende del entorno y obliga a redesplegar para cambiarla | Iteración actual: credencial cifrada administrable desde Fronti |
+
+Estado de infraestructura verificado: **1 rama Neon (`production`)** y Vercel
+Production sirviendo `main@9555c977`. Los deployments Preview históricos no son
+fuente de verdad y no deben reactivarse.
 
 ## Regla de mantenimiento
 

@@ -168,10 +168,14 @@ conserva su modelo y sus reglas.
    `key.stock`, `reconcileKeysAction`) la llama sin acotar, para alcanzar
    estadías cargadas antes de que la regla existiera. Es idempotente. No hay
    ni debe haber una segunda lógica de asignación.
-   **Una reserva es UNA estadía por habitación y por FASE.** `CHECK_IN` e
-   `IN_HOUSE` son el mismo hecho en dos etapas —el informe de entradas la
-   lista como llegada y el de in house como alojada— así que se conservan en
-   una sola estadía y gana el estado más avanzado (`mostAdvancedStayStatus`).
+   **Una reserva es UNA estadía activa por habitación y por FASE, incluso entre
+   días operativos.** `CHECK_IN` e `IN_HOUSE` son el mismo hecho en dos
+   etapas —el informe de entradas la lista como llegada y el de in house como
+   alojada— así que se conserva una sola fila y gana el estado más avanzado
+   (`mostAdvancedStayStatus`). Al importar un nuevo día, una estadía activa de
+   la misma reserva/habitación/fase se **refresca** con la nueva fotografía PMS;
+   no se crea otra fila sólo porque cambió `businessDate`. La historia
+   `FINALIZADO` sí se conserva aparte.
    `CHECK_OUT` es un hecho APARTE: una reserva que sale y vuelve a entrar el
    mismo día son dos filas, y eso es lo que hace existir
    `sameReservationTurnaround`. La fase la decide `stayPhase` en el dominio.
@@ -329,11 +333,13 @@ conserva su modelo y sus reglas.
     el navegador: quien entra desde otro equipo ya conoce el sistema.
     Lo vigila `tests/ayuda.test.ts`.
 
-15. **Gerencia sólo consulta, salvo como responsable.** Rol `GERENCIA`
+15. **Gerencia consulta, salvo dos excepciones expresas.** Rol `GERENCIA`
     (`operational: true`, porque tiene que poder figurar como responsable) con
-    **cinco permisos, todos de lectura**. Una prueba falla si se le cuela uno
-    de escritura al agregar un permiso nuevo al catálogo.
-    La excepción no se concede con un permiso —sería un permiso sobre todos
+    sus permisos de lectura y el permiso de reparación
+    `conflict.resolve_all`. No recibe permisos generales de check-in/check-out,
+    llaves, edición ni turnos.
+    La primera excepción sigue siendo actuar sobre aquello de lo que es
+    responsable y no se concede con un permiso general —sería acceso sobre todos
     los registros— sino comprobando la propiedad del registro concreto:
     `requirePermissionOrOwner(permiso, cargarDueños)`, que mira el permiso
     PRIMERO para que quien lo tiene no pague una consulta extra. La aplican
@@ -345,7 +351,17 @@ conserva su modelo y sus reglas.
     `requirePageAnyPermission` deja entrar con cualquiera de los dos.
     No puede tomar turnos aunque su rol sea operativo: le faltan
     `shift.start`, `shift.receive` y `shift.handover`.
-    Lo vigila `tests/rol-gerencia.test.ts`.
+    La segunda excepción es **Resolver todos los conflictos**: una reparación
+    global, auditada y compartida con Supervisor y Administrador de sistema.
+    Reconciliación no significa ocultar avisos: colapsa duplicados deterministas,
+    confirma check-outs vencidos sólo después de la hora límite configurada,
+    aplica la regla canónica de llaves y recalcula alertas. Si dos verdades
+    incompatibles del mismo día no permiten decidir sin inventar datos, el
+    conflicto permanece y se escala como incidencia crítica. Cada ejecución crea
+    una novedad de trazabilidad y notifica a **todos los usuarios activos** en el
+    Centro de notificaciones.
+    Lo vigilan `tests/rol-gerencia.test.ts` y
+    `tests/resolver-conflictos.test.ts`.
 16. **La multa es el formulario de papel, con sus campos.** `Fine` guarda lo
     que ya se usaba: número de reserva, habitación, huésped, tipo de blanco,
     **tipo de mancha**, por qué procede el cobro y **la negativa del huésped**.

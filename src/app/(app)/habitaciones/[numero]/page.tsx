@@ -13,7 +13,7 @@ import { getGymPassContextForRoom } from '@/server/services/gym-pass';
 import { gymPrices } from '@/server/services/live-cash';
 import { NotFoundError } from '@/server/errors';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { DeleteStayDialog, ResetRoomDialog } from '@/components/rooms/delete-stay';
 import {
@@ -442,6 +442,50 @@ export default async function RoomDetailPage({
         </Card>
       ) : null}
 
+      <Card>
+        <CardHeader
+          title="Caja vinculada a la habitación"
+          count={room.cashMovements.length}
+          href="/caja"
+          hrefLabel="Abrir Caja central"
+        />
+        {room.cashMovements.length === 0 ? (
+          <EmptyState message="Sin movimientos de Caja asociados a esta habitación." />
+        ) : (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+              {room.cashMovements.map((movement) => (
+                <li key={movement.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={movement.direction === 'ENTRADA' ? 'resuelto' : 'atencion'}>
+                        {movement.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso'}
+                      </Badge>
+                      <span className="text-sm font-medium text-petrol-900">
+                        {movement.reference ?? movement.kind.toLowerCase().replaceAll('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {movement.reservationCode ? `ID FNS ${movement.reservationCode}` : 'Sin reserva asociada'}
+                      {movement.guestName ? ` · ${movement.guestName}` : ''}
+                      {` · ${formatDateTime(movement.createdAt)} · ${movement.createdByName}`}
+                    </p>
+                    {movement.notes ? <p className="mt-1 text-xs text-slate-600">{movement.notes}</p> : null}
+                  </div>
+                  <span
+                    className={`shrink-0 font-semibold tabular ${
+                      movement.direction === 'ENTRADA' ? 'text-emerald-700' : 'text-red-700'
+                    }`}
+                  >
+                    {movement.direction === 'ENTRADA' ? '+' : '−'}
+                    {movement.currency} {movement.amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardScroll>
+        )}
+      </Card>
       <RoomKeys
         roomId={room.id}
         roomNumber={room.number}

@@ -2,10 +2,14 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
   AuditAction,
   EntryStatus,
   EntryType,
   GuaranteeState,
+  NotificationType,
   Priority,
 } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
@@ -21,6 +25,11 @@ import { saveLiveCashAudit } from '@/server/services/live-cash';
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
+import { notify } from '@/server/notifications';
+import {
+  cashApprovalRequired,
+  listCashApproverIds,
+} from '@/server/services/cash-permission-policy';
 
 const gymPassSchema = z.object({
   stayId: z.string().min(1),
@@ -156,14 +165,111 @@ export async function createManualCashMovementAction(
     }
 
     const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
-    const movementId = await applyAuthorizedManualMovement(user, input, shift.id);
+    const needsApproval = await cashApprovalRequired(user, permission);
+
+    if (!needsApproval) {
+      const movementId = await applyAuthorizedManualMovement(user, input, shift.id);
+      revalidatePath('/caja');
+      revalidatePath('/libro');
+      revalidatePath('/turno');
+      return {
+        ok: true as const,
+        message: `${verb} registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`,
+        id: movementId,
+      };
+    }
+
+    const approverIds = await listCashApproverIds();
+    if (approverIds.length === 0) {
+      throw new RuleError(
+        'Esta operación exige autorización, pero no hay ningún rol activo con permiso cash.approve.',
+      );
+    }
+
+    const request = await prisma.$transaction(async (tx) => {
+      const entry = await tx.operationalEntry.create({
+        data: {
+          type: EntryType.CAJA,
+          status: EntryStatus.EN_ESPERA,
+          title: `Solicitud de ${verb.toLowerCase()} de caja · ${input.reference}`,
+          description:
+            `${verb} solicitado por ${input.currency} ${input.amount}. ` +
+            `Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+          category: 'AJUSTE_CAJA_SOLICITADO',
+          priority: Priority.ALTA,
+          ownerId: user.id,
+          shiftId: shift.id,
+          occurredAt: new Date(),
+          tags: [
+            'caja',
+            'autorizacion-pendiente',
+            `direccion-${input.direction}`,
+            `moneda-${input.currency}`,
+            `monto-${input.amount}`,
+            `referencia-${encodeURIComponent(input.reference)}`,
+            ...(input.notes ? [`notas-${encodeURIComponent(input.notes)}`] : []),
+          ],
+          requiresFollowUp: true,
+          createdById: user.id,
+        },
+        select: { id: true, seq: true },
+      });
+
+      const alert = await tx.alert.create({
+        data: {
+          type: AlertType.OTRO,
+          level: AlertLevel.ATENCION,
+          status: AlertStatus.NUEVA,
+          title: `Autorizar ${verb.toLowerCase()} de Caja`,
+          message: `${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}. Solicitado por ${user.name}.`,
+          entryId: entry.id,
+          dedupeKey: `cash-manual:${entry.id}`,
+          auto: false,
+          createdById: user.id,
+        },
+        select: { id: true },
+      });
+
+      await recordAudit(
+        {
+          entity: 'OperationalEntry',
+          entityId: entry.id,
+          action: AuditAction.CREAR,
+          user,
+          summary: `Solicitud de autorización: ${verb} ${input.currency} ${input.amount} · ${input.reference}`,
+          after: {
+            shiftId: shift.id,
+            alertId: alert.id,
+            permission,
+            status: 'PENDIENTE_APROBACION',
+          },
+        },
+        tx,
+      );
+
+      return { entry, alert };
+    });
+
+    await notify(
+      approverIds.map((userId) => ({
+        userId,
+        type: NotificationType.ACCION_REQUERIDA,
+        title: `Autorizar ${verb.toLowerCase()} de Caja`,
+        body: `${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}`,
+        link: '/notificaciones',
+        entity: 'Alert',
+        entityId: request.alert.id,
+      })),
+    );
+
     revalidatePath('/caja');
     revalidatePath('/libro');
-    revalidatePath('/turno');
+    revalidatePath('/supervision');
+    revalidatePath('/notificaciones');
     return {
       ok: true as const,
-      message: `${verb} registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`,
-      id: movementId,
+      message: `${verb} solicitado. Caja no cambia hasta que alguien con permiso de aprobación lo autorice.`,
+      id: request.entry.id,
     };
   });
 }

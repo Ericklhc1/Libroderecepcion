@@ -68,6 +68,10 @@ export const PERMISSIONS = {
     mesón y hay que poder resolverlo sin esperar al administrador.
   */
   'room.reset': { group: 'Habitaciones y llaves', name: 'Resetear una habitación atascada' },
+  'conflict.resolve_all': {
+    group: 'Supervisión',
+    name: 'Resolver todos los conflictos operativos',
+  },
 
   /*
     Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
@@ -160,6 +164,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'audit.view',
     'key.stock',
     'room.reset',
+    'conflict.resolve_all',
     'announcement.manage',
     'supervision.view',
   ],
@@ -197,6 +202,8 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'metrics.view',
     'room.view',
     'audit.view',
+    // Excepción expresa: reparación masiva auditada, no operación de mesón.
+    'conflict.resolve_all',
   ],
 };
 

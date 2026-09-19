@@ -43,6 +43,7 @@ export const entryCreateSchema = z.object({
   requiresFollowUp: zCheckbox,
   guestId: zOptionalCuid,
   reservationId: zOptionalCuid,
+  stayId: zOptionalCuid,
   // Específicos de incidencia
   severity: z.nativeEnum(Severity).optional(),
   impact: z.nativeEnum(Impact).optional(),
@@ -259,6 +260,9 @@ const zMoney = z
 
 export const guaranteeCreateSchema = z.object({
   reservationReferenceId: z.string().min(1, 'Selecciona la reserva'),
+  /** Contexto opcional: desde una estadía/habitación se resuelve sin duplicar datos. */
+  stayId: zOptionalCuid,
+  roomId: zOptionalCuid,
   kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),
   amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero'),
   /** Código ISO de tres letras. La operación es en CLP, pero no sólo. */

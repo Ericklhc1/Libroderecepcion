@@ -629,6 +629,9 @@ model OperationalEntry {
   guest         GuestReference?       @relation(fields: [guestId], references: [id])
   reservationId String?
   reservation   ReservationReference? @relation(fields: [reservationId], references: [id])
+  /// Estadía exacta que originó el registro cuando el contexto es inequívoco.
+  stayId        String?
+  stay          RoomStay?             @relation(fields: [stayId], references: [id])
 
   // --- Campos específicos de incidencia (nulos en otros tipos) ---
   severity        Severity?
@@ -666,6 +669,7 @@ model OperationalEntry {
   @@index([deletedAt])
   @@index([departmentId])
   @@index([roomId])
+  @@index([stayId])
 }
 
 model Task {
@@ -910,9 +914,10 @@ model GuestReference {
   deletedAt  DateTime?
   isDemo     Boolean   @default(false)
 
-  reservations ReservationReference[]
-  entries      OperationalEntry[]
-  alerts       Alert[]
+  reservations  ReservationReference[]
+  entries       OperationalEntry[]
+  alerts        Alert[]
+  cashMovements CashMovement[]
 
   @@index([fullName])
   @@index([roomNumber])
@@ -1219,9 +1224,11 @@ model RoomStay {
   deletionReason String?
   isDemo         Boolean   @default(false)
 
-  keys      RoomKey[]
-  movements KeyMovement[]
-  fines     Fine[]
+  keys          RoomKey[]
+  movements     KeyMovement[]
+  fines         Fine[]
+  entries       OperationalEntry[]
+  cashMovements CashMovement[]
 
   // Un mismo informe no puede dejar dos veces la misma reserva en la misma
   // habitación y estado para un día de operación: la importación es idempotente.
@@ -1787,9 +1794,11 @@ model CashMovement {
   currency               String                @db.VarChar(3)
   amount                 Decimal               @db.Decimal(12, 2)
   shiftId                String?
-  roomId                 String?
-  reservationReferenceId String?
-  guaranteeId            String?
+  roomId                  String?
+  stayId                  String?
+  guestId                 String?
+  reservationReferenceId  String?
+  guaranteeId             String?
   gymPassId              String?
   createdById            String
   reference              String?
@@ -1805,12 +1814,16 @@ model CashMovement {
   gymPass                GymPass?              @relation(fields: [gymPassId], references: [id])
   reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
   room                   Room?                 @relation(fields: [roomId], references: [id])
+  stay                   RoomStay?             @relation(fields: [stayId], references: [id])
+  guest                  GuestReference?       @relation(fields: [guestId], references: [id])
   shift                  Shift?                @relation(fields: [shiftId], references: [id])
 
   @@index([createdAt])
   @@index([currency])
   @@index([reservationReferenceId])
   @@index([roomId])
+  @@index([stayId])
+  @@index([guestId])
   @@index([shiftId])
 }
 

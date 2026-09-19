@@ -4,7 +4,6 @@ import {
   EntryStatus,
   EntryType,
   FollowUpStatus,
-  HandoverStatus,
   Priority,
   ShiftStatus,
   TaskStatus,
@@ -18,13 +17,12 @@ import {
   getCurrentShift,
   getMyOpenShift,
   getPendingHandover,
-  getShiftsAwaitingReceipt,
   operationalDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
-import { getSettingNumber, getSettingNumbers } from './settings';
+import { getSettingNumber } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 
 let lastEngineRun = 0;
@@ -71,36 +69,19 @@ export async function getDashboardData(user: CurrentUser) {
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
-  const dashboardLimits = await getSettingNumbers([
-    'home.operationalFeedLimit',
-    'alerts.dashboardLimit',
-  ] as const);
-  const operationalFeedLimit = Math.max(
-    1,
-    Math.min(50, Math.trunc(dashboardLimits['home.operationalFeedLimit'] ?? 12)),
-  );
   const alertDashboardLimit = Math.max(
     1,
-    Math.min(50, Math.trunc(dashboardLimits['alerts.dashboardLimit'] ?? 10)),
+    Math.min(50, Math.trunc(await getSettingNumber('alerts.dashboardLimit', 10))),
   );
 
   const [
-    awaitingReceipt,
     incoming,
     criticalEntries,
     overdueTasks,
     myTasks,
-    openIncidents,
     alerts,
     followUps,
-    latestEntries,
-    lastReceivedHandover,
   ] = await Promise.all([
-    /*
-      Ya no se ofrece «una lista de franjas tomables»: con un solo turno a la
-      vez la pregunta es otra —¿hay uno abierto, y hay un cierre esperando?—.
-    */
-    getShiftsAwaitingReceipt(),
     getPendingHandover(myShift?.id ?? null),
     prisma.operationalEntry.findMany({
       where: {
@@ -111,48 +92,35 @@ export async function getDashboardData(user: CurrentUser) {
           { dueAt: { lt: now } },
         ],
       },
-      include: {
-        owner: { select: { id: true, name: true } },
-        department: { select: { name: true } },
-        guest: { select: { fullName: true, roomNumber: true } },
+      select: {
+        id: true,
+        seq: true,
+        title: true,
+        priority: true,
+        dueAt: true,
       },
       orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }],
       take: 8,
     }),
     prisma.task.findMany({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
-      include: { assignee: { select: { id: true, name: true } } },
+      select: { id: true, title: true, priority: true },
       orderBy: { dueAt: 'asc' },
       take: 8,
     }),
     prisma.task.findMany({
       where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
-      include: {
-        entry: { select: { id: true, seq: true } },
-        _count: { select: { checklist: true } },
-      },
+      select: { id: true, dueAt: true },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 8,
     }),
-    prisma.operationalEntry.findMany({
-      where: {
-        deletedAt: null,
-        type: EntryType.INCIDENCIA,
-        status: { in: ENTRY_OPEN_STATUSES },
-      },
-      include: {
-        owner: { select: { id: true, name: true } },
-        department: { select: { name: true } },
-      },
-      orderBy: [{ severity: 'desc' }, { occurredAt: 'desc' }],
-      take: 6,
-    }),
     prisma.alert.findMany({
       where: LIVE_ALERT_WHERE(now),
-      include: {
-        entry: { select: { id: true, seq: true } },
-        task: { select: { id: true } },
-        reservation: { select: { code: true } },
+      select: {
+        id: true,
+        level: true,
+        title: true,
+        message: true,
       },
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
       take: alertDashboardLimit,
@@ -162,35 +130,13 @@ export async function getDashboardData(user: CurrentUser) {
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
       },
-      include: {
-        owner: { select: { id: true, name: true } },
-        entry: { select: { id: true, seq: true, title: true } },
+      select: {
+        id: true,
+        action: true,
+        status: true,
       },
       orderBy: [{ scheduledAt: 'asc' }],
       take: 6,
-    }),
-    prisma.operationalEntry.findMany({
-      where: { deletedAt: null },
-      include: {
-        createdBy: { select: { name: true } },
-        department: { select: { name: true } },
-      },
-      orderBy: { occurredAt: 'desc' },
-      take: operationalFeedLimit,
-    }),
-    // Última entrega que recibió el turno en curso (o el usuario).
-    prisma.shiftHandover.findFirst({
-      where: {
-        status: HandoverStatus.RECIBIDA,
-        ...(myShift ? { toShiftId: myShift.id } : { receivedById: user.id }),
-      },
-      include: {
-        issuedBy: { select: { name: true } },
-        receivedBy: { select: { name: true } },
-        fromShift: { select: { type: true, date: true } },
-        items: { orderBy: [{ level: 'asc' }, { order: 'asc' }] },
-      },
-      orderBy: { receivedAt: 'desc' },
     }),
   ]);
 
@@ -205,9 +151,9 @@ export async function getDashboardData(user: CurrentUser) {
     allRooms,
     openEntries,
     openTasks,
+    openIncidents,
     liveAlerts,
     criticalAlerts,
-    usdRateCLP,
   ] = await Promise.all([
     // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
     // en curso, que puede ser el propio o ninguno.
@@ -221,9 +167,15 @@ export async function getDashboardData(user: CurrentUser) {
     prisma.task.count({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
+    prisma.operationalEntry.count({
+      where: {
+        deletedAt: null,
+        type: EntryType.INCIDENCIA,
+        status: { in: ENTRY_OPEN_STATUSES },
+      },
+    }),
     prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
     prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
-    getSettingNumber('reception.usdRateCLP', 0),
   ]);
 
   /*
@@ -250,36 +202,10 @@ export async function getDashboardData(user: CurrentUser) {
     )
     .slice(0, 8);
 
-  /*
-    Ocupación de recepción, no estadística comercial: una habitación sigue
-    contando como ocupada mientras haya alguien dentro O una salida todavía
-    sin confirmar. Así el porcentaje representa lo que el mesón debe operar,
-    no una proyección abstracta.
-  */
-  const occupiedRooms = allRooms.filter(
-    (room) => room.snapshot.current !== null || room.snapshot.outgoing !== null,
-  ).length;
-  const pendingCheckOuts = allRooms.filter((room) => room.snapshot.outgoing !== null).length;
-  const occupancyPercent =
-    allRooms.length > 0 ? Math.round((occupiedRooms / allRooms.length) * 1000) / 10 : null;
-
-  /*
-    La entrega anterior es el punto de partida del turno actual. Sus métricas
-    se guardan como elementos de la misma entrega —no como otra tabla— para que
-    «inicio» y «cierre» hablen de la misma fotografía operativa.
-  */
-  const receivedOccupancy =
-    lastReceivedHandover?.items.find(
-      (item) => item.refType === 'metric' && item.refId === 'occupancy',
-    )?.title ?? null;
-  const receivedUsdRate =
-    lastReceivedHandover?.items.find(
-      (item) => item.refType === 'metric' && item.refId === 'usd-rate',
-    )?.title ?? null;
-
   const counters = {
     openEntries,
     openTasks,
+    openIncidents,
     liveAlerts,
     criticalAlerts,
     roomsNeedingAction: roomsNeedingAction.length,
@@ -320,29 +246,16 @@ export async function getDashboardData(user: CurrentUser) {
   return {
     now,
     myShift,
-    awaitingReceipt,
     incoming,
     nextShift,
     shiftMetrics,
     criticalEntries,
     overdueTasks,
     myTasks,
-    openIncidents,
     alerts,
     followUps,
-    latestEntries,
-    lastReceivedHandover,
     roomsNeedingAction,
     attention,
-    operational: {
-      occupiedRooms,
-      totalRooms: allRooms.length,
-      occupancyPercent,
-      pendingCheckOuts,
-      usdRateCLP,
-      receivedOccupancy,
-      receivedUsdRate,
-    },
     counters,
     today: operationalDate(now),
   };

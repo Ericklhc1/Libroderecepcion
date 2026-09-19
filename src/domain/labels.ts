@@ -205,12 +205,14 @@ export const HANDOVER_STATUS_LABEL: Record<HandoverStatus, string> = {
   BORRADOR: 'En preparación',
   ENVIADA: 'Enviada',
   RECIBIDA: 'Recibida',
+  ANULADA: 'Anulada',
 };
 
 export const HANDOVER_STATUS_TONE: Record<HandoverStatus, Tone> = {
   BORRADOR: 'pendiente',
   ENVIADA: 'curso',
   RECIBIDA: 'resuelto',
+  ANULADA: 'neutro',
 };
 
 export const HANDOVER_LEVEL_LABEL: Record<HandoverLevel, string> = {

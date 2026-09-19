@@ -6,7 +6,7 @@ import { requirePageAnyPermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import {
   GUARANTEE_STATUS_LABEL,
   GUARANTEE_STATUS_TONE,
@@ -231,7 +231,8 @@ export default async function GuestsPage({ searchParams }: { searchParams: Searc
         {reservations.length === 0 ? (
           <EmptyState message="Sin reservas que coincidan con los filtros." />
         ) : (
-          <div className="overflow-x-auto">
+          <CardScroll maxHeight="max-h-[40rem]">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
                 <tr>
@@ -325,7 +326,8 @@ export default async function GuestsPage({ searchParams }: { searchParams: Searc
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </CardScroll>
         )}
         <Pager current={rp} total={reservationTotal} href={(page) => pageHref(currentParams, { rp: page })} />
       </Card>
@@ -335,7 +337,8 @@ export default async function GuestsPage({ searchParams }: { searchParams: Searc
         {guests.length === 0 ? (
           <EmptyState message="Sin huéspedes que coincidan con los filtros." />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {guests.map((guest) => (
               <li key={guest.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
@@ -370,7 +373,8 @@ export default async function GuestsPage({ searchParams }: { searchParams: Searc
                 ) : null}
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
         <Pager current={gp} total={guestTotal} href={(page) => pageHref(currentParams, { gp: page })} />
       </Card>

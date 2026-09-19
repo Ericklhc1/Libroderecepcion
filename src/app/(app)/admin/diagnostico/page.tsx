@@ -3,20 +3,55 @@ import { ArrowLeft, Bug, CheckCircle2, CircleAlert, DatabaseZap, Wrench } from '
 import { requirePagePermission } from '@/server/auth/guard';
 import { getDiagnosticReport } from '@/server/services/diagnostics';
 import { getSettingBool } from '@/server/services/settings';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge } from '@/components/ui/badge';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { repairDiagnosticsAction } from '@/server/actions/diagnostics';
 import { formatDateTime } from '@/lib/format';
+import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Diagnóstico y reparación' };
 export const dynamic = 'force-dynamic';
 
-export default async function DiagnosticsPage() {
+export default async function DiagnosticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('system.configure');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const enabled = await getSettingBool('diagnostics.enabled', true);
   const report = enabled ? await getDiagnosticReport() : null;
+
+  const matches = (values: Array<string | number | null | undefined>) =>
+    !q ||
+    values
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+
+  const visibleDuplicateAlerts =
+    report?.duplicateAlerts.filter((group) =>
+      matches([group.signature, group.title, ...group.ids, ...group.status]),
+    ) ?? [];
+  const visibleMismatches =
+    report?.reservationRoomMismatches.filter((row) =>
+      matches([row.fnsId, row.currentRoomNumber, row.expectedRoomNumber, ...row.activeRooms]),
+    ) ?? [];
+  const visibleDuplicateStays =
+    report?.duplicateActiveStays.filter((row) =>
+      matches([row.reservationId, row.roomNumber, row.status, ...row.stayIds]),
+    ) ?? [];
+  const visibleRuntimeErrors =
+    report?.runtimeErrors.filter((error) =>
+      matches([error.summary, error.userName, JSON.stringify(error.after ?? {})]),
+    ) ?? [];
+  const show = (name: string) => !seccion || seccion === name;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -51,6 +86,23 @@ export default async function DiagnosticsPage() {
             <Card><div className="p-4"><p className="text-xs text-slate-500">Errores de ejecución</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.runtimeErrors.length}</p></div></Card>
           </div>
 
+          <ListFilterBar
+            searchValue={q}
+            searchPlaceholder="Buscar ID, habitación, error o contexto…"
+            clearHref="/admin/diagnostico"
+          >
+            <label className="min-w-[13rem]">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
+              <select name="seccion" defaultValue={seccion} className="input-base w-full">
+                <option value="">Todas</option>
+                <option value="alertas">Alertas duplicadas</option>
+                <option value="asignaciones">Reserva ↔ habitación</option>
+                <option value="estadias">Estadías duplicadas</option>
+                <option value="errores">Errores de ejecución</option>
+              </select>
+            </label>
+          </ListFilterBar>
+
           <Card className="border-gold-300">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
               <div className="max-w-3xl">
@@ -71,96 +123,116 @@ export default async function DiagnosticsPage() {
           </Card>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader title="Alertas duplicadas" count={report.duplicateAlerts.length} />
-              {report.duplicateAlerts.length === 0 ? <EmptyState message="No se detectaron duplicados exactos." /> : (
-                <ul className="divide-y divide-slate-100">
-                  {report.duplicateAlerts.map((group) => (
-                    <li key={group.signature} className="px-4 py-3 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-petrol-900">{group.title}</p>
-                        <Badge tone={group.safeToRepair ? 'resuelto' : 'atencion'}>
-                          {group.safeToRepair ? 'Reparable automáticamente' : 'Revisión manual'}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {group.ids.length} copias · estados {group.status.join(', ')}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+            {show('alertas') ? (
+              <Card>
+                <CardHeader title="Alertas duplicadas" count={visibleDuplicateAlerts.length} />
+                {visibleDuplicateAlerts.length === 0 ? (
+                  <EmptyState message="No se detectaron duplicados exactos con estos filtros." />
+                ) : (
+                  <CardScroll>
+                    <ul className="divide-y divide-slate-100">
+                      {visibleDuplicateAlerts.map((group) => (
+                        <li key={group.signature} className="px-4 py-3 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium text-petrol-900">{group.title}</p>
+                            <Badge tone={group.safeToRepair ? 'resuelto' : 'atencion'}>
+                              {group.safeToRepair ? 'Reparable automáticamente' : 'Revisión manual'}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {group.ids.length} copias · estados {group.status.join(', ')}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardScroll>
+                )}
+              </Card>
+            ) : null}
 
-            <Card>
-              <CardHeader title="Asignación Reserva ↔ Habitación" count={report.reservationRoomMismatches.length} />
-              {report.reservationRoomMismatches.length === 0 ? <EmptyState message="Las proyecciones de habitación están coherentes." /> : (
-                <ul className="divide-y divide-slate-100">
-                  {report.reservationRoomMismatches.map((row) => (
-                    <li key={row.reservationRefId} className="px-4 py-3 text-sm">
-                      <p className="font-semibold tabular text-petrol-900">ID FNS {row.fnsId}</p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Guardado: {row.currentRoomNumber ?? 'sin habitación'} · activo: {row.activeRooms.join(', ') || 'sin habitación'}
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-petrol-700">
-                        Corrección segura: {row.expectedRoomNumber ?? 'reserva multihabitación → sin habitación única'}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+            {show('asignaciones') ? (
+              <Card>
+                <CardHeader title="Asignación Reserva ↔ Habitación" count={visibleMismatches.length} />
+                {visibleMismatches.length === 0 ? (
+                  <EmptyState message="Las proyecciones de habitación están coherentes con estos filtros." />
+                ) : (
+                  <CardScroll>
+                    <ul className="divide-y divide-slate-100">
+                      {visibleMismatches.map((row) => (
+                        <li key={row.reservationRefId} className="px-4 py-3 text-sm">
+                          <p className="font-semibold tabular text-petrol-900">ID FNS {row.fnsId}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Guardado: {row.currentRoomNumber ?? 'sin habitación'} · activo: {row.activeRooms.join(', ') || 'sin habitación'}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-petrol-700">
+                            Corrección segura: {row.expectedRoomNumber ?? 'reserva multihabitación → sin habitación única'}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardScroll>
+                )}
+              </Card>
+            ) : null}
           </div>
 
-          <Card>
-            <CardHeader title="Estadías activas potencialmente duplicadas" count={report.duplicateActiveStays.length} />
-            {report.duplicateActiveStays.length === 0 ? (
-              <EmptyState message="No se detectaron estadías activas duplicadas por ID, habitación y estado." />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {report.duplicateActiveStays.map((row) => (
-                  <li key={row.stayIds.join(':')} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-                    <div>
-                      <p className="font-semibold tabular text-petrol-900">ID FNS {row.reservationId}</p>
-                      <p className="text-xs text-slate-600">
-                        {row.roomNumber ? `Hab. ${row.roomNumber}` : 'Sin habitación'} · {row.status.replaceAll('_', ' ')} · {row.stayIds.length} registros activos
-                      </p>
-                    </div>
-                    <Badge tone="atencion">No se repara sin revisión humana</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          {show('estadias') ? (
+            <Card>
+              <CardHeader title="Estadías activas potencialmente duplicadas" count={visibleDuplicateStays.length} />
+              {visibleDuplicateStays.length === 0 ? (
+                <EmptyState message="No se detectaron estadías activas duplicadas con estos filtros." />
+              ) : (
+                <CardScroll>
+                  <ul className="divide-y divide-slate-100">
+                    {visibleDuplicateStays.map((row) => (
+                      <li key={row.stayIds.join(':')} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <div>
+                          <p className="font-semibold tabular text-petrol-900">ID FNS {row.reservationId}</p>
+                          <p className="text-xs text-slate-600">
+                            {row.roomNumber ? `Hab. ${row.roomNumber}` : 'Sin habitación'} · {row.status.replaceAll('_', ' ')} · {row.stayIds.length} registros activos
+                          </p>
+                        </div>
+                        <Badge tone="atencion">No se repara sin revisión humana</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </CardScroll>
+              )}
+            </Card>
+          ) : null}
 
-          <Card>
-            <CardHeader title="Errores de ejecución capturados" count={report.runtimeErrors.length} />
-            {report.runtimeErrors.length === 0 ? (
-              <EmptyState message="No hay errores de ejecución registrados." />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {report.runtimeErrors.map((error) => (
-                  <li key={error.id} className="px-4 py-3 text-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CircleAlert className="h-4 w-4 text-red-600" aria-hidden="true" />
-                      <p className="font-medium text-petrol-900">{error.summary}</p>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {formatDateTime(error.createdAt)}{error.userName ? ` · ${error.userName}` : ''}
-                    </p>
-                    {error.after ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs font-medium text-petrol-700">Ver contexto técnico</summary>
-                        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[0.68rem] text-slate-100">
-                          {JSON.stringify(error.after, null, 2)}
-                        </pre>
-                      </details>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          {show('errores') ? (
+            <Card>
+              <CardHeader title="Errores de ejecución capturados" count={visibleRuntimeErrors.length} />
+              {visibleRuntimeErrors.length === 0 ? (
+                <EmptyState message="No hay errores de ejecución con estos filtros." />
+              ) : (
+                <CardScroll>
+                  <ul className="divide-y divide-slate-100">
+                    {visibleRuntimeErrors.map((error) => (
+                      <li key={error.id} className="px-4 py-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <CircleAlert className="h-4 w-4 text-red-600" aria-hidden="true" />
+                          <p className="font-medium text-petrol-900">{error.summary}</p>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatDateTime(error.createdAt)}{error.userName ? ` · ${error.userName}` : ''}
+                        </p>
+                        {error.after ? (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-xs font-medium text-petrol-700">Ver contexto técnico</summary>
+                            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[0.68rem] text-slate-100">
+                              {JSON.stringify(error.after, null, 2)}
+                            </pre>
+                          </details>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </CardScroll>
+              )}
+            </Card>
+          ) : null}
 
           <Card>
             <div className="flex items-start gap-3 px-4 py-4 text-sm">

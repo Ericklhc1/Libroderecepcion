@@ -269,6 +269,14 @@ describe('caja en la entrega de turno', () => {
     expect(state.transfers[0]?.currency).toBe('CLP');
     expect(state.transfers[0]?.amount).toBe(260_000);
     expect(state.transfers[0]?.reference).toBe('SOBRE-0912');
+
+    const movement = await prisma.cashMovement.findUniqueOrThrow({
+      where: { cashTransferId: state.transfers[0]!.id },
+    });
+    expect(movement.kind).toBe('TESORERIA');
+    expect(movement.direction).toBe('SALIDA');
+    expect(movement.amount.toNumber()).toBe(260_000);
+    expect(movement.shiftId).toBe(shift.id);
   });
 
   it('un egreso pendiente de revisión de Supervisión no bloquea el envío', async () => {

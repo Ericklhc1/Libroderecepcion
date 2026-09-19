@@ -25,6 +25,7 @@ export type CashMovementKind =
   | 'GARANTIA_DEVOLUCION'
   | 'VENTA_GIMNASIO'
   | 'ANULACION_GIMNASIO'
+  | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
   | 'AJUSTE_SALIDA';
 export type GymPaymentMethod = 'EFECTIVO' | 'TARJETA' | 'OTRO';
@@ -39,6 +40,8 @@ export type LiveCashMovement = {
   notes: string | null;
   roomNumber: string | null;
   reservationCode: string | null;
+  stayId: string | null;
+  guestName: string | null;
   createdByName: string;
   createdAt: Date;
 };
@@ -141,9 +144,12 @@ export async function insertCashMovement(
     amount: number;
     shiftId?: string | null;
     roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     reservationReferenceId?: string | null;
     guaranteeId?: string | null;
     gymPassId?: string | null;
+    cashTransferId?: string | null;
     reference?: string | null;
     notes?: string | null;
   },
@@ -155,14 +161,15 @@ export async function insertCashMovement(
   await client.$executeRaw`
     INSERT INTO "CashMovement" (
       "id", "kind", "direction", "currency", "amount", "shiftId", "roomId",
-      "reservationReferenceId", "guaranteeId", "gymPassId", "createdById",
-      "reference", "notes"
+      "stayId", "guestId", "reservationReferenceId", "guaranteeId", "gymPassId",
+      "cashTransferId", "createdById", "reference", "notes"
     ) VALUES (
       ${id}, ${params.kind}, ${params.direction}, ${currency}, ${params.amount},
       ${params.shiftId ?? null}, ${params.roomId ?? null},
+      ${params.stayId ?? null}, ${params.guestId ?? null},
       ${params.reservationReferenceId ?? null}, ${params.guaranteeId ?? null},
-      ${params.gymPassId ?? null}, ${params.userId}, ${params.reference ?? null},
-      ${params.notes ?? null}
+      ${params.gymPassId ?? null}, ${params.cashTransferId ?? null},
+      ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null}
     )
   `;
   return id;
@@ -175,7 +182,9 @@ export async function recordGuaranteeCashIn(
     guaranteeId: string;
     reservationReferenceId: string;
     reservationCode: string;
-    roomNumber: string | null;
+    roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     currency: string;
     amount: number;
     shiftId?: string | null;
@@ -188,10 +197,6 @@ export async function recordGuaranteeCashIn(
     })
   ) return;
 
-  const room = params.roomNumber
-    ? await tx.room.findUnique({ where: { number: params.roomNumber }, select: { id: true } })
-    : null;
-
   await insertCashMovement(tx, {
     userId: params.user.id,
     kind: 'GARANTIA_INGRESO',
@@ -199,7 +204,9 @@ export async function recordGuaranteeCashIn(
     currency: params.currency,
     amount: params.amount,
     shiftId: params.shiftId ?? null,
-    roomId: room?.id ?? null,
+    roomId: params.roomId ?? null,
+    stayId: params.stayId ?? null,
+    guestId: params.guestId ?? null,
     reservationReferenceId: params.reservationReferenceId,
     guaranteeId: params.guaranteeId,
     reference: `Garantía reserva ${params.reservationCode}`,
@@ -214,7 +221,9 @@ export async function recordGuaranteeCashOut(
     guaranteeId: string;
     reservationReferenceId: string;
     reservationCode: string;
-    roomNumber: string | null;
+    roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     currency: string;
     amount: number;
     shiftId?: string | null;
@@ -232,9 +241,15 @@ export async function recordGuaranteeCashOut(
     })
   ) return;
 
-  const room = params.roomNumber
-    ? await tx.room.findUnique({ where: { number: params.roomNumber }, select: { id: true } })
-    : null;
+  const originalContext = await tx.cashMovement.findFirst({
+    where: {
+      guaranteeId: params.guaranteeId,
+      kind: 'GARANTIA_INGRESO',
+      voidedAt: null,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { roomId: true, stayId: true, guestId: true },
+  });
 
   await insertCashMovement(tx, {
     userId: params.user.id,
@@ -243,7 +258,9 @@ export async function recordGuaranteeCashOut(
     currency: params.currency,
     amount: params.amount,
     shiftId: params.shiftId ?? null,
-    roomId: room?.id ?? null,
+    roomId: originalContext?.roomId ?? params.roomId ?? null,
+    stayId: originalContext?.stayId ?? params.stayId ?? null,
+    guestId: originalContext?.guestId ?? params.guestId ?? null,
     reservationReferenceId: params.reservationReferenceId,
     guaranteeId: params.guaranteeId,
     reference: `Devolución garantía ${params.reservationCode}`,
@@ -565,18 +582,22 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         notes: string | null;
         roomNumber: string | null;
         reservationCode: string | null;
+        stayId: string | null;
+        guestName: string | null;
         createdByName: string;
         createdAt: Date;
       }>
     >`
       SELECT m."id", m."kind", m."direction", m."currency", m."amount",
              m."reference", m."notes", r."number" AS "roomNumber",
-             rr."code" AS "reservationCode", u."name" AS "createdByName",
+             rr."code" AS "reservationCode", m."stayId",
+             g."fullName" AS "guestName", u."name" AS "createdByName",
              m."createdAt"
       FROM "CashMovement" m
       JOIN "User" u ON u."id" = m."createdById"
       LEFT JOIN "Room" r ON r."id" = m."roomId"
       LEFT JOIN "ReservationReference" rr ON rr."id" = m."reservationReferenceId"
+      LEFT JOIN "GuestReference" g ON g."id" = m."guestId"
       WHERE m."voidedAt" IS NULL
       ORDER BY m."createdAt" DESC
       LIMIT ${limit}

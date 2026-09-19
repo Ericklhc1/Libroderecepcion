@@ -13,7 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { hasPermission } from '@/server/auth/current-user';
 import { fromMinor } from '@/domain/cash';
 import { getHandoverCashState } from './cash';
 
@@ -102,9 +102,8 @@ export async function closeShiftCash(
   }
 
   const assigned = shift.assignments.some((assignment) => assignment.userId === user.id);
-  const supervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
-  if (!assigned && !supervisor && !user.isSystemAdmin) {
-    throw new RuleError('Sólo el personal del turno, Supervisión o el Administrador de sistema puede cerrar su Caja.');
+  if (!assigned && !user.isSystemAdmin) {
+    throw new RuleError('Sólo el personal asignado al turno puede cerrar su Caja.');
   }
 
   if (!shift.handoverOut) {
@@ -236,8 +235,8 @@ export async function reopenShiftCash(
   user: CurrentUser,
   params: { shiftId: string; reason: string },
 ): Promise<void> {
-  if (user.roleKey !== ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin) {
-    throw new RuleError('Sólo Supervisión o el Administrador de sistema puede reabrir una Caja cerrada.');
+  if (!hasPermission(user, 'cash.reopen')) {
+    throw new RuleError('Tu rol no tiene habilitada la reapertura de Caja.');
   }
   const reason = params.reason.trim();
   if (reason.length < 5) throw new RuleError('Indica por qué se reabre la Caja.');

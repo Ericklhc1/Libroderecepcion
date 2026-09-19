@@ -49,6 +49,23 @@ export function CardHeader({
   );
 }
 
+
+export function CardScroll({
+  children,
+  className,
+  maxHeight = 'max-h-[32rem]',
+}: {
+  children: React.ReactNode;
+  className?: string;
+  maxHeight?: string;
+}) {
+  return (
+    <div className={cn('overflow-y-auto overscroll-contain', maxHeight, className)}>
+      {children}
+    </div>
+  );
+}
+
 export function EmptyState({
   message,
   hint,

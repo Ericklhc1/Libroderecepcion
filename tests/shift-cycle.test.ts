@@ -337,14 +337,25 @@ describe('invariantes del turno', () => {
     await expect(prepareHandover(evening, shift.id)).rejects.toThrow(/Sólo quien está en el turno/);
   });
 
-  it('permite cancelar la preparación y volver al turno activo', async () => {
+  it('permite cancelar la preparación, conservarla anulada y reutilizarla', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
     await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
-    await prepareHandover(morning, shift.id);
+    const first = await prepareHandover(morning, shift.id);
     const reverted = await cancelHandoverPreparation(morning, shift.id);
+
     expect(reverted.status).toBe(ShiftStatus.ACTIVO);
-    expect(await prisma.shiftHandover.count({ where: { fromShiftId: shift.id } })).toBe(0);
+
+    const cancelled = await prisma.shiftHandover.findUniqueOrThrow({
+      where: { fromShiftId: shift.id },
+    });
+    expect(cancelled.id).toBe(first.id);
+    expect(cancelled.status).toBe(HandoverStatus.ANULADA);
+
+    const preparedAgain = await prepareHandover(morning, shift.id);
+    expect(preparedAgain.id).toBe(first.id);
+    expect(preparedAgain.status).toBe(HandoverStatus.BORRADOR);
+    expect(await prisma.shiftHandover.count({ where: { fromShiftId: shift.id } })).toBe(1);
   });
 
   it('no permite cancelar una entrega ya enviada', async () => {

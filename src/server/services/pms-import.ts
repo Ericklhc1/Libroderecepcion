@@ -65,7 +65,7 @@ type StayDraft = {
   departureDate: string | null;
   pmsStatus: string | null;
   sourceReport: PmsReportKind;
-  status: RoomStayStatus;
+  status: RoomStayStatus | null;
   /* Lo que aporta «Habitaciones con actividad». Los tres informes antiguos no
      traen nada de esto y lo dejan en nulo. */
   guestCount: number | null;
@@ -150,7 +150,7 @@ function toDraft(stay: NormalizedStay): StayDraft {
     departureDate: stay.departureDate ? stay.departureDate.toISOString() : null,
     pmsStatus: stay.pmsStatus,
     sourceReport: stay.sourceReport as PmsReportKind,
-    status: stay.operationalStatus as RoomStayStatus,
+    status: stay.operationalStatus as RoomStayStatus | null,
     guestCount: stay.guestCount,
     /*
       El importe se separa en cifra y moneda al guardarlo. Van juntos siempre:
@@ -360,6 +360,13 @@ async function analyseDraft(
   const counts = { checkIn: 0, inHouse: 0, checkOut: 0 };
 
   for (const draft of stays) {
+    /*
+      Una fila dudosa es una excepción, no una estadía propuesta. Se mantiene
+      en el preview mediante `activity.rowIssues`, pero no participa en el
+      estado proyectado ni en sus contadores.
+    */
+    if (!draft.status || draft.issues.length > 0) continue;
+
     if (draft.status === RoomStayStatus.CHECK_IN) counts.checkIn += 1;
     if (draft.status === RoomStayStatus.IN_HOUSE) counts.inHouse += 1;
     if (draft.status === RoomStayStatus.CHECK_OUT) counts.checkOut += 1;
@@ -547,7 +554,7 @@ export function summarizeActivity(
 
     if (stay.status === RoomStayStatus.IN_HOUSE) occupied += 1;
     else if (stay.status === RoomStayStatus.CHECK_IN) arrivals += 1;
-    else departures += 1;
+    else if (stay.status === RoomStayStatus.CHECK_OUT) departures += 1;
 
     /*
       Los importes se acumulan POR MONEDA. El informe trae pesos y dólares a la
@@ -795,6 +802,16 @@ export async function applyImport(
     };
 
     for (const draft of drafts) {
+      /*
+        Los problemas de lectura nunca se convierten en estado operativo por
+        omisión. Quedan registrados en el borrador/revisión y la fila se omite
+        de la aplicación hasta contar con información inequívoca.
+      */
+      if (!draft.status || draft.issues.length > 0) {
+        summary.skipped += 1;
+        continue;
+      }
+
       const room = draft.roomNumber ? byNumber.get(draft.roomNumber) : null;
       if (!room) {
         summary.skipped += 1;

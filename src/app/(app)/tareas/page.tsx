@@ -5,7 +5,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, EmptyState } from '@/components/ui/card';
+import { Card, CardScroll, EmptyState } from '@/components/ui/card';
 import { Filters } from '@/components/operational/filters';
 import { QuickStatusForm } from '@/components/operational/task-actions';
 import {
@@ -140,7 +140,8 @@ export default async function TasksPage({
             hint="Crea una tarea desde las acciones rápidas."
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {tasks.map((task) => {
               const open = TASK_OPEN_STATUSES.includes(task.status);
               const overdue = isOverdue(task.dueAt, open);
@@ -200,7 +201,8 @@ export default async function TasksPage({
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
       </Card>
     </div>

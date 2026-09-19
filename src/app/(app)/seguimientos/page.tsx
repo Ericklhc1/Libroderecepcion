@@ -8,7 +8,8 @@ import { followUpInclude } from '@/server/services/followups';
 import { getFormOptions } from '@/server/services/options';
 import { refreshAlertsInBackground } from '@/server/services/dashboard';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Dialog } from '@/components/ui/dialog';
 import { CloseFollowUpDialog } from '@/components/operational/entry-actions';
 import { FollowUpForm } from '@/components/forms/followup-form';
@@ -29,12 +30,22 @@ export default async function FollowUpsPage({
   const params = await searchParams;
   refreshAlertsInBackground();
 
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';
 
   const where: Prisma.FollowUpWhereInput = {
     deletedAt: null,
     ...(mios ? { ownerId: user.id } : {}),
+    ...(q
+      ? {
+          OR: [
+            { action: { contains: q, mode: 'insensitive' } },
+            { result: { contains: q, mode: 'insensitive' } },
+            { nextAction: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
     ...(estado === 'pendientes'
       ? { status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] } }
       : estado && estado in FollowUpStatus
@@ -59,6 +70,13 @@ export default async function FollowUpsPage({
 
   const countByStatus = (status: FollowUpStatus) =>
     counts.find((row) => row.status === status)?._count._all ?? 0;
+
+  const followHref = (nextEstado: string) => {
+    const query = new URLSearchParams({ estado: nextEstado });
+    if (mios) query.set('mios', '1');
+    if (q) query.set('q', q);
+    return `/seguimientos?${query.toString()}`;
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -133,7 +151,7 @@ export default async function FollowUpsPage({
         ].map((tab) => (
           <Link
             key={tab.key}
-            href={`/seguimientos?estado=${tab.key}${mios ? '&mios=1' : ''}`}
+            href={followHref(tab.key)}
             aria-current={estado === tab.key ? 'page' : undefined}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ${
               estado === tab.key
@@ -146,6 +164,23 @@ export default async function FollowUpsPage({
         ))}
       </nav>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar acción, resultado o próxima acción…"
+        clearHref="/seguimientos"
+      >
+        <label className="min-w-[13rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            <option value="pendientes">Pendientes y vencidos</option>
+            <option value="CUMPLIDO">Cumplidos</option>
+            <option value="CANCELADO">Cancelados</option>
+            <option value="todos">Todos</option>
+          </select>
+        </label>
+        {mios ? <input type="hidden" name="mios" value="1" /> : null}
+      </ListFilterBar>
+
       <Card>
         {followUps.length === 0 ? (
           <EmptyState
@@ -153,7 +188,8 @@ export default async function FollowUpsPage({
             hint="Todo asunto importante puede generar seguimiento desde su registro."
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {followUps.map((followUp) => (
               <li key={followUp.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -205,7 +241,8 @@ export default async function FollowUpsPage({
                 ) : null}
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
       </Card>
     </div>

@@ -20,7 +20,9 @@ import {
   providerIsConfigured,
   resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
-import { Card, CardHeader, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import {
   FrontiMaintenanceActions,
   FrontiProviderCredentials,
@@ -110,8 +112,15 @@ async function diagnostics() {
   };
 }
 
-export default async function FrontiAdminPage() {
+export default async function FrontiAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('system.configure');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const grupo = typeof params.grupo === 'string' ? params.grupo : '';
 
   const [allSettings, config, counts, groqCredential, vllmCredential, openaiCredential] =
     await Promise.all([
@@ -140,6 +149,27 @@ export default async function FrontiAdminPage() {
     { provider: 'vllm', ...vllmCredential, active: config.provider === 'vllm' },
     { provider: 'openai', ...openaiCredential, active: config.provider === 'openai' },
   ] satisfies FrontiProviderCredentialRow[];
+
+  const visibleGroups = GROUPS
+    .filter((group) => !grupo || group.id === grupo)
+    .map((group) => {
+      const rows = group.keys
+        .map((key) => settingsByKey.get(key))
+        .filter((row): row is FrontiSettingRow => Boolean(row))
+        .filter((row) => {
+          if (!q) return true;
+          return [row.key, row.description, row.value, row.defaultValue, group.title, group.description]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(q);
+        });
+      return { group, rows };
+    })
+    .filter(({ group, rows }) =>
+      rows.length > 0 ||
+      (!q && (!grupo || group.id === grupo)),
+    );
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -180,6 +210,20 @@ export default async function FrontiAdminPage() {
         <StatTile label="Conversaciones activas" value={counts.conversations} />
         <StatTile label="Capacidades activas" value={`${activeTools}/6`} />
       </div>
+
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar ajuste, clave o descripción…"
+        clearHref="/admin/fronti"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Grupo</span>
+          <select name="grupo" defaultValue={grupo} className="input-base w-full">
+            <option value="">Todos</option>
+            {GROUPS.map((group) => <option key={group.id} value={group.id}>{group.title}</option>)}
+          </select>
+        </label>
+      </ListFilterBar>
 
       <Card>
         <CardHeader title="Diagnóstico" />
@@ -248,13 +292,10 @@ export default async function FrontiAdminPage() {
         </p>
       </Card>
 
-      {GROUPS.map((group) => {
+      {visibleGroups.map(({ group, rows }) => {
         const Icon = group.icon;
-        const rows = group.keys
-          .map((key) => settingsByKey.get(key))
-          .filter((row): row is FrontiSettingRow => Boolean(row));
         return (
-          <Card key={group.id}>
+          <Card key={group.id} className="overflow-hidden">
             <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
                 <Icon className="h-4 w-4" aria-hidden="true" />
@@ -264,11 +305,13 @@ export default async function FrontiAdminPage() {
                 <p className="text-xs leading-5 text-slate-600">{group.description}</p>
               </div>
             </div>
-            <div className="divide-y divide-slate-100">
-              {rows.map((setting) => (
-                <FrontiSettingControl key={setting.key} setting={setting} />
-              ))}
-            </div>
+            <CardScroll maxHeight="max-h-[28rem]">
+              <div className="divide-y divide-slate-100">
+                {rows.map((setting) => (
+                  <FrontiSettingControl key={setting.key} setting={setting} />
+                ))}
+              </div>
+            </CardScroll>
           </Card>
         );
       })}

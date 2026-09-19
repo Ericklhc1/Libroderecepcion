@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { resolveOperationalContext } from './operational-context';
 import {
   OPEN_FINE_STATUSES,
   canTransition,
@@ -45,41 +46,19 @@ export type FineWithContext = Prisma.FineGetPayload<{ include: typeof fineInclud
 /**
  * Datos de la habitación para rellenar el formulario.
  *
- * Se prefiere la estadía que está DENTRO, y si no hay, la que sale: es la
- * secuencia en que aparece un blanco dañado —se descubre al limpiar después de
- * una salida, o durante la estadía—.
+ * Sólo se autocompleta huésped/reserva cuando hay una única estadía activa.
+ * Si hay salida + entrada el mismo día, no se elige a ninguna por defecto.
  */
 export async function fineContextForRoom(roomNumber: string) {
-  const room = await prisma.room.findUnique({
-    where: { number: roomNumber },
-    select: {
-      id: true,
-      number: true,
-      stays: {
-        where: { deletedAt: null, stage: { in: ['PENDIENTE', 'CONFIRMADO'] } },
-        select: {
-          id: true,
-          reservationId: true,
-          guestNames: true,
-          status: true,
-          reservationRefId: true,
-        },
-      },
-    },
-  });
-  if (!room) throw new NotFoundError('Esa habitación no existe en el inventario.');
-
-  const inside = room.stays.find((stay) => stay.status === 'IN_HOUSE');
-  const leaving = room.stays.find((stay) => stay.status === 'CHECK_OUT');
-  const stay = inside ?? leaving ?? room.stays[0] ?? null;
+  const context = await resolveOperationalContext(prisma, { roomNumber });
 
   return {
-    roomId: room.id,
-    roomNumber: room.number,
-    stayId: stay?.id ?? null,
-    reservationCode: stay?.reservationId ?? '',
-    guestName: stay?.guestNames[0] ?? '',
-    reservationReferenceId: stay?.reservationRefId ?? null,
+    roomId: context.roomId,
+    roomNumber: context.roomNumber ?? roomNumber,
+    stayId: context.stayId,
+    reservationCode: context.reservationCode ?? '',
+    guestName: context.guestName ?? '',
+    reservationReferenceId: context.reservationReferenceId,
   };
 }
 
@@ -97,19 +76,22 @@ export async function createFine(
     throw new RuleError(problems.map((problem) => problem.message).join(' '));
   }
 
-  const room = await prisma.room.findUnique({
-    where: { number: input.roomNumber },
-    select: { id: true, number: true },
+  const context = await resolveOperationalContext(prisma, {
+    roomNumber: input.roomNumber,
+    stayId: input.stayId ?? null,
+    reservationReferenceId: input.reservationReferenceId ?? null,
   });
-  if (!room) throw new NotFoundError('Esa habitación no existe en el inventario.');
+  if (!context.roomId || !context.roomNumber) {
+    throw new NotFoundError('Esa habitación no existe en el inventario.');
+  }
 
   const fine = await prisma.fine.create({
     data: {
-      roomId: room.id,
-      reservationCode: input.reservationCode.trim(),
-      guestName: input.guestName.trim(),
-      stayId: input.stayId ?? null,
-      reservationReferenceId: input.reservationReferenceId ?? null,
+      roomId: context.roomId,
+      reservationCode: context.reservationCode ?? input.reservationCode.trim(),
+      guestName: context.guestName ?? input.guestName.trim(),
+      stayId: context.stayId,
+      reservationReferenceId: context.reservationReferenceId,
       kind: input.kind,
       linenKind: input.kind === 'BLANCO' ? (input.linenKind ?? null) : null,
       itemDetail: input.itemDetail?.trim() || null,
@@ -133,13 +115,13 @@ export async function createFine(
     action: AuditAction.CREAR,
     user,
     summary: `Multa registrada: ${fineSummary({
-      roomNumber: room.number,
+      roomNumber: context.roomNumber,
       kind: input.kind,
       linenKind: input.linenKind ?? null,
       itemDetail: input.itemDetail ?? null,
       stainType: input.stainType ?? null,
       quantity: input.quantity ?? 1,
-    })}. Reserva ${input.reservationCode} · ${input.guestName}. Motivo: ${input.reason}`,
+    })}. Reserva ${context.reservationCode ?? input.reservationCode} · ${context.guestName ?? input.guestName}. Motivo: ${input.reason}`,
   });
 
   return fine;

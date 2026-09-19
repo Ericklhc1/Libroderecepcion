@@ -4,7 +4,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { getBookItems } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
 import { getShiftOptions } from '@/server/services/shift-options';
-import { Card, EmptyState } from '@/components/ui/card';
+import { Card, CardScroll, EmptyState } from '@/components/ui/card';
 import { BookList } from '@/components/operational/book-row';
 import { Filters } from '@/components/operational/filters';
 import { ViewTabs } from '@/components/layout/view-tabs';
@@ -131,7 +131,9 @@ export default async function BookPage({
             hint="Prueba con menos filtros o registra una nueva novedad desde las acciones rápidas."
           />
         ) : (
-          <BookList items={result.items} />
+          <CardScroll>
+            <BookList items={result.items} />
+          </CardScroll>
         )}
 
         {result.page > 1 || result.hasMore ? (

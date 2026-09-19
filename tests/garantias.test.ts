@@ -80,6 +80,80 @@ describe('garantías', () => {
     expect(guarantee.currency).toBe('USD');
   });
 
+  it('la garantía en efectivo conserva la estadía exacta en Caja', async () => {
+    const r = await reserva({ code: 'R-CONTEXTO' });
+    const room = await prisma.room.findFirstOrThrow({ where: { number: '404' } });
+    const stay = await prisma.roomStay.create({
+      data: {
+        businessDate: new Date(2026, 8, 19),
+        roomId: room.id,
+        reservationId: r.code,
+        reservationRefId: r.id,
+        guestNames: ['Huésped contexto'],
+        status: RoomStayStatus.IN_HOUSE,
+        sourceReport: 'IN_HOUSE',
+      },
+    });
+
+    const { id } = await createGuarantee(user, {
+      reservationReferenceId: r.id,
+      stayId: stay.id,
+      kind: 'EFECTIVO',
+      amount: 75_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    expect(guarantee.stayId).toBe(stay.id);
+
+    const movement = await prisma.cashMovement.findFirstOrThrow({
+      where: { guaranteeId: id, kind: 'GARANTIA_INGRESO' },
+    });
+    expect(movement.stayId).toBe(stay.id);
+    expect(movement.roomId).toBe(room.id);
+    expect(movement.reservationReferenceId).toBe(r.id);
+  });
+
+  it('no adivina una estadía para efectivo si la reserva ocupa varias habitaciones', async () => {
+    const r = await reserva({ code: 'R-MULTI' });
+    const room404 = await prisma.room.findFirstOrThrow({ where: { number: '404' } });
+    const room412 = await prisma.room.findFirstOrThrow({ where: { number: '412' } });
+
+    await prisma.roomStay.createMany({
+      data: [
+        {
+          businessDate: new Date(2026, 8, 19),
+          roomId: room404.id,
+          reservationId: r.code,
+          reservationRefId: r.id,
+          guestNames: ['Huésped A'],
+          status: RoomStayStatus.IN_HOUSE,
+          sourceReport: 'IN_HOUSE',
+        },
+        {
+          businessDate: new Date(2026, 8, 19),
+          roomId: room412.id,
+          reservationId: r.code,
+          reservationRefId: r.id,
+          guestNames: ['Huésped B'],
+          status: RoomStayStatus.IN_HOUSE,
+          sourceReport: 'IN_HOUSE',
+        },
+      ],
+    });
+
+    await expect(
+      createGuarantee(user, {
+        reservationReferenceId: r.id,
+        kind: 'EFECTIVO',
+        amount: 50_000,
+        currency: 'CLP',
+        state: GuaranteeState.VIGENTE,
+      }),
+    ).rejects.toThrow(/varias estadías activas/);
+  });
+
   it('sincroniza el resumen de la reserva sin que nadie más lo escriba', async () => {
     const r = await reserva();
 

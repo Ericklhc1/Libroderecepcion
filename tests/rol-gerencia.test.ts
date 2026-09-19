@@ -29,6 +29,7 @@ const SOLO_LECTURA: PermissionKey[] = [
   'metrics.view',
   'room.view',
   'audit.view',
+  'cash.view',
 ];
 
 describe('rol de gerencia', () => {

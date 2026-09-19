@@ -5,7 +5,8 @@ import { hasPermission } from '@/server/auth/current-user';
 import { listRoomsWithState } from '@/server/services/rooms';
 import { getLiveConflicts } from '@/server/services/pms-import';
 import { getKeyInventory } from '@/server/services/keys';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge } from '@/components/ui/badge';
 import { RoomCard } from '@/components/rooms/room-card';
 import { RoomListRow } from '@/components/rooms/room-list-row';
@@ -46,6 +47,7 @@ export default async function RoomsPage({
 }) {
   const user = await requirePagePermission('room.view');
   const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const estado = typeof params.estado === 'string' ? params.estado : undefined;
   const piso = typeof params.piso === 'string' ? params.piso : undefined;
   const vista = params.vista === 'cuadricula' ? 'cuadricula' : 'lista';
@@ -71,6 +73,14 @@ export default async function RoomsPage({
   const visible = rooms
     .filter((room) => (estado ? room.snapshot.state === estado : true))
     .filter((room) => (piso ? String(room.floor) === piso : true))
+    .filter((room) => {
+      if (!q) return true;
+      const text = [room.number, room.floor, JSON.stringify(room.snapshot)]
+        .filter((value) => value !== null && value !== undefined)
+        .join(' ')
+        .toLowerCase();
+      return text.includes(q);
+    })
     .sort((a, b) => Number(a.number) - Number(b.number) || a.number.localeCompare(b.number));
 
   const pendingAction = rooms.filter((room) =>
@@ -88,6 +98,7 @@ export default async function RoomsPage({
     const nextEstado = next.estado === undefined ? estado : next.estado;
     const nextPiso = next.piso === undefined ? piso : next.piso;
     const nextVista = next.vista ?? vista;
+    if (q) query.set('q', q);
     if (nextEstado) query.set('estado', nextEstado);
     if (nextPiso) query.set('piso', nextPiso);
     if (nextVista === 'cuadricula') query.set('vista', 'cuadricula');
@@ -124,6 +135,30 @@ export default async function RoomsPage({
           ) : null}
         </div>
       </header>
+
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar habitación, huésped, ID FNS…"
+        clearHref="/habitaciones"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado ?? ''} className="input-base w-full">
+            <option value="">Todos</option>
+            {STATE_ORDER.map((state) => (
+              <option key={state} value={state}>{ROOM_STATE_LABELS[state]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="min-w-[9rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Piso</span>
+          <select name="piso" defaultValue={piso ?? ''} className="input-base w-full">
+            <option value="">Todos</option>
+            {floors.map((floor) => <option key={floor} value={floor}>{floor}</option>)}
+          </select>
+        </label>
+        {vista === 'cuadricula' ? <input type="hidden" name="vista" value="cuadricula" /> : null}
+      </ListFilterBar>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STATE_ORDER.map((state) => (
@@ -216,7 +251,8 @@ export default async function RoomsPage({
               ) : undefined
             }
           />
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {conflicts.slice(0, 8).map((conflict, index) => (
               <li key={`${conflict.kind}-${conflict.roomNumber}-${index}`} className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -233,7 +269,8 @@ export default async function RoomsPage({
                 <p className="mt-1 text-sm text-slate-600">{conflict.detail}</p>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
           {conflicts.length > 8 ? (
             <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
               Y {conflicts.length - 8} más. Se recalculan solos cuando el estado se corrige.
@@ -306,16 +343,20 @@ export default async function RoomsPage({
               <span>Movimiento</span>
               <span className="text-right">Llaves / Inc.</span>
             </div>
-            {visible.map((room) => (
-              <RoomListRow key={room.id} room={room} />
-            ))}
+            <CardScroll maxHeight="max-h-[48rem]">
+              {visible.map((room) => (
+                <RoomListRow key={room.id} room={room} />
+              ))}
+            </CardScroll>
           </Card>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {visible.map((room) => (
-              <RoomCard key={room.id} room={room} />
-            ))}
-          </div>
+          <CardScroll maxHeight="max-h-[52rem]">
+            <div className="grid gap-3 pr-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {visible.map((room) => (
+                <RoomCard key={room.id} room={room} />
+              ))}
+            </div>
+          </CardScroll>
         )
       ) : (
         <Card>

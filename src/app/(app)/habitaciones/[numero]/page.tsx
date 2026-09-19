@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EntryType } from '@prisma/client';
-import { ArrowLeft, DoorOpen, KeyRound } from 'lucide-react';
+import { ArrowLeft, Banknote, DoorOpen, KeyRound } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
@@ -13,7 +13,8 @@ import { getGymPassContextForRoom } from '@/server/services/gym-pass';
 import { gymPrices } from '@/server/services/live-cash';
 import { NotFoundError } from '@/server/errors';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Dialog } from '@/components/ui/dialog';
 import { DeleteStayDialog, ResetRoomDialog } from '@/components/rooms/delete-stay';
 import {
@@ -22,6 +23,8 @@ import {
   FineStatusDialog,
 } from '@/components/rooms/fine-form';
 import { GymPassDialog } from '@/components/cash/gym-pass-dialog';
+import { ManualCashMovementForm } from '@/components/cash/live-cash-forms';
+import { GuaranteeDialog } from '@/app/(app)/huespedes/guarantee-forms';
 import { fineContextForRoom, listFinesForRoom } from '@/server/services/fines';
 import { fineSummary, type FineStatusValue } from '@/domain/fines';
 import { EntryForm } from '@/components/forms/entry-form';
@@ -58,6 +61,7 @@ import {
   SEVERITY_TONE,
 } from '@/domain/labels';
 import { formatDate, formatDateTime } from '@/lib/format';
+import type { RawSearchParams } from '@/lib/search-params';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,11 +128,15 @@ function Layer({
 
 export default async function RoomDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ numero: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const user = await requirePagePermission('room.view');
-  const { numero } = await params;
+  const [{ numero }, queryParams] = await Promise.all([params, searchParams]);
+  const q = typeof queryParams.q === 'string' ? queryParams.q.trim().toLowerCase() : '';
+  const seccion = typeof queryParams.seccion === 'string' ? queryParams.seccion : '';
 
   let room;
   try {
@@ -197,8 +205,73 @@ export default async function RoomDetailPage({
     multa mal puesta cuesta más que una no puesta.
   */
   const canFine = hasPermission(user, 'incident.manage');
+  const canGuarantee =
+    hasPermission(user, 'guest.manage') || hasPermission(user, 'cash.guarantee_in');
+  const canManualIn = hasPermission(user, 'cash.manual_in');
+  const canManualOut = hasPermission(user, 'cash.manual_out');
+  const canManualCash = canManualIn || canManualOut;
   const canKeys = hasPermission(user, 'key.assign');
   const openEntries = entries.filter((entry) => ENTRY_OPEN_STATUSES.includes(entry.status));
+  const matches = (values: Array<string | number | null | undefined>) =>
+    !q ||
+    values
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  const visibleReservations = room.reservations.filter((reservation) =>
+    matches([
+      reservation.code,
+      reservation.guestName,
+      reservation.status,
+      reservation.guaranteeSummary,
+      reservation.balanceDue,
+      ...reservation.guarantees.map((guarantee) => guarantee.state),
+      ...reservation.guarantees.map((guarantee) => guarantee.kind),
+    ]),
+  );
+  const visibleCashMovements = room.cashMovements.filter((movement) =>
+    matches([
+      movement.kind,
+      movement.direction,
+      movement.currency,
+      movement.amount,
+      movement.reference,
+      movement.notes,
+      movement.reservationCode,
+      movement.guestName,
+      movement.createdByName,
+    ]),
+  );
+  const visibleKeys = room.keys.filter((key) =>
+    matches([key.code, key.type, key.status, key.assignedBy]),
+  );
+  const visibleFines = fines.filter((fine) =>
+    matches([
+      fine.reservationCode,
+      fine.guestName,
+      fine.kind,
+      fine.linenKind,
+      fine.itemDetail,
+      fine.stainType,
+      fine.reason,
+      fine.status,
+      fine.amount ? Number(fine.amount) : null,
+    ]),
+  );
+  const visibleEntries = entries.filter((entry) =>
+    matches([entry.seq, entry.type, entry.title, entry.status, entry.severity]),
+  );
+  const visibleHistory = room.history.filter((stay) =>
+    matches([
+      stay.reservationId,
+      stay.status,
+      stay.stage,
+      stay.channel,
+      ...stay.guestNames,
+    ]),
+  );
+  const showSection = (name: string) => !seccion || seccion === name;
 
   return (
     <div className="space-y-5">
@@ -239,6 +312,27 @@ export default async function RoomDetailPage({
           {canManage && gymContext ? (
             <GymPassDialog context={gymContext} prices={gymPriceConfig} />
           ) : null}
+          {canManualCash ? (
+            <Dialog
+              title={`Movimiento de Caja · habitación ${room.number}`}
+              description="El movimiento se registra en la Caja central y queda reflejado en esta habitación. Si hay más de una estadía activa, indica también la reserva."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <Banknote className="h-4 w-4" aria-hidden="true" />
+                  Movimiento de Caja
+                </>
+              }
+            >
+              <ManualCashMovementForm
+                allowIn={canManualIn}
+                allowOut={canManualOut}
+                context={{ roomNumber: room.number }}
+              />
+            </Dialog>
+          ) : null}
           <Dialog
             title="Nueva incidencia en esta habitación"
             description="Queda con la habitación como contexto, junto al huésped y la reserva del momento."
@@ -260,6 +354,25 @@ export default async function RoomDetailPage({
           </Dialog>
         </div>
       </header>
+
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar dentro del dossier…"
+        clearHref={`/habitaciones/${encodeURIComponent(room.number)}`}
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
+          <select name="seccion" defaultValue={seccion} className="input-base w-full">
+            <option value="">Todas las listas</option>
+            <option value="reservas">Reserva y garantía</option>
+            <option value="caja">Caja vinculada</option>
+            <option value="llaves">Llaves</option>
+            <option value="multas">Multas</option>
+            <option value="registros">Registros</option>
+            <option value="historial">Historial</option>
+          </select>
+        </label>
+      </ListFilterBar>
 
       <div className="grid gap-3 lg:grid-cols-3">
         <Layer title="Saliente" stay={snapshot.outgoing}>
@@ -339,11 +452,15 @@ export default async function RoomDetailPage({
         </Layer>
       </div>
 
-      {room.reservations.length > 0 ? (
+      {showSection('reservas') && room.reservations.length > 0 ? (
         <Card>
-          <CardHeader title="Reserva y garantía" count={room.reservations.length} />
-          <ul className="divide-y divide-slate-100">
-            {room.reservations.map((reserva) => (
+          <CardHeader title="Reserva y garantía" count={visibleReservations.length} />
+          {visibleReservations.length === 0 ? (
+            <EmptyState message="Sin reservas que coincidan con la búsqueda." />
+          ) : (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleReservations.map((reserva) => (
               <li key={reserva.stayId} className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-petrol-900">
@@ -360,6 +477,14 @@ export default async function RoomDetailPage({
                       ]
                     }
                   </Badge>
+                  {canGuarantee ? (
+                    <GuaranteeDialog
+                      reservationId={reserva.reservationReferenceId}
+                      reservationCode={reserva.code}
+                      stayId={reserva.stayId}
+                      roomId={room.id}
+                    />
+                  ) : null}
                 </div>
 
                 {reserva.balanceDue && reserva.balanceDue > 0 ? (
@@ -392,16 +517,15 @@ export default async function RoomDetailPage({
                   </ul>
                 ) : (
                   <p className="mt-1.5 text-xs text-slate-500">
-                    Sin garantía registrada. Se registra en{' '}
-                    <Link href="/huespedes" className="font-medium text-petrol-600 hover:underline">
-                      Huéspedes y reservas
-                    </Link>
-                    .
+                    Sin garantía registrada.
+                    {canGuarantee ? ' Puedes agregarla aquí mismo.' : ''}
                   </p>
                 )}
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
+          )}
           <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
             La garantía cuelga de la reserva, no de la habitación: un cambio de habitación no la
             mueve.
@@ -409,10 +533,54 @@ export default async function RoomDetailPage({
         </Card>
       ) : null}
 
-      <RoomKeys
+      {showSection('caja') ? <Card>
+        <CardHeader
+          title="Caja vinculada a la habitación"
+          count={visibleCashMovements.length}
+          href="/caja"
+          hrefLabel="Abrir Caja central"
+        />
+        {visibleCashMovements.length === 0 ? (
+          <EmptyState message="Sin movimientos de Caja asociados a esta habitación." />
+        ) : (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+              {visibleCashMovements.map((movement) => (
+                <li key={movement.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={movement.direction === 'ENTRADA' ? 'resuelto' : 'atencion'}>
+                        {movement.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso'}
+                      </Badge>
+                      <span className="text-sm font-medium text-petrol-900">
+                        {movement.reference ?? movement.kind.toLowerCase().replaceAll('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {movement.reservationCode ? `ID FNS ${movement.reservationCode}` : 'Sin reserva asociada'}
+                      {movement.guestName ? ` · ${movement.guestName}` : ''}
+                      {` · ${formatDateTime(movement.createdAt)} · ${movement.createdByName}`}
+                    </p>
+                    {movement.notes ? <p className="mt-1 text-xs text-slate-600">{movement.notes}</p> : null}
+                  </div>
+                  <span
+                    className={`shrink-0 font-semibold tabular ${
+                      movement.direction === 'ENTRADA' ? 'text-emerald-700' : 'text-red-700'
+                    }`}
+                  >
+                    {movement.direction === 'ENTRADA' ? '+' : '−'}
+                    {movement.currency} {movement.amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardScroll>
+        )}
+      </Card> : null}
+      {showSection('llaves') ? <RoomKeys
         roomId={room.id}
         roomNumber={room.number}
-        keys={room.keys.map((key) => ({
+        keys={visibleKeys.map((key) => ({
           ...key,
           assignedLabel: key.assignedAt
             ? `desde ${formatDateTime(key.assignedAt)}${key.assignedBy ? ` · ${key.assignedBy}` : ''}`
@@ -422,19 +590,20 @@ export default async function RoomDetailPage({
         canStock={hasPermission(user, 'key.stock')}
         availableKeys={availableKeys}
         hasGuestInside={Boolean(snapshot.current)}
-      />
+      /> : null}
 
-      {fines.length > 0 || canFine ? (
+      {showSection('multas') && (fines.length > 0 || canFine) ? (
         <Card>
-          <CardHeader title="Multas de la habitación" count={fines.length} />
-          {fines.length === 0 ? (
+          <CardHeader title="Multas de la habitación" count={visibleFines.length} />
+          {visibleFines.length === 0 ? (
             <EmptyState
               message="Sin multas registradas."
               hint="Se registran desde «Registrar multa», arriba."
             />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {fines.map((fine) => (
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
+              {visibleFines.map((fine) => (
                 <li key={fine.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -478,21 +647,23 @@ export default async function RoomDetailPage({
                   </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </CardScroll>
           )}
         </Card>
       ) : null}
 
-      <Card>
+      {showSection('registros') ? <Card>
         <CardHeader
           title="Incidencias y registros de la habitación"
-          count={entries.length}
+          count={visibleEntries.length}
           href={`/libro?hab=${room.number}`}
           hrefLabel="Ver en el libro"
         />
-        {entries.length ? (
-          <ul className="divide-y divide-slate-100">
-            {entries.map((entry) => (
+        {visibleEntries.length ? (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleEntries.map((entry) => (
               <li key={entry.id} className="px-4 py-3">
                 <Link href={`/libro/${entry.id}`} className="group block">
                   <div className="flex flex-wrap items-center gap-2">
@@ -517,20 +688,22 @@ export default async function RoomDetailPage({
                 </Link>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         ) : (
           <EmptyState
             message="Sin incidencias registradas en esta habitación."
             hint="Las incidencias exigen habitación o área, así que siempre aparecerán aquí."
           />
         )}
-      </Card>
+      </Card> : null}
 
-      <Card>
-        <CardHeader title="Historial de estadías" count={room.history.length} />
-        {room.history.length ? (
-          <ul className="divide-y divide-slate-100">
-            {room.history.map((stay) => (
+      {showSection('historial') ? <Card>
+        <CardHeader title="Historial de estadías" count={visibleHistory.length} />
+        {visibleHistory.length ? (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleHistory.map((stay) => (
               <li key={stay.id} className="flex flex-wrap items-center gap-2 px-4 py-2 text-sm">
                 <Badge tone={STAY_STATUS_TONE[stay.status]}>{STAY_STATUS_LABELS[stay.status]}</Badge>
                 <span className="font-medium text-petrol-900">{primaryGuest(stay)}</span>
@@ -542,11 +715,12 @@ export default async function RoomDetailPage({
                 </span>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         ) : (
           <EmptyState message="Sin estadías informadas todavía." />
         )}
-      </Card>
+      </Card> : null}
 
       {openEntries.length ? (
         <p className="text-xs text-slate-500">

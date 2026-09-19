@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { Chip } from '@/components/ui/badge';
 import { ENTRY_TYPE_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
@@ -13,8 +15,15 @@ import { RestoreFollowUpForm, RestoreAlertForm } from './restore-forms';
 export const metadata = { title: 'Registros eliminados' };
 export const dynamic = 'force-dynamic';
 
-export default async function DeletedPage() {
+export default async function DeletedPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('entry.restore');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const tipo = typeof params.tipo === 'string' ? params.tipo : '';
 
   const [entries, tasks, followUps, alerts] = await Promise.all([
     prisma.operationalEntry.findMany({
@@ -55,7 +64,30 @@ export default async function DeletedPage() {
   const nameById = new Map(users.map((u) => [u.id, u.name]));
   const who = (id: string | null) => (id ? (nameById.get(id) ?? 'Usuario eliminado') : 'Sistema');
 
-  const total = entries.length + tasks.length + followUps.length + alerts.length;
+  const textMatches = (values: Array<string | number | null | undefined>) =>
+    !q ||
+    values
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  const visibleEntries = entries.filter((entry) =>
+    textMatches([entry.seq, entry.title, entry.deletionReason, entry.type]),
+  );
+  const visibleTasks = tasks.filter((task) =>
+    textMatches([task.seq, task.title, task.deletionReason]),
+  );
+  const visibleFollowUps = followUps.filter((followUp) =>
+    textMatches([followUp.action, followUp.deletionReason]),
+  );
+  const visibleAlerts = alerts.filter((alert) =>
+    textMatches([alert.title, alert.message, alert.deletionReason]),
+  );
+  const shownEntries = !tipo || tipo === 'libro' ? visibleEntries : [];
+  const shownTasks = !tipo || tipo === 'tareas' ? visibleTasks : [];
+  const shownFollowUps = !tipo || tipo === 'seguimientos' ? visibleFollowUps : [];
+  const shownAlerts = !tipo || tipo === 'alertas' ? visibleAlerts : [];
+  const total = shownEntries.length + shownTasks.length + shownFollowUps.length + shownAlerts.length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -78,17 +110,35 @@ export default async function DeletedPage() {
         </p>
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar título, ID, motivo…"
+        clearHref="/admin/eliminados"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Tipo</span>
+          <select name="tipo" defaultValue={tipo} className="input-base w-full">
+            <option value="">Todos</option>
+            <option value="libro">Libro</option>
+            <option value="tareas">Tareas</option>
+            <option value="seguimientos">Seguimientos</option>
+            <option value="alertas">Alertas</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       {total === 0 ? (
         <Card>
           <EmptyState message="No hay registros eliminados." />
         </Card>
       ) : null}
 
-      {entries.length > 0 ? (
+      {shownEntries.length > 0 ? (
         <Card>
-          <CardHeader title="Registros del libro" count={entries.length} />
+          <CardHeader title="Registros del libro" count={shownEntries.length} />
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
-            {entries.map((entry) => (
+            {shownEntries.map((entry) => (
               <li
                 key={entry.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -108,14 +158,16 @@ export default async function DeletedPage() {
               </li>
             ))}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
 
-      {tasks.length > 0 ? (
+      {shownTasks.length > 0 ? (
         <Card>
-          <CardHeader title="Tareas" count={tasks.length} />
+          <CardHeader title="Tareas" count={shownTasks.length} />
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
-            {tasks.map((task) => (
+            {shownTasks.map((task) => (
               <li
                 key={task.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -134,14 +186,16 @@ export default async function DeletedPage() {
               </li>
             ))}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
 
-      {followUps.length > 0 ? (
+      {shownFollowUps.length > 0 ? (
         <Card>
-          <CardHeader title="Seguimientos" count={followUps.length} />
+          <CardHeader title="Seguimientos" count={shownFollowUps.length} />
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
-            {followUps.map((followUp) => (
+            {shownFollowUps.map((followUp) => (
               <li
                 key={followUp.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -157,14 +211,16 @@ export default async function DeletedPage() {
               </li>
             ))}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
 
-      {alerts.length > 0 ? (
+      {shownAlerts.length > 0 ? (
         <Card>
-          <CardHeader title="Alertas" count={alerts.length} />
+          <CardHeader title="Alertas" count={shownAlerts.length} />
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
-            {alerts.map((alert) => (
+            {shownAlerts.map((alert) => (
               <li
                 key={alert.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -180,6 +236,7 @@ export default async function DeletedPage() {
               </li>
             ))}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
     </div>

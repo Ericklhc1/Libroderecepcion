@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { entryInclude } from '@/server/services/entries';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
 import { Filters } from '@/components/operational/filters';
 import {
   ENTRY_OPEN_STATUSES,
@@ -159,7 +159,8 @@ export default async function IncidentsPage({
             hint="Registra una desde las acciones rápidas: requiere indicar gravedad."
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {incidents.map((incident) => {
               const open = ENTRY_OPEN_STATUSES.includes(incident.status);
               const overdue = isOverdue(incident.dueAt, open);
@@ -210,7 +211,8 @@ export default async function IncidentsPage({
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
       </Card>
     </div>

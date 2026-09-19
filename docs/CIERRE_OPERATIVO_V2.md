@@ -20,7 +20,7 @@ Iniciar cierre congela la configuración relevante del turno: Caja/divisas activ
 
 ## Caja
 
-Caja es el primer trabajo del cierre y se cierra una sola vez. Reutilizar ShiftCashClosure existente y su snapshot. Ingresos, egresos y ajustes no atribuibles a garantía requieren autorización de Supervisor. Diferencias deben conciliarse antes de continuar. Supervisor autoriza excepciones operacionales; no valida el cierre completo.
+Caja es el primer trabajo del cierre y se cierra una sola vez. Reutilizar ShiftCashClosure existente y su snapshot. Los permisos de Caja se configuran por rol y operación; ninguna operación rutinaria exige autorización por el solo hecho de mover efectivo. Cuando una operación tenga activado `requiere autorización`, sólo un usuario con `cash.approve` puede aprobarla y la mutación efectiva ocurre después de esa aprobación. Diferencias deben conciliarse antes de continuar. La revisión de excepciones operacionales no equivale a validar el cierre completo.
 
 ## PMS
 

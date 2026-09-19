@@ -42,6 +42,7 @@ export function EntryForm({
   lockType = false,
   closeOnSuccess = true,
   defaultRoomId = '',
+  defaultStayId = '',
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
   options: FormOptions;
@@ -50,6 +51,8 @@ export function EntryForm({
   closeOnSuccess?: boolean;
   /** Habitación ya conocida, cuando se registra desde su propia ficha. */
   defaultRoomId?: string;
+  /** Estadía exacta cuando el formulario nace desde una capa concreta. */
+  defaultStayId?: string;
 }) {
   const [type, setType] = useState<EntryType>(defaultType);
   const isIncident = type === EntryType.INCIDENCIA;
@@ -66,6 +69,7 @@ export function EntryForm({
   return (
     <ActionForm action={action} closeOnSuccess={closeOnSuccess} resetOnSuccess>
       {lockType ? <input type="hidden" name="type" value={type} /> : null}
+      {defaultStayId ? <input type="hidden" name="stayId" value={defaultStayId} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {lockType ? null : (

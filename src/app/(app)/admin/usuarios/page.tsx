@@ -3,7 +3,9 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import {
   CreateUserDialog,
   DeleteUserDialog,
@@ -18,8 +20,16 @@ import { credentialsRecipient } from '@/server/mail';
 export const metadata = { title: 'Usuarios' };
 export const dynamic = 'force-dynamic';
 
-export default async function UsersPage() {
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('user.manage');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const estado = typeof params.estado === 'string' ? params.estado : '';
+  const rol = typeof params.rol === 'string' ? params.rol : '';
 
   // La casilla de credenciales ahora sale de la base, así que entra en el
   // mismo Promise.all en vez de encadenar una espera más.
@@ -35,6 +45,25 @@ export default async function UsersPage() {
 
   const roleOptions = roles.map((role) => ({ value: role.id, label: role.name }));
   const departmentOptions = departments.map((d) => ({ value: d.id, label: d.name }));
+  const visibleUsers = users.filter((user) => {
+    const statusMatches =
+      !estado ||
+      (estado === 'activas' && user.active && !user.deletedAt) ||
+      (estado === 'inactivas' && !user.active && !user.deletedAt) ||
+      (estado === 'eliminadas' && Boolean(user.deletedAt));
+    const roleMatches = !rol || user.roleId === rol;
+    const text = [
+      user.name,
+      user.username,
+      user.role.name,
+      user.department?.name,
+      user.phone,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return statusMatches && roleMatches && (!q || text.includes(q));
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -60,13 +89,37 @@ export default async function UsersPage() {
         />
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar nombre, usuario, rol, área…"
+        clearHref="/admin/usuarios"
+      >
+        <label className="min-w-[11rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            <option value="">Todos</option>
+            <option value="activas">Activas</option>
+            <option value="inactivas">Inactivas</option>
+            <option value="eliminadas">Eliminadas</option>
+          </select>
+        </label>
+        <label className="min-w-[13rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Rol</span>
+          <select name="rol" defaultValue={rol} className="input-base w-full">
+            <option value="">Todos</option>
+            {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+          </select>
+        </label>
+      </ListFilterBar>
+
       <Card>
-        <CardHeader title="Cuentas" count={users.length} />
-        {users.length === 0 ? (
+        <CardHeader title="Cuentas" count={visibleUsers.length} />
+        {visibleUsers.length === 0 ? (
           <EmptyState message="No hay usuarios." />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {users.map((user) => (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleUsers.map((user) => (
               <li
                 key={user.id}
                 className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${
@@ -129,7 +182,8 @@ export default async function UsersPage() {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
       </Card>
     </div>

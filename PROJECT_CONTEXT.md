@@ -10,6 +10,13 @@ TypeScript estricto · Prisma 6 · PostgreSQL en **Neon** (`sa-east-1`) ·
 **Vercel** como único hosting de Production · Tailwind ·
 Vitest contra PostgreSQL real.
 
+**Infraestructura oficial y exclusiva:** GitHub (código/PR/CI) + Vercel
+(preview/despliegue/Production) + Neon (PostgreSQL). **Netlify no forma parte
+del proyecto.** Si una integración residual de Netlify publica un check o un
+preview en GitHub, se considera ruido externo: no valida, no bloquea y no
+autoriza una promoción. No agregar `netlify.toml`, `.netlify/`, SDK,
+variables ni dependencias de Netlify. La compuerta CI lo impide.
+
 No cambiar de stack. No reconstruir. No crear otro proyecto.
 
 ## Arquitectura

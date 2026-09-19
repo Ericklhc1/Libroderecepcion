@@ -73,6 +73,23 @@ export const PERMISSIONS = {
     name: 'Resolver todos los conflictos operativos',
   },
 
+  // Caja: permisos atómicos por tipo de operación. La matriz se administra
+  // desde Roles y permisos; ninguna acción rutinaria hereda autorización de
+  // Supervisión sólo por tratarse de dinero.
+  'cash.view': { group: 'Caja', name: 'Consultar Caja' },
+  'cash.manual_in': { group: 'Caja', name: 'Registrar ingresos manuales' },
+  'cash.manual_out': { group: 'Caja', name: 'Registrar egresos manuales' },
+  'cash.audit': { group: 'Caja', name: 'Corroborar efectivo' },
+  'cash.guarantee_in': { group: 'Caja', name: 'Registrar garantías en efectivo' },
+  'cash.guarantee_out': { group: 'Caja', name: 'Devolver garantías en efectivo' },
+  'cash.treasury_transfer': { group: 'Caja', name: 'Registrar egresos a tesorería' },
+  'cash.count_declare': { group: 'Caja', name: 'Declarar arqueo al entregar turno' },
+  'cash.count_receive': { group: 'Caja', name: 'Confirmar arqueo al recibir turno' },
+  'cash.usd_rate': { group: 'Caja', name: 'Declarar tipo de cambio USD/CLP' },
+  'cash.close': { group: 'Caja', name: 'Confirmar cierre formal de Caja' },
+  'cash.reopen': { group: 'Caja', name: 'Reabrir cierre formal de Caja' },
+  'cash.approve': { group: 'Caja', name: 'Autorizar operaciones de Caja que requieran aprobación' },
+
   /*
     Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
     confirme la lectura. Es del Supervisor: es él quien tiene que poder parar
@@ -88,6 +105,16 @@ export const PERMISSIONS = {
 export type PermissionKey = keyof typeof PERMISSIONS;
 
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as PermissionKey[];
+
+/** Operaciones con flujo seguro de solicitud/aprobación. */
+export const CASH_APPROVAL_CAPABLE_PERMISSIONS = [
+  'cash.manual_in',
+  'cash.manual_out',
+  'cash.treasury_transfer',
+] as const satisfies readonly PermissionKey[];
+
+export type CashApprovalCapablePermission =
+  (typeof CASH_APPROVAL_CAPABLE_PERMISSIONS)[number];
 
 export const ROLE_KEYS = {
   SYSTEM_ADMIN: 'ADMINISTRADOR_SISTEMA',
@@ -122,6 +149,17 @@ const OPERATIONAL_BASE: PermissionKey[] = [
   'room.manage',
   'key.assign',
   'pms.import',
+  'cash.view',
+  'cash.manual_in',
+  'cash.manual_out',
+  'cash.audit',
+  'cash.guarantee_in',
+  'cash.guarantee_out',
+  'cash.treasury_transfer',
+  'cash.count_declare',
+  'cash.count_receive',
+  'cash.usd_rate',
+  'cash.close',
 ];
 
 /**
@@ -167,6 +205,8 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'conflict.resolve_all',
     'announcement.manage',
     'supervision.view',
+    'cash.reopen',
+    'cash.approve',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   /*
@@ -202,6 +242,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'metrics.view',
     'room.view',
     'audit.view',
+    'cash.view',
     // Excepción expresa: reparación masiva auditada, no operación de mesón.
     'conflict.resolve_all',
   ],

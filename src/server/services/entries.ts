@@ -16,6 +16,7 @@ import { ENTRY_OPEN_STATUSES, ENTRY_STATUS_LABEL, ENTRY_TYPE_LABEL } from '@/dom
 import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
 import { assertAssignable, listSupervisorIds } from './users';
+import { resolveOperationalContext } from './operational-context';
 
 export const entryInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -26,6 +27,15 @@ export const entryInclude = {
   shift: { select: { id: true, type: true, date: true } },
   guest: { select: { id: true, fullName: true, roomNumber: true, vip: true } },
   reservation: { select: { id: true, code: true, roomNumber: true, status: true } },
+  stay: {
+    select: {
+      id: true,
+      reservationId: true,
+      status: true,
+      stage: true,
+      room: { select: { id: true, number: true } },
+    },
+  },
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
 
@@ -48,6 +58,7 @@ type EntryCreateInput = {
   requiresFollowUp: boolean;
   guestId?: string | null;
   reservationId?: string | null;
+  stayId?: string | null;
   severity?: Severity | undefined;
   impact?: Prisma.OperationalEntryCreateInput['impact'];
   immediateAction?: string | null;
@@ -71,6 +82,13 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
   const shift = await getMyOpenShift(user.id);
 
   const entry = await prisma.$transaction(async (tx) => {
+    const context = await resolveOperationalContext(tx, {
+      roomId: input.roomId ?? null,
+      reservationReferenceId: input.reservationId ?? null,
+      stayId: input.stayId ?? null,
+      guestId: input.guestId ?? null,
+    });
+
     const created = await tx.operationalEntry.create({
       data: {
         type: input.type,
@@ -78,7 +96,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         description: input.description,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
-        roomId: input.roomId ?? null,
+        roomId: context.roomId ?? input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         shiftId: shift?.id ?? null,
@@ -86,8 +104,9 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         dueAt: input.dueAt ?? null,
         tags: normalizeTags(input.tags),
         requiresFollowUp: input.requiresFollowUp,
-        guestId: input.guestId ?? null,
-        reservationId: input.reservationId ?? null,
+        guestId: context.guestId ?? input.guestId ?? null,
+        reservationId: context.reservationReferenceId ?? input.reservationId ?? null,
+        stayId: context.stayId,
         severity: input.type === EntryType.INCIDENCIA ? (input.severity ?? null) : null,
         impact: input.type === EntryType.INCIDENCIA ? (input.impact ?? null) : null,
         immediateAction: input.immediateAction ?? null,
@@ -111,6 +130,11 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           status: created.status,
           ownerId: created.ownerId,
           departmentId: created.departmentId,
+          roomId: created.roomId,
+          reservationId: created.reservationId,
+          stayId: created.stayId,
+          guestId: created.guestId,
+          contextIssues: context.issues,
         },
       },
       tx,
@@ -168,6 +192,7 @@ const EDITABLE_FIELDS = [
   'requiresFollowUp',
   'guestId',
   'reservationId',
+  'stayId',
   'severity',
   'impact',
   'immediateAction',

@@ -69,6 +69,40 @@ describe('registros del libro operativo', () => {
     expect(entry.shiftId).toBe(shift.id);
   });
 
+  it('una novedad con habitación hereda estadía, reserva y huésped', async () => {
+    const room = await prisma.room.findUniqueOrThrow({ where: { number: '404' } });
+    const reservation = await prisma.reservationReference.create({
+      data: {
+        code: 'ENTRY-CTX-404',
+        guest: { create: { fullName: 'Huésped de contexto' } },
+      },
+      include: { guest: true },
+    });
+    const stay = await prisma.roomStay.create({
+      data: {
+        reservationId: reservation.code,
+        reservationRefId: reservation.id,
+        roomId: room.id,
+        guestNames: ['Huésped de contexto'],
+        sourceReport: 'ACTIVIDAD',
+        status: 'IN_HOUSE',
+        stage: 'CONFIRMADO',
+        businessDate: new Date('2026-09-19T00:00:00.000Z'),
+      },
+    });
+
+    const entry = await createEntry(receptionist, {
+      ...novedad,
+      title: 'Novedad contextual en habitación 404',
+      roomId: room.id,
+    });
+
+    expect(entry.roomId).toBe(room.id);
+    expect(entry.stayId).toBe(stay.id);
+    expect(entry.reservationId).toBe(reservation.id);
+    expect(entry.guestId).toBe(reservation.guestId);
+  });
+
   it('normaliza las etiquetas y descarta duplicados', async () => {
     const entry = await createEntry(receptionist, {
       ...novedad,

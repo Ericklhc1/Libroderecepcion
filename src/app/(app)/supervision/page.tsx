@@ -4,7 +4,8 @@ import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { redirect } from 'next/navigation';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { TONE_STYLES } from '@/components/ui/tone';
 import { Badge, Chip } from '@/components/ui/badge';
 import { listAnnouncements } from '@/server/services/announcements';
@@ -15,6 +16,7 @@ import {
 } from './announcements';
 import { ResolveAllConflictsDialog } from '@/components/rooms/resolve-all-conflicts';
 import { formatDateTime } from '@/lib/format';
+import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -24,13 +26,14 @@ export const maxDuration = 60;
 function Block({ block }: { block: SupervisionBlock }) {
   const tone = TONE_STYLES[block.tone];
   return (
-    <Card>
+    <Card className="flex h-[30rem] flex-col overflow-hidden">
       <CardHeader title={block.title} count={block.rows.length} />
       <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">{block.hint}</p>
       {block.rows.length === 0 ? (
         <EmptyState message="Nada que revisar en este punto." />
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <CardScroll className="flex-1" maxHeight="max-h-none">
+          <ul className="divide-y divide-slate-100">
           {block.rows.map((row) => (
             <li key={row.id}>
               <Link
@@ -60,14 +63,22 @@ function Block({ block }: { block: SupervisionBlock }) {
               </Link>
             </li>
           ))}
-        </ul>
+          </ul>
+        </CardScroll>
       )}
     </Card>
   );
 }
 
-export default async function SupervisionPage() {
+export default async function SupervisionPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePageUser();
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const tono = typeof params.tono === 'string' ? params.tono : '';
   /*
     Debe coincidir exactamente con la navegación. Gestionar incidencias no
     equivale a supervisar el trabajo de otros: Recepción puede gestionar una
@@ -97,6 +108,35 @@ export default async function SupervisionPage() {
     .reduce((sum, block) => sum + block.rows.length, 0);
   const unassigned = blocks.find((block) => block.key === 'sin-responsable')?.rows.length ?? 0;
 
+  const visibleBlocks = blocks
+    .filter((block) => (!tono ? true : block.tone === tono))
+    .map((block) => ({
+      ...block,
+      rows: block.rows.filter((row) => {
+        if (!q) return true;
+        return [row.ref, row.title, row.detail, row.meta]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      }),
+    }))
+    .filter((block) => block.rows.length > 0);
+  const visibleTotal = visibleBlocks.reduce((sum, block) => sum + block.rows.length, 0);
+  const visibleAnnouncements = announcements.filter((announcement) => {
+    if (!q) return true;
+    return [
+      announcement.title,
+      announcement.body,
+      announcement.createdByName,
+      announcement.targetName,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -125,6 +165,22 @@ export default async function SupervisionPage() {
         </div>
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar habitación, ID, responsable, detalle…"
+        clearHref="/supervision"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Prioridad visual</span>
+          <select name="tono" defaultValue={tono} className="input-base w-full">
+            <option value="">Todas</option>
+            <option value="critico">Crítico</option>
+            <option value="atencion">Atención</option>
+            <option value="curso">En curso</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       {/*
         Los comunicados obligatorios viven en Supervisión porque son su
         herramienta: parar el mesón para decir algo que nadie puede dejar de
@@ -135,7 +191,7 @@ export default async function SupervisionPage() {
         <Card>
           <CardHeader
             title="Comunicados obligatorios"
-            count={announcements.filter((a) => a.active).length}
+            count={visibleAnnouncements.filter((a) => a.active).length}
             action={
               <NewAnnouncementDialog
                 users={operationalUsers.map((u) => ({
@@ -145,14 +201,15 @@ export default async function SupervisionPage() {
               />
             }
           />
-          {announcements.length === 0 ? (
+          {visibleAnnouncements.length === 0 ? (
             <EmptyState
               message="Sin comunicados."
               hint="Un comunicado bloquea la pantalla hasta que se confirme la lectura."
             />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {announcements.map((announcement) => (
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
+              {visibleAnnouncements.map((announcement) => (
                 <li key={announcement.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -209,7 +266,8 @@ export default async function SupervisionPage() {
                   </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </CardScroll>
           )}
         </Card>
       ) : null}
@@ -234,7 +292,7 @@ export default async function SupervisionPage() {
         />
       </div>
 
-      {total === 0 ? (
+      {visibleTotal === 0 ? (
         <Card>
           <EmptyState
             message="No hay nada escalado, vencido, sin responsable ni en conflicto."
@@ -243,11 +301,9 @@ export default async function SupervisionPage() {
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          {blocks
-            .filter((block) => block.rows.length > 0)
-            .map((block) => (
-              <Block key={block.key} block={block} />
-            ))}
+          {visibleBlocks.map((block) => (
+            <Block key={block.key} block={block} />
+          ))}
         </div>
       )}
 

@@ -26,6 +26,7 @@ const ACTIVE_STAGES: RoomStayStage[] = [RoomStayStage.PENDIENTE, RoomStayStage.C
 const stayFactsSelect = {
   id: true,
   reservationId: true,
+  reservationRefId: true,
   guestNames: true,
   status: true,
   stage: true,
@@ -107,6 +108,7 @@ export async function listRoomsWithState(): Promise<RoomWithState[]> {
 
 export type RoomReservationContext = {
   stayId: string;
+  reservationReferenceId: string;
   code: string;
   guestName: string | null;
   vip: boolean;
@@ -129,6 +131,19 @@ export type RoomDetail = RoomWithState & {
   history: StayFacts[];
   keys: Array<KeyFacts & { assignedAt: Date | null; assignedBy: string | null }>;
   reservations: RoomReservationContext[];
+  cashMovements: Array<{
+    id: string;
+    kind: string;
+    direction: string;
+    currency: string;
+    amount: number;
+    reference: string | null;
+    notes: string | null;
+    reservationCode: string | null;
+    guestName: string | null;
+    createdByName: string;
+    createdAt: Date;
+  }>;
 };
 
 export async function getRoomDetail(number: string): Promise<RoomDetail> {
@@ -176,6 +191,28 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
           assignedBy: { select: { name: true } },
         },
       },
+      cashMovements: {
+        where: { voidedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          kind: true,
+          direction: true,
+          currency: true,
+          amount: true,
+          reference: true,
+          notes: true,
+          createdAt: true,
+          reservationReference: {
+            select: {
+              code: true,
+              guest: { select: { fullName: true } },
+            },
+          },
+          createdBy: { select: { name: true } },
+        },
+      },
       _count: {
         select: {
           entries: { where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } } },
@@ -199,14 +236,30 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
     notes: room.notes,
     snapshot: buildRoomSnapshot(active.map(toStayFacts), keys),
     openIncidents: room._count.entries,
-    history: room.stays.map(toStayFacts),
+    history: room.stays
+      .filter((stay) => !ACTIVE_STAGES.includes(stay.stage))
+      .map(toStayFacts),
     keys,
+    cashMovements: room.cashMovements.map((movement) => ({
+      id: movement.id,
+      kind: movement.kind,
+      direction: movement.direction,
+      currency: movement.currency,
+      amount: movement.amount.toNumber(),
+      reference: movement.reference,
+      notes: movement.notes,
+      reservationCode: movement.reservationReference?.code ?? null,
+      guestName: movement.reservationReference?.guest?.fullName ?? null,
+      createdByName: movement.createdBy.name,
+      createdAt: movement.createdAt,
+    })),
     reservations: active
       .filter((stay) => stay.reservationRef !== null)
       .map((stay) => {
         const reserva = stay.reservationRef!;
         return {
           stayId: stay.id,
+          reservationReferenceId: stay.reservationRefId!,
           code: reserva.code,
           guestName: reserva.guest?.fullName ?? null,
           vip: reserva.guest?.vip ?? false,

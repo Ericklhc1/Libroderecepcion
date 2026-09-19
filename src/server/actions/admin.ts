@@ -19,7 +19,10 @@ import { revokeAllUserSessions } from '@/server/auth/session';
 import { recordAudit, diffFields } from '@/server/audit';
 import { AppError, NotFoundError, RuleError } from '@/server/errors';
 import { normalizeUsername } from '@/domain/username';
-import { ROLE_KEYS } from '@/lib/permissions';
+import {
+  CASH_APPROVAL_CAPABLE_PERMISSIONS,
+  ROLE_KEYS,
+} from '@/lib/permissions';
 import { DEFAULT_SETTINGS, getSettingString, type SettingKey } from '@/server/services/settings';
 import { allocateUsername, deliverCredentials, generatePassword } from '@/server/services/credentials';
 import { runAlertEngine } from '@/server/services/alert-engine';
@@ -358,14 +361,31 @@ export async function updateRolePermissionsAction(
       }
     }
 
+    const approvalCapable = new Set<string>(CASH_APPROVAL_CAPABLE_PERMISSIONS);
+    const selected = new Set(permissions.map((permission) => permission.key));
+    const approvalRequired = new Set(
+      input.approvalRequired.filter(
+        (key) => selected.has(key) && approvalCapable.has(key),
+      ),
+    );
+
     const before = role.permissions.map((rp) => rp.permission.key).sort();
+    const beforeApproval = role.permissions
+      .filter((rp) => rp.requiresApproval)
+      .map((rp) => rp.permission.key)
+      .sort();
     const after = permissions.map((p) => p.key).sort();
+    const afterApproval = [...approvalRequired].sort();
 
     await prisma.$transaction(async (tx) => {
       await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
       if (permissions.length > 0) {
         await tx.rolePermission.createMany({
-          data: permissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
+          data: permissions.map((p) => ({
+            roleId: role.id,
+            permissionId: p.id,
+            requiresApproval: approvalRequired.has(p.key),
+          })),
           skipDuplicates: true,
         });
       }
@@ -377,8 +397,8 @@ export async function updateRolePermissionsAction(
       action: AuditAction.PERMISOS,
       summary: `Permisos del rol ${role.name} actualizados (${after.length} permisos)`,
       user: actor,
-      before: { permissions: before },
-      after: { permissions: after },
+      before: { permissions: before, approvalRequired: beforeApproval },
+      after: { permissions: after, approvalRequired: afterApproval },
     });
 
     revalidatePath('/admin/roles');

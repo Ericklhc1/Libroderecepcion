@@ -46,6 +46,7 @@ enum HandoverStatus {
   BORRADOR
   ENVIADA
   RECIBIDA
+  ANULADA
 }
 
 enum HandoverLevel {
@@ -282,6 +283,8 @@ model RolePermission {
   permissionId String
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  /// Segundo interruptor: tener el permiso no implica pedir autorización.
+  requiresApproval Boolean @default(false)
   grantedAt    DateTime   @default(now())
 
   @@id([roleId, permissionId])
@@ -629,6 +632,9 @@ model OperationalEntry {
   guest         GuestReference?       @relation(fields: [guestId], references: [id])
   reservationId String?
   reservation   ReservationReference? @relation(fields: [reservationId], references: [id])
+  /// Estadía exacta que originó el registro cuando el contexto es inequívoco.
+  stayId        String?
+  stay          RoomStay?             @relation(fields: [stayId], references: [id])
 
   // --- Campos específicos de incidencia (nulos en otros tipos) ---
   severity        Severity?
@@ -666,6 +672,7 @@ model OperationalEntry {
   @@index([deletedAt])
   @@index([departmentId])
   @@index([roomId])
+  @@index([stayId])
 }
 
 model Task {
@@ -910,9 +917,10 @@ model GuestReference {
   deletedAt  DateTime?
   isDemo     Boolean   @default(false)
 
-  reservations ReservationReference[]
-  entries      OperationalEntry[]
-  alerts       Alert[]
+  reservations  ReservationReference[]
+  entries       OperationalEntry[]
+  alerts        Alert[]
+  cashMovements CashMovement[]
 
   @@index([fullName])
   @@index([roomNumber])
@@ -1219,9 +1227,12 @@ model RoomStay {
   deletionReason String?
   isDemo         Boolean   @default(false)
 
-  keys      RoomKey[]
-  movements KeyMovement[]
-  fines     Fine[]
+  keys          RoomKey[]
+  movements     KeyMovement[]
+  fines         Fine[]
+  entries       OperationalEntry[]
+  guarantees    Guarantee[]
+  cashMovements CashMovement[]
 
   // Un mismo informe no puede dejar dos veces la misma reserva en la misma
   // habitación y estado para un día de operación: la importación es idempotente.
@@ -1324,6 +1335,10 @@ model Guarantee {
   id                     String               @id @default(cuid())
   reservationReferenceId String
   reservationReference   ReservationReference @relation(fields: [reservationReferenceId], references: [id], onDelete: Cascade)
+  /// Estadía concreta cuando puede resolverse sin ambigüedad. Sigue siendo la
+  /// misma aunque esa estadía cambie de habitación.
+  stayId                 String?
+  stay                   RoomStay?            @relation(fields: [stayId], references: [id])
 
   kind     GuaranteeKind  @default(TARJETA)
   state    GuaranteeState @default(PENDIENTE)
@@ -1361,6 +1376,7 @@ model Guarantee {
   cashMovements CashMovement[]
 
   @@index([reservationReferenceId])
+  @@index([stayId])
   @@index([state])
   @@index([deletedAt])
 }
@@ -1461,6 +1477,8 @@ model CashTransfer {
   createdById String
   createdBy   User          @relation("cashTransferBy", fields: [createdById], references: [id])
   createdAt   DateTime      @default(now())
+  /// Reflejo del egreso en la Caja central. Nulo sólo mientras espera aprobación.
+  cashMovement CashMovement?
 
   @@index([handoverId])
   @@index([currency])
@@ -1787,11 +1805,14 @@ model CashMovement {
   currency               String                @db.VarChar(3)
   amount                 Decimal               @db.Decimal(12, 2)
   shiftId                String?
-  roomId                 String?
-  reservationReferenceId String?
-  guaranteeId            String?
-  gymPassId              String?
-  createdById            String
+  roomId                  String?
+  stayId                  String?
+  guestId                 String?
+  reservationReferenceId  String?
+  guaranteeId             String?
+  gymPassId               String?
+  cashTransferId          String?               @unique
+  createdById             String
   reference              String?
   notes                  String?
   createdAt              DateTime              @default(now())
@@ -1803,14 +1824,19 @@ model CashMovement {
   voidedBy               User?                 @relation("cashMovementVoidedBy", fields: [voidedById], references: [id])
   guarantee              Guarantee?            @relation(fields: [guaranteeId], references: [id])
   gymPass                GymPass?              @relation(fields: [gymPassId], references: [id])
+  cashTransfer           CashTransfer?          @relation(fields: [cashTransferId], references: [id])
   reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
   room                   Room?                 @relation(fields: [roomId], references: [id])
+  stay                   RoomStay?             @relation(fields: [stayId], references: [id])
+  guest                  GuestReference?       @relation(fields: [guestId], references: [id])
   shift                  Shift?                @relation(fields: [shiftId], references: [id])
 
   @@index([createdAt])
   @@index([currency])
   @@index([reservationReferenceId])
   @@index([roomId])
+  @@index([stayId])
+  @@index([guestId])
   @@index([shiftId])
 }
 

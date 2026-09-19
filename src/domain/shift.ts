@@ -1,4 +1,4 @@
-import { ShiftStatus, ShiftType } from '@prisma/client';
+import { HandoverStatus, ShiftStatus, ShiftType } from '@prisma/client';
 import { RuleError } from '@/server/errors';
 import {
   addCalendarDateDays,
@@ -106,7 +106,7 @@ export function assertTransition(from: ShiftStatus, to: ShiftStatus): void {
  */
 export function assertCanClose(params: {
   status: ShiftStatus;
-  handoverStatus: 'NONE' | 'BORRADOR' | 'ENVIADA' | 'RECIBIDA';
+  handoverStatus: 'NONE' | HandoverStatus;
 }): void {
   const { status, handoverStatus } = params;
 

@@ -3,16 +3,36 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { DepartmentDialog } from '../admin-forms';
 
 export const metadata = { title: 'Áreas' };
 export const dynamic = 'force-dynamic';
 
-export default async function DepartmentsPage() {
+export default async function DepartmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('system.configure');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  const estado = typeof params.estado === 'string' ? params.estado : '';
 
   const departments = await prisma.department.findMany({
+    where: {
+      ...(estado === 'activas' ? { active: true } : estado === 'inactivas' ? { active: false } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { key: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
     include: { _count: { select: { entries: true, tasks: true, users: true } } },
     orderBy: { order: 'asc' },
   });
@@ -38,9 +58,25 @@ export default async function DepartmentsPage() {
         <DepartmentDialog />
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar área o clave…"
+        clearHref="/admin/areas"
+      >
+        <label className="min-w-[11rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            <option value="">Todas</option>
+            <option value="activas">Activas</option>
+            <option value="inactivas">Inactivas</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       <Card>
         <CardHeader title="Listado" count={departments.length} />
-        <ul className="divide-y divide-slate-100">
+        <CardScroll>
+          <ul className="divide-y divide-slate-100">
           {departments.map((department) => (
             <li
               key={department.id}
@@ -73,7 +109,8 @@ export default async function DepartmentsPage() {
               />
             </li>
           ))}
-        </ul>
+          </ul>
+        </CardScroll>
       </Card>
     </div>
   );

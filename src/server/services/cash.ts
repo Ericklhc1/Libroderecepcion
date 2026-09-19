@@ -1,8 +1,6 @@
 import 'server-only';
 import {
-  AlertLevel,
   AlertStatus,
-  AlertType,
   AuditAction,
   CashCountKind,
   GuaranteeKind,
@@ -26,6 +24,7 @@ import {
 } from '@/domain/cash';
 import { OPEN_GUARANTEE_STATES } from '@/domain/guarantees';
 import { getSettingBool } from '@/server/services/settings';
+import { insertCashMovement } from '@/server/services/live-cash';
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof prisma;
@@ -149,6 +148,7 @@ export async function getHandoverCashState(
         state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
       },
       include: {
+        stay: { include: { room: { select: { number: true } } } },
         reservationReference: {
           include: { guest: { select: { fullName: true } } },
         },
@@ -205,7 +205,9 @@ export async function getHandoverCashState(
       amount: Number(transfer.amount),
       reference: transfer.reference,
       createdByName: transfer.createdBy.name,
-      approved: approvalByTransfer.get(transfer.id) === true,
+      approved:
+        !approvalByTransfer.has(transfer.id) ||
+        approvalByTransfer.get(transfer.id) === true,
     })),
     elements: elements.map((element) => ({
       id: element.id,
@@ -222,7 +224,7 @@ export async function getHandoverCashState(
       amount: Number(guarantee.amount),
       state: guarantee.state,
       reservationCode: guarantee.reservationReference.code,
-      roomNumber: guarantee.reservationReference.roomNumber,
+      roomNumber: guarantee.stay?.room?.number ?? guarantee.reservationReference.roomNumber,
       guestName: guarantee.reservationReference.guest?.fullName ?? null,
     })),
   };
@@ -411,7 +413,42 @@ export function isCashAlreadyReceived(error: unknown): boolean {
   );
 }
 
-/** Egreso a tesorería. Queda registrado y auditado; Supervisión revisa después. */
+/**
+ * Refleja un egreso a tesorería en la Caja central de forma idempotente.
+ * Se usa tanto al registrar directo como al aprobar una solicitud.
+ */
+export async function applyCashTransferToLiveCash(
+  client: Client,
+  transferId: string,
+): Promise<string> {
+  const existing = await client.cashMovement.findUnique({
+    where: { cashTransferId: transferId },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const transfer = await client.cashTransfer.findUnique({
+    where: { id: transferId },
+    include: { handover: { select: { fromShiftId: true } } },
+  });
+  if (!transfer) throw new NotFoundError('El egreso a tesorería ya no existe.');
+
+  return insertCashMovement(client, {
+    userId: transfer.createdById,
+    kind: 'TESORERIA',
+    direction: 'SALIDA',
+    currency: transfer.currency,
+    amount: Number(transfer.amount),
+    shiftId: transfer.handover.fromShiftId,
+    cashTransferId: transfer.id,
+    reference: transfer.reference
+      ? `Tesorería · ${transfer.reference}`
+      : 'Egreso a tesorería',
+    notes: transfer.notes,
+  });
+}
+
+/** Egreso a tesorería. Se registra una vez y se refleja en Caja según política. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -420,6 +457,7 @@ export async function recordCashTransfer(
     amount: number;
     reference?: string | null;
     notes?: string | null;
+    applyToLiveCash?: boolean;
   },
 ) {
   if (!(await getSettingBool('cash.treasuryTransfersEnabled', true))) {
@@ -458,19 +496,10 @@ export async function recordCashTransfer(
       },
     });
 
-    await tx.alert.create({
-      data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Revisar egreso a tesorería',
-        message: `Revisar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
-        handoverId: params.handoverId,
-        dedupeKey: `cash-transfer:${transfer.id}`,
-        auto: false,
-        createdById: user.id,
-      },
-    });
+    const movementId =
+      params.applyToLiveCash === false
+        ? null
+        : await applyCashTransferToLiveCash(tx, transfer.id);
 
     await recordAudit(
       {
@@ -479,8 +508,14 @@ export async function recordCashTransfer(
         action: AuditAction.CREAR,
         summary: `Egreso a tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
-        }; pendiente de revisión de Supervisión.`,
+        }; registrado con trazabilidad.`,
         user,
+        after: {
+          currency,
+          amount: params.amount,
+          movementId,
+          pendingApproval: params.applyToLiveCash === false,
+        },
       },
       tx,
     );

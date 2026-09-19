@@ -207,6 +207,9 @@ export async function saveReservationAction(
 /** Pantallas que muestran garantías. Invalidación acotada, no global. */
 function refreshGuarantees(): void {
   revalidatePath('/huespedes');
+  revalidatePath('/reservas');
+  revalidatePath('/habitaciones');
+  revalidatePath('/caja');
   revalidatePath('/supervision');
   revalidatePath('/turno');
 }
@@ -223,8 +226,8 @@ export async function createGuaranteeAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('guest.manage');
     const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
+    const user = await requirePermission(input.kind === 'EFECTIVO' ? 'cash.guarantee_in' : 'guest.manage');
     const guarantee = await createGuarantee(user, input);
     refreshGuarantees();
     return {

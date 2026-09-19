@@ -107,6 +107,7 @@ export async function listRoomsWithState(): Promise<RoomWithState[]> {
 
 export type RoomReservationContext = {
   stayId: string;
+  reservationReferenceId: string;
   code: string;
   guestName: string | null;
   vip: boolean;
@@ -199,7 +200,9 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
     notes: room.notes,
     snapshot: buildRoomSnapshot(active.map(toStayFacts), keys),
     openIncidents: room._count.entries,
-    history: room.stays.map(toStayFacts),
+    history: room.stays
+      .filter((stay) => !ACTIVE_STAGES.includes(stay.stage))
+      .map(toStayFacts),
     keys,
     reservations: active
       .filter((stay) => stay.reservationRef !== null)
@@ -207,6 +210,7 @@ export async function getRoomDetail(number: string): Promise<RoomDetail> {
         const reserva = stay.reservationRef!;
         return {
           stayId: stay.id,
+          reservationReferenceId: stay.reservationRefId!,
           code: reserva.code,
           guestName: reserva.guest?.fullName ?? null,
           vip: reserva.guest?.vip ?? false,

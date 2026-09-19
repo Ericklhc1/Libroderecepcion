@@ -46,6 +46,7 @@ export async function POST() {
       {
         brief: result.brief,
         generatedAt: result.generatedAt.toISOString(),
+        actions: result.actions,
       },
       { headers },
     );

@@ -1230,6 +1230,7 @@ model RoomStay {
   movements     KeyMovement[]
   fines         Fine[]
   entries       OperationalEntry[]
+  guarantees    Guarantee[]
   cashMovements CashMovement[]
 
   // Un mismo informe no puede dejar dos veces la misma reserva en la misma
@@ -1333,6 +1334,10 @@ model Guarantee {
   id                     String               @id @default(cuid())
   reservationReferenceId String
   reservationReference   ReservationReference @relation(fields: [reservationReferenceId], references: [id], onDelete: Cascade)
+  /// Estadía concreta cuando puede resolverse sin ambigüedad. Sigue siendo la
+  /// misma aunque esa estadía cambie de habitación.
+  stayId                 String?
+  stay                   RoomStay?            @relation(fields: [stayId], references: [id])
 
   kind     GuaranteeKind  @default(TARJETA)
   state    GuaranteeState @default(PENDIENTE)
@@ -1370,6 +1375,7 @@ model Guarantee {
   cashMovements CashMovement[]
 
   @@index([reservationReferenceId])
+  @@index([stayId])
   @@index([state])
   @@index([deletedAt])
 }

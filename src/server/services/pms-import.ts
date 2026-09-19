@@ -15,6 +15,7 @@ import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { readPdfFragments } from '@/server/pms/read-pdf';
 import { readStructuredReport } from '@/domain/pms/layout';
+import { hasBlockingPmsIssues } from '@/domain/pms/issues';
 import { normalizeReport, REPORT_LABELS, type NormalizedStay } from '@/domain/pms/normalize';
 import { detectConflicts, type Conflict } from '@/domain/pms/conflicts';
 import {
@@ -365,7 +366,7 @@ async function analyseDraft(
       en el preview mediante `activity.rowIssues`, pero no participa en el
       estado proyectado ni en sus contadores.
     */
-    if (!draft.status || draft.issues.length > 0) continue;
+    if (!draft.status || hasBlockingPmsIssues(draft.issues)) continue;
 
     if (draft.status === RoomStayStatus.CHECK_IN) counts.checkIn += 1;
     if (draft.status === RoomStayStatus.IN_HOUSE) counts.inHouse += 1;
@@ -807,7 +808,7 @@ export async function applyImport(
         omisión. Quedan registrados en el borrador/revisión y la fila se omite
         de la aplicación hasta contar con información inequívoca.
       */
-      if (!draft.status || draft.issues.length > 0) {
+      if (!draft.status || hasBlockingPmsIssues(draft.issues)) {
         summary.skipped += 1;
         continue;
       }

@@ -11,7 +11,7 @@ import { getFrontiConfig } from './fronti-config';
 import {
   chatWithFrontiProvider,
   FrontiProviderError,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
 } from './fronti-provider';
 
 export class OperationalBriefError extends Error {
@@ -57,7 +57,7 @@ export async function generateOperationalBrief(user: CurrentUser) {
     nextAction: item.action,
   }));
 
-  const provider = resolveFrontiProvider(config);
+  const provider = await resolveFrontiProviderRuntime(config);
   let result;
   try {
     result = await chatWithFrontiProvider({

@@ -1,6 +1,7 @@
 import 'server-only';
 import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatDateTime } from '@/lib/format';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 
 export type HistoryEvent = {
@@ -113,7 +114,7 @@ export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]>
         followUp.result ? `Resultado: ${followUp.result}` : null,
         followUp.nextAction ? `Próxima acción: ${followUp.nextAction}` : null,
         followUp.scheduledAt
-          ? `Programado: ${followUp.scheduledAt.toLocaleString('es-CL')}`
+          ? `Programado: ${formatDateTime(followUp.scheduledAt)}`
           : null,
         `Responsable: ${followUp.owner.name}`,
       ]

@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { PmsReportKind, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -166,9 +167,9 @@ function toDraft(stay: NormalizedStay): StayDraft {
 }
 
 function midnight(date: Date): Date {
-  const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
-  return out;
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 /**
@@ -263,7 +264,7 @@ export async function prepareImport(
   }
 
   const businessDate = midnight(
-    reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date(),
+    reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? hotelCalendarDate(),
   );
 
   const declaredTotals = reports.flatMap((report) => report.declaredTotals);
@@ -388,12 +389,16 @@ async function analyseDraft(
       que usa `applyImport`. Si divergieran, la pantalla de revisión
       anunciaría estadías nuevas que al aplicar no se crean.
     */
-    const existing = room.stays.find(
-      (stay) =>
-        stay.reservationId === draft.reservationId &&
-        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
-        midnight(stay.businessDate).getTime() === businessDate.getTime(),
-    );
+    const existing = room.stays
+      .filter(
+        (stay) =>
+          stay.reservationId === draft.reservationId &&
+          stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
+          stay.businessDate.getTime() <= businessDate.getTime() &&
+          (stay.stage !== RoomStayStage.FINALIZADO ||
+            stay.businessDate.getTime() === businessDate.getTime()),
+      )
+      .sort((a, b) => b.businessDate.getTime() - a.businessDate.getTime())[0];
 
     if (existing && (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE)) {
       protectedStays.push({
@@ -709,13 +714,23 @@ export async function applyImport(
       de una vez, se decide en memoria y se escribe agrupado.
     */
     const existingStays = await tx.roomStay.findMany({
-      where: { businessDate },
+      where: {
+        deletedAt: null,
+        OR: [
+          { businessDate },
+          {
+            stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
+          },
+        ],
+      },
+      orderBy: [{ businessDate: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
         reservationId: true,
         roomId: true,
         status: true,
         stage: true,
+        businessDate: true,
         touchedManually: true,
         guestNames: true,
         channel: true,
@@ -796,6 +811,7 @@ export async function applyImport(
         contexto; el Libro conserva sus procesos.
       */
       const descriptive = {
+        businessDate,
         guestNames: draft.guestNames,
         channel: draft.channel,
         arrivalDate: draft.arrivalDate ? new Date(draft.arrivalDate) : null,
@@ -814,6 +830,17 @@ export async function applyImport(
       const existing = existingByKey.get(keyOf(draft.reservationId, room.id, draft.status));
 
       if (existing) {
+        /*
+          Nunca se aplica un informe más viejo encima de una fotografía activa
+          más nueva. Esto importa al reintentar archivos del día anterior:
+          el PMS sigue siendo fuente principal, pero su secuencia temporal
+          también lo es.
+        */
+        if (existing.businessDate.getTime() > businessDate.getTime()) {
+          summary.preserved += 1;
+          continue;
+        }
+
         const protectedStay =
           existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE;
 
@@ -832,6 +859,7 @@ export async function applyImport(
         // genera ninguna escritura.
         const unchanged =
           existing.status === status &&
+          existing.businessDate.getTime() === businessDate.getTime() &&
           existing.guestNames.join('\u0000') === draft.guestNames.join('\u0000') &&
           existing.channel === descriptive.channel &&
           existing.pmsStatus === descriptive.pmsStatus &&

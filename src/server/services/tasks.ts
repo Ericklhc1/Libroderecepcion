@@ -2,6 +2,7 @@ import 'server-only';
 import { AuditAction, NotificationType, TaskOrigin, TaskStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatDateTime } from '@/lib/format';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { diffFields, recordAudit } from '@/server/audit';
 import { notify } from '@/server/notifications';
@@ -115,7 +116,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           type: NotificationType.TAREA_ASIGNADA,
           title: `Nueva tarea asignada: ${created.title}`,
           body: created.dueAt
-            ? `Vence el ${created.dueAt.toLocaleString('es-CL')}.`
+            ? `Vence el ${formatDateTime(created.dueAt)}.`
             : 'Sin fecha límite.',
           link: `/tareas/${created.id}`,
           entity: 'Task',

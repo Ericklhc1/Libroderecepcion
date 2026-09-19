@@ -43,7 +43,7 @@ import {
   isCashEnabled,
 } from './cash';
 
-/** Fecha operativa del hotel, guardada como @db.Date estable. */
+/** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
   return hotelCalendarDate(now);
 }

@@ -219,7 +219,9 @@ export function detectConflicts(input: ConflictInput): Conflict[] {
 
     // 7. La misma reserva con datos distintos en dos informes.
     const byReservation = new Map<string, StayFacts[]>();
-    for (const stay of room.stays) {
+    // Duplicidad y contradicción son conflictos del estado VIVO. Las estadías
+    // finalizadas son historial y no deben reaparecer eternamente como conflicto.
+    for (const stay of active) {
       const list = byReservation.get(stay.reservationId);
       if (list) list.push(stay);
       else byReservation.set(stay.reservationId, [stay]);

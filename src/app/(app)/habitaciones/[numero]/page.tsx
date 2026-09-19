@@ -458,7 +458,7 @@ export default async function RoomDetailPage({
                       </div>
                       <p className="mt-0.5 text-xs text-slate-500">
                         Reserva {fine.reservationCode} · {fine.guestName} ·{' '}
-                        {fine.createdBy.name} · {fine.createdAt.toLocaleString('es-CL')}
+                        {fine.createdBy.name} · {formatDateTime(fine.createdAt)}
                       </p>
                       <p className="mt-1 text-sm text-slate-700">{fine.reason}</p>
                       {fine.guestStatement ? (

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { formatCalendarDate } from '@/lib/format';
+import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { formatGymFolio } from './gym-pass';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
@@ -36,7 +36,7 @@ function dateKey(date: Date) {
 }
 
 function when(date: Date) {
-  return date.toLocaleString('es-CL', { timeZone: 'America/Santiago' });
+  return formatDateTime(date);
 }
 
 function tag(tags: string[], prefix: string) {

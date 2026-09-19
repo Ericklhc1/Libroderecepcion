@@ -1,5 +1,7 @@
 'use client';
 
+import { formatTime } from '@/lib/format';
+
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
@@ -98,7 +100,7 @@ export function OperationalBriefButton() {
           ) : null}
           {generatedAt ? (
             <p className="mt-2 text-[11px] text-slate-500">
-              Análisis contextual · {new Date(generatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+              Análisis contextual · {formatTime(new Date(generatedAt))}
             </p>
           ) : null}
           <AiAttribution className="mt-2 justify-start text-left opacity-80" />

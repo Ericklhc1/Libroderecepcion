@@ -68,6 +68,10 @@ export const PERMISSIONS = {
     mesón y hay que poder resolverlo sin esperar al administrador.
   */
   'room.reset': { group: 'Habitaciones y llaves', name: 'Resetear una habitación atascada' },
+  'conflict.resolve_all': {
+    group: 'Supervisión',
+    name: 'Resolver todos los conflictos operativos',
+  },
 
   /*
     Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
@@ -160,6 +164,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'audit.view',
     'key.stock',
     'room.reset',
+    'conflict.resolve_all',
     'announcement.manage',
     'supervision.view',
   ],
@@ -179,16 +184,16 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'nightaudit.run',
   ],
   /*
-    Gerencia SÓLO CONSULTA. Ni un permiso de escritura: no crea, no edita, no
-    cierra, no asigna, no opera turnos ni llaves.
+    Gerencia es de CONSULTA y no opera el mesón. Tiene dos excepciones:
+    1) actuar sobre aquello de lo que es RESPONSABLE, comprobando propiedad;
+    2) `conflict.resolve_all`, una reparación global auditada compartida con
+       Supervisor y Administrador de sistema.
 
-    Lo que sí puede hacer es actuar sobre aquello de lo que es RESPONSABLE, y
-    eso no se concede con un permiso —sería un permiso sobre todo— sino
-    comprobando la propiedad del registro concreto en el servidor. Vive en
-    `canActOnOwned` y lo aplican las acciones una por una.
+    Esta segunda excepción NO concede check-in/check-out, llaves, importación,
+    turnos ni edición general de registros.
 
     `operational: true` en el rol, porque tiene que poder figurar como
-    responsable. No puede tomar turnos igualmente: le faltan `shift.start`,
+    responsable. No puede tomar turnos: le faltan `shift.start`,
     `shift.receive` y `shift.handover`.
   */
   [ROLE_KEYS.MANAGEMENT]: [
@@ -197,6 +202,8 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'metrics.view',
     'room.view',
     'audit.view',
+    // Excepción expresa: reparación masiva auditada, no operación de mesón.
+    'conflict.resolve_all',
   ],
 };
 

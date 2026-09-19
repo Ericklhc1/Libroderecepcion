@@ -1,5 +1,7 @@
 'use client';
 
+import { formatDateTime } from '@/lib/format';
+
 import { Megaphone, UserRound } from 'lucide-react';
 import { ActionForm, Field, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -69,7 +71,7 @@ export function AnnouncementGate({
               {current.title}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              {current.createdByName} · {current.createdAt.toLocaleString('es-CL')}
+              {current.createdByName} · {formatDateTime(current.createdAt)}
             </p>
           </div>
         </div>

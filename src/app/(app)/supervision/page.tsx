@@ -13,6 +13,8 @@ import {
   CloseAnnouncementDialog,
   NewAnnouncementDialog,
 } from './announcements';
+import { ResolveAllConflictsDialog } from '@/components/rooms/resolve-all-conflicts';
+import { formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -79,6 +81,7 @@ export default async function SupervisionPage() {
   }
 
   const canAnnounce = hasPermission(user, 'announcement.manage');
+  const canResolveAllConflicts = hasPermission(user, 'conflict.resolve_all');
 
   const [{ blocks, total, now }, announcements, operationalUsers] = await Promise.all([
     getSupervisionData(),
@@ -115,7 +118,10 @@ export default async function SupervisionPage() {
           >
             Tablero de asignación y checklists
           </Link>
-          <p className="text-xs text-slate-500">Al {now.toLocaleString('es-CL')}</p>
+          {canResolveAllConflicts && conflicts > 0 ? (
+            <ResolveAllConflictsDialog count={conflicts} />
+          ) : null}
+          <p className="text-xs text-slate-500">Al {formatDateTime(now)}</p>
         </div>
       </header>
 
@@ -174,9 +180,9 @@ export default async function SupervisionPage() {
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {announcement.createdByName} ·{' '}
-                        {announcement.createdAt.toLocaleString('es-CL')}
+                        {formatDateTime(announcement.createdAt)}
                         {announcement.expiresAt
-                          ? ` · caduca ${announcement.expiresAt.toLocaleString('es-CL')}`
+                          ? ` · caduca ${formatDateTime(announcement.expiresAt)}`
                           : ''}
                       </p>
                       {announcement.reads.length > 0 ? (
@@ -188,7 +194,7 @@ export default async function SupervisionPage() {
                             {announcement.reads.map((read) => (
                               <li key={`${announcement.id}-${read.name}-${read.at.toISOString()}`}>
                                 <p className="text-xs font-medium text-petrol-800">
-                                  {read.name} · {read.at.toLocaleString('es-CL')}
+                                  {read.name} · {formatDateTime(read.at)}
                                 </p>
                                 <p className="text-xs text-slate-600">{read.text}</p>
                               </li>

@@ -88,6 +88,7 @@ export const PERMISSIONS = {
   'cash.usd_rate': { group: 'Caja', name: 'Declarar tipo de cambio USD/CLP' },
   'cash.close': { group: 'Caja', name: 'Confirmar cierre formal de Caja' },
   'cash.reopen': { group: 'Caja', name: 'Reabrir cierre formal de Caja' },
+  'cash.approve': { group: 'Caja', name: 'Autorizar operaciones de Caja que requieran aprobación' },
 
   /*
     Emitir comunicados obligatorios, que BLOQUEAN la pantalla hasta que se
@@ -104,6 +105,16 @@ export const PERMISSIONS = {
 export type PermissionKey = keyof typeof PERMISSIONS;
 
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as PermissionKey[];
+
+/** Operaciones con flujo seguro de solicitud/aprobación. */
+export const CASH_APPROVAL_CAPABLE_PERMISSIONS = [
+  'cash.manual_in',
+  'cash.manual_out',
+  'cash.treasury_transfer',
+] as const satisfies readonly PermissionKey[];
+
+export type CashApprovalCapablePermission =
+  (typeof CASH_APPROVAL_CAPABLE_PERMISSIONS)[number];
 
 export const ROLE_KEYS = {
   SYSTEM_ADMIN: 'ADMINISTRADOR_SISTEMA',
@@ -195,6 +206,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'announcement.manage',
     'supervision.view',
     'cash.reopen',
+    'cash.approve',
   ],
   [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
   /*

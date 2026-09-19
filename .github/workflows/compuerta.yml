@@ -3,11 +3,9 @@ name: Compuerta
 on:
   push:
     branches:
-      - preproduction
       - main
   pull_request:
     branches:
-      - preproduction
       - main
 
 concurrency:
@@ -45,12 +43,53 @@ jobs:
     steps:
       - name: Código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
+      - name: Validar versión
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          node <<'NODE'
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          const semver = /^\d+\.\d+\.\d+$/;
+
+          if (!semver.test(pkg.version)) {
+            throw new Error(`Versión inválida: ${pkg.version}. Usa MAJOR.MINOR.PATCH.`);
+          }
+          if (lock.version !== pkg.version || lock.packages?.['']?.version !== pkg.version) {
+            throw new Error('package.json y package-lock.json deben tener la misma versión.');
+          }
+          NODE
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_version=$(git show "origin/$BASE_REF:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+            current_version=$(node -p "require('./package.json').version")
+
+            BASE_VERSION="$base_version" CURRENT_VERSION="$current_version" node <<'NODE'
+            const parse = (value) => value.split('.').map(Number);
+            const base = parse(process.env.BASE_VERSION);
+            const current = parse(process.env.CURRENT_VERSION);
+            const greater =
+              current[0] > base[0] ||
+              (current[0] === base[0] && current[1] > base[1]) ||
+              (current[0] === base[0] && current[1] === base[1] && current[2] > base[2]);
+
+            if (!greater) {
+              throw new Error(
+                `Toda actualización de Production debe incrementar la versión: ${process.env.BASE_VERSION} → ${process.env.CURRENT_VERSION}`,
+              );
+            }
+            NODE
+          fi
 
       - name: Dependencias
         run: npm ci
@@ -71,21 +110,3 @@ jobs:
         env:
           NODE_ENV: production
         run: npm run build
-
-      - name: Empaquetar fuente validada de preproduction
-        if: ${{ github.ref == 'refs/heads/preproduction' }}
-        run: |
-          tar \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude=.next \
-            -czf /tmp/preproduction-source.tgz .
-
-      - name: Conservar fuente validada para staging
-        if: ${{ github.ref == 'refs/heads/preproduction' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: preproduction-source
-          path: /tmp/preproduction-source.tgz
-          retention-days: 1
-          if-no-files-found: error

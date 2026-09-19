@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { env } from '@/lib/env';
+import { prisma } from '@/lib/prisma';
+import { openSecret, sealSecret } from '@/lib/secret-box';
 import {
   ASSISTANT_TIMEOUT_MS,
   classifyAssistantFailure,
@@ -8,6 +10,90 @@ import {
 } from '@/domain/assistant-status';
 
 export type FrontiProviderName = 'groq' | 'vllm' | 'openai';
+
+const SECRET_PURPOSE_PREFIX = 'fronti/provider/';
+const SECRET_SETTING_PREFIX = '__secret.fronti.provider.';
+
+function secretSettingKey(provider: FrontiProviderName): string {
+  return `${SECRET_SETTING_PREFIX}${provider}`;
+}
+
+function secretPurpose(provider: FrontiProviderName): string {
+  return `${SECRET_PURPOSE_PREFIX}${provider}`;
+}
+
+async function readStoredProviderSecret(
+  provider: FrontiProviderName,
+): Promise<{ present: boolean; value: string | null }> {
+  const row = await prisma.systemSetting.findUnique({
+    where: { key: secretSettingKey(provider) },
+    select: { value: true },
+  });
+  if (!row) return { present: false, value: null };
+  const sealed = typeof row.value === 'string' ? row.value : null;
+  if (!sealed) return { present: true, value: null };
+  return {
+    present: true,
+    value: openSecret(sealed, secretPurpose(provider)),
+  };
+}
+
+export async function saveFrontiProviderSecret(
+  provider: FrontiProviderName,
+  apiKey: string,
+  updatedById: string,
+): Promise<void> {
+  const clean = apiKey.trim();
+  if (clean.length < 8) throw new Error('La credencial parece incompleta.');
+  if (clean.length > 2000) throw new Error('La credencial supera el largo permitido.');
+
+  const sealed = sealSecret(clean, secretPurpose(provider));
+  await prisma.systemSetting.upsert({
+    where: { key: secretSettingKey(provider) },
+    create: {
+      key: secretSettingKey(provider),
+      value: sealed,
+      category: 'secreto',
+      description: 'Credencial cifrada del proveedor de IA. No listar ni devolver al cliente.',
+      updatedById,
+    },
+    update: {
+      value: sealed,
+      updatedById,
+    },
+  });
+}
+
+export async function clearFrontiProviderSecret(
+  provider: FrontiProviderName,
+): Promise<void> {
+  await prisma.systemSetting.deleteMany({
+    where: { key: secretSettingKey(provider) },
+  });
+}
+
+export async function getFrontiProviderCredentialView(
+  provider: FrontiProviderName,
+): Promise<{
+  hasStoredSecret: boolean;
+  storedSecretUnreadable: boolean;
+  envConfigured: boolean;
+}> {
+  const stored = await readStoredProviderSecret(provider);
+  const runtime = env();
+  const envConfigured =
+    provider === 'groq'
+      ? Boolean(runtime.GROQ_API_KEY)
+      : provider === 'openai'
+        ? Boolean(runtime.OPENAI_API_KEY)
+        : Boolean(runtime.FRONTI_API_KEY);
+
+  return {
+    hasStoredSecret: stored.present && stored.value !== null,
+    storedSecretUnreadable: stored.present && stored.value === null,
+    envConfigured,
+  };
+}
 
 export type FrontiChatMessage =
   | { role: 'system' | 'user'; content: string }
@@ -105,6 +191,16 @@ export function resolveFrontiProvider(input: {
     model: input.model,
     reasoningEffort: input.reasoningEffort,
   };
+}
+
+export async function resolveFrontiProviderRuntime(input: {
+  provider: FrontiProviderName;
+  model: string;
+  reasoningEffort: 'low' | 'medium' | 'high';
+}): Promise<FrontiProviderConfig> {
+  const resolved = resolveFrontiProvider(input);
+  const stored = await readStoredProviderSecret(input.provider);
+  return stored.value ? { ...resolved, apiKey: stored.value } : resolved;
 }
 
 export function providerIsConfigured(config: FrontiProviderConfig): boolean {

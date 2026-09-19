@@ -31,6 +31,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const canManageAlerts = hasPermission(user, 'alert.manage');
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
+  const canReviewCash = hasPermission(user, 'cash.treasury_transfer') || hasPermission(user, 'cash.manual_in') || hasPermission(user, 'cash.manual_out');
   const canValidateClosure = isSupervisor || user.isSystemAdmin;
   const now = new Date();
 
@@ -49,11 +50,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const actionKinds: Prisma.AlertWhereInput[] = [
     { dedupeKey: { startsWith: 'checkout-unconfirmed:' } },
   ];
-  if (isSupervisor) {
+  if (canReviewCash) {
     actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
     actionKinds.push({ dedupeKey: { startsWith: 'cash-manual:' } });
-    actionKinds.push({ dedupeKey: { startsWith: 'handover-elements-none:' } });
   }
+  if (isSupervisor) actionKinds.push({ dedupeKey: { startsWith: 'handover-elements-none:' } });
   if (canValidateClosure) actionKinds.push({ dedupeKey: { startsWith: 'shift-validation:' } });
 
   const alertFilters: Prisma.AlertWhereInput[] = [

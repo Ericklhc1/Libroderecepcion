@@ -29,6 +29,8 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const user = await requirePageUser();
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q.trim() : '';
+  const estado = typeof params.estado === 'string' ? params.estado : '';
+  const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const canManageAlerts = hasPermission(user, 'alert.manage');
   const canApproveCash = hasPermission(user, 'cash.approve');
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
@@ -37,6 +39,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
 
   const notificationWhere: Prisma.NotificationWhereInput = {
     userId: user.id,
+    ...(estado === 'nuevas'
+      ? { readAt: null }
+      : estado === 'leidas'
+        ? { readAt: { not: null } }
+        : {}),
     ...(query
       ? {
           OR: [
@@ -74,12 +81,14 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   }
 
   const [notifications, actionableAlerts] = await Promise.all([
-    prisma.notification.findMany({
-      where: notificationWhere,
-      orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
-      take: 100,
-    }),
-    actionKinds.length > 0
+    seccion === 'acciones'
+      ? Promise.resolve([])
+      : prisma.notification.findMany({
+          where: notificationWhere,
+          orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
+          take: 100,
+        }),
+    seccion !== 'avisos' && actionKinds.length > 0
       ? prisma.alert.findMany({
           where: { AND: alertFilters },
           orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
@@ -126,17 +135,33 @@ export default async function NotificationsPage({ searchParams }: { searchParams
             className="input-base w-full pl-9"
           />
         </label>
+        <label className="min-w-[9rem]">
+          <span className="sr-only">Sección</span>
+          <select name="seccion" defaultValue={seccion} className="input-base">
+            <option value="">Todo</option>
+            <option value="acciones">Acciones</option>
+            <option value="avisos">Avisos</option>
+          </select>
+        </label>
+        <label className="min-w-[9rem]">
+          <span className="sr-only">Estado de avisos</span>
+          <select name="estado" defaultValue={estado} className="input-base">
+            <option value="">Todos</option>
+            <option value="nuevas">No leídos</option>
+            <option value="leidas">Leídos</option>
+          </select>
+        </label>
         <button type="submit" className="rounded-lg bg-petrol-700 px-3 py-2 text-sm font-medium text-white hover:bg-petrol-800">
           Filtrar
         </button>
-        {query ? (
+        {query || estado || seccion ? (
           <Link href="/notificaciones" className="rounded-lg px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50">
             Limpiar
           </Link>
         ) : null}
       </form>
 
-      {checkoutAlerts.length > 0 ? (
+      {seccion !== 'avisos' && checkoutAlerts.length > 0 ? (
         <Card>
           <CardHeader title="Check-outs por gestionar" count={checkoutAlerts.length} />
           <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
@@ -165,7 +190,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         </Card>
       ) : null}
 
-      {approvalAlerts.length > 0 ? (
+      {seccion !== 'avisos' && approvalAlerts.length > 0 ? (
         <Card>
           <CardHeader title="Autorizaciones y validaciones" count={approvalAlerts.length} />
           <CardScroll>
@@ -200,7 +225,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         </Card>
       ) : null}
 
-      <Card>
+      {seccion !== 'acciones' ? <Card>
         <CardHeader title="Avisos personales" count={notifications.length} />
         {notifications.length === 0 ? (
           <EmptyState
@@ -248,7 +273,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           </ul>
         </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
       <p className="pb-2 text-xs text-slate-400">
         Las alertas operativas siguen conservando trazabilidad, pero las que requieren una acción inmediata se administran desde esta bandeja.

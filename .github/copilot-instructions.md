@@ -26,24 +26,23 @@ La fuente de verdad es el código + esquema + base conectada. La conversación h
 
 ## Producción y datos
 
-Producción:
-- hosting oficial: Vercel, proyecto `libroderecepcion`
+Production única:
+- código: GitHub `main`
+- hosting: Vercel `libroderecepcion`
 - base: Neon, rama `production`
-- `main` es la rama de release y la única que se considera Production; Vercel puede generar previews de otras ramas
-
-Staging / pruebas reales:
-- hosting: Netlify, proyecto `libroderecepcion`
-- rama canónica: `preproduction`
-- base: Neon `development`
-- Netlify nunca debe usar Neon Production
+- sólo `main` puede desplegar en Vercel
+- no hay staging alojado ni previews operativos
 
 Desarrollo:
-- Codespaces/Cursor trabaja en una rama distinta de `main`
-- base permitida: Neon `development`
-- flujo: feature → PR a `preproduction` → Compuerta → Netlify → validación real → PR `preproduction` a `main` → Vercel
-- cada Production verificada en Vercel debe quedar respaldada con un tag `production-*`
+- trabaja siempre en una rama distinta de `main`
+- pruebas automáticas usan PostgreSQL efímero en GitHub Actions
+- Codespaces/Cursor/local deben usar PostgreSQL local o desechable
+- nunca conectar desarrollo a Neon `production`
+- flujo: feature/fix → PR a `main` → Compuerta → merge → Vercel → verificación → tag `vX.Y.Z`
+- toda PR a `main` debe incrementar SemVer en `package.json` y `package-lock.json`
 
 Prohibido:
+- crear hosting alternativo, staging persistente o ramas Neon de desarrollo sin instrucción humana explícita
 - `prisma migrate reset`, `db:reset`, TRUNCATE, DROP o borrados masivos contra Production
 - ejecutar migraciones destructivas sobre Production sin aprobación humana explícita
 - imprimir, registrar, copiar al chat o versionar connection strings, passwords, cookies, tokens o secretos

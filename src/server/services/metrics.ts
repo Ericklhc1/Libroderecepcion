@@ -7,6 +7,8 @@ import {
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
+import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
@@ -14,8 +16,7 @@ export type MetricsRange = { from: Date; to: Date };
 
 export function defaultRange(days = 30): MetricsRange {
   const to = new Date();
-  const from = new Date(to.getTime() - days * 24 * 3600_000);
-  from.setHours(0, 0, 0, 0);
+  const from = hotelDayStart(addHotelCalendarDays(to, -days));
   return { from, to };
 }
 
@@ -187,7 +188,7 @@ export async function getMetrics(range: MetricsRange) {
         const shift = row.shiftId ? shiftById.get(row.shiftId) : null;
         return {
           label: shift
-            ? `${shift.type} ${shift.date.toLocaleDateString('es-CL')}`
+            ? `${shift.type} ${formatCalendarDate(shift.date)}`
             : 'Sin turno',
           count: row._count._all,
           date: shift?.date ?? null,

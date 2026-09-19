@@ -391,8 +391,7 @@ async function analyseDraft(
     const existing = room.stays.find(
       (stay) =>
         stay.reservationId === draft.reservationId &&
-        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
-        midnight(stay.businessDate).getTime() === businessDate.getTime(),
+        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus),
     );
 
     if (existing && (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE)) {
@@ -709,13 +708,23 @@ export async function applyImport(
       de una vez, se decide en memoria y se escribe agrupado.
     */
     const existingStays = await tx.roomStay.findMany({
-      where: { businessDate },
+      where: {
+        deletedAt: null,
+        OR: [
+          { businessDate },
+          {
+            stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
+          },
+        ],
+      },
+      orderBy: [{ businessDate: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
         reservationId: true,
         roomId: true,
         status: true,
         stage: true,
+        businessDate: true,
         touchedManually: true,
         guestNames: true,
         channel: true,
@@ -796,6 +805,7 @@ export async function applyImport(
         contexto; el Libro conserva sus procesos.
       */
       const descriptive = {
+        businessDate,
         guestNames: draft.guestNames,
         channel: draft.channel,
         arrivalDate: draft.arrivalDate ? new Date(draft.arrivalDate) : null,
@@ -832,6 +842,7 @@ export async function applyImport(
         // genera ninguna escritura.
         const unchanged =
           existing.status === status &&
+          existing.businessDate.getTime() === businessDate.getTime() &&
           existing.guestNames.join('\u0000') === draft.guestNames.join('\u0000') &&
           existing.channel === descriptive.channel &&
           existing.pmsStatus === descriptive.pmsStatus &&

@@ -1,5 +1,11 @@
 import { ShiftStatus, ShiftType } from '@prisma/client';
 import { RuleError } from '@/server/errors';
+import {
+  addCalendarDateDays,
+  calendarDateKey,
+  hotelHour,
+  hotelWallDateTime,
+} from '@/domain/time';
 
 /**
  * Máquina de estados del turno.
@@ -72,12 +78,12 @@ export const SHIFT_SCHEDULE: Record<
 };
 
 export const SHIFT_WINDOW_LABEL: Record<ShiftType, string> = {
-  DIA: '07:00 a 19:59',
-  NOCHE: '20:00 a 07:59',
+  DIA: '07:00 a 20:00',
+  NOCHE: '20:00 a 08:00',
 };
 
 export function shiftTypeAt(now = new Date()): ShiftType {
-  const hour = now.getHours();
+  const hour = hotelHour(now);
   return hour >= 7 && hour < 20 ? ShiftType.DIA : ShiftType.NOCHE;
 }
 
@@ -125,12 +131,20 @@ export function plannedWindow(
   type: ShiftType,
 ): { start: Date; end: Date } {
   const schedule = SHIFT_SCHEDULE[type];
-  const start = new Date(date);
-  start.setHours(schedule.startHour, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(schedule.endHour, 0, 0, 0);
-  if (schedule.crossesMidnight) end.setDate(end.getDate() + 1);
-  return { start, end };
+
+  /*
+    `Shift.date` es una fecha calendario (`@db.Date`), no un instante.
+    Construir la ventana con `setHours` usa la zona del proceso (UTC en
+    Vercel). La hora real del turno se arma siempre en America/Santiago.
+  */
+  const startKey = calendarDateKey(date);
+  const endDate = schedule.crossesMidnight ? addCalendarDateDays(date, 1) : date;
+  const endKey = calendarDateKey(endDate);
+
+  return {
+    start: hotelWallDateTime(startKey, schedule.startHour),
+    end: hotelWallDateTime(endKey, schedule.endHour),
+  };
 }
 
 export function windowHours(start: Date, end: Date): number {

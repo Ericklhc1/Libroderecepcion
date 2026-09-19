@@ -4,7 +4,9 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { addCalendarDateDays, hotelCalendarDate } from '@/domain/time';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { ArchiveShiftDialog } from './cancel-shift';
 import {
   ASSIGNMENT_ROLE_LABEL,
@@ -28,19 +30,46 @@ const STATUS_TONE = {
   ANULADO: 'neutro',
 } as const;
 
-export default async function ShiftAdminPage() {
+export default async function ShiftAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePagePermission('shift.manage');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const estado = typeof params.estado === 'string' ? params.estado : '';
+  const tipo = typeof params.tipo === 'string' ? params.tipo : '';
 
   const from = addCalendarDateDays(hotelCalendarDate(), -30);
 
   const shifts = await prisma.shift.findMany({
-    where: { date: { gte: from } },
+    where: {
+      date: { gte: from },
+      ...(estado ? { status: estado as never } : {}),
+      ...(tipo ? { type: tipo as never } : {}),
+    },
     include: {
       assignments: { include: { user: { select: { id: true, name: true } } } },
       handoverOut: { select: { id: true, status: true } },
     },
     orderBy: [{ date: 'desc' }, { actualStart: 'desc' }, { createdAt: 'desc' }],
     take: 120,
+  });
+
+  const visibleShifts = shifts.filter((shift) => {
+    if (!q) return true;
+    return [
+      shift.type,
+      shift.status,
+      shift.notes,
+      ...shift.assignments.map((assignment) => assignment.user.name),
+      shift.handoverOut?.status,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
   });
 
   return (
@@ -65,13 +94,39 @@ export default async function ShiftAdminPage() {
         </p>
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar personal, nota, estado…"
+        clearHref="/admin/turnos"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            <option value="">Todos</option>
+            {Object.entries(SHIFT_STATUS_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Turno</span>
+          <select name="tipo" defaultValue={tipo} className="input-base w-full">
+            <option value="">Todos</option>
+            {Object.entries(SHIFT_TYPE_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </ListFilterBar>
+
       <Card>
-        <CardHeader title="Turnos recientes" count={shifts.length} />
-        {shifts.length === 0 ? (
+        <CardHeader title="Turnos recientes" count={visibleShifts.length} />
+        {visibleShifts.length === 0 ? (
           <EmptyState message="Todavía no hay turnos en el historial." />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {shifts.map((shift) => (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleShifts.map((shift) => (
               <li
                 key={shift.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -117,7 +172,8 @@ export default async function ShiftAdminPage() {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
       </Card>
     </div>

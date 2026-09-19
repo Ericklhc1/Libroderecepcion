@@ -15,7 +15,7 @@ Esta iteración parte de la versión de Producción posterior a la auditoría in
 1. Caja se cierra antes de enviar/recibir el relevo. Al confirmar la recepción, el turno saliente se cierra automáticamente; no existe un segundo cierre manual operativo.
 2. Conteos CLP/USD, diferencias, egresos, ingresos, garantías en efectivo y elementos físicos pertenecen a Caja. La entrega de turno consume el resultado del cierre de Caja; no vuelve a pedir el mismo conteo.
 3. Ingreso/egreso es vocabulario reservado a movimientos que cambian el efectivo esperado de Caja. Otros montos del Libro son informativos.
-4. Todo ajuste, ingreso o egreso manual que no sea movimiento automático de una garantía requiere autorización de Supervisor. La solicitud debe verse inmediatamente en Supervisión y en notificaciones.
+4. Los permisos de Caja son atómicos por rol y operación. Tener permiso para una operación no implica autorización previa. En las operaciones que soportan aprobación, `requiere autorización` es un segundo interruptor configurable y apagado por defecto; cuando está activo, la solicitud se envía a los usuarios cuyo rol tenga `cash.approve` y Caja no cambia hasta aprobarse.
 5. Si una auditoría difiere del esperado, un Supervisor decide si sólo registra la diferencia o si acepta el contado como nuevo disponible. La decisión queda auditada.
 6. Garantía significa garantía por daños de habitación/textiles. Una garantía en efectivo vive en Caja hasta devolución/aplicación/cierre, aunque atraviese turnos. Si continúa abierta después del check-out, se genera alerta crítica e incidencia.
 7. Los elementos físicos se seleccionan desde catálogo. Declarar ninguno exige justificación y revisión de Supervisor, pero no impide por sí sola el cierre.
@@ -32,7 +32,7 @@ Esta iteración parte de la versión de Producción posterior a la auditoría in
 
 1. El centro de notificaciones debe poder mostrar también alertas operativas accionables.
 2. Los check-outs pendientes se gestionan allí con `Resuelto` y `Posponer 30 min`; no deben dominar permanentemente las superficies operativas.
-3. Las autorizaciones de Caja generan alerta de Supervisión y notificación inmediata a todos los Supervisores activos.
+3. Las autorizaciones de Caja generan alerta y notificación inmediata a los usuarios activos cuyo rol tenga `cash.approve`; no dependen del nombre del rol Supervisor.
 
 ## Reservas y ficha transversal
 

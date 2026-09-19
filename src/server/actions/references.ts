@@ -207,6 +207,9 @@ export async function saveReservationAction(
 /** Pantallas que muestran garantías. Invalidación acotada, no global. */
 function refreshGuarantees(): void {
   revalidatePath('/huespedes');
+  revalidatePath('/reservas');
+  revalidatePath('/habitaciones');
+  revalidatePath('/caja');
   revalidatePath('/supervision');
   revalidatePath('/turno');
 }

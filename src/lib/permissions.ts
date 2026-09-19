@@ -184,16 +184,16 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'nightaudit.run',
   ],
   /*
-    Gerencia SÓLO CONSULTA. Ni un permiso de escritura: no crea, no edita, no
-    cierra, no asigna, no opera turnos ni llaves.
+    Gerencia es de CONSULTA y no opera el mesón. Tiene dos excepciones:
+    1) actuar sobre aquello de lo que es RESPONSABLE, comprobando propiedad;
+    2) `conflict.resolve_all`, una reparación global auditada compartida con
+       Supervisor y Administrador de sistema.
 
-    Lo que sí puede hacer es actuar sobre aquello de lo que es RESPONSABLE, y
-    eso no se concede con un permiso —sería un permiso sobre todo— sino
-    comprobando la propiedad del registro concreto en el servidor. Vive en
-    `canActOnOwned` y lo aplican las acciones una por una.
+    Esta segunda excepción NO concede check-in/check-out, llaves, importación,
+    turnos ni edición general de registros.
 
     `operational: true` en el rol, porque tiene que poder figurar como
-    responsable. No puede tomar turnos igualmente: le faltan `shift.start`,
+    responsable. No puede tomar turnos: le faltan `shift.start`,
     `shift.receive` y `shift.handover`.
   */
   [ROLE_KEYS.MANAGEMENT]: [

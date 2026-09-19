@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { buildSupervisorReport, reportDateRange, type SupervisorReportType } from '@/server/services/supervisor-reports';
 import { createTextPdf } from '@/server/reports/simple-pdf';
+import { formatDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 

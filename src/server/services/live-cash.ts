@@ -25,6 +25,7 @@ export type CashMovementKind =
   | 'GARANTIA_DEVOLUCION'
   | 'VENTA_GIMNASIO'
   | 'ANULACION_GIMNASIO'
+  | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
   | 'AJUSTE_SALIDA';
 export type GymPaymentMethod = 'EFECTIVO' | 'TARJETA' | 'OTRO';
@@ -144,6 +145,7 @@ export async function insertCashMovement(
     reservationReferenceId?: string | null;
     guaranteeId?: string | null;
     gymPassId?: string | null;
+    cashTransferId?: string | null;
     reference?: string | null;
     notes?: string | null;
   },
@@ -155,14 +157,14 @@ export async function insertCashMovement(
   await client.$executeRaw`
     INSERT INTO "CashMovement" (
       "id", "kind", "direction", "currency", "amount", "shiftId", "roomId",
-      "reservationReferenceId", "guaranteeId", "gymPassId", "createdById",
-      "reference", "notes"
+      "reservationReferenceId", "guaranteeId", "gymPassId", "cashTransferId",
+      "createdById", "reference", "notes"
     ) VALUES (
       ${id}, ${params.kind}, ${params.direction}, ${currency}, ${params.amount},
       ${params.shiftId ?? null}, ${params.roomId ?? null},
       ${params.reservationReferenceId ?? null}, ${params.guaranteeId ?? null},
-      ${params.gymPassId ?? null}, ${params.userId}, ${params.reference ?? null},
-      ${params.notes ?? null}
+      ${params.gymPassId ?? null}, ${params.cashTransferId ?? null},
+      ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null}
     )
   `;
   return id;

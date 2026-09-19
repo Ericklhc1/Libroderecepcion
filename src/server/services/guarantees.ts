@@ -17,7 +17,10 @@ import {
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
-import { resolveOperationalContext } from './operational-context';
+import {
+  assertUnambiguousStay,
+  resolveOperationalContext,
+} from './operational-context';
 
 /**
  * Garantías de una reserva.
@@ -120,6 +123,17 @@ export async function createGuarantee(
       stayId: input.stayId ?? null,
       roomId: input.roomId ?? null,
     });
+
+    if (
+      input.kind === GuaranteeKind.EFECTIVO &&
+      initialState === GuaranteeState.VIGENTE &&
+      context.ambiguousStayIds.length > 0
+    ) {
+      assertUnambiguousStay(
+        context,
+        'Esta reserva tiene varias estadías activas. Registra la garantía en efectivo desde la habitación/estadía exacta.',
+      );
+    }
 
     const created = await tx.guarantee.create({
       data: {
@@ -287,6 +301,12 @@ export async function changeGuaranteeState(
       });
 
       if (to === 'VIGENTE') {
+        if (context.ambiguousStayIds.length > 0) {
+          assertUnambiguousStay(
+            context,
+            'Esta reserva tiene varias estadías activas. Resuelve la garantía desde la habitación/estadía exacta.',
+          );
+        }
         await recordGuaranteeCashIn(tx, {
           user,
           guaranteeId: guarantee.id,

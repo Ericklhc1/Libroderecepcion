@@ -8,6 +8,7 @@ import { recordAudit } from '@/server/audit';
 import { hasPermission, type CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { applyCashTransferToLiveCash } from '@/server/services/cash';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -273,6 +274,26 @@ export async function resolveAlert(
   if (cashManual) {
     if (!alert.entryId) throw new RuleError('La solicitud de Caja no tiene un registro vinculado.');
     await applyCashManualApproval(user, alert.entryId);
+  }
+  if (cashTransfer) {
+    const transferId = alert.dedupeKey?.replace('cash-transfer:', '');
+    if (!transferId) {
+      throw new RuleError('La solicitud de tesorería no contiene el egreso vinculado.');
+    }
+    await prisma.$transaction(async (tx) => {
+      await applyCashTransferToLiveCash(tx, user, transferId);
+      await recordAudit(
+        {
+          entity: 'CashTransfer',
+          entityId: transferId,
+          action: AuditAction.CAMBIO_ESTADO,
+          summary: `Egreso a tesorería autorizado por ${user.name}.`,
+          user,
+          after: { approvedById: user.id },
+        },
+        tx,
+      );
+    });
   }
 
   const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;

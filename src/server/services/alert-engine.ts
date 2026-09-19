@@ -18,7 +18,8 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
-import { hotelDateKey, hotelHour } from '@/domain/time';
+import { hotelDateKey, hotelDayEnd, hotelHour } from '@/domain/time';
+import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import {
   GUARANTEE_STATE_LABELS,
   type GuaranteeStateValue,
@@ -113,7 +114,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       level: AlertLevel.CRITICA,
       title: `Tarea vencida: ${task.title}`,
       message: task.dueAt
-        ? `Venció el ${task.dueAt.toLocaleString('es-CL')} y sigue abierta.`
+        ? `Venció el ${formatDateTime(task.dueAt)} y sigue abierta.`
         : 'La tarea está vencida y sigue abierta.',
       dueAt: task.dueAt,
       taskId: task.id,
@@ -139,7 +140,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       type: AlertType.MANTENIMIENTO_SIN_RESOLVER,
       level: AlertLevel.ATENCION,
       title: `Mantenimiento sin resolver: ${entry.title}`,
-      message: `Abierto desde el ${entry.occurredAt.toLocaleString('es-CL')} sin resolución.`,
+      message: `Abierto desde el ${formatDateTime(entry.occurredAt)} sin resolución.`,
       entryId: entry.id,
       departmentId: entry.departmentId,
     });
@@ -175,7 +176,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       level: AlertLevel.ATENCION,
       title: `Seguimiento vencido: ${followUp.action}`,
       message: followUp.scheduledAt
-        ? `Estaba programado para el ${followUp.scheduledAt.toLocaleString('es-CL')}.`
+        ? `Estaba programado para el ${formatDateTime(followUp.scheduledAt)}.`
         : 'El seguimiento está vencido.',
       dueAt: followUp.scheduledAt,
       followUpId: followUp.id,
@@ -265,8 +266,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     }
   }
 
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
+  const endOfToday = hotelDayEnd(now);
 
   const reservations = await prisma.reservationReference.findMany({
     where: {

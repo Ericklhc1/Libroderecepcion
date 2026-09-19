@@ -362,8 +362,8 @@ export async function scheduleShiftAction(
       await assertAssignable(userId);
     }
 
-    const date = new Date(input.date);
-    date.setHours(0, 0, 0, 0);
+    const dateKey = input.date.slice(0, 10);
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
     const window = plannedWindow(date, input.type);
 
     const existing = await prisma.shift.findFirst({

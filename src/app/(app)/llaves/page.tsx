@@ -5,7 +5,8 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getKeyInventory, listKeyMovements } from '@/server/services/keys';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Dialog } from '@/components/ui/dialog';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -32,15 +33,55 @@ export default async function KeysPage({
 }) {
   const user = await requirePagePermission('room.view');
   const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const estado = typeof params.estado === 'string' ? params.estado : undefined;
 
-  const [inventory, movements] = await Promise.all([getKeyInventory(), listKeyMovements(50)]);
+  const [inventory, movements] = await Promise.all([getKeyInventory(), listKeyMovements(100)]);
   const canStock = hasPermission(user, 'key.stock');
   const canAssign = hasPermission(user, 'key.assign');
 
-  const visible = estado
-    ? inventory.keys.filter((key) => key.status === estado)
-    : inventory.keys;
+  const visible = inventory.keys
+    .filter((key) => (estado ? key.status === estado : true))
+    .filter((key) => {
+      if (!q) return true;
+      return [
+        key.code,
+        key.type,
+        key.status,
+        key.roomNumber,
+        key.guest,
+        key.notes,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+
+  const visibleMovements = movements.filter((movement) => {
+    if (!q) return true;
+    return [
+      movement.code,
+      movement.action,
+      movement.fromStatus,
+      movement.toStatus,
+      movement.roomNumber,
+      movement.user,
+      movement.note,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+
+  const keysHref = (nextEstado?: string | null) => {
+    const query = new URLSearchParams();
+    if (q) query.set('q', q);
+    if (nextEstado) query.set('estado', nextEstado);
+    const suffix = query.toString();
+    return suffix ? `/llaves?${suffix}` : '/llaves';
+  };
 
   return (
     <div className="space-y-5">
@@ -91,6 +132,22 @@ export default async function KeysPage({
         ) : null}
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar código, habitación, huésped, nota…"
+        clearHref="/llaves"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado ?? ''} className="input-base w-full">
+            <option value="">Todos</option>
+            {Object.entries(KEY_STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+      </ListFilterBar>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         <StatTile label="Copias en stock" value={inventory.stock.copiesAvailable} tone="good" />
         <StatTile label="Principales en tablero" value={inventory.stock.principalsAvailable} />
@@ -112,7 +169,7 @@ export default async function KeysPage({
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium text-slate-500">Estado</span>
         <Link
-          href="/llaves"
+          href={keysHref(null)}
           className={
             estado
               ? 'rounded-md px-2 py-1 text-petrol-700 hover:bg-slate-100'
@@ -124,7 +181,7 @@ export default async function KeysPage({
         {Object.entries(KEY_STATUS_LABELS).map(([value, label]) => (
           <Link
             key={value}
-            href={`/llaves?estado=${value}`}
+            href={keysHref(value)}
             className={
               estado === value
                 ? 'rounded-md bg-petrol-800 px-2 py-1 font-medium text-white'
@@ -139,7 +196,8 @@ export default async function KeysPage({
       <Card>
         <CardHeader title="Llaves" count={visible.length} />
         {visible.length ? (
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {visible.map((key) => (
               <li key={key.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
                 <KeyRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
@@ -175,17 +233,19 @@ export default async function KeysPage({
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         ) : (
           <EmptyState message="No hay llaves con ese estado." />
         )}
       </Card>
 
       <Card>
-        <CardHeader title="Historial de movimientos" count={movements.length} />
-        {movements.length ? (
-          <ul className="divide-y divide-slate-100">
-            {movements.map((movement) => (
+        <CardHeader title="Historial de movimientos" count={visibleMovements.length} />
+        {visibleMovements.length ? (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleMovements.map((movement) => (
               <li key={movement.id} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
                 <time className="shrink-0 tabular text-xs text-slate-400">
                   {formatDateTime(movement.at)}
@@ -205,9 +265,10 @@ export default async function KeysPage({
                 ) : null}
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         ) : (
-          <EmptyState message="Sin movimientos registrados." />
+          <EmptyState message={q ? "Sin movimientos que coincidan con la búsqueda." : "Sin movimientos registrados."} />
         )}
       </Card>
     </div>

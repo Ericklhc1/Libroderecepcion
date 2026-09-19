@@ -4,6 +4,7 @@ import { HandoverLevel, HandoverStatus } from '@prisma/client';
 import { ArrowLeft, CheckCircle2, Clock, Send, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
+import { hasPermission } from '@/server/auth/current-user';
 import { getHistory } from '@/server/services/history';
 import { getMyActiveShift } from '@/server/services/shifts';
 import { Badge, Chip } from '@/components/ui/badge';
@@ -105,7 +106,7 @@ export default async function HandoverPage({
       (handover.status === HandoverStatus.BORRADOR ||
         handover.status === HandoverStatus.ENVIADA) &&
       (!handover.toShiftId || handover.toShiftId === myActiveShift.id) &&
-      user.permissions.includes('shift.receive'),
+      hasPermission(user, 'cash.count_receive'),
   );
   const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
     ? 'emisor'
@@ -274,6 +275,14 @@ export default async function HandoverPage({
         }))}
         previous={previousQuantities}
         role={cashRole}
+        permissions={{
+          declareCount: hasPermission(user, 'cash.count_declare'),
+          receiveCount: hasPermission(user, 'cash.count_receive'),
+          returnGuarantee: hasPermission(user, 'cash.guarantee_out'),
+          usdRate: hasPermission(user, 'cash.usd_rate'),
+          treasuryTransfer: hasPermission(user, 'cash.treasury_transfer'),
+          close: hasPermission(user, 'cash.close'),
+        }}
       />
 
       {grouped.length === 0 ? (

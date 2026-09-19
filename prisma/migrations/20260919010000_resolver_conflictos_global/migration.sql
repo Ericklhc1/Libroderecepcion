@@ -1,3 +1,5 @@
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ACTUALIZACION_OPERATIVA';
+
 -- Permite ejecutar la reconciliación global de conflictos a los tres roles
 -- autorizados expresamente: Administrador de sistema, Supervisor y Gerencia.
 --

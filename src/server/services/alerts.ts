@@ -5,7 +5,7 @@ import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
-import type { CurrentUser } from '@/server/auth/current-user';
+import { hasPermission, type CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
 
@@ -96,7 +96,14 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
   await prisma.$transaction(async (tx) => {
     const entry = await tx.operationalEntry.findFirst({
       where: { id: entryId, deletedAt: null, category: 'AJUSTE_CAJA_SOLICITADO' },
-      select: { id: true, status: true, shiftId: true, tags: true, title: true },
+      select: {
+        id: true,
+        status: true,
+        shiftId: true,
+        tags: true,
+        title: true,
+        createdById: true,
+      },
     });
     if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
     if (entry.tags.includes('ajuste-aplicado')) return;
@@ -136,7 +143,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         "createdById", "reference", "notes"
       ) VALUES (
         ${movementId}, ${kind}, ${direction}, ${currency}, ${amount},
-        ${entry.shiftId}, ${user.id}, ${reference}, ${notes}
+        ${entry.shiftId}, ${entry.createdById}, ${reference}, ${notes}
       )
     `;
 
@@ -144,7 +151,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       where: { id: entry.id },
       data: {
         status: EntryStatus.RESUELTO,
-        resolution: `Movimiento autorizado por Supervisor ${user.name}.`,
+        resolution: `Movimiento autorizado por ${user.name}.`,
         requiresFollowUp: false,
         closedAt: new Date(),
         closedById: user.id,
@@ -157,7 +164,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         entity: 'CashMovement',
         entityId: movementId,
         action: AuditAction.CREAR,
-        summary: `Movimiento de Caja autorizado por Supervisor: ${direction} ${amount} ${currency} · ${reference}`,
+        summary: `Movimiento de Caja autorizado por ${user.name}: ${direction} ${amount} ${currency} · ${reference}`,
         user,
         after: {
           direction,
@@ -166,6 +173,8 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
           reference,
           requestEntryId: entry.id,
           shiftId: entry.shiftId,
+          requestedById: entry.createdById,
+          approvedById: user.id,
         },
       },
       tx,
@@ -245,10 +254,8 @@ export async function resolveAlert(
   const noElements = alert.dedupeKey?.startsWith('handover-elements-none:') === true;
   const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:') === true;
 
-  if ((cashTransfer || cashManual) && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
-    throw new RuleError(
-      'Los movimientos de Caja sólo pueden ser autorizados por un Supervisor desde su cuenta.',
-    );
+  if ((cashTransfer || cashManual) && !hasPermission(user, 'cash.approve')) {
+    throw new RuleError('Tu rol no tiene habilitado autorizar operaciones de Caja.');
   }
 
   if (noElements && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
@@ -286,9 +293,9 @@ export async function resolveAlert(
     entityId: input.id,
     action: AuditAction.CERRAR,
     summary: cashTransfer
-      ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
+      ? `Egreso a tesorería validado por ${user.name}: ${alert.title}`
       : cashManual
-        ? `Movimiento manual de Caja autorizado por Supervisor: ${alert.title}`
+        ? `Movimiento manual de Caja autorizado por ${user.name}: ${alert.title}`
         : noElements
           ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
           : shiftValidation

@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { ArrowLeft, Download, Mail, ShieldCheck } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { buildSupervisorReport, reportDateRange, type SupervisorReportType } from '@/server/services/supervisor-reports';
-import { Card, CardHeader } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { ActionForm, Field, Input } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { sendSupervisorReportAction } from '@/server/actions/supervisor-reports';
@@ -25,10 +26,17 @@ function key(date: Date) {
 export default async function SupervisorReportsPage({ searchParams }: { searchParams: SearchParams }) {
   await requirePagePermission('supervision.view');
   const params = await searchParams;
+  const q = one(params.q).trim().toLowerCase();
+  const tipo = one(params.reporte);
   const range = reportDateRange(one(params.desde), one(params.hasta));
   const from = key(range.from);
   const to = key(range.to);
   const reports = await Promise.all(TYPES.map((type) => buildSupervisorReport(type, range)));
+  const visibleReports = reports.filter((report) => {
+    const typeMatches = !tipo || report.type === tipo;
+    const text = [report.title, report.type, ...report.summary].join(' ').toLowerCase();
+    return typeMatches && (!q || text.includes(q));
+  });
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -47,13 +55,32 @@ export default async function SupervisorReportsPage({ searchParams }: { searchPa
         <button type="submit" className="rounded-lg bg-petrol-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-petrol-800">Actualizar período</button>
       </form>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar informe o contenido…"
+        clearHref={`/supervision/informes?desde=${from}&hasta=${to}`}
+      >
+        <input type="hidden" name="desde" value={from} />
+        <input type="hidden" name="hasta" value={to} />
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Informe</span>
+          <select name="reporte" defaultValue={tipo} className="input-base w-full">
+            <option value="">Todos</option>
+            <option value="estado">Estado operativo</option>
+            <option value="gimnasio">Gimnasio</option>
+            <option value="multas">Multas</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       <div className="grid gap-4 lg:grid-cols-3">
-        {reports.map((report) => {
+        {visibleReports.map((report) => {
           const query = new URLSearchParams({ tipo: report.type, desde: from, hasta: to }).toString();
           return (
-            <Card key={report.type}>
+            <Card key={report.type} className="overflow-hidden">
               <CardHeader title={report.title} count={report.total} />
-              <div className="space-y-3 p-4">
+              <CardScroll maxHeight="max-h-[30rem]">
+                <div className="space-y-3 p-4">
                 <ul className="space-y-1 text-sm text-slate-600">
                   {report.summary.map((line) => <li key={line}>• {line}</li>)}
                 </ul>
@@ -72,7 +99,8 @@ export default async function SupervisorReportsPage({ searchParams }: { searchPa
                     <SubmitButton pendingLabel="Enviando PDF…"><Mail className="h-4 w-4" />Enviar PDF</SubmitButton>
                   </ActionForm>
                 </details>
-              </div>
+                </div>
+              </CardScroll>
             </Card>
           );
         })}

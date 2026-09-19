@@ -7,7 +7,7 @@ en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.
 
 Next.js 15 (App Router, Server Components, Server Actions) · React 19 ·
 TypeScript estricto · Prisma 6 · PostgreSQL en **Neon** (`sa-east-1`) ·
-**Vercel** como Production · **Netlify** como staging/pruebas reales · Tailwind ·
+**Vercel** como Production · Netlify sólo para pruebas manuales con base aislada · Tailwind ·
 Vitest contra PostgreSQL real.
 
 No cambiar de stack. No reconstruir. No crear otro proyecto.
@@ -27,50 +27,34 @@ página. La navegación sólo esconde; nunca autoriza.
 
 ## Navegación (simplificada)
 
-Cinco destinos principales, uno por pregunta operativa:
+Cinco módulos raíz, uno por trabajo concreto del mesón:
 
 | Destino | Pregunta |
 |---|---|
-| `/` Inicio | ¿Qué ocurre ahora? |
-| `/libro` Libro operativo | ¿Qué tengo pendiente? |
-| `/habitaciones` | ¿Qué ocurre en cada habitación? |
-| `/turno` | ¿Qué debo entregar al siguiente turno? |
-| `/supervision` | ¿Qué debo revisar como Supervisor? |
+| `/` Inicio | ¿Qué exige atención ahora? |
+| `/turno` Mi turno | ¿En qué estado está mi relevo y qué debo entregar? |
+| `/reservas` Reservas | ¿Qué carpeta/ID FNS debo operar? |
+| `/caja` Caja | ¿Qué movimiento financiero o garantía debo gestionar? |
+| `/llaves` Llaves | ¿Dónde está cada llave y qué falta devolver? |
 
-**Supervisión no es una pantalla del mesón.** Su `anyOf` es
-`['supervision.view', 'shift.manage']`. Llevaba `incident.manage`, y ése lo
-tiene la recepción —de noche hay que poder mover una incidencia—, así que la
-pestaña le aparecía al Auditor nocturno, que es un perfil de recepción. Se
-corrigieron las dos causas: el permiso del auditor
-(`20260916180000_supervision_no_es_del_meson`) y el `anyOf` del menú. Lo vigila
-`tests/navigation.test.ts`.
+**Inicio es una ventana operativa, no un segundo Libro.** Muestra el estado del
+turno, cuatro indicadores accionables y una única bandeja priorizada construida
+por reglas determinísticas. No vuelve a listar por separado tareas, incidencias,
+alertas, seguimientos, novedades y entregas.
 
-Más un grupo *Consulta* (`/llaves`, `/huespedes`, `/historial`,
-`/indicadores`) y *Sistema* (`/admin`).
-
-En **móvil** la barra inferior muestra los cuatro primeros y **«Más»** abre el
-resto. Ese botón no es un adorno: el menú lateral está oculto por debajo de
-`lg`, así que sin él Llaves, Huéspedes, Historial, Indicadores y
-Administración eran **inalcanzables desde el teléfono**. «Más» lleva aviso
-rojo cuando algo detrás tiene pendientes, de modo que las alertas de
-Supervisión siguen viéndose. Lo vigila `tests/navigation.test.ts`, que
-comprueba rol por rol que ningún destino visible quede sin puerta.
-
-⚠️ **Cerrar sesión tiene que estar FUERA del `<aside>`.** Estaba sólo ahí
-dentro, y como el aside es `hidden lg:flex`, por debajo de 1024 px **no había
-ninguna forma de salir** —el perfil tampoco la ofrecía—. Es el mismo descuido
-que dejó los destinos inalcanzables, y en un mesón que se comparte entre turnos
-es más grave: si quien entra no puede cerrar la sesión de quien sale, opera con
-la cuenta ajena y el libro le atribuye sus actos a otra persona. Ahora vive en
-tres sitios —el aside, el panel «Más» y `/perfil`, que es la casa natural— y
-`tests/navigation.test.ts` falla si el aside vuelve a ser el único camino.
+`/libro`, `/habitaciones`, `/supervision`, `/historial` e
+`/indicadores` siguen existiendo como vistas especializadas y accesos
+contextuales; no compiten como módulos raíz.
 
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
-el libro (pestañas `?clase=`), Inicio, la ficha de la habitación y Supervisión.
-Sus páginas siguen existiendo como vista secundaria porque cada una aporta
-acciones propias (reconocer una alerta, cerrar un seguimiento con resultado).
-`tests/navigation.test.ts` falla si vuelven al menú.
+el Libro, Inicio, la ficha de la habitación y Supervisión. Sus páginas
+especializadas siguen disponibles porque algunas conservan acciones propias.
+
+En móvil caben cuatro accesos directos; el resto vive detrás de **Más**. El
+perfil ofrece cerrar sesión y sigue siendo alcanzable desde móvil. La
+autorización real permanece siempre en servidor; ocultar navegación nunca
+concede ni revoca permisos.
 
 ## Entidades principales
 
@@ -215,10 +199,12 @@ conserva su modelo y sus reglas.
    cromática azul petróleo + dorado.
 7. **El semáforo nunca depende sólo del color**: siempre lleva texto y símbolo
    (`src/components/ui/tone.ts`).
-8. **Secretos sólo en variables de entorno.** El ejemplo vive en
-   `docs/entorno.example`, **no** en un `.env.example` de la raíz: las
-   plataformas de despliegue leen ese archivo como lista de variables
-   obligatorias y bloquean el despliegue.
+8. **Secretos nunca en texto plano en la base ni en el cliente.** Las llaves de
+   despliegue viven en variables de entorno. Cuando una credencial se administra
+   desde la interfaz (SMTP o proveedor de Fronti), sólo se persiste cifrada con
+   AES-256-GCM y la llave deriva de `AUTH_SECRET`, que permanece en el entorno.
+   El ejemplo de variables vive en `docs/entorno.example`, no en un
+   `.env.example` de la raíz.
 9. **La garantía es una entidad, y el resumen de la reserva se conserva.**
    `Guarantee` (tipo, monto, moneda, estado) cuelga de `ReservationReference`.
    `ReservationReference.guaranteeStatus` **no se elimina**: lo leen el motor

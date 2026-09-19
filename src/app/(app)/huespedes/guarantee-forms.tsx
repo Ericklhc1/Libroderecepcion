@@ -27,9 +27,13 @@ const KIND_OPTIONS = (Object.keys(GUARANTEE_KIND_LABELS) as GuaranteeKindValue[]
 export function GuaranteeDialog({
   reservationId,
   reservationCode,
+  stayId,
+  roomId,
 }: {
   reservationId: string;
   reservationCode: string;
+  stayId?: string | null;
+  roomId?: string | null;
 }) {
   return (
     <Dialog
@@ -47,6 +51,8 @@ export function GuaranteeDialog({
     >
       <ActionForm action={createGuaranteeAction} closeOnSuccess resetOnSuccess>
         <input type="hidden" name="reservationReferenceId" value={reservationId} />
+        {stayId ? <input type="hidden" name="stayId" value={stayId} /> : null}
+        {roomId ? <input type="hidden" name="roomId" value={roomId} /> : null}
         <Field label="Forma" name="kind" required>
           <Select name="kind" options={KIND_OPTIONS} defaultValue="TARJETA" />
         </Field>

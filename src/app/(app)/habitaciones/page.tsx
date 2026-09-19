@@ -9,6 +9,7 @@ import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RoomCard } from '@/components/rooms/room-card';
 import { RoomListRow } from '@/components/rooms/room-list-row';
+import { ResolveAllConflictsDialog } from '@/components/rooms/resolve-all-conflicts';
 import { ROOM_STATE_LABELS, type RoomState } from '@/domain/rooms';
 import { CONFLICT_LABELS, CONFLICT_TONE } from '@/domain/pms/conflicts';
 import type { RawSearchParams } from '@/lib/search-params';
@@ -48,6 +49,8 @@ export default async function RoomsPage({
   const estado = typeof params.estado === 'string' ? params.estado : undefined;
   const piso = typeof params.piso === 'string' ? params.piso : undefined;
   const vista = params.vista === 'cuadricula' ? 'cuadricula' : 'lista';
+
+  const canResolveAllConflicts = hasPermission(user, 'conflict.resolve_all');
 
   const [rooms, conflicts, inventory] = await Promise.all([
     listRoomsWithState(),
@@ -204,7 +207,15 @@ export default async function RoomsPage({
 
       {conflicts.length ? (
         <Card>
-          <CardHeader title="Conflictos para revisar" count={conflicts.length} />
+          <CardHeader
+            title="Conflictos para revisar"
+            count={conflicts.length}
+            action={
+              canResolveAllConflicts ? (
+                <ResolveAllConflictsDialog count={conflicts.length} />
+              ) : undefined
+            }
+          />
           <ul className="divide-y divide-slate-100">
             {conflicts.slice(0, 8).map((conflict, index) => (
               <li key={`${conflict.kind}-${conflict.roomNumber}-${index}`} className="px-4 py-3">

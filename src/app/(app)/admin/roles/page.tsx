@@ -47,7 +47,8 @@ export default async function RolesPage() {
         <h1 className="text-xl font-semibold text-petrol-900">Roles y permisos</h1>
         <p className="mt-0.5 text-sm text-slate-600">
           Los permisos se aplican en el servidor en cada acción; la interfaz sólo oculta lo que no
-          corresponde. Los cambios quedan auditados.
+          corresponde. Los cambios quedan auditados. Caja tiene permisos separados por tipo de operación,
+          así que una tarea rutinaria no requiere autorización de Supervisión salvo que la matriz lo restrinja.
         </p>
       </header>
 

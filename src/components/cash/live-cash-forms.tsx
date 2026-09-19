@@ -14,7 +14,7 @@ function formatFolio(folio: number) {
   return String(folio).padStart(4, '0');
 }
 
-export function ManualCashMovementForm() {
+export function ManualCashMovementForm({ allowIn = true, allowOut = true }: { allowIn?: boolean; allowOut?: boolean }) {
   return (
     <ActionForm action={createManualCashMovementAction} className="space-y-3" resetOnSuccess>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -24,9 +24,10 @@ export function ManualCashMovementForm() {
             required
             placeholder="Selecciona"
             options={[
-              { value: 'ENTRADA', label: 'Ingreso' },
-              { value: 'SALIDA', label: 'Egreso' },
+              ...(allowIn ? [{ value: 'ENTRADA', label: 'Ingreso' }] : []),
+              ...(allowOut ? [{ value: 'SALIDA', label: 'Egreso' }] : []),
             ]}
+            defaultValue={allowIn ? 'ENTRADA' : 'SALIDA'}
           />
         </Field>
         <Field label="Moneda" name="currency" required>
@@ -51,7 +52,7 @@ export function ManualCashMovementForm() {
         <Textarea name="notes" rows={2} maxLength={1000} placeholder="Opcional" />
       </Field>
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        Sólo se puede registrar mientras tengas un turno abierto o recibido. El movimiento queda ligado al turno, al Libro y a Auditoría.
+        Sólo se puede registrar mientras exista un turno operativo. La operación se habilita por rol y tipo de movimiento; todo queda ligado al turno, al Libro y a Auditoría.
       </p>
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Registrando…">Registrar movimiento</SubmitButton>

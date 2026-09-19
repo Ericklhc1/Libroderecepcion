@@ -187,6 +187,15 @@ conserva su modelo y sus reglas.
    a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
    vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
    `tests/rooms-keys.test.ts`.
+4ter. **La hora operativa es siempre Santiago de Chile.** La zona canónica es
+   `America/Santiago` y no depende de la zona del proceso de Vercel. Los
+   instantes se muestran y las reglas horarias se calculan con esa zona:
+   `shiftTypeAt`, fecha operativa, ventanas de turno, fin del día, filtros y
+   vencimientos. Las columnas Prisma `@db.Date` son fechas calendario: se
+   guardan/leen como clave YYYY-MM-DD y se formatean sin aplicar Santiago, porque
+   hacerlo movería una medianoche UTC al día anterior. `domain/time.ts` y
+   `lib/format.ts` separan ambas cosas. Lo vigila
+   `tests/zona-horaria.test.ts`.
 4bis. **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale
    antes de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno
    de las listas conservando su historia, sus registros y su entrega

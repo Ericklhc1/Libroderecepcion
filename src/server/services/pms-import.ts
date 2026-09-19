@@ -267,7 +267,7 @@ export async function prepareImport(
   );
 
   const declaredTotals = reports.flatMap((report) => report.declaredTotals);
-  const analysis = await analyseDraft(businessDate, stays, declaredTotals);
+  const analysis = await analyseDraft(stays, declaredTotals);
 
   const batch = await prisma.pmsImportBatch.create({
     data: {
@@ -299,7 +299,6 @@ export async function prepareImport(
  * borrador: qué conflictos aparecen y qué decisiones manuales se conservan.
  */
 async function analyseDraft(
-  businessDate: Date,
   stays: StayDraft[],
   /*
     Los totales que el informe declara en su pie. Se arrastran hasta el preview
@@ -630,7 +629,6 @@ export async function getImportPreview(batchId: string): Promise<ImportPreview> 
   const stays = batch.payload as unknown as StayDraft[];
   const reports = batch.reports as unknown as ReportMeta[];
   const analysis = await analyseDraft(
-    midnight(batch.businessDate),
     stays,
     reports.flatMap((report) => report.declaredTotals ?? []),
   );

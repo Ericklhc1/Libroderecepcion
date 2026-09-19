@@ -144,3 +144,49 @@ export function hotelHour(date: Date): number {
   const { hour, minute } = hotelParts(date);
   return Number(hour) + Number(minute) / 60;
 }
+
+
+/**
+ * Valor canónico para columnas `@db.Date`: la fecha calendario del hotel
+ * representada a las 00:00 UTC. No es un instante de medianoche en Santiago;
+ * es una clave de calendario estable que Prisma/Postgres no desplaza.
+ */
+export function hotelCalendarDate(date = new Date()): Date {
+  return new Date(`${hotelDateKey(date)}T00:00:00.000Z`);
+}
+
+/** Extrae YYYY-MM-DD de una columna `@db.Date` sin aplicarle huso horario. */
+export function calendarDateKey(date: Date): string {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/** Inicio real del día del hotel, como instante UTC. */
+export function hotelDayStart(date = new Date()): Date {
+  return hotelWallDateTime(hotelDateKey(date), 0, 0);
+}
+
+/** Fin real del día del hotel, respetando cambios de DST. */
+export function hotelDayEnd(date = new Date()): Date {
+  const next = addHotelCalendarDays(hotelDayStart(date), 1);
+  return new Date(next.getTime() - 1);
+}
+
+/** Suma días de calendario a una fecha `@db.Date` sin convertirla de zona. */
+export function addCalendarDateDays(date: Date, days: number): Date {
+  if (!Number.isInteger(days)) throw new Error('Los días a sumar deben ser enteros.');
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + days,
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
+}

@@ -2,14 +2,10 @@
 
 import { randomUUID } from 'node:crypto';
 import {
-  AlertLevel,
-  AlertStatus,
-  AlertType,
   AuditAction,
   EntryStatus,
   EntryType,
   GuaranteeState,
-  NotificationType,
   Priority,
 } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
@@ -21,7 +17,6 @@ import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 import type { PermissionKey } from '@/lib/permissions';
 import { hasPermission } from '@/server/auth/current-user';
-import { notify } from '@/server/notifications';
 import { saveLiveCashAudit } from '@/server/services/live-cash';
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
@@ -83,7 +78,7 @@ const movementSchema = z.object({
 type ManualMovementInput = z.infer<typeof movementSchema>;
 
 async function applyAuthorizedManualMovement(
-  user: Awaited<ReturnType<typeof requirePermission>>,
+  user: Awaited<ReturnType<typeof requireUser>>,
   input: ManualMovementInput,
   shiftId: string,
 ) {
@@ -107,7 +102,7 @@ async function applyAuthorizedManualMovement(
         type: EntryType.CAJA,
         status: EntryStatus.RESUELTO,
         title: `${verb} de caja · ${input.reference}`,
-        description: `${verb} autorizado de ${input.currency} ${input.amount}. Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+        description: `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
         category: kind,
         priority: Priority.BAJA,
         ownerId: user.id,

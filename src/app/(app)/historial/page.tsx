@@ -5,7 +5,7 @@ import { getBookItems } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
 import { getShiftOptions } from '@/server/services/shift-options';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { BookList } from '@/components/operational/book-row';
 import { Filters } from '@/components/operational/filters';
@@ -91,7 +91,9 @@ export default async function HistoryPage({
         {result.items.length === 0 ? (
           <EmptyState message="Sin resultados para esta búsqueda." />
         ) : (
-          <BookList items={result.items} />
+          <CardScroll>
+            <BookList items={result.items} />
+          </CardScroll>
         )}
         {result.page > 1 || result.hasMore ? (
           <nav
@@ -134,7 +136,8 @@ export default async function HistoryPage({
           {auditLogs.length === 0 ? (
             <EmptyState message="Sin movimientos registrados." />
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
               {auditLogs.map((log) => (
                 <li key={log.id} className="flex flex-wrap items-baseline gap-2 px-4 py-2.5">
                   <time className="text-xs tabular text-slate-400">
@@ -147,7 +150,8 @@ export default async function HistoryPage({
                   </span>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </CardScroll>
           )}
         </Card>
       ) : null}

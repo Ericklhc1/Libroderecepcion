@@ -434,184 +434,193 @@ export default async function ShiftPage({
 
           {visibleBriefing ? (
             <div className="grid gap-4 lg:grid-cols-2">
-              {showSection('pendientes') ? <Card>
-                <CardHeader
-                  title="Pendientes heredados"
-                  count={visibleBriefing.openEntries.length}
-                  href="/libro?estado=abiertos"
-                />
-                {visibleBriefing.openEntries.length === 0 ? (
-                  <EmptyState message="Sin registros abiertos." />
-                ) : (
-                  <CardScroll>
+              {showSection('pendientes') ? (
+                <Card>
+                  <CardHeader
+                    title="Pendientes heredados"
+                    count={visibleBriefing.openEntries.length}
+                    href="/libro?estado=abiertos"
+                  />
+                  {visibleBriefing.openEntries.length === 0 ? (
+                    <EmptyState message="Sin registros abiertos." />
+                  ) : (
                     <CardScroll>
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.openEntries.slice(0, 8).map((entry) => (
+                          <li key={entry.id}>
+                            <Link
+                              href={`/libro/${entry.id}`}
+                              className="block px-4 py-2.5 hover:bg-slate-50"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Chip>{ENTRY_TYPE_LABEL[entry.type]}</Chip>
+                                <Badge tone={ENTRY_STATUS_TONE[entry.status]}>
+                                  {ENTRY_STATUS_LABEL[entry.status]}
+                                </Badge>
+                                <Badge tone={PRIORITY_TONE[entry.priority]} withSymbol={false}>
+                                  {PRIORITY_LABEL[entry.priority]}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-sm font-medium text-petrol-900">{entry.title}</p>
+                              <p className="text-xs text-slate-500">
+                                {entry.owner?.name ?? 'Sin responsable'}
+                                {entry.guest ? ` · ${entry.guest.fullName}` : ''}
+                              </p>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
+
+              {showSection('tareas') ? (
+                <Card>
+                  <CardHeader
+                    title="Tareas vencidas"
+                    count={visibleBriefing.overdueTasks.length}
+                    href="/libro?clase=task&estado=abiertos"
+                  />
+                  {visibleBriefing.overdueTasks.length === 0 ? (
+                    <EmptyState message="Sin tareas vencidas." />
+                  ) : (
                     <CardScroll>
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.overdueTasks.slice(0, 8).map((task) => (
+                          <li key={task.id}>
+                            <Link
+                              href={`/tareas/${task.id}`}
+                              className="block px-4 py-2.5 hover:bg-slate-50"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge tone="critico">Vencida</Badge>
+                                <Badge tone={TASK_STATUS_TONE[task.status]}>
+                                  {TASK_STATUS_LABEL[task.status]}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-sm font-medium text-petrol-900">{task.title}</p>
+                              <p className="text-xs text-slate-500">
+                                {task.assignee?.name ?? 'Sin asignar'} · venció {relativeTime(task.dueAt)}
+                              </p>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
+
+              {showSection('alertas') ? (
+                <Card>
+                  <CardHeader
+                    title="Alertas activas"
+                    count={visibleBriefing.alerts.length}
+                    href="/libro?clase=alert"
+                  />
+                  {visibleBriefing.alerts.length === 0 ? (
+                    <EmptyState message="Sin alertas activas." />
+                  ) : (
                     <CardScroll>
-                    <CardScroll>
-                    <CardScroll>
-                    <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.openEntries.slice(0, 8).map((entry) => (
-                      <li key={entry.id}>
-                        <Link
-                          href={`/libro/${entry.id}`}
-                          className="block px-4 py-2.5 hover:bg-slate-50"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Chip>{ENTRY_TYPE_LABEL[entry.type]}</Chip>
-                            <Badge tone={ENTRY_STATUS_TONE[entry.status]}>
-                              {ENTRY_STATUS_LABEL[entry.status]}
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.alerts.slice(0, 8).map((alert) => (
+                          <li key={alert.id} className="px-4 py-2.5">
+                            <Badge tone={ALERT_LEVEL_TONE[alert.level]}>
+                              {ALERT_TYPE_LABEL[alert.type]}
                             </Badge>
-                            <Badge tone={PRIORITY_TONE[entry.priority]} withSymbol={false}>
-                              {PRIORITY_LABEL[entry.priority]}
+                            <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
+
+              {showSection('seguimientos') ? (
+                <Card>
+                  <CardHeader
+                    title="Seguimientos"
+                    count={visibleBriefing.followUps.length}
+                    href="/libro?clase=followup"
+                  />
+                  {visibleBriefing.followUps.length === 0 ? (
+                    <EmptyState message="Sin seguimientos pendientes." />
+                  ) : (
+                    <CardScroll>
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.followUps.slice(0, 8).map((followUp) => (
+                          <li key={followUp.id} className="px-4 py-2.5">
+                            <Badge tone={FOLLOWUP_STATUS_TONE[followUp.status]}>
+                              {FOLLOWUP_STATUS_LABEL[followUp.status]}
                             </Badge>
-                          </div>
-                          <p className="mt-1 text-sm font-medium text-petrol-900">{entry.title}</p>
-                          <p className="text-xs text-slate-500">
-                            {entry.owner?.name ?? 'Sin responsable'}
-                            {entry.guest ? ` · ${entry.guest.fullName}` : ''}
-                          </p>
-                        </Link>
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
+                            <p className="mt-1 text-sm font-medium text-petrol-900">{followUp.action}</p>
+                            <p className="text-xs text-slate-500">
+                              {followUp.owner.name}
+                              {followUp.scheduledAt ? ` · ${relativeTime(followUp.scheduledAt)}` : ''}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
 
-              {showSection('tareas') ? <Card>
-                <CardHeader
-                  title="Tareas vencidas"
-                  count={visibleBriefing.overdueTasks.length}
-                  href="/libro?clase=task&estado=abiertos"
-                />
-                {visibleBriefing.overdueTasks.length === 0 ? (
-                  <EmptyState message="Sin tareas vencidas." />
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.overdueTasks.slice(0, 8).map((task) => (
-                      <li key={task.id}>
-                        <Link
-                          href={`/tareas/${task.id}`}
-                          className="block px-4 py-2.5 hover:bg-slate-50"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge tone="critico">Vencida</Badge>
-                            <Badge tone={TASK_STATUS_TONE[task.status]}>
-                              {TASK_STATUS_LABEL[task.status]}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 text-sm font-medium text-petrol-900">{task.title}</p>
-                          <p className="text-xs text-slate-500">
-                            {task.assignee?.name ?? 'Sin asignar'} · venció{' '}
-                            {relativeTime(task.dueAt)}
-                          </p>
-                        </Link>
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
+              {showSection('vip') ? (
+                <Card>
+                  <CardHeader title="Huéspedes VIP" count={visibleBriefing.vipGuests.length} />
+                  {visibleBriefing.vipGuests.length === 0 ? (
+                    <EmptyState message="Sin huéspedes VIP registrados." />
+                  ) : (
+                    <CardScroll>
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.vipGuests.map((guest) => (
+                          <li key={guest.id} className="px-4 py-2.5">
+                            <p className="text-sm font-medium text-petrol-900">
+                              {guest.fullName}
+                              {guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}
+                            </p>
+                            {guest.notes ? <p className="text-xs text-slate-500">{guest.notes}</p> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
 
-              {showSection('alertas') ? <Card>
-                <CardHeader title="Alertas activas" count={visibleBriefing.alerts.length} href="/libro?clase=alert" />
-                {visibleBriefing.alerts.length === 0 ? (
-                  <EmptyState message="Sin alertas activas." />
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.alerts.slice(0, 8).map((alert) => (
-                      <li key={alert.id} className="px-4 py-2.5">
-                        <Badge tone={ALERT_LEVEL_TONE[alert.level]}>
-                          {ALERT_TYPE_LABEL[alert.type]}
-                        </Badge>
-                        <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
-
-              {showSection('seguimientos') ? <Card>
-                <CardHeader
-                  title="Seguimientos"
-                  count={visibleBriefing.followUps.length}
-                  href="/libro?clase=followup"
-                />
-                {visibleBriefing.followUps.length === 0 ? (
-                  <EmptyState message="Sin seguimientos pendientes." />
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.followUps.slice(0, 8).map((followUp) => (
-                      <li key={followUp.id} className="px-4 py-2.5">
-                        <Badge tone={FOLLOWUP_STATUS_TONE[followUp.status]}>
-                          {FOLLOWUP_STATUS_LABEL[followUp.status]}
-                        </Badge>
-                        <p className="mt-1 text-sm font-medium text-petrol-900">
-                          {followUp.action}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {followUp.owner.name}
-                          {followUp.scheduledAt
-                            ? ` · ${relativeTime(followUp.scheduledAt)}`
-                            : ''}
-                        </p>
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
-
-              {showSection('vip') ? <Card>
-                <CardHeader title="Huéspedes VIP" count={visibleBriefing.vipGuests.length} />
-                {visibleBriefing.vipGuests.length === 0 ? (
-                  <EmptyState message="Sin huéspedes VIP registrados." />
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.vipGuests.map((guest) => (
-                      <li key={guest.id} className="px-4 py-2.5">
-                        <p className="text-sm font-medium text-petrol-900">
-                          {guest.fullName}
-                          {guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}
-                        </p>
-                        {guest.notes ? (
-                          <p className="text-xs text-slate-500">{guest.notes}</p>
-                        ) : null}
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
-
-              {showSection('reservas') ? <Card>
-                <CardHeader
-                  title="Reservas que requieren acción"
-                  count={visibleBriefing.reservations.length}
-                  href="/huespedes"
-                />
-                {visibleBriefing.reservations.length === 0 ? (
-                  <EmptyState message="Sin reservas pendientes de acción." />
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {visibleBriefing.reservations.slice(0, 8).map((reservation) => (
-                      <li key={reservation.id} className="px-4 py-2.5">
-                        <p className="text-sm font-medium text-petrol-900">
-                          {reservation.code}
-                          {reservation.guest ? ` · ${reservation.guest.fullName}` : ''}
-                          {reservation.roomNumber ? ` · hab. ${reservation.roomNumber}` : ''}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {reservation.actionNote ??
-                            `Estado ${reservation.status} · garantía ${reservation.guaranteeStatus}`}
-                        </p>
-                      </li>
-                    ))}
-                    </ul>
-                  </CardScroll>
-                )}
-              </Card> : null}
+              {showSection('reservas') ? (
+                <Card>
+                  <CardHeader
+                    title="Reservas que requieren acción"
+                    count={visibleBriefing.reservations.length}
+                    href="/huespedes"
+                  />
+                  {visibleBriefing.reservations.length === 0 ? (
+                    <EmptyState message="Sin reservas pendientes de acción." />
+                  ) : (
+                    <CardScroll>
+                      <ul className="divide-y divide-slate-100">
+                        {visibleBriefing.reservations.slice(0, 8).map((reservation) => (
+                          <li key={reservation.id} className="px-4 py-2.5">
+                            <p className="text-sm font-medium text-petrol-900">
+                              {reservation.code}
+                              {reservation.guest ? ` · ${reservation.guest.fullName}` : ''}
+                              {reservation.roomNumber ? ` · hab. ${reservation.roomNumber}` : ''}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {reservation.actionNote ??
+                                `Estado ${reservation.status} · garantía ${reservation.guaranteeStatus}`}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardScroll>
+                  )}
+                </Card>
+              ) : null}
             </div>
           ) : null}
         </>

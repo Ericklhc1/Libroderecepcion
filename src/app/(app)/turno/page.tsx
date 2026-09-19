@@ -12,7 +12,9 @@ import {
 import { getShiftMetrics } from '@/server/services/metrics';
 import { getShiftReportsState } from '@/server/services/pms-import';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import { ShiftReports } from '@/components/operational/shift-reports';
 import {
@@ -54,8 +56,15 @@ export const dynamic = 'force-dynamic';
 */
 export const maxDuration = 60;
 
-export default async function ShiftPage() {
+export default async function ShiftPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePageUser();
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
 
   const [desk, reportsState, recentShifts, pendingClosure] = await Promise.all([
@@ -103,6 +112,55 @@ export default async function ShiftPage() {
         })
       ).map((person) => ({ value: person.id, label: `${person.name} · @${person.username}` }))
     : [];
+
+  const textMatches = (values: Array<string | number | null | undefined>) =>
+    !q ||
+    values
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+
+  const visibleBriefing = briefing
+    ? {
+        ...briefing,
+        openEntries: visibleBriefing.openEntries.filter((entry) =>
+          textMatches([entry.seq, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name, entry.guest?.fullName]),
+        ),
+        overdueTasks: visibleBriefing.overdueTasks.filter((task) =>
+          textMatches([task.seq, task.status, task.title, task.assignee?.name]),
+        ),
+        alerts: visibleBriefing.alerts.filter((alert) =>
+          textMatches([alert.type, alert.level, alert.title]),
+        ),
+        followUps: visibleBriefing.followUps.filter((followUp) =>
+          textMatches([followUp.status, followUp.action, followUp.owner.name]),
+        ),
+        vipGuests: visibleBriefing.vipGuests.filter((guest) =>
+          textMatches([guest.fullName, guest.roomNumber, guest.notes]),
+        ),
+        reservations: visibleBriefing.reservations.filter((reservation) =>
+          textMatches([
+            reservation.code,
+            reservation.status,
+            reservation.guaranteeStatus,
+            reservation.roomNumber,
+            reservation.guest?.fullName,
+            reservation.actionNote,
+          ]),
+        ),
+      }
+    : null;
+  const visibleRecentShifts = recentShifts.filter((item) =>
+    textMatches([
+      item.type,
+      item.status,
+      formatDate(item.date),
+      ...item.assignments.map((assignment) => assignment.user.name),
+      item.handoverOut?.status,
+    ]),
+  );
+  const showSection = (name: string) => !seccion || seccion === name;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -341,7 +399,27 @@ export default async function ShiftPage() {
           </Card>
 
           {metrics ? (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <>
+              <ListFilterBar
+                searchValue={q}
+                searchPlaceholder="Buscar en el resumen del turno…"
+                clearHref="/turno"
+              >
+                <label className="min-w-[13rem]">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
+                  <select name="seccion" defaultValue={seccion} className="input-base w-full">
+                    <option value="">Todas</option>
+                    <option value="pendientes">Pendientes heredados</option>
+                    <option value="tareas">Tareas vencidas</option>
+                    <option value="alertas">Alertas</option>
+                    <option value="seguimientos">Seguimientos</option>
+                    <option value="vip">Huéspedes VIP</option>
+                    <option value="reservas">Reservas con acción</option>
+                    <option value="historial">Mis turnos recientes</option>
+                  </select>
+                </label>
+              </ListFilterBar>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatTile label="Registros del turno" value={metrics.entries} />
               <StatTile label="Incidencias del turno" value={metrics.incidents} />
               <StatTile label="Tareas creadas" value={metrics.tasksCreated} />
@@ -350,22 +428,29 @@ export default async function ShiftPage() {
                 value={metrics.tasksCompleted}
                 tone={metrics.tasksCompleted > 0 ? 'good' : 'neutral'}
               />
-            </div>
+              </div>
+            </>
           ) : null}
 
-          {briefing ? (
+          {visibleBriefing ? (
             <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
+              {showSection('pendientes') ? <Card>
                 <CardHeader
                   title="Pendientes heredados"
-                  count={briefing.openEntries.length}
+                  count={visibleBriefing.openEntries.length}
                   href="/libro?estado=abiertos"
                 />
-                {briefing.openEntries.length === 0 ? (
+                {visibleBriefing.openEntries.length === 0 ? (
                   <EmptyState message="Sin registros abiertos." />
                 ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {briefing.openEntries.slice(0, 8).map((entry) => (
+                  <CardScroll>
+                    <CardScroll>
+                    <CardScroll>
+                    <CardScroll>
+                    <CardScroll>
+                    <CardScroll>
+                    <ul className="divide-y divide-slate-100">
+                    {visibleBriefing.openEntries.slice(0, 8).map((entry) => (
                       <li key={entry.id}>
                         <Link
                           href={`/libro/${entry.id}`}
@@ -388,21 +473,22 @@ export default async function ShiftPage() {
                         </Link>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
 
-              <Card>
+              {showSection('tareas') ? <Card>
                 <CardHeader
                   title="Tareas vencidas"
-                  count={briefing.overdueTasks.length}
+                  count={visibleBriefing.overdueTasks.length}
                   href="/libro?clase=task&estado=abiertos"
                 />
-                {briefing.overdueTasks.length === 0 ? (
+                {visibleBriefing.overdueTasks.length === 0 ? (
                   <EmptyState message="Sin tareas vencidas." />
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {briefing.overdueTasks.slice(0, 8).map((task) => (
+                    {visibleBriefing.overdueTasks.slice(0, 8).map((task) => (
                       <li key={task.id}>
                         <Link
                           href={`/tareas/${task.id}`}
@@ -422,17 +508,18 @@ export default async function ShiftPage() {
                         </Link>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
 
-              <Card>
-                <CardHeader title="Alertas activas" count={briefing.alerts.length} href="/libro?clase=alert" />
-                {briefing.alerts.length === 0 ? (
+              {showSection('alertas') ? <Card>
+                <CardHeader title="Alertas activas" count={visibleBriefing.alerts.length} href="/libro?clase=alert" />
+                {visibleBriefing.alerts.length === 0 ? (
                   <EmptyState message="Sin alertas activas." />
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {briefing.alerts.slice(0, 8).map((alert) => (
+                    {visibleBriefing.alerts.slice(0, 8).map((alert) => (
                       <li key={alert.id} className="px-4 py-2.5">
                         <Badge tone={ALERT_LEVEL_TONE[alert.level]}>
                           {ALERT_TYPE_LABEL[alert.type]}
@@ -440,21 +527,22 @@ export default async function ShiftPage() {
                         <p className="mt-1 text-sm font-medium text-petrol-900">{alert.title}</p>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
 
-              <Card>
+              {showSection('seguimientos') ? <Card>
                 <CardHeader
                   title="Seguimientos"
-                  count={briefing.followUps.length}
+                  count={visibleBriefing.followUps.length}
                   href="/libro?clase=followup"
                 />
-                {briefing.followUps.length === 0 ? (
+                {visibleBriefing.followUps.length === 0 ? (
                   <EmptyState message="Sin seguimientos pendientes." />
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {briefing.followUps.slice(0, 8).map((followUp) => (
+                    {visibleBriefing.followUps.slice(0, 8).map((followUp) => (
                       <li key={followUp.id} className="px-4 py-2.5">
                         <Badge tone={FOLLOWUP_STATUS_TONE[followUp.status]}>
                           {FOLLOWUP_STATUS_LABEL[followUp.status]}
@@ -470,17 +558,18 @@ export default async function ShiftPage() {
                         </p>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
 
-              <Card>
-                <CardHeader title="Huéspedes VIP" count={briefing.vipGuests.length} />
-                {briefing.vipGuests.length === 0 ? (
+              {showSection('vip') ? <Card>
+                <CardHeader title="Huéspedes VIP" count={visibleBriefing.vipGuests.length} />
+                {visibleBriefing.vipGuests.length === 0 ? (
                   <EmptyState message="Sin huéspedes VIP registrados." />
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {briefing.vipGuests.map((guest) => (
+                    {visibleBriefing.vipGuests.map((guest) => (
                       <li key={guest.id} className="px-4 py-2.5">
                         <p className="text-sm font-medium text-petrol-900">
                           {guest.fullName}
@@ -491,21 +580,22 @@ export default async function ShiftPage() {
                         ) : null}
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
 
-              <Card>
+              {showSection('reservas') ? <Card>
                 <CardHeader
                   title="Reservas que requieren acción"
-                  count={briefing.reservations.length}
+                  count={visibleBriefing.reservations.length}
                   href="/huespedes"
                 />
-                {briefing.reservations.length === 0 ? (
+                {visibleBriefing.reservations.length === 0 ? (
                   <EmptyState message="Sin reservas pendientes de acción." />
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {briefing.reservations.slice(0, 8).map((reservation) => (
+                    {visibleBriefing.reservations.slice(0, 8).map((reservation) => (
                       <li key={reservation.id} className="px-4 py-2.5">
                         <p className="text-sm font-medium text-petrol-900">
                           {reservation.code}
@@ -518,21 +608,23 @@ export default async function ShiftPage() {
                         </p>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </CardScroll>
                 )}
-              </Card>
+              </Card> : null}
             </div>
           ) : null}
         </>
       )}
 
-      <Card>
-        <CardHeader title="Mis turnos recientes" />
-        {recentShifts.length === 0 ? (
+      {showSection('historial') ? <Card>
+        <CardHeader title="Mis turnos recientes" count={visibleRecentShifts.length} />
+        {visibleRecentShifts.length === 0 ? (
           <EmptyState message="Aún no tienes turnos registrados." />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {recentShifts.map((item) => (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleRecentShifts.map((item) => (
               <li key={item.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <CalendarClock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
@@ -560,9 +652,10 @@ export default async function ShiftPage() {
                 )}
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
       {/* Leyenda del semáforo: el color nunca va solo */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 text-xs text-slate-500 shadow-card">

@@ -182,7 +182,9 @@ export async function recordGuaranteeCashIn(
     guaranteeId: string;
     reservationReferenceId: string;
     reservationCode: string;
-    roomNumber: string | null;
+    roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     currency: string;
     amount: number;
     shiftId?: string | null;
@@ -195,10 +197,6 @@ export async function recordGuaranteeCashIn(
     })
   ) return;
 
-  const room = params.roomNumber
-    ? await tx.room.findUnique({ where: { number: params.roomNumber }, select: { id: true } })
-    : null;
-
   await insertCashMovement(tx, {
     userId: params.user.id,
     kind: 'GARANTIA_INGRESO',
@@ -206,7 +204,9 @@ export async function recordGuaranteeCashIn(
     currency: params.currency,
     amount: params.amount,
     shiftId: params.shiftId ?? null,
-    roomId: room?.id ?? null,
+    roomId: params.roomId ?? null,
+    stayId: params.stayId ?? null,
+    guestId: params.guestId ?? null,
     reservationReferenceId: params.reservationReferenceId,
     guaranteeId: params.guaranteeId,
     reference: `Garantía reserva ${params.reservationCode}`,
@@ -221,7 +221,9 @@ export async function recordGuaranteeCashOut(
     guaranteeId: string;
     reservationReferenceId: string;
     reservationCode: string;
-    roomNumber: string | null;
+    roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     currency: string;
     amount: number;
     shiftId?: string | null;
@@ -239,9 +241,15 @@ export async function recordGuaranteeCashOut(
     })
   ) return;
 
-  const room = params.roomNumber
-    ? await tx.room.findUnique({ where: { number: params.roomNumber }, select: { id: true } })
-    : null;
+  const originalContext = await tx.cashMovement.findFirst({
+    where: {
+      guaranteeId: params.guaranteeId,
+      kind: 'GARANTIA_INGRESO',
+      voidedAt: null,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { roomId: true, stayId: true, guestId: true },
+  });
 
   await insertCashMovement(tx, {
     userId: params.user.id,
@@ -250,7 +258,9 @@ export async function recordGuaranteeCashOut(
     currency: params.currency,
     amount: params.amount,
     shiftId: params.shiftId ?? null,
-    roomId: room?.id ?? null,
+    roomId: originalContext?.roomId ?? params.roomId ?? null,
+    stayId: originalContext?.stayId ?? params.stayId ?? null,
+    guestId: originalContext?.guestId ?? params.guestId ?? null,
     reservationReferenceId: params.reservationReferenceId,
     guaranteeId: params.guaranteeId,
     reference: `Devolución garantía ${params.reservationCode}`,

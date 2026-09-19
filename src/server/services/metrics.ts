@@ -7,6 +7,7 @@ import {
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
@@ -187,7 +188,7 @@ export async function getMetrics(range: MetricsRange) {
         const shift = row.shiftId ? shiftById.get(row.shiftId) : null;
         return {
           label: shift
-            ? `${shift.type} ${shift.date.toLocaleDateString('es-CL')}`
+            ? `${shift.type} ${formatCalendarDate(shift.date)}`
             : 'Sin turno',
           count: row._count._all,
           date: shift?.date ?? null,

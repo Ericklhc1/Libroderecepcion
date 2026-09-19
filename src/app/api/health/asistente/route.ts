@@ -6,7 +6,7 @@ import {
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
   probeFrontiProvider,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
 
 export const runtime = 'nodejs';
@@ -28,7 +28,7 @@ async function probeAssistant(): Promise<{
   health: AssistantHealth;
 }> {
   const config = await getFrontiConfig();
-  const provider = resolveFrontiProvider(config);
+  const provider = await resolveFrontiProviderRuntime(config);
   const result = await probeFrontiProvider(provider);
 
   return {

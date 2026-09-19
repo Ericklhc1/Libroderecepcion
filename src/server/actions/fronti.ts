@@ -10,6 +10,12 @@ import { recordAudit } from '@/server/audit';
 import { RuleError } from '@/server/errors';
 import { DEFAULT_SETTINGS, type SettingKey } from '@/server/services/settings';
 import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
+import {
+  clearFrontiProviderSecret,
+  getFrontiProviderCredentialView,
+  saveFrontiProviderSecret,
+  type FrontiProviderName,
+} from '@/server/ai/fronti-provider';
 
 const FRONTI_KEYS = (Object.keys(DEFAULT_SETTINGS) as SettingKey[]).filter((key) =>
   key.startsWith('fronti.'),
@@ -18,6 +24,15 @@ const FRONTI_KEYS = (Object.keys(DEFAULT_SETTINGS) as SettingKey[]).filter((key)
 const inputSchema = z.object({
   key: z.string().min(1),
   value: z.string(),
+});
+
+const providerCredentialSchema = z.object({
+  provider: z.enum(['groq', 'vllm', 'openai']),
+  apiKey: z.string().trim().min(8, 'La credencial parece incompleta.').max(2000),
+});
+
+const providerOnlySchema = z.object({
+  provider: z.enum(['groq', 'vllm', 'openai']),
 });
 
 const NUMBER_LIMITS: Partial<Record<SettingKey, { min: number; max: number }>> = {
@@ -162,6 +177,83 @@ export async function cleanupFrontiMemoryAction(): Promise<ActionState> {
     return {
       ok: true as const,
       message: `Memoria vencida limpiada: ${result.messages} mensajes, ${result.memories} memorias y ${result.conversations} conversaciones.`,
+    };
+  });
+}
+
+
+export async function saveFrontiProviderCredentialAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const actor = await requirePermission('system.configure');
+    const input = providerCredentialSchema.parse({
+      provider: String(formData.get('provider') ?? ''),
+      apiKey: String(formData.get('apiKey') ?? ''),
+    });
+    const before = await getFrontiProviderCredentialView(input.provider);
+
+    await saveFrontiProviderSecret(
+      input.provider as FrontiProviderName,
+      input.apiKey,
+      actor.id,
+    );
+
+    await recordAudit({
+      entity: 'FrontiProviderCredential',
+      entityId: input.provider,
+      action: AuditAction.CONFIGURAR,
+      summary: `Credencial de Fronti configurada: ${input.provider}`,
+      user: actor,
+      before: {
+        stored: before.hasStoredSecret,
+        envConfigured: before.envConfigured,
+        unreadable: before.storedSecretUnreadable,
+      },
+      after: { stored: true },
+    });
+
+    revalidatePath('/admin/fronti');
+    return {
+      ok: true as const,
+      message: 'Credencial guardada cifrada. El valor no volverá a mostrarse.',
+    };
+  });
+}
+
+export async function clearFrontiProviderCredentialAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const actor = await requirePermission('system.configure');
+    const input = providerOnlySchema.parse({
+      provider: String(formData.get('provider') ?? ''),
+    });
+    const before = await getFrontiProviderCredentialView(input.provider);
+
+    await clearFrontiProviderSecret(input.provider as FrontiProviderName);
+
+    await recordAudit({
+      entity: 'FrontiProviderCredential',
+      entityId: input.provider,
+      action: AuditAction.CONFIGURAR,
+      summary: `Credencial guardada de Fronti eliminada: ${input.provider}`,
+      user: actor,
+      before: {
+        stored: before.hasStoredSecret,
+        envConfigured: before.envConfigured,
+        unreadable: before.storedSecretUnreadable,
+      },
+      after: { stored: false },
+    });
+
+    revalidatePath('/admin/fronti');
+    return {
+      ok: true as const,
+      message:
+        'Credencial guardada eliminada. Si existe una variable de entorno para ese proveedor, seguirá utilizándose.',
     };
   });
 }

@@ -4,7 +4,9 @@ import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import {
   cleanupFrontiMemoryAction,
+  clearFrontiProviderCredentialAction,
   resetFrontiSettingsAction,
+  saveFrontiProviderCredentialAction,
   saveFrontiSettingAction,
 } from '@/server/actions/fronti';
 
@@ -125,6 +127,100 @@ export function FrontiSettingControl({ setting }: { setting: FrontiSettingRow })
           </SubmitButton>
         </div>
       </ActionForm>
+    </div>
+  );
+}
+
+
+export type FrontiProviderCredentialRow = {
+  provider: 'groq' | 'vllm' | 'openai';
+  hasStoredSecret: boolean;
+  storedSecretUnreadable: boolean;
+  envConfigured: boolean;
+  active: boolean;
+};
+
+function providerLabel(provider: FrontiProviderCredentialRow['provider']): string {
+  if (provider === 'groq') return 'Groq';
+  if (provider === 'vllm') return 'vLLM';
+  return 'OpenAI';
+}
+
+export function FrontiProviderCredentials({
+  credentials,
+}: {
+  credentials: FrontiProviderCredentialRow[];
+}) {
+  return (
+    <div className="divide-y divide-slate-100">
+      {credentials.map((credential) => {
+        const usableStored = credential.hasStoredSecret && !credential.storedSecretUnreadable;
+        const source = usableStored
+          ? 'Guardada cifrada en el Libro'
+          : credential.envConfigured
+            ? 'Variable de entorno'
+            : credential.provider === 'vllm'
+              ? 'Sin token guardado · puede ser opcional'
+              : 'Sin credencial';
+        return (
+          <div key={credential.provider} className="space-y-3 px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-petrol-900">
+                  {providerLabel(credential.provider)}
+                  {credential.active ? ' · activo' : ''}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">{source}</p>
+                {credential.storedSecretUnreadable ? (
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    Hay una credencial guardada que ya no puede descifrarse. Reemplázala.
+                  </p>
+                ) : null}
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[0.68rem] font-medium ${
+                  usableStored || credential.envConfigured
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {usableStored || credential.envConfigured ? 'Configurado' : 'Sin configurar'}
+              </span>
+            </div>
+
+            <ActionForm action={saveFrontiProviderCredentialAction} className="space-y-2">
+              <input type="hidden" name="provider" value={credential.provider} />
+              <input
+                name="apiKey"
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={2000}
+                required
+                placeholder={usableStored ? 'Escribe una nueva credencial para reemplazarla' : 'Pegar credencial'}
+                className="input-base"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[0.68rem] text-slate-400">
+                  La credencial se cifra en servidor y nunca vuelve a mostrarse.
+                </p>
+                <SubmitButton size="sm" variant="secondary" pendingLabel="Guardando…">
+                  {usableStored || credential.storedSecretUnreadable ? 'Reemplazar' : 'Guardar credencial'}
+                </SubmitButton>
+              </div>
+            </ActionForm>
+
+            {credential.hasStoredSecret || credential.storedSecretUnreadable ? (
+              <ActionForm action={clearFrontiProviderCredentialAction} className="space-y-0">
+                <input type="hidden" name="provider" value={credential.provider} />
+                <SubmitButton size="sm" variant="secondary" pendingLabel="Eliminando…">
+                  Quitar credencial guardada
+                </SubmitButton>
+              </ActionForm>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

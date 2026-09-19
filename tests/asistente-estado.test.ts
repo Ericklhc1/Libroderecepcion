@@ -270,3 +270,40 @@ describe('el modelo y el plazo están declarados', () => {
     expect(schema).toContain('nonce     String   @unique');
   });
 });
+
+
+describe('credenciales administrables de Fronti', () => {
+  it('guarda sólo material cifrado y mantiene fallback al entorno', () => {
+    const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf-8');
+    expect(source).toContain('sealSecret');
+    expect(source).toContain('openSecret');
+    expect(source).toContain("__secret.fronti.provider.");
+    expect(source).toContain('resolveFrontiProviderRuntime');
+    expect(source).toContain('runtime.GROQ_API_KEY');
+    expect(source).toContain('runtime.OPENAI_API_KEY');
+    expect(source).toContain('runtime.FRONTI_API_KEY');
+  });
+
+  it('todos los consumidores operativos resuelven la credencial efectiva', () => {
+    for (const file of [
+      'src/server/ai/reception-assistant.ts',
+      'src/server/ai/operational-brief.ts',
+      'src/server/ai/memory.ts',
+      'src/app/api/health/asistente/route.ts',
+      'src/app/(app)/admin/fronti/page.tsx',
+    ]) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).toContain('resolveFrontiProviderRuntime');
+      expect(source, file).not.toContain('resolveFrontiProvider(config)');
+    }
+  });
+
+  it('la auditoría registra estado, nunca la credencial', () => {
+    const actions = readFileSync('src/server/actions/fronti.ts', 'utf-8');
+    expect(actions).toContain('saveFrontiProviderCredentialAction');
+    expect(actions).toContain('clearFrontiProviderCredentialAction');
+    expect(actions).toContain("entity: 'FrontiProviderCredential'");
+    expect(actions).not.toContain('after: { apiKey');
+    expect(actions).not.toContain('before: { apiKey');
+  });
+});

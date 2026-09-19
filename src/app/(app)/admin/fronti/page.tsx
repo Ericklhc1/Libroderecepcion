@@ -16,13 +16,16 @@ import { env } from '@/lib/env';
 import { getAllSettings } from '@/server/services/settings';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
+  getFrontiProviderCredentialView,
   providerIsConfigured,
-  resolveFrontiProvider,
+  resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import {
   FrontiMaintenanceActions,
+  FrontiProviderCredentials,
   FrontiSettingControl,
+  type FrontiProviderCredentialRow,
   type FrontiSettingRow,
 } from './fronti-settings';
 
@@ -110,11 +113,15 @@ async function diagnostics() {
 export default async function FrontiAdminPage() {
   await requirePagePermission('system.configure');
 
-  const [allSettings, config, counts] = await Promise.all([
-    getAllSettings(),
-    getFrontiConfig(),
-    diagnostics(),
-  ]);
+  const [allSettings, config, counts, groqCredential, vllmCredential, openaiCredential] =
+    await Promise.all([
+      getAllSettings(),
+      getFrontiConfig(),
+      diagnostics(),
+      getFrontiProviderCredentialView('groq'),
+      getFrontiProviderCredentialView('vllm'),
+      getFrontiProviderCredentialView('openai'),
+    ]);
   const settings = allSettings
     .filter((setting) => setting.key.startsWith('fronti.'))
     .map((setting) => ({
@@ -126,8 +133,13 @@ export default async function FrontiAdminPage() {
     })) satisfies FrontiSettingRow[];
   const settingsByKey = byKey(settings);
   const activeTools = Object.values(config.tools).filter(Boolean).length;
-  const provider = resolveFrontiProvider(config);
+  const provider = await resolveFrontiProviderRuntime(config);
   const providerConfigured = providerIsConfigured(provider);
+  const credentials = [
+    { provider: 'groq', ...groqCredential, active: config.provider === 'groq' },
+    { provider: 'vllm', ...vllmCredential, active: config.provider === 'vllm' },
+    { provider: 'openai', ...openaiCredential, active: config.provider === 'openai' },
+  ] satisfies FrontiProviderCredentialRow[];
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -200,6 +212,18 @@ export default async function FrontiAdminPage() {
             <p className="mt-1 text-sm font-semibold text-petrol-900">{env().HOTEL_TIMEZONE}</p>
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Credenciales de proveedores" />
+        <div className="border-b border-slate-100 px-4 py-3">
+          <p className="text-sm text-slate-600">
+            Puedes administrar las credenciales sin volver a desplegar. Una credencial guardada aquí
+            se cifra con la llave del servidor y tiene prioridad sobre la variable de entorno del
+            mismo proveedor. El valor nunca se vuelve a mostrar.
+          </p>
+        </div>
+        <FrontiProviderCredentials credentials={credentials} />
       </Card>
 
       <Card>

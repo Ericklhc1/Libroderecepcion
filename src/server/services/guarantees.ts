@@ -41,6 +41,13 @@ import { resolveOperationalContext } from './operational-context';
 type Tx = Prisma.TransactionClient;
 
 export const guaranteeInclude = {
+  stay: {
+    select: {
+      id: true,
+      room: { select: { id: true, number: true } },
+      guestNames: true,
+    },
+  },
   reservationReference: {
     select: {
       id: true,
@@ -117,6 +124,7 @@ export async function createGuarantee(
     const created = await tx.guarantee.create({
       data: {
         reservationReferenceId: reservation.id,
+        stayId: context.stayId,
         kind: input.kind,
         amount: new Prisma.Decimal(input.amount),
         currency: input.currency.toUpperCase(),
@@ -124,7 +132,7 @@ export async function createGuarantee(
         notes: input.notes ?? null,
         createdById: user.id,
       },
-      select: { id: true, state: true, amount: true, currency: true },
+      select: { id: true, state: true, amount: true, currency: true, stayId: true },
     });
 
     if (input.kind === GuaranteeKind.EFECTIVO && created.state === GuaranteeState.VIGENTE) {
@@ -208,6 +216,7 @@ export async function changeGuaranteeState(
         penaltyAmount: true,
         currency: true,
         reservationReferenceId: true,
+        stayId: true,
         reservationReference: { select: { code: true, roomNumber: true } },
       },
     });
@@ -274,6 +283,7 @@ export async function changeGuaranteeState(
     if (guarantee.kind === GuaranteeKind.EFECTIVO) {
       const context = await resolveOperationalContext(tx, {
         reservationReferenceId: guarantee.reservationReferenceId,
+        stayId: guarantee.stayId,
       });
 
       if (to === 'VIGENTE') {

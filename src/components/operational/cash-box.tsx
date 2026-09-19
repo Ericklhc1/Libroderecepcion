@@ -412,7 +412,7 @@ export function CashBox({
                     {transfer.reference ? ` · comprobante ${transfer.reference}` : ''} · {transfer.createdByName}
                   </span>
                   <Badge tone={transfer.approved ? 'resuelto' : 'pendiente'}>
-                    {transfer.approved ? 'Revisado por Supervisión' : 'Pendiente de revisión'}
+                    {transfer.approved ? 'Registrado' : 'Pendiente de revisión histórica'}
                   </Badge>
                 </li>
               ))}

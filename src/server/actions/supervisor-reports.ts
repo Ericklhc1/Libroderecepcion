@@ -7,6 +7,7 @@ import { RuleError } from '@/server/errors';
 import { sendMail } from '@/server/mail';
 import { buildSupervisorReport, reportDateRange } from '@/server/services/supervisor-reports';
 import { createTextPdf } from '@/server/reports/simple-pdf';
+import { formatDate } from '@/lib/format';
 
 const schema = z.object({
   type: z.enum(['gimnasio', 'multas', 'estado']),

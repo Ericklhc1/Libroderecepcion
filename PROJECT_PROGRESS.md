@@ -28,6 +28,7 @@ Actualizado: **2026-09-18** · resolución global de conflictos PR **#73**
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
 | Simplificación del Libro | `PRODUCTION` | #72 | Inicio deja de ser un segundo Libro y se convierte en ventana operativa |
 | Resolución global de conflictos | `PR_ABIERTO` | #73 | Supervisor, Gerencia y Administrador: reconciliación de duplicados, check-outs vencidos, llaves y alertas con notificación global |
+| Fecha y hora operativa Santiago | `PR_ABIERTO` | #73 | `America/Santiago` gobierna fecha operativa, turno sugerido, ventanas, filtros, alertas y presentación; Vercel puede seguir en UTC |
 
 ## Iteración actual
 
@@ -52,6 +53,12 @@ visible y se convierte/actualiza en incidencia crítica para decisión humana.
 Además #73 corrige la causa de las duplicidades entre días: una estadía activa de
 la misma reserva/habitación/fase se actualiza con el nuevo `businessDate` en
 vez de crear una fila paralela.
+
+**Reloj operativo:** el hotel está en Santiago de Chile. La zona canónica es
+`America/Santiago`; la fecha operativa, la sugerencia Día/Noche, las ventanas
+07:00–20:00 / 20:00–08:00, los límites diarios, filtros y textos con hora se
+calculan en esa zona. Las columnas `@db.Date` se tratan como fechas calendario
+y no se desplazan por huso horario.
 
 ## Infraestructura vigente
 

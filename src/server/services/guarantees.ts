@@ -17,6 +17,7 @@ import {
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
+import { resolveOperationalContext } from './operational-context';
 
 /**
  * Garantías de una reserva.
@@ -88,6 +89,8 @@ export async function createGuarantee(
   user: CurrentUser,
   input: {
     reservationReferenceId: string;
+    stayId?: string | null;
+    roomId?: string | null;
     kind: GuaranteeKind;
     amount: number;
     currency: string;
@@ -101,9 +104,15 @@ export async function createGuarantee(
   const guarantee = await prisma.$transaction(async (tx) => {
     const reservation = await tx.reservationReference.findFirst({
       where: { id: input.reservationReferenceId, deletedAt: null },
-      select: { id: true, code: true, roomNumber: true },
+      select: { id: true, code: true },
     });
     if (!reservation) throw new NotFoundError('Esa reserva no existe.');
+
+    const context = await resolveOperationalContext(tx, {
+      reservationReferenceId: reservation.id,
+      stayId: input.stayId ?? null,
+      roomId: input.roomId ?? null,
+    });
 
     const created = await tx.guarantee.create({
       data: {
@@ -124,7 +133,9 @@ export async function createGuarantee(
         guaranteeId: created.id,
         reservationReferenceId: reservation.id,
         reservationCode: reservation.code,
-        roomNumber: reservation.roomNumber,
+        roomId: context.roomId,
+        stayId: context.stayId,
+        guestId: context.guestId,
         currency: created.currency,
         amount: money(created.amount) ?? input.amount,
         shiftId: shift?.id ?? null,
@@ -132,7 +143,16 @@ export async function createGuarantee(
     }
 
     await syncReservationSummary(tx, reservation.id);
-    return { ...created, reservationCode: reservation.code };
+    return {
+      ...created,
+      reservationCode: reservation.code,
+      context: {
+        roomId: context.roomId,
+        stayId: context.stayId,
+        guestId: context.guestId,
+        issues: context.issues,
+      },
+    };
   });
 
   await recordAudit({
@@ -144,7 +164,14 @@ export async function createGuarantee(
       `Garantía registrada en la reserva ${guarantee.reservationCode}: ` +
       `${guarantee.currency} ${money(guarantee.amount)}, ` +
       `${GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue]}`,
-    after: { state: guarantee.state, amount: money(guarantee.amount) },
+    after: {
+      state: guarantee.state,
+      amount: money(guarantee.amount),
+      roomId: guarantee.context.roomId,
+      stayId: guarantee.context.stayId,
+      guestId: guarantee.context.guestId,
+      contextIssues: guarantee.context.issues,
+    },
   });
 
   return { id: guarantee.id };
@@ -245,13 +272,19 @@ export async function changeGuaranteeState(
     });
 
     if (guarantee.kind === GuaranteeKind.EFECTIVO) {
+      const context = await resolveOperationalContext(tx, {
+        reservationReferenceId: guarantee.reservationReferenceId,
+      });
+
       if (to === 'VIGENTE') {
         await recordGuaranteeCashIn(tx, {
           user,
           guaranteeId: guarantee.id,
           reservationReferenceId: guarantee.reservationReferenceId,
           reservationCode: guarantee.reservationReference.code,
-          roomNumber: guarantee.reservationReference.roomNumber,
+          roomId: context.roomId,
+          stayId: context.stayId,
+          guestId: context.guestId,
           currency: guarantee.currency,
           amount: total,
           shiftId: shift?.id ?? null,
@@ -268,7 +301,9 @@ export async function changeGuaranteeState(
             guaranteeId: guarantee.id,
             reservationReferenceId: guarantee.reservationReferenceId,
             reservationCode: guarantee.reservationReference.code,
-            roomNumber: guarantee.reservationReference.roomNumber,
+            roomId: context.roomId,
+            stayId: context.stayId,
+            guestId: context.guestId,
             currency: guarantee.currency,
             amount: refundable,
             shiftId: shift?.id ?? null,

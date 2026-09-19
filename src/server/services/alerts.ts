@@ -293,7 +293,7 @@ export async function resolveAlert(
       throw new RuleError('La solicitud de tesorería no contiene el egreso vinculado.');
     }
     await prisma.$transaction(async (tx) => {
-      await applyCashTransferToLiveCash(tx, user, transferId);
+      await applyCashTransferToLiveCash(tx, transferId);
       await recordAudit(
         {
           entity: 'CashTransfer',

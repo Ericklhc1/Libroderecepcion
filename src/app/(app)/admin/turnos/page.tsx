@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
+import { addCalendarDateDays, hotelCalendarDate } from '@/domain/time';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { ArchiveShiftDialog } from './cancel-shift';
@@ -30,9 +31,7 @@ const STATUS_TONE = {
 export default async function ShiftAdminPage() {
   const user = await requirePagePermission('shift.manage');
 
-  const from = new Date();
-  from.setDate(from.getDate() - 30);
-  from.setHours(0, 0, 0, 0);
+  const from = addCalendarDateDays(hotelCalendarDate(), -30);
 
   const shifts = await prisma.shift.findMany({
     where: { date: { gte: from } },

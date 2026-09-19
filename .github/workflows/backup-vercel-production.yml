@@ -1,4 +1,4 @@
-name: Respaldo Vercel Production
+name: Release Vercel Production
 
 on:
   workflow_run:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  backup:
+  release:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -21,18 +21,21 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
-      - name: Esperar a que Vercel sirva este commit
+      - name: Esperar y verificar Vercel Production
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
           PRODUCTION_URL: https://libroderecepcion.vercel.app
         run: |
+          expected_version=$(node -p "require('./package.json').version")
           ok=0
+
           for attempt in $(seq 1 60); do
             body=$(curl -fsSL "$PRODUCTION_URL/api/health/version" 2>/dev/null || true)
             commit=$(printf '%s' "$body" | jq -r '.commit // empty' 2>/dev/null || true)
             provider=$(printf '%s' "$body" | jq -r '.provider // empty' 2>/dev/null || true)
+            version=$(printf '%s' "$body" | jq -r '.version // empty' 2>/dev/null || true)
 
-            if [ "$provider" = "vercel" ] && [ "$commit" = "$EXPECTED_SHA" ]; then
+            if [ "$provider" = "vercel" ] && [ "$commit" = "$EXPECTED_SHA" ] && [ "$version" = "$expected_version" ]; then
               ok=1
               break
             fi
@@ -41,7 +44,7 @@ jobs:
           done
 
           if [ "$ok" != "1" ]; then
-            echo "Vercel Production no llegó al commit esperado; no se crea respaldo."
+            echo "Vercel Production no sirve el SHA y versión esperados; no se crea release."
             exit 1
           fi
 
@@ -53,15 +56,21 @@ jobs:
           test "$code" = "200"
           grep -q "Iniciar sesión" /tmp/login.html
 
-      - name: Crear respaldo recuperable
+      - name: Crear tag de versión
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "El tag $tag ya existe. Cada Production debe tener una versión única."
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          tag="production-$(date -u +'%Y%m%d-%H%M%S')"
-          git tag -a "$tag" "$SHA" -m "Vercel Production verificado en $SHA"
+          git tag -a "$tag" "$SHA" -m "Libro Operativo $tag — Vercel Production verificado"
           git push origin "$tag"
 
-          echo "Respaldo creado: $tag"
+          echo "Release verificado: $tag"

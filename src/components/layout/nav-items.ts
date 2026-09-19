@@ -30,7 +30,7 @@ const PRIMARY: NavItem[] = [
     href: '/reservas', label: 'Reservas', icon: 'guest',
     anyOf: ['room.view', 'guest.view', 'guest.manage'], mobile: true,
   },
-  { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
+  { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['cash.view', 'cash.manual_in', 'cash.manual_out', 'cash.audit', 'cash.guarantee_out'], mobile: true },
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'], mobile: true },
 ];
 

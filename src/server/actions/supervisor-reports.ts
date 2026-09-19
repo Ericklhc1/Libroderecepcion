@@ -37,7 +37,7 @@ export async function sendSupervisorReportAction(
     const report = await buildSupervisorReport(input.type, range);
     const pdf = createTextPdf({
       title: report.title,
-      subtitle: `${range.from.toLocaleDateString('es-CL')} a ${range.to.toLocaleDateString('es-CL')}`,
+      subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,
       lines: [...report.summary, '', ...report.lines],
     });
     const result = await sendMail({

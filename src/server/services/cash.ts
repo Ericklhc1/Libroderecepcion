@@ -409,7 +409,7 @@ export function isCashAlreadyReceived(error: unknown): boolean {
   );
 }
 
-/** Egreso a tesorería. Queda registrado y auditado; Supervisión revisa después. */
+/** Egreso a tesorería. Queda registrado y auditado según el permiso del rol. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -455,7 +455,6 @@ export async function recordCashTransfer(
         createdById: user.id,
       },
     });
-
 
 
     await recordAudit(

@@ -9,12 +9,13 @@ function one(value: string | string[] | undefined): string | undefined {
 }
 
 function date(value: string | undefined, endOfDay = false): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  if (endOfDay) parsed.setHours(23, 59, 59, 999);
-  else parsed.setHours(0, 0, 0, 0);
-  return parsed;
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const calendar = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(calendar.getTime())) return null;
+  if (!endOfDay) return hotelWallDateTime(value, 0, 0);
+
+  const next = addCalendarDateDays(calendar, 1);
+  return new Date(hotelWallDateTime(calendarDateKey(next), 0, 0).getTime() - 1);
 }
 
 /**

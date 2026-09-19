@@ -23,6 +23,11 @@ import {
 import { getMyActiveShift, receiveShiftCash } from '@/server/services/shifts';
 import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
+import { notify } from '@/server/notifications';
+import {
+  cashApprovalRequired,
+  listCashApproverIds,
+} from '@/server/services/cash-permission-policy';
 
 /**
  * Acciones de caja.
@@ -140,14 +145,58 @@ export async function recordCashTransferAction(
       return { ok: true as const, message: 'Sin egreso a tesorería: monto 0.' };
     }
 
+    const needsApproval = await cashApprovalRequired(user, 'cash.treasury_transfer');
+    const approverIds = needsApproval ? await listCashApproverIds() : [];
+    if (needsApproval && approverIds.length === 0) {
+      throw new RuleError(
+        'Este egreso exige autorización, pero no hay ningún rol activo con permiso cash.approve.',
+      );
+    }
+
     const transfer = await recordCashTransfer(user, {
       handoverId: input.handoverId,
       currency: input.currency,
       amount: input.amount,
       reference: input.reference ?? null,
       notes: input.notes ?? null,
+      applyToLiveCash: !needsApproval,
     });
 
+    if (needsApproval) {
+      const alert = await prisma.alert.upsert({
+        where: { dedupeKey: `cash-transfer:${transfer.id}` },
+        create: {
+          type: AlertType.OTRO,
+          level: AlertLevel.ATENCION,
+          status: AlertStatus.NUEVA,
+          title: 'Autorizar egreso a tesorería',
+          message: `${input.currency} ${input.amount.toLocaleString('es-CL')}${input.reference ? ` · ${input.reference}` : ''}`,
+          handoverId: input.handoverId,
+          dedupeKey: `cash-transfer:${transfer.id}`,
+          auto: false,
+          createdById: user.id,
+        },
+        update: {
+          status: AlertStatus.NUEVA,
+          resolvedAt: null,
+          resolvedById: null,
+          resolutionNote: null,
+          deletedAt: null,
+        },
+      });
+
+      await notify(
+        approverIds.map((userId) => ({
+          userId,
+          type: NotificationType.ACCION_REQUERIDA,
+          title: 'Autorizar egreso a tesorería',
+          body: `${input.currency} ${input.amount.toLocaleString('es-CL')}${input.reference ? ` · ${input.reference}` : ''}`,
+          link: '/notificaciones',
+          entity: 'Alert',
+          entityId: alert.id,
+        })),
+      );
+    }
 
     revalidatePath('/turno');
     revalidatePath('/caja');
@@ -156,7 +205,9 @@ export async function recordCashTransferAction(
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado con trazabilidad.`,
+      message: needsApproval
+        ? `Egreso de ${input.amount} ${input.currency} solicitado; Caja se actualizará al aprobarlo.`
+        : `Egreso de ${input.amount} ${input.currency} registrado en Caja central.`,
     };
   });
 }

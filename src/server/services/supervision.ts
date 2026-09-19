@@ -14,6 +14,7 @@ import {
   ShiftStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { CONFLICT_LABELS, type Conflict, type ConflictKind } from '@/domain/pms/conflicts';
 import {
@@ -67,7 +68,7 @@ export type SupervisionBlock = {
 
 function shiftText(shift: { type: string; date: Date } | null | undefined): string | null {
   if (!shift) return null;
-  return `${shift.type} · ${shift.date.toLocaleDateString('es-CL')}`;
+  return `${shift.type} · ${formatCalendarDate(shift.date)}`;
 }
 
 function dueText(date: Date | null, now: Date): string | null {
@@ -421,7 +422,7 @@ export async function getSupervisionData(): Promise<{
         id: stay.id,
         ref: stay.room ? `Hab. ${stay.room.number}` : `Reserva ${stay.reservationId}`,
         title: stay.guestNames[0] ?? 'Huésped sin nombre',
-        detail: `Reserva ${stay.reservationId} · salida ${stay.departureDate ? stay.departureDate.toLocaleString('es-CL') : 'sin hora'}`,
+        detail: `Reserva ${stay.reservationId} · salida ${stay.departureDate ? formatCalendarDate(stay.departureDate) : 'sin hora'}`,
         href: stay.room ? `/habitaciones/${stay.room.number}` : '/habitaciones',
         meta: stay.departureDate && stay.departureDate <= now ? 'salida vencida' : 'por confirmar',
       })),
@@ -528,7 +529,7 @@ export async function getSupervisionData(): Promise<{
         title: shiftText(row.fromShift) ?? 'Turno',
         detail: `Entregada por ${row.issuedBy.name} · ${row._count.items} punto(s)`,
         href: `/turno/entrega/${row.id}`,
-        meta: row.issuedAt ? `enviada ${row.issuedAt.toLocaleString('es-CL')}` : null,
+        meta: row.issuedAt ? `enviada ${formatDateTime(row.issuedAt)}` : null,
       })),
     },
     {

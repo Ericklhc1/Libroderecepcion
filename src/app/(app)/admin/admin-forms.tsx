@@ -18,6 +18,7 @@ import {
 import { scheduleShiftAction } from '@/server/actions/shifts';
 import type { Option } from '@/server/services/options';
 import { suggestUsername } from '@/domain/username';
+import { CASH_APPROVAL_CAPABLE_PERMISSIONS } from '@/lib/permissions';
 
 export function RunMaintenanceForm() {
   return (
@@ -211,12 +212,14 @@ export function RolePermissionsForm({
   roleName,
   groups,
   granted,
+  approvalRequired,
   locked,
 }: {
   roleId: string;
   roleName: string;
   groups: Array<{ group: string; permissions: Array<{ key: string; name: string }> }>;
   granted: string[];
+  approvalRequired: string[];
   locked: boolean;
 }) {
   return (
@@ -229,24 +232,43 @@ export function RolePermissionsForm({
               {group.group}
             </legend>
             <div className="mt-1 grid gap-1 sm:grid-cols-2">
-              {group.permissions.map((permission) => (
-                <label
-                  key={permission.key}
-                  className="flex items-start gap-2 rounded-md px-1 py-1 text-sm hover:bg-slate-50"
-                >
-                  <input
-                    type="checkbox"
-                    name="permissions"
-                    value={permission.key}
-                    defaultChecked={granted.includes(permission.key)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-petrol-700"
-                  />
-                  <span>
-                    <span className="block text-petrol-900">{permission.name}</span>
-                    <code className="block text-[0.7rem] text-slate-400">{permission.key}</code>
-                  </span>
-                </label>
-              ))}
+              {group.permissions.map((permission) => {
+                const canRequireApproval = CASH_APPROVAL_CAPABLE_PERMISSIONS.includes(
+                  permission.key as (typeof CASH_APPROVAL_CAPABLE_PERMISSIONS)[number],
+                );
+                return (
+                  <div
+                    key={permission.key}
+                    className="rounded-md px-1 py-1 text-sm hover:bg-slate-50"
+                  >
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        name="permissions"
+                        value={permission.key}
+                        defaultChecked={granted.includes(permission.key)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-petrol-700"
+                      />
+                      <span>
+                        <span className="block text-petrol-900">{permission.name}</span>
+                        <code className="block text-[0.7rem] text-slate-400">{permission.key}</code>
+                      </span>
+                    </label>
+                    {canRequireApproval ? (
+                      <label className="ml-6 mt-1 flex items-center gap-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          name="approvalRequired"
+                          value={permission.key}
+                          defaultChecked={approvalRequired.includes(permission.key)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-petrol-700"
+                        />
+                        Requiere autorización previa
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </fieldset>
         ))}

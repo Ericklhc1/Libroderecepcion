@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-18** · simplificación operativa PR **#72**
+Actualizado: **2026-09-18** · resolución global de conflictos PR **#73**
 
 ## Estados canónicos
 
@@ -26,28 +26,32 @@ Actualizado: **2026-09-18** · simplificación operativa PR **#72**
 | Habitaciones + Reservas | `PRODUCTION` | #64 · #68 | Núcleo por habitación e ID FNS desplegado |
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
-| Simplificación del Libro | `EN_DESARROLLO` | #72 | Primer tramo: Inicio deja de ser un segundo Libro y se convierte en ventana operativa |
+| Simplificación del Libro | `PRODUCTION` | #72 | Inicio deja de ser un segundo Libro y se convierte en ventana operativa |
+| Resolución global de conflictos | `PR_ABIERTO` | #73 | Supervisor, Gerencia y Administrador: reconciliación de duplicados, check-outs vencidos, llaves y alertas con notificación global |
 
 ## Iteración actual
 
-**Simplificación del Libro — tramo 1: Inicio** · PR **#72**
+**Resolver todos los conflictos** · PR **#73**
 
-Objetivo: reducir carga cognitiva sin esconder capacidad.
+La acción no oculta avisos. Ejecuta reglas operativas verificables:
 
-Inicio queda limitado a:
+1. colapsa estadías activas duplicadas conservando la fotografía PMS más reciente;
+2. retira ocupaciones IN_HOUSE antiguas sólo cuando el día PMS más reciente
+   identifica de forma unívoca al ocupante vigente;
+3. después de la hora límite de check-out (11:00 por defecto), confirma en lote
+   las salidas del día o anteriores que siguen pendientes;
+4. vuelve a aplicar la única regla canónica de llaves
+   (`reconcilePrincipalKeys`) para entregar la principal a huéspedes in-house;
+5. recalcula las alertas;
+6. registra una novedad de trazabilidad y notifica a todos los usuarios activos.
 
-1. estado y acciones del turno;
-2. cuatro indicadores accionables;
-3. una única bandeja **Atención ahora**, priorizada por reglas determinísticas.
+Una contradicción ambigua —por ejemplo dos reservas distintas IN_HOUSE en la
+misma habitación y el mismo día PMS— **no se resuelve inventando**. Permanece
+visible y se convierte/actualiza en incidencia crítica para decisión humana.
 
-Se retiran de Inicio las listas duplicadas de tareas, incidencias, alertas,
-seguimientos, últimas novedades y entregas. El detalle sigue disponible en el
-Libro y en las vistas especializadas. El backend deja de consultar datos que
-sólo alimentaban esos bloques.
-
-Siguiente tramo después de #72: revisar la propia pantalla `/libro` para
-reducir filtros simultáneos, enlaces especializados y opciones que no aporten
-al flujo diario, sin eliminar acciones ni trazabilidad.
+Además #73 corrige la causa de las duplicidades entre días: una estadía activa de
+la misma reserva/habitación/fase se actualiza con el nuevo `businessDate` en
+vez de crear una fila paralela.
 
 ## Infraestructura vigente
 

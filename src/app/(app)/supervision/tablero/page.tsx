@@ -4,7 +4,9 @@ import { ArrowLeft, ClipboardList, Users } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { getAssignmentBoard } from '@/server/services/assignment-board';
 import { getMyOpenRun, listRuns, listTemplates } from '@/server/services/checklists';
 import { PRIORITY_LABEL } from '@/domain/labels';
@@ -42,8 +44,15 @@ const RESULT_TONE = {
   NO_APLICA: 'neutro',
 } as const;
 
-export default async function AssignmentBoardPage() {
+export default async function AssignmentBoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePageUser();
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   /*
     El tablero comparte exactamente la puerta de Supervisión: consultar o
     administrar turnos. `incident.manage` no concede acceso lateral por URL.
@@ -66,6 +75,37 @@ export default async function AssignmentBoardPage() {
   ]);
 
   const pendingInRun = myRun?.items.filter((item) => item.result === 'PENDIENTE').length ?? 0;
+  const textMatches = (values: Array<string | number | null | undefined>) =>
+    !q ||
+    values
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  const visibleUnassigned = board.unassigned.filter((item) =>
+    textMatches([item.seq, item.kind, item.priority, item.roomNumber, item.title]),
+  );
+  const visibleWorkload = board.workload.filter((row) =>
+    textMatches([row.name, row.roleName, row.openTasks, row.overdueTasks, row.openEntries, row.urgent]),
+  );
+  const visibleTemplates = templates.filter((template) =>
+    textMatches([
+      template.name,
+      template.description,
+      template.cadence,
+      ...template.items.map((item) => item.text),
+    ]),
+  );
+  const visibleRuns = runs.filter((run) =>
+    textMatches([
+      run.templateName,
+      run.runBy.name,
+      run.notes,
+      ...run.items.map((item) => item.text),
+      ...run.items.map((item) => item.observation),
+    ]),
+  );
+  const show = (name: string) => !seccion || seccion === name;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -103,17 +143,35 @@ export default async function AssignmentBoardPage() {
         <StatTile label="Personas operativas" value={board.workload.length} tone="neutral" />
       </div>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar tarea, persona, lista o ronda…"
+        clearHref="/supervision/tablero"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
+          <select name="seccion" defaultValue={seccion} className="input-base w-full">
+            <option value="">Todas</option>
+            <option value="sin-responsable">Sin responsable</option>
+            <option value="carga">Carga por persona</option>
+            <option value="listas">Listas de control</option>
+            <option value="rondas">Rondas recientes</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       {/* Lo que no tiene dueño va primero: es lo único que nadie está mirando. */}
-      <Card>
-        <CardHeader title="Sin responsable" count={board.unassigned.length} />
-        {board.unassigned.length === 0 ? (
+      {show('sin-responsable') ? <Card>
+        <CardHeader title="Sin responsable" count={visibleUnassigned.length} />
+        {visibleUnassigned.length === 0 ? (
           <EmptyState
             message="Todo tiene responsable."
             hint="Nada quedó sin que alguien lo esté mirando."
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {board.unassigned.map((item) => {
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleUnassigned.map((item) => {
               const overdue = item.dueAt !== null && item.dueAt < board.now;
               return (
                 <li
@@ -152,16 +210,18 @@ export default async function AssignmentBoardPage() {
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
-      <Card>
-        <CardHeader title="Carga por persona" count={board.workload.length} />
-        {board.workload.length === 0 ? (
+      {show('carga') ? <Card>
+        <CardHeader title="Carga por persona" count={visibleWorkload.length} />
+        {visibleWorkload.length === 0 ? (
           <EmptyState message="Sin personal operativo activo." />
         ) : (
-          <div className="overflow-x-auto">
+          <CardScroll>
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
                 <tr>
@@ -173,7 +233,7 @@ export default async function AssignmentBoardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {board.workload.map((row) => (
+                {visibleWorkload.map((row) => (
                   <tr key={row.userId}>
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-petrol-900">{row.name}</p>
@@ -199,9 +259,10 @@ export default async function AssignmentBoardPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
       {/* La ronda abierta de esta persona, si la hay: es lo que tiene a medias. */}
       {myRun ? (
@@ -216,7 +277,8 @@ export default async function AssignmentBoardPage() {
               ? `Quedan ${pendingInRun} punto(s) sin revisar. Márcalos, aunque sea como «no aplica».`
               : 'Todos los puntos revisados: ya puedes cerrarla.'}
           </p>
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {myRun.items.map((item) => (
               <li key={item.id} className="px-4 py-3">
                 <div className="mb-1 flex items-center gap-2">
@@ -231,24 +293,26 @@ export default async function AssignmentBoardPage() {
                 />
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         </Card>
       ) : null}
 
-      <Card>
+      {show('listas') ? <Card>
         <CardHeader
           title="Listas de control"
-          count={templates.length}
+          count={visibleTemplates.length}
           action={canConfigure ? <TemplateDialog /> : null}
         />
-        {templates.length === 0 ? (
+        {visibleTemplates.length === 0 ? (
           <EmptyState
             message="Sin listas de control."
             hint="Ármalas con los puntos que revisas en cada ronda."
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {templates.map((template) => (
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleTemplates.map((template) => (
               <li
                 key={template.id}
                 className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
@@ -296,17 +360,19 @@ export default async function AssignmentBoardPage() {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
-      <Card>
-        <CardHeader title="Rondas recientes" count={runs.length} />
-        {runs.length === 0 ? (
+      {show('rondas') ? <Card>
+        <CardHeader title="Rondas recientes" count={visibleRuns.length} />
+        {visibleRuns.length === 0 ? (
           <EmptyState message="Todavía no se ha recorrido ninguna lista." />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {runs.map((run) => {
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleRuns.map((run) => {
               const failures = run.items.filter((item) => item.result === 'FALLA');
               const criticalFailures = failures.filter((item) => item.critical);
               return (
@@ -348,9 +414,10 @@ export default async function AssignmentBoardPage() {
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
     </div>
   );
 }

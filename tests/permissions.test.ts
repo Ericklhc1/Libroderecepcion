@@ -114,6 +114,26 @@ describe('matriz de roles y permisos', () => {
     }
   });
 
+  it('el recepcionista opera Caja rutinaria sin autorización implícita', async () => {
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    for (const permission of [
+      'cash.view',
+      'cash.manual_in',
+      'cash.manual_out',
+      'cash.audit',
+      'cash.guarantee_in',
+      'cash.guarantee_out',
+      'cash.treasury_transfer',
+      'cash.count_declare',
+      'cash.count_receive',
+      'cash.usd_rate',
+      'cash.close',
+    ] as PermissionKey[]) {
+      expect(hasPermission(receptionist, permission)).toBe(true);
+    }
+    expect(hasPermission(receptionist, 'cash.reopen')).toBe(false);
+  });
+
   it('el supervisor puede reabrir, eliminar, auditar y programar turnos', async () => {
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     for (const permission of [
@@ -124,6 +144,7 @@ describe('matriz de roles y permisos', () => {
       'shift.manage',
       'audit.view',
       'metrics.view',
+      'cash.reopen',
     ] as PermissionKey[]) {
       expect(hasPermission(supervisor, permission)).toBe(true);
     }

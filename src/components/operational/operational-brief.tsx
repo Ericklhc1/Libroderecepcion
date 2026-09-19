@@ -1,5 +1,7 @@
 'use client';
 
+import { formatTime } from '@/lib/format';
+
 import { useState } from 'react';
 import { Sparkles, RefreshCw } from 'lucide-react';
 import { AiAttribution } from '@/components/ai/ai-attribution';
@@ -61,7 +63,7 @@ export function OperationalBriefButton() {
           <p className="whitespace-pre-line text-sm leading-5 text-petrol-950">{brief}</p>
           {generatedAt ? (
             <p className="mt-1 text-[11px] text-slate-500">
-              Análisis contextual · {new Date(generatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+              Análisis contextual · {formatTime(generatedAt)}
             </p>
           ) : null}
           <AiAttribution className="mt-2 justify-start text-left opacity-80" />

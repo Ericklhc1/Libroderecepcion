@@ -199,7 +199,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       type: AlertType.ENTREGA_TURNO_PENDIENTE,
       level: AlertLevel.ATENCION,
       title: 'Entrega de turno sin confirmar',
-      message: `La entrega del turno ${handover.fromShift.type} del ${handover.fromShift.date.toLocaleDateString('es-CL')} sigue sin ser recibida.`,
+      message: `La entrega del turno ${handover.fromShift.type} del ${formatCalendarDate(handover.fromShift.date)} sigue sin ser recibida.`,
       handoverId: handover.id,
     });
   }
@@ -220,7 +220,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       type: AlertType.ENTREGA_TURNO_PENDIENTE,
       level: AlertLevel.CRITICA,
       title: 'Turno vencido sin preparar la entrega',
-      message: `El turno ${shift.type} del ${shift.date.toLocaleDateString('es-CL')} terminó su horario y aún no envía la entrega.`,
+      message: `El turno ${shift.type} del ${formatCalendarDate(shift.date)} terminó su horario y aún no envía la entrega.`,
       dueAt: shift.plannedEnd,
     });
   }
@@ -340,7 +340,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
         type: AlertType.RESERVA_SIN_CONFIRMAR,
         level: AlertLevel.ATENCION,
         title: `Reserva sin confirmar con llegada inminente: ${who}`,
-        message: `La reserva ${reservation.code} llega el ${reservation.checkIn.toLocaleDateString('es-CL')} y sigue sin confirmar.`,
+        message: `La reserva ${reservation.code} llega el ${formatDateTime(reservation.checkIn)} y sigue sin confirmar.`,
         dueAt: reservation.checkIn,
         reservationId: reservation.id,
         guestId: reservation.guestId,

@@ -47,6 +47,26 @@ export function formatDate(date: Date | string | null | undefined): string {
   });
 }
 
+/**
+ * Formatea una fecha calendario de PostgreSQL (`@db.Date`).
+ *
+ * Prisma representa esas fechas como 00:00 UTC. Aplicar America/Santiago a
+ * ese valor las movería al día anterior. Por eso una fecha sin hora se
+ * formatea explícitamente en UTC: conserva el calendario que vino del PMS.
+ */
+export function formatCalendarDate(
+  date: Date | string | null | undefined,
+): string {
+  if (!date) return '—';
+  const value = typeof date === 'string' ? new Date(date) : date;
+  return value.toLocaleDateString(DATE_LOCALE, {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 export function formatTime(date: Date | string | null | undefined): string {
   if (!date) return '—';
   const value = typeof date === 'string' ? new Date(date) : date;

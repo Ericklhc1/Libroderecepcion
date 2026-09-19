@@ -14,6 +14,8 @@ import {
   sendHandover,
 } from '@/server/services/shifts';
 import { RuleError } from '@/server/errors';
+import { shiftTypeAt } from '@/domain/shift';
+import { formatTime } from '@/lib/format';
 import {
   ROLE_KEYS,
   closeAllShifts,
@@ -73,16 +75,15 @@ describe('modelo de turnos: dos ventanas, solapables y exclusivos por persona', 
     const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const { shift } = await openShift(receptionist, { type: ShiftType.NOCHE });
 
-    expect(shift.plannedStart.getHours()).toBe(20);
-    expect(shift.plannedEnd.getHours()).toBe(8);
+    expect(formatTime(shift.plannedStart)).toBe('20:00');
+    expect(formatTime(shift.plannedEnd)).toBe('08:00');
   });
 
   it('sin tipo, propone el que corresponde al reloj', async () => {
     const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const { shift } = await openShift(receptionist, {});
 
-    const hour = new Date().getHours();
-    expect(shift.type).toBe(hour >= 7 && hour < 20 ? ShiftType.DIA : ShiftType.NOCHE);
+    expect(shift.type).toBe(shiftTypeAt());
   });
 
   it('si ya hay un turno abierto, el segundo abre SU PROPIO turno', async () => {

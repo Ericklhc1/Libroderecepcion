@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatCalendarDate,
   formatDate,
   formatDateTime,
   formatTime,
@@ -7,7 +8,19 @@ import {
   toDateInput,
   toDateTimeInput,
 } from '@/lib/format';
-import { HOTEL_TIME_ZONE, hotelDateKey, hotelHour, hotelParts } from '@/domain/time';
+import {
+  HOTEL_TIME_ZONE,
+  calendarDateKey,
+  hotelCalendarDate,
+  hotelDateKey,
+  hotelDayEnd,
+  hotelDayStart,
+  hotelHour,
+  hotelParts,
+} from '@/domain/time';
+import { plannedWindow, shiftTypeAt } from '@/domain/shift';
+import { operationalDate } from '@/server/services/shifts';
+import { ShiftType } from '@prisma/client';
 
 /**
  * La hora del hotel.
@@ -134,5 +147,42 @@ describe('utilidades de la zona del hotel', () => {
       hour: '16',
       minute: '25',
     });
+  });
+});
+
+
+describe('el reloj operativo del sistema usa Santiago aunque el proceso use UTC', () => {
+  it('elige el turno con la hora del hotel', () => {
+    expect(shiftTypeAt(TARDE)).toBe(ShiftType.DIA);
+    expect(shiftTypeAt(NOCHE)).toBe(ShiftType.NOCHE);
+  });
+
+  it('la fecha operativa después de las 21:00 chilenas sigue siendo hoy', () => {
+    expect(operationalDate(NOCHE).toISOString()).toBe('2026-09-16T00:00:00.000Z');
+    expect(hotelCalendarDate(NOCHE).toISOString()).toBe('2026-09-16T00:00:00.000Z');
+  });
+
+  it('las ventanas de turno representan 07:00/20:00 reales de Santiago', () => {
+    const day = new Date('2026-09-16T00:00:00.000Z');
+    const dia = plannedWindow(day, ShiftType.DIA);
+    const noche = plannedWindow(day, ShiftType.NOCHE);
+
+    expect(formatTime(dia.start)).toBe('07:00');
+    expect(formatTime(dia.end)).toBe('20:00');
+    expect(formatTime(noche.start)).toBe('20:00');
+    expect(formatTime(noche.end)).toBe('08:00');
+    expect(hotelDateKey(noche.end)).toBe('2026-09-17');
+  });
+
+  it('inicio y fin del día son instantes del calendario de Santiago', () => {
+    expect(formatDateTime(hotelDayStart(NOCHE))).toContain('16-09-26');
+    expect(formatTime(hotelDayStart(NOCHE))).toBe('00:00');
+    expect(formatDateTime(hotelDayEnd(NOCHE))).toContain('16-09-26');
+  });
+
+  it('una fecha de PostgreSQL no retrocede un día al formatearla', () => {
+    const dateOnly = new Date('2026-09-18T00:00:00.000Z');
+    expect(calendarDateKey(dateOnly)).toBe('2026-09-18');
+    expect(formatCalendarDate(dateOnly)).toBe('18-09-2026');
   });
 });

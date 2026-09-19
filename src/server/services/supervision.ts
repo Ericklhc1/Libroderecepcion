@@ -14,6 +14,7 @@ import {
   ShiftStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { CONFLICT_LABELS, type Conflict, type ConflictKind } from '@/domain/pms/conflicts';
 import {
@@ -67,7 +68,7 @@ export type SupervisionBlock = {
 
 function shiftText(shift: { type: string; date: Date } | null | undefined): string | null {
   if (!shift) return null;
-  return `${shift.type} · ${shift.date.toLocaleDateString('es-CL')}`;
+  return `${shift.type} · ${formatCalendarDate(shift.date)}`;
 }
 
 function dueText(date: Date | null, now: Date): string | null {

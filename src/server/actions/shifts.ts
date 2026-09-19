@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { AuditAction, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import {
   formDataToObject,
   parseOrThrow,
@@ -361,8 +362,8 @@ export async function scheduleShiftAction(
       await assertAssignable(userId);
     }
 
-    const date = new Date(input.date);
-    date.setHours(0, 0, 0, 0);
+    const dateKey = input.date.slice(0, 10);
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
     const window = plannedWindow(date, input.type);
 
     const existing = await prisma.shift.findFirst({
@@ -411,7 +412,7 @@ export async function scheduleShiftAction(
       action: AuditAction.EDITAR,
       summary:
         `Turno de ${SHIFT_TYPE_LABEL[input.type]} (${SHIFT_WINDOW_LABEL[input.type]}) ` +
-        `del ${date.toLocaleDateString('es-CL')} creado con ${input.userIds.length} persona(s)`,
+        `del ${formatCalendarDate(date)} creado con ${input.userIds.length} persona(s)`,
       user,
       after: { userIds: input.userIds, notes: input.notes },
     });
@@ -502,7 +503,7 @@ export async function archiveShiftAction(
       action: AuditAction.EDITAR,
       user,
       summary:
-        `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} ` +
+        `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${formatCalendarDate(shift.date)} ` +
         `archivado${input.reason ? `: ${input.reason}` : ''}`,
       before: { archivedAt: null },
       after: { archivedAt: new Date().toISOString() },
@@ -535,7 +536,7 @@ export async function unarchiveShiftAction(
       entityId: shift.id,
       action: AuditAction.EDITAR,
       user,
-      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString('es-CL')} desarchivado`,
+      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${formatCalendarDate(shift.date)} desarchivado`,
     });
 
     refresh(shift.id);

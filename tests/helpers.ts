@@ -4,6 +4,7 @@ import { ROLE_KEYS, type PermissionKey, type RoleKey } from '@/lib/permissions';
 import { seedCatalog as domainSeedCatalog } from '@/domain/catalog';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { plannedWindow } from '@/domain/shift';
+import { addCalendarDateDays, hotelCalendarDate } from '@/domain/time';
 
 export const prisma = new PrismaClient();
 
@@ -140,9 +141,7 @@ export async function createShift(options: {
   dayOffset?: number;
   status?: ShiftStatus;
 }) {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + (options.dayOffset ?? 0));
+  const date = addCalendarDateDays(hotelCalendarDate(), options.dayOffset ?? 0);
   const window = plannedWindow(date, options.type);
 
   return prisma.shift.create({

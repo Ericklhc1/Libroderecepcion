@@ -17,6 +17,7 @@ import {
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { hotelDateKey, hotelHour } from '@/domain/time';
 import {
@@ -198,7 +199,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       type: AlertType.ENTREGA_TURNO_PENDIENTE,
       level: AlertLevel.ATENCION,
       title: 'Entrega de turno sin confirmar',
-      message: `La entrega del turno ${handover.fromShift.type} del ${handover.fromShift.date.toLocaleDateString('es-CL')} sigue sin ser recibida.`,
+      message: `La entrega del turno ${handover.fromShift.type} del ${formatCalendarDate(handover.fromShift.date)} sigue sin ser recibida.`,
       handoverId: handover.id,
     });
   }
@@ -219,7 +220,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       type: AlertType.ENTREGA_TURNO_PENDIENTE,
       level: AlertLevel.CRITICA,
       title: 'Turno vencido sin preparar la entrega',
-      message: `El turno ${shift.type} del ${shift.date.toLocaleDateString('es-CL')} terminó su horario y aún no envía la entrega.`,
+      message: `El turno ${shift.type} del ${formatCalendarDate(shift.date)} terminó su horario y aún no envía la entrega.`,
       dueAt: shift.plannedEnd,
     });
   }

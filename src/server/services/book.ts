@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import {
   ALERT_LEVEL_TONE,
   ALERT_STATUS_LABEL,
@@ -110,7 +111,7 @@ function numericRef(q: string | null): number | null {
 
 function shiftLabel(shift: { type: string; date: Date } | null | undefined): string | null {
   if (!shift) return null;
-  return `${shift.type} ${shift.date.toLocaleDateString('es-CL')}`;
+  return `${shift.type} ${formatCalendarDate(shift.date)}`;
 }
 
 /**

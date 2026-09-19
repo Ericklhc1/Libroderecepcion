@@ -2,6 +2,7 @@ import 'server-only';
 
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { formatGymFolio } from './gym-pass';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
@@ -179,7 +180,7 @@ export async function buildSupervisorReport(
       ...alerts.map((row) => `${row.status.replaceAll('_', ' ')}: ${row._count._all}`),
       '',
       'TURNOS',
-      ...shifts.map((shift) => `${shift.date.toLocaleDateString('es-CL')} | ${shift.type} | ${shift.status} | ${shift.assignments.map((assignment) => assignment.user.name).join(', ') || 'sin asignación'}`),
+      ...shifts.map((shift) => `${formatCalendarDate(shift.date)} | ${shift.type} | ${shift.status} | ${shift.assignments.map((assignment) => assignment.user.name).join(', ') || 'sin asignación'}`),
     ],
   };
 }

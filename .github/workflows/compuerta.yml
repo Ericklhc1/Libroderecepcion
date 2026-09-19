@@ -57,8 +57,12 @@ jobs:
           test -f vercel.json
           test ! -f netlify.toml
           test ! -d .netlify
-          if grep -RIl --exclude-dir=node_modules --exclude-dir=.git --exclude='*.md' --exclude='package-lock.json' -E 'netlify\.app|NETLIFY_|@netlify/' src prisma .github package.json 2>/dev/null; then
+          if grep -RIl --exclude='*.md' -E 'netlify\.app|NETLIFY_|@netlify/' src prisma package.json 2>/dev/null; then
             echo 'Se detectó una dependencia o configuración activa de Netlify. La infraestructura oficial es GitHub + Vercel + Neon.'
+            exit 1
+          fi
+          if find .github -type f ! -name 'compuerta.yml' -print0 | xargs -0 -r grep -Il -E 'netlify\.app|NETLIFY_|@netlify/' 2>/dev/null; then
+            echo 'Se detectó configuración activa de Netlify en .github.'
             exit 1
           fi
 

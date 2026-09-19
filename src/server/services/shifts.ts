@@ -977,7 +977,11 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
     throw new RuleError('Sólo quien está en el turno puede preparar su entrega.');
   }
 
-  if (shift.handoverOut && shift.handoverOut.status !== HandoverStatus.BORRADOR) {
+  if (
+    shift.handoverOut &&
+    shift.handoverOut.status !== HandoverStatus.BORRADOR &&
+    shift.handoverOut.status !== HandoverStatus.ANULADA
+  ) {
     throw new RuleError('Este turno ya envió su entrega.');
   }
 
@@ -996,7 +1000,23 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
 
   return prisma.$transaction(async (tx) => {
     const handover = shift.handoverOut
-      ? shift.handoverOut
+      ? shift.handoverOut.status === HandoverStatus.ANULADA
+        ? await tx.shiftHandover.update({
+            where: { id: shift.handoverOut.id },
+            data: {
+              status: HandoverStatus.BORRADOR,
+              toShiftId: null,
+              issuedById: user.id,
+              issuedAt: null,
+              receivedById: null,
+              receivedAt: null,
+              notes: null,
+              receiverObservations: null,
+              issuerSessionId: null,
+              receiverSessionId: null,
+            },
+          })
+        : shift.handoverOut
       : await tx.shiftHandover.create({
           data: {
             fromShiftId: shift.id,
@@ -1237,7 +1257,7 @@ export async function closeShift(
   });
 }
 
-/** Cancela la preparación y devuelve el turno a ACTIVO. */
+/** Cancela la preparación y devuelve el turno a ACTIVO sin borrar la entrega. */
 export async function cancelHandoverPreparation(user: CurrentUser, shiftId: string) {
   const shift = await getShiftById(shiftId);
   if (!shift.assignments.some((a) => a.userId === user.id)) {
@@ -1254,9 +1274,48 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
   }
   return prisma.$transaction(async (tx) => {
     if (shift.handoverOut) {
-      await tx.handoverItem.deleteMany({ where: { handoverId: shift.handoverOut.id } });
-      await tx.shiftHandover.delete({ where: { id: shift.handoverOut.id } });
+      const handoverId = shift.handoverOut.id;
+
+      // Antes se borraba el handover y PostgreSQL limpiaba estas relaciones por
+      // cascada. Al conservarlo como ANULADA hay que reproducir esa limpieza
+      // explícitamente para que una futura preparación parta realmente de cero.
+      await tx.handoverItem.deleteMany({ where: { handoverId } });
+      await tx.cashCount.deleteMany({ where: { handoverId } });
+      await tx.cashTransfer.deleteMany({ where: { handoverId } });
+      await tx.handoverElement.deleteMany({ where: { handoverId } });
+      await tx.comment.deleteMany({ where: { handoverId } });
+      await tx.task.updateMany({ where: { handoverId }, data: { handoverId: null } });
+      await tx.alert.updateMany({ where: { handoverId }, data: { handoverId: null } });
+
+      await tx.shiftHandover.update({
+        where: { id: handoverId },
+        data: {
+          status: HandoverStatus.ANULADA,
+          toShiftId: null,
+          issuedAt: null,
+          receivedById: null,
+          receivedAt: null,
+          notes: null,
+          receiverObservations: null,
+          issuerSessionId: null,
+          receiverSessionId: null,
+        },
+      });
+
+      await recordAudit(
+        {
+          entity: 'ShiftHandover',
+          entityId: handoverId,
+          action: AuditAction.CAMBIO_ESTADO,
+          summary: 'Entrega de turno anulada durante la preparación',
+          user,
+          before: { status: HandoverStatus.BORRADOR },
+          after: { status: HandoverStatus.ANULADA },
+        },
+        tx,
+      );
     }
+
     const updated = await tx.shift.update({
       where: { id: shift.id },
       data: { status: ShiftStatus.ACTIVO },

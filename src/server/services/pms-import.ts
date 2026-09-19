@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { PmsReportKind, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -166,9 +167,9 @@ function toDraft(stay: NormalizedStay): StayDraft {
 }
 
 function midnight(date: Date): Date {
-  const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
-  return out;
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 /**
@@ -263,7 +264,7 @@ export async function prepareImport(
   }
 
   const businessDate = midnight(
-    reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date(),
+    reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? hotelCalendarDate(),
   );
 
   const declaredTotals = reports.flatMap((report) => report.declaredTotals);

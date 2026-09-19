@@ -282,6 +282,8 @@ model RolePermission {
   permissionId String
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  /// Segundo interruptor: tener el permiso no implica pedir autorización.
+  requiresApproval Boolean @default(false)
   grantedAt    DateTime   @default(now())
 
   @@id([roleId, permissionId])

@@ -38,9 +38,14 @@ function human(value: string) {
 }
 
 export default async function LiveCashPage() {
-  const user = await requirePagePermission('room.view');
+  const user = await requirePagePermission('cash.view');
   const state = await getLiveCashState();
-  const canOperate = hasPermission(user, 'room.manage');
+  const canManualIn = hasPermission(user, 'cash.manual_in');
+  const canManualOut = hasPermission(user, 'cash.manual_out');
+  const canManual = canManualIn || canManualOut;
+  const canAudit = hasPermission(user, 'cash.audit');
+  const canReturnGuarantee = hasPermission(user, 'cash.guarantee_out');
+  const canOperateRooms = hasPermission(user, 'room.manage');
 
   return (
     <div className="space-y-5">
@@ -52,9 +57,9 @@ export default async function LiveCashPage() {
             gimnasio se muestran aquí como información y no modifican la caja.
           </p>
         </div>
-        {canOperate ? (
+        {canManual || canOperateRooms ? (
           <div className="flex flex-wrap gap-2 no-print">
-            <Dialog
+            {canManual ? <Dialog
               title="Registrar movimiento de caja"
               description="Registra un ingreso o egreso manual. El sistema exigirá que tengas un turno operativo abierto."
               triggerVariant="primary"
@@ -67,15 +72,15 @@ export default async function LiveCashPage() {
                 </>
               }
             >
-              <ManualCashMovementForm />
-            </Dialog>
-            <Link
+              <ManualCashMovementForm allowIn={canManualIn} allowOut={canManualOut} />
+            </Dialog> : null}
+            {canOperateRooms ? <Link
               href="/habitaciones"
               className="inline-flex items-center gap-2 rounded-lg bg-petrol-800 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-700"
             >
               <Dumbbell className="h-4 w-4" aria-hidden="true" />
               Generar pase desde habitación
-            </Link>
+            </Link> : null}
           </div>
         ) : null}
       </header>
@@ -114,7 +119,7 @@ export default async function LiveCashPage() {
                     </dd>
                   </div>
                 </dl>
-                <div className="mt-3 no-print">
+                {canAudit ? <div className="mt-3 no-print">
                   <Dialog
                     title={`Corroborar caja ${item.currency}`}
                     description={`El sistema espera ${amount(item.currency, item.expected)}. Cuenta lo que existe físicamente ahora.`}
@@ -139,7 +144,7 @@ export default async function LiveCashPage() {
                         }))}
                     />
                   </Dialog>
-                </div>
+                </div> : null}
               </div>
             </Card>
           ))}
@@ -172,7 +177,7 @@ export default async function LiveCashPage() {
                         </p>
                         <Chip>{human(guarantee.state)}</Chip>
                       </div>
-                      {canOperate ? (
+                      {canReturnGuarantee ? (
                         <ReturnCashGuaranteeForm
                           guaranteeId={guarantee.id}
                           reservationCode={guarantee.reservationCode}
@@ -270,7 +275,7 @@ export default async function LiveCashPage() {
               <p className="text-xs text-slate-500">Correlativos únicos de cuatro dígitos · 1 pax = 1 folio.</p>
             </div>
           </div>
-          {canOperate ? (
+          {canOperateRooms ? (
             <Link href="/habitaciones" className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline">
               Ir a habitaciones <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
@@ -303,7 +308,7 @@ export default async function LiveCashPage() {
                     </p>
                     {pass.voidReason ? <p className="mt-1 text-xs text-red-700">Anulado: {pass.voidReason}</p> : null}
                   </div>
-                  {canOperate && pass.status === 'EMITIDO' ? (
+                  {canOperateRooms && pass.status === 'EMITIDO' ? (
                     <div className="no-print"><VoidGymPassDialog id={pass.id} folio={pass.folio} /></div>
                   ) : null}
                 </li>

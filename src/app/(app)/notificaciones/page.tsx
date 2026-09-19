@@ -30,6 +30,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const canManageAlerts = hasPermission(user, 'alert.manage');
+  const canApproveCash = hasPermission(user, 'cash.approve');
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR;
   const canValidateClosure = isSupervisor || user.isSystemAdmin;
   const now = new Date();
@@ -46,12 +47,15 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       : {}),
   };
 
-  const actionKinds: Prisma.AlertWhereInput[] = [
-    { dedupeKey: { startsWith: 'checkout-unconfirmed:' } },
-  ];
-  if (isSupervisor) {
+  const actionKinds: Prisma.AlertWhereInput[] = [];
+  if (canManageAlerts) {
+    actionKinds.push({ dedupeKey: { startsWith: 'checkout-unconfirmed:' } });
+  }
+  if (canApproveCash) {
     actionKinds.push({ dedupeKey: { startsWith: 'cash-transfer:' } });
     actionKinds.push({ dedupeKey: { startsWith: 'cash-manual:' } });
+  }
+  if (isSupervisor) {
     actionKinds.push({ dedupeKey: { startsWith: 'handover-elements-none:' } });
   }
   if (canValidateClosure) actionKinds.push({ dedupeKey: { startsWith: 'shift-validation:' } });
@@ -75,7 +79,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
       take: 100,
     }),
-    canManageAlerts
+    actionKinds.length > 0
       ? prisma.alert.findMany({
           where: { AND: alertFilters },
           orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],

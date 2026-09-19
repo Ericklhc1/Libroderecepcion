@@ -379,6 +379,10 @@ export const rolePermissionsSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .transform((v) => (v ? (Array.isArray(v) ? v : [v]) : [])),
+  approvalRequired: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) => (v ? (Array.isArray(v) ? v : [v]) : [])),
 });
 
 export const settingSchema = z.object({

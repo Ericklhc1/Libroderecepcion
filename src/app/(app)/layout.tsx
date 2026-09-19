@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
 import { Bell, BookOpen, LogOut, Search, UserRound } from 'lucide-react';
 import { NotificationChime } from '@/components/layout/notification-chime';
@@ -147,7 +148,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
 
         <main className="min-w-0 flex-1 px-4 pb-24 pt-4 lg:pb-8">{children}</main>
-        <AiAttribution className="px-4 pb-24 lg:pb-4" />
+        <div className="px-4 pb-24 lg:pb-4">
+          <AiAttribution />
+          <p className="mt-1 text-center text-[0.65rem] text-slate-400">Libro Operativo v{packageJson.version}</p>
+        </div>
       </div>
 
       <MobileNav items={items} badges={badges} />

@@ -76,6 +76,9 @@ export default async function RolesPage() {
               roleName={role.name}
               groups={groups}
               granted={role.permissions.map((rp) => rp.permission.key)}
+              approvalRequired={role.permissions
+                .filter((rp) => rp.requiresApproval)
+                .map((rp) => rp.permission.key)}
               locked={role.key === ROLE_KEYS.SYSTEM_ADMIN}
             />
           </div>

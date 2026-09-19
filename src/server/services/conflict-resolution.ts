@@ -285,17 +285,17 @@ export async function resolveAllOperationalConflicts(
   });
 
   let escalationEntryId: string | null = null;
-  if (remainingConflicts.length > 0) {
-    const existingEscalation = await prisma.operationalEntry.findFirst({
-      where: {
-        deletedAt: null,
-        category: 'CONFLICTOS_REQUIEREN_DECISION',
-        status: { in: ENTRY_OPEN_STATUSES },
-      },
-      select: { id: true },
-      orderBy: { occurredAt: 'desc' },
-    });
+  const existingEscalation = await prisma.operationalEntry.findFirst({
+    where: {
+      deletedAt: null,
+      category: 'CONFLICTOS_REQUIEREN_DECISION',
+      status: { in: ENTRY_OPEN_STATUSES },
+    },
+    select: { id: true, seq: true, status: true },
+    orderBy: { occurredAt: 'desc' },
+  });
 
+  if (remainingConflicts.length > 0) {
     if (existingEscalation) {
       escalationEntryId = existingEscalation.id;
       await prisma.operationalEntry.update({
@@ -312,6 +312,14 @@ export async function resolveAllOperationalConflicts(
           closedById: null,
         },
       });
+      await recordAudit({
+        entity: 'OperationalEntry',
+        entityId: existingEscalation.id,
+        action: AuditAction.CAMBIO_ESTADO,
+        user,
+        summary: `Incidencia #${existingEscalation.seq} actualizada con ${remainingConflicts.length} conflicto(s) restante(s)`,
+        after: { remainingConflicts: remainingConflicts.length },
+      });
     } else {
       const escalation = await createEntry(user, {
         type: EntryType.INCIDENCIA,
@@ -327,6 +335,26 @@ export async function resolveAllOperationalConflicts(
       });
       escalationEntryId = escalation.id;
     }
+  } else if (existingEscalation) {
+    await prisma.operationalEntry.update({
+      where: { id: existingEscalation.id },
+      data: {
+        status: EntryStatus.RESUELTO,
+        resolution: 'La reconciliación global dejó el estado operativo sin conflictos vivos.',
+        requiresFollowUp: false,
+        closedAt: now,
+        closedById: user.id,
+      },
+    });
+    await recordAudit({
+      entity: 'OperationalEntry',
+      entityId: existingEscalation.id,
+      action: AuditAction.CERRAR,
+      user,
+      summary: `Incidencia #${existingEscalation.seq} resuelta por reconciliación global`,
+      before: { status: existingEscalation.status },
+      after: { status: EntryStatus.RESUELTO },
+    });
   }
 
   const recipients = await prisma.user.findMany({

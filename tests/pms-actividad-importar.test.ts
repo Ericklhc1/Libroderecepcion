@@ -32,7 +32,7 @@ let businessDate: Date;
 function draft(input: {
   reservationId: string;
   roomNumber: string;
-  status: RoomStayStatus;
+  status: RoomStayStatus | null;
   guestNames?: string[];
   channel?: string;
   arrival?: string;
@@ -193,6 +193,21 @@ describe('los tres tipos de actividad', () => {
       recuperarla: el Libro no la devuelve solo.
     */
     expect(snapshot.mainKey?.status).toBe(KeyStatus.PENDIENTE_DEVOLUCION);
+  });
+
+  it('un tipo incierto queda como excepción y no se aplica', async () => {
+    const result = await importar([
+      draft({
+        reservationId: '7000004',
+        roomNumber: '408',
+        status: null,
+        pmsStatus: 'Pendiente de asignar',
+        issues: ['El tipo de actividad «Pendiente de asignar» no se reconoce.'],
+      }),
+    ]);
+
+    expect(result.skipped).toBe(1);
+    expect(await staysOf('408')).toHaveLength(0);
   });
 });
 

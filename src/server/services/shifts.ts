@@ -15,6 +15,8 @@ import {
 // `ShiftType` sólo se usa como tipo: los valores los da `shiftTypeAt`.
 import type { Prisma, ShiftType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
+import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { notify } from '@/server/notifications';
@@ -41,11 +43,9 @@ import {
   isCashEnabled,
 } from './cash';
 
-/** Fecha operativa (medianoche local) usada como clave de turno. */
+/** Fecha operativa del hotel, guardada como @db.Date estable. */
 export function operationalDate(now = new Date()): Date {
-  const date = new Date(now);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return hotelCalendarDate(now);
 }
 
 export const shiftInclude = {
@@ -462,7 +462,9 @@ export async function openShift(
   if (mine) return { shift: mine, joined: false };
 
   const type = input.type ?? shiftTypeAt();
-  const day = operationalDate(input.date ?? new Date());
+  const day = input.date
+    ? new Date(`${calendarDateKey(input.date)}T00:00:00.000Z`)
+    : operationalDate();
   const window = plannedWindow(day, type);
 
   const created = await prisma
@@ -526,7 +528,7 @@ export async function openShift(
           action: AuditAction.TURNO_INICIAR,
           summary:
             `Turno de ${SHIFT_TYPE_LABEL[type]} abierto (${SHIFT_WINDOW_LABEL[type]}) ` +
-            `el ${day.toLocaleDateString('es-CL')}`,
+            `el ${formatCalendarDate(day)}`,
           user,
           after: { status: ShiftStatus.INICIADO, type, date: day },
         },
@@ -1222,9 +1224,7 @@ export async function closeShift(
         entity: 'Shift',
         entityId: shift.id,
         action: AuditAction.TURNO_CERRAR,
-        summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.date.toLocaleDateString(
-          'es-CL',
-        )} cerrado por ${user.name}`,
+        summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${formatCalendarDate(shift.date)} cerrado por ${user.name}`,
         user,
         before: { status: shift.status },
         after: { status: ShiftStatus.CERRADO },

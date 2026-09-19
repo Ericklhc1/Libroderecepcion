@@ -71,8 +71,15 @@ export async function resolveAlertAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('alert.manage');
     const input = parseOrThrow(alertActionSchema, formDataToObject(formData));
+    const alert = await prisma.alert.findUnique({
+      where: { id: input.id },
+      select: { dedupeKey: true },
+    });
+    const cashApproval =
+      alert?.dedupeKey?.startsWith('cash-transfer:') === true ||
+      alert?.dedupeKey?.startsWith('cash-manual:') === true;
+    const user = await requirePermission(cashApproval ? 'cash.approve' : 'alert.manage');
     await resolveAlert(user, input);
     refresh();
     return { ok: true as const, message: 'Alerta resuelta.' };

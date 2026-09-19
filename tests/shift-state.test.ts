@@ -11,6 +11,8 @@ import {
   shiftTypeAt,
 } from '@/domain/shift';
 import { RuleError } from '@/server/errors';
+import { hotelDateKey, hotelWallDateTime } from '@/domain/time';
+import { formatTime } from '@/lib/format';
 
 /**
  * Pruebas de la máquina de estados del turno. Son unitarias y puras: describen
@@ -111,27 +113,27 @@ describe('las dos ventanas fijas', () => {
   });
 
   it('se leen como las dice el hotel', () => {
-    expect(SHIFT_WINDOW_LABEL.DIA).toBe('07:00 a 19:59');
-    expect(SHIFT_WINDOW_LABEL.NOCHE).toBe('20:00 a 07:59');
+    expect(SHIFT_WINDOW_LABEL.DIA).toBe('07:00 a 20:00');
+    expect(SHIFT_WINDOW_LABEL.NOCHE).toBe('20:00 a 08:00');
   });
 
   it('el turno de día no cruza la medianoche y el de noche sí', () => {
-    const base = new Date(2026, 8, 16);
+    const base = new Date('2026-09-16T00:00:00.000Z');
     const dia = plannedWindow(base, ShiftType.DIA);
-    expect(dia.start.getHours()).toBe(7);
-    expect(dia.end.getDate()).toBe(base.getDate());
+    expect(formatTime(dia.start)).toBe('07:00');
+    expect(formatTime(dia.end)).toBe('20:00');
 
     const noche = plannedWindow(base, ShiftType.NOCHE);
-    expect(noche.start.getHours()).toBe(20);
-    expect(noche.end.getDate()).toBe(base.getDate() + 1);
-    expect(noche.end.getHours()).toBe(8);
+    expect(formatTime(noche.start)).toBe('20:00');
+    expect(formatTime(noche.end)).toBe('08:00');
+    expect(hotelDateKey(noche.end)).toBe('2026-09-17');
   });
 
   it('propone el turno según el reloj, en los dos bordes', () => {
-    expect(shiftTypeAt(new Date(2026, 8, 16, 7, 0))).toBe(ShiftType.DIA);
-    expect(shiftTypeAt(new Date(2026, 8, 16, 19, 59))).toBe(ShiftType.DIA);
-    expect(shiftTypeAt(new Date(2026, 8, 16, 20, 0))).toBe(ShiftType.NOCHE);
-    expect(shiftTypeAt(new Date(2026, 8, 16, 6, 59))).toBe(ShiftType.NOCHE);
-    expect(shiftTypeAt(new Date(2026, 8, 16, 3, 0))).toBe(ShiftType.NOCHE);
+    expect(shiftTypeAt(hotelWallDateTime('2026-09-16', 7, 0))).toBe(ShiftType.DIA);
+    expect(shiftTypeAt(hotelWallDateTime('2026-09-16', 19, 59))).toBe(ShiftType.DIA);
+    expect(shiftTypeAt(hotelWallDateTime('2026-09-16', 20, 0))).toBe(ShiftType.NOCHE);
+    expect(shiftTypeAt(hotelWallDateTime('2026-09-16', 6, 59))).toBe(ShiftType.NOCHE);
+    expect(shiftTypeAt(hotelWallDateTime('2026-09-16', 3, 0))).toBe(ShiftType.NOCHE);
   });
 });

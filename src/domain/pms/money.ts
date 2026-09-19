@@ -107,7 +107,26 @@ export function parseMoney(raw: string | null | undefined): Money | null {
   if (!raw) return null;
   const { currency, rest } = detectCurrency(raw);
   if (!currency) return null;
-  const amount = parseDigits(rest, currency);
+
+  /*
+   * FNS puede imprimir una observación inmediatamente después del importe:
+   *
+   *   CL$ 0 Cartel no molestar
+   *   US$ 0 RESERVA GARANTIZADA!!
+   *
+   * La observación no forma parte del saldo. Se toma sólo el bloque numérico
+   * inicial y se ignora el texto posterior. Los espacios entre dígitos siguen
+   * siendo válidos como separador de miles.
+   *
+   * Si NO hay una cifra al comienzo —por ejemplo:
+   *   CL$ Huésped tiene plancha, 10.000 solicitar en check out
+   * no se rescata el 10.000 que aparece después: podría ser una multa, una
+   * garantía u otro dato distinto del saldo y adivinarlo sería peligroso.
+   */
+  const amountToken = rest.match(/^(-?\d(?:[\d.,]|\s(?=\d))*)(?:\s+.*)?$/)?.[1]?.trim();
+  if (!amountToken) return null;
+
+  const amount = parseDigits(amountToken, currency);
   if (amount === null) return null;
   return { amount, currency };
 }

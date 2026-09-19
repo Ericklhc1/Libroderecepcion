@@ -6,7 +6,8 @@ import {
   formatGymFolio,
   getLiveCashStateWithGym as getLiveCashState,
 } from '@/server/services/gym-pass';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import {
@@ -16,6 +17,7 @@ import {
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
 import { formatDateTime } from '@/lib/format';
+import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Caja' };
 export const dynamic = 'force-dynamic';
@@ -38,8 +40,16 @@ function human(value: string) {
   return value.toLowerCase().replaceAll('_', ' ').replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 }
 
-export default async function LiveCashPage() {
+export default async function LiveCashPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePagePermission('cash.view');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const moneda = typeof params.moneda === 'string' ? params.moneda : '';
+  const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const state = await getLiveCashState();
   const canManualIn = hasPermission(user, 'cash.manual_in');
   const canManualOut = hasPermission(user, 'cash.manual_out');
@@ -47,6 +57,41 @@ export default async function LiveCashPage() {
   const canAudit = hasPermission(user, 'cash.audit');
   const canReturnGuarantee = hasPermission(user, 'cash.guarantee_out');
   const canOperateRooms = hasPermission(user, 'room.manage');
+
+  const matches = (values: Array<string | number | null | undefined>) =>
+    !q || values.filter((value) => value !== null && value !== undefined).join(' ').toLowerCase().includes(q);
+
+  const visibleGuarantees = state.cashGuarantees.filter(
+    (item) =>
+      (!moneda || item.currency === moneda) &&
+      matches([item.guestName, item.roomNumber, item.reservationCode, item.state, item.currency, item.amount]),
+  );
+  const visibleAudits = state.audits.filter(
+    (item) =>
+      (!moneda || item.currency === moneda) &&
+      matches([item.currency, item.countedByName, item.notes, item.expectedAmount, item.countedAmount, item.difference]),
+  );
+  const visibleMovements = state.movements.filter(
+    (item) =>
+      (!moneda || item.currency === moneda) &&
+      matches([
+        item.kind,
+        item.direction,
+        item.currency,
+        item.amount,
+        item.reference,
+        item.notes,
+        item.roomNumber,
+        item.reservationCode,
+        item.guestName,
+        item.createdByName,
+      ]),
+  );
+  const visibleGymPasses = state.gymPasses.filter((item) =>
+    matches([item.folio, item.roomNumber, item.guestName, item.reservationCode, item.receptionistName, item.status]),
+  );
+
+  const show = (name: string) => !seccion || seccion === name;
 
   return (
     <div className="space-y-5">
@@ -85,6 +130,31 @@ export default async function LiveCashPage() {
           </div>
         ) : null}
       </header>
+
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar huésped, habitación, reserva, concepto…"
+        clearHref="/caja"
+      >
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Moneda</span>
+          <select name="moneda" defaultValue={moneda} className="input-base w-full">
+            <option value="">Todas</option>
+            <option value="CLP">CLP</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
+          <select name="seccion" defaultValue={seccion} className="input-base w-full">
+            <option value="">Todas</option>
+            <option value="garantias">Garantías</option>
+            <option value="auditorias">Corroboraciones</option>
+            <option value="movimientos">Movimientos</option>
+            <option value="gimnasio">Folios gimnasio</option>
+          </select>
+        </label>
+      </ListFilterBar>
 
       {state.currencies.length === 0 ? (
         <Card>
@@ -153,13 +223,14 @@ export default async function LiveCashPage() {
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader title="Garantías en efectivo bajo custodia" count={state.cashGuarantees.length} />
-          {state.cashGuarantees.length === 0 ? (
+        {show('garantias') ? <Card>
+          <CardHeader title="Garantías en efectivo bajo custodia" count={visibleGuarantees.length} />
+          {visibleGuarantees.length === 0 ? (
             <EmptyState message="No hay garantías en efectivo activas." />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {state.cashGuarantees.map((guarantee) => (
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
+              {visibleGuarantees.map((guarantee) => (
                 <li key={guarantee.id} className="px-4 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -188,17 +259,19 @@ export default async function LiveCashPage() {
                   </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </CardScroll>
           )}
-        </Card>
+        </Card> : null}
 
-        <Card>
-          <CardHeader title="Últimas corroboraciones" count={state.audits.length} />
-          {state.audits.length === 0 ? (
+        {show('auditorias') ? <Card>
+          <CardHeader title="Últimas corroboraciones" count={visibleAudits.length} />
+          {visibleAudits.length === 0 ? (
             <EmptyState message="Todavía no se ha corroborado la caja desde esta pantalla." />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {state.audits.map((audit) => (
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
+              {visibleAudits.map((audit) => (
                 <li key={audit.id} className="px-4 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -220,17 +293,19 @@ export default async function LiveCashPage() {
                   {audit.notes ? <p className="mt-1 text-xs text-slate-500">{audit.notes}</p> : null}
                 </li>
               ))}
-            </ul>
+              </ul>
+            </CardScroll>
           )}
-        </Card>
+        </Card> : null}
       </div>
 
-      <Card>
-        <CardHeader title="Movimientos recientes" count={state.movements.length} />
-        {state.movements.length === 0 ? (
+      {show('movimientos') ? <Card>
+        <CardHeader title="Movimientos recientes" count={visibleMovements.length} />
+        {visibleMovements.length === 0 ? (
           <EmptyState message="Todavía no hay movimientos en Caja viva." />
         ) : (
-          <div className="overflow-x-auto">
+          <CardScroll>
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                 <tr>
@@ -242,7 +317,7 @@ export default async function LiveCashPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {state.movements.map((movement) => (
+                {visibleMovements.map((movement) => (
                   <tr key={movement.id}>
                     <td className="px-4 py-2 text-xs text-slate-500">{formatDateTime(movement.createdAt)}</td>
                     <td className="px-4 py-2">
@@ -263,11 +338,12 @@ export default async function LiveCashPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
-      <Card>
+      {show('gimnasio') ? <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div className="flex items-center gap-2">
             <Dumbbell className="h-4 w-4 text-petrol-600" aria-hidden="true" />
@@ -282,11 +358,12 @@ export default async function LiveCashPage() {
             </Link>
           ) : null}
         </div>
-        {state.gymPasses.length === 0 ? (
+        {visibleGymPasses.length === 0 ? (
           <EmptyState message="Todavía no se han emitido folios." />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {state.gymPasses.map((pass) => {
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+            {visibleGymPasses.map((pass) => {
               const legacyPaidPass = pass.amount > 0 && Boolean(pass.currency);
               return (
                 <li key={pass.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -315,9 +392,10 @@ export default async function LiveCashPage() {
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </CardScroll>
         )}
-      </Card>
+      </Card> : null}
 
       <p className="flex items-center gap-2 text-xs text-slate-500">
         <ShieldCheck className="h-4 w-4" aria-hidden="true" />

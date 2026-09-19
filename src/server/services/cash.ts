@@ -1,8 +1,6 @@
 import 'server-only';
 import {
-  AlertLevel,
   AlertStatus,
-  AlertType,
   AuditAction,
   CashCountKind,
   GuaranteeKind,
@@ -458,19 +456,7 @@ export async function recordCashTransfer(
       },
     });
 
-    await tx.alert.create({
-      data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Revisar egreso a tesorería',
-        message: `Revisar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
-        handoverId: params.handoverId,
-        dedupeKey: `cash-transfer:${transfer.id}`,
-        auto: false,
-        createdById: user.id,
-      },
-    });
+
 
     await recordAudit(
       {
@@ -479,7 +465,7 @@ export async function recordCashTransfer(
         action: AuditAction.CREAR,
         summary: `Egreso a tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
-        }; pendiente de revisión de Supervisión.`,
+        }; registrado con trazabilidad.`,
         user,
       },
       tx,

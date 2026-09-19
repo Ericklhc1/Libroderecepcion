@@ -70,7 +70,7 @@ export function CashConfigForm({
           <Toggle
             name="treasuryTransfersEnabled"
             label="Egresos a Tesorería"
-            hint="Permite registrar egresos. Todo monto mayor que 0 seguirá requiriendo validación de un Supervisor; esa seguridad no se puede desactivar."
+            hint="Activa el módulo de egresos a Tesorería. Quién puede ejecutarlo se configura por rol en Administración → Roles y permisos."
             defaultChecked={treasuryTransfersEnabled}
           />
           <Toggle
@@ -95,7 +95,7 @@ export function CashConfigForm({
       </div>
 
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-petrol-800 ring-1 ring-gold-200">
-        Informes actualizados, arqueo de Caja y elementos requeridos son el núcleo obligatorio del cierre. Las notas al turno entrante siguen siendo opcionales.
+        Los permisos de Caja son granulares por rol: ingresos, egresos, garantías, arqueos, tesorería, dólar, cierre y reapertura se activan o desactivan por separado. La trazabilidad no se desactiva.
       </p>
 
       <div className="flex justify-end">

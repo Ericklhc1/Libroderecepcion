@@ -90,6 +90,9 @@ jobs:
       - name: Cliente Prisma
         run: npm run db:generate
 
+      - name: Validar migraciones
+        run: npm run db:deploy
+
       - name: Lint
         run: npm run lint
 

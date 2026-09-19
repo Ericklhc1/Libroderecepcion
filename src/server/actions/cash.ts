@@ -23,6 +23,7 @@ import {
 import { getMyActiveShift, receiveShiftCash } from '@/server/services/shifts';
 import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
+import { ROLE_KEYS } from '@/lib/permissions';
 import { notify } from '@/server/notifications';
 import {
   cashApprovalRequired,

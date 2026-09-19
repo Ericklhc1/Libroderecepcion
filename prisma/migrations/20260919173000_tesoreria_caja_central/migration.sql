@@ -1,5 +1,21 @@
 -- Todo egreso a tesorería se refleja en la Caja central.
 -- Nullable para conservar históricos y permitir el estado pendiente de aprobación.
+
+-- La tabla nació con un CHECK cerrado de tipos; TESORERIA debe incorporarse
+-- antes de insertar el backfill.
+ALTER TABLE "CashMovement" DROP CONSTRAINT IF EXISTS "CashMovement_kind";
+ALTER TABLE "CashMovement"
+  ADD CONSTRAINT "CashMovement_kind"
+  CHECK ("kind" IN (
+    'GARANTIA_INGRESO',
+    'GARANTIA_DEVOLUCION',
+    'VENTA_GIMNASIO',
+    'ANULACION_GIMNASIO',
+    'TESORERIA',
+    'AJUSTE_ENTRADA',
+    'AJUSTE_SALIDA'
+  ));
+
 ALTER TABLE "CashMovement"
   ADD COLUMN "cashTransferId" TEXT;
 

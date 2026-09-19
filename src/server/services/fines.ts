@@ -80,7 +80,6 @@ export async function createFine(
     roomNumber: input.roomNumber,
     stayId: input.stayId ?? null,
     reservationReferenceId: input.reservationReferenceId ?? null,
-    reservationCode: input.reservationCode || null,
   });
   if (!context.roomId || !context.roomNumber) {
     throw new NotFoundError('Esa habitación no existe en el inventario.');

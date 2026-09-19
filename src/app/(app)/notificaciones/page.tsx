@@ -170,7 +170,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               const noElements = alert.dedupeKey?.startsWith('handover-elements-none:');
               const cash = cashTransfer || cashManual;
               const label = cash
-                ? 'Autorizar'
+                ? 'Revisar'
                 : noElements
                   ? 'Validar justificación'
                   : 'Validar cierre';

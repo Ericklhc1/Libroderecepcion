@@ -267,7 +267,7 @@ export async function prepareImport(
   );
 
   const declaredTotals = reports.flatMap((report) => report.declaredTotals);
-  const analysis = await analyseDraft(stays, declaredTotals);
+  const analysis = await analyseDraft(businessDate, stays, declaredTotals);
 
   const batch = await prisma.pmsImportBatch.create({
     data: {
@@ -299,6 +299,7 @@ export async function prepareImport(
  * borrador: qué conflictos aparecen y qué decisiones manuales se conservan.
  */
 async function analyseDraft(
+  businessDate: Date,
   stays: StayDraft[],
   /*
     Los totales que el informe declara en su pie. Se arrastran hasta el preview
@@ -387,11 +388,15 @@ async function analyseDraft(
       que usa `applyImport`. Si divergieran, la pantalla de revisión
       anunciaría estadías nuevas que al aplicar no se crean.
     */
-    const existing = room.stays.find(
-      (stay) =>
-        stay.reservationId === draft.reservationId &&
-        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus),
-    );
+    const existing = room.stays
+      .filter(
+        (stay) =>
+          stay.stage !== RoomStayStage.FINALIZADO &&
+          stay.reservationId === draft.reservationId &&
+          stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
+          stay.businessDate.getTime() <= businessDate.getTime(),
+      )
+      .sort((a, b) => b.businessDate.getTime() - a.businessDate.getTime())[0];
 
     if (existing && (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE)) {
       protectedStays.push({
@@ -629,6 +634,7 @@ export async function getImportPreview(batchId: string): Promise<ImportPreview> 
   const stays = batch.payload as unknown as StayDraft[];
   const reports = batch.reports as unknown as ReportMeta[];
   const analysis = await analyseDraft(
+    midnight(batch.businessDate),
     stays,
     reports.flatMap((report) => report.declaredTotals ?? []),
   );
@@ -822,6 +828,17 @@ export async function applyImport(
       const existing = existingByKey.get(keyOf(draft.reservationId, room.id, draft.status));
 
       if (existing) {
+        /*
+          Nunca se aplica un informe más viejo encima de una fotografía activa
+          más nueva. Esto importa al reintentar archivos del día anterior:
+          el PMS sigue siendo fuente principal, pero su secuencia temporal
+          también lo es.
+        */
+        if (existing.businessDate.getTime() > businessDate.getTime()) {
+          summary.preserved += 1;
+          continue;
+        }
+
         const protectedStay =
           existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE;
 

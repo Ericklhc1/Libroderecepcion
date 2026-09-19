@@ -1,5 +1,4 @@
 import 'server-only';
-import { randomUUID } from 'node:crypto';
 import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
 import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -9,6 +8,7 @@ import { hasPermission, type CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { applyCashTransferToLiveCash } from '@/server/services/cash';
+import { insertCashMovement } from '@/server/services/live-cash';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -104,6 +104,10 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         tags: true,
         title: true,
         createdById: true,
+        roomId: true,
+        stayId: true,
+        guestId: true,
+        reservationId: true,
       },
     });
     if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
@@ -136,17 +140,21 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       throw new RuleError('La solicitud de Caja ya no está pendiente de autorización.');
     }
 
-    const movementId = randomUUID();
     const kind = direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
-    await tx.$executeRaw`
-      INSERT INTO "CashMovement" (
-        "id", "kind", "direction", "currency", "amount", "shiftId",
-        "createdById", "reference", "notes"
-      ) VALUES (
-        ${movementId}, ${kind}, ${direction}, ${currency}, ${amount},
-        ${entry.shiftId}, ${entry.createdById}, ${reference}, ${notes}
-      )
-    `;
+    const movementId = await insertCashMovement(tx, {
+      userId: entry.createdById,
+      kind,
+      direction,
+      currency,
+      amount,
+      shiftId: entry.shiftId,
+      roomId: entry.roomId,
+      stayId: entry.stayId,
+      guestId: entry.guestId,
+      reservationReferenceId: entry.reservationId,
+      reference,
+      notes,
+    });
 
     await tx.operationalEntry.update({
       where: { id: entry.id },
@@ -176,6 +184,10 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
           shiftId: entry.shiftId,
           requestedById: entry.createdById,
           approvedById: user.id,
+          roomId: entry.roomId,
+          stayId: entry.stayId,
+          reservationReferenceId: entry.reservationId,
+          guestId: entry.guestId,
         },
       },
       tx,

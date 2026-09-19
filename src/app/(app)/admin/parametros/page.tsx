@@ -3,7 +3,9 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getAllSettings } from '@/server/services/settings';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
+import type { RawSearchParams } from '@/lib/search-params';
 import { Chip } from '@/components/ui/badge';
 import { SettingForm } from '../admin-forms';
 import { CashConfigForm } from '@/components/admin/cash-config-form';
@@ -28,8 +30,15 @@ function boolSetting(
   return typeof value === 'boolean' ? value : fallback;
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   await requirePagePermission('system.configure');
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const categoria = typeof params.categoria === 'string' ? params.categoria : '';
   const [allSettings, cashFunds, handoverElements] = await Promise.all([
     getAllSettings(),
     prisma.cashFund.findMany({ where: { currency: { in: ['CLP', 'USD'] } } }),
@@ -51,6 +60,27 @@ export default async function SettingsPage() {
     }, new Map<string, typeof settings>()),
   );
 
+  const visibleByCategory = byCategory
+    .filter(([category]) => !categoria || category === categoria)
+    .map(([category, list]) => [
+      category,
+      list.filter((setting) => {
+        if (!q) return true;
+        return [
+          setting.key,
+          setting.category,
+          setting.description,
+          String(setting.value),
+          String(setting.defaultValue),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      }),
+    ] as const)
+    .filter(([, list]) => list.length > 0);
+
   const clpMinimum = Number(cashFunds.find((fund) => fund.currency === 'CLP')?.amount ?? 100000);
   const usdMinimum = Number(cashFunds.find((fund) => fund.currency === 'USD')?.amount ?? 0);
 
@@ -71,6 +101,22 @@ export default async function SettingsPage() {
           necesidad de desplegar. Fronti y Caja tienen controles dedicados para no mezclar reglas operativas con claves técnicas.
         </p>
       </header>
+
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar parámetro, descripción o valor…"
+        clearHref="/admin/parametros"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Categoría</span>
+          <select name="categoria" defaultValue={categoria} className="input-base w-full">
+            <option value="">Todas</option>
+            {byCategory.map(([category]) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+        </label>
+      </ListFilterBar>
 
       <Card>
         <CardHeader title="Caja" />
@@ -98,10 +144,11 @@ export default async function SettingsPage() {
         </div>
       </Card>
 
-      {byCategory.map(([category, list]) => (
+      {visibleByCategory.map(([category, list]) => (
         <Card key={category}>
           <CardHeader title={category} count={list.length} />
-          <ul className="divide-y divide-slate-100">
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
             {list.map((setting) => (
               <li key={setting.key} className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -124,7 +171,8 @@ export default async function SettingsPage() {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </CardScroll>
         </Card>
       ))}
     </div>

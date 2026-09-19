@@ -24,6 +24,7 @@ import {
 } from '@/domain/cash';
 import { OPEN_GUARANTEE_STATES } from '@/domain/guarantees';
 import { getSettingBool } from '@/server/services/settings';
+import { insertCashMovement } from '@/server/services/live-cash';
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof prisma;
@@ -203,7 +204,9 @@ export async function getHandoverCashState(
       amount: Number(transfer.amount),
       reference: transfer.reference,
       createdByName: transfer.createdBy.name,
-      approved: approvalByTransfer.get(transfer.id) === true,
+      approved:
+        !approvalByTransfer.has(transfer.id) ||
+        approvalByTransfer.get(transfer.id) === true,
     })),
     elements: elements.map((element) => ({
       id: element.id,
@@ -409,7 +412,43 @@ export function isCashAlreadyReceived(error: unknown): boolean {
   );
 }
 
-/** Egreso a tesorería. Queda registrado y auditado; Supervisión revisa después. */
+/**
+ * Refleja un egreso a tesorería en la Caja central de forma idempotente.
+ * Se usa tanto al registrar directo como al aprobar una solicitud.
+ */
+export async function applyCashTransferToLiveCash(
+  client: Client,
+  user: CurrentUser,
+  transferId: string,
+): Promise<string> {
+  const existing = await client.cashMovement.findUnique({
+    where: { cashTransferId: transferId },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const transfer = await client.cashTransfer.findUnique({
+    where: { id: transferId },
+    include: { handover: { select: { fromShiftId: true } } },
+  });
+  if (!transfer) throw new NotFoundError('El egreso a tesorería ya no existe.');
+
+  return insertCashMovement(client, {
+    userId: transfer.createdById,
+    kind: 'TESORERIA',
+    direction: 'SALIDA',
+    currency: transfer.currency,
+    amount: Number(transfer.amount),
+    shiftId: transfer.handover.fromShiftId,
+    cashTransferId: transfer.id,
+    reference: transfer.reference
+      ? `Tesorería · ${transfer.reference}`
+      : 'Egreso a tesorería',
+    notes: transfer.notes,
+  });
+}
+
+/** Egreso a tesorería. Se registra una vez y se refleja en Caja según política. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -418,6 +457,7 @@ export async function recordCashTransfer(
     amount: number;
     reference?: string | null;
     notes?: string | null;
+    applyToLiveCash?: boolean;
   },
 ) {
   if (!(await getSettingBool('cash.treasuryTransfersEnabled', true))) {
@@ -456,7 +496,10 @@ export async function recordCashTransfer(
       },
     });
 
-
+    const movementId =
+      params.applyToLiveCash === false
+        ? null
+        : await applyCashTransferToLiveCash(tx, user, transfer.id);
 
     await recordAudit(
       {
@@ -467,6 +510,12 @@ export async function recordCashTransfer(
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
         }; registrado con trazabilidad.`,
         user,
+        after: {
+          currency,
+          amount: params.amount,
+          movementId,
+          pendingApproval: params.applyToLiveCash === false,
+        },
       },
       tx,
     );

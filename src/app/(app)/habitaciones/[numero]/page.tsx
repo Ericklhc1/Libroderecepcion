@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EntryType } from '@prisma/client';
-import { ArrowLeft, DoorOpen, KeyRound } from 'lucide-react';
+import { ArrowLeft, Banknote, DoorOpen, KeyRound } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
@@ -22,6 +22,8 @@ import {
   FineStatusDialog,
 } from '@/components/rooms/fine-form';
 import { GymPassDialog } from '@/components/cash/gym-pass-dialog';
+import { ManualCashMovementForm } from '@/components/cash/live-cash-forms';
+import { GuaranteeDialog } from '@/app/(app)/huespedes/guarantee-forms';
 import { fineContextForRoom, listFinesForRoom } from '@/server/services/fines';
 import { fineSummary, type FineStatusValue } from '@/domain/fines';
 import { EntryForm } from '@/components/forms/entry-form';
@@ -197,6 +199,11 @@ export default async function RoomDetailPage({
     multa mal puesta cuesta más que una no puesta.
   */
   const canFine = hasPermission(user, 'incident.manage');
+  const canGuarantee =
+    hasPermission(user, 'guest.manage') || hasPermission(user, 'cash.guarantee_in');
+  const canManualIn = hasPermission(user, 'cash.manual_in');
+  const canManualOut = hasPermission(user, 'cash.manual_out');
+  const canManualCash = canManualIn || canManualOut;
   const canKeys = hasPermission(user, 'key.assign');
   const openEntries = entries.filter((entry) => ENTRY_OPEN_STATUSES.includes(entry.status));
 
@@ -238,6 +245,27 @@ export default async function RoomDetailPage({
           {canFine && fineContext ? <FineDialog context={fineContext} /> : null}
           {canManage && gymContext ? (
             <GymPassDialog context={gymContext} prices={gymPriceConfig} />
+          ) : null}
+          {canManualCash ? (
+            <Dialog
+              title={`Movimiento de Caja · habitación ${room.number}`}
+              description="El movimiento se registra en la Caja central y queda reflejado en esta habitación. Si hay más de una estadía activa, indica también la reserva."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <Banknote className="h-4 w-4" aria-hidden="true" />
+                  Movimiento de Caja
+                </>
+              }
+            >
+              <ManualCashMovementForm
+                allowIn={canManualIn}
+                allowOut={canManualOut}
+                context={{ roomNumber: room.number }}
+              />
+            </Dialog>
           ) : null}
           <Dialog
             title="Nueva incidencia en esta habitación"
@@ -360,6 +388,14 @@ export default async function RoomDetailPage({
                       ]
                     }
                   </Badge>
+                  {canGuarantee ? (
+                    <GuaranteeDialog
+                      reservationId={reserva.reservationReferenceId}
+                      reservationCode={reserva.code}
+                      stayId={reserva.stayId}
+                      roomId={room.id}
+                    />
+                  ) : null}
                 </div>
 
                 {reserva.balanceDue && reserva.balanceDue > 0 ? (
@@ -392,11 +428,8 @@ export default async function RoomDetailPage({
                   </ul>
                 ) : (
                   <p className="mt-1.5 text-xs text-slate-500">
-                    Sin garantía registrada. Se registra en{' '}
-                    <Link href="/huespedes" className="font-medium text-petrol-600 hover:underline">
-                      Huéspedes y reservas
-                    </Link>
-                    .
+                    Sin garantía registrada.
+                    {canGuarantee ? ' Puedes agregarla aquí mismo.' : ''}
                   </p>
                 )}
               </li>

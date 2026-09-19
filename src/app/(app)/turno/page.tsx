@@ -42,7 +42,7 @@ import {
   TASK_STATUS_TONE,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, SHIFT_WINDOW_LABEL } from '@/domain/shift';
-import { formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
+import { formatCalendarDate, Time, formatTime, relativeTime } from '@/lib/format';
 
 export const metadata = { title: 'Turno' };
 export const dynamic = 'force-dynamic';
@@ -206,7 +206,7 @@ export default async function ShiftPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-petrol-900">
-                    {SHIFT_TYPE_LABEL[shift.type]} · {formatDate(shift.date)}
+                    {SHIFT_TYPE_LABEL[shift.type]} · {formatCalendarDate(shift.date)}
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                     <Badge

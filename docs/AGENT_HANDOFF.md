@@ -47,4 +47,4 @@ Continuar siempre desde:
 
 ## Mensaje para otros agentes
 
-No reintroducir Netlify, `preproduction`, previews hospedados ni Neon `development` como parte del flujo. Para pruebas usa el PostgreSQL efímero de CI o una base local desechable que nunca sea Production.
+No reintroducir hosting alternativo, ramas intermedias de release, previews hospedados ni bases persistentes de desarrollo como parte del flujo. Para pruebas usa el PostgreSQL efímero de CI o una base local desechable que nunca sea Production.

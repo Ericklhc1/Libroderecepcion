@@ -3,11 +3,9 @@ name: Compuerta
 on:
   push:
     branches:
-      - preproduction
       - main
   pull_request:
     branches:
-      - preproduction
       - main
 
 concurrency:
@@ -45,12 +43,32 @@ jobs:
     steps:
       - name: Código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
+      - name: Validar versión
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          lock_version=$(node -p "require('./package-lock.json').version")
+          lock_root_version=$(node -p "require('./package-lock.json').packages[''].version")
+
+          printf '%s' "$current_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          test "$lock_version" = "$current_version"
+          test "$lock_root_version" = "$current_version"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_version=$(git show "origin/$BASE_REF:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+            node -e "const p=s=>s.split('.').map(Number); const b=p(process.argv[1]), c=p(process.argv[2]); const ok=c[0]>b[0]||(c[0]===b[0]&&c[1]>b[1])||(c[0]===b[0]&&c[1]===b[1]&&c[2]>b[2]); if(!ok){console.error('Toda actualización de Production debe incrementar la versión: '+process.argv[1]+' → '+process.argv[2]); process.exit(1)}" "$base_version" "$current_version"
+          fi
 
       - name: Dependencias
         run: npm ci
@@ -71,21 +89,3 @@ jobs:
         env:
           NODE_ENV: production
         run: npm run build
-
-      - name: Empaquetar fuente validada de preproduction
-        if: ${{ github.ref == 'refs/heads/preproduction' }}
-        run: |
-          tar \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude=.next \
-            -czf /tmp/preproduction-source.tgz .
-
-      - name: Conservar fuente validada para staging
-        if: ${{ github.ref == 'refs/heads/preproduction' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: preproduction-source
-          path: /tmp/preproduction-source.tgz
-          retention-days: 1
-          if-no-files-found: error

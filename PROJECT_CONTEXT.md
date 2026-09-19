@@ -7,7 +7,7 @@ en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.
 
 Next.js 15 (App Router, Server Components, Server Actions) · React 19 ·
 TypeScript estricto · Prisma 6 · PostgreSQL en **Neon** (`sa-east-1`) ·
-**Vercel** como Production · Netlify sólo para pruebas manuales con base aislada · Tailwind ·
+**Vercel** como único hosting de Production · Tailwind ·
 Vitest contra PostgreSQL real.
 
 No cambiar de stack. No reconstruir. No crear otro proyecto.
@@ -428,10 +428,7 @@ conserva su modelo y sus reglas.
 
 La base está en `sa-east-1`. Production se sirve desde **Vercel** y la única
 rama Neon activa es `production`. **Vercel despliega automáticamente sólo `main`**:
-`vercel.json` mantiene desactivados los previews de otras ramas para impedir que la
-integración Neon–Vercel vuelva a clonar datos y consumir ramas. Netlify queda reservado
-para pruebas manuales únicamente cuando exista una base aislada; **nunca** debe apuntar
-a Neon Production. `main` + Vercel Production + Neon `production` son la fuente de verdad.
+`vercel.json` mantiene desactivados los previews de otras ramas. `main` + Vercel Production + Neon `production` son la única fuente de verdad alojada. CI usa PostgreSQL efímero; no existe staging persistente ni debe crearse otra rama Neon sin instrucción humana explícita.
 La lección de rendimiento permanece: la latencia entre función y base puede convertir
 consultas encadenadas en un problema
 operativo. De ahí vienen varias reglas de rendimiento que no deben revertirse:

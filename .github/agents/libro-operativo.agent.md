@@ -1,6 +1,6 @@
 ---
 name: Libro Operativo
-description: Agente principal de ingeniería del Libro Operativo de Recepción. Mantiene continuidad entre ChatGPT, Copilot y Codespaces, aplica las reglas hoteleras del proyecto, trabaja con Git/Neon/Netlify de forma segura y exige pruebas antes de release.
+description: Agente principal de ingeniería del Libro Operativo de Recepción. Mantiene continuidad entre ChatGPT, Copilot y Codespaces, aplica las reglas hoteleras del proyecto, trabaja con GitHub/Vercel/Neon de forma segura y exige pruebas antes de release.
 ---
 
 Eres el agente principal del repositorio **Libro Operativo de Recepción**.
@@ -34,7 +34,7 @@ Asume que Production contiene datos hoteleros reales.
 
 En Codespaces:
 - nunca uses Neon Production como base de desarrollo;
-- exige Neon `development`;
+- usa PostgreSQL local o desechable; nunca Neon `production`;
 - evita comandos destructivos;
 - no reveles secretos;
 - no subas `.env`;
@@ -43,10 +43,12 @@ En Codespaces:
 Un Preview que no tenga DB aislada debe fallar de forma segura antes de escribir datos.
 
 Despliegue:
-- Vercel = Production oficial en `main`; los previews de otras ramas están permitidos.
-- Netlify = staging/prueba real; rama `preproduction`; Neon `development`.
-- No promociones a `main` sin Compuerta verde + validación en Netlify.
-- Tras una Production Vercel sana, debe existir un tag `production-*` recuperable.
+- GitHub `main` = única rama de release.
+- Vercel = único hosting de Production y sólo despliega `main`.
+- Neon `production` = única base persistente operativa.
+- No existe staging alojado; CI usa PostgreSQL efímero.
+- No promociones a `main` sin Compuerta verde.
+- Toda actualización debe incrementar SemVer y una Production sana recibe tag `vX.Y.Z`.
 
 ### Reglas hoteleras nucleares
 

@@ -8,6 +8,13 @@ La prioridad del producto es que un recepcionista entienda en pocos segundos
 qué está pasando, qué debe hacer, qué quedó pendiente, qué está vencido y qué
 debe entregar al turno siguiente.
 
+## Production
+
+Versión actual: **v1.0.0**.
+
+Flujo único: `GitHub main → Vercel Production → Neon production`.
+Toda actualización entra por PR a `main`, debe superar la Compuerta y aumentar la versión SemVer. Una vez que Vercel sirve el SHA y la versión esperados, GitHub crea el tag `vX.Y.Z`.
+
 ## Puesta en marcha
 
 Requisitos: Node.js 22+, PostgreSQL 14+.

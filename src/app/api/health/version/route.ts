@@ -1,24 +1,19 @@
 import { NextResponse } from 'next/server';
+import packageJson from '../../../../../package.json';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const commit =
     process.env.VERCEL_GIT_COMMIT_SHA ??
-    process.env.COMMIT_REF ??
     process.env.GITHUB_SHA ??
     null;
-
-  const provider = process.env.VERCEL
-    ? 'vercel'
-    : process.env.NETLIFY
-      ? 'netlify'
-      : 'unknown';
 
   return NextResponse.json(
     {
       ok: true,
-      provider,
+      provider: process.env.VERCEL ? 'vercel' : 'unknown',
+      version: packageJson.version,
       commit,
     },
     {

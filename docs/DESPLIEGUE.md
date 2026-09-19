@@ -1,208 +1,92 @@
-# Despliegue y promoción
+# Despliegue y versiones
 
-## Política obligatoria de entornos
+## Arquitectura de Production
 
-Desde 2026-09-18 el proyecto tiene dos funciones de hosting claramente
-separadas:
+El Libro Operativo utiliza un único entorno alojado:
 
-- **Vercel = Production principal.** La rama `main` representa lo que está
-  autorizado para operar en el hotel. Vercel puede generar previews de otras
-  ramas; esos previews no se consideran Production.
-- **Netlify = staging y pruebas reales.** Los cambios se prueban primero allí.
-  Netlify usa exclusivamente la rama `development` de Neon y un
-  `AUTH_SECRET` distinto a Production.
-- **Neon Production** sólo se usa desde Vercel Production.
-- **Neon development** se usa desde Netlify para implementar, migrar y probar
-  sin escribir datos reales.
+`GitHub main → Vercel Production → Neon production`
 
-El flujo normal es:
+- GitHub es la fuente de verdad del código.
+- `main` es la única rama que Vercel puede desplegar.
+- Vercel `libroderecepcion` es el único hosting operativo.
+- Neon `production` es la única base persistente del sistema.
+- No hay staging alojado.
+- La Compuerta usa PostgreSQL efímero en GitHub Actions y no toca Neon Production.
 
-```
-feature
-  ↓
-preproduction
-  ↓
-Netlify + Neon development
-  ↓  validación funcional real
-main
-  ↓
-Vercel + Neon Production
-  ↓  verificación del commit servido
-tag production-AAAAMMDD-HHMMSS
-```
+## Flujo de actualización
 
-### Regla de promoción
+1. Crear una rama de trabajo desde `main`.
+2. Implementar el cambio y sus pruebas.
+3. Incrementar la versión en `package.json` y `package-lock.json`.
+4. Abrir PR directamente a `main`.
+5. La Compuerta valida versión, Prisma, lint, TypeScript, regresiones y build.
+6. Con la Compuerta verde, mergear.
+7. Vercel despliega automáticamente el SHA de `main`.
+8. El workflow de release espera a que `/api/health/version` confirme proveedor, SHA y versión.
+9. Se ejecuta smoke de `/login`.
+10. Si todo está sano, GitHub crea el tag `vX.Y.Z`.
 
-Un cambio **no entra a `main`** sólo porque compile. Para promoverlo a
-Production deben cumplirse, en este orden:
+Si Vercel no sirve exactamente el SHA y la versión esperados, no se crea el tag.
 
-1. Compuerta de GitHub verde: Prisma, lint, tipos, regresiones y build.
-2. Merge a `preproduction`.
-3. Deploy Preview/Branch Deploy de Netlify sobre Neon development.
-4. Prueba funcional real en Netlify.
-5. PR `preproduction → main`.
-6. Vercel debe desplegar y servir exactamente el SHA de `main`.
-7. El smoke de Production debe responder correctamente.
-8. Sólo entonces se crea automáticamente un tag
-   `production-AAAAMMDD-HHMMSS`, que es el respaldo recuperable de esa
-   versión.
+## Versionado SemVer
 
-Si Vercel no sirve el commit esperado o falla el smoke, el workflow
-`Respaldo Vercel Production` falla y **no crea un tag falso**.
+La aplicación usa `MAJOR.MINOR.PATCH`.
 
-### Rollback
+- PATCH: corrección o ajuste compatible. Ejemplo: `1.0.0 → 1.0.1`.
+- MINOR: nueva capacidad compatible. Ejemplo: `1.0.1 → 1.1.0`.
+- MAJOR: cambio incompatible o rediseño contractual importante. Ejemplo: `1.9.0 → 2.0.0`.
 
-Los tags `production-*` representan versiones que efectivamente fueron
-servidas y verificadas en Vercel. Ante una regresión:
+Toda actualización que vaya a Production debe incrementar la versión. La Compuerta bloquea PR a `main` que conserven o reduzcan la versión.
 
-- se identifica el último tag sano;
-- se restaura/promueve ese commit;
-- nunca se toma un commit sin tag como «Production conocida»;
-- los cambios de base de datos se evalúan por separado: un rollback de código
-  no implica deshacer datos o migraciones automáticamente.
+## Identificación de una Production
 
----
+La fuente canónica es:
 
-# Poner el sistema en línea
+`GET /api/health/version`
 
+Debe devolver:
 
-Esta guía deja la aplicación Next.js funcionando en un dominio público, con
-inicio de sesión por contraseña y base de datos PostgreSQL.
+- `provider: "vercel"`
+- `version: "X.Y.Z"`
+- `commit: "<SHA de main>"`
 
-No hace falta usar la consola en ningún momento: el despliegue aplica las
-migraciones por sí solo y la primera cuenta se crea desde el navegador.
+La interfaz muestra además `Libro Operativo vX.Y.Z`.
 
-## Lo que ya está resuelto
+## Base de datos
 
-- El código está en GitHub, en este repositorio.
-- El despliegue ejecuta `prisma generate && prisma migrate deploy && next build`
-  (guion `vercel-build`): las tablas se crean solas en el primer despliegue y
-  en cada actualización posterior.
-- La primera visita abre `/instalacion`, donde se crea el hotel y la cuenta de
-  Administrador de sistema. Esa pantalla se desactiva en cuanto existe una
-  cuenta.
-- No se cargan datos de demostración: el sistema arranca vacío y listo para
-  operar.
+Production usa exclusivamente Neon `production`.
 
-## El camino más corto: conectar la base desde Vercel
+- `DATABASE_URL`: conexión agrupada.
+- `DIRECT_DATABASE_URL`: conexión directa usada por migraciones.
+- Nunca imprimir ni versionar estas cadenas.
+- `prisma migrate deploy` se ejecuta durante el build de Vercel.
+- No ejecutar `migrate reset`, `db:reset`, TRUNCATE, DROP o borrados masivos sobre Production.
+- Una migración potencialmente destructiva requiere aprobación humana explícita.
 
-Si el proyecto de Vercel ya existe, la vía con menos pasos es no copiar ninguna
-cadena de conexión:
+## Desarrollo y pruebas
 
-1. En el proyecto de Vercel, pestaña **Storage** (o **Integrations**), busca
-   **Neon** y conéctalo al proyecto. Vercel publica por su cuenta las variables
-   de conexión (`DATABASE_URL` y `DATABASE_URL_UNPOOLED`).
-2. Agrega **una sola** variable a mano, en *Settings → Environment Variables*:
-   `AUTH_SECRET`, con un texto largo y aleatorio.
-3. Vuelve a desplegar.
+No existe una segunda base persistente obligatoria.
 
-La aplicación reconoce los nombres que publica cada integración —los propios,
-los de Neon en Vercel y los de Postgres en Vercel— y no exige que coincidan con
-los suyos (ver `src/lib/database-url.ts`). `AUTH_SECRET` se mantiene manual a
-propósito: es el secreto que firma las sesiones y ningún proveedor lo puede
-inventar por ti.
+- GitHub Actions levanta PostgreSQL efímero para lint/tipos/regresiones/build.
+- Un entorno local o Codespace debe usar una base local/desechable propia.
+- Nunca conectar un entorno de desarrollo a Neon `production`.
+- No crear previews hospedados o ramas Neon de desarrollo salvo instrucción humana explícita.
 
-## Camino manual: Vercel + Neon copiando las cadenas
+## Rollback
 
-### 1. Crear la base de datos
+Cada tag `vX.Y.Z` representa una Production que Vercel sirvió y que pasó smoke.
 
-1. Entra a <https://neon.com> y pulsa **Sign up**. Puedes entrar con la misma
-   cuenta de GitHub. El plan gratuito alcanza para una recepción.
-2. **Create project**. Ponle un nombre (por ejemplo `hotel-hw-libertad`) y
-   elige la región más cercana; para Chile, São Paulo (`sa-east-1`) es la mejor
-   opción de las disponibles.
-3. Al terminar, Neon muestra un panel **Connection string**. Ahí hay un
-   interruptor llamado **Connection pooling**. Necesitas copiar la cadena dos
-   veces:
-   - Con *Connection pooling* **activado** → es la agrupada, y va en
-     `DATABASE_URL`. Se reconoce porque el servidor lleva `-pooler` en el
-     nombre.
-   - Con *Connection pooling* **desactivado** → es la directa, y va en
-     `DIRECT_DATABASE_URL`. No lleva `-pooler`.
+Ante una regresión:
 
-   Las dos terminan en `?sslmode=require`: déjalo tal cual. Prisma necesita la
-   directa para crear las tablas, y la agrupada es la que usa la aplicación
-   mientras opera.
+1. identificar el último tag sano;
+2. restaurar/promover ese commit;
+3. verificar nuevamente SHA, versión y smoke;
+4. evaluar migraciones de base por separado: revertir código no revierte datos automáticamente.
 
-   > En el plan gratuito la base se duerme si nadie la usa. La primera visita
-   > del día puede tardar unos segundos; después va normal.
+## Reglas que no se negocian
 
-### 2. Desplegar
-
-1. Entra a <https://vercel.com> con tu cuenta de GitHub.
-2. **Add New → Project** e importa el repositorio `libroderecepcion`.
-3. **Importante: elige la rama.** Vercel propone la rama principal del
-   repositorio. Si el trabajo todavía vive en la rama de desarrollo
-   (`claude/libro-operativo-recepcion-eshapj`), abre **Settings → Git →
-   Production Branch** y escribe ese nombre; si el trabajo ya está fusionado en
-   la rama principal, no hay nada que cambiar.
-4. En **Environment Variables** agrega:
-
-   | Nombre | Valor |
-   | --- | --- |
-   | `DATABASE_URL` | la cadena *pooled* de Neon |
-   | `DIRECT_DATABASE_URL` | la cadena *direct* de Neon |
-   | `AUTH_SECRET` | una cadena aleatoria de 48 caracteres o más |
-   | `SESSION_TTL_HOURS` | `12` |
-   | `CREDENTIALS_MAIL_TO` | `recepcion@hoteleshw.com` |
-
-   Para `AUTH_SECRET` sirve cualquier texto largo e impredecible; no se
-   comparte con nadie y puede cambiarse después (al cambiarlo se cierran las
-   sesiones abiertas). Si tienes Node a mano, una forma de generarlo es:
-
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-   ```
-
-   Las variables de correo (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-   `SMTP_PASSWORD`, `MAIL_FROM`) son opcionales. Sin ellas el sistema funciona
-   igual, pero al crear un usuario muestra la clave en pantalla en lugar de
-   enviarla por correo, y lo avisa.
-
-5. **Deploy**. Tarda unos minutos. El primer despliegue crea las tablas solo.
-
-### 3. Crear la primera cuenta
-
-Abre el dominio que entrega Vercel. Aparecerá la pantalla de instalación:
-nombre del hotel, tu nombre, tu correo y tu contraseña. Al enviarla quedas como
-Administrador de sistema y el sistema empieza a operar.
-
-### 4. Dar de alta al equipo
-
-Desde **Administración → Usuarios**: cada persona con su rol. El sistema exige
-que cambien la contraseña en su primer ingreso.
-
-Luego, en **Administración → Programación de turnos**, asigna mañana, tarde y
-noche del día. Con eso el equipo ya puede iniciar turno.
-
-## Alternativas equivalentes
-
-Cualquier plataforma que ejecute Node.js sirve. Lo único indispensable es que
-el arranque ejecute `npm run vercel-build` (o `prisma migrate deploy` antes de
-`next build`) y que estén definidas las cuatro variables de entorno.
-
-- **Railway** o **Render**: incluyen PostgreSQL administrado en el mismo panel;
-  en ese caso `DATABASE_URL` y `DIRECT_DATABASE_URL` son la misma cadena.
-- **Supabase** como base de datos: usa el puerto 6543 (*pooler*) para
-  `DATABASE_URL` y el 5432 para `DIRECT_DATABASE_URL`.
-
-## Después del despliegue
-
-- **Respaldo de código de Production**: automático. Cada versión que Vercel
-  sirve correctamente recibe un tag `production-*`.
-- **Copias de seguridad de datos**: siguen siendo responsabilidad de Neon; el
-  tag de Git no sustituye un respaldo de la base.
-- **Dominio propio**: se agrega en Vercel; Vercel es el destino oficial de
-  Production.
-- **Actualizaciones**: nunca se promueven directamente desde una rama feature a
-  `main`; pasan por `preproduction` y Netlify.
-- **Cambiar el nombre del hotel**: Administración → Parámetros.
-
-## Si algo falla
-
-| Síntoma | Causa habitual |
-| --- | --- |
-| El despliegue falla en `migrate deploy` | `DIRECT_DATABASE_URL` apunta al *pooler*; debe ser la conexión directa |
-| «Configuración de entorno inválida» | Falta `AUTH_SECRET` o tiene menos de 32 caracteres |
-| Sesiones que se cierran al instante | `AUTH_SECRET` cambia entre despliegues; fíjalo como variable de entorno |
-| La pantalla de instalación no aparece | Ya existe una cuenta: entra por `/login` |
+- Sólo `main` despliega.
+- Sólo Vercel aloja la aplicación.
+- Sólo Neon `production` contiene la base operativa.
+- Ningún cambio entra a Production sin Compuerta verde.
+- Ninguna Production queda sin versión.

@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-18** · simplificación operativa PR **#72**
+Actualizado: **2026-09-18** · consolidación Production única + versión **v1.0.0**
 
 ## Estados canónicos
 
@@ -19,7 +19,7 @@ Actualizado: **2026-09-18** · simplificación operativa PR **#72**
 
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
-| Infraestructura Production-only | `PRODUCTION` | — | Vercel despliega automáticamente sólo `main`; Neon mantiene una única rama `production` |
+| Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
 | Turnos + transferencia de Caja | `PRODUCTION` | #59 · #60 · #66 | Turnos solapados, participación y cierre coherentes |
 | ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
 | Caja unificada | `PRODUCTION` | #63 · #67 · #68 | Arqueo, garantías y cierre formal integrados |
@@ -58,11 +58,10 @@ Flujo único:
 - Previews nuevos de Vercel están desactivados por `vercel.json`.
 - Los previews históricos no son fuente de verdad.
 - Neon debe quedar con una única rama `production`.
-- Netlify no forma parte del flujo activo. Sólo puede usarse manualmente si
-  existe una base aislada; nunca contra Neon Production.
-- Production verificada antes de #72: `main@6d7d48843e087b95f831ae0d9b5a9d77a26b0406`.
-- El workflow **Respaldo Vercel Production** volvió a operar correctamente:
-  verifica SHA, smoke test y crea un tag recuperable.
+- No existe staging alojado.
+- CI usa PostgreSQL efímero y nunca Neon Production.
+- Toda actualización de `main` incrementa SemVer.
+- El workflow **Release Vercel Production** verifica versión + SHA + smoke y crea el tag `vX.Y.Z`.
 
 ## Bloqueos conocidos
 

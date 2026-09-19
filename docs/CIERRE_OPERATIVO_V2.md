@@ -101,7 +101,7 @@ El motor debe producir condiciones/acciones explicables y alimentar una Bandeja 
 
 ## Seguridad de despliegue
 
-Vercel sirve Production desde `main` y puede generar previews de otras ramas. Netlify es staging/prueba real y usa Neon `development`; nunca debe recibir credenciales de Production. Ningún preview/desarrollo puede migrar o ejecutar código con escritura si no tiene una conexión aislada. La promoción exige Compuerta verde + validación funcional en Netlify antes de entrar a `main`.
+GitHub `main` es la única rama de release, Vercel es el único hosting de Production y Neon `production` es la única base persistente operativa. Los previews de Vercel están desactivados. Desarrollo y CI deben usar PostgreSQL local o efímero y nunca conectarse a Neon Production. La promoción exige Compuerta verde antes de entrar a `main`, incremento SemVer y verificación posterior de SHA + versión en Vercel.
 
 ## Criterios de aceptación mínimos
 

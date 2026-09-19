@@ -13,7 +13,7 @@ Este archivo existe para que Copilot, Codex, Cursor y otros agentes trabajen baj
 1. Ejecuta `git status --short --branch`.
 2. Confirma que NO estás desarrollando directamente en `main`.
 3. Lee `PROJECT_CONTEXT.md` y `docs/AGENT_HANDOFF.md`.
-4. Confirma qué base usa el entorno sin imprimir su URL. Debe ser Neon `development` para desarrollo.
+4. Confirma qué base usa el entorno sin imprimir su URL. Desarrollo nunca debe usar Neon `production`; usa PostgreSQL local/desechable.
 5. Si vas a tocar una función existente, localiza primero su servicio, action, dominio y pruebas.
 6. Si la tarea es ambigua, inspecciona antes de crear código.
 
@@ -67,12 +67,12 @@ Si una prueba falla de forma aparentemente intermitente:
 
 ## Desarrollo seguro
 
-El entorno de desarrollo debe usar Neon `development`. Nunca copies a archivos del repo las variables de Neon o Netlify.
+El entorno de desarrollo debe usar PostgreSQL local o desechable. Nunca copies al repositorio variables o secretos de Neon/Vercel.
 
 Antes de una migración:
 - revisa SQL generado;
-- confirma que apunta a development;
-- prueba sobre development;
+- confirma que NO apunta a Neon Production;
+- prueba sobre PostgreSQL local/desechable;
 - distingue migración de esquema de reparación de datos.
 
 Production sólo se toca como release deliberado.
@@ -81,3 +81,11 @@ Production sólo se toca como release deliberado.
 
 Al finalizar una sesión significativa, actualiza `docs/AGENT_HANDOFF.md`.
 El objetivo es que otro agente pueda continuar en menos de dos minutos sin leer conversaciones externas.
+
+
+## Production única y versiones
+
+- Flujo: rama de trabajo → PR a `main` → Compuerta → Vercel Production → Neon `production`.
+- No crear staging alojado, previews de Vercel ni ramas Neon persistentes sin instrucción humana explícita.
+- Toda PR a `main` que produzca una nueva Production debe incrementar SemVer en `package.json` y `package-lock.json`.
+- Cada Production verificada recibe un tag `vX.Y.Z`.

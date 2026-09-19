@@ -295,6 +295,7 @@ export async function getSupervisionData(): Promise<{
     // Turnos que quedaron sin cerrar.
     prisma.shift.findMany({
       where: {
+        archivedAt: null,
         status: { in: [ShiftStatus.RECIBIDO, ShiftStatus.ENTREGA_ENVIADA] },
         date: { lt: now },
       },

@@ -7,7 +7,8 @@ import { alertInclude } from '@/server/services/alerts';
 import { refreshAlertsInBackground } from '@/server/services/dashboard';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Dialog } from '@/components/ui/dialog';
 import { Comments } from '@/components/operational/comments';
 import {
@@ -41,6 +42,7 @@ export default async function AlertsPage({
   const params = await searchParams;
   refreshAlertsInBackground();
 
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : 'activas';
   const now = new Date();
 
@@ -60,6 +62,19 @@ export default async function AlertsPage({
           : {}),
   };
 
+  if (q) {
+    where.AND = [
+      {
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { message: { contains: q, mode: 'insensitive' } },
+          { resolutionNote: { contains: q, mode: 'insensitive' } },
+          { dedupeKey: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+    ];
+  }
+
   const [alerts, options, counts] = await Promise.all([
     prisma.alert.findMany({
       where,
@@ -78,6 +93,11 @@ export default async function AlertsPage({
   const countByStatus = new Map(counts.map((row) => [row.status, row._count._all]));
   const selected = typeof params.alerta === 'string' ? params.alerta : null;
   const canManage = user.permissions.includes('alert.manage');
+  const alertHref = (nextEstado: string) => {
+    const query = new URLSearchParams({ estado: nextEstado });
+    if (q) query.set('q', q);
+    return `/alertas?${query.toString()}`;
+  };
 
   const TABS: Array<{ key: string; label: string; count?: number }> = [
     { key: 'activas', label: 'Activas' },
@@ -116,7 +136,7 @@ export default async function AlertsPage({
         {TABS.map((tab) => (
           <Link
             key={tab.key}
-            href={`/alertas?estado=${tab.key}`}
+            href={alertHref(tab.key)}
             aria-current={estado === tab.key ? 'page' : undefined}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ${
               estado === tab.key
@@ -132,6 +152,19 @@ export default async function AlertsPage({
         ))}
       </nav>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar título, mensaje, reserva o concepto…"
+        clearHref="/alertas"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            {TABS.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+          </select>
+        </label>
+      </ListFilterBar>
+
       {alerts.length === 0 ? (
         <Card>
           <EmptyState
@@ -140,7 +173,8 @@ export default async function AlertsPage({
           />
         </Card>
       ) : (
-        <ul className="space-y-3">
+        <CardScroll maxHeight="max-h-[52rem]">
+          <ul className="space-y-3 pr-1">
           {alerts.map((alert) => (
             <li key={alert.id} id={alert.id}>
               <Card className={selected === alert.id ? 'ring-2 ring-gold-400' : undefined}>
@@ -270,7 +304,8 @@ export default async function AlertsPage({
               </Card>
             </li>
           ))}
-        </ul>
+          </ul>
+        </CardScroll>
       )}
     </div>
   );

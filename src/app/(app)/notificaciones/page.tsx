@@ -6,7 +6,7 @@ import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { LIVE_ALERT_WHERE } from '@/server/services/alert-engine';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import {
   ALERT_LEVEL_LABEL,
@@ -142,6 +142,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
             No son tarjetas persistentes del tablero. Gestiona el aviso aquí: resuélvelo o posponlo 30 minutos.
           </p>
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
             {checkoutAlerts.map((alert) => (
               <li key={alert.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
@@ -160,12 +161,14 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               </li>
             ))}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
 
       {approvalAlerts.length > 0 ? (
         <Card>
           <CardHeader title="Autorizaciones y validaciones" count={approvalAlerts.length} />
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
             {approvalAlerts.map((alert) => {
               const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:');
@@ -193,6 +196,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               );
             })}
           </ul>
+        </CardScroll>
         </Card>
       ) : null}
 
@@ -204,6 +208,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
             hint="Recibirás avisos por tareas, incidencias, vencimientos, entregas y solicitudes de autorización."
           />
         ) : (
+          <CardScroll>
           <ul className="divide-y divide-slate-100">
             {notifications.map((notification) => (
               <li
@@ -241,6 +246,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
               </li>
             ))}
           </ul>
+        </CardScroll>
         )}
       </Card>
 

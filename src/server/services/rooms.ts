@@ -26,6 +26,7 @@ const ACTIVE_STAGES: RoomStayStage[] = [RoomStayStage.PENDIENTE, RoomStayStage.C
 const stayFactsSelect = {
   id: true,
   reservationId: true,
+  reservationRefId: true,
   guestNames: true,
   status: true,
   stage: true,

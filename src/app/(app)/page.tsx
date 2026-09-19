@@ -15,7 +15,7 @@ import {
   HANDOVER_LEVEL_TONE,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, shiftTypeAt } from '@/domain/shift';
-import { formatDate, formatDateTime, formatTime } from '@/lib/format';
+import { formatCalendarDate, formatDateTime, formatTime } from '@/lib/format';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
 import { OperationalBriefButton } from '@/components/operational/operational-brief';
 import {
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
             {shift ? (
               <>
                 <h1 className="mt-1 text-xl font-semibold text-petrol-900">
-                  {SHIFT_TYPE_LABEL[shift.type]} · {formatDate(shift.date)}
+                  {SHIFT_TYPE_LABEL[shift.type]} · {formatCalendarDate(shift.date)}
                 </h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                   <Badge

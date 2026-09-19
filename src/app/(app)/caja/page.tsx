@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, Banknote, Dumbbell, PlusCircle, Scale, ShieldCheck } from 'lucide-react';
-import { requirePagePermission } from '@/server/auth/guard';
-import { hasPermission } from '@/server/auth/current-user';
+import { requirePageUser } from '@/server/auth/guard';
+import { hasAnyPermission, hasPermission } from '@/server/auth/current-user';
 import {
   formatGymFolio,
   getLiveCashStateWithGym as getLiveCashState,
@@ -16,6 +16,7 @@ import {
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
 import { formatDateTime } from '@/lib/format';
+import { redirect } from 'next/navigation';
 
 export const metadata = { title: 'Caja' };
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,10 @@ function human(value: string) {
 }
 
 export default async function LiveCashPage() {
-  const user = await requirePagePermission('cash.view');
+  const user = await requirePageUser();
+  if (!hasAnyPermission(user, ['cash.view', 'cash.manual_in', 'cash.manual_out', 'cash.audit', 'cash.guarantee_out'])) {
+    redirect('/sin-permisos');
+  }
   const state = await getLiveCashState();
   const canManualIn = hasPermission(user, 'cash.manual_in');
   const canManualOut = hasPermission(user, 'cash.manual_out');

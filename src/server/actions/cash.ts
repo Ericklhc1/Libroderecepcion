@@ -7,7 +7,6 @@ import {
   AlertType,
   AuditAction,
   HandoverStatus,
-  NotificationType,
 } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, runAction, type ActionState } from '@/server/action';
@@ -27,10 +26,9 @@ import { fromMinor } from '@/domain/cash';
 /**
  * Acciones de caja.
  *
- * El permiso es `shift.handover` para declarar y `shift.receive` para
- * confirmar, de modo que quien cuenta es quien entrega o quien recibe, y no un
- * tercero. Las cantidades llegan en campos `d_<idDenominación>`, porque un
- * formulario no puede enviar un objeto.
+ * Caja usa permisos atómicos por operación. La pertenencia al turno sigue
+ * validándose en los servicios de turno: permiso y contexto son controles
+ * distintos. Las cantidades llegan en campos `d_<idDenominación>`.
  */
 
 const handoverIdSchema = z.object({ handoverId: z.string().min(1) });

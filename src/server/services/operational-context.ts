@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { RoomStayStage, type Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import type { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 
 type Db = Prisma.TransactionClient | typeof prisma;

@@ -536,7 +536,7 @@ export async function unarchiveShiftAction(
       entityId: shift.id,
       action: AuditAction.EDITAR,
       user,
-      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${shift.formatCalendarDate(date)} desarchivado`,
+      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${formatCalendarDate(shift.date)} desarchivado`,
     });
 
     refresh(shift.id);

@@ -10,6 +10,7 @@ import type { ColumnField } from './columns';
 import type { RawRecord, ReportKind, StructuredReport } from './layout';
 import { parseMoney, type Money } from './money';
 import { parsePaymentType, type ParsedPayment } from './payment';
+import { hotelCalendarDate } from '@/domain/time';
 
 /** Estado operativo que aporta cada informe. */
 export type OperationalStatus = 'CHECK_IN' | 'IN_HOUSE' | 'CHECK_OUT';

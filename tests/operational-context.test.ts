@@ -9,6 +9,8 @@ import {
   seedCatalog,
 } from './helpers';
 import { resolveOperationalContext } from '@/server/services/operational-context';
+import { insertCashMovement } from '@/server/services/live-cash';
+import { getRoomDetail } from '@/server/services/rooms';
 
 async function reservation(code: string, guestName: string) {
   return prisma.reservationReference.create({
@@ -105,5 +107,41 @@ describe('resolución operacional de contexto', () => {
 
     expect(context.stayId).toBe(current.id);
     expect(context.reservationReferenceId).toBe(currentRef.id);
+  });
+
+  it('un movimiento creado en Caja central se refleja en el dossier de la habitación', async () => {
+    const ref = await reservation('CTX-CAJA', 'Huésped Caja');
+    const current = await stay({
+      code: ref.code,
+      reservationRefId: ref.id,
+      roomNumber: '408',
+    });
+    const room = await prisma.room.findUniqueOrThrow({ where: { number: '408' } });
+    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Caja Contexto' });
+
+    const movementId = await insertCashMovement(prisma, {
+      userId: user.id,
+      kind: 'AJUSTE_ENTRADA',
+      direction: 'ENTRADA',
+      currency: 'CLP',
+      amount: 25_000,
+      roomId: room.id,
+      stayId: current.id,
+      guestId: ref.guestId,
+      reservationReferenceId: ref.id,
+      reference: 'Abono contextual',
+    });
+
+    const detail = await getRoomDetail('408');
+    const reflected = detail.cashMovements.find((movement) => movement.id === movementId);
+
+    expect(reflected).toMatchObject({
+      direction: 'ENTRADA',
+      currency: 'CLP',
+      amount: 25_000,
+      reservationCode: 'CTX-CAJA',
+      guestName: 'Huésped Caja',
+      createdByName: 'Caja Contexto',
+    });
   });
 });

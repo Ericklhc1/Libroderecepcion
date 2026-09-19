@@ -252,6 +252,7 @@ export function CashBox({
   previous,
   role,
   formalClosure,
+  permissions,
 }: {
   handoverId: string;
   shiftId: string;
@@ -259,6 +260,14 @@ export function CashBox({
   denominations: DenominationOption[];
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
+  permissions: {
+    declareCount: boolean;
+    receiveCount: boolean;
+    returnGuarantee: boolean;
+    usdRate: boolean;
+    treasuryTransfer: boolean;
+    close: boolean;
+  };
   formalClosure: {
     closedAt: string;
     closedByName: string;
@@ -352,7 +361,7 @@ export function CashBox({
                     <span className="font-semibold tabular text-petrol-900">
                       {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
                     </span>
-                    {role !== 'lector' ? (
+                    {permissions.returnGuarantee ? (
                       <ReturnCashGuaranteeForm
                         guaranteeId={guarantee.id}
                         reservationCode={guarantee.reservationCode}
@@ -403,7 +412,7 @@ export function CashBox({
                     {transfer.reference ? ` · comprobante ${transfer.reference}` : ''} · {transfer.createdByName}
                   </span>
                   <Badge tone={transfer.approved ? 'resuelto' : 'pendiente'}>
-                    {transfer.approved ? 'Revisado por Supervisión' : 'Pendiente de revisión'}
+                    {transfer.approved ? 'Registrado' : 'Pendiente de revisión histórica'}
                   </Badge>
                 </li>
               ))}
@@ -411,7 +420,7 @@ export function CashBox({
           </section>
         ) : null}
 
-        {role !== 'lector' ? (
+        {((role === 'emisor' && permissions.declareCount) || (role === 'receptor' && permissions.receiveCount)) ? (
           <div className="border-t border-slate-100 pt-3 no-print">
             <h3 className="mb-2 text-sm font-semibold text-petrol-900">
               {role === 'emisor' ? 'Contar y declarar la caja' : 'Recontar la caja'}
@@ -425,7 +434,7 @@ export function CashBox({
           </div>
         ) : null}
 
-        {role === 'emisor' && state.declared ? (
+        {role === 'emisor' && state.declared && permissions.close ? (
           <section className="rounded-xl bg-gold-50 p-3 ring-1 ring-gold-200 no-print">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -454,9 +463,9 @@ export function CashBox({
           </section>
         ) : null}
 
-        {role === 'emisor' ? (
+        {role === 'emisor' && (permissions.usdRate || permissions.treasuryTransfer) ? (
           <>
-            <div className="border-t border-slate-100 pt-3 no-print">
+            {permissions.usdRate ? <div className="border-t border-slate-100 pt-3 no-print">
               <h3 className="mb-2 text-sm font-semibold text-petrol-900">Dólar operativo</h3>
               <ActionForm action={saveHandoverUsdRateAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />
@@ -480,12 +489,12 @@ export function CashBox({
                 </Field>
                 <SubmitButton variant="secondary" pendingLabel="Guardando…">Guardar dólar</SubmitButton>
               </ActionForm>
-            </div>
+            </div> : null}
 
-            <div className="border-t border-slate-100 pt-3 no-print">
+            {permissions.treasuryTransfer ? <div className="border-t border-slate-100 pt-3 no-print">
               <h3 className="mb-1 text-sm font-semibold text-petrol-900">Egreso de Caja a tesorería</h3>
               <p className="mb-2 text-xs text-slate-500">
-                Es un movimiento real de Caja. Todo monto mayor que 0 genera un aviso inmediato para revisión de Supervisión; no bloquea la operación.
+                Es un movimiento real de Caja. Se registra según el permiso del rol y conserva trazabilidad completa; no requiere autorización previa por defecto.
               </p>
               <ActionForm action={recordCashTransferAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />
@@ -509,7 +518,7 @@ export function CashBox({
                 </div>
                 <SubmitButton variant="secondary" pendingLabel="Registrando…">Registrar egreso</SubmitButton>
               </ActionForm>
-            </div>
+            </div> : null}
           </>
         ) : null}
       </div>

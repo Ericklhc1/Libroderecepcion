@@ -88,7 +88,7 @@ export type NormalizedStay = {
   departureDate: Date | null;
   pmsStatus: string | null;
   sourceReport: ReportKind;
-  operationalStatus: OperationalStatus;
+  operationalStatus: OperationalStatus | null;
   /** Huéspedes que declara la fila. Sólo lo trae el informe de actividad. */
   guestCount: number | null;
   /** Importe total de la estancia, con su moneda. Nunca un número suelto. */
@@ -281,12 +281,11 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
       pmsStatus: rawType,
       sourceReport: kind,
       /*
-        `CHECK_IN` como último recurso es deliberado y sólo se alcanza con la
-        fila ya marcada como problemática: es el estado que NO otorga llave ni
-        da nada por hecho, así que un dato ilegible no puede provocar que el
-        sistema entregue una llave o cierre una salida por su cuenta.
+        Si el informe no permite determinar el estado, se conserva como nulo.
+        La fila queda visible con su problema y NO puede transformarse en una
+        estadía operativa hasta que el dato sea inequívoco.
       */
-      operationalStatus: reportStatus ?? fromRow ?? 'CHECK_IN',
+      operationalStatus: reportStatus ?? fromRow,
       guestCount: parseGuestCount(cell(record, 'guestCount')),
       totalAmount,
       pendingAmount,

@@ -242,7 +242,7 @@ describe('el estado sale de cada fila, no del informe', () => {
     ]);
     const stay = normalized.stays[0]!;
     expect(stay.issues.join(' ')).toMatch(/no se reconoce/i);
-    expect(stay.operationalStatus).toBe('CHECK_IN');
+    expect(stay.operationalStatus).toBeNull();
     // Y el texto original se conserva, para poder decidir mirándolo.
     expect(stay.pmsStatus).toBe('Pendiente de asignar');
   });

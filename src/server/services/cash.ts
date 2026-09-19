@@ -1,8 +1,6 @@
 import 'server-only';
 import {
-  AlertLevel,
   AlertStatus,
-  AlertType,
   AuditAction,
   CashCountKind,
   GuaranteeKind,
@@ -205,7 +203,7 @@ export async function getHandoverCashState(
       amount: Number(transfer.amount),
       reference: transfer.reference,
       createdByName: transfer.createdBy.name,
-      approved: approvalByTransfer.get(transfer.id) === true,
+      approved: approvalByTransfer.has(transfer.id) ? approvalByTransfer.get(transfer.id) === true : true,
     })),
     elements: elements.map((element) => ({
       id: element.id,
@@ -411,7 +409,7 @@ export function isCashAlreadyReceived(error: unknown): boolean {
   );
 }
 
-/** Egreso a tesorería. Queda registrado y auditado; Supervisión revisa después. */
+/** Egreso a tesorería. Queda registrado y auditado según el permiso del rol. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -458,19 +456,6 @@ export async function recordCashTransfer(
       },
     });
 
-    await tx.alert.create({
-      data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Revisar egreso a tesorería',
-        message: `Revisar egreso de ${params.amount} ${currency}${transfer.reference ? ` · comprobante ${transfer.reference}` : ''}.`,
-        handoverId: params.handoverId,
-        dedupeKey: `cash-transfer:${transfer.id}`,
-        auto: false,
-        createdById: user.id,
-      },
-    });
 
     await recordAudit(
       {
@@ -479,7 +464,7 @@ export async function recordCashTransfer(
         action: AuditAction.CREAR,
         summary: `Egreso a tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
-        }; pendiente de revisión de Supervisión.`,
+        }; registrado con trazabilidad.`,
         user,
       },
       tx,

@@ -90,7 +90,7 @@ export default async function GuestReservationImportPage({
             <StatTile label="Entradas" value={preview.counts.checkIn} />
             <StatTile label="In house" value={preview.counts.inHouse} />
             <StatTile label="Salidas" value={preview.counts.checkOut} />
-            <StatTile label="Advertencias" value={preview.conflicts.length + preview.orphans.length} tone={preview.conflicts.length + preview.orphans.length ? 'alert' : 'good'} />
+            <StatTile label="Advertencias" value={preview.conflicts.length + preview.orphans.length + preview.activity.rowIssues.length} tone={preview.conflicts.length + preview.orphans.length + preview.activity.rowIssues.length ? 'alert' : 'good'} />
           </div>
 
           <Card>
@@ -103,15 +103,20 @@ export default async function GuestReservationImportPage({
             </div>
           </Card>
 
-          {preview.conflicts.length || preview.orphans.length ? (
+          {preview.conflicts.length || preview.orphans.length || preview.activity.rowIssues.length ? (
             <Card>
-              <CardHeader title="Revisar antes de aplicar" count={preview.conflicts.length + preview.orphans.length} />
+              <CardHeader title="Revisar antes de aplicar" count={preview.conflicts.length + preview.orphans.length + preview.activity.rowIssues.length} />
               <div className="space-y-2 px-4 py-3 text-sm text-slate-700">
                 {preview.conflicts.map((conflict, index) => (
                   <p key={`${conflict.kind}-${index}`}>{conflict.roomNumber ? `Hab. ${conflict.roomNumber}: ` : ''}{conflict.detail}</p>
                 ))}
                 {preview.orphans.map((orphan, index) => (
                   <p key={`${orphan.reservationId}-${index}`}>Reserva {orphan.reservationId}: {orphan.reason}</p>
+                ))}
+                {preview.activity.rowIssues.map((issue, index) => (
+                  <p key={`issue-${issue.reservationId}-${index}`}>
+                    {issue.roomNumber ? `Hab. ${issue.roomNumber} · ` : ''}Reserva {issue.reservationId || 'sin ID'}: {issue.issues.join(' ')}
+                  </p>
                 ))}
               </div>
             </Card>
@@ -128,7 +133,13 @@ export default async function GuestReservationImportPage({
                   {preview.stays.map((stay, index) => (
                     <tr key={`${stay.reservationId}-${stay.status}-${index}`}>
                       <td className="px-4 py-1.5 tabular font-medium text-petrol-900">{stay.roomNumber ?? '—'}</td>
-                      <td className="px-4 py-1.5"><Badge tone={STAY_STATUS_TONE[stay.status]}>{STAY_STATUS_LABELS[stay.status]}</Badge></td>
+                      <td className="px-4 py-1.5">
+                        {stay.status ? (
+                          <Badge tone={STAY_STATUS_TONE[stay.status]}>{STAY_STATUS_LABELS[stay.status]}</Badge>
+                        ) : (
+                          <Badge tone="atencion">Sin determinar</Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-1.5 tabular text-slate-600">{stay.reservationId}</td>
                       <td className="px-4 py-1.5 text-slate-700">{stay.guestNames.join(' · ') || '—'}</td>
                       <td className="px-4 py-1.5 text-slate-500">{stay.channel ?? '—'}</td>

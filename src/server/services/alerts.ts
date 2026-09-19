@@ -5,7 +5,7 @@ import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
-import type { CurrentUser } from '@/server/auth/current-user';
+import { hasPermission, type CurrentUser } from '@/server/auth/current-user';
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
 
@@ -245,11 +245,11 @@ export async function resolveAlert(
   const noElements = alert.dedupeKey?.startsWith('handover-elements-none:') === true;
   const shiftValidation = alert.dedupeKey?.startsWith('shift-validation:') === true;
 
-  if ((cashTransfer || cashManual) && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
-    throw new RuleError(
-      'Los movimientos de Caja sólo pueden ser autorizados por un Supervisor desde su cuenta.',
-    );
+  if (cashManual && !hasPermission(user, 'cash.manual_out') && !hasPermission(user, 'cash.manual_in')) {
+    throw new RuleError('Tu rol no tiene habilitada la gestión de movimientos manuales de Caja.');
   }
+  // cash-transfer histórico: resolver la alerta sólo reconoce/revisa el registro;
+  // los egresos nuevos se gobiernan por cash.treasury_transfer y no esperan aprobación.
 
   if (noElements && user.roleKey !== ROLE_KEYS.SUPERVISOR) {
     throw new RuleError(
@@ -286,9 +286,9 @@ export async function resolveAlert(
     entityId: input.id,
     action: AuditAction.CERRAR,
     summary: cashTransfer
-      ? `Egreso a tesorería validado por Supervisor: ${alert.title}`
+      ? `Egreso a tesorería histórico revisado: ${alert.title}`
       : cashManual
-        ? `Movimiento manual de Caja autorizado por Supervisor: ${alert.title}`
+        ? `Solicitud histórica de movimiento manual de Caja resuelta: ${alert.title}`
         : noElements
           ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
           : shiftValidation

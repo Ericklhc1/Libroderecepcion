@@ -223,8 +223,8 @@ export async function createGuaranteeAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('guest.manage');
     const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
+    const user = await requirePermission(input.kind === 'EFECTIVO' ? 'cash.guarantee_in' : 'guest.manage');
     const guarantee = await createGuarantee(user, input);
     refreshGuarantees();
     return {

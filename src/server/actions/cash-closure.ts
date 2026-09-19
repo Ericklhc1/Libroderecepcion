@@ -24,7 +24,7 @@ export async function closeShiftCashAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.handover');
+    const user = await requirePermission('cash.close');
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
     const closure = await closeShiftCash(user, input);
     refresh(input.shiftId);
@@ -46,7 +46,7 @@ export async function reopenShiftCashAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('supervision.view');
+    const user = await requirePermission('cash.reopen');
     const input = parseOrThrow(reopenSchema, formDataToObject(formData));
     await reopenShiftCash(user, input);
     refresh(input.shiftId);

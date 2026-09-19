@@ -7,15 +7,12 @@ import {
   AlertType,
   AuditAction,
   HandoverStatus,
-  NotificationType,
 } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
-import { ROLE_KEYS } from '@/lib/permissions';
-import { notify } from '@/server/notifications';
 import { recordAudit } from '@/server/audit';
 import {
   markHandoverElements,
@@ -29,10 +26,9 @@ import { fromMinor } from '@/domain/cash';
 /**
  * Acciones de caja.
  *
- * El permiso es `shift.handover` para declarar y `shift.receive` para
- * confirmar, de modo que quien cuenta es quien entrega o quien recibe, y no un
- * tercero. Las cantidades llegan en campos `d_<idDenominación>`, porque un
- * formulario no puede enviar un objeto.
+ * Caja usa permisos atómicos por operación. La pertenencia al turno sigue
+ * validándose en los servicios de turno: permiso y contexto son controles
+ * distintos. Las cantidades llegan en campos `d_<idDenominación>`.
  */
 
 const handoverIdSchema = z.object({ handoverId: z.string().min(1) });
@@ -68,7 +64,7 @@ export async function declareCashCountAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.handover');
+    const user = await requirePermission('cash.count_declare');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
 
@@ -91,7 +87,7 @@ export async function confirmCashCountAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.receive');
+    const user = await requirePermission('cash.count_receive');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
 
@@ -135,7 +131,7 @@ export async function recordCashTransferAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.handover');
+    const user = await requirePermission('cash.treasury_transfer');
     const input = transferSchema.parse(formDataToObject(formData));
 
     if (input.amount === 0) {
@@ -150,27 +146,6 @@ export async function recordCashTransferAction(
       notes: input.notes ?? null,
     });
 
-    const supervisors = await prisma.user.findMany({
-      where: {
-        active: true,
-        deletedAt: null,
-        role: { key: ROLE_KEYS.SUPERVISOR },
-      },
-      select: { id: true },
-    });
-    await notify(
-      supervisors.map((supervisor) => ({
-        userId: supervisor.id,
-        type: NotificationType.ACCION_REQUERIDA,
-        title: 'Revisar egreso de Caja',
-        body: `Egreso de ${input.amount.toLocaleString('es-CL')} ${input.currency}${
-          input.reference ? ` · comprobante ${input.reference}` : ''
-        }.`,
-        link: '/notificaciones',
-        entity: 'CashTransfer',
-        entityId: transfer.id,
-      })),
-    );
 
     revalidatePath('/turno');
     revalidatePath('/caja');
@@ -179,7 +154,7 @@ export async function recordCashTransferAction(
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: `Egreso de ${input.amount} ${input.currency} registrado. Supervisión recibió el aviso para revisión.`,
+      message: `Egreso de ${input.amount} ${input.currency} registrado con trazabilidad.`,
     };
   });
 }
@@ -201,7 +176,7 @@ export async function saveHandoverUsdRateAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.handover');
+    const user = await requirePermission('cash.usd_rate');
     const input = usdRateSchema.parse(formDataToObject(formData));
     const usdRateCLP = input.usdRateCLP;
 

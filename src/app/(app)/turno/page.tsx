@@ -124,22 +124,22 @@ export default async function ShiftPage({
   const visibleBriefing = briefing
     ? {
         ...briefing,
-        openEntries: visibleBriefing.openEntries.filter((entry) =>
+        openEntries: briefing.openEntries.filter((entry) =>
           textMatches([entry.seq, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name, entry.guest?.fullName]),
         ),
-        overdueTasks: visibleBriefing.overdueTasks.filter((task) =>
+        overdueTasks: briefing.overdueTasks.filter((task) =>
           textMatches([task.seq, task.status, task.title, task.assignee?.name]),
         ),
-        alerts: visibleBriefing.alerts.filter((alert) =>
+        alerts: briefing.alerts.filter((alert) =>
           textMatches([alert.type, alert.level, alert.title]),
         ),
-        followUps: visibleBriefing.followUps.filter((followUp) =>
+        followUps: briefing.followUps.filter((followUp) =>
           textMatches([followUp.status, followUp.action, followUp.owner.name]),
         ),
-        vipGuests: visibleBriefing.vipGuests.filter((guest) =>
+        vipGuests: briefing.vipGuests.filter((guest) =>
           textMatches([guest.fullName, guest.roomNumber, guest.notes]),
         ),
-        reservations: visibleBriefing.reservations.filter((reservation) =>
+        reservations: briefing.reservations.filter((reservation) =>
           textMatches([
             reservation.code,
             reservation.status,

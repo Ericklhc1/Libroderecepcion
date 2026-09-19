@@ -25,6 +25,7 @@ const MOVEMENT_LABEL: Record<string, string> = {
   GARANTIA_DEVOLUCION: 'Garantía devuelta',
   VENTA_GIMNASIO: 'Pase gimnasio histórico',
   ANULACION_GIMNASIO: 'Anulación gimnasio histórica',
+  TESORERIA: 'Egreso a tesorería',
   AJUSTE_ENTRADA: 'Ingreso manual',
   AJUSTE_SALIDA: 'Egreso manual',
 };

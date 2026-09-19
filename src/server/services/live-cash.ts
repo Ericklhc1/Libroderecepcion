@@ -40,6 +40,8 @@ export type LiveCashMovement = {
   notes: string | null;
   roomNumber: string | null;
   reservationCode: string | null;
+  stayId: string | null;
+  guestName: string | null;
   createdByName: string;
   createdAt: Date;
 };
@@ -142,6 +144,8 @@ export async function insertCashMovement(
     amount: number;
     shiftId?: string | null;
     roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
     reservationReferenceId?: string | null;
     guaranteeId?: string | null;
     gymPassId?: string | null;
@@ -157,11 +161,12 @@ export async function insertCashMovement(
   await client.$executeRaw`
     INSERT INTO "CashMovement" (
       "id", "kind", "direction", "currency", "amount", "shiftId", "roomId",
-      "reservationReferenceId", "guaranteeId", "gymPassId", "cashTransferId",
-      "createdById", "reference", "notes"
+      "stayId", "guestId", "reservationReferenceId", "guaranteeId", "gymPassId",
+      "cashTransferId", "createdById", "reference", "notes"
     ) VALUES (
       ${id}, ${params.kind}, ${params.direction}, ${currency}, ${params.amount},
       ${params.shiftId ?? null}, ${params.roomId ?? null},
+      ${params.stayId ?? null}, ${params.guestId ?? null},
       ${params.reservationReferenceId ?? null}, ${params.guaranteeId ?? null},
       ${params.gymPassId ?? null}, ${params.cashTransferId ?? null},
       ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null}
@@ -567,18 +572,22 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         notes: string | null;
         roomNumber: string | null;
         reservationCode: string | null;
+        stayId: string | null;
+        guestName: string | null;
         createdByName: string;
         createdAt: Date;
       }>
     >`
       SELECT m."id", m."kind", m."direction", m."currency", m."amount",
              m."reference", m."notes", r."number" AS "roomNumber",
-             rr."code" AS "reservationCode", u."name" AS "createdByName",
+             rr."code" AS "reservationCode", m."stayId",
+             g."fullName" AS "guestName", u."name" AS "createdByName",
              m."createdAt"
       FROM "CashMovement" m
       JOIN "User" u ON u."id" = m."createdById"
       LEFT JOIN "Room" r ON r."id" = m."roomId"
       LEFT JOIN "ReservationReference" rr ON rr."id" = m."reservationReferenceId"
+      LEFT JOIN "GuestReference" g ON g."id" = m."guestId"
       WHERE m."voidedAt" IS NULL
       ORDER BY m."createdAt" DESC
       LIMIT ${limit}

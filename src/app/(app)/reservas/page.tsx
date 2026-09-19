@@ -4,10 +4,12 @@ import { requirePageAnyPermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { listReservationFolders } from '@/server/services/reservation-folders';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { ReservationDialog } from '@/app/(app)/huespedes/guest-forms';
 import { formatDate } from '@/lib/format';
+import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Reservas' };
 export const dynamic = 'force-dynamic';
@@ -24,8 +26,15 @@ const STATUS_TONE = {
   CHECK_OUT: 'atencion',
 } as const;
 
-export default async function ReservationsPage() {
+export default async function ReservationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const user = await requirePageAnyPermission(['room.view', 'guest.view', 'guest.manage']);
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const estado = typeof params.estado === 'string' ? params.estado : '';
   const canManage = hasPermission(user, 'guest.manage');
   const canImport = hasPermission(user, 'pms.import');
 
@@ -46,7 +55,46 @@ export default async function ReservationsPage() {
     label: `${guest.fullName}${guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}`,
   }));
 
-  const activeIds = folders.rooms.reduce((total, room) => total + room.reservations.length, 0);
+  const reservationMatches = (reservation: (typeof folders.unassigned)[number]) => {
+    const searchText = [
+      reservation.fnsId,
+      reservation.guestName,
+      reservation.status,
+      reservation.checkIn?.toISOString(),
+      reservation.checkOut?.toISOString(),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return (!q || searchText.includes(q)) && (!estado || reservation.status === estado);
+  };
+
+  const visibleUnassigned = folders.unassigned.filter(reservationMatches);
+  const visibleRooms = folders.rooms
+    .map((room) => {
+      const roomMatches =
+        !q ||
+        [room.roomNumber, room.floor ? `piso ${room.floor}` : '']
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      const reservations = room.reservations.filter((reservation) => {
+        const searchText = [
+          reservation.fnsId,
+          reservation.guestName,
+          reservation.status,
+          room.roomNumber,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return (!q || roomMatches || searchText.includes(q)) && (!estado || reservation.status === estado);
+      });
+      return { ...room, reservations };
+    })
+    .filter((room) => room.reservations.length > 0 || (!estado && q && room.roomNumber.toLowerCase().includes(q)));
+
+  const activeIds = visibleRooms.reduce((total, room) => total + room.reservations.length, 0);
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -80,17 +128,34 @@ export default async function ReservationsPage() {
         </div>
       </header>
 
+      <ListFilterBar
+        searchValue={q}
+        searchPlaceholder="Buscar habitación, ID FNS, huésped…"
+        clearHref="/reservas"
+      >
+        <label className="min-w-[12rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
+          <select name="estado" defaultValue={estado} className="input-base w-full">
+            <option value="">Todos</option>
+            <option value="CHECK_IN">Cola de check-in</option>
+            <option value="IN_HOUSE">In house</option>
+            <option value="CHECK_OUT">Salida</option>
+          </select>
+        </label>
+      </ListFilterBar>
+
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card><div className="p-4"><p className="text-xs text-slate-500">Habitaciones</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{folders.rooms.length}</p></div></Card>
-        <Card><div className="p-4"><p className="text-xs text-slate-500">ID FNS activos</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{activeIds}</p></div></Card>
-        <Card><div className="p-4"><p className="text-xs text-slate-500">Sin habitación asignada</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{folders.unassigned.length}</p></div></Card>
+        <Card><div className="p-4"><p className="text-xs text-slate-500">Habitaciones visibles</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{visibleRooms.length}</p></div></Card>
+        <Card><div className="p-4"><p className="text-xs text-slate-500">ID FNS visibles</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{activeIds}</p></div></Card>
+        <Card><div className="p-4"><p className="text-xs text-slate-500">Sin habitación visibles</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{visibleUnassigned.length}</p></div></Card>
       </div>
 
-      {folders.unassigned.length > 0 ? (
+      {visibleUnassigned.length > 0 ? (
         <Card className="border-gold-300">
-          <CardHeader title="Reservas sin habitación asignada" count={folders.unassigned.length} />
-          <div className="divide-y divide-slate-100">
-            {folders.unassigned.map((reservation) => (
+          <CardHeader title="Reservas sin habitación asignada" count={visibleUnassigned.length} />
+          <CardScroll>
+            <div className="divide-y divide-slate-100">
+            {visibleUnassigned.map((reservation) => (
               <Link
                 key={reservation.reservationRefId}
                 href={`/reservas/${encodeURIComponent(reservation.fnsId)}`}
@@ -106,19 +171,21 @@ export default async function ReservationsPage() {
                 </div>
               </Link>
             ))}
-          </div>
+            </div>
+          </CardScroll>
         </Card>
       ) : null}
 
       <Card>
         <CardHeader
           title="Carpetas de habitaciones"
-          count={folders.rooms.length}
+          count={visibleRooms.length}
           action={<span className="inline-flex items-center gap-1 text-xs text-slate-500"><Search className="h-3.5 w-3.5" />Cada ID abre su dossier transversal</span>}
         />
-        <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {folders.rooms.map((room) => (
-            <section key={room.roomId} className="rounded-xl bg-white ring-1 ring-slate-200">
+        <CardScroll maxHeight="max-h-[52rem]">
+          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visibleRooms.map((room) => (
+            <section key={room.roomId} className="flex h-[20rem] flex-col overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5">
                 <div className="flex items-center gap-2">
                   <Folder className="h-4 w-4 text-gold-600" aria-hidden="true" />
@@ -134,7 +201,8 @@ export default async function ReservationsPage() {
                   <EmptyState message="Sin ID activo." />
                 </div>
               ) : (
-                <ul className="divide-y divide-slate-100">
+                <CardScroll className="flex-1" maxHeight="max-h-[16rem]">
+                  <ul className="divide-y divide-slate-100">
                   {room.reservations.map((stay) => (
                     <li key={stay.fnsId}>
                       <Link
@@ -154,11 +222,13 @@ export default async function ReservationsPage() {
                       </Link>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </CardScroll>
               )}
             </section>
           ))}
-        </div>
+          </div>
+        </CardScroll>
       </Card>
     </div>
   );

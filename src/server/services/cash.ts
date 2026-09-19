@@ -148,6 +148,7 @@ export async function getHandoverCashState(
         state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
       },
       include: {
+        stay: { include: { room: { select: { number: true } } } },
         reservationReference: {
           include: { guest: { select: { fullName: true } } },
         },
@@ -223,7 +224,7 @@ export async function getHandoverCashState(
       amount: Number(guarantee.amount),
       state: guarantee.state,
       reservationCode: guarantee.reservationReference.code,
-      roomNumber: guarantee.reservationReference.roomNumber,
+      roomNumber: guarantee.stay?.room?.number ?? guarantee.reservationReference.roomNumber,
       guestName: guarantee.reservationReference.guest?.fullName ?? null,
     })),
   };
@@ -418,7 +419,6 @@ export function isCashAlreadyReceived(error: unknown): boolean {
  */
 export async function applyCashTransferToLiveCash(
   client: Client,
-  user: CurrentUser,
   transferId: string,
 ): Promise<string> {
   const existing = await client.cashMovement.findUnique({
@@ -499,7 +499,7 @@ export async function recordCashTransfer(
     const movementId =
       params.applyToLiveCash === false
         ? null
-        : await applyCashTransferToLiveCash(tx, user, transfer.id);
+        : await applyCashTransferToLiveCash(tx, transfer.id);
 
     await recordAudit(
       {

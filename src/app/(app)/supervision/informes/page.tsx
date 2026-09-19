@@ -26,8 +26,8 @@ function key(date: Date) {
 export default async function SupervisorReportsPage({ searchParams }: { searchParams: SearchParams }) {
   await requirePagePermission('supervision.view');
   const params = await searchParams;
-  const q = one(params.q).trim().toLowerCase();
-  const tipo = one(params.reporte);
+  const q = (one(params.q) ?? '').trim().toLowerCase();
+  const tipo = one(params.reporte) ?? '';
   const range = reportDateRange(one(params.desde), one(params.hasta));
   const from = key(range.from);
   const to = key(range.to);

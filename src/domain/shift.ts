@@ -1,4 +1,5 @@
-import { HandoverStatus, ShiftStatus, ShiftType } from '@prisma/client';
+import { ShiftStatus, ShiftType } from '@prisma/client';
+import type { HandoverStatus } from '@prisma/client';
 import { RuleError } from '@/server/errors';
 import {
   addCalendarDateDays,

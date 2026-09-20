@@ -259,14 +259,6 @@ export async function prepareImport(
     }
   }
 
-  if (!stays.length) {
-    const detail = reports.map((report) => report.error).filter(Boolean)[0];
-    throw new RuleError(
-      detail ??
-        'No se encontró ninguna fila de reserva. El archivo debe incluir al menos ID y tipo/estado operativo.',
-    );
-  }
-
   /*
     Se pueden adjuntar varios archivos del mismo tipo o un libro con varias
     hojas. Las filas idénticas se colapsan; las que difieren se conservan para
@@ -732,6 +724,11 @@ export async function applyImport(
 
     const businessDate = midnight(batch.businessDate);
     const drafts = batch.payload as unknown as StayDraft[];
+    if (!drafts.length) {
+      throw new RuleError(
+        'No hay filas válidas para aplicar. Revisa los errores del archivo o descarta esta carga.',
+      );
+    }
     const summary: ImportResult = {
       created: 0,
       updated: 0,

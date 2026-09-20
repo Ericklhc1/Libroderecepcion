@@ -178,7 +178,11 @@ export default async function GuestReservationImportPage({
             </div>
           </Card>
 
-          <GuestReservationReviewActions batchId={preview.batchId} returnTo={returnTo} />
+          <GuestReservationReviewActions
+            batchId={preview.batchId}
+            returnTo={returnTo}
+            canApply={preview.stays.length > 0}
+          />
         </>
       )}
     </div>

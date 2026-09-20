@@ -46,7 +46,7 @@ export async function prepareGuestReservationImportAction(
       .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
     if (!files.length) {
-      return { ok: false as const, error: 'Adjunta al menos un informe en PDF.' };
+      return { ok: false as const, error: 'Adjunta al menos un informe en PDF, Excel, CSV o TSV.' };
     }
 
     const incoming = [];

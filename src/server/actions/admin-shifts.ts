@@ -8,7 +8,11 @@ import { formDataToObject, parseOrThrow, runAction, zOptionalString, type Action
 import { requirePermission } from '@/server/auth/guard';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
-import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL } from '@/domain/shift';
+import {
+  ARCHIVABLE_SHIFT_STATUSES,
+  SHIFT_STATUS_LABEL,
+  SHIFT_TYPE_LABEL,
+} from '@/domain/shift';
 import { endShiftParticipation } from '@/server/services/shifts';
 
 const schema = z.object({
@@ -16,12 +20,7 @@ const schema = z.object({
   reason: zOptionalString,
 });
 
-const NORMAL_ARCHIVABLE = new Set<ShiftStatus>([
-  ShiftStatus.PROGRAMADO,
-  ShiftStatus.CERRADO,
-  ShiftStatus.ANULADO,
-  ShiftStatus.RECIBIDO,
-]);
+const NORMAL_ARCHIVABLE = new Set<ShiftStatus>(ARCHIVABLE_SHIFT_STATUSES);
 
 const OCCUPYING = new Set<ShiftStatus>([
   ShiftStatus.INICIADO,
@@ -36,7 +35,7 @@ const OCCUPYING = new Set<ShiftStatus>([
  * El Administrador de sistema puede retirar también un turno en curso o con
  * entrega enviada, útil para corregir aperturas erróneas o ciclos atascados.
  * En esos casos el turno queda ANULADO + archivado para liberar la invariante
- * de "un solo turno en curso". Si había una entrega ENVIADA, se terminaliza
+ * de «una participación activa por persona». Si había una entrega ENVIADA, se terminaliza
  * técnicamente para que no siga apareciendo como entrega pendiente; la
  * observación deja explícito que NO fue una recepción operativa.
  */

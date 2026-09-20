@@ -247,10 +247,12 @@ da seguimiento en el mesón.
 
 Tres capas, cada una probable por separado:
 
-1. `src/server/pms/read-pdf.ts` es lo único que sabe que existe un PDF.
-   Devuelve fragmentos de texto con su coordenada.
+1. `src/server/pms/read-report-file.ts` acepta PDF, Excel `.xlsx`, CSV y TSV y
+   los convierte al mismo flujo de fragmentos. `read-pdf.ts` conserva la
+   geometría del PDF; las hojas y archivos delimitados generan una geometría
+   tabular equivalente.
 2. `src/domain/pms/layout.ts` reconstruye la tabla: agrupa fragmentos en
-   líneas, localiza la línea de encabezados, deduce los límites de columna como
+   líneas, localiza una o dos líneas de encabezados, deduce los límites de columna como
    el punto medio entre encabezados consecutivos y reparte las celdas. **No hay
    posiciones fijas en ninguna parte**: si el PMS mueve una columna, sigue
    funcionando.
@@ -424,10 +426,11 @@ respuesta es válida.
 7. **Los informes del PMS se cargan a mano**: no hay integración automática. El
    módulo interpreta el PDF que exporta el PMS; si más adelante el PMS ofrece
    una API, el lector se reemplaza sin tocar el resto del módulo.
-8. **El diccionario de columnas cubre la plantilla del Hotel HW Libertad** y las
-   variantes habituales. Otra plantilla puede exigir agregar sinónimos en
-   `src/domain/pms/columns.ts`; la pantalla de revisión muestra qué columnas no
-   reconoció, así que el hueco se ve antes de aplicar nada.
+8. **La importación es semántica, no una plantilla de FNS.** Reconoce variantes
+   habituales en español e inglés, columnas reordenadas, encabezados partidos e
+   IDs alfanuméricos. La pantalla de revisión muestra campos reconocidos y no
+   usados. Una variante verdaderamente nueva puede exigir un sinónimo adicional
+   en `src/domain/pms/columns.ts`, sin tocar la lógica operativa.
 9. **El envío de correo necesita SMTP**: sin `SMTP_HOST`, `SMTP_PORT` y
    `MAIL_FROM` el sistema no puede enviar las credenciales y las muestra en
    pantalla. Es una configuración del servidor, no del código.

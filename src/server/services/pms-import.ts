@@ -13,7 +13,7 @@ import { hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { readPdfFragments } from '@/server/pms/read-pdf';
+import { readReportFile } from '@/server/pms/read-report-file';
 import { readStructuredReport } from '@/domain/pms/layout';
 import { hasBlockingPmsIssues } from '@/domain/pms/issues';
 import { normalizeReport, REPORT_LABELS, type NormalizedStay } from '@/domain/pms/normalize';
@@ -181,7 +181,7 @@ export async function prepareImport(
   user: CurrentUser,
   files: IncomingFile[],
 ): Promise<ImportPreview> {
-  if (!files.length) throw new RuleError('Adjunta al menos un informe en PDF.');
+  if (!files.length) throw new RuleError('Adjunta al menos un informe del PMS.');
 
   const reports: ReportMeta[] = [];
   const stays: StayDraft[] = [];
@@ -189,53 +189,55 @@ export async function prepareImport(
 
   for (const file of files) {
     try {
-      const fragments = await readPdfFragments(file.data);
-      const structured = readStructuredReport(fragments);
-      const normalized = normalizeReport(structured);
+      const extractedReports = await readReportFile(file.name, file.data);
+      for (const extracted of extractedReports) {
+        const structured = readStructuredReport(extracted.fragments);
+        const normalized = normalizeReport(structured);
 
-      if (!normalized) {
+        if (!normalized) {
+          reports.push({
+            fileName: extracted.name,
+            kind: null,
+            kindSource: null,
+            title: structured.title,
+            reportDate: structured.reportDate,
+            reportGeneratedAt: structured.reportGeneratedAt,
+            columns: structured.columns.map((column) => ({
+              header: column.header,
+              field: column.field,
+            })),
+            unmapped: structured.unmapped.map((column) => column.header),
+            declaredTotals: structured.summary,
+            rowsRead: 0,
+            ignoredLines: structured.ignoredLines,
+            error:
+              'No se pudo determinar el estado operativo. Incluye una columna de ' +
+              'tipo/estado, o identifica el archivo como entradas, in house o salidas.',
+          });
+          continue;
+        }
+
+        if (normalized.reportDate) reportDates.push(normalized.reportDate);
+        for (const stay of normalized.stays) stays.push(toDraft(stay));
+
         reports.push({
-          fileName: file.name,
-          kind: null,
-          kindSource: null,
-          title: structured.title,
-          reportDate: structured.reportDate,
+          fileName: extracted.name,
+          kind: normalized.kind as PmsReportKind,
+          kindSource: normalized.kindSource,
+          title: normalized.title,
+          reportDate: normalized.reportDate ? normalized.reportDate.toISOString() : null,
           reportGeneratedAt: structured.reportGeneratedAt,
-          columns: structured.columns.map((column) => ({
+          columns: normalized.columns.map((column) => ({
             header: column.header,
             field: column.field,
           })),
-          unmapped: structured.unmapped.map((column) => column.header),
-          declaredTotals: structured.summary,
-          rowsRead: 0,
-          ignoredLines: structured.ignoredLines,
-          error:
-            'No se pudo identificar el tipo de informe. Revisa que sea el informe de ' +
-            'entradas, in house o salidas del PMS.',
+          unmapped: normalized.unmapped.map((column) => column.header),
+          declaredTotals: normalized.summary,
+          rowsRead: normalized.stays.length,
+          ignoredLines: normalized.ignoredLines,
+          error: null,
         });
-        continue;
       }
-
-      if (normalized.reportDate) reportDates.push(normalized.reportDate);
-      for (const stay of normalized.stays) stays.push(toDraft(stay));
-
-      reports.push({
-        fileName: file.name,
-        kind: normalized.kind as PmsReportKind,
-        kindSource: normalized.kindSource,
-        title: normalized.title,
-        reportDate: normalized.reportDate ? normalized.reportDate.toISOString() : null,
-        reportGeneratedAt: structured.reportGeneratedAt,
-        columns: normalized.columns.map((column) => ({
-          header: column.header,
-          field: column.field,
-        })),
-        unmapped: normalized.unmapped.map((column) => column.header),
-        declaredTotals: normalized.summary,
-        rowsRead: normalized.stays.length,
-        ignoredLines: normalized.ignoredLines,
-        error: null,
-      });
     } catch (error) {
       reports.push({
         fileName: file.name,
@@ -257,12 +259,33 @@ export async function prepareImport(
     }
   }
 
-  const kinds = reports.map((report) => report.kind).filter(Boolean);
-  if (new Set(kinds).size !== kinds.length) {
-    throw new RuleError(
-      'Hay dos archivos del mismo tipo de informe. Adjunta una sola copia de cada uno.',
-    );
+  /*
+    Se pueden adjuntar varios archivos del mismo tipo o un libro con varias
+    hojas. Las filas idénticas se colapsan; las que difieren se conservan para
+    que el detector de conflictos las haga visibles en la revisión.
+  */
+  const unique = new Map<string, StayDraft>();
+  for (const stay of stays) {
+    const key = JSON.stringify([
+      stay.reservationId,
+      stay.roomNumber,
+      stay.status,
+      stay.arrivalDate,
+      stay.departureDate,
+      stay.guestNames,
+      stay.channel,
+      stay.totalAmount,
+      stay.pendingAmount,
+      stay.currency,
+      stay.pmsStatus,
+      stay.guestCount,
+      stay.paymentType,
+      stay.paymentTypeRaw,
+      stay.issues,
+    ]);
+    if (!unique.has(key)) unique.set(key, stay);
   }
+  stays.splice(0, stays.length, ...unique.values());
 
   const businessDate = midnight(
     reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? hotelCalendarDate(),
@@ -701,6 +724,11 @@ export async function applyImport(
 
     const businessDate = midnight(batch.businessDate);
     const drafts = batch.payload as unknown as StayDraft[];
+    if (!drafts.length) {
+      throw new RuleError(
+        'No hay filas válidas para aplicar. Revisa los errores del archivo o descarta esta carga.',
+      );
+    }
     const summary: ImportResult = {
       created: 0,
       updated: 0,

@@ -13,8 +13,14 @@ import {
   HANDOVER_STATUS_LABEL,
   HANDOVER_STATUS_TONE,
 } from '@/domain/labels';
-import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, windowHours } from '@/domain/shift';
+import {
+  ARCHIVABLE_SHIFT_STATUSES,
+  SHIFT_STATUS_LABEL,
+  SHIFT_TYPE_LABEL,
+  windowHours,
+} from '@/domain/shift';
 import { formatDate, formatTime } from '@/lib/format';
+import { hasTechnicalAdminAccess } from '@/lib/permissions';
 
 export const metadata = { title: 'Historial de turnos' };
 export const dynamic = 'force-dynamic';
@@ -75,19 +81,21 @@ export default async function ShiftAdminPage({
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <Link
-        href="/admin"
+        href={hasTechnicalAdminAccess(user.permissions) ? '/admin' : '/turno'}
         className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Volver a Administración
+        {hasTechnicalAdminAccess(user.permissions)
+          ? 'Volver a Administración'
+          : 'Volver a Mi turno'}
       </Link>
 
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Historial y archivo de turnos</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Los turnos no se programan desde aquí. Se abren al comenzar la operación y sólo puede
-          existir uno en curso. Esta pantalla conserva la trazabilidad y permite retirar turnos
-          sin borrar su información.
+          Los turnos no se programan desde aquí. Se abren al comenzar la operación y los relevos
+          pueden solaparse; cada persona sólo puede participar en uno activo. Esta pantalla
+          conserva la trazabilidad y permite retirar turnos sin borrar su información.
           {user.isSystemAdmin
             ? ' Como Administrador de sistema, puedes retirar también un turno que aún no esté cerrado.'
             : ''}
@@ -168,6 +176,7 @@ export default async function ShiftAdminPage({
                     shiftId={shift.id}
                     archived={shift.archivedAt !== null}
                     systemAdmin={user.isSystemAdmin}
+                    archivable={ARCHIVABLE_SHIFT_STATUSES.includes(shift.status)}
                   />
                 </div>
               </li>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
+  ARCHIVABLE_SHIFT_STATUSES,
   SHIFT_SCHEDULE,
   SHIFT_TRANSITIONS,
   SHIFT_WINDOW_LABEL,
@@ -100,6 +101,17 @@ describe('regla de cierre de turno', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.CERRADO, handoverStatus: 'RECIBIDA' }),
     ).toThrow(/ya está cerrado/);
+  });
+});
+
+describe('archivo de turnos', () => {
+  it('no ofrece el archivo normal mientras el turno sigue en curso', () => {
+    expect(ARCHIVABLE_SHIFT_STATUSES).toContain(ShiftStatus.CERRADO);
+    expect(ARCHIVABLE_SHIFT_STATUSES).toContain(ShiftStatus.ANULADO);
+    expect(ARCHIVABLE_SHIFT_STATUSES).not.toContain(ShiftStatus.INICIADO);
+    expect(ARCHIVABLE_SHIFT_STATUSES).not.toContain(ShiftStatus.ACTIVO);
+    expect(ARCHIVABLE_SHIFT_STATUSES).not.toContain(ShiftStatus.PREPARANDO_ENTREGA);
+    expect(ARCHIVABLE_SHIFT_STATUSES).not.toContain(ShiftStatus.ENTREGA_ENVIADA);
   });
 });
 

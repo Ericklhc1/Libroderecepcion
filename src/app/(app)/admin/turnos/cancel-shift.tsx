@@ -43,10 +43,12 @@ export function ArchiveShiftDialog({
   shiftId,
   archived,
   systemAdmin = false,
+  archivable,
 }: {
   shiftId: string;
   archived: boolean;
   systemAdmin?: boolean;
+  archivable: boolean;
 }) {
   if (archived) {
     return (
@@ -58,6 +60,8 @@ export function ArchiveShiftDialog({
       </ActionForm>
     );
   }
+
+  if (!systemAdmin && !archivable) return null;
 
   return (
     <Dialog

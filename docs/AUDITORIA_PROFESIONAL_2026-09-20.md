@@ -138,3 +138,19 @@ separa «Auditoría» de «Administración» en la navegación.
 Las ventanas conservan exactamente la misma lógica semiabierta
 `[07:00,20:00)` / `[20:00,08:00)`; sólo se corrige su presentación humana a
 «07:00–20:00» y «20:00–08:00».
+
+El recorrido posterior detectó y corrigió tres residuos adicionales en v1.1.5:
+la portada técnica `/admin` aún aceptaba a Supervisión por permisos operativos,
+el texto del historial todavía hablaba de programación y exclusividad global,
+y el botón «Archivar» se ofrecía en estados que el servidor rechazaba. La
+portada técnica queda cerrada, la copia refleja el relevo solapado y la acción
+sólo se presenta cuando corresponde.
+
+La revisión de uso añadió un hallazgo de interoperabilidad: la carga dependía
+del PDF y de convenciones demasiado cercanas a la plantilla FNS. v1.1.5
+normaliza PDF, Excel `.xlsx`, CSV y TSV a un modelo común y reconoce columnas
+por semántica, no por posición ni orden. El ID, el estado/tipo operativo, las
+fechas, la habitación y los nombres son los hechos prioritarios; campos
+desconocidos se muestran como no usados. La propuesta continúa pasando por una
+revisión humana, las filas ambiguas no se aplican y el vínculo canónico sigue
+siendo el ID de reserva, nunca el nombre del huésped.

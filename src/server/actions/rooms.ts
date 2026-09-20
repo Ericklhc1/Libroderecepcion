@@ -295,7 +295,7 @@ export async function prepareImportAction(
       .getAll('reports')
       .filter((entry): entry is File => entry instanceof File && entry.size > 0);
     if (!files.length) {
-      return { ok: false as const, error: 'Adjunta los informes del PMS en PDF.' };
+      return { ok: false as const, error: 'Adjunta los informes del PMS en PDF, Excel, CSV o TSV.' };
     }
 
     const incoming = [];

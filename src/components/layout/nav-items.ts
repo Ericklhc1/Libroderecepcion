@@ -1,4 +1,7 @@
-import type { PermissionKey } from '@/lib/permissions';
+import {
+  TECHNICAL_ADMIN_PERMISSIONS,
+  type PermissionKey,
+} from '@/lib/permissions';
 
 export type NavItem = {
   href: string;
@@ -52,7 +55,7 @@ const SYSTEM: NavItem[] = [
     href: '/admin',
     label: 'Administración',
     icon: 'admin',
-    anyOf: ['user.manage', 'role.manage', 'system.configure'],
+    anyOf: [...TECHNICAL_ADMIN_PERMISSIONS],
   },
 ];
 

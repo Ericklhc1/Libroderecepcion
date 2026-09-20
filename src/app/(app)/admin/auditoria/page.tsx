@@ -9,6 +9,7 @@ import { Chip } from '@/components/ui/badge';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
 import { pageHref, type RawSearchParams } from '@/lib/search-params';
+import { hasTechnicalAdminAccess } from '@/lib/permissions';
 
 export const metadata = { title: 'Auditoría' };
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('audit.view');
+  const user = await requirePagePermission('audit.view');
   const params = await searchParams;
 
   const page = Math.max(1, Number(params.pagina ?? '1') || 1);
@@ -84,11 +85,13 @@ export default async function AuditPage({
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <Link
-        href="/admin"
+        href={hasTechnicalAdminAccess(user.permissions) ? '/admin' : '/historial'}
         className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Volver a Administración
+        {hasTechnicalAdminAccess(user.permissions)
+          ? 'Volver a Administración'
+          : 'Volver al Historial'}
       </Link>
 
       <header>

@@ -6,8 +6,8 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-20**.
-- Versión en Production al iniciar esta corrección: **v1.1.3**.
-- Siguiente versión propuesta: **v1.1.4**.
+- Versión en Production después de la normalización de roles: **v1.1.4**.
+- Siguiente versión propuesta: **v1.1.5**.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.
 - Hosting único de Production: Vercel `libroderecepcion`, región `gru1`.
@@ -56,6 +56,26 @@
   técnicos.
 - Los horarios se muestran como 07:00–20:00 y 20:00–08:00, sin cambiar la
   semántica de intervalos ni los límites de la lógica.
+
+## Cierre de recorrido v1.1.5
+
+- La portada `/admin` exige ahora un permiso técnico; Supervisión conserva
+  Auditoría y el historial de turnos mediante sus accesos propios.
+- El historial comunica el modelo real: los turnos no se programan y los
+  relevos pueden solaparse, con una participación activa por persona.
+- Supervisión sólo ve «Archivar» en estados que el servidor realmente admite;
+  el Administrador mantiene su reparación forzada auditada.
+- El nombre persistido de `shift.manage` deja de prometer programación y pasa
+  a «Supervisar y administrar turnos».
+- La carga PMS deja de exigir la plantilla exacta de FNS: admite PDF, Excel
+  `.xlsx`, CSV y TSV; reconoce por significado ID, estado/tipo, llegada,
+  salida, habitación, cliente/nombres/apellidos y campos auxiliares.
+- Se aceptan columnas reordenadas, cabeceras en dos líneas, sinónimos
+  español/inglés, IDs alfanuméricos y varios archivos del mismo tipo. Las filas
+  idénticas se deduplican y las discrepantes permanecen visibles para revisión.
+- La revisión previa muestra campos reconocidos/no usados y fechas. Siguen
+  siendo obligatorios un ID inequívoco y un estado operativo; nunca se enlaza
+  una reserva por nombre ni se aplican filas dudosas en silencio.
 
 ## Reglas de continuidad
 

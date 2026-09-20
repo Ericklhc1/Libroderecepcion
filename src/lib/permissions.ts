@@ -33,7 +33,7 @@ export const PERMISSIONS = {
   'shift.receive': { group: 'Turnos', name: 'Recibir turno' },
   'shift.handover': { group: 'Turnos', name: 'Entregar turno' },
   'shift.close': { group: 'Turnos', name: 'Cerrar turno' },
-  'shift.manage': { group: 'Turnos', name: 'Programar y administrar turnos' },
+  'shift.manage': { group: 'Turnos', name: 'Supervisar y administrar turnos' },
 
   'nightaudit.run': { group: 'Auditoría nocturna', name: 'Controles y cierre nocturno' },
 
@@ -125,6 +125,20 @@ export const ROLE_KEYS = {
 } as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS];
+
+export const TECHNICAL_ADMIN_PERMISSIONS = [
+  'user.manage',
+  'role.manage',
+  'system.configure',
+] as const satisfies readonly PermissionKey[];
+
+export function hasTechnicalAdminAccess(
+  permissions: readonly PermissionKey[],
+): boolean {
+  return TECHNICAL_ADMIN_PERMISSIONS.some((permission) =>
+    permissions.includes(permission),
+  );
+}
 
 const OPERATIONAL_BASE: PermissionKey[] = [
   'entry.create',

@@ -18,7 +18,10 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import { RunMaintenanceForm } from './admin-forms';
-import type { PermissionKey } from '@/lib/permissions';
+import {
+  hasTechnicalAdminAccess,
+  type PermissionKey,
+} from '@/lib/permissions';
 
 export const metadata = { title: 'Administración' };
 export const dynamic = 'force-dynamic';
@@ -81,8 +84,8 @@ const SECTIONS: Array<{
   },
   {
     href: '/admin/turnos',
-    title: 'Programación de turnos',
-    description: 'Asignar personal a los turnos de cada día.',
+    title: 'Historial de turnos',
+    description: 'Consultar trazabilidad y archivar turnos ya finalizados.',
     permission: 'shift.manage',
     icon: ClipboardList,
   },
@@ -111,6 +114,11 @@ const SECTIONS: Array<{
 
 export default async function AdminPage() {
   const user = await requirePageUser();
+  if (!hasTechnicalAdminAccess(user.permissions)) {
+    if (user.permissions.includes('audit.view')) redirect('/admin/auditoria');
+    if (user.permissions.includes('shift.manage')) redirect('/admin/turnos');
+    redirect('/sin-permisos');
+  }
   const allowed = SECTIONS.filter((section) =>
     user.permissions.includes(section.permission),
   );

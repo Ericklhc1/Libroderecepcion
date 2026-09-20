@@ -43,7 +43,7 @@ export default async function GuestReservationImportPage({
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Cargar información de huéspedes & reservas</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Esta es la única ruta de importación PMS. Los PDF alimentan reservas y estadías y, desde ahí, habitaciones, llaves, caja, garantías y el resto de la operación. Nada se aplica sin revisión previa.
+          Esta es la única ruta de importación PMS. Admite PDF, Excel, CSV y TSV de distintas plantillas; extrae los datos operativos por significado y nada se aplica sin revisión previa.
         </p>
       </header>
 
@@ -94,6 +94,29 @@ export default async function GuestReservationImportPage({
           </div>
 
           <Card>
+            <CardHeader title="Archivos interpretados" count={preview.reports.length} />
+            <ul className="divide-y divide-slate-100">
+              {preview.reports.map((report, index) => (
+                <li key={`${report.fileName}-${index}`} className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-petrol-900">{report.fileName}</span>
+                    <Badge tone={report.error ? 'atencion' : 'resuelto'}>
+                      {report.error ? 'Revisar' : `${report.rowsRead} fila(s)`}
+                    </Badge>
+                  </div>
+                  {report.error ? <p className="mt-1 text-red-700">{report.error}</p> : null}
+                  <p className="mt-1 text-xs text-slate-500">
+                    Campos reconocidos: {report.columns.map((column) => column.header).join(' · ') || 'ninguno'}
+                  </p>
+                  {report.unmapped.length ? (
+                    <p className="mt-1 text-xs text-orange-700">Sin usar: {report.unmapped.join(' · ')}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card>
             <CardHeader title="Resumen de la carga" count={preview.stays.length} />
             <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
               <div><p className="text-xs text-slate-500">Habitaciones con actividad</p><p className="mt-1 font-semibold text-petrol-900">{preview.activity.roomsWithActivity}</p></div>
@@ -127,7 +150,7 @@ export default async function GuestReservationImportPage({
             <div className="max-h-96 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs font-medium text-slate-500">
-                  <tr><th className="px-4 py-2">Hab.</th><th className="px-4 py-2">Estado</th><th className="px-4 py-2">Reserva</th><th className="px-4 py-2">Huésped(es)</th><th className="px-4 py-2">Canal</th><th className="px-4 py-2">Total / pendiente</th></tr>
+                  <tr><th className="px-4 py-2">Hab.</th><th className="px-4 py-2">Estado</th><th className="px-4 py-2">Reserva</th><th className="px-4 py-2">Huésped(es)</th><th className="px-4 py-2">Llegada</th><th className="px-4 py-2">Salida</th><th className="px-4 py-2">Canal</th><th className="px-4 py-2">Total / pendiente</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {preview.stays.map((stay, index) => (
@@ -142,6 +165,8 @@ export default async function GuestReservationImportPage({
                       </td>
                       <td className="px-4 py-1.5 tabular text-slate-600">{stay.reservationId}</td>
                       <td className="px-4 py-1.5 text-slate-700">{stay.guestNames.join(' · ') || '—'}</td>
+                      <td className="px-4 py-1.5 whitespace-nowrap text-slate-600">{stay.arrivalDate ? formatDate(new Date(stay.arrivalDate)) : '—'}</td>
+                      <td className="px-4 py-1.5 whitespace-nowrap text-slate-600">{stay.departureDate ? formatDate(new Date(stay.departureDate)) : '—'}</td>
                       <td className="px-4 py-1.5 text-slate-500">{stay.channel ?? '—'}</td>
                       <td className="px-4 py-1.5 tabular text-slate-600">
                         {stay.currency ?? ''} {stay.totalAmount ?? '—'} / {stay.pendingAmount ?? '—'}

@@ -176,7 +176,7 @@ export default async function ShiftPage({
             href="/admin/turnos"
             className="text-sm font-medium text-petrol-600 hover:underline"
           >
-            Crear y archivar turnos
+            Historial y archivo de turnos
           </Link>
         ) : null}
       </header>

@@ -231,19 +231,15 @@ conserva su modelo y sus reglas.
     **código** de reserva (`linkStaysToReservations`), nunca por nombre, y
     queda nulo cuando la reserva no existe en el sistema. Una estadía sin
     vínculo sigue siendo válida y operable.
-11. **DOS ventanas fijas, turnos creados a voluntad, UNO en curso a la vez.**
+11. **DOS ventanas fijas, turnos creados al abrir y relevo solapado.**
     La lógica usa intervalos semiabiertos: día **[07:00,20:00)** y noche
     **[20:00,08:00)** (`SHIFT_SCHEDULE`); la interfaz los comunica como
     **07:00–20:00** y **20:00–08:00**. No hay un tercer turno ni ventanas a medida.
-    Los turnos **no se programan de antemano**: `openShift` es un solo gesto
-    que crea el turno si no hay ninguno en curso, o **suma** a quien llega al
-    que ya está abierto. Si hay un turno abierto se trabaja sobre ése.
-    La invariante «un solo turno en curso» la garantiza un **índice único
-    parcial** que Prisma no sabe expresar (`Shift_un_solo_turno_en_curso`, en
-    `20260916170000_turnos_dia_noche`); el servicio la comprueba además para
-    dar un mensaje legible, no para garantizarla. `ENTREGA_ENVIADA` queda
-    FUERA del predicado: quien entregó espera en la bandeja y el relevo
-    necesita abrir el suyo para recibirlo.
+    Los turnos **no se programan de antemano**: `openShift` los crea al entrar
+    al mesón. Durante el relevo pueden coexistir el turno saliente y el
+    entrante; la invariante real es **una sola participación activa por
+    persona**, garantizada por el índice parcial
+    `ShiftAssignment_una_participacion_activa_por_usuario`.
     El titular es quien abrió el turno; quien se suma es apoyo. Pueden sumar
     gente quien está en el turno y quien lo supervisa (`addShiftMember`).
     ⚠️ **ESTO CORRIGIÓ UN FALLO QUE BLOQUEABA LA OPERACIÓN.** Antes había tres
@@ -528,6 +524,15 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
     La entrada **se guarda pero todavía no se lee**: el sistema sólo envía, y
     la pantalla lo dice en vez de aparentar lo contrario.
     Lo vigila `tests/correo.test.ts`.
+
+22. **El importador entiende hechos, no una plantilla.** PDF, Excel `.xlsx`,
+    CSV y TSV se reducen al mismo modelo. El diccionario reconoce por semántica
+    ID, tipo/estado, llegada, salida, habitación, cliente/nombres/apellidos y
+    datos auxiliares, aunque cambien orden, idioma o distribución en dos
+    líneas. Los IDs pueden ser alfanuméricos. La revisión muestra lo reconocido
+    y lo descartado; una fila ambigua no se aplica y ninguna reserva se vincula
+    por nombre. Varios archivos del mismo tipo son válidos: sólo se colapsan
+    filas idénticas, mientras las divergencias llegan al detector de conflictos.
 
 ## Pendientes conocidos
 

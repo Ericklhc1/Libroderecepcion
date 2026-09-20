@@ -63,8 +63,14 @@ type Line = { page: number; y: number; fragments: Fragment[] };
  */
 const LINE_TOLERANCE = 5;
 
-/** Un identificador de reserva del PMS: sólo dígitos, al menos tres. */
-const RESERVATION_ID = /^\d{3,}$/;
+/**
+ * Un identificador de reserva del PMS.
+ *
+ * No se limita a FNS ni a IDs sólo numéricos: otros PMS usan localizadores
+ * como `BK-20481` o `ABC/9021`. Se exige al menos un dígito para no confundir
+ * pies de página como «TOTAL» con una reserva.
+ */
+const RESERVATION_ID = /^(?=.*\d)[A-Z0-9][A-Z0-9._/-]{2,79}$/i;
 
 const NAME_FIELDS: ColumnField[] = ['guestName', 'firstName', 'lastName'];
 
@@ -204,6 +210,65 @@ function readHeaderLine(line: Line): {
   return { columns, unmapped };
 }
 
+/**
+ * Une dos líneas visuales de encabezado por su posición horizontal.
+ *
+ * Algunos exportadores escriben «Fecha» sobre «Llegada» o «Tipo de» sobre
+ * «pago». Sólo se usa la banda si reconoce más campos que cualquiera de sus
+ * líneas por separado; así una cabecera normal nunca absorbe la primera fila.
+ */
+function readHeaderBand(first: Line, second: Line): ReturnType<typeof readHeaderLine> {
+  const fragments: Fragment[] = first.fragments.map((fragment) => ({ ...fragment }));
+  const claimed = new Set<number>();
+
+  for (const top of fragments) {
+    let nearest = -1;
+    let distance = Infinity;
+    for (let index = 0; index < second.fragments.length; index += 1) {
+      if (claimed.has(index)) continue;
+      const bottom = second.fragments[index];
+      if (!bottom) continue;
+      const current = Math.abs(bottom.x - top.x);
+      if (current < distance) {
+        nearest = index;
+        distance = current;
+      }
+    }
+    if (nearest >= 0 && distance <= 45) {
+      const bottom = second.fragments[nearest];
+      if (bottom) {
+        top.text = `${top.text} ${bottom.text}`;
+        top.x = Math.min(top.x, bottom.x);
+        claimed.add(nearest);
+      }
+    }
+  }
+
+  second.fragments.forEach((fragment, index) => {
+    if (!claimed.has(index)) fragments.push({ ...fragment });
+  });
+  fragments.sort((a, b) => a.x - b.x);
+  return readHeaderLine({ page: first.page, y: first.y, fragments });
+}
+
+function headerCandidate(lines: Line[], index: number): {
+  columns: DetectedColumn[];
+  unmapped: Array<{ header: string; x: number }>;
+  consumed: number;
+} {
+  const line = lines[index];
+  if (!line) return { columns: [], unmapped: [], consumed: 1 };
+  const direct = readHeaderLine(line);
+  const next = lines[index + 1];
+  if (!next || next.page !== line.page) return { ...direct, consumed: 1 };
+
+  const lower = readHeaderLine(next);
+  const band = readHeaderBand(line, next);
+  const bestSingle = Math.max(direct.columns.length, lower.columns.length);
+  if (band.columns.length > bestSingle) return { ...band, consumed: 2 };
+  return { ...direct, consumed: 1 };
+}
+
 /** Límites de columna: el punto medio entre dos encabezados consecutivos. */
 function columnBounds(columns: DetectedColumn[]): Array<{ field: ColumnField; lo: number; hi: number }> {
   const ordered = [...columns].sort((a, b) => a.x - b.x);
@@ -270,7 +335,9 @@ function detectKindFromColumns(columns: DetectedColumn[]): ReportKind | null {
   */
   if (fields.has('paymentType') || fields.has('pendingAmount')) return 'ACTIVIDAD';
   if (fields.has('lastName') && fields.has('firstName')) return 'SALIDAS';
-  if (fields.has('pmsStatus') && fields.has('roomNumber')) return 'IN_HOUSE';
+  // Un archivo genérico con estado por fila es una fotografía mixta, aunque
+  // no lleve el título histórico «Habitaciones con actividad» ni importes.
+  if (fields.has('pmsStatus') && fields.has('roomNumber')) return 'ACTIVIDAD';
   if (fields.has('guestName') && fields.has('roomNumber')) return 'ENTRADAS';
   return null;
 }
@@ -334,8 +401,8 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     identificaba como el de salidas. Con eso el estado por fila se perdía y
     las cincuenta y tres filas quedaban marcadas como salidas.
   */
-  const titleLine = lines.find((line) => {
-    const candidate = readHeaderLine(line);
+  const titleLine = lines.find((_line, index) => {
+    const candidate = headerCandidate(lines, index);
     const looksLikeHeader =
       candidate.columns.length >= 3 &&
       candidate.columns.some((column) => column.field === 'reservationId');
@@ -354,8 +421,10 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
   const ignoredLines: string[] = [];
   let current: RawRecord | null = null;
 
-  for (const line of lines) {
-    const candidate = readHeaderLine(line);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    if (!line) continue;
+    const candidate = headerCandidate(lines, lineIndex);
     /*
       El encabezado se repite en cada página del informe: se vuelve a leer,
       porque los límites de columna pueden variar entre páginas.
@@ -372,6 +441,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
       unmapped = candidate.unmapped;
       bounds = columnBounds(candidate.columns);
       current = null;
+      lineIndex += candidate.consumed - 1;
       continue;
     }
 
@@ -381,9 +451,10 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     }
 
     const cells = splitIntoCells(line, bounds);
-    const id = cells.reservationId?.trim();
+    const id = cells.reservationId?.replace(/\s+/g, '').trim();
 
     if (id && RESERVATION_ID.test(id)) {
+      cells.reservationId = id.toUpperCase();
       current = { cells, extraGuests: [], page: line.page, y: line.y };
       records.push(current);
       continue;

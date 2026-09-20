@@ -8,7 +8,7 @@ import { ROLE_KEYS } from '@/lib/permissions';
  *
  * El Administrador de sistema queda deliberadamente fuera: su rol tiene
  * `operational: false`, por lo que no aparece como responsable, asignado ni en
- * la programación de turnos.
+ * la participación en turnos.
  */
 export async function listOperationalUsers() {
   return prisma.user.findMany({

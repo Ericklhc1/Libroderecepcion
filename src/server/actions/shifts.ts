@@ -28,6 +28,7 @@ import {
   sendHandover,
 } from '@/server/services/shifts';
 import {
+  ARCHIVABLE_SHIFT_STATUSES,
   SHIFT_STATUS_LABEL,
   SHIFT_TYPE_LABEL,
   SHIFT_WINDOW_LABEL,
@@ -480,13 +481,7 @@ export async function archiveShiftAction(
     const shift = await getShiftById(input.shiftId);
     if (shift.archivedAt) throw new RuleError('Ese turno ya está archivado.');
 
-    const ARCHIVABLE: ShiftStatus[] = [
-      ShiftStatus.PROGRAMADO,
-      ShiftStatus.CERRADO,
-      ShiftStatus.ANULADO,
-      ShiftStatus.RECIBIDO,
-    ];
-    if (!ARCHIVABLE.includes(shift.status)) {
+    if (!ARCHIVABLE_SHIFT_STATUSES.includes(shift.status)) {
       throw new RuleError(
         `Un turno en estado ${SHIFT_STATUS_LABEL[shift.status]} está en curso: ciérralo antes de archivarlo.`,
       );

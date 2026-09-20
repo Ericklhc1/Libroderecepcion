@@ -240,8 +240,8 @@ export async function getShiftsAwaitingReceipt(): Promise<ShiftWithDetail[]> {
  *
  * Reemplaza a `getIncomingHandover(shift)`, que deducía el turno anterior por
  * adyacencia de franjas y devolvía `null` en cuanto la cadena tenía un hueco.
- * Ahora no hay nada que deducir: con un solo turno en curso a la vez, la
- * entrega pendiente es simplemente la que está enviada y sin recibir.
+ * Ahora no hay nada que deducir: aunque los relevos se solapen, la entrega
+ * pendiente es simplemente la que está enviada y sin recibir.
  *
  * `exceptShiftId` evita que un turno se reciba a sí mismo.
  */

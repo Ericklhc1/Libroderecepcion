@@ -16,15 +16,15 @@ export function ImportForm({ returnTo }: { returnTo?: 'turno' | 'habitaciones' }
     <ActionForm action={prepareImportAction} hideSuccess>
       {returnTo ? <input type="hidden" name="volverA" value={returnTo} /> : null}
       <Field
-        label="Informes de huéspedes & reservas en PDF"
+        label="Informes de huéspedes & reservas"
         name="reports"
         required
-        hint="Habitaciones con actividad, entradas, in house y salidas. Puedes adjuntar varios a la vez; el sistema reconoce cada uno."
+        hint="PDF, Excel (.xlsx), CSV o TSV. Puedes adjuntar varios; se reconocen por sus datos y encabezados, no por una plantilla fija."
       >
         <input
           type="file"
           name="reports"
-          accept="application/pdf"
+          accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.csv,text/csv,.tsv,text/tab-separated-values"
           multiple
           required
           className="block w-full rounded-lg border border-dashed border-slate-300 bg-white px-3 py-6 text-sm text-slate-600

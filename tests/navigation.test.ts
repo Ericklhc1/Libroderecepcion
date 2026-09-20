@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { NAV_GROUPS, NAV_ITEMS, visibleNavGroups, visibleNavItems } from '@/components/layout/nav-items';
-import { ROLE_PERMISSIONS, ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
+import {
+  ROLE_PERMISSIONS,
+  ROLE_KEYS,
+  hasTechnicalAdminAccess,
+  type PermissionKey,
+} from '@/lib/permissions';
 
 /** Los cuatro roles del hotel, para no repetirlos en cada prueba. */
 const ROLES = Object.values(ROLE_KEYS);
@@ -91,6 +96,14 @@ describe('visibilidad por rol', () => {
     );
     expect(admin).toContain('/admin/auditoria');
     expect(admin).toContain('/admin');
+    expect(hasTechnicalAdminAccess(ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR])).toBe(false);
+    expect(hasTechnicalAdminAccess(ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN])).toBe(true);
+  });
+
+  it('la portada de Administración exige una capacidad técnica', () => {
+    const source = readFileSync('src/app/(app)/admin/page.tsx', 'utf-8');
+    expect(source).toContain('hasTechnicalAdminAccess(user.permissions)');
+    expect(source).toContain("redirect('/admin/auditoria')");
   });
 
   /*
@@ -114,7 +127,7 @@ describe('visibilidad por rol', () => {
 
   it('el Administrador de sistema queda fuera de la operación del turno', () => {
     /*
-      Ve Turno porque administra la programación (`shift.manage`), pero no
+      Ve Turno porque supervisa su historial (`shift.manage`), pero no
       puede iniciar, recibir ni entregar: es la exclusión que lo mantiene
       fuera de la operación habitual, y vive en los permisos, no en el menú.
     */

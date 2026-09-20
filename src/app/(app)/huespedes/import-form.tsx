@@ -17,12 +17,12 @@ export function GuestReservationImportForm({
         label="Cargar informes de huéspedes & reservas"
         name="reports"
         required
-        hint="Entradas, in house y salidas. Puedes adjuntar varios PDF a la vez; el sistema reconoce cada informe por sus encabezados."
+        hint="PDF, Excel (.xlsx), CSV o TSV. El orden y los nombres exactos de las columnas pueden variar: se reconocen por su significado."
       >
         <input
           type="file"
           name="reports"
-          accept="application/pdf"
+          accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.csv,text/csv,.tsv,text/tab-separated-values"
           multiple
           required
           className="block w-full rounded-lg border border-dashed border-slate-300 bg-white px-3 py-6 text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-petrol-800 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:border-petrol-400"

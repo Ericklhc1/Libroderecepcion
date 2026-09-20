@@ -54,6 +54,14 @@ export const FINISHED_SHIFT_STATUSES: ShiftStatus[] = [
   ShiftStatus.ANULADO,
 ];
 
+/** Estados que Supervisión puede retirar del circuito sin una anulación forzada. */
+export const ARCHIVABLE_SHIFT_STATUSES: ShiftStatus[] = [
+  ShiftStatus.PROGRAMADO,
+  ShiftStatus.CERRADO,
+  ShiftStatus.ANULADO,
+  ShiftStatus.RECIBIDO,
+];
+
 export const SHIFT_STATUS_LABEL: Record<ShiftStatus, string> = {
   PROGRAMADO: 'Programado',
   INICIADO: 'Iniciado',

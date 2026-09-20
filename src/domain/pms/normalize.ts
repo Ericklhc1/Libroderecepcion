@@ -48,15 +48,30 @@ export const ACTIVITY_TYPES: Record<string, OperationalStatus> = {
   checkin: 'CHECK_IN',
   entrada: 'CHECK_IN',
   llegada: 'CHECK_IN',
+  'por llegar': 'CHECK_IN',
+  'llegada pendiente': 'CHECK_IN',
+  arrival: 'CHECK_IN',
+  arriving: 'CHECK_IN',
+  'due in': 'CHECK_IN',
   'check-out': 'CHECK_OUT',
   'check out': 'CHECK_OUT',
   checkout: 'CHECK_OUT',
   salida: 'CHECK_OUT',
+  'por salir': 'CHECK_OUT',
+  'salida pendiente': 'CHECK_OUT',
+  departure: 'CHECK_OUT',
+  departing: 'CHECK_OUT',
+  'due out': 'CHECK_OUT',
   ocupada: 'IN_HOUSE',
   ocupado: 'IN_HOUSE',
   'in house': 'IN_HOUSE',
   'in-house': 'IN_HOUSE',
   alojado: 'IN_HOUSE',
+  alojada: 'IN_HOUSE',
+  hospedado: 'IN_HOUSE',
+  hospedada: 'IN_HOUSE',
+  occupied: 'IN_HOUSE',
+  'checked in': 'IN_HOUSE',
 };
 
 /** Traduce la columna «Tipo» a estado operativo. `null` si no se reconoce. */
@@ -120,11 +135,16 @@ function cell(record: RawRecord, field: ColumnField): string | null {
   return value ? value : null;
 }
 
-/** Fecha completa dd/MM/yyyy. */
+/** Fecha completa dd/MM/yyyy, yyyy-MM-dd o yyyy/MM/dd. */
 function parseFullDate(value: string): Date | null {
-  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return null;
-  const [, day, month, year] = match;
+  const normalized = value.trim().replace(/[.]/g, '/');
+  const european = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const iso = normalized.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T].*)?$/);
+  if (!european && !iso) return null;
+  const day = european?.[1] ?? iso?.[3];
+  const month = european?.[2] ?? iso?.[2];
+  const year = european?.[3] ?? iso?.[1];
+  if (!day || !month || !year) return null;
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   if (Number.isNaN(date.getTime())) return null;
   if (

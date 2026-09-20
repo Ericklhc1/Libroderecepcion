@@ -12,6 +12,9 @@ concurrency:
   group: compuerta-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Regresiones, tipos y build
@@ -86,6 +89,9 @@ jobs:
 
       - name: Dependencias
         run: npm ci
+
+      - name: Bloquear vulnerabilidades críticas
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Cliente Prisma
         run: npm run db:generate

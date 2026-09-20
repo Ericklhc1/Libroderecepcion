@@ -530,19 +530,25 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
 
 ## Pendientes conocidos
 
-- **SMTP sin configurar en producción.** Ya no hace falta desplegar para
-  arreglarlo: se configura en `/admin/correo`. Mientras falte, al crear un
-  usuario la clave se muestra en pantalla en vez de enviarse, y se informa en
-  lugar de fallar en silencio.
+- **SMTP se administra desde la aplicación.** Debe ejecutarse un envío de
+  prueba después de cualquier rotación de `AUTH_SECRET` o cambio del proveedor
+  de correo; el estado concreto de Production no se documenta en el repositorio
+  público.
 - El correo **entrante** no lo usa el sistema: sólo envía. Sus datos se pueden
   guardar ya, pero no hay lector.
-- Los tres informes del PMS no se han importado todavía en producción, así que
-  el inventario de llaves sigue sin reconciliar (101 disponibles, 0
-  movimientos). Se resuelve importando o con el botón «Reconciliar con las
-  estadías» de `/llaves`; el código ya está desplegado y probado.
+- **PMS e inventario tienen cobertura funcional e invariantes auditables.** El
+  estado y los conteos concretos de Production pertenecen al control operativo
+  privado y no se documentan en el repositorio público.
 - `Attachment` existe en el esquema sin ninguna implementación, y no hay
   almacenamiento de archivos definido (FASE G).
 - Sin dominio propio del hotel.
+- No existe una prueba de navegador autenticada en CI. La compuerta cubre
+  servicios, dominio, base real efímera, tipos y build; Production comprueba
+  `/api/health/version` y `/login`, pero todavía no reproduce un turno completo
+  mediante navegador.
+- La política de respaldo y restauración de Neon debe administrarse mediante
+  una lista privada de infraestructura; no publicar nombres de ramas, copias ni
+  ventanas de recuperación en este repositorio.
 
 ## Compuerta de calidad
 

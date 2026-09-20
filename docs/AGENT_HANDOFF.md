@@ -6,8 +6,8 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-20**.
-- Versión en Production: **v1.1.2**, commit `af7d568`.
-- Siguiente versión propuesta en la rama de auditoría: **v1.1.3**.
+- Versión en Production al iniciar esta corrección: **v1.1.3**.
+- Siguiente versión propuesta: **v1.1.4**.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.
 - Hosting único de Production: Vercel `libroderecepcion`, región `gru1`.
@@ -41,6 +41,21 @@
    automática exige cambios mayores; no ejecutar `npm audit fix --force`.
 5. No existe todavía una prueba de navegador autenticada que recorra el turno
    completo. La cobertura actual es de servicios/integración más smoke público.
+
+## Corrección de coherencia operativa v1.1.4
+
+- El recorrido autenticado de Recepción y Supervisión encontró deriva en la
+  matriz persistida de ambos roles. La migración
+  `20260920180000_normalizar_roles_recepcion_supervision` la reconcilia con
+  `ROLE_PERMISSIONS` sin perder políticas `requiresApproval` existentes.
+- Recepción deja de ver validaciones de cierre de turno reservadas para
+  Supervisión/Administración.
+- Inicio ya no considera una llave correctamente asignada a una habitación
+  ocupada como incidencia; sí detecta estados anómalos y vínculos obsoletos.
+- Auditoría tiene acceso propio y «Administración» queda reservada a permisos
+  técnicos.
+- Los horarios se muestran como 07:00–20:00 y 20:00–08:00, sin cambiar la
+  semántica de intervalos ni los límites de la lógica.
 
 ## Reglas de continuidad
 

@@ -16,8 +16,8 @@ const DATE_LOCALE = HOTEL_LOCALE;
  * Opciones comunes: la zona del hotel, siempre, y reloj de 24 horas.
  *
  * `es-CL` formatea en 12 horas por omisión —«01:55 p. m.»— y en un mesón eso
- * es un defecto: las ventanas de turno se enuncian «07:00 a 19:59» y «20:00 a
- * 07:59», así que una hora con a. m. / p. m. obliga a traducir mentalmente
+ * es un defecto: las ventanas de turno se enuncian «07:00 a 20:00» y «20:00 a
+ * 08:00», así que una hora con a. m. / p. m. obliga a traducir mentalmente
  * para saber a qué turno pertenece un registro. Y de noche, con prisa, se lee
  * mal.
  */

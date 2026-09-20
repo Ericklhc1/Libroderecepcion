@@ -35,12 +35,25 @@ const PRIMARY: NavItem[] = [
 ];
 
 // Libro, Supervisión, Historial e Indicadores siguen existiendo como vistas
-// especializadas y accesos contextuales. Ya no compiten como módulos raíz:
-// el menú operativo refleja el modelo Inicio → Turno → Reservas → Caja → Llaves.
-const SECONDARY: NavItem[] = [];
+// especializadas y accesos contextuales. Auditoría sí conserva un destino de
+// consulta propio: no debe confundirse con la Administración técnica. El menú
+// operativo refleja el modelo Inicio → Turno → Reservas → Caja → Llaves.
+const SECONDARY: NavItem[] = [
+  {
+    href: '/admin/auditoria',
+    label: 'Auditoría',
+    icon: 'history',
+    anyOf: ['audit.view'],
+  },
+];
 
 const SYSTEM: NavItem[] = [
-  { href: '/admin', label: 'Administración', icon: 'admin', anyOf: ['user.manage', 'role.manage', 'system.configure', 'audit.view'] },
+  {
+    href: '/admin',
+    label: 'Administración',
+    icon: 'admin',
+    anyOf: ['user.manage', 'role.manage', 'system.configure'],
+  },
 ];
 
 export const NAV_GROUPS: NavGroup[] = [

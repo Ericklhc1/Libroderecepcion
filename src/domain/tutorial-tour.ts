@@ -169,13 +169,22 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['metrics.view'],
   },
   {
+    id: 'auditoria',
+    title: 'Auditoría',
+    description:
+      'Consulta el rastro de cambios operativos con fecha, responsable y motivo. Es una vista de control y no concede administración técnica.',
+    route: '/admin/auditoria',
+    target: ROUTE_TARGET,
+    anyOf: ['audit.view'],
+  },
+  {
     id: 'administracion',
     title: 'Administración',
     description:
-      'Usuarios, roles, parámetros, auditoría y configuración técnica viven aquí. Sólo aparece cuando tu rol tiene una responsabilidad administrativa.',
+      'Usuarios, roles, parámetros y configuración técnica viven aquí. Sólo aparece cuando tu rol tiene una responsabilidad administrativa.',
     route: '/admin',
     target: ROUTE_TARGET,
-    anyOf: ['user.manage', 'role.manage', 'system.configure', 'audit.view'],
+    anyOf: ['user.manage', 'role.manage', 'system.configure'],
   },
   {
     id: 'ayuda',

@@ -130,8 +130,8 @@ describe('utilidades de la zona del hotel', () => {
   });
 
   /*
-    De esto depende qué turno corresponde: día de 07:00 a 19:59 y noche de
-    20:00 a 07:59. Con la hora del proceso, las 16:25 del mesón se leían como
+    De esto depende qué turno corresponde: día [07:00,20:00) y noche
+    [20:00,08:00). Con la hora del proceso, las 16:25 del mesón se leían como
     las 19:25 y una novedad de la tarde entraba al turno de noche.
   */
   it('la hora sirve para decidir el turno', () => {

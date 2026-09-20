@@ -79,8 +79,8 @@ export const SHIFT_SCHEDULE: Record<
 };
 
 export const SHIFT_WINDOW_LABEL: Record<ShiftType, string> = {
-  DIA: '07:00 a 19:59',
-  NOCHE: '20:00 a 07:59',
+  DIA: '07:00 a 20:00',
+  NOCHE: '20:00 a 08:00',
 };
 
 export function shiftTypeAt(now = new Date()): ShiftType {

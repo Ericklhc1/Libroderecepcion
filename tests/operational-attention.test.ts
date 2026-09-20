@@ -9,7 +9,7 @@ describe('motor de atención operativa', () => {
           number: '415',
           state: 'PENDIENTE_LIBERACION',
           openIncidents: 1,
-          keysOut: 1,
+          keyIssues: 1,
         },
       ],
       alerts: [
@@ -37,6 +37,27 @@ describe('motor de atención operativa', () => {
     expect(result[0]?.reason).toContain('llave');
     expect(result.some((item) => item.id === 'alert:a1')).toBe(true);
     expect(result.some((item) => item.id === 'task:t1')).toBe(true);
+  });
+
+  it('da una acción concreta a una incidencia aislada de habitación', () => {
+    const [incident] = buildOperationalAttention({
+      rooms: [
+        {
+          number: '501',
+          state: 'OCUPADA',
+          openIncidents: 1,
+          keyIssues: 0,
+        },
+      ],
+      alerts: [],
+      overdueTasks: [],
+      criticalEntries: [],
+      followUps: [],
+    });
+
+    expect(incident?.action).toBe('Revisar las incidencias abiertas');
+    expect(incident?.action).not.toBe('Sin acción pendiente');
+    expect(incident?.reason).not.toContain('Sin acción pendiente');
   });
 
   it('es determinístico y respeta el límite', () => {

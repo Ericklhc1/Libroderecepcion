@@ -232,8 +232,9 @@ conserva su modelo y sus reglas.
     queda nulo cuando la reserva no existe en el sistema. Una estadía sin
     vínculo sigue siendo válida y operable.
 11. **DOS ventanas fijas, turnos creados a voluntad, UNO en curso a la vez.**
-    Día **07:00–19:59** y noche **20:00–07:59** (`SHIFT_SCHEDULE`). No hay un
-    tercer turno ni ventanas a medida.
+    La lógica usa intervalos semiabiertos: día **[07:00,20:00)** y noche
+    **[20:00,08:00)** (`SHIFT_SCHEDULE`); la interfaz los comunica como
+    **07:00–20:00** y **20:00–08:00**. No hay un tercer turno ni ventanas a medida.
     Los turnos **no se programan de antemano**: `openShift` es un solo gesto
     que crea el turno si no hay ninguno en curso, o **suma** a quien llega al
     que ya está abierto. Si hay un turno abierto se trabaja sobre ése.

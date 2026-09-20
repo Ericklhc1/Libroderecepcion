@@ -22,7 +22,7 @@ type AttentionInput = {
     number: string;
     state: RoomState;
     openIncidents: number;
-    keysOut: number;
+    keyIssues: number;
   }>;
   alerts: Array<{
     id: string;
@@ -86,14 +86,20 @@ export function buildOperationalAttention(
     const score = Math.max(
       base,
       room.openIncidents > 0 ? 78 : 0,
-      room.keysOut > 0 ? 68 : 0,
+      room.keyIssues > 0 ? 68 : 0,
     );
     if (score === 0) continue;
 
     const extras = [
       room.openIncidents > 0 ? `${room.openIncidents} incidencia(s) abierta(s)` : null,
-      room.keysOut > 0 ? `${room.keysOut} llave(s) fuera` : null,
+      room.keyIssues > 0 ? `${room.keyIssues} incidencia(s) de llave` : null,
     ].filter(Boolean);
+
+    const action = base
+      ? ROOM_STATE_ACTIONS[room.state]
+      : room.openIncidents > 0
+        ? 'Revisar las incidencias abiertas'
+        : 'Revisar el estado de las llaves';
 
     items.push({
       id: `room:${room.number}`,
@@ -102,10 +108,10 @@ export function buildOperationalAttention(
       score,
       title: `Habitación ${room.number} · ${ROOM_STATE_LABELS[room.state]}`,
       reason: [
-        ROOM_STATE_ACTIONS[room.state],
+        action,
         ...extras,
       ].join(' · '),
-      action: ROOM_STATE_ACTIONS[room.state],
+      action,
       href: `/habitaciones/${room.number}`,
     });
   }

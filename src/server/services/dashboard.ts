@@ -4,6 +4,7 @@ import {
   EntryStatus,
   EntryType,
   FollowUpStatus,
+  type Prisma,
   Priority,
   ShiftStatus,
   TaskStatus,
@@ -22,6 +23,8 @@ import {
 import { getShiftMetrics } from './metrics';
 import { listRoomsWithState } from './rooms';
 import type { RoomState } from '@/domain/rooms';
+import { countRoomKeyIssues } from '@/domain/rooms';
+import { ROLE_KEYS } from '@/lib/permissions';
 import { getSettingNumber } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 
@@ -73,6 +76,16 @@ export async function getDashboardData(user: CurrentUser) {
     1,
     Math.min(50, Math.trunc(await getSettingNumber('alerts.dashboardLimit', 10))),
   );
+  const canValidateClosure =
+    user.roleKey === ROLE_KEYS.SUPERVISOR || user.isSystemAdmin;
+  const visibleAlertWhere: Prisma.AlertWhereInput = canValidateClosure
+    ? LIVE_ALERT_WHERE(now)
+    : {
+        AND: [
+          LIVE_ALERT_WHERE(now),
+          { NOT: { dedupeKey: { startsWith: 'shift-validation:' } } },
+        ],
+      };
 
   const [
     incoming,
@@ -115,7 +128,7 @@ export async function getDashboardData(user: CurrentUser) {
       take: 8,
     }),
     prisma.alert.findMany({
-      where: LIVE_ALERT_WHERE(now),
+      where: visibleAlertWhere,
       select: {
         id: true,
         level: true,
@@ -174,8 +187,8 @@ export async function getDashboardData(user: CurrentUser) {
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
-    prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
-    prisma.alert.count({ where: { ...LIVE_ALERT_WHERE(now), level: 'CRITICA' } }),
+    prisma.alert.count({ where: visibleAlertWhere }),
+    prisma.alert.count({ where: { AND: [visibleAlertWhere, { level: 'CRITICA' }] } }),
   ]);
 
   /*
@@ -193,12 +206,17 @@ export async function getDashboardData(user: CurrentUser) {
       (room) =>
         ATTENTION_STATES.includes(room.snapshot.state) ||
         room.openIncidents > 0 ||
-        room.snapshot.keysOut.length > 0,
+        countRoomKeyIssues(room.snapshot) > 0,
     )
     // El orden es el de urgencia: primero lo que bloquea una entrada.
     .sort(
       (a, b) =>
-        ATTENTION_STATES.indexOf(a.snapshot.state) - ATTENTION_STATES.indexOf(b.snapshot.state),
+        (ATTENTION_STATES.indexOf(a.snapshot.state) === -1
+          ? ATTENTION_STATES.length
+          : ATTENTION_STATES.indexOf(a.snapshot.state)) -
+        (ATTENTION_STATES.indexOf(b.snapshot.state) === -1
+          ? ATTENTION_STATES.length
+          : ATTENTION_STATES.indexOf(b.snapshot.state)),
     )
     .slice(0, 8);
 
@@ -216,7 +234,7 @@ export async function getDashboardData(user: CurrentUser) {
       number: room.number,
       state: room.snapshot.state,
       openIncidents: room.openIncidents,
-      keysOut: room.snapshot.keysOut.length,
+      keyIssues: countRoomKeyIssues(room.snapshot),
     })),
     alerts: alerts.map((alert) => ({
       id: alert.id,

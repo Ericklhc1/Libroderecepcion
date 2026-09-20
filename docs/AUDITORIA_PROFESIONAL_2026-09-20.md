@@ -110,3 +110,31 @@ Una actualización sólo está lista cuando la Compuerta completa queda verde, e
 artefacto desplegado coincide con el SHA esperado y el smoke posterior confirma
 la versión. Revertir código no revierte datos: cualquier rollback debe revisar
 las migraciones por separado.
+
+## Ampliación autenticada — Recepción y Supervisión
+
+Después de la revisión estructural se recorrió Production con ambos perfiles.
+El recorrido reveló cuatro discrepancias de criterio operativo que no eran
+visibles en las pruebas técnicas originales:
+
+1. La matriz persistida había derivado: Recepción acumulaba permisos de
+   eliminación, reapertura, cierre de incidencias y auditoría; Supervisión
+   acumulaba permisos técnicos de usuarios, roles y configuración.
+2. La alerta «Validar cierre de turno» aparecía en Inicio para Recepción,
+   aunque el servidor correctamente impedía resolverla con ese rol.
+3. Una llave principal correctamente entregada a una habitación ocupada se
+   interpretaba como acción pendiente y producía el mensaje contradictorio
+   «Sin acción pendiente».
+4. Auditoría aparecía bajo el acceso genérico «Administración», mezclando una
+   capacidad de consulta con control técnico del sistema.
+
+La corrección v1.1.4 normaliza únicamente Recepcionista y Supervisor mediante
+una migración conservadora: elimina capacidades no canónicas, restaura las
+faltantes y conserva `requiresApproval` en los permisos que ya existían. Además
+filtra las validaciones de cierre según el rol, distingue una llave asignada de
+una incidencia real, da una acción explícita a cada habitación mostrada y
+separa «Auditoría» de «Administración» en la navegación.
+
+Las ventanas conservan exactamente la misma lógica semiabierta
+`[07:00,20:00)` / `[20:00,08:00)`; sólo se corrige su presentación humana a
+«07:00–20:00» y «20:00–08:00».

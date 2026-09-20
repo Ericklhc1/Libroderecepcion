@@ -100,6 +100,37 @@ export type RoomSnapshot = {
   keysOut: KeyFacts[];
 };
 
+const KEY_ISSUE_STATUSES: KeyStatusValue[] = [
+  'PENDIENTE_DEVOLUCION',
+  'EXTRAVIADA',
+  'FUERA_DE_SERVICIO',
+];
+
+/**
+ * Cuenta sólo llaves que requieren intervención.
+ *
+ * Una llave ASIGNADA o una COPIA_ADICIONAL vinculada a quien ocupa o está
+ * saliendo de la habitación es operación normal, no una alerta. Sí es una
+ * discrepancia cuando quedó vinculada a otra estadía, no tiene vínculo o está
+ * pendiente de devolución, extraviada o fuera de servicio.
+ */
+export function countRoomKeyIssues(snapshot: RoomSnapshot): number {
+  const activeStayIds = new Set(
+    [snapshot.current?.id, snapshot.outgoing?.id].filter(
+      (id): id is string => Boolean(id),
+    ),
+  );
+  const keys = new Map<string, KeyFacts>();
+  if (snapshot.mainKey) keys.set(snapshot.mainKey.id, snapshot.mainKey);
+  for (const key of snapshot.extraKeys) keys.set(key.id, key);
+
+  return [...keys.values()].filter((key) => {
+    if (KEY_ISSUE_STATUSES.includes(key.status)) return true;
+    if (!['ASIGNADA', 'COPIA_ADICIONAL'].includes(key.status)) return false;
+    return !key.stayId || !activeStayIds.has(key.stayId);
+  }).length;
+}
+
 const ACTIVE_STAGES: StayStage[] = ['PENDIENTE', 'CONFIRMADO'];
 
 function isActive(stay: StayFacts): boolean {

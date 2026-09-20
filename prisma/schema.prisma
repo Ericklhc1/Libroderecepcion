@@ -19,7 +19,7 @@ datasource db {
 
 // ============================== ENUMERACIONES ==============================
 
-/// Las dos ventanas fijas del hotel: día 07:00-19:59 y noche 20:00-07:59.
+/// Las dos ventanas fijas del hotel: día [07:00,20:00) y noche [20:00,08:00).
 ///
 /// Antes eran tres (MANANA/TARDE/NOCHE, de ocho horas). Los turnos históricos
 /// de mañana y tarde se convirtieron a DIA en la migración

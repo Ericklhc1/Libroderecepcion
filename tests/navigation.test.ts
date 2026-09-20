@@ -79,6 +79,20 @@ describe('visibilidad por rol', () => {
     expect(visibleNavItems(permissions).map((i) => i.href)).not.toContain('/supervision');
   });
 
+  it('separa la Auditoría de la Administración técnica', () => {
+    const supervisor = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]).map(
+      (item) => item.href,
+    );
+    expect(supervisor).toContain('/admin/auditoria');
+    expect(supervisor).not.toContain('/admin');
+
+    const admin = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN]).map(
+      (item) => item.href,
+    );
+    expect(admin).toContain('/admin/auditoria');
+    expect(admin).toContain('/admin');
+  });
+
   /*
     El Auditor nocturno es un perfil DE RECEPCIÓN, y le aparecía Supervisión.
     Dos causas a la vez: tenía `supervision.view`, y el menú además mostraba

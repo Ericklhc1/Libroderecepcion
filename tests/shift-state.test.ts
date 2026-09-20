@@ -113,8 +113,8 @@ describe('las dos ventanas fijas', () => {
   });
 
   it('se leen como las dice el hotel', () => {
-    expect(SHIFT_WINDOW_LABEL.DIA).toBe('07:00 a 19:59');
-    expect(SHIFT_WINDOW_LABEL.NOCHE).toBe('20:00 a 07:59');
+    expect(SHIFT_WINDOW_LABEL.DIA).toBe('07:00 a 20:00');
+    expect(SHIFT_WINDOW_LABEL.NOCHE).toBe('20:00 a 08:00');
   });
 
   it('el turno de día no cruza la medianoche y el de noche sí', () => {

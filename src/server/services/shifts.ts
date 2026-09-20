@@ -189,7 +189,7 @@ export async function endShiftParticipation(
  *
  * Tres reglas, y las tres nacen de un atasco real en producción.
  *
- * 1. **Dos ventanas fijas**: día 07:00-19:59 y noche 20:00-07:59. Viven en
+ * 1. **Dos ventanas fijas**: día [07:00,20:00) y noche [20:00,08:00). Viven en
  *    `domain/shift.ts`.
  *
  * 2. **Los turnos NO se programan de antemano.** Se crean cuando alguien entra

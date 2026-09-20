@@ -461,11 +461,50 @@ export async function openShift(
   const mine = await getMyActiveShift(user.id);
   if (mine) return { shift: mine, joined: false };
 
-  const type = input.type ?? shiftTypeAt();
+  const nowForRules = new Date();
+  const type = input.type ?? shiftTypeAt(nowForRules);
   const day = input.date
     ? new Date(`${calendarDateKey(input.date)}T00:00:00.000Z`)
-    : operationalDate();
+    : operationalDate(nowForRules);
   const window = plannedWindow(day, type);
+
+  /*
+    Regla hotelera de relevo:
+    - normalmente sólo puede existir un turno operativo;
+    - entre 07:00–08:00 y 20:00–21:00 pueden coexistir saliente + entrante;
+    - el segundo debe ser el tipo sugerido por el reloj y distinto del saliente.
+    ENTREGA_ENVIADA no cuenta como turno operativo: ya terminó la participación
+    y queda como cierre pendiente/administrativo.
+  */
+  const openOperational = await prisma.shift.findMany({
+    where: {
+      archivedAt: null,
+      status: { in: OCCUPYING_SHIFT_STATUSES },
+    },
+    select: { id: true, type: true, date: true },
+  });
+  const hotelHourNow = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Santiago',
+      hour: '2-digit',
+      hour12: false,
+    }).format(nowForRules),
+  );
+  const inHandoverWindow = hotelHourNow === 7 || hotelHourNow === 20;
+  if (openOperational.length >= 2) {
+    throw new RuleError(
+      'Ya existen dos turnos operativos durante el relevo. Debe completarse el cierre del turno saliente antes de abrir otro.',
+    );
+  }
+  if (openOperational.length === 1) {
+    const outgoing = openOperational[0];
+    const expected = shiftTypeAt(nowForRules);
+    if (!inHandoverWindow || type !== expected || outgoing.type === type) {
+      throw new RuleError(
+        'Ya existe un turno operativo abierto. El segundo turno sólo puede abrirse durante el relevo de 07:00–08:00 o 20:00–21:00 y debe corresponder al turno entrante.',
+      );
+    }
+  }
 
   const created = await prisma
     .$transaction(async (tx) => {
@@ -922,6 +961,38 @@ export async function receiveHandover(
         where: { id: shift.id, status: ShiftStatus.INICIADO },
         data: { status: ShiftStatus.ACTIVO },
       });
+    }
+
+    /*
+      La recepción completa el relevo operativo. El saliente deja de quedar
+      flotando en ENTREGA_ENVIADA: se cierra automáticamente y la validación de
+      Supervisión queda como proceso posterior e independiente.
+    */
+    const source = incoming.fromShift;
+    if (source.status === ShiftStatus.ENTREGA_ENVIADA || source.status === ShiftStatus.RECIBIDO) {
+      await tx.shift.update({
+        where: { id: source.id },
+        data: {
+          status: ShiftStatus.CERRADO,
+          actualEnd: source.actualEnd ?? now,
+          closedById: source.closedById ?? incoming.issuedById,
+        },
+      });
+      await endShiftParticipation(tx, source.id, now);
+      await ensureClosureValidationTask(tx, source.id, incoming.issuedById);
+      await recordAudit(
+        {
+          entity: 'Shift',
+          entityId: source.id,
+          action: AuditAction.TURNO_CERRAR,
+          summary: `Turno ${SHIFT_TYPE_LABEL[source.type]} cerrado automáticamente al confirmarse el relevo`,
+          user,
+          before: { status: source.status },
+          after: { status: ShiftStatus.CERRADO, automatic: true, receivedById: user.id },
+          reason: 'Cierre operativo automático al recibir la entrega.',
+        },
+        tx,
+      );
     }
 
     await tx.alert.updateMany({

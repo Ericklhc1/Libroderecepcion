@@ -71,6 +71,7 @@ const LINE_TOLERANCE = 5;
  * pies de página como «TOTAL» con una reserva.
  */
 const RESERVATION_ID = /^(?=.*\d)[A-Z0-9][A-Z0-9._/-]{2,79}$/i;
+const IDENTITY_FIELDS: ColumnField[] = ['reservationId', 'externalId'];
 
 const NAME_FIELDS: ColumnField[] = ['guestName', 'firstName', 'lastName'];
 
@@ -405,7 +406,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     const candidate = headerCandidate(lines, index);
     const looksLikeHeader =
       candidate.columns.length >= 3 &&
-      candidate.columns.some((column) => column.field === 'reservationId');
+      candidate.columns.some((column) => IDENTITY_FIELDS.includes(column.field));
     return !looksLikeHeader;
   });
   const title = titleLine ? lineText(titleLine) : null;
@@ -435,7 +436,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
       un encabezado nuevo, reemplazando los límites reales al final del
       documento. Todo encabezado de verdad trae identificador de reserva.
     */
-    const hasId = candidate.columns.some((column) => column.field === 'reservationId');
+    const hasId = candidate.columns.some((column) => IDENTITY_FIELDS.includes(column.field));
     if (candidate.columns.length >= 3 && hasId) {
       columns = candidate.columns;
       unmapped = candidate.unmapped;
@@ -451,10 +452,13 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     }
 
     const cells = splitIntoCells(line, bounds);
-    const id = cells.reservationId?.replace(/\s+/g, '').trim();
+    const primaryId = cells.reservationId?.replace(/\s+/g, '').trim();
+    const secondaryId = cells.externalId?.replace(/\s+/g, '').trim();
+    const id = primaryId || secondaryId;
 
     if (id && RESERVATION_ID.test(id)) {
-      cells.reservationId = id.toUpperCase();
+      if (primaryId) cells.reservationId = primaryId.toUpperCase();
+      if (secondaryId) cells.externalId = secondaryId.toUpperCase();
       current = { cells, extraGuests: [], page: line.page, y: line.y };
       records.push(current);
       continue;

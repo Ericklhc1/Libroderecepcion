@@ -24,6 +24,7 @@ export type ConflictKind =
   | 'SALIDA_CONFIRMADA_CON_LLAVE'
   | 'MULTIPLES_PRINCIPALES'
   | 'INFORMES_CONTRADICTORIOS'
+  | 'CONCILIACION_IRRESOLUBLE'
   | 'HABITACION_SIN_NUMERO'
   | 'RESERVA_DUPLICADA'
   | 'HABITACION_DESCONOCIDA';
@@ -37,6 +38,7 @@ export const CONFLICT_LABELS: Record<ConflictKind, string> = {
   SALIDA_CONFIRMADA_CON_LLAVE: 'Salida confirmada con llave todavía asignada',
   MULTIPLES_PRINCIPALES: 'Más de una llave principal',
   INFORMES_CONTRADICTORIOS: 'La misma reserva con datos distintos en dos informes',
+  CONCILIACION_IRRESOLUBLE: 'La evidencia PMS no permite determinar un estado seguro',
   HABITACION_SIN_NUMERO: 'Fila sin número de habitación',
   RESERVA_DUPLICADA: 'Reserva repetida en el mismo informe',
   HABITACION_DESCONOCIDA: 'Habitación que no existe en el inventario',
@@ -52,6 +54,7 @@ export const CONFLICT_TONE: Record<ConflictKind, Tone> = {
   SALIDA_CONFIRMADA_CON_LLAVE: 'critico',
   MULTIPLES_PRINCIPALES: 'atencion',
   INFORMES_CONTRADICTORIOS: 'atencion',
+  CONCILIACION_IRRESOLUBLE: 'critico',
   HABITACION_SIN_NUMERO: 'critico',
   RESERVA_DUPLICADA: 'atencion',
   HABITACION_DESCONOCIDA: 'atencion',
@@ -72,6 +75,8 @@ export type RoomFacts = {
 
 export type ConflictInput = {
   rooms: RoomFacts[];
+  /** Contradicciones detectadas al intentar identificar la estancia canónica. */
+  reconciliation?: Conflict[];
   /** Filas que no pudieron asignarse a una habitación. */
   orphanStays: Array<{
     reservationId: string;
@@ -92,7 +97,7 @@ function sameDay(a: Date | null, b: Date | null): boolean {
 }
 
 export function detectConflicts(input: ConflictInput): Conflict[] {
-  const conflicts: Conflict[] = [];
+  const conflicts: Conflict[] = [...(input.reconciliation ?? [])];
 
   for (const orphan of input.orphanStays) {
     conflicts.push({
@@ -249,20 +254,25 @@ export function detectConflicts(input: ConflictInput): Conflict[] {
         });
       }
 
-      // 8. La misma reserva repetida con el mismo estado.
-      const perStatus = new Map<string, number>();
+      const byOccurrence = new Map<string, StayFacts[]>();
       for (const stay of group) {
-        perStatus.set(stay.status, (perStatus.get(stay.status) ?? 0) + 1);
+        const anchor = stay.arrivalDate ?? stay.departureDate;
+        const key = anchor?.toISOString().slice(0, 10) ?? 'sin-fecha';
+        const occurrence = byOccurrence.get(key) ?? [];
+        occurrence.push(stay);
+        byOccurrence.set(key, occurrence);
       }
-      for (const [status, count] of perStatus) {
-        if (count > 1) {
-          conflicts.push({
-            kind: 'RESERVA_DUPLICADA',
-            roomNumber: room.number,
-            detail: `La reserva ${reservationId} aparece ${count} veces como ${status}.`,
-          });
-        }
+      for (const occurrence of byOccurrence.values()) {
+        if (occurrence.length < 2) continue;
+        conflicts.push({
+          kind: 'RESERVA_DUPLICADA',
+          roomNumber: room.number,
+          detail:
+            `La reserva ${reservationId} representa la misma estancia en ` +
+            `${occurrence.length} filas operativas (${occurrence.map((stay) => stay.status).join(', ')}).`,
+        });
       }
+
     }
   }
 

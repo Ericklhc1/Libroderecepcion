@@ -114,6 +114,7 @@ describe('asignación manual y room move', () => {
     expect(newStay.status).toBe(RoomStayStatus.IN_HOUSE);
     expect(newStay.roomId).toBe(target.id);
     expect(newStay.reservationRefId).toBe(reservation.id);
+    expect(newStay.externalId).toBe(reservation.externalId);
 
     const guarantee = await prisma.guarantee.findFirstOrThrow({
       where: { reservationReferenceId: reservation.id },

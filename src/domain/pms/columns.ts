@@ -11,6 +11,7 @@
 /** Campos canónicos que el sistema sabe interpretar. */
 export type ColumnField =
   | 'reservationId'
+  | 'externalId'
   | 'channel'
   | 'guestName'
   | 'firstName'
@@ -36,6 +37,7 @@ export type ColumnField =
  */
 export const COLUMN_LABELS: Record<ColumnField, string> = {
   reservationId: 'ID de reserva',
+  externalId: 'Localizador externo',
   channel: 'Canal',
   guestName: 'Cliente / huéspedes',
   firstName: 'Nombre',
@@ -109,19 +111,21 @@ const SYNONYMS: Record<ColumnField, string[]> = {
     'numero reserva',
     'numero de reserva',
     'codigo reserva',
-    'localizador',
     'booking',
+    'folio',
+    'codigo',
+  ],
+  externalId: [
+    'localizador',
     'booking id',
     'booking number',
     'booking no',
-    'folio',
     'confirmacion',
     'numero confirmacion',
     'confirmation',
     'confirmation number',
     'locator',
     'record locator',
-    'codigo',
   ],
   channel: ['canal', 'origen', 'fuente', 'agencia', 'portal', 'segmento', 'canal de venta', 'source', 'market'],
   guestName: [

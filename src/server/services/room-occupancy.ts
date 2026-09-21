@@ -116,16 +116,17 @@ export async function attachReservationToRoom(
 
     const exact = await tx.roomStay.findFirst({
       where: {
-        businessDate,
+        deletedAt: null,
         reservationId: reservation.code,
         roomId: room.id,
-        status: input.status,
+        arrivalDate: reservation.checkIn,
       },
       orderBy: { createdAt: 'asc' },
     });
 
     const data = {
       reservationRefId: reservation.id,
+      externalId: reservation.externalId,
       guestNames: reservation.guest?.fullName ? [reservation.guest.fullName] : [],
       channel: reservation.channel,
       arrivalDate: reservation.checkIn,
@@ -275,10 +276,10 @@ export async function moveStayToRoom(
 
     const reusable = await tx.roomStay.findFirst({
       where: {
-        businessDate,
+        deletedAt: null,
         reservationId: stay.reservationId,
         roomId: target.id,
-        status: stay.status,
+        arrivalDate: businessDate,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -330,6 +331,7 @@ export async function moveStayToRoom(
 
     const targetData = {
       reservationRefId: stay.reservationRefId,
+      externalId: stay.externalId,
       guestNames: stay.guestNames,
       channel: stay.channel,
       arrivalDate: businessDate,

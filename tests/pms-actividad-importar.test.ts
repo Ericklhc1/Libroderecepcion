@@ -31,6 +31,7 @@ let businessDate: Date;
 /** Un borrador de estancia tal como lo deja el lector del informe. */
 function draft(input: {
   reservationId: string;
+  externalId?: string | null;
   roomNumber: string;
   status: RoomStayStatus | null;
   guestNames?: string[];
@@ -48,6 +49,7 @@ function draft(input: {
 }) {
   return {
     reservationId: input.reservationId,
+    externalId: input.externalId ?? null,
     roomNumber: input.roomNumber,
     guestNames: input.guestNames ?? ['Huésped Ejemplo'],
     channel: input.channel ?? 'Booking',
@@ -515,6 +517,85 @@ describe('la importación NO pisa el estado operativo del Libro', () => {
     expect(despues.current?.reservationId).toBe('7239753');
     expect(despues.incoming?.reservationId).toBe('7999999');
     expect(despues.incomingState).toBe('EN_COLA');
+  });
+});
+
+describe('conciliación de una misma estancia entre informes', () => {
+  const occurrence = (status: RoomStayStatus) =>
+    draft({
+      reservationId: '7100001',
+      externalId: 'LOC-7100001',
+      roomNumber: '416',
+      status,
+      guestNames: ['Ana Pérez'],
+      arrival: '2026-09-16T00:00:00.000Z',
+      departure: '2026-09-18T00:00:00.000Z',
+    });
+
+  it('CHECK_IN → IN_HOUSE → CHECK_OUT actualiza una sola RoomStay', async () => {
+    await importar([occurrence(RoomStayStatus.CHECK_IN)]);
+    await importar([occurrence(RoomStayStatus.IN_HOUSE)]);
+    await importar([occurrence(RoomStayStatus.CHECK_OUT)]);
+
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]).toMatchObject({
+      reservationId: '7100001',
+      externalId: 'LOC-7100001',
+      status: RoomStayStatus.CHECK_OUT,
+      stage: RoomStayStage.PENDIENTE,
+    });
+    expect((await snapshotOf('416')).state).toBe('CHECK_OUT_PENDIENTE');
+  });
+
+  it('tres informes en un mismo lote se concilian antes de escribir', async () => {
+    const result = await importar([
+      occurrence(RoomStayStatus.CHECK_IN),
+      occurrence(RoomStayStatus.IN_HOUSE),
+      occurrence(RoomStayStatus.CHECK_OUT),
+    ]);
+
+    expect(result.created).toBe(1);
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]!.status).toBe(RoomStayStatus.CHECK_OUT);
+  });
+
+  it('informes cargados en orden inverso no crean ni retroceden la estancia', async () => {
+    await importar([occurrence(RoomStayStatus.CHECK_OUT)]);
+    await importar([occurrence(RoomStayStatus.IN_HOUSE)]);
+    await importar([occurrence(RoomStayStatus.CHECK_IN)]);
+
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]!.status).toBe(RoomStayStatus.CHECK_OUT);
+  });
+
+  it('una extensión posterior reabre la salida pendiente sin duplicarla', async () => {
+    await importar([occurrence(RoomStayStatus.CHECK_OUT)]);
+    businessDate = new Date('2026-09-17T00:00:00.000Z');
+    const extended = occurrence(RoomStayStatus.IN_HOUSE);
+    extended.departureDate = new Date('2026-09-20T00:00:00.000Z').toISOString();
+
+    await importar([extended]);
+
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]!.status).toBe(RoomStayStatus.IN_HOUSE);
+    expect(stays[0]!.departureDate).toEqual(new Date('2026-09-20T00:00:00.000Z'));
+  });
+
+  it('identificadores incompatibles omiten la fila y conservan el estado vigente', async () => {
+    await importar([occurrence(RoomStayStatus.IN_HOUSE)]);
+    const contradictory = occurrence(RoomStayStatus.CHECK_OUT);
+    contradictory.externalId = 'OTRO-LOCALIZADOR';
+
+    const result = await importar([contradictory]);
+
+    expect(result.skipped).toBe(1);
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]!.status).toBe(RoomStayStatus.IN_HOUSE);
   });
 });
 

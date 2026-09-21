@@ -19,10 +19,14 @@ import { hasBlockingPmsIssues } from '@/domain/pms/issues';
 import { normalizeReport, REPORT_LABELS, type NormalizedStay } from '@/domain/pms/normalize';
 import { detectConflicts, type Conflict } from '@/domain/pms/conflicts';
 import {
+  decideStayReconciliation,
+  reconcileStayState,
+  type IncomingEvidence,
+  type ReconciliationEvidence,
+} from '@/domain/pms/reconciliation';
+import {
   buildRoomSnapshot,
-  mostAdvancedStayStatus,
   principalKeyHolder,
-  stayPhase,
   type KeyFacts,
   type StayFacts,
   type StayStatus,
@@ -59,6 +63,7 @@ export type ReportMeta = {
 /** Estadía tal como se guarda en el borrador, con fechas serializadas. */
 type StayDraft = {
   reservationId: string;
+  externalId?: string | null;
   roomNumber: string | null;
   guestNames: string[];
   channel: string | null;
@@ -144,6 +149,7 @@ export type ActivitySummary = {
 function toDraft(stay: NormalizedStay): StayDraft {
   return {
     reservationId: stay.reservationId,
+    externalId: stay.externalId,
     roomNumber: stay.roomNumber,
     guestNames: stay.guestNames,
     channel: stay.channel,
@@ -268,6 +274,7 @@ export async function prepareImport(
   for (const stay of stays) {
     const key = JSON.stringify([
       stay.reservationId,
+      stay.externalId,
       stay.roomNumber,
       stay.status,
       stay.arrivalDate,
@@ -343,6 +350,7 @@ async function analyseDraft(
         select: {
           id: true,
           reservationId: true,
+          externalId: true,
           guestNames: true,
           status: true,
           stage: true,
@@ -350,6 +358,7 @@ async function analyseDraft(
           departureDate: true,
           channel: true,
           touchedManually: true,
+          note: true,
           businessDate: true,
         },
       },
@@ -360,6 +369,30 @@ async function analyseDraft(
   const byNumber = new Map(rooms.map((room) => [room.number, room]));
   const orphans: ImportPreview['orphans'] = [];
   const protectedStays: ImportPreview['protectedStays'] = [];
+  const reconciliation: Conflict[] = [];
+  const roomsPerReservation = new Map<string, Set<string>>();
+  for (const stay of stays) {
+    if (!stay.roomNumber) continue;
+    const set = roomsPerReservation.get(stay.reservationId) ?? new Set<string>();
+    set.add(stay.roomNumber);
+    roomsPerReservation.set(stay.reservationId, set);
+  }
+
+  const existingEvidence: ReconciliationEvidence[] = rooms.flatMap((room) =>
+    room.stays.map((stay) => ({
+      id: stay.id,
+      reservationId: stay.reservationId,
+      externalId: stay.externalId,
+      guestNames: stay.guestNames,
+      roomId: room.id,
+      arrivalDate: stay.arrivalDate,
+      departureDate: stay.departureDate,
+      businessDate: stay.businessDate,
+      status: stay.status as StayStatus,
+      stage: stay.stage,
+      roomMove: Boolean(stay.note?.includes('ROOM MOVE')),
+    })),
+  );
 
   // Estado propuesto: lo que hay hoy, más lo que traen los informes.
   const projected = new Map<string, StayFacts[]>();
@@ -415,61 +448,90 @@ async function analyseDraft(
       continue;
     }
 
-    /*
-      Se empareja por RESERVA y habitación, sin el estado: es la misma clave
-      que usa `applyImport`. Si divergieran, la pantalla de revisión
-      anunciaría estadías nuevas que al aplicar no se crean.
-    */
-    const existing = room.stays
-      .filter(
-        (stay) =>
-          stay.reservationId === draft.reservationId &&
-          stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus) &&
-          stay.businessDate.getTime() <= businessDate.getTime() &&
-          (stay.stage !== RoomStayStage.FINALIZADO ||
-            stay.businessDate.getTime() === businessDate.getTime()),
-      )
-      .sort((a, b) => b.businessDate.getTime() - a.businessDate.getTime())[0];
+    const list = projected.get(room.number) ?? [];
+    const incoming: IncomingEvidence = {
+      reservationId: draft.reservationId,
+      externalId: draft.externalId ?? null,
+      guestNames: draft.guestNames,
+      roomId: room.id,
+      arrivalDate: draft.arrivalDate ? new Date(draft.arrivalDate) : null,
+      departureDate: draft.departureDate ? new Date(draft.departureDate) : null,
+      businessDate,
+      status: draft.status as StayStatus,
+    };
+    const decision = decideStayReconciliation(existingEvidence, incoming, {
+      reservationAppearsInSeveralRooms:
+        (roomsPerReservation.get(draft.reservationId)?.size ?? 0) > 1,
+    });
 
-    if (existing && (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE)) {
-      protectedStays.push({
+    if (decision.kind === 'CONFLICT') {
+      reconciliation.push({
+        kind: 'CONCILIACION_IRRESOLUBLE',
         roomNumber: room.number,
-        reservationId: draft.reservationId,
-        status: draft.status,
-        reason: existing.touchedManually
-          ? 'Alguien ya la confirmó o la editó a mano: se conservan esos datos.'
-          : `Ya está en etapa ${existing.stage}: la importación no la mueve atrás.`,
+        detail: `${decision.issue}: ${decision.detail}`,
       });
       continue;
     }
-    if (existing) continue;
 
-    const list = projected.get(room.number) ?? [];
+    if (decision.kind === 'MATCH') {
+      const existing = room.stays.find((stay) => stay.id === decision.stay.id);
+      if (decision.duplicateIds.length) {
+        reconciliation.push({
+          kind: 'RESERVA_DUPLICADA',
+          roomNumber: room.number,
+          detail:
+            `La reserva ${draft.reservationId} ya tiene ${decision.duplicateIds.length + 1} ` +
+            'filas para la misma estancia; se usará la más avanzada.',
+        });
+      }
+      const resolved = reconcileStayState(decision.stay, incoming);
+      if (existing && (existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE)) {
+        protectedStays.push({
+          roomNumber: room.number,
+          reservationId: draft.reservationId,
+          status: draft.status,
+          reason:
+            resolved.status === existing.status
+              ? 'La evidencia se concilia sin deshacer la intervención operativa existente.'
+              : `La estancia evoluciona a ${resolved.status}; llaves y garantías se conservan.`,
+        });
+      }
 
-    /*
-      La misma reserva puede venir en dos informes. Si ya se proyectó, se
-      avanza su estado en lugar de proyectar una segunda estadía: si no, la
-      revisión mostraría al mismo huésped como «Actual» y «Entrante» a la vez.
-    */
-    const alreadyProjected = list.find(
-      (stay) =>
-        stay.reservationId === draft.reservationId &&
-        stayPhase(stay.status as StayStatus) === stayPhase(draft.status as StayStatus),
-    );
-    if (alreadyProjected) {
-      alreadyProjected.status = mostAdvancedStayStatus(
-        alreadyProjected.status as StayStatus,
-        draft.status as StayStatus,
-      ) as RoomStayStatus;
-      alreadyProjected.stage =
-        alreadyProjected.status === RoomStayStatus.IN_HOUSE
-          ? RoomStayStage.CONFIRMADO
-          : RoomStayStage.PENDIENTE;
+      const projectedStay = list.find((stay) => stay.id === decision.stay.id);
+      if (projectedStay) {
+        projectedStay.status = resolved.status;
+        projectedStay.stage = resolved.stage;
+        if (resolved.acceptIncomingDetails) {
+          if (!resolved.preserveArrivalDate) projectedStay.arrivalDate = incoming.arrivalDate;
+          projectedStay.departureDate = incoming.departureDate;
+          projectedStay.guestNames = draft.guestNames;
+          projectedStay.channel = draft.channel;
+        }
+      }
+
+      // La siguiente fila del mismo lote debe ver esta transición. Sin esta
+      // actualización, CHECK_IN e IN_HOUSE presentes en dos PDFs de la misma
+      // carga parecían dos estancias porque el preview sólo consultaba la DB.
+      const evidence = existingEvidence.find((item) => item.id === decision.stay.id);
+      if (evidence) {
+        evidence.status = resolved.status;
+        evidence.stage = resolved.stage;
+        if (resolved.acceptIncomingDetails) {
+          evidence.externalId = incoming.externalId;
+          evidence.guestNames = incoming.guestNames;
+          if (!resolved.preserveArrivalDate) evidence.arrivalDate = incoming.arrivalDate;
+          evidence.departureDate = incoming.departureDate;
+          evidence.businessDate = incoming.businessDate;
+        }
+      }
       continue;
     }
 
+    const temporaryId =
+      `nuevo:${draft.reservationId}:${room.number}:` +
+      `${draft.arrivalDate ?? businessDate.toISOString()}:${existingEvidence.length}`;
     list.push({
-      id: `nuevo:${stayPhase(draft.status as StayStatus)}:${draft.reservationId}:${room.number}`,
+      id: temporaryId,
       reservationId: draft.reservationId,
       guestNames: draft.guestNames,
       status: draft.status,
@@ -482,6 +544,22 @@ async function analyseDraft(
       channel: draft.channel,
     });
     projected.set(room.number, list);
+    existingEvidence.push({
+      id: temporaryId,
+      reservationId: draft.reservationId,
+      externalId: draft.externalId ?? null,
+      guestNames: draft.guestNames,
+      roomId: room.id,
+      arrivalDate: incoming.arrivalDate,
+      departureDate: incoming.departureDate,
+      businessDate,
+      status: draft.status as StayStatus,
+      stage:
+        draft.status === RoomStayStatus.IN_HOUSE
+          ? RoomStayStage.CONFIRMADO
+          : RoomStayStage.PENDIENTE,
+      roomMove: false,
+    });
   }
 
   /*
@@ -512,6 +590,7 @@ async function analyseDraft(
       stays: projected.get(room.number) ?? [],
       keys: projectedKeys(room),
     })),
+    reconciliation,
     orphanStays: orphans.map((orphan) => ({
       reservationId: orphan.reservationId,
       guestNames: orphan.guestNames,
@@ -706,9 +785,9 @@ export type ImportResult = {
 /**
  * Aplica un borrador revisado.
  *
- * Es idempotente: volver a aplicar el mismo informe no duplica nada, porque la
- * clave de una estadía es la fecha de operación más reserva, habitación y
- * estado. Lo que ya tocó una persona se deja como está.
+ * Es idempotente: volver a aplicar la misma evidencia no duplica nada, porque
+ * primero se identifica la ocurrencia de la estancia y después se resuelve su
+ * transición de estado. Lo que ya tocó una persona se conserva.
  */
 export async function applyImport(
   user: CurrentUser,
@@ -763,6 +842,7 @@ export async function applyImport(
       select: {
         id: true,
         reservationId: true,
+        externalId: true,
         roomId: true,
         status: true,
         stage: true,
@@ -782,35 +862,39 @@ export async function applyImport(
         currency: true,
         paymentType: true,
         paymentTypeRaw: true,
+        note: true,
       },
     });
 
-    /*
-      UNA reserva es UNA estadía por habitación. El estado NO entra en la
-      clave.
+    type WorkingStay = ReconciliationEvidence & {
+      touchedManually: boolean;
+      guestNames: string[];
+      channel: string | null;
+      pmsStatus: string | null;
+      guestCount: number | null;
+      totalAmount: number | null;
+      pendingAmount: number | null;
+      currency: string | null;
+      paymentType: string | null;
+      paymentTypeRaw: string | null;
+    };
 
-      La versión anterior lo incluía, y por eso la misma reserva creaba dos
-      estadías cuando aparecía en dos informes: el de in house la traía como
-      IN_HOUSE y el de entradas como CHECK_IN, con dos claves distintas. El
-      resultado era la habitación mostrando al mismo huésped como «Actual» y
-      como «Entrante» a la vez, con el mismo código de reserva, y un conflicto
-      de llave que no existía en la realidad.
-
-      El código de reserva es la identidad, igual que en la regla de cola:
-      nunca el nombre. Si el PMS la reporta desde dos ángulos, se conserva una
-      sola estadía y se actualiza su estado.
-    */
-    const keyOf = (reservationId: string, roomId: string | null, status: RoomStayStatus) =>
-      `${reservationId}|${roomId ?? ''}|${stayPhase(status as StayStatus)}`;
-    const existingByKey = new Map(
-      existingStays.map((stay) => [
-        keyOf(stay.reservationId, stay.roomId, stay.status),
-        stay,
-      ]),
-    );
-
-    const toCreate: Prisma.RoomStayCreateManyInput[] = [];
-    const toUpdate: Array<{ id: string; data: Prisma.RoomStayUpdateInput }> = [];
+    const working: WorkingStay[] = existingStays.map((stay) => ({
+      ...stay,
+      status: stay.status as StayStatus,
+      roomMove: Boolean(stay.note?.includes('ROOM MOVE')),
+      totalAmount: stay.totalAmount === null ? null : Number(stay.totalAmount),
+      pendingAmount: stay.pendingAmount === null ? null : Number(stay.pendingAmount),
+    }));
+    const toCreate = new Map<string, Prisma.RoomStayCreateManyInput>();
+    const toUpdate = new Map<string, Prisma.RoomStayUpdateInput>();
+    const roomsPerReservation = new Map<string, Set<string>>();
+    for (const draft of drafts) {
+      if (!draft.roomNumber) continue;
+      const set = roomsPerReservation.get(draft.reservationId) ?? new Set<string>();
+      set.add(draft.roomNumber);
+      roomsPerReservation.set(draft.reservationId, set);
+    }
 
     const sameDay = (a: Date | null, b: Date | null) =>
       a && b ? a.getTime() === b.getTime() : a === b;
@@ -822,10 +906,7 @@ export async function applyImport(
 
       La tolerancia es de medio centavo, que es la precisión de la columna.
     */
-    const sameAmount = (
-      stored: Prisma.Decimal | null,
-      drafted: number | null,
-    ): boolean => {
+    const sameAmount = (stored: number | null, drafted: number | null): boolean => {
       if (stored === null || drafted === null) return stored === null && drafted === null;
       return Math.abs(Number(stored) - drafted) < 0.005;
     };
@@ -858,6 +939,7 @@ export async function applyImport(
       */
       const descriptive = {
         businessDate,
+        externalId: draft.externalId ?? null,
         guestNames: draft.guestNames,
         channel: draft.channel,
         arrivalDate: draft.arrivalDate ? new Date(draft.arrivalDate) : null,
@@ -873,111 +955,124 @@ export async function applyImport(
         batchId: batch.id,
       };
 
-      const existing = existingByKey.get(keyOf(draft.reservationId, room.id, draft.status));
-
-      if (existing) {
-        /*
-          Nunca se aplica un informe más viejo encima de una fotografía activa
-          más nueva. Esto importa al reintentar archivos del día anterior:
-          el PMS sigue siendo fuente principal, pero su secuencia temporal
-          también lo es.
-        */
-        if (existing.businessDate.getTime() > businessDate.getTime()) {
-          summary.preserved += 1;
-          continue;
-        }
-
-        const protectedStay =
-          existing.touchedManually || existing.stage !== RoomStayStage.PENDIENTE;
-
-        /*
-          El estado se AVANZA, nunca se retrocede. Si la estadía ya está
-          IN_HOUSE y el informe de entradas la vuelve a listar como CHECK_IN,
-          mandar el estado atrás la haría aparecer de nuevo como pendiente de
-          llegada y le quitaría la llave a quien está dentro.
-        */
-        const status = mostAdvancedStayStatus(
-          existing.status as StayStatus,
-          draft.status as StayStatus,
-        ) as RoomStayStatus;
-
-        // Sólo se escribe si algo cambió de verdad: un informe idéntico no
-        // genera ninguna escritura.
-        const unchanged =
-          existing.status === status &&
-          existing.businessDate.getTime() === businessDate.getTime() &&
-          existing.guestNames.join('\u0000') === draft.guestNames.join('\u0000') &&
-          existing.channel === descriptive.channel &&
-          existing.pmsStatus === descriptive.pmsStatus &&
-          sameDay(existing.arrivalDate, descriptive.arrivalDate) &&
-          sameDay(existing.departureDate, descriptive.departureDate) &&
-          existing.guestCount === descriptive.guestCount &&
-          sameAmount(existing.totalAmount, descriptive.totalAmount) &&
-          sameAmount(existing.pendingAmount, descriptive.pendingAmount) &&
-          existing.currency === descriptive.currency &&
-          existing.paymentType === descriptive.paymentType &&
-          existing.paymentTypeRaw === descriptive.paymentTypeRaw;
-        /*
-          Los tres contadores son excluyentes y cada uno dice algo preciso:
-
-            unchanged → el informe la repite igual y no se escribió nada.
-            preserved → se escribió, pero su avance manual se respetó: `stage`
-                        no está entre los campos descriptivos, así que una
-                        confirmación del mesón nunca se deshace.
-            updated   → se escribió.
-        */
-        if (unchanged) {
-          summary.unchanged += 1;
-        } else {
-          toUpdate.push({ id: existing.id, data: { ...descriptive, status } });
-          if (protectedStay) summary.preserved += 1;
-          else summary.updated += 1;
-        }
-        continue;
-      }
-
-      /*
-        La misma reserva puede venir dos veces en el MISMO lote, en dos
-        informes distintos. Si ya se decidió crearla, se avanza esa decisión
-        en lugar de agregar una segunda fila.
-      */
-      const pending = toCreate.find(
-        (row) =>
-          row.reservationId === draft.reservationId &&
-          row.roomId === room.id &&
-          stayPhase(row.status as StayStatus) === stayPhase(draft.status as StayStatus),
-      );
-      if (pending) {
-        pending.status = mostAdvancedStayStatus(
-          pending.status as StayStatus,
-          draft.status as StayStatus,
-        ) as RoomStayStatus;
-        pending.stage =
-          pending.status === RoomStayStatus.IN_HOUSE
-            ? RoomStayStage.CONFIRMADO
-            : RoomStayStage.PENDIENTE;
-        continue;
-      }
-
-      toCreate.push({
-        ...descriptive,
+      const incoming: IncomingEvidence = {
         reservationId: draft.reservationId,
+        externalId: draft.externalId ?? null,
+        guestNames: draft.guestNames,
         roomId: room.id,
-        status: draft.status,
-        stage:
+        arrivalDate: descriptive.arrivalDate,
+        departureDate: descriptive.departureDate,
+        businessDate,
+        status: draft.status as StayStatus,
+      };
+      const decision = decideStayReconciliation(working, incoming, {
+        reservationAppearsInSeveralRooms:
+          (roomsPerReservation.get(draft.reservationId)?.size ?? 0) > 1,
+      });
+      if (decision.kind === 'CONFLICT') {
+        summary.skipped += 1;
+        continue;
+      }
+
+      if (decision.kind === 'CREATE') {
+        const temporaryId = `nuevo:${batch.id}:${working.length}`;
+        const stage =
           draft.status === RoomStayStatus.IN_HOUSE
             ? RoomStayStage.CONFIRMADO
-            : RoomStayStage.PENDIENTE,
-        businessDate,
-      });
-      summary.created += 1;
+            : RoomStayStage.PENDIENTE;
+        const row: Prisma.RoomStayCreateManyInput = {
+          ...descriptive,
+          reservationId: draft.reservationId,
+          roomId: room.id,
+          status: draft.status,
+          stage,
+        };
+        toCreate.set(temporaryId, row);
+        working.push({
+          id: temporaryId,
+          reservationId: draft.reservationId,
+          externalId: draft.externalId ?? null,
+          guestNames: draft.guestNames,
+          roomId: room.id,
+          arrivalDate: descriptive.arrivalDate,
+          departureDate: descriptive.departureDate,
+          businessDate,
+          status: draft.status as StayStatus,
+          stage,
+          roomMove: false,
+          touchedManually: false,
+          channel: draft.channel,
+          pmsStatus: draft.pmsStatus,
+          guestCount: draft.guestCount,
+          totalAmount: draft.totalAmount,
+          pendingAmount: draft.pendingAmount,
+          currency: draft.currency,
+          paymentType: draft.paymentType,
+          paymentTypeRaw: draft.paymentTypeRaw,
+        });
+        summary.created += 1;
+        continue;
+      }
+
+      const existing = working.find((stay) => stay.id === decision.stay.id)!;
+      const resolved = reconcileStayState(existing, incoming);
+      const effectiveDescriptive = resolved.preserveArrivalDate
+        ? { ...descriptive, arrivalDate: existing.arrivalDate }
+        : descriptive;
+      const next = resolved.acceptIncomingDetails
+        ? {
+            ...existing,
+            ...effectiveDescriptive,
+            status: resolved.status,
+            stage: resolved.stage,
+          }
+        : { ...existing, status: resolved.status, stage: resolved.stage };
+
+      const unchanged =
+        existing.status === next.status &&
+        existing.stage === next.stage &&
+        existing.businessDate.getTime() === next.businessDate.getTime() &&
+        existing.externalId === next.externalId &&
+        existing.guestNames.join('\u0000') === next.guestNames.join('\u0000') &&
+        existing.channel === next.channel &&
+        existing.pmsStatus === next.pmsStatus &&
+        sameDay(existing.arrivalDate, next.arrivalDate) &&
+        sameDay(existing.departureDate, next.departureDate) &&
+        existing.guestCount === next.guestCount &&
+        sameAmount(existing.totalAmount, next.totalAmount) &&
+        sameAmount(existing.pendingAmount, next.pendingAmount) &&
+        existing.currency === next.currency &&
+        existing.paymentType === next.paymentType &&
+        existing.paymentTypeRaw === next.paymentTypeRaw;
+
+      if (unchanged) {
+        summary.unchanged += 1;
+        continue;
+      }
+
+      Object.assign(existing, next);
+      const updateData: Prisma.RoomStayUpdateInput = resolved.acceptIncomingDetails
+        ? { ...effectiveDescriptive, status: resolved.status, stage: resolved.stage }
+        : { status: resolved.status, stage: resolved.stage };
+      if (existing.id.startsWith('nuevo:')) {
+        const pending = toCreate.get(existing.id);
+        if (pending) Object.assign(pending, updateData);
+      } else {
+        toUpdate.set(existing.id, updateData);
+      }
+
+      if (existing.touchedManually || decision.stay.stage !== RoomStayStage.PENDIENTE) {
+        summary.preserved += 1;
+      } else {
+        summary.updated += 1;
+      }
     }
 
-    if (toCreate.length) {
-      await tx.roomStay.createMany({ data: toCreate, skipDuplicates: true });
+    if (toCreate.size) {
+      await tx.roomStay.createMany({ data: [...toCreate.values()], skipDuplicates: true });
     }
-    for (const update of toUpdate) {
-      await tx.roomStay.update({ where: { id: update.id }, data: update.data });
+    for (const [id, data] of toUpdate) {
+      await tx.roomStay.update({ where: { id }, data });
     }
 
     /*
@@ -1222,18 +1317,36 @@ export async function linkStaysToReservations(
       deletedAt: null,
       reservationRefId: null,
     },
-    select: { id: true, reservationId: true },
+    select: { id: true, reservationId: true, externalId: true },
   });
   if (!pendientes.length) return 0;
 
   const codigos = [...new Set(pendientes.map((stay) => stay.reservationId))];
+  const externos = [
+    ...new Set(
+      pendientes
+        .map((stay) => stay.externalId)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
   const reservas = await tx.reservationReference.findMany({
-    where: { code: { in: codigos }, deletedAt: null },
-    select: { id: true, code: true },
+    where: {
+      deletedAt: null,
+      OR: [
+        { code: { in: codigos } },
+        ...(externos.length ? [{ externalId: { in: externos } }] : []),
+      ],
+    },
+    select: { id: true, code: true, externalId: true },
   });
   if (!reservas.length) return 0;
 
   const porCodigo = new Map(reservas.map((reserva) => [reserva.code, reserva.id]));
+  const porExterno = new Map(
+    reservas
+      .filter((reserva): reserva is typeof reserva & { externalId: string } => Boolean(reserva.externalId))
+      .map((reserva) => [reserva.externalId, reserva.id]),
+  );
   let vinculadas = 0;
 
   // Una actualización por reserva, no una por estadía: varias estadías de la
@@ -1241,6 +1354,19 @@ export async function linkStaysToReservations(
   for (const [code, reservationRefId] of porCodigo) {
     const ids = pendientes
       .filter((stay) => stay.reservationId === code)
+      .map((stay) => stay.id);
+    if (!ids.length) continue;
+    const { count } = await tx.roomStay.updateMany({
+      where: { id: { in: ids } },
+      data: { reservationRefId },
+    });
+    vinculadas += count;
+  }
+
+  const aunPendientes = pendientes.filter((stay) => !porCodigo.has(stay.reservationId));
+  for (const [externalId, reservationRefId] of porExterno) {
+    const ids = aunPendientes
+      .filter((stay) => stay.externalId === externalId)
       .map((stay) => stay.id);
     if (!ids.length) continue;
     const { count } = await tx.roomStay.updateMany({

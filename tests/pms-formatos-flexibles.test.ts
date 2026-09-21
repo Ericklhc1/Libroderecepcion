@@ -5,6 +5,31 @@ import { normalizeReport } from '@/domain/pms/normalize';
 import { parseDelimited, readReportFile } from '@/server/pms/read-report-file';
 
 describe('importación PMS independiente de plantilla', () => {
+  it('separa ID de reserva y Localizador en vez de concatenarlos', () => {
+    const fragments: TextFragment[] = [
+      { page: 1, x: 40, y: 560, text: 'Informe de salidas' },
+      { page: 1, x: 40, y: 520, text: 'ID' },
+      { page: 1, x: 160, y: 520, text: 'Localizador' },
+      { page: 1, x: 300, y: 520, text: 'Cliente' },
+      { page: 1, x: 500, y: 520, text: 'Llegada' },
+      { page: 1, x: 610, y: 520, text: 'Salida' },
+      { page: 1, x: 710, y: 520, text: 'Hab' },
+      { page: 1, x: 40, y: 500, text: '7510383' },
+      { page: 1, x: 160, y: 500, text: '2539932938' },
+      { page: 1, x: 300, y: 500, text: 'Huésped Ejemplo' },
+      { page: 1, x: 500, y: 500, text: '19/09/2026' },
+      { page: 1, x: 610, y: 500, text: '20/09/2026' },
+      { page: 1, x: 710, y: 500, text: '406' },
+    ];
+
+    const normalized = normalizeReport(readStructuredReport(fragments));
+    expect(normalized?.stays[0]).toMatchObject({
+      reservationId: '7510383',
+      externalId: '2539932938',
+      roomNumber: '406',
+    });
+  });
+
   it('acepta ID alfanumérico y cabecera partida en dos líneas', () => {
     const fragments: TextFragment[] = [
       { page: 1, x: 40, y: 560, text: 'Exportación operativa' },

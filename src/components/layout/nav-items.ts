@@ -30,8 +30,7 @@ const PRIMARY: NavItem[] = [
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'], mobile: true,
   },
   {
-    href: '/reservas', label: 'Reservas', icon: 'guest',
-    anyOf: ['room.view', 'guest.view', 'guest.manage'], mobile: true,
+    href: '/libro?clase=entry', label: 'Novedades', icon: 'book', mobile: true,
   },
   { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'], mobile: true },
@@ -43,11 +42,16 @@ const PRIMARY: NavItem[] = [
   },
 ];
 
-// Libro, Supervisión, Historial e Indicadores siguen existiendo como vistas
-// especializadas y accesos contextuales. Auditoría sí conserva un destino de
-// consulta propio: no debe confundirse con la Administración técnica. El menú
-// operativo refleja el modelo Inicio → Turno → Reservas → Caja → Llaves.
+// La operación diaria queda reducida a Inicio → Turno → Novedades → Caja → Llaves.
+// Reservas/habitaciones/PMS siguen disponibles como contexto opcional y fuente de
+// evidencia, pero ya no compiten como trabajo principal del mesón.
 const SECONDARY: NavItem[] = [
+  {
+    href: '/reservas',
+    label: 'Contexto PMS',
+    icon: 'guest',
+    anyOf: ['room.view', 'guest.view', 'guest.manage'],
+  },
   {
     href: '/admin/auditoria',
     label: 'Auditoría',

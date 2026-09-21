@@ -11,7 +11,7 @@ import { ReservationDialog } from '@/app/(app)/huespedes/guest-forms';
 import { formatDate } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
 
-export const metadata = { title: 'Reservas' };
+export const metadata = { title: 'Contexto PMS' };
 export const dynamic = 'force-dynamic';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -102,10 +102,10 @@ export default async function ReservationsPage({
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-petrol-900">
             <FolderOpen className="h-6 w-6 text-gold-600" aria-hidden="true" />
-            Reservas
+            Contexto PMS
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            La reserva es la carpeta principal. Cada habitación contiene sus ID FNS activos y cada ID concentra estadía, Caja, garantías, novedades, incidencias, comentarios, llaves e historial.
+            Consulta opcional de la evidencia del PMS. Cuando exista un ID FNS, úsalo para cruzar habitación, estadía y huésped; Novedades, Caja y Llaves siguen operables sin convertir la reserva en requisito.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 no-print">

@@ -105,6 +105,7 @@ export const IMPACT_LABEL: Record<Impact, string> = {
 };
 
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  ACEPTADA: 'Aceptada', REALIZADA: 'Realizada', DEVUELTA: 'Devuelta', VALIDADA: 'Validada',
   PENDIENTE: 'Pendiente',
   EN_CURSO: 'En curso',
   BLOQUEADA: 'Bloqueada',
@@ -113,6 +114,7 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 export const TASK_STATUS_TONE: Record<TaskStatus, Tone> = {
+  ACEPTADA: 'curso', REALIZADA: 'atencion', DEVUELTA: 'atencion', VALIDADA: 'resuelto',
   PENDIENTE: 'pendiente',
   EN_CURSO: 'curso',
   BLOQUEADA: 'atencion',
@@ -121,6 +123,7 @@ export const TASK_STATUS_TONE: Record<TaskStatus, Tone> = {
 };
 
 export const TASK_OPEN_STATUSES: TaskStatus[] = [
+  TaskStatus.ACEPTADA, TaskStatus.REALIZADA, TaskStatus.DEVUELTA,
   TaskStatus.PENDIENTE,
   TaskStatus.EN_CURSO,
   TaskStatus.BLOQUEADA,

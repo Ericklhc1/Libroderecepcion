@@ -151,6 +151,7 @@ export default async function SupervisionPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {hasPermission(user, 'supervision.center') && <Link href="/supervision/centro" className="text-sm font-medium text-petrol-600">Centro de Supervisión</Link>}
           {/* El tablero de asignación es la otra mitad de Supervisión. */}
           <Link
             href="/supervision/tablero"

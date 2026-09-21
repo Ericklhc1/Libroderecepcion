@@ -8,6 +8,18 @@
  */
 
 export const PERMISSIONS = {
+  'task.validate': { group: 'Supervisión', name: 'Validar y devolver tareas' },
+  'supervision.notes': { group: 'Supervisión', name: 'Administrar notas privadas y seguimientos de Supervisión' },
+  'supervision.share': { group: 'Supervisión', name: 'Compartir notas de Supervisión' },
+  'supervision.inspections': { group: 'Supervisión', name: 'Crear y cerrar auditorías sorpresa' },
+  'supervision.reserved': { group: 'Supervisión', name: 'Consultar auditorías reservadas' },
+  'supervision.corrective': { group: 'Supervisión', name: 'Crear medidas correctivas' },
+  'supervision.performance': { group: 'Supervisión', name: 'Consultar indicadores del equipo' },
+  'supervision.observe': { group: 'Supervisión', name: 'Añadir observaciones de rendimiento' },
+  'supervision.history': { group: 'Supervisión', name: 'Consultar el historial de Supervisión' },
+
+  'supervision.center': { group: 'Supervisión', name: 'Ver el Centro de Supervisión' },
+  'supervision.shift': { group: 'Supervisión', name: 'Gestionar el turno propio de Supervisión' },
   'entry.create': { group: 'Libro operativo', name: 'Crear registros' },
   'entry.edit': { group: 'Libro operativo', name: 'Editar registros' },
   'entry.delete': { group: 'Libro operativo', name: 'Eliminar registros' },
@@ -199,6 +211,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLE_KEYS.SYSTEM_ADMIN]: ALL_PERMISSIONS.filter(
     (p) =>
       ![
+        'supervision.shift',
         'shift.start',
         'shift.receive',
         'shift.handover',
@@ -207,6 +220,18 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
       ].includes(p),
   ),
   [ROLE_KEYS.SUPERVISOR]: [
+    'task.validate',
+    'supervision.notes',
+    'supervision.share',
+    'supervision.inspections',
+    'supervision.reserved',
+    'supervision.corrective',
+    'supervision.performance',
+    'supervision.observe',
+    'supervision.history',
+
+    'supervision.center',
+    'supervision.shift',
     ...OPERATIONAL_BASE,
     'entry.reopen',
     'entry.delete',

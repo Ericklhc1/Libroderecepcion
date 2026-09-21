@@ -261,9 +261,13 @@ export async function assignTask(
 }
 
 const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  PENDIENTE: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA],
-  EN_CURSO: [TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA, TaskStatus.PENDIENTE],
-  BLOQUEADA: [TaskStatus.EN_CURSO, TaskStatus.PENDIENTE, TaskStatus.CANCELADA, TaskStatus.COMPLETADA],
+  ACEPTADA: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
+  REALIZADA: [TaskStatus.VALIDADA, TaskStatus.DEVUELTA],
+  DEVUELTA: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
+  VALIDADA: [TaskStatus.DEVUELTA],
+  PENDIENTE: [TaskStatus.ACEPTADA, TaskStatus.REALIZADA, TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA],
+  EN_CURSO: [TaskStatus.REALIZADA, TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA, TaskStatus.PENDIENTE],
+  BLOQUEADA: [TaskStatus.REALIZADA, TaskStatus.EN_CURSO, TaskStatus.PENDIENTE, TaskStatus.CANCELADA, TaskStatus.COMPLETADA],
   COMPLETADA: [TaskStatus.EN_CURSO],
   CANCELADA: [TaskStatus.PENDIENTE],
 };
@@ -280,6 +284,24 @@ export async function changeTaskStatus(
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   if (current.status === input.status) return current;
+  if (current.acceptanceCriteria) {
+    if (input.status === TaskStatus.COMPLETADA) {
+      throw new RuleError('Marca la tarea como realizada; la validación corresponde a Supervisión.');
+    }
+    if (!user.permissions.includes('task.validate') && current.assigneeId !== user.id &&
+      !(await prisma.taskCollaborator.findUnique({ where: { taskId_userId: { taskId: current.id, userId: user.id } } }))) {
+      throw new RuleError('Sólo los participantes pueden ejecutar esta tarea.');
+    }
+  }
+  if ([TaskStatus.VALIDADA, TaskStatus.DEVUELTA].includes(input.status as 'VALIDADA' | 'DEVUELTA') && !user.permissions.includes('task.validate')) {
+    throw new RuleError('La validación y devolución requieren permiso de Supervisión.');
+  }
+  if (current.acceptanceCriteria && [TaskStatus.DEVUELTA, TaskStatus.CANCELADA].includes(input.status as 'DEVUELTA' | 'CANCELADA') && !input.reason?.trim()) {
+    throw new RuleError('Indica el motivo de devolución o cancelación.');
+  }
+  if (input.status === TaskStatus.REALIZADA && current.evidenceRequired && !current.evidence?.trim()) {
+    throw new RuleError('Adjunta la evidencia requerida antes de marcar la tarea como realizada.');
+  }
 
   if (!(TASK_TRANSITIONS[current.status] ?? []).includes(input.status)) {
     throw new RuleError(
@@ -300,9 +322,11 @@ export async function changeTaskStatus(
       where: { id: input.id },
       data: {
         status: input.status,
+        validatedAt: input.status === TaskStatus.VALIDADA ? now : null,
+        validatedById: input.status === TaskStatus.VALIDADA ? user.id : null,
         blockedReason:
           input.status === TaskStatus.BLOQUEADA ? (input.blockedReason ?? null) : null,
-        completedAt: input.status === TaskStatus.COMPLETADA ? now : null,
+        completedAt: [TaskStatus.COMPLETADA, TaskStatus.REALIZADA, TaskStatus.VALIDADA].includes(input.status as "COMPLETADA" | "REALIZADA" | "VALIDADA") ? (current.completedAt ?? now) : null,
         completedById: input.status === TaskStatus.COMPLETADA ? user.id : null,
       },
       include: taskInclude,

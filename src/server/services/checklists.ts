@@ -202,9 +202,6 @@ export async function startRun(
     where: { supervisorId: user.id, status: 'ACTIVO' },
     select: { id: true },
   });
-  if (!supervisionShift) {
-    throw new RuleError('Inicia tu turno de Supervisión antes de abrir una auditoría sorpresa.');
-  }
   for (const participantId of input.participantIds ?? []) await assertAssignable(participantId);
 
   const run = await prisma.checklistRun.create({
@@ -212,7 +209,7 @@ export async function startRun(
       templateId: template.id,
       templateName: template.name,
       runById: user.id,
-      supervisionShiftId: supervisionShift.id,
+      supervisionShiftId: supervisionShift?.id ?? null,
       status: SupervisionAuditStatus.PREPARACION,
       surprise: true,
       scope: input.scope?.trim() || null,

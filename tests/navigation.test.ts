@@ -28,7 +28,7 @@ describe('menú principal', () => {
     }
   });
 
-  it('expone sólo los cinco módulos operativos canónicos', () => {
+  it('expone los cinco módulos operativos y el Centro privado', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
@@ -37,6 +37,7 @@ describe('menú principal', () => {
       '/reservas', // carpeta raíz por habitación e ID FNS
       '/caja', // centralización financiera
       '/llaves', // inventario y trazabilidad de llaves
+      '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
 
@@ -78,10 +79,11 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toEqual(['/', '/turno', '/reservas', '/caja', '/llaves']);
   });
 
-  it('Supervisión sigue siendo una capacidad, no un módulo raíz', () => {
+  it('el Supervisor ve el Centro como módulo raíz privado', () => {
     const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
     expect(permissions).toContain('supervision.view');
-    expect(visibleNavItems(permissions).map((i) => i.href)).not.toContain('/supervision');
+    expect(permissions).toContain('supervision.center.view');
+    expect(visibleNavItems(permissions).map((i) => i.href)).toContain('/supervision');
   });
 
   it('separa la Auditoría de la Administración técnica', () => {

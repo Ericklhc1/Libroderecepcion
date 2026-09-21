@@ -4,7 +4,7 @@
  * America/Santiago y la comparación siempre ocurre en servidor.
  */
 export const FNS_TIME_ZONE = 'America/Santiago';
-export const LIVE_REPORT_MAX_AGE_MS = 15 * 60 * 1000;
+export const LIVE_REPORT_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 export const FUTURE_CLOCK_TOLERANCE_MS = 60 * 1000;
 
 export type ReportFreshness =

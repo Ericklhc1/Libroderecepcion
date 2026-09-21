@@ -107,11 +107,11 @@ export function EntryForm({
             : 'space-y-3'
         }
       >
-        {needsContext ? (
-          <p className="text-xs font-medium text-petrol-800">
-            Dónde ocurre · indica la habitación o el área
-          </p>
-        ) : null}
+        <p className={needsContext ? "text-xs font-medium text-petrol-800" : "text-xs text-slate-500"}>
+          {needsContext
+            ? 'Dónde ocurre · indica la habitación o el área'
+            : 'Contexto opcional · puedes registrar la novedad sin habitación, huésped ni reserva'}
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label="Habitación"
@@ -154,10 +154,10 @@ export function EntryForm({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Huésped relacionado" name="guestId">
+        <Field label="Huésped relacionado (opcional)" name="guestId">
           <Select name="guestId" placeholder="Ninguno" options={options.guests} />
         </Field>
-        <Field label="Reserva relacionada" name="reservationId">
+        <Field label="Reserva relacionada (opcional)" name="reservationId">
           <Select name="reservationId" placeholder="Ninguna" options={options.reservations} />
         </Field>
       </div>

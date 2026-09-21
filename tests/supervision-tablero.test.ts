@@ -179,7 +179,7 @@ describe('checklists de supervisión', () => {
   beforeEach(async () => {
     await resetOperationalData();
     supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
-    otro = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    otro = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Otro Supervisor' });
   });
 
   const PUNTOS = [

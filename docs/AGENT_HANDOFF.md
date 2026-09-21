@@ -127,3 +127,11 @@ No reintroducir hosting alternativo, ramas intermedias de release, previews
 alojados ni bases persistentes de desarrollo como parte del flujo. Para pruebas
 usa el PostgreSQL efímero de CI o una base local desechable que nunca sea
 Production.
+
+## Centro de Supervisión — trabajo en curso, 21/09/2026
+
+Rama `feat/centro-supervision`, basada en main v1.1.6. Implementación inicial
+aditiva; ver `docs/CENTRO_SUPERVISION.md` para alcance y bloqueos de cierre.
+No promover mientras existan esos pendientes. No se ha modificado Neon ni
+Production. La máquina local carece de PostgreSQL; validar integración mediante
+la Compuerta de la PR, que ya usa PostgreSQL efímero.

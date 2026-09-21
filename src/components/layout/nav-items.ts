@@ -24,6 +24,7 @@ export type NavItem = {
 export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
+  { href: '/supervision/centro', label: 'Centro de Supervisión', icon: 'supervision', anyOf: ['supervision.center'] },
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
   {
     href: '/turno', label: 'Mi turno', icon: 'shift',

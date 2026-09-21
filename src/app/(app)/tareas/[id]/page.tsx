@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { ActionForm } from '@/components/ui/form';
+import { SubmitButton } from '@/components/ui/button';
+import { supervisionAction } from '@/server/actions/supervision-center';
 import { notFound } from 'next/navigation';
 import { TaskStatus } from '@prisma/client';
 import { ArrowLeft, Trash2 } from 'lucide-react';
@@ -65,6 +68,7 @@ export default async function TaskDetailPage({
         Volver a tareas
       </Link>
 
+      {task.acceptanceCriteria && <Card><div className="space-y-2 p-4"><p>Criterio de cumplimiento: {task.acceptanceCriteria}</p><p>{task.evidenceRequired ? 'Evidencia obligatoria' : 'Evidencia opcional'}</p><p className="whitespace-pre-wrap">{task.evidence}</p>{user.roleOperational && <ActionForm action={supervisionAction}><input type="hidden" name="command" value="evidencia" /><input type="hidden" name="id" value={task.id} /><label>Evidencia<textarea name="evidence" className="input-base w-full" required defaultValue={task.evidence ?? ''} /></label><SubmitButton>Guardar evidencia</SubmitButton></ActionForm>}</div></Card>}
       {task.deletedAt ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-200 px-4 py-3 text-sm text-slate-700">
           <span className="flex items-center gap-2">
@@ -164,7 +168,7 @@ export default async function TaskDetailPage({
             {open && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
-                status={TaskStatus.COMPLETADA}
+                status={task.acceptanceCriteria ? TaskStatus.REALIZADA : TaskStatus.COMPLETADA}
                 label="Completar"
                 variant="gold"
               />

@@ -106,24 +106,35 @@ export const IMPACT_LABEL: Record<Impact, string> = {
 
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   PENDIENTE: 'Pendiente',
+  ACEPTADA: 'Aceptada',
   EN_CURSO: 'En curso',
   BLOQUEADA: 'Bloqueada',
+  REALIZADA: 'Realizada, pendiente de validar',
+  DEVUELTA: 'Devuelta',
+  VALIDADA: 'Validada',
   COMPLETADA: 'Completada',
   CANCELADA: 'Cancelada',
 };
 
 export const TASK_STATUS_TONE: Record<TaskStatus, Tone> = {
   PENDIENTE: 'pendiente',
+  ACEPTADA: 'curso',
   EN_CURSO: 'curso',
   BLOQUEADA: 'atencion',
+  REALIZADA: 'pendiente',
+  DEVUELTA: 'atencion',
+  VALIDADA: 'resuelto',
   COMPLETADA: 'resuelto',
   CANCELADA: 'neutro',
 };
 
 export const TASK_OPEN_STATUSES: TaskStatus[] = [
   TaskStatus.PENDIENTE,
+  TaskStatus.ACEPTADA,
   TaskStatus.EN_CURSO,
   TaskStatus.BLOQUEADA,
+  TaskStatus.REALIZADA,
+  TaskStatus.DEVUELTA,
 ];
 
 export const ENTRY_OPEN_STATUSES: EntryStatus[] = [

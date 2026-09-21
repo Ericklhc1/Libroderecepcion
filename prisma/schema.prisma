@@ -108,8 +108,13 @@ enum Impact {
 
 enum TaskStatus {
   PENDIENTE
+  ACEPTADA
   EN_CURSO
   BLOQUEADA
+  REALIZADA
+  DEVUELTA
+  VALIDADA
+  /// Estado histórico anterior a la validación en dos pasos.
   COMPLETADA
   CANCELADA
 }
@@ -129,6 +134,71 @@ enum FollowUpStatus {
   CUMPLIDO
   VENCIDO
   CANCELADO
+}
+
+enum SupervisionVisibility {
+  PRIVADO
+  SUPERVISION
+  OPERATIVO
+}
+
+enum SupervisionShiftStatus {
+  ACTIVO
+  ENTREGADO
+  CERRADO
+}
+
+enum TaskTargetType {
+  PERSONA
+  MULTIPLES
+  TURNO
+  EQUIPO
+  PROPIO
+}
+
+enum TaskParticipantRole {
+  PRINCIPAL
+  COLABORADOR
+}
+
+enum AuditCategory {
+  CAJA_MOVIMIENTOS
+  GARANTIAS
+  LLAVES
+  RESERVAS
+  HABITACIONES
+  CALIDAD_REGISTROS
+  ENTREGA_CIERRE_TURNO
+  CUMPLIMIENTO_PROCEDIMIENTOS
+  OTRO
+}
+
+enum SupervisionAuditStatus {
+  PREPARACION
+  EN_CURSO
+  CERRADA
+}
+
+enum AuditDisclosure {
+  RESERVADO
+  PERSONA
+  SUPERVISION
+  OPERATIVO
+}
+
+enum CorrectiveMeasureStatus {
+  PENDIENTE
+  EN_CURSO
+  BLOQUEADA
+  REALIZADA
+  VALIDADA
+  CANCELADA
+}
+
+enum PerformanceObservationKind {
+  OBSERVACION_SUPERVISOR
+  EXPLICACION_TRABAJADOR
+  CORRECCION_POSTERIOR
 }
 
 enum AlertType {
@@ -279,13 +349,13 @@ model Role {
 }
 
 model RolePermission {
-  roleId       String
-  permissionId String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  roleId           String
+  permissionId     String
+  role             Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission       Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
   /// Segundo interruptor: tener el permiso no implica pedir autorización.
-  requiresApproval Boolean @default(false)
-  grantedAt    DateTime   @default(now())
+  requiresApproval Boolean    @default(false)
+  grantedAt        DateTime   @default(now())
 
   @@id([roleId, permissionId])
   @@index([permissionId])
@@ -329,55 +399,70 @@ model User {
   deletedById        String?
   deletionReason     String?
 
-  sessions              Session[]
-  assignments           ShiftAssignment[]
-  shiftsCreated         Shift[]             @relation("shiftCreatedBy")
-  handoversIssued       ShiftHandover[]     @relation("handoverIssuedBy")
-  handoversReceived     ShiftHandover[]     @relation("handoverReceivedBy")
-  entriesCreated        OperationalEntry[]  @relation("entryCreatedBy")
-  entriesOwned          OperationalEntry[]  @relation("entryOwner")
-  entriesClosed         OperationalEntry[]  @relation("entryClosedBy")
-  tasksCreated          Task[]              @relation("taskCreatedBy")
-  tasksAssigned         Task[]              @relation("taskAssignee")
-  followUpsOwned        FollowUp[]          @relation("followUpOwner")
-  followUpsCreated      FollowUp[]          @relation("followUpCreatedBy")
-  comments              Comment[]
-  attachments           Attachment[]
-  alertsCreated         Alert[]             @relation("alertCreatedBy")
-  alertsAcknowledged    Alert[]             @relation("alertAckBy")
-  alertsResolved        Alert[]             @relation("alertResolvedBy")
-  auditLogs             AuditLog[]
-  notifications         Notification[]
-  settingsUpdated       SystemSetting[]
-  mailSettingsUpdated   MailSettings[]
-  checklistDone         TaskChecklistItem[]
-  staysConfirmed        RoomStay[]          @relation("stayConfirmedBy")
-  keysAssigned          RoomKey[]           @relation("keyAssignedBy")
-  keyMovements          KeyMovement[]       @relation("keyMovementBy")
-  batchesCreated        PmsImportBatch[]    @relation("batchCreatedBy")
-  batchesApplied        PmsImportBatch[]    @relation("batchAppliedBy")
-  guaranteesCreated     Guarantee[]         @relation("guaranteeCreatedBy")
-  guaranteesReturned    Guarantee[]         @relation("guaranteeReturnedBy")
-  guaranteesDeleted     Guarantee[]         @relation("guaranteeDeletedBy")
-  cashCounted           CashCount[]         @relation("cashCountBy")
-  cashTransfers         CashTransfer[]      @relation("cashTransferBy")
-  cashFundsUpdated      CashFund[]          @relation("cashFundUpdatedBy")
-  shiftsArchived        Shift[]             @relation("shiftArchivedBy")
-  announcementsCreated  Announcement[]      @relation("announcementCreatedBy")
-  announcementsTargeted Announcement[]      @relation("announcementTarget")
-  announcementsDeleted  Announcement[]      @relation("announcementDeletedBy")
-  announcementReads     AnnouncementRead[]  @relation("announcementReadBy")
-  finesCreated          Fine[]              @relation("fineCreatedBy")
-  finesDeleted          Fine[]              @relation("fineDeletedBy")
-  checklistTemplates    ChecklistTemplate[] @relation("checklistTemplateCreatedBy")
-  checklistRuns         ChecklistRun[]      @relation("checklistRunBy")
-  cashMovementsCreated  CashMovement[]      @relation("cashMovementCreatedBy")
-  cashMovementsVoided   CashMovement[]      @relation("cashMovementVoidedBy")
-  cashAudits            CashAudit[]         @relation("cashAuditCountedBy")
-  gymPassesIssued       GymPass[]           @relation("gymPassReceptionist")
-  gymPassesVoided       GymPass[]           @relation("gymPassVoidedBy")
-  assistantActionReceipts AssistantActionReceipt[]
-  legalAcceptances        LegalAcceptance[]
+  sessions                        Session[]
+  assignments                     ShiftAssignment[]
+  shiftsCreated                   Shift[]                    @relation("shiftCreatedBy")
+  handoversIssued                 ShiftHandover[]            @relation("handoverIssuedBy")
+  handoversReceived               ShiftHandover[]            @relation("handoverReceivedBy")
+  entriesCreated                  OperationalEntry[]         @relation("entryCreatedBy")
+  entriesOwned                    OperationalEntry[]         @relation("entryOwner")
+  entriesClosed                   OperationalEntry[]         @relation("entryClosedBy")
+  tasksCreated                    Task[]                     @relation("taskCreatedBy")
+  tasksAssigned                   Task[]                     @relation("taskAssignee")
+  followUpsOwned                  FollowUp[]                 @relation("followUpOwner")
+  followUpsCreated                FollowUp[]                 @relation("followUpCreatedBy")
+  comments                        Comment[]
+  attachments                     Attachment[]
+  alertsCreated                   Alert[]                    @relation("alertCreatedBy")
+  alertsAcknowledged              Alert[]                    @relation("alertAckBy")
+  alertsResolved                  Alert[]                    @relation("alertResolvedBy")
+  auditLogs                       AuditLog[]
+  notifications                   Notification[]
+  settingsUpdated                 SystemSetting[]
+  mailSettingsUpdated             MailSettings[]
+  checklistDone                   TaskChecklistItem[]
+  staysConfirmed                  RoomStay[]                 @relation("stayConfirmedBy")
+  keysAssigned                    RoomKey[]                  @relation("keyAssignedBy")
+  keyMovements                    KeyMovement[]              @relation("keyMovementBy")
+  batchesCreated                  PmsImportBatch[]           @relation("batchCreatedBy")
+  batchesApplied                  PmsImportBatch[]           @relation("batchAppliedBy")
+  guaranteesCreated               Guarantee[]                @relation("guaranteeCreatedBy")
+  guaranteesReturned              Guarantee[]                @relation("guaranteeReturnedBy")
+  guaranteesDeleted               Guarantee[]                @relation("guaranteeDeletedBy")
+  cashCounted                     CashCount[]                @relation("cashCountBy")
+  cashTransfers                   CashTransfer[]             @relation("cashTransferBy")
+  cashFundsUpdated                CashFund[]                 @relation("cashFundUpdatedBy")
+  shiftsArchived                  Shift[]                    @relation("shiftArchivedBy")
+  announcementsCreated            Announcement[]             @relation("announcementCreatedBy")
+  announcementsTargeted           Announcement[]             @relation("announcementTarget")
+  announcementsDeleted            Announcement[]             @relation("announcementDeletedBy")
+  announcementReads               AnnouncementRead[]         @relation("announcementReadBy")
+  finesCreated                    Fine[]                     @relation("fineCreatedBy")
+  finesDeleted                    Fine[]                     @relation("fineDeletedBy")
+  checklistTemplates              ChecklistTemplate[]        @relation("checklistTemplateCreatedBy")
+  checklistRuns                   ChecklistRun[]             @relation("checklistRunBy")
+  checklistRunsClosed             ChecklistRun[]             @relation("checklistRunClosedBy")
+  auditParticipants               AuditParticipant[]         @relation("auditParticipantUser")
+  auditParticipantsAdded          AuditParticipant[]         @relation("auditParticipantAddedBy")
+  supervisionShifts               SupervisionShift[]         @relation("supervisionShiftSupervisor")
+  supervisionShiftHandovers       SupervisionShiftHandover[] @relation("supervisionHandoverIssuedBy")
+  supervisionHandoversReceived    SupervisionShiftHandover[] @relation("supervisionHandoverReceivedBy")
+  supervisionNotes                SupervisionNote[]          @relation("supervisionNoteAuthor")
+  taskParticipations              TaskAssignment[]           @relation("taskParticipant")
+  taskAssignmentsCreated          TaskAssignment[]           @relation("taskAssignmentCreatedBy")
+  tasksValidated                  Task[]                     @relation("taskValidatedBy")
+  correctiveMeasuresAssigned      CorrectiveMeasure[]        @relation("correctiveMeasureAssignee")
+  correctiveMeasuresCreated       CorrectiveMeasure[]        @relation("correctiveMeasureCreatedBy")
+  correctiveMeasuresValidated     CorrectiveMeasure[]        @relation("correctiveMeasureValidatedBy")
+  performanceObservations         PerformanceObservation[]   @relation("performanceSubject")
+  performanceObservationsAuthored PerformanceObservation[]   @relation("performanceAuthor")
+  cashMovementsCreated            CashMovement[]             @relation("cashMovementCreatedBy")
+  cashMovementsVoided             CashMovement[]             @relation("cashMovementVoidedBy")
+  cashAudits                      CashAudit[]                @relation("cashAuditCountedBy")
+  gymPassesIssued                 GymPass[]                  @relation("gymPassReceptionist")
+  gymPassesVoided                 GymPass[]                  @relation("gymPassVoidedBy")
+  assistantActionReceipts         AssistantActionReceipt[]
+  legalAcceptances                LegalAcceptance[]
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -415,7 +500,6 @@ model LoginAttempt {
 
 /**
  * Recibo de una confirmación ejecutable emitida por Fronti.
- *
  * El nonce vive en el token firmado y sólo puede reclamarse una vez. Esto
  * impide que un doble clic, reintento del navegador o replay cree dos tareas,
  * multas u otras acciones mutables.
@@ -433,19 +517,18 @@ model AssistantActionReceipt {
 
 /**
  * Aceptación versionada de documentos internos.
- *
  * No se guarda el texto completo por usuario: el documento vive versionado en
  * código y esta fila prueba qué versión aceptó, cuándo y desde qué contexto.
  */
 model LegalAcceptance {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document  String
-  version   String
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document   String
+  version    String
   acceptedAt DateTime @default(now())
-  ip        String?
-  userAgent String?
+  ip         String?
+  userAgent  String?
 
   @@unique([userId, document, version])
   @@index([document, version])
@@ -503,6 +586,7 @@ model Shift {
   handoverIn    ShiftHandover[]    @relation("handoverToShift")
   entries       OperationalEntry[]
   tasks         Task[]
+  targetedTasks Task[]             @relation("taskTargetShift")
   checklistRuns ChecklistRun[]
   cashMovements CashMovement[]
   gymPasses     GymPass[]
@@ -597,6 +681,72 @@ model HandoverItem {
   @@index([handoverId])
 }
 
+// ========================= CENTRO DE SUPERVISIÓN =========================
+
+/// Jornada administrativa del Supervisor. Es deliberadamente independiente
+/// del turno operativo: no participa en caja, llaves, habitaciones ni PMS.
+model SupervisionShift {
+  id           String                 @id @default(cuid())
+  supervisorId String
+  supervisor   User                   @relation("supervisionShiftSupervisor", fields: [supervisorId], references: [id])
+  status       SupervisionShiftStatus @default(ACTIVO)
+  priorities   String[]               @default([])
+  startedAt    DateTime               @default(now())
+  deliveredAt  DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  tasks     Task[]
+  followUps FollowUp[]
+  notes     SupervisionNote[]
+  audits    ChecklistRun[]
+  handover  SupervisionShiftHandover?
+
+  @@index([supervisorId, status])
+  @@index([startedAt])
+}
+
+/// Copia inalterable de lo existente al entregar el turno de Supervisión.
+model SupervisionShiftHandover {
+  id                 String           @id @default(cuid())
+  supervisionShiftId String           @unique
+  supervisionShift   SupervisionShift @relation(fields: [supervisionShiftId], references: [id])
+  issuedById         String
+  issuedBy           User             @relation("supervisionHandoverIssuedBy", fields: [issuedById], references: [id])
+  receivedById       String?
+  receivedBy         User?            @relation("supervisionHandoverReceivedBy", fields: [receivedById], references: [id])
+  note               String?
+  snapshot           Json
+  issuedAt           DateTime         @default(now())
+  receivedAt         DateTime?
+
+  @@index([issuedAt])
+  @@index([receivedAt])
+}
+
+model SupervisionNote {
+  id                 String                @id @default(cuid())
+  title              String
+  body               String
+  visibility         SupervisionVisibility @default(PRIVADO)
+  authorId           String
+  author             User                  @relation("supervisionNoteAuthor", fields: [authorId], references: [id])
+  supervisionShiftId String?
+  supervisionShift   SupervisionShift?     @relation(fields: [supervisionShiftId], references: [id])
+  sourceEntity       String?
+  sourceId           String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  deletedAt          DateTime?
+  deletedById        String?
+  deletionReason     String?
+
+  @@index([authorId, visibility, deletedAt])
+  @@index([supervisionShiftId])
+  @@index([createdAt])
+}
+
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
@@ -676,37 +826,59 @@ model OperationalEntry {
 }
 
 model Task {
-  id            String     @id @default(cuid())
-  seq           Int        @unique @default(autoincrement())
-  title         String
-  description   String?
-  status        TaskStatus @default(PENDIENTE)
-  priority      Priority   @default(MEDIA)
-  origin        TaskOrigin @default(MANUAL)
-  dueAt         DateTime?
-  tags          String[]   @default([])
-  blockedReason String?
+  id                  String         @id @default(cuid())
+  seq                 Int            @unique @default(autoincrement())
+  title               String
+  description         String?
+  status              TaskStatus     @default(PENDIENTE)
+  priority            Priority       @default(MEDIA)
+  origin              TaskOrigin     @default(MANUAL)
+  dueAt               DateTime?
+  tags                String[]       @default([])
+  blockedReason       String?
+  fulfillmentCriteria String?
+  evidenceRequired    String?
+  evidenceProvided    String?
+  targetType          TaskTargetType @default(PERSONA)
+  returnReason        String?
+  cancellationReason  String?
+  reassignmentReason  String?
 
-  assigneeId   String?
-  assignee     User?       @relation("taskAssignee", fields: [assigneeId], references: [id])
-  createdById  String
-  createdBy    User        @relation("taskCreatedBy", fields: [createdById], references: [id])
-  departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
-  shiftId      String?
-  shift        Shift?      @relation(fields: [shiftId], references: [id])
+  assigneeId         String?
+  assignee           User?             @relation("taskAssignee", fields: [assigneeId], references: [id])
+  createdById        String
+  createdBy          User              @relation("taskCreatedBy", fields: [createdById], references: [id])
+  departmentId       String?
+  department         Department?       @relation(fields: [departmentId], references: [id])
+  shiftId            String?
+  shift              Shift?            @relation(fields: [shiftId], references: [id])
+  targetShiftId      String?
+  targetShift        Shift?            @relation("taskTargetShift", fields: [targetShiftId], references: [id])
+  supervisionShiftId String?
+  supervisionShift   SupervisionShift? @relation(fields: [supervisionShiftId], references: [id])
 
-  entryId     String?
-  entry       OperationalEntry? @relation(fields: [entryId], references: [id])
-  handoverId  String?
-  handover    ShiftHandover?    @relation(fields: [handoverId], references: [id])
-  followUpId  String?
-  followUp    FollowUp?         @relation("followUpTasks", fields: [followUpId], references: [id])
-  alertId     String?
-  sourceAlert Alert?            @relation("alertTasks", fields: [alertId], references: [id])
+  entryId       String?
+  entry         OperationalEntry?     @relation(fields: [entryId], references: [id])
+  handoverId    String?
+  handover      ShiftHandover?        @relation(fields: [handoverId], references: [id])
+  followUpId    String?
+  followUp      FollowUp?             @relation("followUpTasks", fields: [followUpId], references: [id])
+  alertId       String?
+  sourceAlert   Alert?                @relation("alertTasks", fields: [alertId], references: [id])
+  roomId        String?
+  room          Room?                 @relation(fields: [roomId], references: [id])
+  guestId       String?
+  guest         GuestReference?       @relation(fields: [guestId], references: [id])
+  reservationId String?
+  reservation   ReservationReference? @relation(fields: [reservationId], references: [id])
+  stayId        String?
+  stay          RoomStay?             @relation(fields: [stayId], references: [id])
 
   completedAt   DateTime?
   completedById String?
+  validatedAt   DateTime?
+  validatedById String?
+  validatedBy   User?     @relation("taskValidatedBy", fields: [validatedById], references: [id])
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -715,17 +887,40 @@ model Task {
   deletionReason String?
   isDemo         Boolean   @default(false)
 
-  checklist   TaskChecklistItem[]
-  comments    Comment[]
-  attachments Attachment[]
-  followUps   FollowUp[]          @relation("taskFollowUps")
-  alerts      Alert[]             @relation("taskAlerts")
+  checklist         TaskChecklistItem[]
+  comments          Comment[]
+  attachments       Attachment[]
+  followUps         FollowUp[]          @relation("taskFollowUps")
+  alerts            Alert[]             @relation("taskAlerts")
+  participants      TaskAssignment[]
+  correctiveMeasure CorrectiveMeasure?
 
   @@index([status, dueAt])
   @@index([createdAt])
   @@index([assigneeId, status])
   @@index([entryId])
+  @@index([supervisionShiftId])
+  @@index([targetShiftId])
+  @@index([roomId])
+  @@index([reservationId])
   @@index([deletedAt])
+}
+
+model TaskAssignment {
+  id            String              @id @default(cuid())
+  taskId        String
+  task          Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                @relation("taskParticipant", fields: [userId], references: [id])
+  role          TaskParticipantRole @default(COLABORADOR)
+  assignedById  String
+  assignedBy    User                @relation("taskAssignmentCreatedBy", fields: [assignedById], references: [id])
+  assignedAt    DateTime            @default(now())
+  removedAt     DateTime?
+  removalReason String?
+
+  @@unique([taskId, userId])
+  @@index([userId, removedAt])
 }
 
 model TaskChecklistItem {
@@ -743,23 +938,30 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
-  id          String         @id @default(cuid())
+  id          String                @id @default(cuid())
   action      String
   result      String?
   nextAction  String?
   scheduledAt DateTime?
   notes       String?
-  status      FollowUpStatus @default(PENDIENTE)
+  status      FollowUpStatus        @default(PENDIENTE)
+  description String?
+  priority    Priority              @default(MEDIA)
+  origin      String?
+  visibility  SupervisionVisibility @default(OPERATIVO)
+  resolution  String?
 
   ownerId     String
   owner       User   @relation("followUpOwner", fields: [ownerId], references: [id])
   createdById String
   createdBy   User   @relation("followUpCreatedBy", fields: [createdById], references: [id])
 
-  entryId String?
-  entry   OperationalEntry? @relation(fields: [entryId], references: [id])
-  taskId  String?
-  task    Task?             @relation("taskFollowUps", fields: [taskId], references: [id])
+  entryId            String?
+  entry              OperationalEntry? @relation(fields: [entryId], references: [id])
+  taskId             String?
+  task               Task?             @relation("taskFollowUps", fields: [taskId], references: [id])
+  supervisionShiftId String?
+  supervisionShift   SupervisionShift? @relation(fields: [supervisionShiftId], references: [id])
 
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
@@ -769,14 +971,17 @@ model FollowUp {
   deletionReason String?
   isDemo         Boolean   @default(false)
 
-  comments Comment[]
-  alerts   Alert[]   @relation("followUpAlerts")
-  tasks    Task[]    @relation("followUpTasks")
+  comments           Comment[]
+  alerts             Alert[]             @relation("followUpAlerts")
+  tasks              Task[]              @relation("followUpTasks")
+  correctiveMeasures CorrectiveMeasure[]
 
   @@index([status, scheduledAt])
   @@index([createdAt])
   @@index([ownerId])
   @@index([entryId])
+  @@index([supervisionShiftId])
+  @@index([visibility])
   @@index([deletedAt])
 }
 
@@ -919,6 +1124,7 @@ model GuestReference {
 
   reservations  ReservationReference[]
   entries       OperationalEntry[]
+  tasks         Task[]
   alerts        Alert[]
   cashMovements CashMovement[]
 
@@ -948,6 +1154,7 @@ model ReservationReference {
   isDemo          Boolean           @default(false)
 
   entries       OperationalEntry[]
+  tasks         Task[]
   alerts        Alert[]
   guarantees    Guarantee[]
   /// Estadías del PMS que se pudieron vincular a esta reserva por su código.
@@ -1149,6 +1356,7 @@ model Room {
   stays         RoomStay[]
   keys          RoomKey[]
   entries       OperationalEntry[]
+  tasks         Task[]
   movements     KeyMovement[]
   fines         Fine[]
   cashMovements CashMovement[]
@@ -1185,19 +1393,17 @@ model RoomStay {
   status           RoomStayStatus
   /// Huéspedes que declara el informe para esta estancia.
   guestCount       Int?
-  /*
-    Importes de ESTA estancia, no de la habitación.
-
-    La distinción es la razón de que vivan acá: una reserva puede ocupar varias
-    habitaciones con saldos distintos —en el informe real, la misma reserva
-    tiene CL$ 0 pendientes en cuatro habitaciones y CL$ 15.000 en una quinta— y
-    una habitación puede tener el mismo día una salida con saldo cero y una
-    entrada con saldo pendiente. Un «saldo de habitación» sería falso en los
-    dos casos.
-
-    La moneda va en su propia columna y nunca se mezcla: el informe trae pesos
-    y dólares a la vez.
-  */
+  /**
+   * Importes de ESTA estancia, no de la habitación.
+   * La distinción es la razón de que vivan acá: una reserva puede ocupar varias
+   * habitaciones con saldos distintos —en el informe real, la misma reserva
+   * tiene CL$ 0 pendientes en cuatro habitaciones y CL$ 15.000 en una quinta— y
+   * una habitación puede tener el mismo día una salida con saldo cero y una
+   * entrada con saldo pendiente. Un «saldo de habitación» sería falso en los
+   * dos casos.
+   * La moneda va en su propia columna y nunca se mezcla: el informe trae pesos
+   * y dólares a la vez.
+   */
   totalAmount      Decimal?              @db.Decimal(12, 2)
   pendingAmount    Decimal?              @db.Decimal(12, 2)
   currency         String?               @db.VarChar(3)
@@ -1234,6 +1440,7 @@ model RoomStay {
   movements     KeyMovement[]
   fines         Fine[]
   entries       OperationalEntry[]
+  tasks         Task[]
   guarantees    Guarantee[]
   cashMovements CashMovement[]
 
@@ -1470,17 +1677,17 @@ model CashCountLine {
 
 /// Egreso a tesorería: el excedente sobre el fondo fijo sale de la caja.
 model CashTransfer {
-  id          String        @id @default(cuid())
-  handoverId  String
-  handover    ShiftHandover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
-  currency    String        @db.VarChar(3)
-  amount      Decimal       @db.Decimal(12, 2)
+  id           String        @id @default(cuid())
+  handoverId   String
+  handover     ShiftHandover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  currency     String        @db.VarChar(3)
+  amount       Decimal       @db.Decimal(12, 2)
   /// Número de comprobante o sobre. Sin esto un egreso no es rastreable.
-  reference   String?
-  notes       String?
-  createdById String
-  createdBy   User          @relation("cashTransferBy", fields: [createdById], references: [id])
-  createdAt   DateTime      @default(now())
+  reference    String?
+  notes        String?
+  createdById  String
+  createdBy    User          @relation("cashTransferBy", fields: [createdById], references: [id])
+  createdAt    DateTime      @default(now())
   /// Reflejo del egreso en la Caja central. Nulo sólo mientras espera aprobación.
   cashMovement CashMovement?
 
@@ -1653,7 +1860,7 @@ model Fine {
   /// Tipo de mancha identificada: «Maquillaje lápiz de ojos negro».
   stainType      String?
   /// Cantidad de unidades afectadas por la misma multa. Aditivo: default 1.
-  quantity       Int                   @default(1)
+  quantity       Int        @default(1)
   /// Motivo por el cual se considera procedente el cobro.
   reason         String
   /// Observaciones o antecedentes sobre la negativa del huésped.
@@ -1699,20 +1906,27 @@ enum ChecklistItemResult {
   PENDIENTE
   /// Conforme.
   OK
+  /// Cumple, denominación vigente en auditorías.
+  CUMPLE
+  /// Desviación menor que no constituye incumplimiento.
+  OBSERVACION
   /// No conforme: exige observación.
   FALLA
+  /// Incumplimiento confirmado, denominación vigente en auditorías.
+  INCUMPLIMIENTO
   /// No aplicaba en esta ejecución.
   NO_APLICA
 }
 
 model ChecklistTemplate {
-  id          String  @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
   description String?
   /// Sugerencia de cuándo recorrerla. Texto libre: «cada turno», «los lunes».
   cadence     String?
-  active      Boolean @default(true)
-  order       Int     @default(0)
+  category    AuditCategory @default(OTRO)
+  active      Boolean       @default(true)
+  order       Int           @default(0)
 
   createdById String
   createdBy   User     @relation("checklistTemplateCreatedBy", fields: [createdById], references: [id])
@@ -1742,28 +1956,48 @@ model ChecklistTemplateItem {
 }
 
 model ChecklistRun {
-  id           String            @id @default(cuid())
-  templateId   String
-  template     ChecklistTemplate @relation(fields: [templateId], references: [id])
+  id                    String                 @id @default(cuid())
+  templateId            String
+  template              ChecklistTemplate      @relation(fields: [templateId], references: [id])
   /// Nombre de la plantilla al ejecutarse. Se copia para que la historia no
   /// cambie si después alguien renombra la plantilla.
-  templateName String
-  runById      String
-  runBy        User              @relation("checklistRunBy", fields: [runById], references: [id])
+  templateName          String
+  runById               String
+  runBy                 User                   @relation("checklistRunBy", fields: [runById], references: [id])
+  status                SupervisionAuditStatus @default(EN_CURSO)
+  surprise              Boolean                @default(false)
+  scope                 String?
+  sample                String?
+  disclosure            AuditDisclosure        @default(RESERVADO)
+  resultSummary         String?
+  severity              Severity?
+  reviewedShiftIds      String[]               @default([])
+  reviewedDepartmentIds String[]               @default([])
+  supervisionShiftId    String?
+  supervisionShift      SupervisionShift?      @relation(fields: [supervisionShiftId], references: [id])
   /// Turno en que se recorrió, si había uno abierto.
-  shiftId      String?
-  shift        Shift?            @relation(fields: [shiftId], references: [id])
-  startedAt    DateTime          @default(now())
+  shiftId               String?
+  shift                 Shift?                 @relation(fields: [shiftId], references: [id])
+  startedAt             DateTime               @default(now())
   /// Nulo mientras se está recorriendo.
-  finishedAt   DateTime?
-  notes        String?
-  isDemo       Boolean           @default(false)
+  finishedAt            DateTime?
+  closedById            String?
+  closedBy              User?                  @relation("checklistRunClosedBy", fields: [closedById], references: [id])
+  notes                 String?
+  isDemo                Boolean                @default(false)
+  deletedAt             DateTime?
+  deletedById           String?
+  deletionReason        String?
 
-  items ChecklistRunItem[]
+  items        ChecklistRunItem[]
+  participants AuditParticipant[]
+  findings     AuditFinding[]
 
   @@index([templateId])
   @@index([runById])
   @@index([finishedAt])
+  @@index([status, deletedAt])
+  @@index([supervisionShiftId])
 }
 
 model ChecklistRunItem {
@@ -1777,11 +2011,105 @@ model ChecklistRunItem {
   result      ChecklistItemResult @default(PENDIENTE)
   /// Obligatoria cuando el resultado es FALLA.
   observation String?
+  evidence    String?
   /// Incidencia creada a partir de esta falla, si se abrió una.
   entryId     String?
   entry       OperationalEntry?   @relation(fields: [entryId], references: [id])
+  finding     AuditFinding?
 
   @@index([runId])
+}
+
+model AuditParticipant {
+  id        String       @id @default(cuid())
+  auditId   String
+  audit     ChecklistRun @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation("auditParticipantUser", fields: [userId], references: [id])
+  addedById String
+  addedBy   User         @relation("auditParticipantAddedBy", fields: [addedById], references: [id])
+  createdAt DateTime     @default(now())
+
+  @@unique([auditId, userId])
+  @@index([userId])
+}
+
+model AuditFinding {
+  id             String            @id @default(cuid())
+  auditId        String
+  audit          ChecklistRun      @relation(fields: [auditId], references: [id])
+  itemId         String?           @unique
+  item           ChecklistRunItem? @relation(fields: [itemId], references: [id])
+  title          String
+  description    String
+  severity       Severity          @default(MEDIA)
+  confirmed      Boolean           @default(false)
+  disclosure     AuditDisclosure   @default(RESERVADO)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletionReason String?
+
+  correctiveMeasures CorrectiveMeasure[]
+
+  @@index([auditId, deletedAt])
+  @@index([severity])
+}
+
+model CorrectiveMeasure {
+  id             String                  @id @default(cuid())
+  findingId      String?
+  finding        AuditFinding?           @relation(fields: [findingId], references: [id])
+  taskId         String?                 @unique
+  task           Task?                   @relation(fields: [taskId], references: [id])
+  followUpId     String?
+  followUp       FollowUp?               @relation(fields: [followUpId], references: [id])
+  title          String
+  action         String
+  status         CorrectiveMeasureStatus @default(PENDIENTE)
+  assigneeId     String
+  assignee       User                    @relation("correctiveMeasureAssignee", fields: [assigneeId], references: [id])
+  dueAt          DateTime?
+  evidence       String?
+  blockedReason  String?
+  createdById    String
+  createdBy      User                    @relation("correctiveMeasureCreatedBy", fields: [createdById], references: [id])
+  validatedAt    DateTime?
+  validatedById  String?
+  validatedBy    User?                   @relation("correctiveMeasureValidatedBy", fields: [validatedById], references: [id])
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletionReason String?
+
+  @@index([status, dueAt])
+  @@index([assigneeId])
+  @@index([findingId])
+}
+
+model PerformanceObservation {
+  id             String                     @id @default(cuid())
+  subjectId      String
+  subject        User                       @relation("performanceSubject", fields: [subjectId], references: [id])
+  authorId       String
+  author         User                       @relation("performanceAuthor", fields: [authorId], references: [id])
+  kind           PerformanceObservationKind
+  periodStart    DateTime                   @db.Date
+  periodEnd      DateTime                   @db.Date
+  content        String
+  sourceEntity   String?
+  sourceId       String?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deletionReason String?
+
+  @@index([subjectId, periodStart, periodEnd])
+  @@index([authorId])
+  @@index([deletedAt])
 }
 
 // ==================== CAJA VIVA, GIMNASIO Y ASISTENTE ====================
@@ -1809,14 +2137,14 @@ model CashMovement {
   currency               String                @db.VarChar(3)
   amount                 Decimal               @db.Decimal(12, 2)
   shiftId                String?
-  roomId                  String?
-  stayId                  String?
-  guestId                 String?
-  reservationReferenceId  String?
-  guaranteeId             String?
-  gymPassId               String?
-  cashTransferId          String?               @unique
-  createdById             String
+  roomId                 String?
+  stayId                 String?
+  guestId                String?
+  reservationReferenceId String?
+  guaranteeId            String?
+  gymPassId              String?
+  cashTransferId         String?               @unique
+  createdById            String
   reference              String?
   notes                  String?
   createdAt              DateTime              @default(now())
@@ -1828,7 +2156,7 @@ model CashMovement {
   voidedBy               User?                 @relation("cashMovementVoidedBy", fields: [voidedById], references: [id])
   guarantee              Guarantee?            @relation(fields: [guaranteeId], references: [id])
   gymPass                GymPass?              @relation(fields: [gymPassId], references: [id])
-  cashTransfer           CashTransfer?          @relation(fields: [cashTransferId], references: [id])
+  cashTransfer           CashTransfer?         @relation(fields: [cashTransferId], references: [id])
   reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
   room                   Room?                 @relation(fields: [roomId], references: [id])
   stay                   RoomStay?             @relation(fields: [stayId], references: [id])

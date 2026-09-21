@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-18** · consolidación Production única + versión **v1.0.0**
+Actualizado: **2026-09-21** · Centro de Supervisión + versión propuesta **v1.2.0**
 
 ## Estados canónicos
 
@@ -27,27 +27,17 @@ Actualizado: **2026-09-18** · consolidación Production única + versión **v1.
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
 | Simplificación del Libro | `EN_DESARROLLO` | #72 | Primer tramo: Inicio deja de ser un segundo Libro y se convierte en ventana operativa |
+| Centro de Supervisión | `EN_DESARROLLO` | rama `feat/centro-supervision-v1-2-0` | Turno independiente, tareas, auditorías, medidas e indicadores explicables |
 
 ## Iteración actual
 
-**Simplificación del Libro — tramo 1: Inicio** · PR **#72**
+**Centro de Supervisión v1.2.0** · rama **`feat/centro-supervision-v1-2-0`**
 
-Objetivo: reducir carga cognitiva sin esconder capacidad.
-
-Inicio queda limitado a:
-
-1. estado y acciones del turno;
-2. cuatro indicadores accionables;
-3. una única bandeja **Atención ahora**, priorizada por reglas determinísticas.
-
-Se retiran de Inicio las listas duplicadas de tareas, incidencias, alertas,
-seguimientos, últimas novedades y entregas. El detalle sigue disponible en el
-Libro y en las vistas especializadas. El backend deja de consultar datos que
-sólo alimentaban esos bloques.
-
-Siguiente tramo después de #72: revisar la propia pantalla `/libro` para
-reducir filtros simultáneos, enlaces especializados y opciones que no aporten
-al flujo diario, sin eliminar acciones ni trazabilidad.
+Objetivo: dar al Supervisor un espacio privado y trazable sin duplicar la
+bandeja existente ni condicionar la operación de Recepción. Incluye turno
+independiente, entrega inalterable, tareas con validación explícita,
+seguimientos y notas por visibilidad, auditorías sorpresa, medidas correctivas
+e indicadores con fórmula, contexto y registros de origen.
 
 ## Infraestructura vigente
 

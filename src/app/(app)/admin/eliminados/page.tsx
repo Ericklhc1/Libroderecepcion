@@ -10,7 +10,12 @@ import { ENTRY_TYPE_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
 import { RestoreEntryForm } from '@/components/operational/entry-actions';
 import { RestoreTaskForm } from '@/components/operational/task-actions';
-import { RestoreFollowUpForm, RestoreAlertForm } from './restore-forms';
+import {
+  RestoreAlertForm,
+  RestoreCorrectiveMeasureForm,
+  RestoreFollowUpForm,
+  RestoreSupervisionNoteForm,
+} from './restore-forms';
 
 export const metadata = { title: 'Registros eliminados' };
 export const dynamic = 'force-dynamic';
@@ -25,7 +30,7 @@ export default async function DeletedPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const tipo = typeof params.tipo === 'string' ? params.tipo : '';
 
-  const [entries, tasks, followUps, alerts] = await Promise.all([
+  const [entries, tasks, followUps, alerts, supervisionNotes, correctiveMeasures] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: { NOT: { deletedAt: null } },
       orderBy: { deletedAt: 'desc' },
@@ -46,11 +51,21 @@ export default async function DeletedPage({
       orderBy: { deletedAt: 'desc' },
       take: 100,
     }),
+    prisma.supervisionNote.findMany({
+      where: { NOT: { deletedAt: null } },
+      orderBy: { deletedAt: 'desc' },
+      take: 100,
+    }),
+    prisma.correctiveMeasure.findMany({
+      where: { NOT: { deletedAt: null } },
+      orderBy: { deletedAt: 'desc' },
+      take: 100,
+    }),
   ]);
 
   const deletedByIds = Array.from(
     new Set(
-      [...entries, ...tasks, ...followUps, ...alerts]
+      [...entries, ...tasks, ...followUps, ...alerts, ...supervisionNotes, ...correctiveMeasures]
         .map((row) => row.deletedById)
         .filter((id): id is string => Boolean(id)),
     ),
@@ -83,11 +98,19 @@ export default async function DeletedPage({
   const visibleAlerts = alerts.filter((alert) =>
     textMatches([alert.title, alert.message, alert.deletionReason]),
   );
+  const visibleNotes = supervisionNotes.filter((note) =>
+    textMatches([note.title, note.body, note.deletionReason]),
+  );
+  const visibleMeasures = correctiveMeasures.filter((measure) =>
+    textMatches([measure.title, measure.action, measure.deletionReason]),
+  );
   const shownEntries = !tipo || tipo === 'libro' ? visibleEntries : [];
   const shownTasks = !tipo || tipo === 'tareas' ? visibleTasks : [];
   const shownFollowUps = !tipo || tipo === 'seguimientos' ? visibleFollowUps : [];
   const shownAlerts = !tipo || tipo === 'alertas' ? visibleAlerts : [];
-  const total = shownEntries.length + shownTasks.length + shownFollowUps.length + shownAlerts.length;
+  const shownNotes = !tipo || tipo === 'notas-supervision' ? visibleNotes : [];
+  const shownMeasures = !tipo || tipo === 'medidas-correctivas' ? visibleMeasures : [];
+  const total = shownEntries.length + shownTasks.length + shownFollowUps.length + shownAlerts.length + shownNotes.length + shownMeasures.length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -123,6 +146,8 @@ export default async function DeletedPage({
             <option value="tareas">Tareas</option>
             <option value="seguimientos">Seguimientos</option>
             <option value="alertas">Alertas</option>
+            <option value="notas-supervision">Notas de Supervisión</option>
+            <option value="medidas-correctivas">Medidas correctivas</option>
           </select>
         </label>
       </ListFilterBar>
@@ -237,6 +262,50 @@ export default async function DeletedPage({
             ))}
           </ul>
         </CardScroll>
+        </Card>
+      ) : null}
+
+      {shownNotes.length > 0 ? (
+        <Card>
+          <CardHeader title="Notas de Supervisión" count={shownNotes.length} />
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+              {shownNotes.map((note) => (
+                <li key={note.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-petrol-900">{note.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Eliminada {formatDateTime(note.deletedAt)} por {who(note.deletedById)}
+                      {note.deletionReason ? ` · Motivo: ${note.deletionReason}` : ''}
+                    </p>
+                  </div>
+                  <RestoreSupervisionNoteForm noteId={note.id} />
+                </li>
+              ))}
+            </ul>
+          </CardScroll>
+        </Card>
+      ) : null}
+
+      {shownMeasures.length > 0 ? (
+        <Card>
+          <CardHeader title="Medidas correctivas" count={shownMeasures.length} />
+          <CardScroll>
+            <ul className="divide-y divide-slate-100">
+              {shownMeasures.map((measure) => (
+                <li key={measure.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-petrol-900">{measure.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Eliminada {formatDateTime(measure.deletedAt)} por {who(measure.deletedById)}
+                      {measure.deletionReason ? ` · Motivo: ${measure.deletionReason}` : ''}
+                    </p>
+                  </div>
+                  <RestoreCorrectiveMeasureForm measureId={measure.id} />
+                </li>
+              ))}
+            </ul>
+          </CardScroll>
         </Card>
       ) : null}
     </div>

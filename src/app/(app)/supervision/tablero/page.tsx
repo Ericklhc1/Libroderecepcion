@@ -19,6 +19,7 @@ import {
   StartRunForm,
   TemplateDialog,
 } from './checklists';
+import { ROLE_KEYS } from '@/lib/permissions';
 
 export const metadata = { title: 'Tablero de supervisión' };
 export const dynamic = 'force-dynamic';
@@ -33,14 +34,20 @@ const PRIORITY_TONE = {
 const RESULT_LABEL = {
   PENDIENTE: 'Sin revisar',
   OK: 'Conforme',
+  CUMPLE: 'Cumple',
+  OBSERVACION: 'Observación',
   FALLA: 'Falla',
+  INCUMPLIMIENTO: 'Incumplimiento',
   NO_APLICA: 'No aplica',
 } as const;
 
 const RESULT_TONE = {
   PENDIENTE: 'neutro',
   OK: 'resuelto',
+  CUMPLE: 'resuelto',
+  OBSERVACION: 'atencion',
   FALLA: 'critico',
+  INCUMPLIMIENTO: 'critico',
   NO_APLICA: 'neutro',
 } as const;
 
@@ -57,20 +64,18 @@ export default async function AssignmentBoardPage({
     El tablero comparte exactamente la puerta de Supervisión: consultar o
     administrar turnos. `incident.manage` no concede acceso lateral por URL.
   */
-  if (
-    !hasPermission(user, 'supervision.view') &&
-    !hasPermission(user, 'shift.manage')
-  ) {
+  if (!hasPermission(user, 'supervision.center.view')) {
     redirect('/sin-permisos');
   }
 
-  const canAssign = hasPermission(user, 'task.assign');
-  const canConfigure = hasPermission(user, 'incident.manage');
+  const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
+  const canAssign = isSupervisor && hasPermission(user, 'supervision.task.assign');
+  const canConfigure = isSupervisor && hasPermission(user, 'supervision.audit.create');
 
   const [board, templates, runs, myRun] = await Promise.all([
     getAssignmentBoard(),
     listTemplates(canConfigure),
-    listRuns(8),
+    listRuns(user, 8),
     getMyOpenRun(user.id),
   ]);
 
@@ -350,6 +355,7 @@ export default async function AssignmentBoardPage({
                           name: template.name,
                           description: template.description,
                           cadence: template.cadence,
+                          category: template.category,
                           active: template.active,
                           items: template.items,
                         }}
@@ -373,7 +379,9 @@ export default async function AssignmentBoardPage({
           <CardScroll>
             <ul className="divide-y divide-slate-100">
             {visibleRuns.map((run) => {
-              const failures = run.items.filter((item) => item.result === 'FALLA');
+              const failures = run.items.filter((item) =>
+                item.result === 'FALLA' || item.result === 'INCUMPLIMIENTO',
+              );
               const criticalFailures = failures.filter((item) => item.critical);
               return (
                 <li key={run.id} className="px-4 py-3">

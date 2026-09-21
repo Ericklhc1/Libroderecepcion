@@ -97,6 +97,13 @@ export default async function TaskDetailPage({
             <p className="mt-2 whitespace-pre-line text-sm text-slate-700">{task.description}</p>
           ) : null}
 
+          {task.fulfillmentCriteria ? (
+            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <span className="font-medium text-petrol-900">Criterio de cumplimiento: </span>
+              {task.fulfillmentCriteria}
+            </div>
+          ) : null}
+
           <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <dt className="text-xs font-medium text-slate-500">Asignada a</dt>
@@ -126,6 +133,12 @@ export default async function TaskDetailPage({
                 <dd className="text-petrol-900">{formatDateTime(task.completedAt)}</dd>
               </div>
             ) : null}
+            {task.validatedAt ? (
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Validada</dt>
+                <dd className="text-petrol-900">{formatDateTime(task.validatedAt)}</dd>
+              </div>
+            ) : null}
             {task.entry ? (
               <div>
                 <dt className="text-xs font-medium text-slate-500">Registro origen</dt>
@@ -146,6 +159,19 @@ export default async function TaskDetailPage({
               Bloqueada: {task.blockedReason}
             </p>
           ) : null}
+          {task.evidenceRequired ? (
+            <p className="mt-3 text-sm text-slate-700"><span className="font-medium">Evidencia requerida:</span> {task.evidenceRequired}</p>
+          ) : null}
+          {task.evidenceProvided ? (
+            <p className="mt-1 text-sm text-slate-700"><span className="font-medium">Evidencia aportada:</span> {task.evidenceProvided}</p>
+          ) : null}
+          {task.participants.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1">
+              {task.participants.map((participant) => (
+                <Chip key={participant.id}>{participant.role === 'PRINCIPAL' ? 'Responsable' : 'Colabora'}: {participant.user.name}</Chip>
+              ))}
+            </div>
+          ) : null}
 
           {task.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1">
@@ -161,13 +187,16 @@ export default async function TaskDetailPage({
             {task.status === TaskStatus.PENDIENTE ? (
               <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar tarea" />
             ) : null}
-            {open && user.permissions.includes('task.close') ? (
+            {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
-                status={TaskStatus.COMPLETADA}
-                label="Completar"
+                status={TaskStatus.REALIZADA}
+                label="Marcar realizada"
                 variant="gold"
               />
+            ) : null}
+            {task.status === TaskStatus.REALIZADA && user.permissions.includes('supervision.task.validate') ? (
+              <QuickStatusForm taskId={task.id} status={TaskStatus.VALIDADA} label="Validar" variant="gold" />
             ) : null}
             {user.permissions.includes('task.edit') ? (
               <TaskStatusDialog taskId={task.id} currentStatus={task.status} />
@@ -189,6 +218,9 @@ export default async function TaskDetailPage({
                   dueAt: toDateTimeInput(task.dueAt),
                   departmentId: task.departmentId,
                   tags: task.tags,
+                  fulfillmentCriteria: task.fulfillmentCriteria ?? '',
+                  evidenceRequired: task.evidenceRequired ?? '',
+                  evidenceProvided: task.evidenceProvided ?? '',
                 }}
                 departments={options.departments}
               />

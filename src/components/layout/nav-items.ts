@@ -35,6 +35,12 @@ const PRIMARY: NavItem[] = [
   },
   { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
   { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'], mobile: true },
+  {
+    href: '/supervision',
+    label: 'Centro de Supervisión',
+    icon: 'supervision',
+    anyOf: ['supervision.center.view'],
+  },
 ];
 
 // Libro, Supervisión, Historial e Indicadores siguen existiendo como vistas

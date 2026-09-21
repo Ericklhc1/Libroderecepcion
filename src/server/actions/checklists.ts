@@ -22,15 +22,16 @@ import {
 /**
  * Acciones de los checklists de supervisión.
  *
- * Definir las plantillas exige `incident.manage` —es configuración de
- * supervisión— pero **recorrer una ronda sólo exige sesión**: el valor del
- * control está en que lo haga quien está en el piso, y el servicio ya
- * comprueba que sólo quien la abrió la marque.
+ * La configuración y la ejecución usan permisos propios del Centro de
+ * Supervisión. El servicio exige además el rol Supervisor para operar una
+ * auditoría; el Administrador conserva acceso técnico, pero no aparece como
+ * auditor responsable.
  */
 
 function refresh() {
   revalidatePath('/supervision');
-  revalidatePath('/supervision/checklists');
+  revalidatePath('/supervision/tablero');
+  revalidatePath('/supervision/auditorias');
 }
 
 const templateSchema = z.object({
@@ -43,7 +44,18 @@ const templateSchema = z.object({
     .optional()
     .transform((value) => value === 'on' || value === 'true'),
   /** Un punto por línea. Un `*` al inicio lo marca como crítico. */
-  items: z.string().min(1, 'Escribe al menos un punto'),
+    items: z.string().min(1, 'Escribe al menos un punto'),
+  category: z.enum([
+    'CAJA_MOVIMIENTOS',
+    'GARANTIAS',
+    'LLAVES',
+    'RESERVAS',
+    'HABITACIONES',
+    'CALIDAD_REGISTROS',
+    'ENTREGA_CIERRE_TURNO',
+    'CUMPLIMIENTO_PROCEDIMIENTOS',
+    'OTRO',
+  ]).default('OTRO'),
 });
 
 export async function saveChecklistTemplateAction(
@@ -51,7 +63,7 @@ export async function saveChecklistTemplateAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('incident.manage');
+    const user = await requirePermission('supervision.audit.create');
     const input = parseOrThrow(templateSchema, formDataToObject(formData));
 
     const template = await saveTemplate(user, {
@@ -60,6 +72,7 @@ export async function saveChecklistTemplateAction(
       description: input.description ?? null,
       cadence: input.cadence ?? null,
       active: input.active,
+      category: input.category,
       items: input.items.split('\n'),
     });
 
@@ -77,7 +90,7 @@ export async function deleteChecklistTemplateAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('incident.manage');
+    const user = await requirePermission('supervision.audit.create');
     const input = parseOrThrow(
       z.object({
         templateId: z.string().min(1),
@@ -97,10 +110,22 @@ export async function startChecklistRunAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    // Recorrer no exige permiso de supervisión: lo hace quien está en el piso.
-    const user = await requirePermission('entry.create');
+    const user = await requirePermission('supervision.audit.create');
     const input = parseOrThrow(
-      z.object({ templateId: z.string().min(1) }),
+      z.object({
+        templateId: z.string().min(1),
+        scope: zOptionalString,
+        sample: zOptionalString,
+        participantIds: z.union([z.string(), z.array(z.string())]).optional().transform((value) =>
+          value ? (Array.isArray(value) ? value : [value]) : [],
+        ),
+        reviewedShiftIds: z.union([z.string(), z.array(z.string())]).optional().transform((value) =>
+          value ? (Array.isArray(value) ? value : [value]) : [],
+        ),
+        reviewedDepartmentIds: z.union([z.string(), z.array(z.string())]).optional().transform((value) =>
+          value ? (Array.isArray(value) ? value : [value]) : [],
+        ),
+      }),
       formDataToObject(formData),
     );
 
@@ -119,12 +144,21 @@ export async function markChecklistItemAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('entry.create');
+    const user = await requirePermission('supervision.audit.create');
     const input = parseOrThrow(
       z.object({
         itemId: z.string().min(1),
-        result: z.enum(['PENDIENTE', 'OK', 'FALLA', 'NO_APLICA']),
+        result: z.enum([
+          'PENDIENTE',
+          'OK',
+          'CUMPLE',
+          'OBSERVACION',
+          'FALLA',
+          'INCUMPLIMIENTO',
+          'NO_APLICA',
+        ]),
         observation: zOptionalString,
+        evidence: zOptionalString,
       }),
       formDataToObject(formData),
     );
@@ -133,6 +167,7 @@ export async function markChecklistItemAction(
       itemId: input.itemId,
       result: input.result,
       observation: input.observation ?? null,
+      evidence: input.evidence ?? null,
     });
     refresh();
     return { ok: true as const, message: 'Punto marcado.' };
@@ -144,15 +179,22 @@ export async function finishChecklistRunAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('entry.create');
+    const user = await requirePermission('supervision.audit.close');
     const input = parseOrThrow(
-      z.object({ runId: z.string().min(1), notes: zOptionalString }),
+      z.object({
+        runId: z.string().min(1),
+        notes: zOptionalString,
+        resultSummary: zOptionalString,
+        disclosure: z.enum(['RESERVADO', 'PERSONA', 'SUPERVISION', 'OPERATIVO']).default('RESERVADO'),
+      }),
       formDataToObject(formData),
     );
 
     const result = await finishRun(user, {
       runId: input.runId,
       notes: input.notes ?? null,
+      resultSummary: input.resultSummary ?? null,
+      disclosure: input.disclosure,
     });
     refresh();
 

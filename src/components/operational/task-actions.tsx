@@ -74,6 +74,9 @@ export function TaskStatusDialog({
         <Field label="Comentario para la auditoría" name="reason">
           <Input name="reason" />
         </Field>
+        <Field label="Evidencia aportada" name="evidenceProvided" hint="Obligatoria si la tarea exige evidencia y se marca como realizada.">
+          <Textarea name="evidenceProvided" rows={3} />
+        </Field>
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Actualizar estado</SubmitButton>
         </div>
@@ -133,6 +136,9 @@ export function EditTaskDialog({
     dueAt: string;
     departmentId: string | null;
     tags: string[];
+    fulfillmentCriteria: string;
+    evidenceRequired: string;
+    evidenceProvided: string;
   };
   departments: Array<{ value: string; label: string }>;
 }) {
@@ -145,6 +151,15 @@ export function EditTaskDialog({
         </Field>
         <Field label="Detalle" name="description">
           <Textarea name="description" rows={3} defaultValue={task.description} />
+        </Field>
+        <Field label="Criterio de cumplimiento" name="fulfillmentCriteria">
+          <Textarea name="fulfillmentCriteria" rows={2} defaultValue={task.fulfillmentCriteria} />
+        </Field>
+        <Field label="Evidencia requerida" name="evidenceRequired">
+          <Input name="evidenceRequired" defaultValue={task.evidenceRequired} />
+        </Field>
+        <Field label="Evidencia aportada" name="evidenceProvided">
+          <Textarea name="evidenceProvided" rows={2} defaultValue={task.evidenceProvided} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prioridad" name="priority">

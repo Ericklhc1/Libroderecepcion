@@ -5,6 +5,7 @@ import {
   EntryStatus,
   EntryType,
   FollowUpStatus,
+  SupervisionVisibility,
   GuaranteeStatus,
   Impact,
   Priority,
@@ -12,6 +13,7 @@ import {
   Severity,
   ShiftType,
   TaskStatus,
+  TaskTargetType,
 } from '@prisma/client';
 import {
   zCheckbox,
@@ -106,6 +108,19 @@ export const taskCreateSchema = z.object({
   followUpId: zOptionalCuid,
   alertId: zOptionalCuid,
   handoverId: zOptionalCuid,
+  fulfillmentCriteria: zOptionalString,
+  evidenceRequired: zOptionalString,
+  evidenceProvided: zOptionalString,
+  targetType: z.nativeEnum(TaskTargetType).default(TaskTargetType.PERSONA),
+  collaboratorIds: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value) => (value ? (Array.isArray(value) ? value : [value]).filter(Boolean) : [])),
+  targetShiftId: zOptionalCuid,
+  roomId: zOptionalCuid,
+  guestId: zOptionalCuid,
+  reservationId: zOptionalCuid,
+  stayId: zOptionalCuid,
   tags: zTags,
   checklist: z
     .union([z.string(), z.array(z.string())])
@@ -128,6 +143,7 @@ export const taskStatusSchema = z.object({
   status: z.nativeEnum(TaskStatus),
   blockedReason: zOptionalString,
   reason: zOptionalString,
+  evidenceProvided: zOptionalString,
 });
 
 export const taskAssignSchema = z.object({
@@ -145,6 +161,10 @@ export const followUpCreateSchema = z.object({
   scheduledAt: zOptionalDate,
   ownerId: zOptionalCuid,
   notes: zOptionalString,
+  description: zOptionalString,
+  priority: z.nativeEnum(Priority).default(Priority.MEDIA),
+  origin: zOptionalString,
+  visibility: z.nativeEnum(SupervisionVisibility).default(SupervisionVisibility.OPERATIVO),
 });
 
 export const followUpUpdateSchema = z.object({
@@ -155,6 +175,10 @@ export const followUpUpdateSchema = z.object({
   notes: zOptionalString,
   status: z.nativeEnum(FollowUpStatus).optional(),
   ownerId: zOptionalCuid,
+  description: zOptionalString,
+  priority: z.nativeEnum(Priority).optional(),
+  visibility: z.nativeEnum(SupervisionVisibility).optional(),
+  resolution: zOptionalString,
 });
 
 export const commentSchema = z.object({

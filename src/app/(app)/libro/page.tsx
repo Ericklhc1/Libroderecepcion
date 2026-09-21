@@ -15,7 +15,7 @@ import {
   type RawSearchParams,
 } from '@/lib/search-params';
 
-export const metadata = { title: 'Libro operativo' };
+export const metadata = { title: 'Novedades' };
 export const dynamic = 'force-dynamic';
 
 const TABS = [
@@ -63,14 +63,18 @@ export default async function BookPage({
       : clase
         ? SPECIALIZED[clase]
         : undefined;
+  const isEntryView = clase === 'entry';
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <header>
-        <h1 className="text-xl font-semibold text-petrol-900">Libro operativo</h1>
+        <h1 className="text-xl font-semibold text-petrol-900">
+          {isEntryView ? 'Novedades' : 'Libro operativo'}
+        </h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Todo lo que ocurre en la operación, en una sola línea temporal. Las
-          pestañas acotan la clase; los filtros, el resto.
+          {isEntryView
+            ? 'Registra y consulta lo que ocurrió en el turno. Habitación, huésped y reserva son contexto opcional.'
+            : 'Vista transversal de la operación. Úsala cuando necesites cruzar novedades, tareas, seguimientos y alertas.'}
         </p>
       </header>
 

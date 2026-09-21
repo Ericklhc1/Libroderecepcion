@@ -186,7 +186,7 @@ describe('importación PMS entre días operativos', () => {
       data: {
         roomId: room.id,
         reservationId: 'PMS-405',
-        guestNames: ['Nombre de ayer'],
+        guestNames: ['Nombre Persona'],
         status: RoomStayStatus.IN_HOUSE,
         stage: RoomStayStage.CONFIRMADO,
         sourceReport: 'ACTIVIDAD',
@@ -204,7 +204,7 @@ describe('importación PMS entre días operativos', () => {
           {
             reservationId: 'PMS-405',
             roomNumber: '405',
-            guestNames: ['Nombre de hoy'],
+            guestNames: ['Nombre Persona Actualizado'],
             channel: null,
             arrivalDate: null,
             departureDate: null,
@@ -240,6 +240,6 @@ describe('importación PMS entre días operativos', () => {
     expect(active[0]!.businessDate.getTime()).toBe(
       new Date('2026-09-18T00:00:00.000Z').getTime(),
     );
-    expect(active[0]!.guestNames).toEqual(['Nombre de hoy']);
+    expect(active[0]!.guestNames).toEqual(['Nombre Persona Actualizado']);
   });
 });

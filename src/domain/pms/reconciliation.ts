@@ -94,7 +94,11 @@ function sameOccurrence(a: ReconciliationEvidence, b: IncomingEvidence): boolean
   const bDeparture = day(b.departureDate);
   if (aDeparture !== null && bDeparture !== null) return aDeparture === bDeparture;
 
-  return day(a.businessDate) === day(b.businessDate);
+  // Sin fechas, una identidad todavía activa sigue siendo la misma realidad
+  // al día siguiente: es el caso de los informes resumidos que sólo traen ID,
+  // habitación y estado. Una finalizada sí exige el mismo día para no absorber
+  // una reutilización posterior del código.
+  return a.stage !== 'FINALIZADO' || day(a.businessDate) === day(b.businessDate);
 }
 
 function statusRank(status: StayStatus): number {

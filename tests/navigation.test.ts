@@ -28,13 +28,13 @@ describe('menú principal', () => {
     }
   });
 
-  it('expone los cinco módulos operativos y el Centro privado', () => {
+  it('expone Novedades, Caja y Llaves como núcleo operativo y el Centro privado', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/turno', // fotografía del turno
-      '/reservas', // carpeta raíz por habitación e ID FNS
+      '/libro?clase=entry', // novedades: núcleo temporal del mesón
       '/caja', // centralización financiera
       '/llaves', // inventario y trazabilidad de llaves
       '/supervision', // Centro privado, sólo visible con permiso específico
@@ -74,9 +74,9 @@ describe('menú principal', () => {
 });
 
 describe('visibilidad por rol', () => {
-  it('el Recepcionista ve los cinco módulos operativos', () => {
+  it('el Recepcionista ve el núcleo operativo y conserva el PMS sólo como consulta', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/turno', '/reservas', '/caja', '/llaves']);
+    expect(hrefs).toEqual(['/', '/turno', '/libro?clase=entry', '/caja', '/llaves', '/reservas']);
   });
 
   it('el Supervisor ve el Centro como módulo raíz privado', () => {
@@ -216,8 +216,8 @@ describe('todo el menú es alcanzable en móvil', () => {
     const visibles = visibleNavItems(permissions);
     const enBarra = visibles.filter((item) => item.mobile).slice(0, MOBILE_SLOTS);
 
-    // Llaves ahora sí forma parte del flujo principal, pero es el quinto
-    // módulo: con cuatro slots queda detrás de «Más» en móvil.
+    // Llaves forma parte del flujo principal, pero con cuatro slots queda
+    // detrás de «Más» en móvil. El contexto PMS queda aún más secundario.
     expect(enBarra.map((item) => item.href)).not.toContain('/llaves');
     expect(visibles.map((item) => item.href)).toContain('/llaves');
   });

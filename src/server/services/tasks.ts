@@ -1,5 +1,12 @@
 import 'server-only';
-import { AuditAction, NotificationType, TaskOrigin, TaskStatus } from '@prisma/client';
+import {
+  AuditAction,
+  NotificationType,
+  TaskOrigin,
+  TaskParticipantRole,
+  TaskStatus,
+  TaskTargetType,
+} from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
@@ -19,13 +26,18 @@ export const taskInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
   followUp: { select: { id: true, action: true } },
   sourceAlert: { select: { id: true, title: true, type: true } },
+  participants: {
+    where: { removedAt: null },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { assignedAt: 'asc' },
+  },
   checklist: { orderBy: { order: 'asc' } },
   _count: { select: { comments: true, followUps: true } },
 } satisfies Prisma.TaskInclude;
 
 export type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
-type TaskCreateInput = {
+export type TaskCreateInput = {
   title: string;
   description?: string | null;
   assigneeId?: string | null;
@@ -36,6 +48,16 @@ type TaskCreateInput = {
   followUpId?: string | null;
   alertId?: string | null;
   handoverId?: string | null;
+  fulfillmentCriteria?: string | null;
+  evidenceRequired?: string | null;
+  evidenceProvided?: string | null;
+  targetType?: TaskTargetType;
+  collaboratorIds?: string[];
+  targetShiftId?: string | null;
+  roomId?: string | null;
+  guestId?: string | null;
+  reservationId?: string | null;
+  stayId?: string | null;
   tags: string[];
   checklist: string[];
 };
@@ -50,7 +72,33 @@ function inferOrigin(input: TaskCreateInput): TaskOrigin {
 }
 
 export async function createTask(user: CurrentUser, input: TaskCreateInput) {
-  if (input.assigneeId) await assertAssignable(input.assigneeId);
+  const targetType = input.targetType ?? TaskTargetType.PERSONA;
+  const participantIds = new Set<string>(input.collaboratorIds ?? []);
+  let assigneeId = input.assigneeId ?? null;
+
+  if (targetType === TaskTargetType.PROPIO) assigneeId = user.id;
+  if (targetType === TaskTargetType.EQUIPO) {
+    const team = await prisma.user.findMany({
+      where: { active: true, deletedAt: null, role: { operational: true } },
+      select: { id: true },
+    });
+    for (const member of team) participantIds.add(member.id);
+  }
+  if (targetType === TaskTargetType.TURNO) {
+    if (!input.targetShiftId) throw new RuleError('Selecciona el turno al que se asigna la tarea.');
+    const assignments = await prisma.shiftAssignment.findMany({
+      where: { shiftId: input.targetShiftId, leftAt: null },
+      select: { userId: true },
+    });
+    if (assignments.length === 0) throw new RuleError('Ese turno no tiene participantes activos.');
+    for (const assignment of assignments) participantIds.add(assignment.userId);
+  }
+  if (assigneeId) participantIds.add(assigneeId);
+  if (targetType === TaskTargetType.MULTIPLES && participantIds.size < 2) {
+    throw new RuleError('Una tarea para varias personas requiere al menos dos participantes.');
+  }
+  for (const participantId of participantIds) await assertAssignable(participantId);
+  if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
   let origin = inferOrigin(input);
   if (input.entryId) {
@@ -63,13 +111,17 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
   }
 
   const shift = await getMyOpenShift(user.id);
+  const supervisionShift = await prisma.supervisionShift.findFirst({
+    where: { supervisorId: user.id, status: 'ACTIVO' },
+    select: { id: true },
+  });
 
   return prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
       data: {
         title: input.title,
         description: input.description ?? null,
-        assigneeId: input.assigneeId ?? null,
+        assigneeId,
         priority: input.priority,
         dueAt: input.dueAt ?? null,
         departmentId: input.departmentId ?? null,
@@ -77,10 +129,33 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         followUpId: input.followUpId ?? null,
         alertId: input.alertId ?? null,
         handoverId: input.handoverId ?? null,
+        fulfillmentCriteria: input.fulfillmentCriteria ?? null,
+        evidenceRequired: input.evidenceRequired ?? null,
+        evidenceProvided: input.evidenceProvided ?? null,
+        targetType,
+        targetShiftId: input.targetShiftId ?? null,
+        supervisionShiftId: supervisionShift?.id ?? null,
+        roomId: input.roomId ?? null,
+        guestId: input.guestId ?? null,
+        reservationId: input.reservationId ?? null,
+        stayId: input.stayId ?? null,
         shiftId: shift?.id ?? null,
         tags: normalizeTags(input.tags),
         origin,
         createdById: user.id,
+        participants:
+          participantIds.size > 0
+            ? {
+                create: [...participantIds].map((participantId) => ({
+                  userId: participantId,
+                  assignedById: user.id,
+                  role:
+                    participantId === assigneeId
+                      ? TaskParticipantRole.PRINCIPAL
+                      : TaskParticipantRole.COLABORADOR,
+                })),
+              }
+            : undefined,
         checklist:
           input.checklist.length > 0
             ? {
@@ -104,15 +179,20 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           priority: created.priority,
           dueAt: created.dueAt,
           origin: created.origin,
+          targetType: created.targetType,
+          participantIds: created.participants.map((participant) => participant.userId),
         },
       },
       tx,
     );
 
-    if (created.assigneeId && created.assigneeId !== user.id) {
+    const recipients = created.participants
+      .map((participant) => participant.userId)
+      .filter((participantId) => participantId !== user.id);
+    if (recipients.length > 0) {
       await notify(
-        {
-          userId: created.assigneeId,
+        recipients.map((userId) => ({
+          userId,
           type: NotificationType.TAREA_ASIGNADA,
           title: `Nueva tarea asignada: ${created.title}`,
           body: created.dueAt
@@ -121,7 +201,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           link: `/tareas/${created.id}`,
           entity: 'Task',
           entityId: created.id,
-        },
+        })),
         tx,
       );
     }
@@ -144,6 +224,9 @@ const TASK_EDITABLE = [
   'departmentId',
   'tags',
   'blockedReason',
+  'fulfillmentCriteria',
+  'evidenceRequired',
+  'evidenceProvided',
 ] as const;
 
 export async function updateTask(
@@ -152,7 +235,11 @@ export async function updateTask(
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
-  if (current.status === TaskStatus.COMPLETADA || current.status === TaskStatus.CANCELADA) {
+  if (
+    current.status === TaskStatus.VALIDADA ||
+    current.status === TaskStatus.COMPLETADA ||
+    current.status === TaskStatus.CANCELADA
+  ) {
     throw new RuleError(
       `La tarea está ${TASK_STATUS_LABEL[current.status].toLowerCase()} y no admite edición.`,
     );
@@ -233,6 +320,29 @@ export async function assignTask(
       tx,
     );
 
+    await tx.taskAssignment.updateMany({
+      where: { taskId: input.id, role: TaskParticipantRole.PRINCIPAL, removedAt: null },
+      data: { removedAt: new Date(), removalReason: input.reason ?? 'Reasignación' },
+    });
+    if (input.assigneeId) {
+      await tx.taskAssignment.upsert({
+        where: { taskId_userId: { taskId: input.id, userId: input.assigneeId } },
+        create: {
+          taskId: input.id,
+          userId: input.assigneeId,
+          role: TaskParticipantRole.PRINCIPAL,
+          assignedById: user.id,
+        },
+        update: {
+          role: TaskParticipantRole.PRINCIPAL,
+          assignedById: user.id,
+          assignedAt: new Date(),
+          removedAt: null,
+          removalReason: null,
+        },
+      });
+    }
+
     const targets = new Set<string>();
     if (updated.assigneeId) targets.add(updated.assigneeId);
     if (current.assigneeId) targets.add(current.assigneeId);
@@ -261,9 +371,13 @@ export async function assignTask(
 }
 
 const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  PENDIENTE: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA],
-  EN_CURSO: [TaskStatus.BLOQUEADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA, TaskStatus.PENDIENTE],
-  BLOQUEADA: [TaskStatus.EN_CURSO, TaskStatus.PENDIENTE, TaskStatus.CANCELADA, TaskStatus.COMPLETADA],
+  PENDIENTE: [TaskStatus.ACEPTADA, TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA],
+  ACEPTADA: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
+  EN_CURSO: [TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA, TaskStatus.PENDIENTE],
+  BLOQUEADA: [TaskStatus.EN_CURSO, TaskStatus.PENDIENTE, TaskStatus.CANCELADA, TaskStatus.REALIZADA],
+  REALIZADA: [TaskStatus.VALIDADA, TaskStatus.DEVUELTA, TaskStatus.EN_CURSO],
+  DEVUELTA: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
+  VALIDADA: [TaskStatus.DEVUELTA],
   COMPLETADA: [TaskStatus.EN_CURSO],
   CANCELADA: [TaskStatus.PENDIENTE],
 };
@@ -275,6 +389,7 @@ export async function changeTaskStatus(
     status: TaskStatus;
     blockedReason?: string | null;
     reason?: string | null;
+    evidenceProvided?: string | null;
   },
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
@@ -289,8 +404,25 @@ export async function changeTaskStatus(
   if (input.status === TaskStatus.BLOQUEADA && !input.blockedReason) {
     throw new RuleError('Indica por qué la tarea queda bloqueada.');
   }
-  const closing = input.status === TaskStatus.COMPLETADA || input.status === TaskStatus.CANCELADA;
-  if (closing && !user.permissions.includes('task.close')) {
+  if (
+    input.status === TaskStatus.REALIZADA &&
+    current.evidenceRequired &&
+    !(input.evidenceProvided?.trim() || current.evidenceProvided)
+  ) {
+    throw new RuleError('Adjunta o describe la evidencia requerida antes de marcar la tarea como realizada.');
+  }
+  if (input.status === TaskStatus.DEVUELTA && !input.reason?.trim()) {
+    throw new RuleError('Indica el motivo de la devolución.');
+  }
+  const validation = input.status === TaskStatus.VALIDADA || input.status === TaskStatus.DEVUELTA;
+  if (validation && !user.permissions.includes('supervision.task.validate')) {
+    throw new RuleError('No tienes permiso para validar o devolver tareas.');
+  }
+  const closing =
+    input.status === TaskStatus.VALIDADA ||
+    input.status === TaskStatus.COMPLETADA ||
+    input.status === TaskStatus.CANCELADA;
+  if (!validation && closing && !user.permissions.includes('task.close')) {
     throw new RuleError('No tienes permiso para completar o cancelar tareas.');
   }
 
@@ -302,8 +434,19 @@ export async function changeTaskStatus(
         status: input.status,
         blockedReason:
           input.status === TaskStatus.BLOQUEADA ? (input.blockedReason ?? null) : null,
-        completedAt: input.status === TaskStatus.COMPLETADA ? now : null,
-        completedById: input.status === TaskStatus.COMPLETADA ? user.id : null,
+        returnReason: input.status === TaskStatus.DEVUELTA ? input.reason ?? null : null,
+        cancellationReason: input.status === TaskStatus.CANCELADA ? input.reason ?? null : null,
+        evidenceProvided: input.evidenceProvided?.trim() || current.evidenceProvided,
+        completedAt:
+          input.status === TaskStatus.REALIZADA || input.status === TaskStatus.COMPLETADA
+            ? now
+            : current.completedAt,
+        completedById:
+          input.status === TaskStatus.REALIZADA || input.status === TaskStatus.COMPLETADA
+            ? user.id
+            : current.completedById,
+        validatedAt: input.status === TaskStatus.VALIDADA ? now : null,
+        validatedById: input.status === TaskStatus.VALIDADA ? user.id : null,
       },
       include: taskInclude,
     });

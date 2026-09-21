@@ -1,11 +1,25 @@
 import 'server-only';
-import { AuditAction, ChecklistItemResult } from '@prisma/client';
+import {
+  AuditAction,
+  AuditCategory,
+  AuditDisclosure,
+  ChecklistItemResult,
+  Severity,
+  SupervisionAuditStatus,
+} from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { ROLE_KEYS } from '@/lib/permissions';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { getMyOpenShift } from './shifts';
+import { assertAssignable } from './users';
+
+function assertOperationalSupervisor(user: CurrentUser) {
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
+    throw new RuleError('Las auditorías sorpresa sólo pueden ser operadas por el rol Supervisor.');
+  }
+}
 
 /**
  * Checklists de supervisión.
@@ -59,6 +73,7 @@ export async function saveTemplate(
     description?: string | null;
     cadence?: string | null;
     active?: boolean;
+    category?: AuditCategory;
     /** Un punto por línea. `*` al inicio lo marca como crítico. */
     items: string[];
   },
@@ -100,6 +115,7 @@ export async function saveTemplate(
           description: input.description?.trim() || null,
           cadence: input.cadence?.trim() || null,
           active: input.active ?? true,
+          category: input.category ?? AuditCategory.OTRO,
           items: { createMany: { data: parsed } },
         },
         include: templateInclude,
@@ -112,6 +128,7 @@ export async function saveTemplate(
         description: input.description?.trim() || null,
         cadence: input.cadence?.trim() || null,
         active: input.active ?? true,
+        category: input.category ?? AuditCategory.OTRO,
         createdById: user.id,
         items: { createMany: { data: parsed } },
       },
@@ -162,8 +179,16 @@ export async function softDeleteTemplate(
  */
 export async function startRun(
   user: CurrentUser,
-  input: { templateId: string },
+  input: {
+    templateId: string;
+    scope?: string | null;
+    sample?: string | null;
+    participantIds?: string[];
+    reviewedShiftIds?: string[];
+    reviewedDepartmentIds?: string[];
+  },
 ): Promise<RunWithItems> {
+  assertOperationalSupervisor(user);
   const template = await prisma.checklistTemplate.findFirst({
     where: { id: input.templateId, deletedAt: null, active: true },
     include: { items: { orderBy: { order: 'asc' } } },
@@ -173,15 +198,33 @@ export async function startRun(
     throw new RuleError('Esa lista no tiene puntos: no hay nada que recorrer.');
   }
 
-  // Se cuelga del turno abierto si hay uno: así la ronda queda en su contexto.
-  const shift = await getMyOpenShift(user.id);
+  const supervisionShift = await prisma.supervisionShift.findFirst({
+    where: { supervisorId: user.id, status: 'ACTIVO' },
+    select: { id: true },
+  });
+  for (const participantId of input.participantIds ?? []) await assertAssignable(participantId);
 
   const run = await prisma.checklistRun.create({
     data: {
       templateId: template.id,
       templateName: template.name,
       runById: user.id,
-      shiftId: shift?.id ?? null,
+      supervisionShiftId: supervisionShift?.id ?? null,
+      status: SupervisionAuditStatus.PREPARACION,
+      surprise: true,
+      scope: input.scope?.trim() || null,
+      sample: input.sample?.trim() || null,
+      reviewedShiftIds: input.reviewedShiftIds ?? [],
+      reviewedDepartmentIds: input.reviewedDepartmentIds ?? [],
+      participants:
+        (input.participantIds?.length ?? 0) > 0
+          ? {
+              create: (input.participantIds ?? []).map((userId) => ({
+                userId,
+                addedById: user.id,
+              })),
+            }
+          : undefined,
       items: {
         createMany: {
           data: template.items.map((item) => ({
@@ -201,6 +244,15 @@ export async function startRun(
     action: AuditAction.CREAR,
     user,
     summary: `Ronda iniciada: «${template.name}» (${template.items.length} puntos)`,
+    after: {
+      supervisionShiftId: run.supervisionShiftId,
+      scope: run.scope,
+      sample: run.sample,
+      participantIds: input.participantIds ?? [],
+      reviewedShiftIds: run.reviewedShiftIds,
+      reviewedDepartmentIds: run.reviewedDepartmentIds,
+      surprise: run.surprise,
+    },
   });
 
   return run;
@@ -211,10 +263,20 @@ export async function markRunItem(
   user: CurrentUser,
   input: {
     itemId: string;
-    result: 'PENDIENTE' | 'OK' | 'FALLA' | 'NO_APLICA';
+    result:
+      | 'PENDIENTE'
+      | 'OK'
+      | 'CUMPLE'
+      | 'OBSERVACION'
+      | 'FALLA'
+      | 'INCUMPLIMIENTO'
+      | 'NO_APLICA';
     observation?: string | null;
+    evidence?: string | null;
+    severity?: Severity;
   },
 ) {
+  assertOperationalSupervisor(user);
   const item = await prisma.checklistRunItem.findUnique({
     where: { id: input.itemId },
     select: {
@@ -234,16 +296,58 @@ export async function markRunItem(
   if (item.run.runById !== user.id) {
     throw new RuleError('Esta ronda la está recorriendo otra persona.');
   }
-  if (input.result === 'FALLA' && !input.observation?.trim()) {
+  if (
+    ['FALLA', 'OBSERVACION', 'INCUMPLIMIENTO'].includes(input.result) &&
+    !input.observation?.trim()
+  ) {
     throw new RuleError('Una falla sin observación no sirve: escribe qué encontraste.');
   }
 
-  return prisma.checklistRunItem.update({
-    where: { id: item.id },
-    data: {
-      result: input.result as ChecklistItemResult,
-      observation: input.observation?.trim() || null,
-    },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.checklistRunItem.update({
+      where: { id: item.id },
+      data: {
+        result: input.result as ChecklistItemResult,
+        observation: input.observation?.trim() || null,
+        evidence: input.evidence?.trim() || null,
+        run: { update: { status: SupervisionAuditStatus.EN_CURSO } },
+      },
+    });
+    if (['FALLA', 'OBSERVACION', 'INCUMPLIMIENTO'].includes(input.result)) {
+      await tx.auditFinding.upsert({
+        where: { itemId: item.id },
+        create: {
+          auditId: item.run.id,
+          itemId: item.id,
+          title: item.text,
+          description: input.observation!.trim(),
+          severity: input.severity ?? (input.result === 'OBSERVACION' ? Severity.BAJA : Severity.MEDIA),
+        },
+        update: {
+          description: input.observation!.trim(),
+          severity: input.severity ?? (input.result === 'OBSERVACION' ? Severity.BAJA : Severity.MEDIA),
+          deletedAt: null,
+          deletionReason: null,
+        },
+      });
+    } else {
+      await tx.auditFinding.updateMany({
+        where: { itemId: item.id, deletedAt: null },
+        data: { deletedAt: new Date(), deletionReason: 'El punto dejó de presentar hallazgo.' },
+      });
+    }
+    await recordAudit(
+      {
+        entity: 'ChecklistRun',
+        entityId: item.run.id,
+        action: AuditAction.EDITAR,
+        summary: `Auditoría «${item.run.templateName}»: ${item.text} → ${input.result}`,
+        user,
+        after: { result: input.result, observation: input.observation, evidence: input.evidence },
+      },
+      tx,
+    );
+    return updated;
   });
 }
 
@@ -253,7 +357,16 @@ export async function markRunItem(
  * No se puede cerrar con puntos sin revisar: una lista a medias da la
  * impresión de haberse recorrido sin haberlo hecho, que es peor que no tenerla.
  */
-export async function finishRun(user: CurrentUser, input: { runId: string; notes?: string | null }) {
+export async function finishRun(
+  user: CurrentUser,
+  input: {
+    runId: string;
+    notes?: string | null;
+    resultSummary?: string | null;
+    disclosure?: AuditDisclosure;
+  },
+) {
+  assertOperationalSupervisor(user);
   const run = await prisma.checklistRun.findUnique({
     where: { id: input.runId },
     include: { items: true },
@@ -271,32 +384,76 @@ export async function finishRun(user: CurrentUser, input: { runId: string; notes
     );
   }
 
-  const failures = run.items.filter((item) => item.result === ChecklistItemResult.FALLA);
+  const failureResults = new Set<ChecklistItemResult>([
+    ChecklistItemResult.FALLA,
+    ChecklistItemResult.INCUMPLIMIENTO,
+  ]);
+  const failures = run.items.filter((item) => failureResults.has(item.result));
   const criticalFailures = failures.filter((item) => item.critical);
 
-  const closed = await prisma.checklistRun.update({
-    where: { id: run.id },
-    data: { finishedAt: new Date(), notes: input.notes?.trim() || null },
-    include: runInclude,
-  });
-
-  await recordAudit({
-    entity: 'ChecklistRun',
-    entityId: run.id,
-    action: AuditAction.CERRAR,
-    user,
-    summary:
-      `Ronda «${run.templateName}» cerrada: ${failures.length} falla(s)` +
-      (criticalFailures.length > 0 ? `, ${criticalFailures.length} crítica(s)` : '') +
-      `${input.notes ? `. ${input.notes}` : ''}`,
+  const closed = await prisma.$transaction(async (tx) => {
+    const result = await tx.checklistRun.update({
+      where: { id: run.id },
+      data: {
+        status: SupervisionAuditStatus.CERRADA,
+        finishedAt: new Date(),
+        closedById: user.id,
+        notes: input.notes?.trim() || null,
+        resultSummary: input.resultSummary?.trim() || null,
+        disclosure: input.disclosure ?? AuditDisclosure.RESERVADO,
+        severity:
+          criticalFailures.length > 0
+            ? Severity.CRITICA
+            : failures.length > 0
+              ? Severity.MEDIA
+              : null,
+      },
+      include: runInclude,
+    });
+    await tx.auditFinding.updateMany({
+      where: { auditId: run.id, deletedAt: null },
+      data: {
+        confirmed: true,
+        disclosure: input.disclosure ?? AuditDisclosure.RESERVADO,
+      },
+    });
+    await recordAudit(
+      {
+        entity: 'ChecklistRun',
+        entityId: run.id,
+        action: AuditAction.CERRAR,
+        user,
+        summary:
+          `Auditoría «${run.templateName}» cerrada: ${failures.length} incumplimiento(s)` +
+          (criticalFailures.length > 0 ? `, ${criticalFailures.length} crítico(s)` : '') +
+          `${input.notes ? `. ${input.notes}` : ''}`,
+        after: { disclosure: input.disclosure ?? AuditDisclosure.RESERVADO },
+      },
+      tx,
+    );
+    return result;
   });
 
   return { run: closed, failures: failures.length, criticalFailures: criticalFailures.length };
 }
 
 /** Rondas recientes, para el tablero del Supervisor. */
-export async function listRuns(limit = 20): Promise<RunWithItems[]> {
+export async function listRuns(user: CurrentUser, limit = 20): Promise<RunWithItems[]> {
+  if (!user.isSystemAdmin && !user.permissions.includes('supervision.audit.reserved')) {
+    throw new RuleError('No tienes permiso para consultar auditorías de Supervisión.');
+  }
   return prisma.checklistRun.findMany({
+    where: {
+      deletedAt: null,
+      ...(user.isSystemAdmin
+        ? {}
+        : {
+            OR: [
+              { status: { not: SupervisionAuditStatus.PREPARACION } },
+              { status: SupervisionAuditStatus.PREPARACION, runById: user.id },
+            ],
+          }),
+    },
     include: runInclude,
     orderBy: { startedAt: 'desc' },
     take: limit,

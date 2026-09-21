@@ -188,11 +188,11 @@ export default async function TasksPage({
                           variant="secondary"
                         />
                       ) : null}
-                      {open && user.permissions.includes('task.close') ? (
+                      {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
                         <QuickStatusForm
                           taskId={task.id}
-                          status={TaskStatus.COMPLETADA}
-                          label="Completar"
+                          status={TaskStatus.REALIZADA}
+                          label="Realizada"
                           variant="gold"
                         />
                       ) : null}

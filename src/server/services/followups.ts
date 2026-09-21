@@ -6,6 +6,8 @@ import {
   AuditAction,
   FollowUpStatus,
   NotificationType,
+  Priority,
+  SupervisionVisibility,
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -30,8 +32,9 @@ export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
 }>;
 
 /**
- * Crea un seguimiento. Debe colgar de un registro o de una tarea: un
- * seguimiento huérfano no aporta trazabilidad y queda prohibido.
+ * Crea un seguimiento operativo vinculado a un registro/tarea o, durante un
+ * turno de Supervisión, un seguimiento autónomo que se transfiere en el
+ * relevo. Fuera de esos contextos no se permiten seguimientos huérfanos.
  */
 export async function createFollowUp(
   user: CurrentUser,
@@ -44,10 +47,25 @@ export async function createFollowUp(
     scheduledAt?: Date | null;
     ownerId?: string | null;
     notes?: string | null;
+    description?: string | null;
+    priority?: Priority;
+    origin?: string | null;
+    visibility?: SupervisionVisibility;
   },
 ) {
-  if (!input.entryId && !input.taskId) {
+  const supervisionShift = await prisma.supervisionShift.findFirst({
+    where: { supervisorId: user.id, status: 'ACTIVO' },
+    select: { id: true },
+  });
+  if (!input.entryId && !input.taskId && !supervisionShift) {
     throw new RuleError('El seguimiento debe asociarse a un registro o a una tarea.');
+  }
+  const visibility = input.visibility ?? SupervisionVisibility.OPERATIVO;
+  if (
+    visibility !== SupervisionVisibility.OPERATIVO &&
+    !user.permissions.includes('supervision.followup.manage')
+  ) {
+    throw new RuleError('No tienes permiso para crear seguimientos reservados de Supervisión.');
   }
   const ownerId = input.ownerId ?? user.id;
   await assertAssignable(ownerId);
@@ -73,6 +91,11 @@ export async function createFollowUp(
         nextAction: input.nextAction ?? null,
         scheduledAt: input.scheduledAt ?? null,
         notes: input.notes ?? null,
+        description: input.description ?? null,
+        priority: input.priority ?? Priority.MEDIA,
+        origin: input.origin ?? (supervisionShift ? 'CENTRO_SUPERVISION' : null),
+        visibility,
+        supervisionShiftId: supervisionShift?.id ?? null,
         ownerId,
         createdById: user.id,
       },
@@ -96,8 +119,12 @@ export async function createFollowUp(
         user,
         after: {
           action: created.action,
+          description: created.description,
           nextAction: created.nextAction,
           scheduledAt: created.scheduledAt,
+          priority: created.priority,
+          origin: created.origin,
+          visibility: created.visibility,
           ownerId: created.ownerId,
           entryId: created.entryId,
           taskId: created.taskId,
@@ -137,6 +164,10 @@ export async function updateFollowUp(
     notes?: string | null;
     status?: FollowUpStatus;
     ownerId?: string | null;
+    description?: string | null;
+    priority?: Priority;
+    visibility?: SupervisionVisibility;
+    resolution?: string | null;
   },
 ) {
   const current = await prisma.followUp.findFirst({
@@ -155,7 +186,7 @@ export async function updateFollowUp(
   }
 
   const after: Record<string, unknown> = {};
-  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'ownerId'] as const) {
+  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'ownerId', 'description', 'priority', 'visibility', 'resolution'] as const) {
     const value = input[key];
     if (value !== undefined) after[key] = value;
   }

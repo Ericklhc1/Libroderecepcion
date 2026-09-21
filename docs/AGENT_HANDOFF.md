@@ -6,8 +6,8 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-21**.
-- Versión en Production al iniciar la corrección PMS: **v1.1.5**.
-- Siguiente versión propuesta: **v1.1.6**.
+- Versión en Production al iniciar el Centro de Supervisión: **v1.1.6**.
+- Siguiente versión propuesta: **v1.2.0**.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.
 - Hosting único de Production: Vercel `libroderecepcion`, región `gru1`.
@@ -96,6 +96,20 @@
 - Un índice parcial garantiza una sola fila viva por
   `(reservationId, roomId, arrivalDate)`. Las reentradas reales y los segmentos
   explícitos de room move conservan llegadas diferentes.
+
+## Centro de Supervisión v1.2.0
+
+- Rama de trabajo: `feat/centro-supervision-v1-2-0`.
+- El Centro integra la bandeja existente con turno propio, asignaciones
+  múltiples, seguimientos, notas por visibilidad, auditorías sorpresa, medidas
+  correctivas e indicadores explicables.
+- `SupervisionShift` es independiente de `Shift`; Recepción nunca depende de
+  que exista o cierre un turno de Supervisión.
+- Las entregas conservan snapshot inalterable y recepción explícita.
+- El Administrador conserva acceso técnico pero los servicios le impiden
+  operar como Supervisor o entrar en asignaciones.
+- Migración aditiva: `20260921170000_centro_supervision`.
+- Documento técnico: `docs/CENTRO_SUPERVISION.md`.
 
 ## Reglas de continuidad
 

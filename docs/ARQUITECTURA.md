@@ -106,6 +106,24 @@ primera versión no hace falta un proceso programado externo; cuando el volumen
 lo justifique, basta invocar `runAlertEngine()` desde un cron sin cambiar nada
 más.
 
+## Centro de Supervisión
+
+El turno administrativo `SupervisionShift` es una raíz de agregado distinta de
+`Shift`. Ambos pueden estar abiertos a la vez y ninguna transición del primero
+escribe caja, habitaciones, llaves, huéspedes o estados del segundo. Un índice
+parcial garantiza un solo turno de Supervisión abierto por persona.
+
+El Centro amplía entidades existentes en lugar de duplicarlas: `Task` mantiene
+la asignación y añade participantes/validación; `FollowUp` añade visibilidad;
+los checklists existentes documentan auditorías sorpresa. Las notas privadas,
+hallazgos, medidas correctivas y observaciones de rendimiento sí son entidades
+propias porque tienen privacidad, trazabilidad y ciclos de vida diferentes.
+
+La entrega de Supervisión conserva un snapshot JSON inalterable y una recepción
+explícita. Los indicadores se calculan desde las fuentes originales y nunca
+guardan una calificación global. Diseño, permisos e invariantes completos:
+`docs/CENTRO_SUPERVISION.md`.
+
 ## Entrega de turno
 
 `buildHandoverSnapshot()` reúne el estado operativo y lo clasifica en Urgente /

@@ -14,6 +14,7 @@ export type FormOptions = {
   openTasks: Option[];
   /** Habitaciones del hotel, con su ocupante actual cuando lo hay. */
   rooms: Option[];
+  activeShifts: Option[];
 };
 
 /**
@@ -23,7 +24,7 @@ export type FormOptions = {
  * (ver `listOperationalUsers`), de modo que no puede quedar como responsable.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, guests, reservations, entries, tasks, rooms] = await Promise.all([
+  const [users, departments, guests, reservations, entries, tasks, rooms, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
@@ -67,6 +68,15 @@ export async function getFormOptions(): Promise<FormOptions> {
         },
       },
     }),
+    prisma.shift.findMany({
+      where: {
+        archivedAt: null,
+        status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA', 'ENTREGA_ENVIADA'] },
+      },
+      orderBy: { actualStart: 'desc' },
+      select: { id: true, type: true, date: true },
+      take: 20,
+    }),
   ]);
 
   return {
@@ -92,5 +102,9 @@ export async function getFormOptions(): Promise<FormOptions> {
         label: guest ? `${room.number} · ${guest}` : room.number,
       };
     }),
+    activeShifts: activeShifts.map((shift) => ({
+      value: shift.id,
+      label: `${shift.type === 'DIA' ? 'Día' : 'Noche'} · ${shift.date.toLocaleDateString('es-CL', { timeZone: 'UTC' })}`,
+    })),
   };
 }

@@ -52,6 +52,10 @@ export function FollowUpForm({
         />
       </Field>
 
+      <Field label="Descripción" name="description">
+        <Textarea name="description" rows={2} placeholder="Contexto y objetivo del seguimiento." />
+      </Field>
+
       <Field label="Resultado" name="result">
         <Textarea name="result" rows={2} placeholder="Qué respondió o qué se logró." />
       </Field>
@@ -74,6 +78,32 @@ export function FollowUpForm({
             placeholder="Yo"
             defaultValue={defaultOwnerId}
             options={options.users}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Prioridad" name="priority">
+          <Select
+            name="priority"
+            defaultValue="MEDIA"
+            options={[
+              { value: 'BAJA', label: 'Baja' },
+              { value: 'MEDIA', label: 'Media' },
+              { value: 'ALTA', label: 'Alta' },
+              { value: 'CRITICA', label: 'Crítica' },
+            ]}
+          />
+        </Field>
+        <Field label="Visibilidad" name="visibility">
+          <Select
+            name="visibility"
+            defaultValue="OPERATIVO"
+            options={[
+              { value: 'OPERATIVO', label: 'Operativo' },
+              { value: 'SUPERVISION', label: 'Supervisión' },
+              { value: 'PRIVADO', label: 'Privado' },
+            ]}
           />
         </Field>
       </div>

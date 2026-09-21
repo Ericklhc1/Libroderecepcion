@@ -48,6 +48,37 @@ export function TaskForm({
         <Textarea name="description" rows={3} placeholder="Instrucciones o contexto necesario." />
       </Field>
 
+      <Field label="Criterio de cumplimiento" name="fulfillmentCriteria">
+        <Textarea
+          name="fulfillmentCriteria"
+          rows={2}
+          placeholder="Qué debe quedar comprobado para considerarla realizada."
+        />
+      </Field>
+
+      <Field label="Evidencia requerida" name="evidenceRequired">
+        <Input name="evidenceRequired" placeholder="Ej: fotografía, folio, comprobante o comentario." />
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Tipo de asignación" name="targetType">
+          <Select
+            name="targetType"
+            defaultValue="PERSONA"
+            options={[
+              { value: 'PERSONA', label: 'Una persona' },
+              { value: 'MULTIPLES', label: 'Varias personas' },
+              { value: 'TURNO', label: 'Un turno' },
+              { value: 'EQUIPO', label: 'Equipo completo' },
+              { value: 'PROPIO', label: 'Mi propia tarea' },
+            ]}
+          />
+        </Field>
+        <Field label="Turno objetivo" name="targetShiftId" hint="Sólo si asignas a un turno.">
+          <Select name="targetShiftId" placeholder="Sin turno" options={options.activeShifts} />
+        </Field>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Asignada a" name="assigneeId" hint="Sólo personal operativo.">
           <Select
@@ -61,6 +92,23 @@ export function TaskForm({
           <Select name="priority" defaultValue={Priority.MEDIA} options={PRIORITY_OPTIONS} />
         </Field>
       </div>
+
+      <Field
+        label="Colaboradores"
+        name="collaboratorIds"
+        hint="Usa Ctrl/Cmd para seleccionar más de una persona. El Administrador de sistema queda excluido."
+      >
+        <select
+          name="collaboratorIds"
+          multiple
+          size={Math.min(Math.max(options.users.length, 3), 6)}
+          className="input-base w-full"
+        >
+          {options.users.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Fecha límite" name="dueAt">
@@ -80,6 +128,23 @@ export function TaskForm({
           <Select name="entryId" placeholder="Sin vínculo" options={options.openEntries} />
         </Field>
       ) : null}
+
+      <details className="rounded-lg border border-slate-200 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-petrol-700">
+          Vínculos opcionales
+        </summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <Field label="Habitación" name="roomId">
+            <Select name="roomId" placeholder="Sin habitación" options={options.rooms} />
+          </Field>
+          <Field label="Reserva" name="reservationId">
+            <Select name="reservationId" placeholder="Sin reserva" options={options.reservations} />
+          </Field>
+          <Field label="Huésped" name="guestId">
+            <Select name="guestId" placeholder="Sin huésped" options={options.guests} />
+          </Field>
+        </div>
+      </details>
 
       <Field
         label="Checklist"

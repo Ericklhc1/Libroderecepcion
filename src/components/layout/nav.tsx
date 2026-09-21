@@ -37,8 +37,9 @@ const ICONS = {
 } as const;
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const target = href.split(/[?#]/, 1)[0] ?? href;
+  if (target === '/') return pathname === '/';
+  return pathname === target || pathname.startsWith(`${target}/`);
 }
 
 function Badge({ value }: { value: number }) {
@@ -106,7 +107,7 @@ export function SidebarNav({
  *
  * Muestra los destinos principales y, al final, «Más», que abre el resto.
  * Ese botón NO es un adorno: el menú lateral está oculto por debajo de `lg`,
- * así que sin él Llaves, Huéspedes, Historial, Indicadores y Administración
+ * así que sin él Llaves, Contexto PMS, Auditoría y Administración
  * quedaban **inalcanzables desde el teléfono**. La barra sólo pintaba cinco
  * elementos y los demás no tenían ninguna otra puerta.
  *

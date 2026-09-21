@@ -89,8 +89,7 @@ export default async function KeysPage({
         <div>
           <h1 className="text-xl font-semibold text-petrol-900">Inventario de llaves</h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Cada llave es un objeto con estado e historial. El stock disponible se cuenta, no se
-            escribe, así que no puede descuadrarse.
+            Inventario físico autónomo: cada llave tiene estado e historial. Habitación, huésped o estadía se vinculan sólo cuando aplica; el stock disponible siempre se calcula desde las llaves reales.
           </p>
         </div>
         {canStock ? (
@@ -134,7 +133,7 @@ export default async function KeysPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar código, habitación, huésped, nota…"
+        searchPlaceholder="Buscar código, estado, habitación, huésped o nota…"
         clearHref="/llaves"
       >
         <label className="min-w-[12rem]">

@@ -148,10 +148,35 @@ function pick(stays: StayFacts[], status: StayStatus): StayFacts | null {
   return pending ?? candidates[0] ?? null;
 }
 
+/**
+ * Un histórico defectuoso no puede competir con el estado operativo vigente.
+ * Si una misma reserva/habitación/llegada aparece en varias etapas, el snapshot
+ * muestra una sola realidad y conserva la más avanzada. Una reentrada real
+ * mantiene otra llegada y, por tanto, otra ocurrencia.
+ */
+export function collapseOperationalStays(stays: StayFacts[]): StayFacts[] {
+  const groups = new Map<string, StayFacts>();
+  for (const stay of stays.filter(isActive)) {
+    const anchor = stay.arrivalDate ?? stay.departureDate;
+    const key = `${stay.reservationId}|${anchor?.toISOString().slice(0, 10) ?? stay.id}`;
+    const previous = groups.get(key);
+    if (!previous) {
+      groups.set(key, stay);
+      continue;
+    }
+
+    if (mostAdvancedStayStatus(previous.status, stay.status) === stay.status) {
+      groups.set(key, stay);
+    }
+  }
+  return [...groups.values()];
+}
+
 export function buildRoomSnapshot(stays: StayFacts[], keys: KeyFacts[]): RoomSnapshot {
-  const outgoing = pick(stays, 'CHECK_OUT');
-  const current = pick(stays, 'IN_HOUSE');
-  const incoming = pick(stays, 'CHECK_IN');
+  const currentStays = collapseOperationalStays(stays);
+  const outgoing = pick(currentStays, 'CHECK_OUT');
+  const current = pick(currentStays, 'IN_HOUSE');
+  const incoming = pick(currentStays, 'CHECK_IN');
 
   const sameReservationTurnaround = Boolean(
     incoming && outgoing && incoming.reservationId === outgoing.reservationId,

@@ -1163,6 +1163,9 @@ model RoomStay {
   /// Código de reserva TAL COMO lo entrega el PMS. Es la fotografía de lo
   /// recibido y no se toca nunca: es la clave con la que se reconcilia.
   reservationId    String
+  /// Identificador secundario del PMS (localizador/confirmation number).
+  /// Nunca sustituye al ID de reserva cuando ambos vienen en el informe.
+  externalId       String?
   /// Vínculo OPCIONAL a la reserva interna, resuelto por código.
   ///
   /// Opcional a propósito: el PMS es la fuente y una estadía existe aunque
@@ -1234,12 +1237,13 @@ model RoomStay {
   guarantees    Guarantee[]
   cashMovements CashMovement[]
 
-  // Un mismo informe no puede dejar dos veces la misma reserva en la misma
-  // habitación y estado para un día de operación: la importación es idempotente.
-  @@unique([businessDate, reservationId, roomId, status])
+  // La unicidad operacional por ocurrencia se aplica con un índice parcial en
+  // la migración: reserva + habitación + llegada, sólo para filas no eliminadas.
+  // Prisma todavía no expresa índices parciales en el esquema.
   @@index([roomId, status])
   @@index([businessDate])
   @@index([reservationId])
+  @@index([externalId])
   @@index([reservationRefId])
   @@index([stage])
   @@index([deletedAt])

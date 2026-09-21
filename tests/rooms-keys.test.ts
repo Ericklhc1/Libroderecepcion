@@ -35,8 +35,8 @@ import type { CurrentUser } from '@/server/auth/current-user';
  *
  * Los tres casos que pidió el hotel están aquí con sus datos verdaderos: la
  * 408 y la 414 (salida sin confirmar con entrada esperando), la 515 (mismo
- * huésped con dos reservas distintas) y la 610 (la misma reserva entra y sale
- * el mismo día).
+ * huésped con dos reservas distintas) y la 610 (una estancia de uso diurno que
+ * aparece como entrada y salida el mismo día).
  */
 
 const SLUGS = ['entradas', 'in-house', 'salidas'] as const;
@@ -220,11 +220,13 @@ describe('habitaciones y llaves', () => {
       const batchId = await seedBatch(receptionist);
       const result = await applyImport(receptionist, batchId);
 
-      expect(result.created).toBe(13 + 30 + 14);
+      // La 610 está en entradas y salidas con la misma identidad y las mismas
+      // fechas: es una transición de uso diurno, no dos realidades vigentes.
+      expect(result.created).toBe(13 + 30 + 14 - 1);
       expect(result.skipped).toBe(0);
 
       const stays = await prisma.roomStay.count();
-      expect(stays).toBe(57);
+      expect(stays).toBe(56);
     });
 
     it('es idempotente: volver a aplicar no duplica nada', async () => {
@@ -234,8 +236,8 @@ describe('habitaciones y llaves', () => {
       const second = await applyImport(receptionist, await seedBatch(receptionist));
       expect(second.created).toBe(0);
       // Las 30 filas in house llegan ya confirmadas, así que se conservan en
-      // lugar de retroceder de etapa; las 27 pendientes se actualizan.
-      expect(second.updated).toBe(27);
+      // lugar de retroceder de etapa; las 26 pendientes se actualizan.
+      expect(second.updated).toBe(26);
       expect(second.preserved).toBe(30);
       expect(await prisma.roomStay.count()).toBe(before);
     });
@@ -305,13 +307,12 @@ describe('habitaciones y llaves', () => {
       expect(room.snapshot.incomingState).toBe('EN_COLA');
     });
 
-    it('la 610 es la misma reserva entrando y saliendo hoy: no hay cola', async () => {
+    it('la 610 concilia entrada y salida de uso diurno en un único estado vigente', async () => {
       const room = await getRoomDetail('610');
       expect(room.snapshot.outgoing?.reservationId).toBe('7530340');
-      expect(room.snapshot.incoming?.reservationId).toBe('7530340');
-      expect(room.snapshot.sameReservationTurnaround).toBe(true);
-      expect(room.snapshot.incomingState).toBe('LISTO');
-      expect(room.snapshot.state).toBe('CHECK_IN_LISTO');
+      expect(room.snapshot.incoming).toBeNull();
+      expect(room.snapshot.sameReservationTurnaround).toBe(false);
+      expect(room.snapshot.state).toBe('CHECK_OUT_PENDIENTE');
     });
 
     it('el servidor rechaza el check-in mientras la salida no se confirme', async () => {

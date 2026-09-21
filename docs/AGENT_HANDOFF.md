@@ -5,9 +5,9 @@
 
 ## Estado actual
 
-- Fecha de referencia: **2026-09-20**.
-- Versión en Production después de la normalización de roles: **v1.1.4**.
-- Siguiente versión propuesta: **v1.1.5**.
+- Fecha de referencia: **2026-09-21**.
+- Versión en Production al iniciar la corrección PMS: **v1.1.5**.
+- Siguiente versión propuesta: **v1.1.6**.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.
 - Hosting único de Production: Vercel `libroderecepcion`, región `gru1`.
@@ -76,6 +76,26 @@
 - La revisión previa muestra campos reconocidos/no usados y fechas. Siguen
   siendo obligatorios un ID inequívoco y un estado operativo; nunca se enlaza
   una reserva por nombre ni se aplican filas dudosas en silencio.
+
+## Conciliación PMS v1.1.6
+
+- La identidad operacional deja de incluir el estado. Una ocurrencia se
+  identifica por reserva, habitación y llegada, usando localizador, huésped,
+  salida, `businessDate` y estado previo para validar la transición.
+- `CHECK_IN → IN_HOUSE → CHECK_OUT` actualiza una sola `RoomStay`; cargar los
+  informes en otro orden no retrocede el estado y una extensión posterior
+  puede reabrir una salida todavía pendiente.
+- `ID` y `Localizador` se leen en campos separados. El ID de reserva manda;
+  el localizador es evidencia secundaria y vía de enlace, nunca se concatena.
+- Contradicciones de fechas, localizador, huésped, habitación o doble ocupación
+  se omiten y se muestran como conciliación irresoluble para Supervisión.
+- La migración `20260921103000_conciliar_identidad_estadias` normaliza de forma
+  lógica y auditada las 10 transiciones duplicadas verificadas en Production y
+  las 9 filas creadas por concatenación. Los payloads originales de
+  `PmsImportBatch` se conservan como evidencia.
+- Un índice parcial garantiza una sola fila viva por
+  `(reservationId, roomId, arrivalDate)`. Las reentradas reales y los segmentos
+  explícitos de room move conservan llegadas diferentes.
 
 ## Reglas de continuidad
 

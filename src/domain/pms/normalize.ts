@@ -64,6 +64,7 @@ export const ACTIVITY_TYPES: Record<string, OperationalStatus> = {
   'due out': 'CHECK_OUT',
   ocupada: 'IN_HOUSE',
   ocupado: 'IN_HOUSE',
+  'en estadia': 'IN_HOUSE',
   'in house': 'IN_HOUSE',
   'in-house': 'IN_HOUSE',
   alojado: 'IN_HOUSE',
@@ -96,6 +97,7 @@ export const REPORT_LABELS: Record<ReportKind, string> = {
 /** Estructura común a la que se reducen los tres informes. */
 export type NormalizedStay = {
   reservationId: string;
+  externalId: string | null;
   roomNumber: string | null;
   guestNames: string[];
   channel: string | null;
@@ -291,8 +293,17 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
     const rawPayment = cell(record, 'paymentType');
     const payment = rawPayment ? parsePaymentType(rawPayment) : null;
 
+    const primaryReservationId = cell(record, 'reservationId');
+    const externalId = cell(record, 'externalId');
+    const reservationId = primaryReservationId ?? externalId ?? '';
+    if (!reservationId) issues.push('La fila no trae un identificador de reserva confiable.');
+
     return {
-      reservationId: cell(record, 'reservationId') ?? '',
+      reservationId,
+      externalId:
+        primaryReservationId && externalId && primaryReservationId !== externalId
+          ? externalId
+          : null,
       roomNumber,
       guestNames: names,
       channel: cell(record, 'channel'),

@@ -175,21 +175,25 @@ conserva su modelo y sus reglas.
    `key.stock`, `reconcileKeysAction`) la llama sin acotar, para alcanzar
    estadías cargadas antes de que la regla existiera. Es idempotente. No hay
    ni debe haber una segunda lógica de asignación.
-   **Una reserva es UNA estadía por habitación y por FASE.** `CHECK_IN` e
-   `IN_HOUSE` son el mismo hecho en dos etapas —el informe de entradas la
-   lista como llegada y el de in house como alojada— así que se conservan en
-   una sola estadía y gana el estado más avanzado (`mostAdvancedStayStatus`).
-   `CHECK_OUT` es un hecho APARTE: una reserva que sale y vuelve a entrar el
-   mismo día son dos filas, y eso es lo que hace existir
-   `sameReservationTurnaround`. La fase la decide `stayPhase` en el dominio.
-   La clave de deduplicación de `applyImport` y el emparejamiento de la
-   pantalla de revisión usan **la misma fase**: si divergieran, la revisión
-   anunciaría estadías que al aplicar no se crean.
-   Decisión revisada: la clave incluía el estado completo, y por eso la misma
-   reserva en dos informes creaba dos estadías. En producción la 629 mostraba
-   a la misma reserva como «Actual · In house» y «Entrante · Check-in» a la
-   vez, con un conflicto de llave que no existía. Lo vigilan dos pruebas en
-   `tests/rooms-keys.test.ts`.
+   **Una ocurrencia de estancia tiene una sola realidad operativa.**
+   `CHECK_IN → IN_HOUSE → CHECK_OUT` son evidencias sucesivas de la misma
+   ocurrencia cuando coinciden ID de reserva (prioritario), habitación y
+   llegada; el localizador secundario, huésped, salida, `businessDate` y estado
+   previo validan que la transición sea coherente. Importar significa
+   identificar, conciliar y actualizar: el estado nunca forma parte de la
+   identidad. Una salida seguida de una reentrada real conserva dos
+   ocurrencias porque cambia la llegada. Un room move explícito conserva la
+   reserva y abre un segmento de destino, con devolución/entrega de llaves en
+   su flujo existente. El histórico de cada informe permanece en
+   `PmsImportBatch`; una contradicción irresoluble se omite y aparece en la
+   bandeja de conciliación. La unicidad viva queda protegida además por el
+   índice parcial `RoomStay_live_occurrence_key`.
+   Decisión revisada: separar `CHECK_OUT` como otra fase dejaba simultáneamente
+   `IN_HOUSE` y `CHECK_OUT` para la misma estancia. También se concatenaban las
+   columnas `ID` y `Localizador` al mapear ambas como `reservationId`. Lo
+   vigilan `tests/pms-reconciliation.test.ts`,
+   `tests/pms-actividad-importar.test.ts` y
+   `tests/pms-formatos-flexibles.test.ts`.
 4bis. **Archivar no es anular.** Anular dice «no se va a usar» y sólo vale
    antes de empezar; archivar dice «ya pasó y no quiero verlo» y saca el turno
    de las listas conservando su historia, sus registros y su entrega

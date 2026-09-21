@@ -12,7 +12,7 @@ describe('recorrido guiado', () => {
   it('presenta el PMS como contexto opcional y no como núcleo operativo', () => {
     const pmsStep = TUTORIAL_STEPS.find((step) => step.route === '/reservas');
     expect(pmsStep?.title).toContain('Contexto PMS');
-    expect(pmsStep?.description.toLowerCase()).toContain('opcional');
+    expect(pmsStep?.title.toLowerCase()).toContain('opcional');
     expect(pmsStep?.description.toLowerCase()).toContain('no es requisito');
 
     const coreRoutes = TUTORIAL_STEPS

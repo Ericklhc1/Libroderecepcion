@@ -68,6 +68,17 @@ export async function getResetPreview() {
     cashCounts,
     notifications,
     auditLogs,
+    performanceObservations,
+    correctiveMeasures,
+    taskAssignments,
+    cashMovements,
+    cashAudits,
+    gymPasses,
+    auditFindings,
+    auditParticipants,
+    supervisionNotes,
+    supervisionShifts,
+    supervisionHandovers,
     frontiConversations,
     frontiMemories,
     frontiConfirmations,
@@ -92,6 +103,17 @@ export async function getResetPreview() {
     prisma.cashCount.count(),
     prisma.notification.count(),
     prisma.auditLog.count(),
+    prisma.performanceObservation.count(),
+    prisma.correctiveMeasure.count(),
+    prisma.taskAssignment.count(),
+    prisma.cashMovement.count(),
+    prisma.cashAudit.count(),
+    prisma.gymPass.count(),
+    prisma.auditFinding.count(),
+    prisma.auditParticipant.count(),
+    prisma.supervisionNote.count(),
+    prisma.supervisionShift.count(),
+    prisma.supervisionShiftHandover.count(),
     prisma.ai_conversation.count(),
     prisma.ai_memory.count(),
     prisma.assistantActionReceipt.count(),
@@ -118,6 +140,17 @@ export async function getResetPreview() {
     cashCounts,
     notifications,
     auditLogs,
+    performanceObservations,
+    correctiveMeasures,
+    taskAssignments,
+    cashMovements,
+    cashAudits,
+    gymPasses,
+    auditFindings,
+    auditParticipants,
+    supervisionNotes,
+    supervisionShifts,
+    supervisionHandovers,
     frontiConversations,
     frontiMemories,
     frontiConfirmations,
@@ -164,6 +197,15 @@ export async function runFactoryReset(
   */
   await prisma.$transaction(
     async (tx) => {
+      // Tablas auxiliares que se crean por migración SQL y cuelgan de
+      // usuarios/turnos. Deben vaciarse antes de borrar sus padres.
+      count('Borradores de reserva', {
+        count: await tx.$executeRawUnsafe('DELETE FROM "ReservationPdfDraft"'),
+      });
+      count('Cierres de Caja por turno', {
+        count: await tx.$executeRawUnsafe('DELETE FROM "ShiftCashClosure"'),
+      });
+
       // --- Lo que cuelga de otras cosas, primero. ---
       count('Movimientos de llave', await tx.keyMovement.deleteMany());
       // Las llaves vuelven al inventario en lugar de borrarse: son catálogo.
@@ -176,14 +218,25 @@ export async function runFactoryReset(
       count('Mensajes de Fronti', await tx.ai_message.deleteMany());
       count('Memorias de Fronti', await tx.ai_memory.deleteMany());
       count('Conversaciones de Fronti', await tx.ai_conversation.deleteMany());
+      count('Observaciones de rendimiento', await tx.performanceObservation.deleteMany());
       count('Adjuntos', await tx.attachment.deleteMany());
       count('Comentarios', await tx.comment.deleteMany());
       count('Pasos de tarea', await tx.taskChecklistItem.deleteMany());
       count('Alertas', await tx.alert.deleteMany());
+      count('Medidas correctivas', await tx.correctiveMeasure.deleteMany());
+      count('Asignaciones de tarea', await tx.taskAssignment.deleteMany());
       count('Seguimientos', await tx.followUp.deleteMany());
       count('Tareas', await tx.task.deleteMany());
+      count('Movimientos de Caja', await tx.cashMovement.deleteMany());
+      count('Auditorías de Caja', await tx.cashAudit.deleteMany());
+      count('Pases de gimnasio', await tx.gymPass.deleteMany());
       count('Multas', await tx.fine.deleteMany());
       count('Registros del libro', await tx.operationalEntry.deleteMany());
+
+      // Auditorías sorpresa: los hallazgos/participantes cuelgan de las
+      // ejecuciones de checklist y deben salir antes que ellas.
+      count('Hallazgos de auditoría', await tx.auditFinding.deleteMany());
+      count('Participantes de auditoría', await tx.auditParticipant.deleteMany());
 
       // Checklists: las rondas y también las plantillas, que las arma cada
       // Supervisor y no son catálogo del sistema.
@@ -194,6 +247,7 @@ export async function runFactoryReset(
 
       count('Lecturas de comunicado', await tx.announcementRead.deleteMany());
       count('Comunicados', await tx.announcement.deleteMany());
+      count('Notas de Supervisión', await tx.supervisionNote.deleteMany());
 
       // Caja: antes de la entrega y de los usuarios.
       count('Líneas de arqueo', await tx.cashCountLine.deleteMany());
@@ -205,6 +259,11 @@ export async function runFactoryReset(
       count('Entregas de turno', await tx.shiftHandover.deleteMany());
       count('Asignaciones de turno', await tx.shiftAssignment.deleteMany());
       count('Turnos', await tx.shift.deleteMany());
+
+      // El turno del Supervisor es una raíz independiente del turno de
+      // Recepción y también forma parte de la operación que se reinicia.
+      count('Entregas de Supervisión', await tx.supervisionShiftHandover.deleteMany());
+      count('Turnos de Supervisión', await tx.supervisionShift.deleteMany());
 
       if (input.scope.includeStays) {
         count('Estadías', await tx.roomStay.deleteMany());

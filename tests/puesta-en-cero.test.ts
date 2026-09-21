@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EntryType, Priority, ShiftType } from '@prisma/client';
+import { EntryType, Priority, ShiftType, SupervisionVisibility } from '@prisma/client';
 import {
   RESET_PHRASE,
   getResetPreview,
@@ -8,6 +8,11 @@ import {
 } from '@/server/services/factory-reset';
 import { openShift } from '@/server/services/shifts';
 import { createEntry } from '@/server/services/entries';
+import {
+  createSupervisionNote,
+  deliverSupervisionShift,
+  startSupervisionShift,
+} from '@/server/services/supervision-center';
 import { RuleError } from '@/server/errors';
 import { TERMS_DOCUMENT, TERMS_VERSION } from '@/domain/legal';
 import {
@@ -126,6 +131,38 @@ describe('dejar el sistema en cero', () => {
     expect(despues.handovers).toBe(0);
     expect(despues.guests).toBe(0);
     expect(despues.notifications).toBe(0);
+  });
+
+  it('incluye turnos, entregas y notas del Centro de Supervisión', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisión de prueba',
+    });
+    const shift = await startSupervisionShift(supervisor, {
+      priorities: ['Verificar puesta en cero'],
+    });
+    await createSupervisionNote(supervisor, {
+      title: 'Nota de prueba',
+      body: 'Debe desaparecer junto con la operación.',
+      visibility: SupervisionVisibility.PRIVADO,
+    });
+    await deliverSupervisionShift(supervisor, {
+      shiftId: shift.id,
+      note: 'Entrega de prueba',
+    });
+
+    expect(await prisma.supervisionShift.count()).toBe(1);
+    expect(await prisma.supervisionShiftHandover.count()).toBe(1);
+    expect(await prisma.supervisionNote.count()).toBe(1);
+
+    await runFactoryReset(admin, {
+      phrase: RESET_PHRASE,
+      scope: { includeStays: true, includeUsers: true },
+    });
+
+    expect(await prisma.supervisionShift.count()).toBe(0);
+    expect(await prisma.supervisionShiftHandover.count()).toBe(0);
+    expect(await prisma.supervisionNote.count()).toBe(0);
   });
 
   /* --------------------------- Lo que conserva --------------------------- */

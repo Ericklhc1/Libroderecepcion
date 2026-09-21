@@ -168,7 +168,7 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
   });
   if (!latest) {
     throw new RuleError(
-      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Actividad, Salidas e In house. Deben ser posteriores al inicio del cierre y tener una antigüedad máxima de 15 minutos.',
+      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Actividad, Salidas e In house. Deben ser posteriores al inicio del cierre y tener una antigüedad máxima de 8 horas.',
     );
   }
 
@@ -203,7 +203,7 @@ async function assertFreshClosingReports(shiftId: string): Promise<void> {
       .filter(Boolean)
       .join('. ');
     throw new RuleError(
-      `El cierre requiere Actividad, Salidas e In house generados por FNS hace no más de 15 minutos. ${details}`,
+      `El cierre requiere Actividad, Salidas e In house generados por FNS hace no más de 8 horas. ${details}`,
     );
   }
 }

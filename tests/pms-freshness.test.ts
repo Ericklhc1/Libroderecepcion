@@ -6,10 +6,10 @@ describe('frescura de informes FNS', () => {
     expect(parseFnsGeneratedAt('17/09/2026 19:21:37')?.toISOString()).toBe('2026-09-17T22:21:37.000Z');
   });
 
-  it('acepta exactamente 15 minutos y rechaza al superar el límite', () => {
+  it('acepta exactamente 8 horas y rechaza al superar el límite', () => {
     const generated = '17/09/2026 19:21:37';
-    expect(evaluateReportFreshness(generated, new Date('2026-09-17T22:36:37.000Z')).status).toBe('VALIDO');
-    expect(evaluateReportFreshness(generated, new Date('2026-09-17T22:36:38.000Z')).status).toBe('VENCIDO');
+    expect(evaluateReportFreshness(generated, new Date('2026-09-18T06:21:37.000Z')).status).toBe('VALIDO');
+    expect(evaluateReportFreshness(generated, new Date('2026-09-18T06:21:38.000Z')).status).toBe('VENCIDO');
   });
 
   it('rechaza timestamp ausente y una hora futura', () => {

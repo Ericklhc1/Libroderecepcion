@@ -17,11 +17,13 @@ import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import {
+  activateShift,
   addShiftMember,
   cancelHandoverPreparation,
   closeShift,
   endShiftParticipation,
   getShiftById,
+  getShiftDesk,
   openShift,
   prepareHandover,
   receiveHandover,
@@ -35,7 +37,6 @@ import {
   plannedWindow,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
-import { validateClosureReportSet } from '@/domain/pms/freshness';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -63,11 +64,20 @@ export async function openShiftAction(
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
 
     const { shift } = await openShift(user, { type: input.type });
-    refresh(shift.id);
+    const desk = await getShiftDesk(user);
+    const activeShift =
+      shift.status === ShiftStatus.INICIADO && !desk.pending && !desk.cashPending
+        ? await activateShift(user, { shiftId: shift.id })
+        : shift;
+
+    refresh(activeShift.id);
 
     return {
       ok: true as const,
-      message: `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto (${SHIFT_WINDOW_LABEL[shift.type]}).`,
+      message:
+        activeShift.status === ShiftStatus.ACTIVO
+          ? `Tu turno de ${SHIFT_TYPE_LABEL[activeShift.type]} está activo (${SHIFT_WINDOW_LABEL[activeShift.type]}).`
+          : `Tu turno de ${SHIFT_TYPE_LABEL[activeShift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[activeShift.type]}).`,
     };
   });
 }
@@ -129,7 +139,7 @@ export async function prepareHandoverAction(
     return {
       ok: true as const,
       message:
-        'Cierre iniciado. Vuelve a cargar Actividad, Salidas e In house, revisa las discrepancias y después completa caja y novedades.',
+        'Entrega iniciada. Revisa Novedades, Caja y pendientes antes de enviarla al turno siguiente.',
       id: handover.id,
     };
   });
@@ -140,74 +150,6 @@ const sendSchema = z.object({
   notes: zOptionalString,
 });
 
-/**
- * El cierre exige una fotografía nueva del PMS.
- *
- * No basta con «los informes de hoy»: pueden haberse cargado al inicio del
- * turno y haber cambiado seis horas después. El `createdAt` del borrador es la
- * marca natural de cuándo empezó el cierre, así que el lote aplicado debe ser
- * posterior y contener los tres informes. La pantalla de importación ya obliga
- * a revisarlo antes de aplicar; no guardamos un segundo checkbox de validación.
- */
-async function assertFreshClosingReports(shiftId: string): Promise<void> {
-  const handover = await prisma.shiftHandover.findUnique({
-    where: { fromShiftId: shiftId },
-    select: { id: true, status: true, createdAt: true },
-  });
-  if (!handover || handover.status !== HandoverStatus.BORRADOR) {
-    throw new RuleError('Primero inicia el cierre y la entrega de turno.');
-  }
-
-  const latest = await prisma.pmsImportBatch.findFirst({
-    where: {
-      status: 'APLICADO',
-      appliedAt: { gte: handover.createdAt },
-    },
-    orderBy: { appliedAt: 'desc' },
-    select: { id: true, reports: true, appliedAt: true },
-  });
-  if (!latest) {
-    throw new RuleError(
-      'Antes de enviar el cierre vuelve a cargar y aplicar los informes de Actividad, Salidas e In house. Deben ser posteriores al inicio del cierre y tener una antigüedad máxima de 15 minutos.',
-    );
-  }
-
-  const reports = (Array.isArray(latest.reports) ? latest.reports : []).map((report) => {
-    if (!report || typeof report !== 'object') {
-      return { kind: null, reportGeneratedAt: null };
-    }
-    const row = report as { kind?: unknown; reportGeneratedAt?: unknown };
-    return {
-      kind: typeof row.kind === 'string' ? row.kind : null,
-      reportGeneratedAt:
-        typeof row.reportGeneratedAt === 'string' ? row.reportGeneratedAt : null,
-    };
-  });
-
-  const validation = validateClosureReportSet(reports);
-  if (!validation.valid) {
-    const labels: Record<string, string> = {
-      ACTIVIDAD: 'Actividad',
-      SALIDAS: 'Salidas',
-      IN_HOUSE: 'In house',
-    };
-    const missing = validation.missing.map((kind) => labels[kind] ?? kind);
-    const invalid = validation.invalid.map(({ kind, freshness }) => {
-      const label = kind ? (labels[kind] ?? kind) : 'Informe';
-      return `${label} (${freshness.status === 'VENCIDO' ? 'vencido' : 'fecha/hora inválida'})`;
-    });
-    const details = [
-      missing.length ? `Falta: ${missing.join(', ')}` : null,
-      invalid.length ? `Reemplaza: ${invalid.join(', ')}` : null,
-    ]
-      .filter(Boolean)
-      .join('. ');
-    throw new RuleError(
-      `El cierre requiere Actividad, Salidas e In house generados por FNS hace no más de 15 minutos. ${details}`,
-    );
-  }
-}
-
 export async function sendHandoverAction(
   _state: ActionState | null,
   formData: FormData,
@@ -215,7 +157,6 @@ export async function sendHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = parseOrThrow(sendSchema, formDataToObject(formData));
-    await assertFreshClosingReports(input.shiftId);
     const handover = await sendHandover(user, input);
     refresh(input.shiftId);
     revalidatePath(`/turno/entrega/${handover.id}`);

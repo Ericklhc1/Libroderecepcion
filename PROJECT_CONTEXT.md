@@ -40,8 +40,8 @@ Cinco módulos raíz, uno por trabajo concreto del mesón:
 |---|---|
 | `/` Inicio | ¿Qué exige atención ahora? |
 | `/turno` Mi turno | ¿En qué estado está mi relevo y qué debo entregar? |
-| `/reservas` Reservas | ¿Qué carpeta/ID FNS debo operar? |
-| `/caja` Caja | ¿Qué movimiento financiero o garantía debo gestionar? |
+| `/libro?clase=entry` Novedades | ¿Qué ocurrió y qué queda pendiente? |
+| `/caja` Caja | ¿Qué dinero entró, salió o debe corroborarse? |
 | `/llaves` Llaves | ¿Dónde está cada llave y qué falta devolver? |
 
 **Inicio es una ventana operativa, no un segundo Libro.** Muestra el estado del
@@ -49,9 +49,11 @@ turno, cuatro indicadores accionables y una única bandeja priorizada construida
 por reglas determinísticas. No vuelve a listar por separado tareas, incidencias,
 alertas, seguimientos, novedades y entregas.
 
-`/libro`, `/habitaciones`, `/supervision`, `/historial` e
+`/reservas`, `/habitaciones`, `/supervision`, `/historial` e
 `/indicadores` siguen existiendo como vistas especializadas y accesos
-contextuales; no compiten como módulos raíz.
+contextuales; no compiten como módulos raíz. Reservas/estadías/PMS enriquecen
+el contexto cuando existe evidencia suficiente, pero no son requisito para
+registrar Novedades, operar Caja ni mantener el inventario de Llaves.
 
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde

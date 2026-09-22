@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-21** · Centro de Supervisión + versión propuesta **v1.2.0**
+Actualizado: **2026-09-21** · Simplificación operativa · versión propuesta **v1.3.0**
 
 ## Estados canónicos
 
@@ -26,18 +26,19 @@ Actualizado: **2026-09-21** · Centro de Supervisión + versión propuesta **v1.
 | Habitaciones + Reservas | `PRODUCTION` | #64 · #68 | Núcleo por habitación e ID FNS desplegado |
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
-| Simplificación del Libro | `EN_DESARROLLO` | #72 | Primer tramo: Inicio deja de ser un segundo Libro y se convierte en ventana operativa |
-| Centro de Supervisión | `EN_DESARROLLO` | rama `feat/centro-supervision-v1-2-0` | Turno independiente, tareas, auditorías, medidas e indicadores explicables |
+| Simplificación del Libro | `EN_DESARROLLO` | #72 + `feat/simplificacion-operativa-v1-3-0` | Segundo tramo: Novedades + Caja + Llaves como núcleo; PMS pasa a contexto opcional |
+| Centro de Supervisión | `PRODUCTION` | #91 · v1.2.0 | Turno independiente, tareas, auditorías, medidas e indicadores explicables; desplegado en Vercel Production |
 
 ## Iteración actual
 
-**Centro de Supervisión v1.2.0** · rama **`feat/centro-supervision-v1-2-0`**
+**Simplificación operativa v1.3.0** · rama **`feat/simplificacion-operativa-v1-3-0`**
 
-Objetivo: dar al Supervisor un espacio privado y trazable sin duplicar la
-bandeja existente ni condicionar la operación de Recepción. Incluye turno
-independiente, entrega inalterable, tareas con validación explícita,
-seguimientos y notas por visibilidad, auditorías sorpresa, medidas correctivas
-e indicadores con fórmula, contexto y registros de origen.
+Objetivo: reducir la carga cognitiva de Recepción sin eliminar trazabilidad ni
+capacidades existentes. El núcleo visible queda en **Novedades + Caja + Llaves**,
+con Inicio y Mi turno como envolvente operativa. Reservas, habitaciones y datos
+del PMS se conservan como contexto opcional y evidencia consultable: no son
+requisito para registrar una novedad, operar movimientos de Caja o mantener el
+inventario físico de llaves. No requiere migración destructiva.
 
 ## Infraestructura vigente
 

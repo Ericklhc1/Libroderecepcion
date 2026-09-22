@@ -99,8 +99,7 @@ export default async function LiveCashPage({
         <div>
           <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Saldo físico esperado, garantías en custodia, movimientos y corroboraciones. Los folios de
-            gimnasio se muestran aquí como información y no modifican la caja.
+            Fuente operativa del efectivo: fondo fijo, saldo esperado, ingresos, egresos, garantías en custodia y corroboraciones. La habitación o reserva sólo agregan contexto cuando corresponde.
           </p>
         </div>
         {canManual || canOperateRooms ? (
@@ -133,7 +132,7 @@ export default async function LiveCashPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar huésped, habitación, reserva, concepto…"
+        searchPlaceholder="Buscar concepto, referencia, responsable, huésped o habitación…"
         clearHref="/caja"
       >
         <label className="min-w-[10rem]">

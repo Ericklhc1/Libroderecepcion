@@ -45,21 +45,21 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: '[data-tour="global-search"]',
   },
   {
-    id: 'reservas',
-    title: 'Reservas',
+    id: 'libro',
+    title: 'Novedades',
     description:
-      'Reservas es la carpeta principal de la operación: cada habitación contiene sus ID FNS activos y cada ID reúne estadía, Caja, garantías, novedades, incidencias, comentarios, llaves e historial.',
+      'Es el núcleo temporal del mesón: registra lo que pasó y lo que queda pendiente. Habitación, huésped y reserva son contexto opcional.',
+    route: '/libro?clase=entry',
+    target: ROUTE_TARGET,
+  },
+  {
+    id: 'reservas',
+    title: 'Contexto PMS (opcional)',
+    description:
+      'Consulta aquí la evidencia del PMS cuando necesites cruzar un ID FNS, una habitación, una estadía o un huésped. No es requisito para registrar Novedades, operar Caja ni controlar Llaves.',
     route: '/reservas',
     target: ROUTE_TARGET,
     anyOf: ['room.view', 'guest.view', 'guest.manage'],
-  },
-  {
-    id: 'libro',
-    title: 'Libro operativo',
-    description:
-      'Es el embudo de novedades: incidencias, tareas, seguimientos y alertas aparecen en una misma línea de trabajo sin perder su propia trazabilidad.',
-    route: '/libro',
-    target: ROUTE_TARGET,
   },
   {
     id: 'habitaciones',
@@ -101,7 +101,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'caja',
     title: 'Caja',
     description:
-      'Caja muestra el dinero real del turno: entradas, egresos, garantías en efectivo y arqueos. Los movimientos vinculados a una reserva aparecen también en su ficha.',
+      'Caja es la fuente operativa del efectivo del turno: fondo fijo, ingresos, egresos, garantías en efectivo, arqueos y diferencias. Una reserva puede aportar contexto, pero no es requisito para operar Caja.',
     route: '/caja',
     target: ROUTE_TARGET,
     anyOf: ['room.view'],
@@ -128,7 +128,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'llaves',
     title: 'Llaves',
     description:
-      'Aquí administras el inventario físico. Las llaves se relacionan con la estadía y toman huésped y reserva desde el contexto ya existente: no hay que volver a escribirlos.',
+      'Aquí administras el inventario físico. Cada llave existe por sí misma; habitación, estadía y huésped se vinculan sólo cuando corresponde y nunca son requisito para mantener el stock.',
     route: '/llaves',
     target: ROUTE_TARGET,
     anyOf: ['room.view'],

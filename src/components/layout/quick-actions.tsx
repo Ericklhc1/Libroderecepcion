@@ -29,7 +29,7 @@ export async function QuickActions({
       {can('entry.create') ? (
         <Dialog
           title="Nueva novedad"
-          description="Queda registrada en el libro operativo y en la entrega del turno."
+          description="Registra lo ocurrido. Habitación, huésped y reserva son contexto opcional: agrégalos sólo cuando aporten información útil."
           triggerVariant="gold"
           triggerSize={compact ? 'sm' : 'md'}
           trigger={

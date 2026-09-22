@@ -9,13 +9,16 @@ describe('recorrido guiado', () => {
     expect(missing).toEqual([]);
   });
 
-  it('presenta la carga como Huéspedes & reservas y no como PMS', () => {
-    const visibleCopy = TUTORIAL_STEPS.map(
-      (step) => `${step.title} ${step.description}`,
-    ).join(' ');
+  it('presenta el PMS como contexto opcional y no como núcleo operativo', () => {
+    const pmsStep = TUTORIAL_STEPS.find((step) => step.route === '/reservas');
+    expect(pmsStep?.title).toContain('Contexto PMS');
+    expect(pmsStep?.title.toLowerCase()).toContain('opcional');
+    expect(pmsStep?.description.toLowerCase()).toContain('no es requisito');
 
-    expect(visibleCopy).toContain('Huéspedes & reservas');
-    expect(visibleCopy.toLowerCase()).not.toContain('pms');
+    const coreRoutes = TUTORIAL_STEPS
+      .filter((step) => ['/', '/turno', '/libro?clase=entry', '/caja', '/llaves'].includes(step.route ?? ''))
+      .map((step) => step.route);
+    expect(coreRoutes).toContain('/libro?clase=entry');
   });
 
   it('cada paso de una ruta señala una sección de la pantalla', () => {

@@ -2,19 +2,14 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import {
   AuditAction,
-  EntryStatus,
-  EntryType,
   GuaranteeKind,
   GuaranteeState,
-  Priority,
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
-import { NotFoundError, RuleError } from '@/server/errors';
+import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { getMyOpenShift } from './shifts';
-import { getSettingNumber } from './settings';
 import { outstandingAmount } from '@/domain/guarantees';
 
 type Tx = Prisma.TransactionClient;
@@ -29,8 +24,6 @@ export type CashMovementKind =
   | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
   | 'AJUSTE_SALIDA';
-export type GymPaymentMethod = 'EFECTIVO' | 'TARJETA' | 'OTRO';
-
 export type LiveCashMovement = {
   id: string;
   kind: CashMovementKind;
@@ -45,21 +38,6 @@ export type LiveCashMovement = {
   guestName: string | null;
   createdByName: string;
   createdAt: Date;
-};
-
-export type GymPassRow = {
-  id: string;
-  folio: number;
-  reservationCode: string;
-  roomNumber: string;
-  guestName: string;
-  receptionistName: string;
-  currency: string;
-  amount: number;
-  paymentMethod: GymPaymentMethod;
-  status: 'EMITIDO' | 'ANULADO';
-  issuedAt: Date;
-  voidReason: string | null;
 };
 
 export type CashAuditRow = {
@@ -105,25 +83,12 @@ export type LiveCashState = {
     state: string;
     createdAt: Date;
   }>;
-  gymPasses: GymPassRow[];
   audits: CashAuditRow[];
 };
 
 function decimal(value: Prisma.Decimal | number | string | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return Number(value);
-}
-
-export function formatGymFolio(folio: number): string {
-  return String(folio).padStart(6, '0');
-}
-
-export async function gymPrices() {
-  const [clp, usd] = await Promise.all([
-    getSettingNumber('gym.passPriceCLP', 6000),
-    getSettingNumber('gym.passPriceUSD', 6),
-  ]);
-  return { CLP: clp, USD: usd };
 }
 
 async function cashMovementExists(
@@ -291,231 +256,6 @@ export async function assertGuaranteeCanBeDeleted(guaranteeId: string): Promise<
       'Esta garantía tiene efectivo en caja. Devuélvela o resuélvela antes de eliminarla.',
     );
   }
-}
-
-export async function findGymReservation(params: {
-  roomNumber?: string | null;
-  reservationCode?: string | null;
-}) {
-  const code = params.reservationCode?.trim();
-  const roomNumber = params.roomNumber?.trim();
-  if (!code && !roomNumber) return null;
-
-  return prisma.reservationReference.findFirst({
-    where: {
-      deletedAt: null,
-      ...(code ? { code } : { roomNumber }),
-    },
-    include: { guest: { select: { fullName: true } } },
-    orderBy: [{ checkIn: 'desc' }, { createdAt: 'desc' }],
-  });
-}
-
-export async function createGymPass(
-  user: CurrentUser,
-  params: {
-    reservationReferenceId: string;
-    currency: 'CLP' | 'USD';
-    paymentMethod: GymPaymentMethod;
-  },
-): Promise<{ id: string; folio: number; formattedFolio: string }> {
-  const [reservation, prices, shift] = await Promise.all([
-    prisma.reservationReference.findFirst({
-      where: { id: params.reservationReferenceId, deletedAt: null },
-      include: { guest: { select: { id: true, fullName: true } } },
-    }),
-    gymPrices(),
-    getMyOpenShift(user.id),
-  ]);
-  if (!reservation) throw new NotFoundError('La reserva ya no existe.');
-  if (!reservation.roomNumber) throw new RuleError('La reserva no tiene habitación asociada.');
-  if (!reservation.guest?.fullName) throw new RuleError('La reserva no tiene huésped asociado.');
-  if (!shift) throw new RuleError('Debes estar asignado al turno vigente para vender un pase.');
-
-  const room = await prisma.room.findUnique({
-    where: { number: reservation.roomNumber },
-    select: { id: true },
-  });
-  if (!room) throw new NotFoundError(`No existe la habitación ${reservation.roomNumber}.`);
-
-  const amount = params.currency === 'CLP' ? prices.CLP : prices.USD;
-  if (!(amount > 0)) throw new RuleError('El precio del pase no está configurado correctamente.');
-
-  const created = await prisma.$transaction(async (tx) => {
-    const seq = await tx.$queryRaw<Array<{ folio: bigint }>>`
-      SELECT nextval('"gym_pass_folio_seq"') AS "folio"
-    `;
-    const folio = Number(seq[0]?.folio);
-    if (!Number.isSafeInteger(folio) || folio < 1 || folio > 999999) {
-      throw new RuleError('No quedan folios de gimnasio disponibles.');
-    }
-    const formatted = formatGymFolio(folio);
-
-    const entry = await tx.operationalEntry.create({
-      data: {
-        type: EntryType.CAJA,
-        status: EntryStatus.RESUELTO,
-        title: `Pase gimnasio ${formatted}`,
-        description:
-          `Pase de gimnasio emitido. Folio ${formatted}. ` +
-          `Reserva ${reservation.code}. Huésped ${reservation.guest!.fullName}. ` +
-          `Habitación ${reservation.roomNumber}. ${params.currency} ${amount}. ` +
-          `Pago: ${params.paymentMethod.toLowerCase()}.`,
-        category: 'PASE_GIMNASIO',
-        roomId: room.id,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-        priority: Priority.BAJA,
-        ownerId: user.id,
-        shiftId: shift.id,
-        occurredAt: new Date(),
-        tags: ['gimnasio', `folio-${formatted}`],
-        requiresFollowUp: false,
-        resolution: `Folio ${formatted} emitido.`,
-        createdById: user.id,
-      },
-      select: { id: true },
-    });
-
-    const id = randomUUID();
-    await tx.$executeRaw`
-      INSERT INTO "GymPass" (
-        "id", "folio", "reservationReferenceId", "roomId", "guestName",
-        "receptionistId", "shiftId", "operationalEntryId", "currency", "amount",
-        "paymentMethod"
-      ) VALUES (
-        ${id}, ${folio}, ${reservation.id}, ${room.id}, ${reservation.guest!.fullName},
-        ${user.id}, ${shift.id}, ${entry.id}, ${params.currency}, ${amount},
-        ${params.paymentMethod}
-      )
-    `;
-
-    if (params.paymentMethod === 'EFECTIVO') {
-      await insertCashMovement(tx, {
-        userId: user.id,
-        kind: 'VENTA_GIMNASIO',
-        direction: 'ENTRADA',
-        currency: params.currency,
-        amount,
-        shiftId: shift.id,
-        roomId: room.id,
-        reservationReferenceId: reservation.id,
-        gymPassId: id,
-        reference: `Folio ${formatted}`,
-        notes: `Pase de gimnasio · ${reservation.guest!.fullName}`,
-      });
-    }
-
-    await recordAudit(
-      {
-        entity: 'GymPass',
-        entityId: id,
-        action: AuditAction.CREAR,
-        user,
-        summary: `Pase de gimnasio ${formatted} · hab. ${reservation.roomNumber} · ${params.currency} ${amount}`,
-        after: {
-          folio: formatted,
-          roomNumber: reservation.roomNumber,
-          reservationCode: reservation.code,
-          guestName: reservation.guest!.fullName,
-          currency: params.currency,
-          amount,
-          paymentMethod: params.paymentMethod,
-        },
-      },
-      tx,
-    );
-
-    return { id, folio, formattedFolio: formatted };
-  });
-
-  return created;
-}
-
-export async function voidGymPass(
-  user: CurrentUser,
-  params: { id: string; reason: string },
-): Promise<void> {
-  const rows = await prisma.$queryRaw<
-    Array<{
-      id: string;
-      folio: number;
-      status: string;
-      currency: string;
-      amount: Prisma.Decimal;
-      paymentMethod: GymPaymentMethod;
-      roomId: string;
-      reservationReferenceId: string;
-      shiftId: string | null;
-      operationalEntryId: string;
-    }>
-  >`
-    SELECT "id", "folio", "status", "currency", "amount", "paymentMethod",
-           "roomId", "reservationReferenceId", "shiftId", "operationalEntryId"
-    FROM "GymPass"
-    WHERE "id" = ${params.id}
-    LIMIT 1
-  `;
-  const pass = rows[0];
-  if (!pass) throw new NotFoundError('Ese folio no existe.');
-  if (pass.status === 'ANULADO') throw new RuleError('Ese folio ya está anulado.');
-  if (params.reason.trim().length < 5) throw new RuleError('Indica el motivo de anulación.');
-
-  const folio = formatGymFolio(pass.folio);
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      UPDATE "GymPass"
-      SET "status" = 'ANULADO', "voidedAt" = CURRENT_TIMESTAMP,
-          "voidedById" = ${user.id}, "voidReason" = ${params.reason.trim()}
-      WHERE "id" = ${pass.id}
-    `;
-
-    await tx.operationalEntry.update({
-      where: { id: pass.operationalEntryId },
-      data: {
-        status: EntryStatus.CERRADO,
-        resolution: `Folio ${folio} anulado: ${params.reason.trim()}`,
-        closedAt: new Date(),
-        closedById: user.id,
-        tags: { push: 'anulado' },
-      },
-    });
-
-    if (pass.paymentMethod === 'EFECTIVO') {
-      const already = await cashMovementExists(tx, {
-        gymPassId: pass.id,
-        kind: 'ANULACION_GIMNASIO',
-      });
-      if (!already) {
-        await insertCashMovement(tx, {
-          userId: user.id,
-          kind: 'ANULACION_GIMNASIO',
-          direction: 'SALIDA',
-          currency: pass.currency,
-          amount: decimal(pass.amount),
-          shiftId: pass.shiftId,
-          roomId: pass.roomId,
-          reservationReferenceId: pass.reservationReferenceId,
-          gymPassId: pass.id,
-          reference: `Anulación folio ${folio}`,
-          notes: params.reason.trim(),
-        });
-      }
-    }
-
-    await recordAudit(
-      {
-        entity: 'GymPass',
-        entityId: pass.id,
-        action: AuditAction.CAMBIO_ESTADO,
-        user,
-        summary: `Folio de gimnasio ${folio} anulado: ${params.reason.trim()}`,
-        before: { status: 'EMITIDO' },
-        after: { status: 'ANULADO', reason: params.reason.trim() },
-      },
-      tx,
-    );
-  });
 }
 
 export async function getExpectedCash(): Promise<Map<string, number>> {
@@ -707,8 +447,6 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       state: row.state,
       createdAt: row.createdAt,
     })),
-    // Compatibilidad de forma para módulos históricos; Caja v1.4.0 no consulta gimnasio.
-    gymPasses: [],
     audits: auditRows.map((row) => ({
       ...row,
       expectedAmount: decimal(row.expectedAmount),

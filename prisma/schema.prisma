@@ -2198,32 +2198,43 @@ model CashAudit {
   @@index([currency])
 }
 
-/// Pase de gimnasio vendido en el mesón. El folio es correlativo de la base.
+/// Folio de gimnasio emitido por Recepción desde Caja.
+/// El contenido operativo es autónomo: fecha, habitación escrita, huésped y
+/// recepcionista autenticado. Los vínculos PMS antiguos quedan opcionales sólo
+/// para conservar compatibilidad histórica.
 model GymPass {
-  id                     String               @id
-  folio                  Int                  @unique @default(autoincrement())
-  reservationReferenceId String
-  roomId                 String
+  id                     String                @id
+  folio                  Int                   @unique @default(autoincrement())
+  /// Fecha del servicio que selecciona Recepción; distinta del timestamp técnico de emisión.
+  serviceDate            DateTime              @db.Date
+  roomNumber             String
   guestName              String
   receptionistId         String
   shiftId                String?
-  operationalEntryId     String               @unique
-  currency               String               @db.VarChar(3)
-  amount                 Decimal              @db.Decimal(12, 2)
-  paymentMethod          String
-  status                 String               @default("EMITIDO")
-  issuedAt               DateTime             @default(now())
+
+  /// Compatibilidad histórica. Los folios nuevos NO completan estos vínculos.
+  reservationReferenceId String?
+  roomId                 String?
+  operationalEntryId     String?               @unique
+  currency               String?               @db.VarChar(3)
+  amount                 Decimal?              @db.Decimal(12, 2)
+  paymentMethod          String?
+
+  status                 String                @default("EMITIDO")
+  issuedAt               DateTime              @default(now())
   voidedAt               DateTime?
   voidedById             String?
   voidReason             String?
-  cashMovements          CashMovement[]
-  operationalEntry       OperationalEntry     @relation(fields: [operationalEntryId], references: [id])
-  receptionist           User                 @relation("gymPassReceptionist", fields: [receptionistId], references: [id])
-  voidedBy               User?                @relation("gymPassVoidedBy", fields: [voidedById], references: [id])
-  reservationReference   ReservationReference @relation(fields: [reservationReferenceId], references: [id])
-  room                   Room                 @relation(fields: [roomId], references: [id])
-  shift                  Shift?               @relation(fields: [shiftId], references: [id])
 
+  cashMovements          CashMovement[]
+  operationalEntry       OperationalEntry?     @relation(fields: [operationalEntryId], references: [id])
+  receptionist           User                  @relation("gymPassReceptionist", fields: [receptionistId], references: [id])
+  voidedBy               User?                 @relation("gymPassVoidedBy", fields: [voidedById], references: [id])
+  reservationReference   ReservationReference? @relation(fields: [reservationReferenceId], references: [id])
+  room                   Room?                 @relation(fields: [roomId], references: [id])
+  shift                  Shift?                @relation(fields: [shiftId], references: [id])
+
+  @@index([serviceDate])
   @@index([issuedAt])
   @@index([reservationReferenceId])
   @@index([roomId])

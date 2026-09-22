@@ -428,7 +428,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
         OR: [
           { visibility: SupervisionVisibility.SUPERVISION },
           { visibility: SupervisionVisibility.OPERATIVO },
-          { visibility: SupervisionVisibility.PRIVADO, authorId: user.id },
+          { visibility: SupervisionVisibility.PRIVADO, createdById: user.id },
         ],
       },
       include: { owner: { select: { name: true } } },

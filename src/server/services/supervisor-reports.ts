@@ -3,7 +3,7 @@ import 'server-only';
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
-import { formatGymFolio } from './gym-pass';
+import { formatGymFolio, listGymPasses } from './gym-pass';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -39,10 +39,6 @@ function when(date: Date) {
   return formatDateTime(date);
 }
 
-function tag(tags: string[], prefix: string) {
-  return tags.find((value) => value.startsWith(prefix))?.slice(prefix.length) ?? null;
-}
-
 export function reportDateRange(fromRaw?: string | null, toRaw?: string | null): { from: Date; to: Date } {
   const today = dateKey(new Date());
   const fromKey = /^\d{4}-\d{2}-\d{2}$/.test(fromRaw ?? '') ? fromRaw! : today;
@@ -60,31 +56,27 @@ export async function buildSupervisorReport(
   const suffix = `${dateKey(range.from)}_${dateKey(range.to)}`;
 
   if (type === 'gimnasio') {
-    const rows = await prisma.operationalEntry.findMany({
-      where: {
-        deletedAt: null,
-        category: 'PASE_GIMNASIO',
-        occurredAt: { gte: range.from, lte: range.to },
-      },
-      include: { room: { select: { number: true } }, createdBy: { select: { name: true } } },
-      orderBy: { occurredAt: 'asc' },
-      take: 2000,
+    const summary = await listGymPasses({
+      from: dateKey(range.from),
+      to: dateKey(range.to),
+      limit: 2000,
     });
-    const active = rows.filter((row) => !row.tags.includes('anulado')).length;
-    const cancelled = rows.length - active;
     return {
       type,
-      title: 'Informe de pases de gimnasio',
+      title: 'Informe de folios de gimnasio',
       filename: `informe-gimnasio-${suffix}.pdf`,
       from: range.from,
       to: range.to,
-      total: rows.length,
-      summary: [`Emitidos vigentes: ${active}`, `Anulados: ${cancelled}`, `Total de folios: ${rows.length}`],
-      lines: rows.map((row) => {
-        const folio = Number(tag(row.tags, 'folio-') ?? '0');
-        const reservation = tag(row.tags, 'reserva-') ?? '—';
-        return `${when(row.occurredAt)} | ${folio ? formatGymFolio(folio) : '—'} | ${row.tags.includes('anulado') ? 'ANULADO' : 'EMITIDO'} | Hab. ${row.room?.number ?? '—'} | Rva. ${reservation} | ${row.createdBy.name}`;
-      }),
+      total: summary.total,
+      summary: [
+        `Emitidos: ${summary.emitted}`,
+        `Anulados: ${summary.voided}`,
+        `Total de folios: ${summary.total}`,
+      ],
+      lines: summary.rows.map(
+        (row) =>
+          `${formatCalendarDate(row.serviceDate)} | ${formatGymFolio(row.folio)} | ${row.status} | Hab. ${row.roomNumber} | ${row.guestName} | ${row.receptionistName}`,
+      ),
     };
   }
 

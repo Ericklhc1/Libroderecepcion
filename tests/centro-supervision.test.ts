@@ -21,6 +21,7 @@ import {
   createSupervisionNote,
   deliverSupervisionShift,
   finishSupervisionShift,
+  getSupervisionCenterSummary,
   listVisibleSupervisionNotes,
   readSupervisionNote,
   receiveSupervisionHandover,
@@ -64,6 +65,23 @@ describe('Centro de Supervisión', () => {
     receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepcionista Carla' });
     collaborator = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepcionista Diego' });
     admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador técnico' });
+  });
+
+  it('carga seguimientos privados del Supervisor sin error de ejecución', async () => {
+    await startSupervisionShift(supervisor, { priorities: ['Seguimiento privado'] });
+    const followUp = await createFollowUp(supervisor, {
+      action: 'Revisar diferencia de Caja',
+      description: 'Seguimiento reservado para Supervisión.',
+      ownerId: supervisor.id,
+      visibility: SupervisionVisibility.PRIVADO,
+    });
+
+    const summary = await getSupervisionCenterSummary(supervisor);
+
+    expect(summary.followUps.map((item) => item.id)).toContain(followUp.id);
+    expect(summary.followUps.find((item) => item.id === followUp.id)?.visibility).toBe(
+      SupervisionVisibility.PRIVADO,
+    );
   });
 
   it('reserva la operación al Supervisor y excluye al Administrador de asignaciones', async () => {

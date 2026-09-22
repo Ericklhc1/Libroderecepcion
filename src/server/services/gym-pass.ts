@@ -1,312 +1,279 @@
 import 'server-only';
 
-import {
-  AuditAction,
-  EntryStatus,
-  EntryType,
-  Priority,
-  RoomStayStage,
-  RoomStayStatus,
-} from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { calendarDateKey } from '@/domain/time';
+import { insertCashMovement } from './live-cash';
 import { getMyOpenShift } from './shifts';
-import {
-  getLiveCashState,
-  insertCashMovement,
-  type GymPassRow,
-  type GymPaymentMethod,
-  type LiveCashState,
-} from './live-cash';
 
-const ACTIVE_GUEST_STAGES = [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO];
-const ELIGIBLE_GUEST_STATUSES = [RoomStayStatus.IN_HOUSE];
-
-export type GymPassRoomContext = {
-  stayId: string;
-  reservationCode: string;
+export type GymPassRow = {
+  id: string;
+  folio: number;
+  formattedFolio: string;
+  serviceDate: Date;
   roomNumber: string;
   guestName: string;
+  receptionistName: string;
+  status: 'EMITIDO' | 'ANULADO';
+  issuedAt: Date;
+  voidReason: string | null;
+};
+
+export type GymPassSummary = {
+  rows: GymPassRow[];
+  total: number;
+  emitted: number;
+  voided: number;
 };
 
 export function formatGymFolio(folio: number): string {
   return String(folio).padStart(4, '0');
 }
 
-function tagValue(tags: string[], prefix: string): string | null {
-  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
-}
+function normalizeServiceDate(value: string | Date): Date {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new RuleError('La fecha del folio no es válida.');
+    return new Date(
+      Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+    );
+  }
 
-export async function getGymPassContextForRoom(
-  roomNumber: string,
-): Promise<GymPassRoomContext | null> {
-  const stay = await prisma.roomStay.findFirst({
-    where: {
-      deletedAt: null,
-      room: { number: roomNumber },
-      status: { in: ELIGIBLE_GUEST_STATUSES },
-      stage: { in: ACTIVE_GUEST_STAGES },
-    },
-    orderBy: [{ confirmedAt: 'desc' }, { createdAt: 'desc' }],
-    select: {
-      id: true,
-      reservationId: true,
-      guestNames: true,
-    },
-  });
-
-  if (!stay) return null;
-
-  return {
-    stayId: stay.id,
-    reservationCode: stay.reservationId,
-    roomNumber,
-    guestName: stay.guestNames[0] || 'Huésped',
-  };
+  const raw = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new RuleError('La fecha del folio no es válida.');
+  }
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || calendarDateKey(date) !== raw) {
+    throw new RuleError('La fecha del folio no es válida.');
+  }
+  return date;
 }
 
 export async function createGymPass(
   user: CurrentUser,
   params: {
-    stayId: string;
-    pax: number;
+    serviceDate: string | Date;
+    roomNumber: string;
+    guestName: string;
   },
-): Promise<{
-  id: string;
-  folio: number;
-  formattedFolio: string;
-  passes: Array<{ id: string; folio: number; formattedFolio: string }>;
-}> {
-  if (!Number.isInteger(params.pax) || params.pax < 1 || params.pax > 20) {
-    throw new RuleError('La cantidad de pax debe ser un número entero entre 1 y 20.');
+): Promise<{ id: string; folio: number; formattedFolio: string }> {
+  const roomNumber = params.roomNumber.trim();
+  const guestName = params.guestName.trim();
+  if (!roomNumber) throw new RuleError('Indica la habitación.');
+  if (!guestName) throw new RuleError('Indica el huésped.');
+
+  const shift = await getMyOpenShift(user.id);
+  if (!shift) {
+    throw new RuleError('Debes estar asignado a un turno operativo para emitir un folio.');
   }
 
-  const [stay, shift] = await Promise.all([
-    prisma.roomStay.findFirst({
-      where: {
-        id: params.stayId,
-        deletedAt: null,
-        status: { in: ELIGIBLE_GUEST_STATUSES },
-        stage: { in: ACTIVE_GUEST_STAGES },
+  const serviceDate = normalizeServiceDate(params.serviceDate);
+  const id = randomUUID();
+
+  const pass = await prisma.$transaction(async (tx) => {
+    const created = await tx.gymPass.create({
+      data: {
+        id,
+        serviceDate,
+        roomNumber,
+        guestName,
+        receptionistId: user.id,
+        shiftId: shift.id,
       },
       select: {
         id: true,
-        reservationId: true,
-        reservationRefId: true,
-        reservationRef: { select: { guestId: true } },
-        guestNames: true,
-        room: { select: { id: true, number: true } },
+        folio: true,
+        serviceDate: true,
+        roomNumber: true,
+        guestName: true,
       },
-    }),
-    getMyOpenShift(user.id),
-  ]);
+    });
 
-  if (!stay) {
-    throw new RuleError('Los pases de gimnasio sólo se generan para huéspedes IN_HOUSE.');
-  }
-  const room = stay.room;
-  if (!room) throw new NotFoundError('La estadía no tiene habitación asociada.');
-  if (!shift) throw new RuleError('Debes estar asignado al turno vigente para generar un pase.');
-
-  const guestName = stay.guestNames[0]?.trim() || 'Huésped';
-
-  const passes = await prisma.$transaction(async (tx) => {
-    const created: Array<{ id: string; folio: number; formattedFolio: string }> = [];
-
-    for (let index = 0; index < params.pax; index += 1) {
-      const sequence = await tx.$queryRaw<Array<{ folio: bigint }>>`
-        SELECT nextval('"gym_pass_folio_seq"') AS "folio"
-      `;
-      const folio = Number(sequence[0]?.folio);
-      if (!Number.isSafeInteger(folio) || folio < 1000 || folio > 9999) {
-        throw new RuleError('No quedan folios de gimnasio de cuatro dígitos disponibles.');
-      }
-      const formattedFolio = formatGymFolio(folio);
-
-      const entry = await tx.operationalEntry.create({
-        data: {
-          type: EntryType.HUESPED,
-          status: EntryStatus.RESUELTO,
-          title: `Pase gimnasio ${formattedFolio}`,
-          description:
-            `Pase de gimnasio emitido. Folio ${formattedFolio}. ` +
-            `Reserva ${stay.reservationId}. Huésped ${guestName}. ` +
-            `Habitación ${room.number}. Pax ${index + 1} de ${params.pax}.`,
-          category: 'PASE_GIMNASIO',
-          roomId: room.id,
-          stayId: stay.id,
-          reservationId: stay.reservationRefId,
-          guestId: stay.reservationRef?.guestId ?? null,
-          priority: Priority.BAJA,
-          ownerId: user.id,
+    await recordAudit(
+      {
+        entity: 'GymPass',
+        entityId: created.id,
+        action: AuditAction.CREAR,
+        user,
+        summary:
+          `Folio de gimnasio ${formatGymFolio(created.folio)} · ` +
+          `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}`,
+        after: {
+          folio: formatGymFolio(created.folio),
+          serviceDate: calendarDateKey(created.serviceDate),
+          roomNumber: created.roomNumber,
+          guestName: created.guestName,
+          receptionistId: user.id,
+          receptionistName: user.name,
           shiftId: shift.id,
-          occurredAt: new Date(),
-          tags: [
-            'gimnasio',
-            `folio-${formattedFolio}`,
-            `reserva-${stay.reservationId}`,
-            `stay-${stay.id}`,
-            `pax-${index + 1}`,
-            `pax-total-${params.pax}`,
-          ],
-          requiresFollowUp: false,
-          resolution: `Folio ${formattedFolio} emitido.`,
-          createdById: user.id,
         },
-        select: { id: true },
-      });
-
-      await recordAudit(
-        {
-          entity: 'OperationalEntry',
-          entityId: entry.id,
-          action: AuditAction.CREAR,
-          user,
-          summary: `Pase de gimnasio ${formattedFolio} · hab. ${room.number} · reserva ${stay.reservationId}`,
-          after: {
-            folio: formattedFolio,
-            stayId: stay.id,
-            roomNumber: room.number,
-            reservationCode: stay.reservationId,
-            guestName,
-            paxIndex: index + 1,
-            paxTotal: params.pax,
-          },
-        },
-        tx,
-      );
-
-      created.push({ id: entry.id, folio, formattedFolio });
-    }
+      },
+      tx,
+    );
 
     return created;
   });
 
-  const first = passes[0]!;
-  return { ...first, passes };
+  return {
+    id: pass.id,
+    folio: pass.folio,
+    formattedFolio: formatGymFolio(pass.folio),
+  };
 }
 
 export async function voidGymPass(
   user: CurrentUser,
   params: { id: string; reason: string },
 ): Promise<void> {
-  const entry = await prisma.operationalEntry.findFirst({
-    where: { id: params.id, category: 'PASE_GIMNASIO', deletedAt: null },
-    include: { room: { select: { id: true, number: true } } },
-  });
-  if (!entry) throw new NotFoundError('Ese folio no existe.');
-  if (entry.tags.includes('anulado')) throw new RuleError('Ese folio ya está anulado.');
-  if (params.reason.trim().length < 5) throw new RuleError('Indica el motivo de anulación.');
+  const reason = params.reason.trim();
+  if (reason.length < 5) throw new RuleError('Indica el motivo de anulación.');
 
-  const folio = tagValue(entry.tags, 'folio-');
-  const currency = tagValue(entry.tags, 'moneda-');
-  const amount = Number(tagValue(entry.tags, 'monto-'));
-  const paymentMethod = tagValue(entry.tags, 'pago-') as GymPaymentMethod | null;
-  const reservationCode = tagValue(entry.tags, 'reserva-');
-  if (!folio) {
-    throw new RuleError('El folio no tiene datos suficientes para anularse de forma segura.');
-  }
+  const pass = await prisma.gymPass.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true,
+      folio: true,
+      status: true,
+      serviceDate: true,
+      roomNumber: true,
+      guestName: true,
+      shiftId: true,
+      operationalEntryId: true,
+      currency: true,
+      amount: true,
+      paymentMethod: true,
+      roomId: true,
+      reservationReferenceId: true,
+    },
+  });
+  if (!pass) throw new NotFoundError('Ese folio no existe.');
+  if (pass.status === 'ANULADO') throw new RuleError('Ese folio ya está anulado.');
+
+  const formattedFolio = formatGymFolio(pass.folio);
 
   await prisma.$transaction(async (tx) => {
-    await tx.operationalEntry.update({
-      where: { id: entry.id },
+    await tx.gymPass.update({
+      where: { id: pass.id },
       data: {
-        status: EntryStatus.CERRADO,
-        resolution: `Folio ${folio} anulado: ${params.reason.trim()}`,
-        closedAt: new Date(),
-        closedById: user.id,
-        tags: { push: 'anulado' },
+        status: 'ANULADO',
+        voidedAt: new Date(),
+        voidedById: user.id,
+        voidReason: reason,
       },
     });
 
-    /* Compatibilidad con folios históricos que sí representaban una venta. */
-    if (currency && amount > 0 && paymentMethod === 'EFECTIVO') {
-      const reversalReference = `Anulación folio ${folio}`;
-      const existing = await tx.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS(
-          SELECT 1 FROM "CashMovement"
-          WHERE "kind" = 'ANULACION_GIMNASIO'
-            AND "reference" = ${reversalReference}
-            AND "voidedAt" IS NULL
-        ) AS "exists"
-      `;
-      if (!existing[0]?.exists) {
+    // Compatibilidad histórica: folios antiguos podían crear una entrada del Libro.
+    if (pass.operationalEntryId) {
+      await tx.operationalEntry.updateMany({
+        where: { id: pass.operationalEntryId, deletedAt: null },
+        data: {
+          status: 'CERRADO',
+          resolution: `Folio ${formattedFolio} anulado: ${reason}`,
+          closedAt: new Date(),
+          closedById: user.id,
+        },
+      });
+    }
+
+    // Compatibilidad histórica: un folio antiguo podía haber registrado cobro en efectivo.
+    if (
+      pass.paymentMethod === 'EFECTIVO' &&
+      pass.currency &&
+      pass.amount &&
+      Number(pass.amount) > 0
+    ) {
+      const existing = await tx.cashMovement.findFirst({
+        where: {
+          gymPassId: pass.id,
+          kind: 'ANULACION_GIMNASIO',
+          voidedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!existing) {
         await insertCashMovement(tx, {
           userId: user.id,
           kind: 'ANULACION_GIMNASIO',
           direction: 'SALIDA',
-          currency,
-          amount,
-          shiftId: entry.shiftId,
-          roomId: entry.roomId,
-          reference: reversalReference,
-          notes: `${params.reason.trim()} · reserva ${reservationCode ?? '—'}`,
+          currency: pass.currency,
+          amount: Number(pass.amount),
+          shiftId: pass.shiftId,
+          roomId: pass.roomId,
+          reservationReferenceId: pass.reservationReferenceId,
+          gymPassId: pass.id,
+          reference: `Anulación folio ${formattedFolio}`,
+          notes: reason,
         });
       }
     }
 
     await recordAudit(
       {
-        entity: 'OperationalEntry',
-        entityId: entry.id,
+        entity: 'GymPass',
+        entityId: pass.id,
         action: AuditAction.CAMBIO_ESTADO,
         user,
-        summary: `Folio de gimnasio ${folio} anulado: ${params.reason.trim()}`,
-        before: { status: entry.status },
-        after: { status: EntryStatus.CERRADO, reason: params.reason.trim() },
+        summary: `Folio de gimnasio ${formattedFolio} anulado: ${reason}`,
+        before: { status: pass.status },
+        after: { status: 'ANULADO', reason },
       },
       tx,
     );
   });
 }
 
-async function listGymPassRows(limit: number): Promise<GymPassRow[]> {
-  const entries = await prisma.operationalEntry.findMany({
-    where: { category: 'PASE_GIMNASIO', deletedAt: null },
-    include: {
-      room: { select: { number: true } },
-      createdBy: { select: { name: true } },
+export async function listGymPasses(params: {
+  from?: string | Date | null;
+  to?: string | Date | null;
+  limit?: number;
+} = {}): Promise<GymPassSummary> {
+  const from = params.from ? normalizeServiceDate(params.from) : null;
+  const to = params.to ? normalizeServiceDate(params.to) : null;
+  if (from && to && from.getTime() > to.getTime()) {
+    throw new RuleError('La fecha «desde» no puede ser posterior a «hasta».');
+  }
+
+  const limit = Math.min(1000, Math.max(1, params.limit ?? 200));
+
+  const passes = await prisma.gymPass.findMany({
+    where: {
+      ...(from || to
+        ? {
+            serviceDate: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {}),
+            },
+          }
+        : {}),
     },
-    orderBy: { occurredAt: 'desc' },
+    include: {
+      receptionist: { select: { name: true } },
+    },
+    orderBy: [{ serviceDate: 'desc' }, { folio: 'desc' }],
     take: limit,
   });
 
-  return entries.flatMap((entry) => {
-    const folioText = tagValue(entry.tags, 'folio-');
-    const reservationCode = tagValue(entry.tags, 'reserva-');
-    if (!folioText || !reservationCode || !entry.room) return [];
+  const rows: GymPassRow[] = passes.map((pass) => ({
+    id: pass.id,
+    folio: pass.folio,
+    formattedFolio: formatGymFolio(pass.folio),
+    serviceDate: pass.serviceDate,
+    roomNumber: pass.roomNumber,
+    guestName: pass.guestName,
+    receptionistName: pass.receptionist.name,
+    status: pass.status === 'ANULADO' ? 'ANULADO' : 'EMITIDO',
+    issuedAt: pass.issuedAt,
+    voidReason: pass.voidReason,
+  }));
 
-    const currency = tagValue(entry.tags, 'moneda-') ?? '';
-    const rawAmount = tagValue(entry.tags, 'monto-');
-    const amount = rawAmount ? Number(rawAmount) : 0;
-    const paymentMethod = (tagValue(entry.tags, 'pago-') as GymPaymentMethod | null) ?? 'OTRO';
-    const folio = Number(folioText);
-    const guestMatch = entry.description.match(/Huésped (.*?)\. Habitación/);
-    return [{
-      id: entry.id,
-      folio,
-      reservationCode,
-      roomNumber: entry.room.number,
-      guestName: guestMatch?.[1] ?? 'Huésped',
-      receptionistName: entry.createdBy.name,
-      currency,
-      amount: Number.isFinite(amount) ? amount : 0,
-      paymentMethod,
-      status: entry.tags.includes('anulado') ? 'ANULADO' as const : 'EMITIDO' as const,
-      issuedAt: entry.occurredAt,
-      voidReason: entry.tags.includes('anulado')
-        ? entry.resolution?.replace(/^Folio \d{4,6} anulado:\s*/, '') ?? null
-        : null,
-    }];
-  });
-}
-
-export async function getLiveCashStateWithGym(limit = 30): Promise<LiveCashState> {
-  const [state, gymPasses] = await Promise.all([
-    getLiveCashState(limit),
-    listGymPassRows(limit),
-  ]);
-  return { ...state, gymPasses };
+  return {
+    rows,
+    total: rows.length,
+    emitted: rows.filter((row) => row.status === 'EMITIDO').length,
+    voided: rows.filter((row) => row.status === 'ANULADO').length,
+  };
 }

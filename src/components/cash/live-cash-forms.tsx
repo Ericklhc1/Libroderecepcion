@@ -4,6 +4,7 @@ import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
+  createGymPassAction,
   createManualCashMovementAction,
   returnCashGuaranteeAction,
   saveLiveCashAuditAction,
@@ -13,6 +14,54 @@ import { createGuaranteeAction } from '@/server/actions/references';
 
 function formatFolio(folio: number) {
   return String(folio).padStart(4, '0');
+}
+
+export function CreateGymPassForm({
+  defaultServiceDate,
+}: {
+  defaultServiceDate: string;
+}) {
+  return (
+    <ActionForm action={createGymPassAction} className="space-y-3" resetOnSuccess>
+      <Field
+        label="Fecha del folio"
+        name="serviceDate"
+        required
+        hint="Fecha de uso/servicio del gimnasio."
+      >
+        <Input name="serviceDate" type="date" required defaultValue={defaultServiceDate} />
+      </Field>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Habitación" name="roomNumber" required>
+          <Input
+            name="roomNumber"
+            required
+            maxLength={20}
+            placeholder="Ej.: 512"
+            autoComplete="off"
+          />
+        </Field>
+        <Field label="Huésped" name="guestName" required>
+          <Input
+            name="guestName"
+            required
+            maxLength={160}
+            placeholder="Nombre del huésped"
+            autoComplete="off"
+          />
+        </Field>
+      </div>
+
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        El recepcionista se registra automáticamente con tu sesión. El folio no modifica el saldo de Caja.
+      </p>
+
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Generando…">Generar folio</SubmitButton>
+      </div>
+    </ActionForm>
+  );
 }
 
 export function ManualCashMovementForm({

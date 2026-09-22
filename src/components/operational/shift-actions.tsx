@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import {
@@ -45,22 +44,37 @@ export function AddShiftMemberForm({
   candidates,
 }: {
   shiftId: string;
-  candidates: Array<{ value: string; label: string }>;
+  candidates: Array<{ value: string; label: string; disabled?: boolean }>;
 }) {
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    return (
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        Todos los usuarios operativos disponibles ya están incorporados a este turno.
+      </p>
+    );
+  }
+
+  const enabled = candidates.some((candidate) => !candidate.disabled);
+
   return (
     <ActionForm action={addShiftMemberAction} refreshOnSuccess>
       <input type="hidden" name="shiftId" value={shiftId} />
       <Field
-        label="Sumar a alguien al turno"
+        label="Compartir turno / sumar al equipo"
         name="userId"
-        hint="Quien se suma queda como apoyo; el titular sigue siendo quien lo abrió."
+        hint="Quien se suma queda como apoyo. Si aparece «en otro turno», primero debe terminar esa participación."
       >
         <Select name="userId" required placeholder="Elige a la persona" options={candidates} />
       </Field>
-      <SubmitButton variant="secondary" pendingLabel="Sumando…">
-        Sumar al turno
-      </SubmitButton>
+      {enabled ? (
+        <SubmitButton variant="secondary" pendingLabel="Sumando…">
+          Sumar al turno
+        </SubmitButton>
+      ) : (
+        <p className="text-xs text-slate-500">
+          No hay usuarios disponibles para incorporarse ahora.
+        </p>
+      )}
     </ActionForm>
   );
 }
@@ -109,29 +123,15 @@ export function PrepareHandoverForm({ shiftId }: { shiftId: string }) {
 
 export function SendHandoverForm({ shiftId }: { shiftId: string }) {
   return (
-    <div className="space-y-3">
-      <div className="rounded-lg bg-gold-50 px-3 py-2 text-sm text-petrol-900 ring-1 ring-gold-200">
-        <p className="font-medium">Antes de enviar: actualiza la fotografía PMS.</p>
-        <p className="mt-0.5 text-xs text-slate-600">
-          El cierre exige una carga nueva de Actividad, Salidas e In house posterior al inicio de la entrega.
-        </p>
-        <Link
-          href="/huespedes/importar?volverA=turno"
-          className="mt-2 inline-flex text-sm font-semibold text-petrol-700 underline-offset-2 hover:underline"
-        >
-          Cargar informes para el cierre
-        </Link>
-      </div>
-      <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
-        <input type="hidden" name="shiftId" value={shiftId} />
-        <p className="text-xs text-slate-500">
-          La nota para el turno siguiente se guarda como Observación + Siguiente acción. Aquí sólo se confirma el envío.
-        </p>
-        <SubmitButton variant="gold" pendingLabel="Enviando…">
-          Enviar entrega al turno siguiente
-        </SubmitButton>
-      </ActionForm>
-    </div>
+    <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <p className="text-xs text-slate-500">
+        Revisa Novedades, Caja y pendientes antes de enviar la entrega.
+      </p>
+      <SubmitButton variant="gold" pendingLabel="Enviando…">
+        Enviar entrega al turno siguiente
+      </SubmitButton>
+    </ActionForm>
   );
 }
 

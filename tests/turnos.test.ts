@@ -64,7 +64,7 @@ describe('modelo de turnos: dos ventanas, solapables y exclusivos por persona', 
     const { shift, joined } = await openShift(receptionist, { type: ShiftType.DIA });
 
     expect(joined).toBe(false);
-    expect(shift.status).toBe(ShiftStatus.INICIADO);
+    expect(shift.status).toBe(ShiftStatus.ACTIVO);
     expect(shift.type).toBe(ShiftType.DIA);
     expect(shift.assignments).toHaveLength(1);
     expect(shift.assignments[0]!.userId).toBe(receptionist.id);

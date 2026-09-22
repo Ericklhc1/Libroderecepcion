@@ -108,7 +108,7 @@ async function ensureClosureValidationTask(
       title: 'Validar cierre de turno',
       description:
         alert.message ??
-        'Revisión posterior obligatoria del cierre: informes, caja, elementos y trazabilidad.',
+        'Revisión posterior obligatoria del cierre: Caja, pendientes, entrega y trazabilidad.',
       status: 'PENDIENTE',
       priority: Priority.CRITICA,
       origin: TaskOrigin.ALERTA,
@@ -442,6 +442,12 @@ export async function openShift(
   const mine = await getMyActiveShift(user.id);
   if (mine) return { shift: mine, joined: false };
 
+  const [pendingOperational, pendingCash] = await Promise.all([
+    getPendingHandover(),
+    getPendingCashHandover(),
+  ]);
+  const activateImmediately = !pendingOperational && !pendingCash;
+
   const type = input.type ?? shiftTypeAt();
   const day = input.date
     ? new Date(`${calendarDateKey(input.date)}T00:00:00.000Z`)
@@ -515,6 +521,26 @@ export async function openShift(
         },
         tx,
       );
+
+      if (activateImmediately) {
+        const active = await tx.shift.update({
+          where: { id: shift.id },
+          data: { status: ShiftStatus.ACTIVO },
+        });
+        await recordAudit(
+          {
+            entity: 'Shift',
+            entityId: shift.id,
+            action: AuditAction.TURNO_RECIBIR,
+            summary: 'Turno activado automáticamente: no había entrega ni Caja pendiente',
+            user,
+            before: { status: ShiftStatus.INICIADO },
+            after: { status: ShiftStatus.ACTIVO },
+          },
+          tx,
+        );
+        return active;
+      }
 
       return shift;
     })

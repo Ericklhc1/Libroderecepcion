@@ -131,7 +131,7 @@ export function assertCanClose(params: {
   }
 
   throw new RuleError(
-    'Para cerrar el turno primero prepara la entrega, actualiza los informes, completa Caja y novedades y envía la entrega.',
+    'Para cerrar el turno primero prepara la entrega, revísala y envíala dejando Caja y pendientes correctamente resueltos.',
   );
 }
 

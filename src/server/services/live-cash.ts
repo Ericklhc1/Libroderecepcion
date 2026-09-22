@@ -630,14 +630,6 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
     prisma.$queryRaw<
       Array<{
         id: string;
-        folio: number;
-        reservationCode: string;
-        roomNumber: string;
-        guestName: string;
-        receptionistName: string;
-          prisma.$queryRaw<
-      Array<{
-        id: string;
         currency: string;
         expectedAmount: Prisma.Decimal;
         countedAmount: Prisma.Decimal;

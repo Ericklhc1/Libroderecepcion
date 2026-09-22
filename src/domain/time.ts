@@ -111,6 +111,17 @@ export function hotelWallDateTime(
 }
 
 /**
+ * Convierte el valor de un `<input type="datetime-local">` en la hora real
+ * del hotel. El campo no lleva huso horario: interpretarlo con `new Date()`
+ * usaría la zona del proceso (UTC en Vercel) y desplazaría el movimiento.
+ */
+export function parseHotelDateTimeLocal(value: string): Date {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
+  return hotelWallDateTime(match[1], Number(match[2]), Number(match[3]));
+}
+
+/**
  * Suma noches según el calendario del hotel y conserva la hora local original.
  * A diferencia de sumar `24h`, no se corre una hora al cruzar un cambio de DST.
  */

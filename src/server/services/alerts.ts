@@ -108,7 +108,6 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
     });
     if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
     if (entry.tags.includes('ajuste-aplicado')) return;
-    if (!entry.shiftId) throw new RuleError('La solicitud no está vinculada a un turno.');
 
     const direction = tagValue(entry.tags, 'direccion-');
     const currency = tagValue(entry.tags, 'moneda-');
@@ -148,6 +147,24 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       notes,
     });
 
+    if (!entry.shiftId) {
+      await tx.alert.create({
+        data: {
+          type: AlertType.OTRO,
+          level: AlertLevel.CRITICA,
+          status: AlertStatus.NUEVA,
+          title: 'MOVIMIENTO SIN SESIÓN DE CAJA',
+          message:
+            `${direction === 'ENTRADA' ? 'Ingreso' : 'Egreso'} de ${currency} ${amount.toLocaleString('es-CL')} · ${reference}. ` +
+            'Fue autorizado sin turno operativo abierto. Supervisión debe revisar y regularizar la trazabilidad.',
+          entryId: entry.id,
+          dedupeKey: `cash-no-session:${movementId}`,
+          auto: false,
+          createdById: user.id,
+        },
+      });
+    }
+
     await tx.operationalEntry.update({
       where: { id: entry.id },
       data: {
@@ -176,6 +193,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
           shiftId: entry.shiftId,
           requestedById: entry.createdById,
           approvedById: user.id,
+          withoutCashSession: !entry.shiftId,
         },
       },
       tx,

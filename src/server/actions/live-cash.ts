@@ -31,8 +31,9 @@ import {
 } from '@/server/services/cash-permission-policy';
 
 const gymPassSchema = z.object({
-  stayId: z.string().min(1),
-  pax: z.coerce.number().int().min(1, 'Indica al menos 1 pax.').max(20, 'Máximo 20 pax por emisión.'),
+  serviceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Indica una fecha válida.'),
+  roomNumber: z.string().trim().min(1, 'Indica la habitación.').max(20),
+  guestName: z.string().trim().min(2, 'Indica el huésped.').max(160),
 });
 
 export async function createGymPassAction(
@@ -40,16 +41,14 @@ export async function createGymPassAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('room.manage');
+    const user = await requirePermission('cash.view');
     const input = parseOrThrow(gymPassSchema, formDataToObject(formData));
     const result = await createGymPass(user, input);
     revalidatePath('/caja');
-    revalidatePath('/libro');
-    revalidatePath('/habitaciones');
-    const folios = result.passes.map((pass) => pass.formattedFolio).join(', ');
+    revalidatePath('/caja/gimnasio');
     return {
       ok: true as const,
-      message: `${result.passes.length} folio(s) generado(s): ${folios}.`,
+      message: `Folio de gimnasio ${result.formattedFolio} generado.`,
       id: result.id,
     };
   });
@@ -65,12 +64,11 @@ export async function voidGymPassAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('room.manage');
+    const user = await requirePermission('cash.view');
     const input = parseOrThrow(voidSchema, formDataToObject(formData));
     await voidGymPass(user, input);
     revalidatePath('/caja');
-    revalidatePath('/libro');
-    revalidatePath('/habitaciones');
+    revalidatePath('/caja/gimnasio');
     return { ok: true as const, message: 'Folio anulado. La trazabilidad se conserva.' };
   });
 }

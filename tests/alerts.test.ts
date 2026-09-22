@@ -5,9 +5,7 @@ import {
   AlertType,
   EntryStatus,
   EntryType,
-  GuaranteeStatus,
   Priority,
-  ReservationStatus,
   Severity,
   TaskStatus,
 } from '@prisma/client';
@@ -191,29 +189,28 @@ describe('motor de alertas', () => {
     ).toBe(1);
   });
 
-  it('cubre garantías, cobros, reservas sin confirmar y llegadas VIP', async () => {
-    const guest = await prisma.guestReference.create({
-      data: { fullName: 'Helen Whitaker', roomNumber: '318', vip: true },
+  it('alerta garantías propias de Caja y no genera alertas PMS', async () => {
+    await prisma.guarantee.create({
+      data: {
+        kind: 'EFECTIVO',
+        amount: 120000,
+        currency: 'CLP',
+        state: 'PENDIENTE',
+        reference: 'GAR-90001',
+        guestName: 'Helen Whitaker',
+        roomNumber: '318',
+        createdById: user.id,
+      },
     });
-    const today = new Date();
 
     await prisma.reservationReference.create({
       data: {
-        code: 'RES-90001',
-        guestId: guest.id,
-        status: ReservationStatus.PENDIENTE,
-        guaranteeStatus: GuaranteeStatus.PENDIENTE,
+        code: 'RES-LEGACY-90001',
+        status: 'PENDIENTE',
+        guaranteeStatus: 'PENDIENTE',
         balanceDue: 120000,
-        checkIn: today,
         requiresAction: true,
-        actionNote: 'Confirmar traslado.',
-      },
-    });
-    await prisma.reservationReference.create({
-      data: {
-        code: 'RES-90002',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        actionNote: 'Dato PMS legado.',
       },
     });
 
@@ -221,11 +218,11 @@ describe('motor de alertas', () => {
     const types = (await prisma.alert.findMany({ select: { type: true } })).map((a) => a.type);
 
     expect(types).toContain(AlertType.GARANTIA_PENDIENTE);
-    expect(types).toContain(AlertType.PAGO_PENDIENTE);
-    expect(types).toContain(AlertType.RESERVA_SIN_CONFIRMAR);
-    expect(types).toContain(AlertType.HUESPED_VIP);
-    expect(types).toContain(AlertType.TRASLADO_PENDIENTE);
-    expect(types).toContain(AlertType.TARJETA_INVALIDA);
+    expect(types).not.toContain(AlertType.PAGO_PENDIENTE);
+    expect(types).not.toContain(AlertType.RESERVA_SIN_CONFIRMAR);
+    expect(types).not.toContain(AlertType.HUESPED_VIP);
+    expect(types).not.toContain(AlertType.TRASLADO_PENDIENTE);
+    expect(types).not.toContain(AlertType.TARJETA_INVALIDA);
   });
 
   it('no toca las alertas manuales', async () => {

@@ -35,7 +35,6 @@ export default async function DashboardPage() {
   const myOverdue = data.myTasks.filter(
     (task) => task.dueAt && task.dueAt < data.now,
   ).length;
-  const canViewRooms = user.permissions.includes('room.view');
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -224,28 +223,14 @@ export default async function DashboardPage() {
         </Link>
 
         <Link
-          href={canViewRooms ? '/habitaciones' : '/libro?clase=entry&tipo=INCIDENCIA'}
+          href="/libro?clase=entry&tipo=INCIDENCIA"
           className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-petrol-500"
         >
           <StatTile
-            label={canViewRooms ? 'Habitaciones por actuar' : 'Incidencias abiertas'}
-            value={
-              canViewRooms
-                ? data.counters.roomsNeedingAction
-                : data.counters.openIncidents
-            }
-            hint={
-              canViewRooms
-                ? 'Abrir tablero de habitaciones'
-                : 'Abrir incidencias del Libro'
-            }
-            tone={
-              (canViewRooms
-                ? data.counters.roomsNeedingAction
-                : data.counters.openIncidents) > 0
-                ? 'alert'
-                : 'good'
-            }
+            label="Incidencias abiertas"
+            value={data.counters.openIncidents}
+            hint="Abrir incidencias del Libro"
+            tone={data.counters.openIncidents > 0 ? 'alert' : 'good'}
           />
         </Link>
 

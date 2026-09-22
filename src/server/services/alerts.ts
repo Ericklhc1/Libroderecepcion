@@ -1,6 +1,6 @@
 import 'server-only';
-import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
-import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
+import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -108,13 +108,17 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
     });
     if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
     if (entry.tags.includes('ajuste-aplicado')) return;
-    if (!entry.shiftId) throw new RuleError('La solicitud no está vinculada a un turno.');
 
     const direction = tagValue(entry.tags, 'direccion-');
     const currency = tagValue(entry.tags, 'moneda-');
     const amount = Number(tagValue(entry.tags, 'monto-'));
     const reference = decodeTag(tagValue(entry.tags, 'referencia-')) ?? entry.title;
     const notes = decodeTag(tagValue(entry.tags, 'notas-'));
+    const effectiveAtIso = decodeTag(tagValue(entry.tags, 'efectiva-'));
+    const effectiveAt = effectiveAtIso ? new Date(effectiveAtIso) : new Date();
+    if (Number.isNaN(effectiveAt.getTime())) {
+      throw new RuleError('La solicitud de Caja contiene una fecha efectiva inválida.');
+    }
     if (
       (direction !== 'ENTRADA' && direction !== 'SALIDA') ||
       (currency !== 'CLP' && currency !== 'USD') ||
@@ -146,7 +150,26 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       shiftId: entry.shiftId,
       reference,
       notes,
+      effectiveAt,
     });
+
+    if (!entry.shiftId) {
+      await tx.alert.create({
+        data: {
+          type: AlertType.OTRO,
+          level: AlertLevel.CRITICA,
+          status: AlertStatus.NUEVA,
+          title: 'MOVIMIENTO SIN SESIÓN DE CAJA',
+          message:
+            `${direction === 'ENTRADA' ? 'Ingreso' : 'Egreso'} de ${currency} ${amount.toLocaleString('es-CL')} · ${reference}. ` +
+            'Fue autorizado sin turno operativo abierto. Supervisión debe revisar y regularizar la trazabilidad.',
+          entryId: entry.id,
+          dedupeKey: `cash-no-session:${movementId}`,
+          auto: false,
+          createdById: user.id,
+        },
+      });
+    }
 
     await tx.operationalEntry.update({
       where: { id: entry.id },
@@ -174,8 +197,10 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
           reference,
           requestEntryId: entry.id,
           shiftId: entry.shiftId,
+          effectiveAt: effectiveAt.toISOString(),
           requestedById: entry.createdById,
           approvedById: user.id,
+          withoutCashSession: !entry.shiftId,
         },
       },
       tx,

@@ -38,6 +38,7 @@ export type LiveCashMovement = {
   guestName: string | null;
   createdByName: string;
   createdAt: Date;
+  effectiveAt: Date;
 };
 
 export type CashAuditRow = {
@@ -126,6 +127,7 @@ export async function insertCashMovement(
     cashTransferId?: string | null;
     reference?: string | null;
     notes?: string | null;
+    effectiveAt?: Date | null;
   },
 ): Promise<string> {
   if (!(params.amount > 0)) throw new RuleError('El movimiento de caja debe ser mayor que cero.');
@@ -136,14 +138,15 @@ export async function insertCashMovement(
     INSERT INTO "CashMovement" (
       "id", "kind", "direction", "currency", "amount", "shiftId", "roomId",
       "stayId", "guestId", "reservationReferenceId", "guaranteeId", "gymPassId",
-      "cashTransferId", "createdById", "reference", "notes"
+      "cashTransferId", "createdById", "reference", "notes", "effectiveAt"
     ) VALUES (
       ${id}, ${params.kind}, ${params.direction}, ${currency}, ${params.amount},
       ${params.shiftId ?? null}, ${params.roomId ?? null},
       ${params.stayId ?? null}, ${params.guestId ?? null},
       ${params.reservationReferenceId ?? null}, ${params.guaranteeId ?? null},
       ${params.gymPassId ?? null}, ${params.cashTransferId ?? null},
-      ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null}
+      ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null},
+      ${params.effectiveAt ?? new Date()}
     )
   `;
   return id;
@@ -341,13 +344,14 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         guestName: string | null;
         createdByName: string;
         createdAt: Date;
+        effectiveAt: Date;
       }>
     >`
       SELECT m."id", m."kind", m."direction", m."currency", m."amount",
              m."reference", m."notes", NULL::text AS "roomNumber",
              NULL::text AS "reservationCode", NULL::text AS "stayId",
              NULL::text AS "guestName", u."name" AS "createdByName",
-             m."createdAt"
+             m."createdAt", m."effectiveAt"
       FROM "CashMovement" m
       JOIN "User" u ON u."id" = m."createdById"
       WHERE m."voidedAt" IS NULL

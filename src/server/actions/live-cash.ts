@@ -25,6 +25,7 @@ import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { notify } from '@/server/notifications';
+import { parseHotelDateTimeLocal } from '@/domain/time';
 import {
   cashApprovalRequired,
   listCashApproverIds,
@@ -78,6 +79,10 @@ const movementSchema = z.object({
   currency: z.enum(['CLP', 'USD']),
   amount: z.coerce.number().positive('El monto debe ser mayor que cero.'),
   reference: z.string().trim().min(2, 'Indica el concepto del movimiento.').max(120),
+  effectiveAt: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Indica una fecha/hora efectiva válida.').optional(),
+  ),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
@@ -86,7 +91,8 @@ type ManualMovementInput = z.infer<typeof movementSchema>;
 async function applyAuthorizedManualMovement(
   user: Awaited<ReturnType<typeof requireUser>>,
   input: ManualMovementInput,
-  shiftId: string,
+  shiftId: string | null,
+  effectiveAt: Date,
 ) {
   const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
@@ -101,9 +107,10 @@ async function applyAuthorizedManualMovement(
       shiftId,
       reference: input.reference,
       notes: input.notes,
+      effectiveAt,
     });
 
-    await tx.operationalEntry.create({
+    const entry = await tx.operationalEntry.create({
       data: {
         type: EntryType.CAJA,
         status: EntryStatus.RESUELTO,
@@ -112,16 +119,45 @@ async function applyAuthorizedManualMovement(
           `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.` +
           (input.notes ? ` Observaciones: ${input.notes}` : ''),
         category: kind,
-        priority: Priority.BAJA,
+        priority: shiftId ? Priority.BAJA : Priority.CRITICA,
         ownerId: user.id,
         shiftId,
-        occurredAt: new Date(),
-        tags: ['caja', input.direction.toLowerCase(), 'permiso-rol'],
+        occurredAt: effectiveAt,
+        tags: [
+          'caja',
+          input.direction.toLowerCase(),
+          'permiso-rol',
+          ...(!shiftId ? ['movimiento-sin-sesion-caja'] : []),
+        ],
         requiresFollowUp: false,
-        resolution: 'Movimiento registrado con trazabilidad financiera.',
+        resolution: shiftId
+          ? 'Movimiento registrado con trazabilidad financiera.'
+          : 'Movimiento registrado sin turno abierto; excepción derivada a Supervisión.',
         createdById: user.id,
       },
+      select: { id: true },
     });
+
+    let noSessionAlertId: string | null = null;
+    if (!shiftId) {
+      const alert = await tx.alert.create({
+        data: {
+          type: AlertType.OTRO,
+          level: AlertLevel.CRITICA,
+          status: AlertStatus.NUEVA,
+          title: 'MOVIMIENTO SIN SESIÓN DE CAJA',
+          message:
+            `${verb} de ${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}. ` +
+            `Registrado por ${user.name} sin turno operativo abierto. Revisar y regularizar trazabilidad.`,
+          entryId: entry.id,
+          dedupeKey: `cash-no-session:${movementId}`,
+          auto: false,
+          createdById: user.id,
+        },
+        select: { id: true },
+      });
+      noSessionAlertId = alert.id;
+    }
 
     await recordAudit(
       {
@@ -137,6 +173,9 @@ async function applyAuthorizedManualMovement(
           reference: input.reference,
           notes: input.notes,
           shiftId,
+          effectiveAt: effectiveAt.toISOString(),
+          withoutCashSession: !shiftId,
+          noSessionAlertId,
           performedBy: user.id,
         },
       },
@@ -159,21 +198,22 @@ export async function createManualCashMovementAction(
       throw new RuleError(`Tu rol no tiene habilitado ${input.direction === 'ENTRADA' ? 'registrar ingresos' : 'registrar egresos'} manuales de Caja.`);
     }
     const shift = await getMyOpenShift(user.id) ?? await getCurrentShift();
-    if (!shift) {
-      throw new RuleError('Debe existir un turno operativo antes de registrar movimientos de caja.');
-    }
+    const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
 
     const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
     const needsApproval = await cashApprovalRequired(user, permission);
 
     if (!needsApproval) {
-      const movementId = await applyAuthorizedManualMovement(user, input, shift.id);
+      const movementId = await applyAuthorizedManualMovement(user, input, shift?.id ?? null, effectiveAt);
       revalidatePath('/caja');
       revalidatePath('/libro');
       revalidatePath('/turno');
+      revalidatePath('/supervision');
       return {
         ok: true as const,
-        message: `${verb} registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`,
+        message: shift
+          ? `${verb} registrado: ${input.currency} ${input.amount.toLocaleString('es-CL')}.`
+          : `${verb} registrado sin turno abierto. Se generó la alerta crítica «MOVIMIENTO SIN SESIÓN DE CAJA» para Supervisión.`,
         id: movementId,
       };
     }
@@ -193,19 +233,22 @@ export async function createManualCashMovementAction(
           title: `Solicitud de ${verb.toLowerCase()} de caja · ${input.reference}`,
           description:
             `${verb} solicitado por ${input.currency} ${input.amount}. ` +
-            `Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+            `Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}` +
+            (!shift ? ' No existe turno operativo abierto al momento de la solicitud.' : ''),
           category: 'AJUSTE_CAJA_SOLICITADO',
-          priority: Priority.ALTA,
+          priority: shift ? Priority.ALTA : Priority.CRITICA,
           ownerId: user.id,
-          shiftId: shift.id,
+          shiftId: shift?.id ?? null,
           occurredAt: new Date(),
           tags: [
             'caja',
             'autorizacion-pendiente',
+            ...(!shift ? ['movimiento-sin-sesion-caja'] : []),
             `direccion-${input.direction}`,
             `moneda-${input.currency}`,
             `monto-${input.amount}`,
             `referencia-${encodeURIComponent(input.reference)}`,
+            `efectiva-${encodeURIComponent(effectiveAt.toISOString())}`,
             ...(input.notes ? [`notas-${encodeURIComponent(input.notes)}`] : []),
           ],
           requiresFollowUp: true,
@@ -237,8 +280,10 @@ export async function createManualCashMovementAction(
           user,
           summary: `Solicitud de autorización: ${verb} ${input.currency} ${input.amount} · ${input.reference}`,
           after: {
-            shiftId: shift.id,
+            shiftId: shift?.id ?? null,
             alertId: alert.id,
+            withoutCashSession: !shift,
+            effectiveAt: effectiveAt.toISOString(),
             permission,
             status: 'PENDIENTE_APROBACION',
           },

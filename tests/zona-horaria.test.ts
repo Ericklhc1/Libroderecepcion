@@ -17,6 +17,7 @@ import {
   hotelDayStart,
   hotelHour,
   hotelParts,
+  parseHotelDateTimeLocal,
 } from '@/domain/time';
 import { plannedWindow, shiftTypeAt } from '@/domain/shift';
 import { operationalDate } from '@/server/services/shifts';
@@ -147,6 +148,12 @@ describe('utilidades de la zona del hotel', () => {
       hour: '16',
       minute: '25',
     });
+  });
+
+  it('interpreta la fecha efectiva de Caja como hora Chile y no como UTC del servidor', () => {
+    expect(parseHotelDateTimeLocal('2026-09-16T16:25').toISOString()).toBe(
+      '2026-09-16T19:25:00.000Z',
+    );
   });
 });
 

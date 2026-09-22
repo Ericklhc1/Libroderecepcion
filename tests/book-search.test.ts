@@ -110,7 +110,11 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
   it('busca por título, descripción, categoría, etiqueta y responsable', async () => {
     await seedBook();
 
-    expect((await getBookItems({ q: 'aire acondicionado' })).items).toHaveLength(1);
+    const porCaso = await getBookItems({ q: 'aire acondicionado' });
+    expect(porCaso.items).toHaveLength(3);
+    expect(new Set(porCaso.items.map((item) => item.kind))).toEqual(
+      new Set(['entry', 'task', 'followup']),
+    );
     expect((await getBookItems({ q: 'E-04' })).items).toHaveLength(1);
     expect((await getBookItems({ q: 'climatizacion' })).items.length).toBeGreaterThanOrEqual(2);
     expect((await getBookItems({ q: 'Whitaker' })).items).toHaveLength(1);

@@ -3,8 +3,6 @@ import {
   AlertStatus,
   AuditAction,
   CashCountKind,
-  GuaranteeKind,
-  GuaranteeState,
   Prisma,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';

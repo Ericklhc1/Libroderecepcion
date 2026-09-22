@@ -194,9 +194,6 @@ export default async function IncidentsPage({
                       {formatDateTime(incident.occurredAt)} ·{' '}
                       {incident.owner ? `Resp.: ${incident.owner.name}` : 'sin responsable'}
                       {incident.department ? ` · ${incident.department.name}` : ''}
-                      {incident.guest
-                        ? ` · ${incident.guest.fullName}${incident.guest.roomNumber ? ` (hab. ${incident.guest.roomNumber})` : ''}`
-                        : ''}
                       {incident.dueAt ? ` · vence ${relativeTime(incident.dueAt)}` : ''}
                       {incident._count.followUps > 0
                         ? ` · ${incident._count.followUps} seguimiento(s)`

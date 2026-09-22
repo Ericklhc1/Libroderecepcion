@@ -64,7 +64,7 @@ export async function saveCashConfigurationAction(
         {
           key: 'cash.treasuryTransfersEnabled',
           value: rules.treasuryTransfersEnabled,
-          description: 'Permite registrar egresos a tesorería durante la entrega de turno.',
+          description: 'Permite registrar transferencias internas de Recepción a Tesorería durante la entrega de turno.',
         },
         {
           key: 'cash.transferReceiptRequired',

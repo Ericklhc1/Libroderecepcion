@@ -126,7 +126,7 @@ export function SendHandoverForm({ shiftId }: { shiftId: string }) {
     <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
       <input type="hidden" name="shiftId" value={shiftId} />
       <p className="text-xs text-slate-500">
-        Revisa Novedades, Caja y pendientes. El envío no depende de informes PMS.
+        Revisa Novedades, Caja y pendientes antes de enviar la entrega.
       </p>
       <SubmitButton variant="gold" pendingLabel="Enviando…">
         Enviar entrega al turno siguiente

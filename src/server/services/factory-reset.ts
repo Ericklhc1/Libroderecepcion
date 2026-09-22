@@ -252,7 +252,7 @@ export async function runFactoryReset(
       // Caja: antes de la entrega y de los usuarios.
       count('Líneas de arqueo', await tx.cashCountLine.deleteMany());
       count('Arqueos', await tx.cashCount.deleteMany());
-      count('Egresos a tesorería', await tx.cashTransfer.deleteMany());
+      count('Transferencias a Tesorería', await tx.cashTransfer.deleteMany());
       count('Elementos de entrega', await tx.handoverElement.deleteMany());
 
       count('Puntos de entrega', await tx.handoverItem.deleteMany());

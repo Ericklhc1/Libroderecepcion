@@ -132,23 +132,20 @@ describe('tablero de asignación', () => {
     expect(board.workload.find((row) => row.userId === recepcion.id)?.openTasks).toBe(0);
   });
 
-  it('los registros sin responsable también entran, con su habitación', async () => {
-    const room = await prisma.room.findFirstOrThrow({ where: { number: '405' } });
+  it('los registros sin responsable entran sin depender de habitación', async () => {
     await createEntry(supervisor, {
       type: 'INCIDENCIA',
-      title: 'Filtración sin responsable',
+      title: 'Filtración sin responsable en habitación 405',
       description: 'Se detectó agua en el cielo del pasillo.',
       priority: Priority.ALTA,
-      // Una incidencia exige gravedad: es una regla del libro, no del tablero.
       severity: Severity.ALTA,
-      roomId: room.id,
       requiresFollowUp: false,
       tags: [],
     });
 
     const board = await getAssignmentBoard();
     const entry = board.unassigned.find((item) => item.kind === 'entry');
-    expect(entry?.roomNumber).toBe('405');
+    expect(entry?.roomNumber).toBeNull();
     expect(entry?.href).toContain('/libro/');
   });
 

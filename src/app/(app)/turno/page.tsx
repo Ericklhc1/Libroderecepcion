@@ -93,14 +93,31 @@ export default async function ShiftPage({
             deletedAt: null,
             active: true,
             role: { operational: true },
+          },
+          select: {
+            id: true,
+            name: true,
+            username: true,
             assignments: {
-              none: { activatedAt: { not: null }, leftAt: null },
+              where: { activatedAt: { not: null }, leftAt: null },
+              select: { shiftId: true },
+              take: 1,
             },
           },
-          select: { id: true, name: true, username: true },
           orderBy: { name: 'asc' },
         })
-      ).map((person) => ({ value: person.id, label: `${person.name} · @${person.username}` }))
+      )
+        .filter((person) => !person.assignments.some((assignment) => assignment.shiftId === shift!.id))
+        .map((person) => {
+          const busy = person.assignments.length > 0;
+          return {
+            value: person.id,
+            label: busy
+              ? `${person.name} · @${person.username} · en otro turno`
+              : `${person.name} · @${person.username}`,
+            disabled: busy,
+          };
+        })
     : [];
 
   const textMatches = (values: Array<string | number | null | undefined>) =>
@@ -264,7 +281,7 @@ export default async function ShiftPage({
                     Reforzar el mesón no pasa por Administración: lo hace quien
                     está en el turno, desde el turno.
                   */}
-                  {memberCandidates.length > 0 ? (
+                  {canAddMembers ? (
                     <div className="mt-3 max-w-sm">
                       <AddShiftMemberForm shiftId={shift.id} candidates={memberCandidates} />
                     </div>

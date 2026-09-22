@@ -129,10 +129,10 @@ async function applyAuthorizedManualMovement(
           'permiso-rol',
           ...(!shiftId ? ['movimiento-sin-sesion-caja'] : []),
         ],
-        requiresFollowUp: !shiftId,
+        requiresFollowUp: false,
         resolution: shiftId
           ? 'Movimiento registrado con trazabilidad financiera.'
-          : null,
+          : 'Movimiento registrado sin turno abierto; excepción derivada a Supervisión.',
         createdById: user.id,
       },
       select: { id: true },

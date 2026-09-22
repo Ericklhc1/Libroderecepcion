@@ -31,6 +31,8 @@ Actualizado: **2026-09-22** · Núcleo Novedades + Caja · versión propuesta **
 
 ## Iteración actual
 
+> Hotfix v1.4.1: corrige Centro de Supervisión, apertura de turno en una sola acción cuando no hay relevo, disponibilidad explícita para compartir turno, cierre sin dependencia PMS e incorpora folios de gimnasio autónomos en Caja con fecha, habitación, huésped, recepcionista automático, resumen por rango y CSV.
+
 > Estado CI de cierre: contratos PMS retirados del runtime operativo; navegación, Novedades, Caja, Turno, Supervisión, Alertas, Historial y búsqueda alineados con v1.4.0. La última regresión pendiente era únicamente una expectativa de búsqueda textual del caso y ya fue corregida en la rama.
 
 **Núcleo Novedades + Caja v1.4.0** · rama **`refactor/novedades-caja-v1-4-0`**

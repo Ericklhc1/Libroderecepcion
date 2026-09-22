@@ -106,13 +106,18 @@ async function ensureUnresolvedGuaranteeIncidents(
     });
     if (existing) continue;
 
+    // Esta acción es legado PMS: una garantía autónoma de Caja no participa
+    // en el ciclo de check-out ni debe convertirse en incidencia PMS.
+    const reservation = guarantee.reservationReference;
+    if (!reservation) continue;
+
     await prisma.$transaction(async (tx) => {
-      const guestName = guarantee.reservationReference.guest?.fullName ?? 'Huésped';
+      const guestName = reservation.guest?.fullName ?? 'Huésped';
       const entry = await tx.operationalEntry.create({
         data: {
           type: EntryType.INCIDENCIA,
           status: EntryStatus.ABIERTO,
-          title: `Garantía sin resolver tras check-out · reserva ${guarantee.reservationReference.code}`,
+          title: `Garantía sin resolver tras check-out · reserva ${reservation.code}`,
           description:
             `La salida fue confirmada con una garantía todavía en estado ${guarantee.state}. ` +
             `${guestName}${roomNumber ? ` · habitación ${roomNumber}` : ''}. ` +
@@ -120,7 +125,7 @@ async function ensureUnresolvedGuaranteeIncidents(
             'Debe devolverse, aplicarse o cerrarse con respaldo antes de dar por terminada la incidencia.',
           category: 'GARANTIA_POST_SALIDA',
           reservationId: reservationRefId,
-          guestId: guarantee.reservationReference.guestId,
+          guestId: reservation.guestId,
           priority: Priority.CRITICA,
           severity: Severity.CRITICA,
           impact: Impact.ECONOMICO,
@@ -141,10 +146,10 @@ async function ensureUnresolvedGuaranteeIncidents(
           level: AlertLevel.CRITICA,
           status: AlertStatus.NUEVA,
           title: `Garantía sin resolver tras check-out: ${guestName}`,
-          message: `Reserva ${guarantee.reservationReference.code}. Incidencia #${entry.seq} asignada inicialmente a ${user.name}.`,
+          message: `Reserva ${reservation.code}. Incidencia #${entry.seq} asignada inicialmente a ${user.name}.`,
           entryId: entry.id,
           reservationId: reservationRefId,
-          guestId: guarantee.reservationReference.guestId,
+          guestId: reservation.guestId,
           guaranteeId: guarantee.id,
           auto: true,
         },
@@ -152,10 +157,10 @@ async function ensureUnresolvedGuaranteeIncidents(
           level: AlertLevel.CRITICA,
           status: AlertStatus.NUEVA,
           title: `Garantía sin resolver tras check-out: ${guestName}`,
-          message: `Reserva ${guarantee.reservationReference.code}. Incidencia #${entry.seq} asignada inicialmente a ${user.name}.`,
+          message: `Reserva ${reservation.code}. Incidencia #${entry.seq} asignada inicialmente a ${user.name}.`,
           entryId: entry.id,
           reservationId: reservationRefId,
-          guestId: guarantee.reservationReference.guestId,
+          guestId: reservation.guestId,
           guaranteeId: guarantee.id,
           resolvedAt: null,
           resolvedById: null,

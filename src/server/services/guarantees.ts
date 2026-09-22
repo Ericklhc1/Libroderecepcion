@@ -1,5 +1,11 @@
 import 'server-only';
-import { AuditAction, GuaranteeKind, GuaranteeState, GuaranteeStatus, Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  GuaranteeKind,
+  GuaranteeState,
+  GuaranteeStatus,
+  Prisma,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
@@ -18,32 +24,16 @@ import {
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
-import {
-  assertUnambiguousStay,
-  resolveOperationalContext,
-} from './operational-context';
-
-/**
- * Garantías de una reserva.
- *
- * La garantía cuelga de la reserva, no de la habitación: sobrevive a un cambio
- * de habitación y a los turnos sin que nadie la mueva.
- *
- * No tiene tabla de historial: cada cambio queda en `AuditLog` con su antes y
- * su después, igual que el resto del sistema.
- *
- * `ReservationReference.guaranteeStatus` se conserva porque el motor de alertas
- * y la entrega de turno lo leen. Este servicio es el **único** sitio que lo
- * escribe a partir de las garantías, con `syncReservationSummary`, de modo que
- * no puede quedar descuadrado.
- *
- * Las garantías en EFECTIVO además se reflejan en Caja viva. Registrar una
- * garantía vigente y registrar su entrada física es una sola transacción: no
- * puede existir una sin la otra.
- */
 
 type Tx = Prisma.TransactionClient;
 
+/**
+ * Desde v1.4.0 la garantía es una entidad propia de Caja.
+ *
+ * guestName, roomNumber y reference son contexto libre de Recepción. Los
+ * vínculos a reserva/estadía se conservan únicamente para registros históricos
+ * o integraciones legadas y jamás son requisito para operar una garantía nueva.
+ */
 export const guaranteeInclude = {
   stay: {
     select: {
@@ -68,40 +58,58 @@ export type GuaranteeWithContext = Prisma.GuaranteeGetPayload<{
   include: typeof guaranteeInclude;
 }>;
 
-/**
- * Recalcula el resumen de la reserva a partir de sus garantías vivas.
- *
- * Sin garantías registradas no toca nada: ese campo existía antes que esta
- * entidad y alguien pudo ponerlo a mano.
- */
-async function syncReservationSummary(tx: Tx, reservationReferenceId: string): Promise<void> {
-  const guarantees = await tx.guarantee.findMany({
-    where: { reservationReferenceId, deletedAt: null },
-    select: { state: true },
-  });
-
-  const summary = deriveReservationGuaranteeSummary(
-    guarantees.map((guarantee) => guarantee.state as GuaranteeStateValue),
-  );
-  if (!summary) return;
-
-  await tx.reservationReference.update({
-    where: { id: reservationReferenceId },
-    data: { guaranteeStatus: GuaranteeStatus[summary] },
-  });
-}
-
 function money(value: Prisma.Decimal | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   return typeof value === 'number' ? value : value.toNumber();
 }
 
+function guaranteeLabel(input: {
+  reference?: string | null;
+  guestName?: string | null;
+  roomNumber?: string | null;
+  id?: string | null;
+}): string {
+  if (input.reference?.trim()) return input.reference.trim();
+  const parts = [
+    input.guestName?.trim() || null,
+    input.roomNumber?.trim() ? `Hab. ${input.roomNumber.trim()}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : `Garantía ${input.id?.slice(-6) ?? ''}`.trim();
+}
+
+/**
+ * Compatibilidad histórica: sólo toca ReservationReference cuando el registro
+ * realmente tiene ese vínculo legado.
+ */
+async function syncReservationSummary(
+  tx: Tx,
+  reservationReferenceId: string | null | undefined,
+): Promise<void> {
+  if (!reservationReferenceId) return;
+  const guarantees = await tx.guarantee.findMany({
+    where: { reservationReferenceId, deletedAt: null },
+    select: { state: true },
+  });
+  const summary = deriveReservationGuaranteeSummary(
+    guarantees.map((guarantee) => guarantee.state as GuaranteeStateValue),
+  );
+  if (!summary) return;
+  await tx.reservationReference.updateMany({
+    where: { id: reservationReferenceId, deletedAt: null },
+    data: { guaranteeStatus: GuaranteeStatus[summary] },
+  });
+}
+
 export async function createGuarantee(
   user: CurrentUser,
   input: {
-    reservationReferenceId: string;
+    reservationReferenceId?: string | null;
     stayId?: string | null;
     roomId?: string | null;
+    guestName?: string | null;
+    roomNumber?: string | null;
+    reference?: string | null;
+    dueAt?: Date | null;
     kind: GuaranteeKind;
     amount: number;
     currency: string;
@@ -113,33 +121,26 @@ export async function createGuarantee(
   const initialState = input.state ?? GuaranteeState.PENDIENTE;
 
   const guarantee = await prisma.$transaction(async (tx) => {
-    const reservation = await tx.reservationReference.findFirst({
-      where: { id: input.reservationReferenceId, deletedAt: null },
-      select: { id: true, code: true },
-    });
-    if (!reservation) throw new NotFoundError('Esa reserva no existe.');
-
-    const context = await resolveOperationalContext(tx, {
-      reservationReferenceId: reservation.id,
-      stayId: input.stayId ?? null,
-      roomId: input.roomId ?? null,
-    });
-
-    if (
-      input.kind === GuaranteeKind.EFECTIVO &&
-      initialState === GuaranteeState.VIGENTE &&
-      context.ambiguousStayIds.length > 0
-    ) {
-      assertUnambiguousStay(
-        context,
-        'Esta reserva tiene varias estadías activas. Registra la garantía en efectivo desde la habitación/estadía exacta.',
-      );
-    }
+    const legacyReservation = input.reservationReferenceId
+      ? await tx.reservationReference.findFirst({
+          where: { id: input.reservationReferenceId, deletedAt: null },
+          select: {
+            id: true,
+            code: true,
+            roomNumber: true,
+            guest: { select: { fullName: true } },
+          },
+        })
+      : null;
 
     const created = await tx.guarantee.create({
       data: {
-        reservationReferenceId: reservation.id,
-        stayId: context.stayId,
+        reservationReferenceId: legacyReservation?.id ?? null,
+        stayId: input.stayId ?? null,
+        guestName: input.guestName?.trim() || legacyReservation?.guest?.fullName || null,
+        roomNumber: input.roomNumber?.trim() || legacyReservation?.roomNumber || null,
+        reference: input.reference?.trim() || legacyReservation?.code || null,
+        dueAt: input.dueAt ?? null,
         kind: input.kind,
         amount: new Prisma.Decimal(input.amount),
         currency: input.currency.toUpperCase(),
@@ -147,35 +148,36 @@ export async function createGuarantee(
         notes: input.notes ?? null,
         createdById: user.id,
       },
-      select: { id: true, state: true, amount: true, currency: true, stayId: true },
+      select: {
+        id: true,
+        state: true,
+        amount: true,
+        currency: true,
+        reservationReferenceId: true,
+        stayId: true,
+        guestName: true,
+        roomNumber: true,
+        reference: true,
+        dueAt: true,
+      },
     });
 
     if (input.kind === GuaranteeKind.EFECTIVO && created.state === GuaranteeState.VIGENTE) {
       await recordGuaranteeCashIn(tx, {
         user,
         guaranteeId: created.id,
-        reservationReferenceId: reservation.id,
-        reservationCode: reservation.code,
-        roomId: context.roomId,
-        stayId: context.stayId,
-        guestId: context.guestId,
+        reservationReferenceId: created.reservationReferenceId,
+        reservationCode: legacyReservation?.code ?? null,
+        reference: guaranteeLabel(created),
+        stayId: created.stayId,
         currency: created.currency,
         amount: money(created.amount) ?? input.amount,
         shiftId: shift?.id ?? null,
       });
     }
 
-    await syncReservationSummary(tx, reservation.id);
-    return {
-      ...created,
-      reservationCode: reservation.code,
-      context: {
-        roomId: context.roomId,
-        stayId: context.stayId,
-        guestId: context.guestId,
-        issues: context.issues,
-      },
-    };
+    await syncReservationSummary(tx, created.reservationReferenceId);
+    return created;
   });
 
   await recordAudit({
@@ -184,28 +186,22 @@ export async function createGuarantee(
     action: AuditAction.CREAR,
     user,
     summary:
-      `Garantía registrada en la reserva ${guarantee.reservationCode}: ` +
-      `${guarantee.currency} ${money(guarantee.amount)}, ` +
-      `${GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue]}`,
+      `${guaranteeLabel(guarantee)} · ${guarantee.currency} ${money(guarantee.amount)} · ` +
+      GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue],
     after: {
       state: guarantee.state,
       amount: money(guarantee.amount),
-      roomId: guarantee.context.roomId,
-      stayId: guarantee.context.stayId,
-      guestId: guarantee.context.guestId,
-      contextIssues: guarantee.context.issues,
+      currency: guarantee.currency,
+      guestName: guarantee.guestName,
+      roomNumber: guarantee.roomNumber,
+      reference: guarantee.reference,
+      dueAt: guarantee.dueAt,
     },
   });
 
   return { id: guarantee.id };
 }
 
-/**
- * Cambia el estado de una garantía.
- *
- * Las transiciones válidas las define el dominio (`canTransition`): una
- * garantía devuelta no vuelve a estar vigente y una cerrada no se reabre.
- */
 export async function changeGuaranteeState(
   user: CurrentUser,
   input: {
@@ -232,7 +228,10 @@ export async function changeGuaranteeState(
         currency: true,
         reservationReferenceId: true,
         stayId: true,
-        reservationReference: { select: { code: true, roomNumber: true } },
+        guestName: true,
+        roomNumber: true,
+        reference: true,
+        reservationReference: { select: { code: true } },
       },
     });
     if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
@@ -242,13 +241,10 @@ export async function changeGuaranteeState(
     if (from === to) throw new RuleError('La garantía ya está en ese estado.');
     if (!canTransition(from, to)) {
       throw new RuleError(
-        `No se puede pasar de «${GUARANTEE_STATE_LABELS[from]}» a ` +
-          `«${GUARANTEE_STATE_LABELS[to]}».`,
+        `No se puede pasar de «${GUARANTEE_STATE_LABELS[from]}» a «${GUARANTEE_STATE_LABELS[to]}».`,
       );
     }
 
-    // Aplicar parte de la garantía exige decir cuánto y por qué: sin eso no
-    // hay forma de explicarle al huésped qué se le cobró.
     if (to === 'APLICADA_PARCIALMENTE') {
       if (!input.appliedAmount || input.appliedAmount <= 0) {
         throw new RuleError('Indica el monto aplicado.');
@@ -270,6 +266,7 @@ export async function changeGuaranteeState(
       input.penaltyAmount !== undefined
         ? (input.penaltyAmount ?? 0)
         : (money(guarantee.penaltyAmount) ?? 0);
+
     if (aplicado + multa > total) {
       throw new RuleError(
         `Lo aplicado y la multa (${aplicado + multa}) superan la garantía tomada (${total}).`,
@@ -293,10 +290,8 @@ export async function changeGuaranteeState(
       );
     }
 
-    // DEVUELTA devuelve el remanente. MULTA retiene sólo lo aplicado/multado y
-    // devuelve automáticamente cualquier resto: una multa parcial no convierte
-    // silenciosamente todo el depósito en ingreso del hotel.
     const returnsRemainder = to === 'DEVUELTA' || to === 'MULTA';
+
     await tx.guarantee.update({
       where: { id: guarantee.id },
       data: {
@@ -324,26 +319,16 @@ export async function changeGuaranteeState(
     });
 
     if (guarantee.kind === GuaranteeKind.EFECTIVO) {
-      const context = await resolveOperationalContext(tx, {
-        reservationReferenceId: guarantee.reservationReferenceId,
-        stayId: guarantee.stayId,
-      });
+      const reference = guaranteeLabel(guarantee);
 
       if (to === 'VIGENTE') {
-        if (context.ambiguousStayIds.length > 0) {
-          assertUnambiguousStay(
-            context,
-            'Esta reserva tiene varias estadías activas. Resuelve la garantía desde la habitación/estadía exacta.',
-          );
-        }
         await recordGuaranteeCashIn(tx, {
           user,
           guaranteeId: guarantee.id,
           reservationReferenceId: guarantee.reservationReferenceId,
-          reservationCode: guarantee.reservationReference.code,
-          roomId: context.roomId,
-          stayId: context.stayId,
-          guestId: context.guestId,
+          reservationCode: guarantee.reservationReference?.code ?? null,
+          reference,
+          stayId: guarantee.stayId,
           currency: guarantee.currency,
           amount: total,
           shiftId: shift?.id ?? null,
@@ -355,10 +340,9 @@ export async function changeGuaranteeState(
           user,
           guaranteeId: guarantee.id,
           reservationReferenceId: guarantee.reservationReferenceId,
-          reservationCode: guarantee.reservationReference.code,
-          roomId: context.roomId,
-          stayId: context.stayId,
-          guestId: context.guestId,
+          reservationCode: guarantee.reservationReference?.code ?? null,
+          reference: `Devolución · ${reference}`,
+          stayId: guarantee.stayId,
           currency: guarantee.currency,
           amount: refundable,
           shiftId: shift?.id ?? null,
@@ -376,7 +360,7 @@ export async function changeGuaranteeState(
     action: AuditAction.CAMBIO_ESTADO,
     user,
     summary:
-      `Garantía de la reserva ${result.guarantee.reservationReference.code}: ` +
+      `${guaranteeLabel(result.guarantee)}: ` +
       `${GUARANTEE_STATE_LABELS[result.from]} → ${GUARANTEE_STATE_LABELS[result.to]}`,
     before: { state: result.from },
     after: {
@@ -402,7 +386,9 @@ export async function softDeleteGuarantee(
         id: true,
         state: true,
         reservationReferenceId: true,
-        reservationReference: { select: { code: true } },
+        guestName: true,
+        roomNumber: true,
+        reference: true,
       },
     });
     if (!found) throw new NotFoundError('Esa garantía no existe o ya fue eliminada.');
@@ -424,13 +410,11 @@ export async function softDeleteGuarantee(
     entityId: guarantee.id,
     action: AuditAction.ELIMINAR,
     user,
-    summary:
-      `Garantía de la reserva ${guarantee.reservationReference.code} eliminada: ${input.reason}`,
+    summary: `${guaranteeLabel(guarantee)} eliminada: ${input.reason}`,
     before: { state: guarantee.state },
   });
 }
 
-/** Garantías vivas que exigen atención, ordenadas por lo más antiguo. */
 export async function listOpenGuarantees(limit = 50): Promise<GuaranteeWithContext[]> {
   return prisma.guarantee.findMany({
     where: {
@@ -438,11 +422,12 @@ export async function listOpenGuarantees(limit = 50): Promise<GuaranteeWithConte
       state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
     },
     include: guaranteeInclude,
-    orderBy: [{ state: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ state: 'asc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
     take: limit,
   });
 }
 
+/** Compatibilidad para pantallas históricas no operativas. */
 export async function listGuaranteesOfReservation(
   reservationReferenceId: string,
 ): Promise<GuaranteeWithContext[]> {

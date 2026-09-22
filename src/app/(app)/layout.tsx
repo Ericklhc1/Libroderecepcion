@@ -109,7 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <input
                 type="search"
                 name="q"
-                placeholder="Buscar: @habitación, #registro, T#tarea, huésped, reserva, usuario…"
+                placeholder="Buscar: #registro, T#tarea, texto, categoría o responsable…"
                 aria-label="Búsqueda global"
                 className="input-base pl-9"
               />

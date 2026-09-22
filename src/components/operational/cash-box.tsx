@@ -351,10 +351,14 @@ export function CashBox({
                 <li key={guarantee.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                   <div>
                     <p className="font-medium text-petrol-900">
-                      {guarantee.guestName ?? 'Huésped sin nombre'}
+                      {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
                       {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                     </p>
-                    <p className="text-xs text-slate-500">ID FNS {guarantee.reservationCode} · {guarantee.state.toLowerCase().replaceAll('_', ' ')}</p>
+                    <p className="text-xs text-slate-500">
+                      {guarantee.reference ? `${guarantee.reference} · ` : ''}
+                      {guarantee.state.toLowerCase().replaceAll('_', ' ')}
+                      {guarantee.dueAt ? ` · objetivo ${new Date(guarantee.dueAt).toLocaleString('es-CL')}` : ''}
+                    </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <span className="font-semibold tabular text-petrol-900">
@@ -363,7 +367,7 @@ export function CashBox({
                     {role !== 'lector' ? (
                       <ReturnCashGuaranteeForm
                         guaranteeId={guarantee.id}
-                        reservationCode={guarantee.reservationCode}
+                        reference={guarantee.reference ?? guarantee.guestName}
                       />
                     ) : null}
                   </div>

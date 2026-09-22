@@ -137,14 +137,12 @@ describe('mesa de supervisión', () => {
     expect(rowsOf((await getSupervisionData()).blocks, 'incidencias')).toHaveLength(0);
   });
 
-  it('separa los conflictos de llaves de los de habitación', async () => {
-    const { blocks } = await getSupervisionData();
-    const keys = blocks.find((block) => block.key === 'conflictos-llaves');
-    const rooms = blocks.find((block) => block.key === 'conflictos-habitacion');
-    expect(keys).toBeDefined();
-    expect(rooms).toBeDefined();
-    // Sin estadías cargadas no hay conflicto de ningún tipo.
-    expect(keys?.rows).toHaveLength(0);
-    expect(rooms?.rows).toHaveLength(0);
+  it('no proyecta conflictos PMS ni de llaves', async () => {
+    const keys = (await getSupervisionData()).blocks.map((block) => block.key);
+    expect(keys).not.toContain('conflictos-llaves');
+    expect(keys).not.toContain('conflictos-habitacion');
+    expect(keys).not.toContain('salidas');
+    expect(keys).not.toContain('llaves-pendientes');
+    expect(keys).not.toContain('multas');
   });
 });

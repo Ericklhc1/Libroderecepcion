@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EntryType, FollowUpStatus } from '@prisma/client';
-import { ArrowLeft, BedDouble, CalendarClock, Trash2, User } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Trash2 } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getEntry } from '@/server/services/entries';
@@ -379,44 +379,6 @@ export default async function EntryDetailPage({
         </div>
 
         <div className="space-y-4">
-          {entry.guest || entry.reservation ? (
-            <Card>
-              <CardHeader title="Huésped y reserva" />
-              <div className="space-y-3 px-4 py-4 text-sm">
-                {entry.guest ? (
-                  <div>
-                    <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                      <User className="h-3.5 w-3.5" aria-hidden="true" />
-                      Huésped
-                    </p>
-                    <p className="text-petrol-900">
-                      {entry.guest.fullName}
-                      {entry.guest.vip ? ' · VIP' : ''}
-                    </p>
-                    {entry.guest.roomNumber ? (
-                      <p className="text-slate-600">Habitación {entry.guest.roomNumber}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {entry.reservation ? (
-                  <div>
-                    <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                      <BedDouble className="h-3.5 w-3.5" aria-hidden="true" />
-                      Reserva
-                    </p>
-                    <p className="text-petrol-900">{entry.reservation.code}</p>
-                    <p className="text-slate-600">
-                      Estado {entry.reservation.status}
-                      {entry.reservation.roomNumber
-                        ? ` · hab. ${entry.reservation.roomNumber}`
-                        : ''}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
-
           <Card>
             <CardHeader title="Historial" count={history.length} />
             <HistoryTimeline events={history} />

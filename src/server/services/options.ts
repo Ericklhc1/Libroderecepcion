@@ -8,11 +8,13 @@ export type Option = { value: string; label: string };
 export type FormOptions = {
   users: Option[];
   departments: Option[];
+  /** Legado PMS: se conserva vacío para compatibilidad de componentes antiguos. */
   guests: Option[];
+  /** Legado PMS: se conserva vacío para compatibilidad de componentes antiguos. */
   reservations: Option[];
   openEntries: Option[];
   openTasks: Option[];
-  /** Habitaciones del hotel, con su ocupante actual cuando lo hay. */
+  /** Legado Habitaciones: ya no participa en formularios operativos nuevos. */
   rooms: Option[];
   activeShifts: Option[];
 };
@@ -20,28 +22,17 @@ export type FormOptions = {
 /**
  * Opciones para los formularios operativos.
  *
- * La lista de personas excluye al Administrador de sistema por construcción
- * (ver `listOperationalUsers`), de modo que no puede quedar como responsable.
+ * Desde v1.4.0 esta función NO consulta huéspedes, reservas, estadías ni
+ * habitaciones. Novedades, tareas y Supervisión funcionan sólo con personas,
+ * áreas, registros, tareas y turnos.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, guests, reservations, entries, tasks, rooms, activeShifts] = await Promise.all([
+  const [users, departments, entries, tasks, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
       orderBy: { order: 'asc' },
       select: { id: true, name: true },
-    }),
-    prisma.guestReference.findMany({
-      where: { deletedAt: null },
-      orderBy: { fullName: 'asc' },
-      select: { id: true, fullName: true, roomNumber: true, vip: true },
-      take: 200,
-    }),
-    prisma.reservationReference.findMany({
-      where: { deletedAt: null },
-      orderBy: { checkIn: 'desc' },
-      select: { id: true, code: true, roomNumber: true, guest: { select: { fullName: true } } },
-      take: 200,
     }),
     prisma.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
@@ -55,56 +46,37 @@ export async function getFormOptions(): Promise<FormOptions> {
       select: { id: true, seq: true, title: true },
       take: 100,
     }),
-    prisma.room.findMany({
-      where: { active: true },
-      orderBy: { number: 'asc' },
-      select: {
-        id: true,
-        number: true,
-        stays: {
-          where: { deletedAt: null, status: 'IN_HOUSE', stage: { not: 'FINALIZADO' } },
-          select: { guestNames: true },
-          take: 1,
-        },
-      },
-    }),
     prisma.shift.findMany({
       where: {
         archivedAt: null,
         status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA', 'ENTREGA_ENVIADA'] },
       },
-      orderBy: { actualStart: 'desc' },
+      orderBy: { plannedStart: 'desc' },
       select: { id: true, type: true, date: true },
-      take: 20,
+      take: 12,
     }),
   ]);
 
   return {
-    users: users.map((u) => ({ value: u.id, label: `${u.name} · ${u.role.name}` })),
-    departments: departments.map((d) => ({ value: d.id, label: d.name })),
-    guests: guests.map((g) => ({
-      value: g.id,
-      label: `${g.fullName}${g.roomNumber ? ` · hab. ${g.roomNumber}` : ''}${g.vip ? ' · VIP' : ''}`,
+    users: users.map((user) => ({ value: user.id, label: user.name })),
+    departments: departments.map((department) => ({
+      value: department.id,
+      label: department.name,
     })),
-    reservations: reservations.map((r) => ({
-      value: r.id,
-      label: `${r.code}${r.guest ? ` · ${r.guest.fullName}` : ''}${r.roomNumber ? ` · hab. ${r.roomNumber}` : ''}`,
+    guests: [],
+    reservations: [],
+    openEntries: entries.map((entry) => ({
+      value: entry.id,
+      label: `${ENTRY_TYPE_LABEL[entry.type]} #${entry.seq} · ${entry.title}`,
     })),
-    openEntries: entries.map((e) => ({
-      value: e.id,
-      label: `#${e.seq} · ${ENTRY_TYPE_LABEL[e.type]} · ${e.title}`,
+    openTasks: tasks.map((task) => ({
+      value: task.id,
+      label: `Tarea #${task.seq} · ${task.title}`,
     })),
-    openTasks: tasks.map((t) => ({ value: t.id, label: `T#${t.seq} · ${t.title}` })),
-    rooms: rooms.map((room) => {
-      const guest = room.stays[0]?.guestNames[0];
-      return {
-        value: room.id,
-        label: guest ? `${room.number} · ${guest}` : room.number,
-      };
-    }),
+    rooms: [],
     activeShifts: activeShifts.map((shift) => ({
       value: shift.id,
-      label: `${shift.type === 'DIA' ? 'Día' : 'Noche'} · ${shift.date.toLocaleDateString('es-CL', { timeZone: 'UTC' })}`,
+      label: `${shift.type} · ${shift.date.toLocaleDateString('es-CL')}`,
     })),
   };
 }

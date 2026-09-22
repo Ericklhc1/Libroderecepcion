@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EntryType, Priority } from '@prisma/client';
+import { EntryType, Priority, Severity } from '@prisma/client';
 import { entryCreateWithContextSchema } from '@/server/schemas';
 
 const base = {
@@ -25,15 +25,27 @@ describe('simplificación operativa', () => {
     expect(parsed.data.stayId).toBeNull();
   });
 
-  it('mantiene contexto obligatorio para una incidencia', () => {
+  it('una incidencia tampoco necesita contexto PMS', () => {
+    const parsed = entryCreateWithContextSchema.safeParse({
+      ...base,
+      type: EntryType.INCIDENCIA,
+      severity: Severity.ALTA,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.roomId).toBeNull();
+    expect(parsed.data.guestId).toBeNull();
+    expect(parsed.data.reservationId).toBeNull();
+    expect(parsed.data.stayId).toBeNull();
+  });
+
+  it('una incidencia sigue exigiendo gravedad, no PMS', () => {
     const parsed = entryCreateWithContextSchema.safeParse({
       ...base,
       type: EntryType.INCIDENCIA,
     });
 
-    expect(parsed.success).toBe(false);
-    if (parsed.success) return;
-    expect(parsed.error.issues.some((issue) => issue.path[0] === 'roomId')).toBe(true);
-    expect(parsed.error.issues.some((issue) => issue.path[0] === 'departmentId')).toBe(true);
+    expect(parsed.success).toBe(true);
   });
 });

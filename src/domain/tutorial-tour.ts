@@ -5,21 +5,18 @@ export type TutorialStep = {
   title: string;
   description: string;
   route?: string;
-  /** Selector del elemento que se debe señalar cuando la pantalla esté lista. */
   target?: string;
-  /** Se incluye si la persona tiene al menos uno de estos permisos. */
   anyOf?: PermissionKey[];
 };
 
 const ROUTE_TARGET = '[data-tour="route-title"], main h1';
 
 /**
- * Recorrido de producto, no manual técnico.
+ * Recorrido de producto v1.4.0.
  *
- * La persona ve módulos independientes, aunque por debajo compartan contexto.
- * El tutorial explica qué pregunta responde cada módulo y deja que el propio
- * sistema muestre las relaciones entre reserva, habitación, caja, llaves y
- * Libro sin exponer la arquitectura interna.
+ * El Libro gira alrededor de Novedades + Caja. Turno y Supervisión existen
+ * para continuidad, custodia y control; PMS, Habitaciones, Huéspedes y Llaves
+ * ya no forman parte del producto operativo.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -34,145 +31,56 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'acciones-rapidas',
     title: 'Acciones rápidas',
     description:
-      'Esta barra te acompaña en cualquier pantalla. Úsala para registrar una novedad, incidencia o tarea sin abandonar lo que estabas revisando.',
+      'Registra una novedad o incidencia sin abandonar lo que estabas revisando.',
     target: '[data-tour="quick-actions"]',
   },
   {
     id: 'busqueda',
     title: 'Búsqueda global',
     description:
-      'Busca por habitación, número de reserva, huésped, registro, tarea o usuario. Es la puerta más corta cuando ya sabes qué estás buscando.',
+      'Busca novedades, tareas, responsables y referencias operativas del Libro.',
     target: '[data-tour="global-search"]',
   },
   {
     id: 'libro',
     title: 'Novedades',
     description:
-      'Es el núcleo temporal del mesón: registra lo que pasó y lo que queda pendiente. Habitación, huésped y reserva son contexto opcional.',
+      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cualquier habitación o referencia se escribe como contexto libre cuando aporta valor.',
     route: '/libro?clase=entry',
     target: ROUTE_TARGET,
-  },
-  {
-    id: 'reservas',
-    title: 'Contexto PMS (opcional)',
-    description:
-      'Consulta aquí la evidencia del PMS cuando necesites cruzar un ID FNS, una habitación, una estadía o un huésped. No es requisito para registrar Novedades, operar Caja ni controlar Llaves.',
-    route: '/reservas',
-    target: ROUTE_TARGET,
-    anyOf: ['room.view', 'guest.view', 'guest.manage'],
-  },
-  {
-    id: 'habitaciones',
-    title: 'Habitaciones',
-    description:
-      'Aquí ves la situación física de cada habitación. La ficha reúne la estadía vigente, llaves, salida o llegada pendiente y el contexto de su reserva.',
-    route: '/habitaciones',
-    target: ROUTE_TARGET,
-    anyOf: ['room.view'],
-  },
-  {
-    id: 'nueva-reserva',
-    title: 'Cargar una nueva reserva',
-    description:
-      'Adjunta el PDF de una reserva individual, revisa los datos detectados y confirma antes de incorporarla. El ID de reserva evita duplicados y conserva una sola ficha canónica.',
-    route: '/huespedes/nueva-reserva',
-    target: ROUTE_TARGET,
-    anyOf: ['pms.import'],
-  },
-  {
-    id: 'huespedes-reservas',
-    title: 'Huéspedes & reservas',
-    description:
-      'Aquí vive la ficha de cada huésped y reserva. Fechas, habitación, garantías, saldos y actividad conectada se reflejan desde este contexto donde haga falta.',
-    route: '/huespedes',
-    target: ROUTE_TARGET,
-    anyOf: ['guest.view', 'guest.manage'],
-  },
-  {
-    id: 'carga-reservas',
-    title: 'Cargar información de Huéspedes & reservas',
-    description:
-      'Aquí adjuntas y revisas los PDF de actividad. Nada se aplica sin revisión; al confirmar, reservas, habitaciones, llaves y demás vistas reciben el contexto que les corresponde.',
-    route: '/huespedes/importar',
-    target: ROUTE_TARGET,
-    anyOf: ['pms.import'],
   },
   {
     id: 'caja',
     title: 'Caja',
     description:
-      'Caja es la fuente operativa del efectivo del turno: fondo fijo, ingresos, egresos, garantías en efectivo, arqueos y diferencias. Una reserva puede aportar contexto, pero no es requisito para operar Caja.',
+      'Aquí vive la custodia financiera: fondo fijo, garantías, ingresos, egresos, transferencias, arqueos y diferencias. No depende del PMS.',
     route: '/caja',
     target: ROUTE_TARGET,
-    anyOf: ['room.view'],
-  },
-  {
-    id: 'preparar-entrega',
-    title: 'Preparar entrega',
-    description:
-      'El arqueo y la transferencia de Caja forman parte del cierre del turno. Desde Mi turno preparas la entrega, declaras Caja y continúas aunque el relevo todavía no haya terminado su cierre.',
-    route: '/turno',
-    target: ROUTE_TARGET,
-    anyOf: ['shift.handover'],
+    anyOf: ['cash.view'],
   },
   {
     id: 'turno',
-    title: 'Turno',
+    title: 'Mi turno',
     description:
-      'Mi turno concentra apertura, operación, preparación de entrega, transferencia de Caja y cierre. El turno entrante puede abrirse mientras el saliente termina, y la recepción de Caja no cierra automáticamente al turno anterior.',
+      'Mi turno organiza inicio, continuidad, entrega y cierre. La entrega resume Novedades, tareas, seguimientos y alertas; Caja conserva su propio control de custodia.',
     route: '/turno',
     target: ROUTE_TARGET,
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
   },
   {
-    id: 'llaves',
-    title: 'Llaves',
-    description:
-      'Aquí administras el inventario físico. Cada llave existe por sí misma; habitación, estadía y huésped se vinculan sólo cuando corresponde y nunca son requisito para mantener el stock.',
-    route: '/llaves',
-    target: ROUTE_TARGET,
-    anyOf: ['room.view'],
-  },
-  {
     id: 'supervision',
-    title: 'Supervisión',
+    title: 'Centro de Supervisión',
     description:
-      'La bandeja de Supervisión concentra excepciones, garantías, multas, alertas y elementos que requieren revisión o decisión de jefatura.',
+      'Concentra excepciones de Novedades, Caja y Turnos, además de tareas, seguimientos, auditorías y controles del Supervisor.',
     route: '/supervision',
     target: ROUTE_TARGET,
-    anyOf: ['supervision.view', 'shift.manage'],
-  },
-  {
-    id: 'informes-supervision',
-    title: 'Informes de Supervisión',
-    description:
-      'Genera informes de estado operativo, multas y gimnasio por rango de fechas, con salida en PDF y envío por correo cuando corresponde.',
-    route: '/supervision/informes',
-    target: ROUTE_TARGET,
-    anyOf: ['supervision.view'],
-  },
-  {
-    id: 'historial',
-    title: 'Historial',
-    description:
-      'Cuando necesitas saber qué pasó y cuándo, entra aquí. La operación se conserva para que las correcciones no borren el rastro anterior.',
-    route: '/historial',
-    target: ROUTE_TARGET,
-  },
-  {
-    id: 'indicadores',
-    title: 'Indicadores',
-    description:
-      'Esta vista resume la operación para seguimiento: sirve para leer tendencias sin sustituir el detalle que vive en cada módulo.',
-    route: '/indicadores',
-    target: ROUTE_TARGET,
-    anyOf: ['metrics.view'],
+    anyOf: ['supervision.center.view'],
   },
   {
     id: 'auditoria',
     title: 'Auditoría',
     description:
-      'Consulta el rastro de cambios operativos con fecha, responsable y motivo. Es una vista de control y no concede administración técnica.',
+      'Consulta el rastro de cambios con fecha, responsable y motivo. Es una vista de control y no modifica el historial.',
     route: '/admin/auditoria',
     target: ROUTE_TARGET,
     anyOf: ['audit.view'],
@@ -181,7 +89,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'administracion',
     title: 'Administración',
     description:
-      'Usuarios, roles, parámetros y configuración técnica viven aquí. Sólo aparece cuando tu rol tiene una responsabilidad administrativa.',
+      'Usuarios, roles, parámetros y configuración técnica viven aquí. Sólo aparece con permisos administrativos.',
     route: '/admin',
     target: ROUTE_TARGET,
     anyOf: ['user.manage', 'role.manage', 'system.configure'],
@@ -190,7 +98,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'ayuda',
     title: 'Ayuda y recorridos',
     description:
-      'Si olvidas un procedimiento, abre la ayuda. Y desde Mi perfil puedes volver a iniciar este recorrido cuando quieras.',
+      'Si olvidas un procedimiento, abre la ayuda. Puedes volver a iniciar este recorrido cuando quieras.',
     target: '[data-tour="help-center"]',
   },
 ];

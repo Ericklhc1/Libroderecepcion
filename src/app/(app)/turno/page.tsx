@@ -10,13 +10,11 @@ import {
   getShiftDesk,
 } from '@/server/services/shifts';
 import { getShiftMetrics } from '@/server/services/metrics';
-import { getShiftReportsState } from '@/server/services/pms-import';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ShiftStepper } from '@/components/operational/shift-stepper';
-import { ShiftReports } from '@/components/operational/shift-reports';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
@@ -49,13 +47,6 @@ import { formatCalendarDate, formatDate, formatDateTime, formatTime, relativeTim
 export const metadata = { title: 'Turno' };
 export const dynamic = 'force-dynamic';
 
-/*
-  El inicio de turno aloja la carga de los tres informes del PMS: leer tres
-  PDF y aplicarlos toma más que los diez segundos que la plataforma concede
-  por omisión a una función.
-*/
-export const maxDuration = 60;
-
 export default async function ShiftPage({
   searchParams,
 }: {
@@ -67,9 +58,8 @@ export default async function ShiftPage({
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
 
-  const [desk, reportsState, recentShifts, pendingClosure] = await Promise.all([
+  const [desk, recentShifts, pendingClosure] = await Promise.all([
     getShiftDesk(user),
-    getShiftReportsState(),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
       include: {
@@ -125,7 +115,7 @@ export default async function ShiftPage({
     ? {
         ...briefing,
         openEntries: briefing.openEntries.filter((entry) =>
-          textMatches([entry.seq, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name, entry.guest?.fullName]),
+          textMatches([entry.seq, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name]),
         ),
         overdueTasks: briefing.overdueTasks.filter((task) =>
           textMatches([task.seq, task.status, task.title, task.assignee?.name]),
@@ -136,19 +126,7 @@ export default async function ShiftPage({
         followUps: briefing.followUps.filter((followUp) =>
           textMatches([followUp.status, followUp.action, followUp.owner.name]),
         ),
-        vipGuests: briefing.vipGuests.filter((guest) =>
-          textMatches([guest.fullName, guest.roomNumber, guest.notes]),
-        ),
-        reservations: briefing.reservations.filter((reservation) =>
-          textMatches([
-            reservation.code,
-            reservation.status,
-            reservation.guaranteeStatus,
-            reservation.roomNumber,
-            reservation.guest?.fullName,
-            reservation.actionNote,
-          ]),
-        ),
+
       }
     : null;
   const visibleRecentShifts = recentShifts.filter((item) =>
@@ -208,16 +186,6 @@ export default async function ShiftPage({
           </div>
         </Card>
       ) : null}
-
-      {/*
-        Los tres informes del PMS son el primer gesto del turno: de ellos sale
-        el estado de las 89 habitaciones, la regla de cola y el inventario de
-        llaves.
-      */}
-      <ShiftReports
-        state={reportsState}
-        canImport={user.permissions.includes('pms.import')}
-      />
 
       {!shift ? (
         <Card>
@@ -413,8 +381,6 @@ export default async function ShiftPage({
                     <option value="tareas">Tareas vencidas</option>
                     <option value="alertas">Alertas</option>
                     <option value="seguimientos">Seguimientos</option>
-                    <option value="vip">Huéspedes VIP</option>
-                    <option value="reservas">Reservas con acción</option>
                     <option value="historial">Mis turnos recientes</option>
                   </select>
                 </label>
@@ -464,7 +430,6 @@ export default async function ShiftPage({
                               <p className="mt-1 text-sm font-medium text-petrol-900">{entry.title}</p>
                               <p className="text-xs text-slate-500">
                                 {entry.owner?.name ?? 'Sin responsable'}
-                                {entry.guest ? ` · ${entry.guest.fullName}` : ''}
                               </p>
                             </Link>
                           </li>
@@ -568,59 +533,6 @@ export default async function ShiftPage({
                 </Card>
               ) : null}
 
-              {showSection('vip') ? (
-                <Card>
-                  <CardHeader title="Huéspedes VIP" count={visibleBriefing.vipGuests.length} />
-                  {visibleBriefing.vipGuests.length === 0 ? (
-                    <EmptyState message="Sin huéspedes VIP registrados." />
-                  ) : (
-                    <CardScroll>
-                      <ul className="divide-y divide-slate-100">
-                        {visibleBriefing.vipGuests.map((guest) => (
-                          <li key={guest.id} className="px-4 py-2.5">
-                            <p className="text-sm font-medium text-petrol-900">
-                              {guest.fullName}
-                              {guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}
-                            </p>
-                            {guest.notes ? <p className="text-xs text-slate-500">{guest.notes}</p> : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </CardScroll>
-                  )}
-                </Card>
-              ) : null}
-
-              {showSection('reservas') ? (
-                <Card>
-                  <CardHeader
-                    title="Reservas que requieren acción"
-                    count={visibleBriefing.reservations.length}
-                    href="/huespedes"
-                  />
-                  {visibleBriefing.reservations.length === 0 ? (
-                    <EmptyState message="Sin reservas pendientes de acción." />
-                  ) : (
-                    <CardScroll>
-                      <ul className="divide-y divide-slate-100">
-                        {visibleBriefing.reservations.slice(0, 8).map((reservation) => (
-                          <li key={reservation.id} className="px-4 py-2.5">
-                            <p className="text-sm font-medium text-petrol-900">
-                              {reservation.code}
-                              {reservation.guest ? ` · ${reservation.guest.fullName}` : ''}
-                              {reservation.roomNumber ? ` · hab. ${reservation.roomNumber}` : ''}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {reservation.actionNote ??
-                                `Estado ${reservation.status} · garantía ${reservation.guaranteeStatus}`}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardScroll>
-                  )}
-                </Card>
-              ) : null}
             </div>
           ) : null}
         </>

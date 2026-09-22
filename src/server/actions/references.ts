@@ -206,12 +206,10 @@ export async function saveReservationAction(
 
 /** Pantallas que muestran garantías. Invalidación acotada, no global. */
 function refreshGuarantees(): void {
-  revalidatePath('/huespedes');
-  revalidatePath('/reservas');
-  revalidatePath('/habitaciones');
   revalidatePath('/caja');
   revalidatePath('/supervision');
   revalidatePath('/turno');
+  revalidatePath('/');
 }
 
 /* --------------------------------- Garantías -------------------------------- */
@@ -227,7 +225,7 @@ export async function createGuaranteeAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
-    const user = await requirePermission(input.kind === 'EFECTIVO' ? 'cash.guarantee_in' : 'guest.manage');
+    const user = await requirePermission('cash.guarantee_in');
     const guarantee = await createGuarantee(user, input);
     refreshGuarantees();
     return {
@@ -243,7 +241,7 @@ export async function changeGuaranteeStateAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('guest.manage');
+    const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeStateSchema, formDataToObject(formData));
     await changeGuaranteeState(user, input);
     refreshGuarantees();
@@ -259,7 +257,7 @@ export async function deleteGuaranteeAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('guest.manage');
+    const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeDeleteSchema, formDataToObject(formData));
     await softDeleteGuarantee(user, input);
     refreshGuarantees();

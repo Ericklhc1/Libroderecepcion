@@ -28,7 +28,7 @@ describe('Inicio como ventana operativa', () => {
   it('mantiene accesos accionables al detalle sin replicarlo', () => {
     expect(page).toContain('href="/libro"');
     expect(page).toContain('href="/libro?clase=task"');
-    expect(page).toContain("'/habitaciones'");
+    expect(page).not.toContain("'/habitaciones'");
     expect(page).toContain('href="/turno"');
   });
 
@@ -37,5 +37,7 @@ describe('Inicio como ventana operativa', () => {
     expect(service).not.toContain('lastReceivedHandover');
     expect(service).not.toContain('home.operationalFeedLimit');
     expect(service).toContain('openIncidents');
+    expect(service).not.toContain('listRoomsWithState');
+    expect(service).not.toContain('roomStay');
   });
 });

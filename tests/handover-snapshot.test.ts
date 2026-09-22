@@ -89,10 +89,10 @@ describe('resumen automático de la entrega', () => {
     const sections = new Set(snapshot.map((item) => item.section));
 
     expect(sections).toContain('Incidencias abiertas');
-    expect(sections).toContain('Mantenimiento');
-    expect(sections).toContain('Solicitudes de huéspedes');
     expect(sections).toContain('Novedades activas');
     expect(sections).toContain('Tareas pendientes');
+    expect(sections).not.toContain('Mantenimiento');
+    expect(sections).not.toContain('Solicitudes de huéspedes');
 
     // La incidencia crítica y la tarea vencida son urgentes.
     const urgentes = snapshot.filter((item) => item.level === HandoverLevel.URGENTE);
@@ -104,7 +104,7 @@ describe('resumen automático de la entrega', () => {
     expect(ocupacion?.level).toBe(HandoverLevel.INFORMATIVO);
   });
 
-  it('incluye cobros, garantías y reservas que requieren acción', async () => {
+  it('no convierte datos PMS en puntos de entrega', async () => {
     const guest = await prisma.guestReference.create({
       data: { fullName: 'Andrés Bustamante', roomNumber: '215' },
     });
@@ -116,20 +116,17 @@ describe('resumen automático de la entrega', () => {
         guaranteeStatus: GuaranteeStatus.RECHAZADA,
         balanceDue: 184500,
         requiresAction: true,
-        actionNote: 'Solicitar medio de pago alternativo.',
+        actionNote: 'Dato legado que no debe entrar a la entrega.',
       },
     });
 
     const snapshot = await buildHandoverSnapshot();
     const sections = snapshot.map((item) => item.section);
 
-    expect(sections).toContain('Cobros pendientes');
-    expect(sections).toContain('Garantías (resumen de reserva)');
-    expect(sections).toContain('Reservas que requieren acción');
-
-    const cobro = snapshot.find((item) => item.section === 'Cobros pendientes');
-    expect(cobro?.level).toBe(HandoverLevel.URGENTE);
-    expect(cobro?.title).toContain('184500');
+    expect(sections).not.toContain('Cobros pendientes');
+    expect(sections).not.toContain('Garantías (resumen de reserva)');
+    expect(sections).not.toContain('Reservas que requieren acción');
+    expect(snapshot).toHaveLength(0);
   });
 
   it('no repite un asunto que ya aparece en otra sección', async () => {

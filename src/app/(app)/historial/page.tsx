@@ -58,8 +58,7 @@ export default async function HistoryPage({
           Historial y búsqueda
         </h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Todo el archivo operativo, incluidos los registros cerrados. Combina los filtros para
-          encontrar cualquier antecedente.
+          Archivo de Novedades, tareas, seguimientos y alertas, incluidos los registros cerrados.
         </p>
       </header>
 
@@ -75,8 +74,6 @@ export default async function HistoryPage({
           'usuario',
           'responsable',
           'turno',
-          'habitacion',
-          'reserva',
           'desde',
           'hasta',
         ]}

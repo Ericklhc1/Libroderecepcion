@@ -69,7 +69,7 @@ describe('registros del libro operativo', () => {
     expect(entry.shiftId).toBe(shift.id);
   });
 
-  it('una novedad con habitación hereda estadía, reserva y huésped', async () => {
+  it('una novedad no hereda estadía, reserva ni huésped aunque reciba un roomId legado', async () => {
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '404' } });
     const reservation = await prisma.reservationReference.create({
       data: {
@@ -78,7 +78,7 @@ describe('registros del libro operativo', () => {
       },
       include: { guest: true },
     });
-    const stay = await prisma.roomStay.create({
+    await prisma.roomStay.create({
       data: {
         reservationId: reservation.code,
         reservationRefId: reservation.id,
@@ -97,10 +97,10 @@ describe('registros del libro operativo', () => {
       roomId: room.id,
     });
 
-    expect(entry.roomId).toBe(room.id);
-    expect(entry.stayId).toBe(stay.id);
-    expect(entry.reservationId).toBe(reservation.id);
-    expect(entry.guestId).toBe(reservation.guestId);
+    expect(entry.roomId).toBeNull();
+    expect(entry.stayId).toBeNull();
+    expect(entry.reservationId).toBeNull();
+    expect(entry.guestId).toBeNull();
   });
 
   it('normaliza las etiquetas y descarta duplicados', async () => {

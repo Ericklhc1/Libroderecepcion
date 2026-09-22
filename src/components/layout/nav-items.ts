@@ -26,14 +26,25 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
   {
-    href: '/turno', label: 'Mi turno', icon: 'shift',
-    anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'], mobile: true,
+    href: '/libro?clase=entry',
+    label: 'Novedades',
+    icon: 'book',
+    mobile: true,
   },
   {
-    href: '/libro?clase=entry', label: 'Novedades', icon: 'book', mobile: true,
+    href: '/caja',
+    label: 'Caja',
+    icon: 'key',
+    anyOf: ['cash.view'],
+    mobile: true,
   },
-  { href: '/caja', label: 'Caja', icon: 'key', anyOf: ['room.view'], mobile: true },
-  { href: '/llaves', label: 'Llaves', icon: 'key', anyOf: ['room.view'], mobile: true },
+  {
+    href: '/turno',
+    label: 'Mi turno',
+    icon: 'shift',
+    anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
+    mobile: true,
+  },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',
@@ -42,16 +53,7 @@ const PRIMARY: NavItem[] = [
   },
 ];
 
-// La operación diaria queda reducida a Inicio → Turno → Novedades → Caja → Llaves.
-// Reservas/habitaciones/PMS siguen disponibles como contexto opcional y fuente de
-// evidencia, pero ya no compiten como trabajo principal del mesón.
 const SECONDARY: NavItem[] = [
-  {
-    href: '/reservas',
-    label: 'Contexto PMS',
-    icon: 'guest',
-    anyOf: ['room.view', 'guest.view', 'guest.manage'],
-  },
   {
     href: '/admin/auditoria',
     label: 'Auditoría',
@@ -86,6 +88,8 @@ export function visibleNavItems(permissions: PermissionKey[]): NavItem[] {
 }
 
 export function visibleNavGroups(permissions: PermissionKey[]): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({ title: group.title, items: group.items.filter((item) => allowed(item, permissions)) }))
-    .filter((group) => group.items.length > 0);
+  return NAV_GROUPS.map((group) => ({
+    title: group.title,
+    items: group.items.filter((item) => allowed(item, permissions)),
+  })).filter((group) => group.items.length > 0);
 }

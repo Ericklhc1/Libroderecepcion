@@ -9,6 +9,7 @@ import {
   saveLiveCashAuditAction,
   voidGymPassAction,
 } from '@/server/actions/live-cash';
+import { createGuaranteeAction } from '@/server/actions/references';
 
 function formatFolio(folio: number) {
   return String(folio).padStart(4, '0');
@@ -17,10 +18,10 @@ function formatFolio(folio: number) {
 export function ManualCashMovementForm({
   allowIn = true,
   allowOut = true,
-  context,
 }: {
   allowIn?: boolean;
   allowOut?: boolean;
+  /** Compatibilidad: el formulario ya no consume contexto PMS. */
   context?: {
     roomNumber?: string | null;
     reservationCode?: string | null;
@@ -34,7 +35,6 @@ export function ManualCashMovementForm({
 
   return (
     <ActionForm action={createManualCashMovementAction} className="space-y-3" resetOnSuccess>
-      {context?.stayId ? <input type="hidden" name="stayId" value={context.stayId} /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Tipo de movimiento" name="direction" required>
           <Select
@@ -56,46 +56,108 @@ export function ManualCashMovementForm({
           />
         </Field>
       </div>
+
       <Field label="Monto" name="amount" required>
-        <Input name="amount" inputMode="decimal" min="0.01" step="0.01" required placeholder="0" />
+        <Input
+          name="amount"
+          inputMode="decimal"
+          min="0.01"
+          step="0.01"
+          required
+          placeholder="0"
+        />
       </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field
-          label="Habitación"
-          name="roomNumber"
-          hint="Opcional. Si la conoces, el sistema completa el contexto."
-        >
-          <Input
-            name="roomNumber"
-            maxLength={10}
-            defaultValue={context?.roomNumber ?? ''}
-            placeholder="404"
-          />
-        </Field>
-        <Field
-          label="Reserva"
-          name="reservationCode"
-          hint="Opcional. Úsala junto a habitación cuando haya más de una estadía."
-        >
-          <Input
-            name="reservationCode"
-            maxLength={80}
-            defaultValue={context?.reservationCode ?? ''}
-            placeholder="ID FNS"
-          />
-        </Field>
-      </div>
-      <Field label="Concepto" name="reference" required hint="Ej.: cambio para caja, reembolso, compra menor, diferencia autorizada.">
-        <Input name="reference" maxLength={120} required placeholder="Describe por qué entra o sale dinero" />
+
+      <Field
+        label="Concepto"
+        name="reference"
+        required
+        hint="Ej.: cambio para Caja, reembolso, compra menor o diferencia autorizada."
+      >
+        <Input
+          name="reference"
+          maxLength={120}
+          required
+          placeholder="Describe por qué entra o sale dinero"
+        />
       </Field>
+
       <Field label="Observaciones" name="notes">
         <Textarea name="notes" rows={2} maxLength={1000} placeholder="Opcional" />
       </Field>
+
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        Sólo se puede registrar mientras tengas un turno abierto o recibido. El movimiento queda ligado al turno, al Libro y a Auditoría.
+        El movimiento queda ligado al usuario, al turno, a Caja y a Auditoría. No necesita reserva, habitación ni estadía.
       </p>
+
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Registrando…">Registrar movimiento</SubmitButton>
+      </div>
+    </ActionForm>
+  );
+}
+
+export function CreateCashGuaranteeForm() {
+  return (
+    <ActionForm action={createGuaranteeAction} className="space-y-3" resetOnSuccess>
+      <input type="hidden" name="kind" value="EFECTIVO" />
+      <input type="hidden" name="state" value="VIGENTE" />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Moneda" name="currency" required>
+          <Select
+            name="currency"
+            required
+            defaultValue="CLP"
+            options={[
+              { value: 'CLP', label: 'CLP · Pesos chilenos' },
+              { value: 'USD', label: 'USD · Dólares' },
+            ]}
+          />
+        </Field>
+        <Field label="Monto" name="amount" required>
+          <Input
+            name="amount"
+            inputMode="decimal"
+            min="0.01"
+            step="0.01"
+            required
+            placeholder="0"
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Huésped / persona" name="guestName" hint="Opcional. Texto libre.">
+          <Input name="guestName" maxLength={160} placeholder="Nombre" />
+        </Field>
+        <Field label="Habitación" name="roomNumber" hint="Opcional. Texto libre.">
+          <Input name="roomNumber" maxLength={20} placeholder="512" />
+        </Field>
+      </div>
+
+      <Field
+        label="Referencia"
+        name="reference"
+        hint="Opcional. Ej.: reserva, sobre, motivo o cualquier identificador útil."
+      >
+        <Input name="reference" maxLength={160} placeholder="Referencia libre" />
+      </Field>
+
+      <Field label="Vigencia / fecha objetivo" name="dueAt" hint="Opcional.">
+        <Input name="dueAt" type="datetime-local" />
+      </Field>
+
+      <Field label="Observaciones" name="notes">
+        <Textarea name="notes" rows={2} maxLength={1000} placeholder="Opcional" />
+      </Field>
+
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        La garantía queda bajo custodia de Caja. No necesita reserva, estadía ni sincronización con PMS.
+      </p>
+
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Registrando…">Registrar garantía</SubmitButton>
       </div>
     </ActionForm>
   );
@@ -168,10 +230,10 @@ export function LiveCashAuditForm({
 
 export function ReturnCashGuaranteeForm({
   guaranteeId,
-  reservationCode,
+  reference,
 }: {
   guaranteeId: string;
-  reservationCode: string;
+  reference?: string | null;
 }) {
   return (
     <ActionForm
@@ -185,7 +247,7 @@ export function ReturnCashGuaranteeForm({
         variant="secondary"
         size="sm"
         pendingLabel="Devolviendo…"
-        title={`Devolver garantía · ID ${reservationCode}`}
+        title={reference ? `Devolver garantía · ${reference}` : 'Devolver garantía'}
       >
         Devolver garantía
       </SubmitButton>

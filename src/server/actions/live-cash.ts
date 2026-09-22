@@ -21,10 +21,6 @@ import { prisma } from '@/lib/prisma';
 import type { PermissionKey } from '@/lib/permissions';
 import { hasPermission } from '@/server/auth/current-user';
 import { insertCashMovement, saveLiveCashAudit } from '@/server/services/live-cash';
-import {
-  assertUnambiguousStay,
-  resolveOperationalContext,
-} from '@/server/services/operational-context';
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
@@ -84,9 +80,6 @@ const movementSchema = z.object({
   currency: z.enum(['CLP', 'USD']),
   amount: z.coerce.number().positive('El monto debe ser mayor que cero.'),
   reference: z.string().trim().min(2, 'Indica el concepto del movimiento.').max(120),
-  roomNumber: z.string().trim().max(10).optional().transform((v) => v || null),
-  reservationCode: z.string().trim().max(80).optional().transform((v) => v || null),
-  stayId: z.string().trim().optional().transform((v) => v || null),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
@@ -101,21 +94,6 @@ async function applyAuthorizedManualMovement(
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
 
   return prisma.$transaction(async (tx) => {
-    const context = await resolveOperationalContext(tx, {
-      stayId: input.stayId,
-      roomNumber: input.roomNumber,
-      reservationCode: input.reservationCode,
-    });
-    if (
-      (input.stayId || input.roomNumber || input.reservationCode) &&
-      context.ambiguousStayIds.length > 0
-    ) {
-      assertUnambiguousStay(
-        context,
-        'Ese contexto corresponde a varias estadías. Indica habitación y reserva, o inicia el movimiento desde la estadía exacta.',
-      );
-    }
-
     const movementId = await insertCashMovement(tx, {
       userId: user.id,
       kind,
@@ -123,10 +101,6 @@ async function applyAuthorizedManualMovement(
       currency: input.currency,
       amount: input.amount,
       shiftId,
-      roomId: context.roomId,
-      stayId: context.stayId,
-      guestId: context.guestId,
-      reservationReferenceId: context.reservationReferenceId,
       reference: input.reference,
       notes: input.notes,
     });
@@ -135,20 +109,18 @@ async function applyAuthorizedManualMovement(
       data: {
         type: EntryType.CAJA,
         status: EntryStatus.RESUELTO,
-        title: `${verb} de caja · ${input.reference}`,
-        description: `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
+        title: `${verb} de Caja · ${input.reference}`,
+        description:
+          `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.` +
+          (input.notes ? ` Observaciones: ${input.notes}` : ''),
         category: kind,
-        roomId: context.roomId,
-        stayId: context.stayId,
-        reservationId: context.reservationReferenceId,
-        guestId: context.guestId,
         priority: Priority.BAJA,
         ownerId: user.id,
         shiftId,
         occurredAt: new Date(),
         tags: ['caja', input.direction.toLowerCase(), 'permiso-rol'],
         requiresFollowUp: false,
-        resolution: 'Movimiento registrado según la matriz vigente de permisos de Caja.',
+        resolution: 'Movimiento registrado con trazabilidad financiera.',
         createdById: user.id,
       },
     });
@@ -159,7 +131,7 @@ async function applyAuthorizedManualMovement(
         entityId: movementId,
         action: AuditAction.CREAR,
         user,
-        summary: `${verb} de caja ${input.currency} ${input.amount} · ${input.reference}`,
+        summary: `${verb} de Caja ${input.currency} ${input.amount} · ${input.reference}`,
         after: {
           direction: input.direction,
           currency: input.currency,
@@ -167,10 +139,6 @@ async function applyAuthorizedManualMovement(
           reference: input.reference,
           notes: input.notes,
           shiftId,
-          roomId: context.roomId,
-          stayId: context.stayId,
-          reservationReferenceId: context.reservationReferenceId,
-          guestId: context.guestId,
           performedBy: user.id,
         },
       },
@@ -220,21 +188,6 @@ export async function createManualCashMovementAction(
     }
 
     const request = await prisma.$transaction(async (tx) => {
-      const context = await resolveOperationalContext(tx, {
-        stayId: input.stayId,
-        roomNumber: input.roomNumber,
-        reservationCode: input.reservationCode,
-      });
-      if (
-        (input.stayId || input.roomNumber || input.reservationCode) &&
-        context.ambiguousStayIds.length > 0
-      ) {
-        assertUnambiguousStay(
-          context,
-          'Ese contexto corresponde a varias estadías. Indica habitación y reserva, o inicia la solicitud desde la estadía exacta.',
-        );
-      }
-
       const entry = await tx.operationalEntry.create({
         data: {
           type: EntryType.CAJA,
@@ -244,10 +197,6 @@ export async function createManualCashMovementAction(
             `${verb} solicitado por ${input.currency} ${input.amount}. ` +
             `Concepto: ${input.reference}.${input.notes ? ` Observaciones: ${input.notes}` : ''}`,
           category: 'AJUSTE_CAJA_SOLICITADO',
-          roomId: context.roomId,
-          stayId: context.stayId,
-          reservationId: context.reservationReferenceId,
-          guestId: context.guestId,
           priority: Priority.ALTA,
           ownerId: user.id,
           shiftId: shift.id,
@@ -293,10 +242,6 @@ export async function createManualCashMovementAction(
             shiftId: shift.id,
             alertId: alert.id,
             permission,
-            roomId: context.roomId,
-            stayId: context.stayId,
-            reservationReferenceId: context.reservationReferenceId,
-            guestId: context.guestId,
             status: 'PENDIENTE_APROBACION',
           },
         },
@@ -348,8 +293,6 @@ export async function returnCashGuaranteeAction(
     });
 
     revalidatePath('/caja');
-    revalidatePath('/habitaciones');
-    revalidatePath('/huespedes');
     revalidatePath('/turno');
     revalidatePath('/libro');
 

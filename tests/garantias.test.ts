@@ -21,12 +21,10 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { getLiveCashState } from '@/server/services/live-cash';
 
 /**
- * Garantías como entidad.
+ * Garantías como entidad propia de Caja.
  *
- * La garantía cuelga de la **reserva**, así que sobrevive a los turnos y a un
- * cambio de habitación. `ReservationReference.guaranteeStatus` se conserva
- * —lo leen el motor de alertas y la entrega de turno— y este servicio es el
- * único que lo escribe a partir de las garantías.
+ * Desde v1.4.0 pueden existir sin reserva, estadía ni habitación PMS. Los
+ * vínculos antiguos siguen aceptándose sólo como compatibilidad histórica.
  */
 describe('garantías', () => {
   let user: CurrentUser;
@@ -112,11 +110,13 @@ describe('garantías', () => {
       where: { guaranteeId: id, kind: 'GARANTIA_INGRESO' },
     });
     expect(movement.stayId).toBe(stay.id);
-    expect(movement.roomId).toBe(room.id);
+    // Caja conserva el vínculo explícito legado, pero no resuelve la habitación
+    // a partir de la estadía ni hace JOIN operativo con PMS.
+    expect(movement.roomId).toBeNull();
     expect(movement.reservationReferenceId).toBe(r.id);
   });
 
-  it('no adivina una estadía para efectivo si la reserva ocupa varias habitaciones', async () => {
+  it('no adivina una estadía aunque una reserva legado tenga varias habitaciones', async () => {
     const r = await reserva({ code: 'R-MULTI' });
     const room404 = await prisma.room.findFirstOrThrow({ where: { number: '404' } });
     const room412 = await prisma.room.findFirstOrThrow({ where: { number: '412' } });
@@ -144,15 +144,21 @@ describe('garantías', () => {
       ],
     });
 
-    await expect(
-      createGuarantee(user, {
-        reservationReferenceId: r.id,
-        kind: 'EFECTIVO',
-        amount: 50_000,
-        currency: 'CLP',
-        state: GuaranteeState.VIGENTE,
-      }),
-    ).rejects.toThrow(/varias estadías activas/);
+    const { id } = await createGuarantee(user, {
+      reservationReferenceId: r.id,
+      kind: 'EFECTIVO',
+      amount: 50_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    const movement = await prisma.cashMovement.findFirstOrThrow({
+      where: { guaranteeId: id, kind: 'GARANTIA_INGRESO' },
+    });
+    expect(guarantee.stayId).toBeNull();
+    expect(movement.stayId).toBeNull();
+    expect(movement.roomId).toBeNull();
   });
 
   it('sincroniza el resumen de la reserva sin que nadie más lo escriba', async () => {
@@ -444,15 +450,15 @@ describe('garantías', () => {
       expect(await prisma.alert.count({ where: { type: 'GARANTIA_PENDIENTE' } })).toBe(primera);
     });
 
-    it('la salida con garantía abierta genera la alerta crítica y se resuelve sola', async () => {
+    it('una garantía con fecha objetivo vencida genera alerta crítica y se resuelve sola', async () => {
       const ayer = new Date(Date.now() - 24 * 3_600_000);
-      const r = await reserva({ code: 'R-SALIDA', checkOut: ayer });
       const { id } = await createGuarantee(user, {
-        reservationReferenceId: r.id,
         kind: 'TARJETA',
         amount: 100000,
         currency: 'CLP',
         state: GuaranteeState.VIGENTE,
+        reference: 'GAR-ALERTA',
+        dueAt: ayer,
       });
 
       await runAlertEngine();
@@ -472,7 +478,7 @@ describe('garantías', () => {
       expect(despues.status).toBe('RESUELTA');
     });
 
-    it('un saldo pendiente genera SALDO_PENDIENTE y se apaga al cobrarlo', async () => {
+    it('un saldo PMS pendiente no genera alertas operativas', async () => {
       const r = await reserva({ code: 'R-SALDO', checkOut: null });
       await prisma.reservationReference.update({
         where: { id: r.id },
@@ -480,32 +486,29 @@ describe('garantías', () => {
       });
 
       await runAlertEngine();
-      expect(await prisma.alert.count({ where: { type: 'SALDO_PENDIENTE' } })).toBe(1);
-
-      await prisma.reservationReference.update({ where: { id: r.id }, data: { balanceDue: 0 } });
-      await runAlertEngine();
-      const alerta = await prisma.alert.findFirstOrThrow({ where: { type: 'SALDO_PENDIENTE' } });
-      expect(alerta.status).toBe('RESUELTA');
+      expect(await prisma.alert.count({ where: { type: 'SALDO_PENDIENTE' } })).toBe(0);
     });
   });
 
-  it('Supervisión muestra las garantías por resolver', async () => {
+  it('Supervisión muestra garantías autónomas con fecha objetivo vencida', async () => {
     const ayer = new Date(Date.now() - 24 * 3_600_000);
-    const r = await reserva({ code: 'R-SUP', checkOut: ayer });
     await createGuarantee(user, {
-      reservationReferenceId: r.id,
       kind: 'TARJETA',
       amount: 100000,
       currency: 'CLP',
       state: GuaranteeState.VIGENTE,
+      reference: 'GAR-SUP',
+      guestName: 'Cliente prueba',
+      dueAt: ayer,
     });
 
     const { blocks } = await getSupervisionData();
     const bloque = blocks.find((block) => block.key === 'garantias');
     expect(bloque).toBeDefined();
     expect(bloque?.rows).toHaveLength(1);
-    expect(bloque?.rows[0]!.ref).toBe('Reserva R-SUP');
-    expect(bloque?.rows[0]!.meta).toContain('salida vencida');
+    expect(bloque?.rows[0]!.ref).toBe('GAR-SUP');
+    expect(bloque?.rows[0]!.href).toBe('/caja?seccion=garantias');
+    expect(bloque?.rows[0]!.meta).toContain('vencida');
   });
 
   it('sobrevive a un cambio de habitación: cuelga de la reserva', async () => {

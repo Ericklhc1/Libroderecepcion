@@ -6,25 +6,19 @@ import {
   EntryType,
   FollowUpStatus,
   GuaranteeState,
-  GuaranteeStatus,
   HandoverStatus,
   Prisma,
-  ReservationStatus,
-  RoomStayStage,
-  RoomStayStatus,
   Severity,
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
-import { hotelDateKey, hotelDayEnd, hotelHour } from '@/domain/time';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import {
   GUARANTEE_STATE_LABELS,
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
-import { getSettingNumber } from './settings';
 
 /**
  * Motor de alertas.
@@ -35,8 +29,7 @@ import { getSettingNumber } from './settings';
  * desaparece, la alerta se resuelve sola.
  *
  * Se ejecuta al abrir el panel principal y al listar alertas, y puede invocarse
- * desde Administración. Las horas operativas se comparan en la zona del hotel,
- * nunca con la zona del proceso de Vercel.
+ * desde Administración. Desde v1.4.0 sólo observa Libro, Caja y Turnos.
  */
 
 type Candidate = {
@@ -50,8 +43,6 @@ type Candidate = {
   taskId?: string | null;
   followUpId?: string | null;
   handoverId?: string | null;
-  guestId?: string | null;
-  reservationId?: string | null;
   departmentId?: string | null;
   guaranteeId?: string | null;
 };
@@ -62,7 +53,7 @@ const HANDOVER_GRACE_MINUTES = 60;
 export async function collectAlertCandidates(now = new Date()): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
 
-  const [overdueTasks, criticalIncidents, staleMaintenance, guestRequests] =
+  const [overdueTasks, criticalIncidents, staleMaintenance, followUpEntries] =
     await Promise.all([
       prisma.task.findMany({
         where: {
@@ -98,11 +89,10 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       prisma.operationalEntry.findMany({
         where: {
           deletedAt: null,
-          type: EntryType.HUESPED,
           requiresFollowUp: true,
           status: { in: ENTRY_OPEN_STATUSES },
         },
-        select: { id: true, title: true, guestId: true, departmentId: true },
+        select: { id: true, title: true, departmentId: true },
         take: 100,
       }),
     ]);
@@ -146,15 +136,14 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     });
   }
 
-  for (const entry of guestRequests) {
+  for (const entry of followUpEntries) {
     candidates.push({
-      dedupeKey: `guest-request:${entry.id}`,
-      type: AlertType.SOLICITUD_HUESPED_PENDIENTE,
+      dedupeKey: `entry-followup:${entry.id}`,
+      type: AlertType.OTRO,
       level: AlertLevel.ATENCION,
-      title: `Solicitud de huésped pendiente: ${entry.title}`,
-      message: 'La solicitud sigue abierta y requiere seguimiento.',
+      title: `Novedad requiere seguimiento: ${entry.title}`,
+      message: 'El registro sigue abierto y está marcado para seguimiento.',
       entryId: entry.id,
-      guestId: entry.guestId,
       departmentId: entry.departmentId,
     });
   }
@@ -225,159 +214,6 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     });
   }
 
-  /*
-    El check-out tiene una hora operativa, no sólo una fecha. A partir de esa
-    hora, cualquier salida del día o anterior que siga sin confirmar debe sonar
-    como ALERTA. Usamos `OTRO` para no crear otro enum/modelo: la identidad de
-    la regla está en la `dedupeKey` y el texto, siguiendo el motor existente.
-  */
-  const checkoutHour = await getSettingNumber('reception.checkoutHour', 11);
-  if (hotelHour(now) >= checkoutHour) {
-    const today = new Date(`${hotelDateKey(now)}T00:00:00.000Z`);
-    const overdueCheckOuts = await prisma.roomStay.findMany({
-      where: {
-        deletedAt: null,
-        status: RoomStayStatus.CHECK_OUT,
-        stage: { not: RoomStayStage.FINALIZADO },
-        departureDate: { lte: today },
-      },
-      select: {
-        id: true,
-        reservationId: true,
-        guestNames: true,
-        departureDate: true,
-        room: { select: { number: true } },
-      },
-      orderBy: [{ departureDate: 'asc' }, { room: { number: 'asc' } }],
-      take: 100,
-    });
-
-    for (const stay of overdueCheckOuts) {
-      candidates.push({
-        dedupeKey: `checkout-unconfirmed:${stay.id}`,
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        title: `Check-out sin confirmar${stay.room ? `: hab. ${stay.room.number}` : ''}`,
-        message:
-          `${stay.guestNames[0] ?? 'Huésped sin nombre'} · reserva ${stay.reservationId}. ` +
-          `Pasó la hora límite de las ${String(checkoutHour).padStart(2, '0')}:00 y la salida sigue pendiente.`,
-        dueAt: stay.departureDate,
-      });
-    }
-  }
-
-  const endOfToday = hotelDayEnd(now);
-
-  const reservations = await prisma.reservationReference.findMany({
-    where: {
-      deletedAt: null,
-      status: { notIn: [ReservationStatus.CANCELADA, ReservationStatus.SALIDA] },
-    },
-    select: {
-      id: true,
-      code: true,
-      roomNumber: true,
-      status: true,
-      guaranteeStatus: true,
-      balanceDue: true,
-      checkIn: true,
-      checkOut: true,
-      requiresAction: true,
-      actionNote: true,
-      guestId: true,
-      guest: { select: { fullName: true, vip: true } },
-    },
-    take: 300,
-  });
-
-  for (const reservation of reservations) {
-    const who = reservation.guest?.fullName ?? `Reserva ${reservation.code}`;
-    const room = reservation.roomNumber ? ` (hab. ${reservation.roomNumber})` : '';
-
-    if (reservation.guaranteeStatus === GuaranteeStatus.PENDIENTE) {
-      candidates.push({
-        dedupeKey: `guarantee-pending:${reservation.id}`,
-        type: AlertType.GARANTIA_PENDIENTE,
-        level: AlertLevel.ATENCION,
-        title: `Garantía pendiente: ${who}${room}`,
-        message: `La reserva ${reservation.code} no tiene garantía válida registrada.`,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-
-    if (reservation.guaranteeStatus === GuaranteeStatus.RECHAZADA) {
-      candidates.push({
-        dedupeKey: `card-invalid:${reservation.id}`,
-        type: AlertType.TARJETA_INVALIDA,
-        level: AlertLevel.CRITICA,
-        title: `Tarjeta rechazada: ${who}${room}`,
-        message: `La garantía de la reserva ${reservation.code} fue rechazada. Solicitar medio de pago alternativo.`,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-
-    if (reservation.balanceDue && reservation.balanceDue.greaterThan(0)) {
-      candidates.push({
-        dedupeKey: `payment-pending:${reservation.id}`,
-        type: AlertType.PAGO_PENDIENTE,
-        level: AlertLevel.ATENCION,
-        title: `Cobro pendiente: ${who}${room}`,
-        message: `Saldo pendiente de ${reservation.balanceDue.toFixed(2)} en la reserva ${reservation.code}.`,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-
-    if (
-      reservation.status === ReservationStatus.PENDIENTE &&
-      reservation.checkIn &&
-      reservation.checkIn <= endOfToday
-    ) {
-      candidates.push({
-        dedupeKey: `reservation-unconfirmed:${reservation.id}`,
-        type: AlertType.RESERVA_SIN_CONFIRMAR,
-        level: AlertLevel.ATENCION,
-        title: `Reserva sin confirmar con llegada inminente: ${who}`,
-        message: `La reserva ${reservation.code} llega el ${formatDateTime(reservation.checkIn)} y sigue sin confirmar.`,
-        dueAt: reservation.checkIn,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-
-    if (
-      reservation.guest?.vip &&
-      reservation.checkIn &&
-      reservation.checkIn <= endOfToday &&
-      reservation.status !== ReservationStatus.EN_CASA
-    ) {
-      candidates.push({
-        dedupeKey: `vip-arrival:${reservation.id}`,
-        type: AlertType.HUESPED_VIP,
-        level: AlertLevel.INFORMATIVA,
-        title: `Llegada VIP: ${who}${room}`,
-        message: 'Coordinar atención preferente, amenidad y acompañamiento a la habitación.',
-        dueAt: reservation.checkIn,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-
-    if (reservation.requiresAction) {
-      candidates.push({
-        dedupeKey: `reservation-action:${reservation.id}`,
-        type: AlertType.TRASLADO_PENDIENTE,
-        level: AlertLevel.ATENCION,
-        title: `Reserva requiere acción: ${who}${room}`,
-        message: reservation.actionNote ?? `La reserva ${reservation.code} tiene una acción pendiente.`,
-        reservationId: reservation.id,
-        guestId: reservation.guestId,
-      });
-    }
-  }
-
   const openGuarantees = await prisma.guarantee.findMany({
     where: {
       deletedAt: null,
@@ -394,81 +230,54 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       state: true,
       amount: true,
       currency: true,
-      reservationReferenceId: true,
-      reservationReference: {
-        select: {
-          code: true,
-          roomNumber: true,
-          checkOut: true,
-          guestId: true,
-          guest: { select: { fullName: true } },
-        },
-      },
+      guestName: true,
+      roomNumber: true,
+      reference: true,
+      dueAt: true,
     },
     take: 300,
   });
 
   for (const guarantee of openGuarantees) {
-    const reservation = guarantee.reservationReference;
-    const quien = reservation.guest?.fullName ?? `Reserva ${reservation.code}`;
-    const donde = reservation.roomNumber ? ` (hab. ${reservation.roomNumber})` : '';
+    const label =
+      guarantee.reference ||
+      guarantee.guestName ||
+      (guarantee.roomNumber ? 'Hab. ' + guarantee.roomNumber : null) ||
+      'Garantía ' + guarantee.id.slice(-6);
 
     if (guarantee.state === GuaranteeState.PENDIENTE) {
       candidates.push({
-        dedupeKey: `guarantee-open:${guarantee.id}`,
+        dedupeKey: 'guarantee-open:' + guarantee.id,
         type: AlertType.GARANTIA_PENDIENTE,
         level: AlertLevel.ATENCION,
-        title: `Garantía sin tomar: ${quien}${donde}`,
+        title: 'Garantía pendiente: ' + label,
         message:
-          `La reserva ${reservation.code} tiene una garantía registrada de ` +
-          `${guarantee.currency} ${guarantee.amount.toString()} que todavía no se ha tomado.`,
-        reservationId: guarantee.reservationReferenceId,
-        guestId: reservation.guestId,
+          guarantee.currency + ' ' + guarantee.amount.toString() +
+          ' registrada, pero todavía no está vigente bajo custodia.',
+        dueAt: guarantee.dueAt,
         guaranteeId: guarantee.id,
       });
     }
 
-    const saleHoy = reservation.checkOut !== null && reservation.checkOut <= now;
-    if (saleHoy) {
+    if (
+      guarantee.dueAt &&
+      guarantee.dueAt <= now &&
+      guarantee.state !== GuaranteeState.PENDIENTE
+    ) {
       candidates.push({
-        dedupeKey: `guarantee-unresolved-checkout:${guarantee.id}`,
+        dedupeKey: 'guarantee-due:' + guarantee.id,
         type: AlertType.GARANTIA_SIN_RESOLVER_EN_SALIDA,
         level: AlertLevel.CRITICA,
-        title: `Garantía sin resolver en la salida: ${quien}${donde}`,
+        title: 'Garantía por resolver: ' + label,
         message:
-          `La reserva ${reservation.code} llegó a su fecha de salida con la garantía en ` +
-          `«${GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue]}». ` +
-          'Devolverla, aplicarla o cobrarla antes de cerrar la cuenta.',
-        dueAt: reservation.checkOut,
-        reservationId: guarantee.reservationReferenceId,
-        guestId: reservation.guestId,
+          'La fecha objetivo venció y la garantía continúa en «' +
+          GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue] +
+          '». Devuélvela, aplícala o resuelve su situación en Caja.',
+        dueAt: guarantee.dueAt,
         guaranteeId: guarantee.id,
       });
     }
   }
-
-  for (const reservation of reservations) {
-    const saldo = reservation.balanceDue;
-    if (!saldo || saldo.lessThanOrEqualTo(0)) continue;
-
-    const quien = reservation.guest?.fullName ?? `Reserva ${reservation.code}`;
-    const donde = reservation.roomNumber ? ` (hab. ${reservation.roomNumber})` : '';
-    const sale = reservation.checkOut !== null && reservation.checkOut <= now;
-
-    candidates.push({
-      dedupeKey: `balance-due:${reservation.id}`,
-      type: AlertType.SALDO_PENDIENTE,
-      level: sale ? AlertLevel.CRITICA : AlertLevel.ATENCION,
-      title: `Saldo pendiente: ${quien}${donde}`,
-      message:
-        `La reserva ${reservation.code} tiene un saldo de ${saldo.toString()} sin cobrar` +
-        (sale ? ' y ya llegó a su fecha de salida.' : '.'),
-      dueAt: reservation.checkOut,
-      reservationId: reservation.id,
-      guestId: reservation.guestId,
-    });
-  }
-
   return candidates;
 }
 
@@ -507,8 +316,6 @@ export async function runAlertEngine(
             taskId: candidate.taskId ?? null,
             followUpId: candidate.followUpId ?? null,
             handoverId: candidate.handoverId ?? null,
-            guestId: candidate.guestId ?? null,
-            reservationId: candidate.reservationId ?? null,
             departmentId: candidate.departmentId ?? null,
             guaranteeId: candidate.guaranteeId ?? null,
             auto: true,

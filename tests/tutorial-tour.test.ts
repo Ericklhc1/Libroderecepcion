@@ -9,16 +9,27 @@ describe('recorrido guiado', () => {
     expect(missing).toEqual([]);
   });
 
-  it('presenta el PMS como contexto opcional y no como núcleo operativo', () => {
-    const pmsStep = TUTORIAL_STEPS.find((step) => step.route === '/reservas');
-    expect(pmsStep?.title).toContain('Contexto PMS');
-    expect(pmsStep?.title.toLowerCase()).toContain('opcional');
-    expect(pmsStep?.description.toLowerCase()).toContain('no es requisito');
+  it('explica Novedades + Caja sin enseñar PMS, Habitaciones ni Llaves', () => {
+    const routes = TUTORIAL_STEPS.map((step) => step.route).filter(Boolean);
 
-    const coreRoutes = TUTORIAL_STEPS
-      .filter((step) => ['/', '/turno', '/libro?clase=entry', '/caja', '/llaves'].includes(step.route ?? ''))
-      .map((step) => step.route);
-    expect(coreRoutes).toContain('/libro?clase=entry');
+    expect(routes).toContain('/libro?clase=entry');
+    expect(routes).toContain('/caja');
+    expect(routes).toContain('/turno');
+    expect(routes).toContain('/supervision');
+
+    for (const retired of [
+      '/reservas',
+      '/huespedes',
+      '/huespedes/importar',
+      '/habitaciones',
+      '/llaves',
+    ]) {
+      expect(routes).not.toContain(retired);
+    }
+
+    const descriptions = TUTORIAL_STEPS.map((step) => step.description).join(' ').toLowerCase();
+    expect(descriptions).not.toContain('id fns');
+    expect(descriptions).not.toContain('importación pms');
   });
 
   it('cada paso de una ruta señala una sección de la pantalla', () => {

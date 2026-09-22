@@ -21,9 +21,6 @@ import {
   operationalDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
-import { listRoomsWithState } from './rooms';
-import type { RoomState } from '@/domain/rooms';
-import { countRoomKeyIssues } from '@/domain/rooms';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { getSettingNumber } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
@@ -161,7 +158,6 @@ export async function getDashboardData(user: CurrentUser) {
   const [
     nextShift,
     shiftMetrics,
-    allRooms,
     openEntries,
     openTasks,
     openIncidents,
@@ -172,8 +168,6 @@ export async function getDashboardData(user: CurrentUser) {
     // en curso, que puede ser el propio o ninguno.
     getCurrentShift(),
     myShift ? getShiftMetrics(myShift.id) : null,
-    // Sólo a quien puede ver el tablero: el panel no salta el permiso.
-    user.permissions.includes('room.view') ? listRoomsWithState() : [],
     prisma.operationalEntry.count({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
     }),
@@ -191,34 +185,7 @@ export async function getDashboardData(user: CurrentUser) {
     prisma.alert.count({ where: { AND: [visibleAlertWhere, { level: 'CRITICA' }] } }),
   ]);
 
-  /*
-    Habitaciones que piden una acción concreta del turno. El estado ya lo
-    calcula el tablero: acá sólo se filtra, no se vuelve a derivar.
-  */
-  const ATTENTION_STATES: RoomState[] = [
-    'CHECK_OUT_PENDIENTE',
-    'PENDIENTE_LIBERACION',
-    'CHECK_IN_EN_COLA',
-    'CHECK_IN_LISTO',
-  ];
-  const roomsNeedingAction = allRooms
-    .filter(
-      (room) =>
-        ATTENTION_STATES.includes(room.snapshot.state) ||
-        room.openIncidents > 0 ||
-        countRoomKeyIssues(room.snapshot) > 0,
-    )
-    // El orden es el de urgencia: primero lo que bloquea una entrada.
-    .sort(
-      (a, b) =>
-        (ATTENTION_STATES.indexOf(a.snapshot.state) === -1
-          ? ATTENTION_STATES.length
-          : ATTENTION_STATES.indexOf(a.snapshot.state)) -
-        (ATTENTION_STATES.indexOf(b.snapshot.state) === -1
-          ? ATTENTION_STATES.length
-          : ATTENTION_STATES.indexOf(b.snapshot.state)),
-    )
-    .slice(0, 8);
+  const roomsNeedingAction: [] = [];
 
   const counters = {
     openEntries,
@@ -230,12 +197,7 @@ export async function getDashboardData(user: CurrentUser) {
   };
 
   const attention = buildOperationalAttention({
-    rooms: roomsNeedingAction.map((room) => ({
-      number: room.number,
-      state: room.snapshot.state,
-      openIncidents: room.openIncidents,
-      keyIssues: countRoomKeyIssues(room.snapshot),
-    })),
+    rooms: [],
     alerts: alerts.map((alert) => ({
       id: alert.id,
       level: alert.level,

@@ -37,38 +37,31 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     const maintenance = await prisma.department.findUniqueOrThrow({
       where: { key: 'MANTENIMIENTO' },
     });
-    const guest = await prisma.guestReference.create({
-      data: { fullName: 'Helen Whitaker', roomNumber: '318', vip: true },
-    });
-    const reservation = await prisma.reservationReference.create({
-      data: { code: 'RES-60001', guestId: guest.id, roomNumber: '318' },
-    });
 
     const incident = await createEntry(user, {
       type: EntryType.INCIDENCIA,
-      title: 'Aire acondicionado sin enfriar en la 318',
-      description: 'La huésped reporta que no enfría desde las 22:00.',
+      title: 'Aire acondicionado sin enfriar en habitación 318',
+      description: 'Helen Whitaker reporta que no enfría desde las 22:00.',
+      category: 'climatización',
       priority: Priority.ALTA,
       severity: Severity.ALTA,
       departmentId: maintenance.id,
       ownerId: other.id,
-      guestId: guest.id,
-      reservationId: reservation.id,
       tags: ['climatizacion'],
       requiresFollowUp: false,
     });
 
     const novedad = await createEntry(other, {
       type: EntryType.NOVEDAD,
-      title: 'Codificador de llaves reiniciado',
+      title: 'Codificador reiniciado',
       description: 'Error E-04 resuelto con reinicio del equipo.',
       priority: Priority.BAJA,
-      tags: ['llaves'],
+      tags: ['equipos'],
       requiresFollowUp: false,
     });
 
     const task = await createTask(user, {
-      title: 'Reparar el equipo de la 318',
+      title: 'Reparar el equipo de habitación 318',
       priority: Priority.ALTA,
       tags: ['climatizacion'],
       checklist: [],
@@ -78,17 +71,17 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
 
     const followUp = await createFollowUp(user, {
       entryId: incident.id,
-      action: 'Coordinar visita del técnico a las 10:00',
+      action: 'Coordinar visita del técnico a habitación 318',
     });
 
     const alert = await createManualAlert(user, {
-      type: 'HUESPED_VIP',
+      type: 'OTRO',
       level: 'INFORMATIVA',
-      title: 'Llegada VIP en la 318',
-      guestId: guest.id,
+      title: 'Verificar respuesta del técnico',
+      message: 'Seguimiento operativo del caso de climatización.',
     });
 
-    return { incident, novedad, task, followUp, alert, guest, reservation, maintenance };
+    return { incident, novedad, task, followUp, alert, maintenance };
   }
 
   it('unifica registros, tareas, seguimientos y alertas en un solo flujo', async () => {
@@ -99,7 +92,6 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     expect(kinds).toEqual(new Set(['entry', 'task', 'followup', 'alert']));
     expect(result.items).toHaveLength(5);
 
-    // Orden cronológico descendente.
     const times = result.items.map((item) => item.date.getTime());
     expect([...times].sort((a, b) => b - a)).toEqual(times);
   });
@@ -115,43 +107,33 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     expect(soloAlertas.items).toHaveLength(1);
   });
 
-  it('busca por título, descripción, etiqueta y huésped', async () => {
+  it('busca por título, descripción, categoría, etiqueta y responsable', async () => {
     await seedBook();
 
-    expect((await getBookItems({ q: 'aire acondicionado' })).items).toHaveLength(1);
+    const porCaso = await getBookItems({ q: 'aire acondicionado' });
+    expect(porCaso.items).toHaveLength(3);
+    expect(new Set(porCaso.items.map((item) => item.kind))).toEqual(
+      new Set(['entry', 'task', 'followup']),
+    );
     expect((await getBookItems({ q: 'E-04' })).items).toHaveLength(1);
-    // La etiqueta "climatizacion" está en la incidencia y en su tarea.
-    expect((await getBookItems({ q: 'climatizacion' })).items).toHaveLength(2);
-    expect((await getBookItems({ q: 'Whitaker' })).items.length).toBeGreaterThanOrEqual(1);
+    expect((await getBookItems({ q: 'climatizacion' })).items.length).toBeGreaterThanOrEqual(2);
+    const porPersonaEnTexto = await getBookItems({ q: 'Whitaker' });
+    expect(porPersonaEnTexto.items).toHaveLength(3);
+    expect(new Set(porPersonaEnTexto.items.map((item) => item.kind))).toEqual(
+      new Set(['entry', 'task', 'followup']),
+    );
+    expect((await getBookItems({ q: 'Diego Alarcón' })).items.length).toBeGreaterThanOrEqual(2);
     expect((await getBookItems({ q: 'no-existe-en-ningun-registro' })).items).toHaveLength(0);
   });
 
-  it('el filtro de reserva alcanza todo lo asociado a esa reserva', async () => {
-    const { reservation, incident, task, followUp } = await seedBook();
+  it('una habitación escrita como texto se encuentra sin relación PMS', async () => {
+    const { incident, task, followUp } = await seedBook();
 
-    const result = await getBookItems({ reservation: reservation.code });
+    const result = await getBookItems({ q: '318' });
     const ids = result.items.map((item) => item.id);
 
-    // La incidencia, la tarea derivada y el seguimiento cuelgan de la reserva.
-    expect(ids).toContain(incident.id);
-    expect(ids).toContain(task.id);
-    expect(ids).toContain(followUp.id);
-    // La novedad de las llaves no tiene nada que ver con esa reserva.
+    expect(ids).toEqual(expect.arrayContaining([incident.id, task.id, followUp.id]));
     expect(result.items.some((item) => item.title.includes('Codificador'))).toBe(false);
-
-    expect((await getBookItems({ reservation: 'RES-00000' })).items).toHaveLength(0);
-  });
-
-  it('el filtro de habitación alcanza registros, tareas, seguimientos y alertas', async () => {
-    const { incident, task, followUp, alert } = await seedBook();
-
-    const result = await getBookItems({ room: '318' });
-    const ids = result.items.map((item) => item.id);
-
-    expect(ids).toEqual(expect.arrayContaining([incident.id, task.id, followUp.id, alert.id]));
-    expect(result.items.some((item) => item.title.includes('Codificador'))).toBe(false);
-
-    expect((await getBookItems({ room: '999' })).items).toHaveLength(0);
   });
 
   it('filtra por área, tipo, prioridad y responsable', async () => {
@@ -178,12 +160,10 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
       departmentId: maintenance.id,
       priority: 'ALTA',
       onlyOpen: true,
-      room: '318',
     });
     expect(combinado.items).toHaveLength(1);
     expect(combinado.items[0]?.title).toContain('Aire acondicionado');
 
-    // Un filtro incompatible no devuelve nada.
     expect(
       (await getBookItems({ q: 'aire', priority: 'BAJA', kinds: ['entry'] })).items,
     ).toHaveLength(0);
@@ -212,6 +192,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     expect(row.creatorName).toBe('Camila Vera');
     expect(row.overdue).toBe(true);
     expect(row.tone).toBe('critico');
+    expect(row.guestLabel).toBeNull();
   });
 
   it('oculta los registros eliminados salvo que se pidan expresamente', async () => {
@@ -246,7 +227,6 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     expect(second.items).toHaveLength(2);
     expect(second.hasMore).toBe(false);
 
-    // Sin solapamiento entre páginas.
     const ids = new Set([...first.items, ...second.items].map((item) => item.id));
     expect(ids.size).toBe(12);
   });

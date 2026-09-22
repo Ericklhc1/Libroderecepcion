@@ -434,6 +434,28 @@ conserva su modelo y sus reglas.
     `npm run demo:purge`, que exigía abrir una terminal contra producción.
     Lo vigila `tests/puesta-en-cero.test.ts`.
 
+## Arquitectura operativa canónica v1.4.0 — Novedades + Caja
+
+- **PMS fuera del runtime operativo.** Reservas, huéspedes, habitaciones,
+  estadías, importaciones PMS, llaves y conflictos de ocupación no gobiernan
+  Inicio, Novedades, Caja, Turno, entrega ni Supervisión.
+- **Novedades describe hechos directamente.** Para registrar una novedad o
+  incidencia no se resuelve habitación, huésped, reserva ni estadía. Área,
+  categoría, responsable, prioridad y texto son el contexto operativo.
+- **Caja es autónoma.** Movimientos manuales sólo necesitan dirección, moneda,
+  monto, concepto, usuario y turno. Garantías nuevas pertenecen a Caja y usan
+  contexto libre opcional: persona, habitación, referencia y fecha objetivo.
+- **Legado no es dependencia.** Los FK PMS antiguos de Guarantee quedan
+  opcionales temporalmente para conservar histórico. No se rellenan en flujos
+  nuevos y no deben reintroducirse como requisito.
+- **Rutas antiguas retiradas.** Reservas, huéspedes, habitaciones, importación
+  PMS y llaves redirigen al Libro; no ejecutan sus antiguos servicios al abrirse.
+- **Entrega de turno** transmite sólo Novedades/Incidencias, Tareas,
+  Seguimientos y Alertas. Caja mantiene su propia transferencia de custodia.
+- **Supervisión** vigila excepciones de Libro, Caja y Turnos; no interpreta PMS.
+- La limpieza física de tablas PMS es una fase posterior y destructiva que sólo
+  se ejecuta después de validar esta arquitectura en Production.
+
 ## Caja — semántica canónica v1.3.1
 
 - **Fondo fijo no es saldo esperado.** Caja física = fondo fijo + garantías

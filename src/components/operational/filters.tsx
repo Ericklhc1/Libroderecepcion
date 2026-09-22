@@ -59,7 +59,7 @@ export function Filters({
               name="q"
               type="search"
               defaultValue={values.q ?? ''}
-              placeholder="Título, descripción, huésped, reserva, etiqueta"
+              placeholder="Título, descripción, categoría, etiqueta o responsable"
               className="input-base"
             />
           </div>

@@ -22,7 +22,6 @@ const TABS = [
   { label: 'Todo', href: '/libro' },
   { label: 'Registros', href: '/libro?clase=entry' },
   { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
-  { label: 'Multas', href: '/libro?clase=fine' },
   { label: 'Tareas', href: '/libro?clase=task' },
   { label: 'Seguimientos', href: '/libro?clase=followup' },
   { label: 'Alertas', href: '/libro?clase=alert' },
@@ -73,8 +72,8 @@ export default async function BookPage({
         </h1>
         <p className="mt-0.5 text-sm text-slate-600">
           {isEntryView
-            ? 'Registra y consulta lo que ocurrió en el turno. Habitación, huésped y reserva son contexto opcional.'
-            : 'Vista transversal de la operación. Úsala cuando necesites cruzar novedades, tareas, seguimientos y alertas.'}
+            ? 'Registra y consulta lo que ocurrió, qué queda pendiente, quién responde y cómo se resolvió.'
+            : 'Vista transversal de Novedades, tareas, seguimientos y alertas.'}
         </p>
       </header>
 
@@ -101,8 +100,6 @@ export default async function BookPage({
           'area',
           'responsable',
           'turno',
-          'habitacion',
-          'reserva',
           'desde',
           'hasta',
         ]}

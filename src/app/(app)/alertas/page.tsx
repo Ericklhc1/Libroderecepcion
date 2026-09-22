@@ -239,15 +239,6 @@ export default async function AlertsPage({
                         Entrega de turno
                       </Link>
                     ) : null}
-                    {alert.reservation ? (
-                      <span className="text-slate-500">Reserva {alert.reservation.code}</span>
-                    ) : null}
-                    {alert.guest ? (
-                      <span className="text-slate-500">
-                        {alert.guest.fullName}
-                        {alert.guest.roomNumber ? ` · hab. ${alert.guest.roomNumber}` : ''}
-                      </span>
-                    ) : null}
                   </div>
                 </div>
 

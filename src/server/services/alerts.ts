@@ -1,6 +1,6 @@
 import 'server-only';
-import { AlertStatus, AuditAction, EntryStatus } from '@prisma/client';
-import type { AlertLevel, AlertType, Prisma } from '@prisma/client';
+import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';

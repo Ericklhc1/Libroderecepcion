@@ -118,7 +118,11 @@ export function hotelWallDateTime(
 export function parseHotelDateTimeLocal(value: string): Date {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
   if (!match) throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
-  return hotelWallDateTime(match[1], Number(match[2]), Number(match[3]));
+  const [, dateKey, hourText, minuteText] = match;
+  if (!dateKey || !hourText || !minuteText) {
+    throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
+  }
+  return hotelWallDateTime(dateKey, Number(hourText), Number(minuteText));
 }
 
 /**

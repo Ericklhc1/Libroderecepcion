@@ -14,10 +14,12 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import {
   assertValidQuantities,
   cashHandoverProblems,
+  cashStatuses,
   countDiscrepancies,
-  fundStatuses,
   fromMinor,
+  normalizeExpectation,
   toMinor,
+  type CashExpectation,
   type CountedDenomination,
   type CashCountKindValue,
   type FundStatus,
@@ -60,6 +62,159 @@ function fundTargets(funds: Array<{ currency: string; amount: Prisma.Decimal }>)
   }));
 }
 
+
+type CashCompositionGuarantee = {
+  id: string;
+  currency: string;
+  amount: Prisma.Decimal;
+  appliedAmount: Prisma.Decimal | null;
+  penaltyAmount: Prisma.Decimal | null;
+  state: GuaranteeState;
+  reservationReference: {
+    code: string;
+    roomNumber: string | null;
+    guest: { fullName: string } | null;
+  };
+  stay: { room: { number: string } | null } | null;
+};
+
+function guaranteeCustodyAmount(guarantee: {
+  amount: Prisma.Decimal;
+  appliedAmount: Prisma.Decimal | null;
+  penaltyAmount: Prisma.Decimal | null;
+}): number {
+  return Math.max(
+    0,
+    Number(guarantee.amount) -
+      Number(guarantee.appliedAmount ?? 0) -
+      Number(guarantee.penaltyAmount ?? 0),
+  );
+}
+
+function serializeExpectations(expectations: CashExpectation[]): Prisma.InputJsonValue {
+  return expectations.map((row) => ({
+    currency: row.currency,
+    fundMinor: row.fundMinor,
+    guaranteeCustodyMinor: row.guaranteeCustodyMinor,
+    operationalMinor: row.operationalMinor,
+    expectedMinor: row.expectedMinor,
+    transferableMinor: row.transferableMinor,
+  }));
+}
+
+function parseExpectationSnapshot(
+  snapshot: Prisma.JsonValue | null,
+  fallback: CashExpectation[],
+): CashExpectation[] {
+  if (!Array.isArray(snapshot)) return fallback;
+  const parsed = snapshot.flatMap((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+    const value = row as Record<string, Prisma.JsonValue>;
+    if (typeof value.currency !== 'string') return [];
+    const fundMinor = Number(value.fundMinor ?? 0);
+    const guaranteeCustodyMinor = Number(value.guaranteeCustodyMinor ?? 0);
+    const operationalMinor = Number(value.operationalMinor ?? 0);
+    if (![fundMinor, guaranteeCustodyMinor, operationalMinor].every(Number.isFinite)) return [];
+    return [
+      normalizeExpectation({
+        currency: value.currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor,
+      }),
+    ];
+  });
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+/**
+ * Fuente canónica de la composición física de Caja.
+ *
+ * El ledger determina cuánto efectivo debería existir. La garantía sólo define
+ * qué parte de ese efectivo sigue siendo dinero del huésped; lo aplicado o
+ * multado pasa al saldo operacional sin mover billetes.
+ */
+async function getCurrentCashComposition(client: Client = prisma): Promise<{
+  funds: Awaited<ReturnType<typeof listFunds>>;
+  guarantees: CashCompositionGuarantee[];
+  expectations: CashExpectation[];
+  latestMovementAt: Date | null;
+}> {
+  const [funds, movementTotals, guarantees, latestMovement] = await Promise.all([
+    listFunds(client),
+    client.cashMovement.groupBy({
+      by: ['currency', 'direction'],
+      where: { voidedAt: null },
+      _sum: { amount: true },
+    }),
+    client.guarantee.findMany({
+      where: {
+        deletedAt: null,
+        kind: GuaranteeKind.EFECTIVO,
+        state: { in: [GuaranteeState.VIGENTE, GuaranteeState.APLICADA_PARCIALMENTE] },
+      },
+      include: {
+        stay: { include: { room: { select: { number: true } } } },
+        reservationReference: {
+          include: { guest: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }) as Promise<CashCompositionGuarantee[]>,
+    client.cashMovement.findFirst({
+      where: { voidedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const fundByCurrency = new Map(
+    funds.map((fund) => [fund.currency.toUpperCase(), toMinor(Number(fund.amount), fund.currency)]),
+  );
+  const netMovementByCurrency = new Map<string, number>();
+  for (const row of movementTotals) {
+    const currency = row.currency.toUpperCase();
+    const amountMinor = toMinor(Number(row._sum.amount ?? 0), currency);
+    const signed = row.direction === 'ENTRADA' ? amountMinor : -amountMinor;
+    netMovementByCurrency.set(currency, (netMovementByCurrency.get(currency) ?? 0) + signed);
+  }
+
+  const custodyByCurrency = new Map<string, number>();
+  for (const guarantee of guarantees) {
+    const currency = guarantee.currency.toUpperCase();
+    const custodyMinor = toMinor(guaranteeCustodyAmount(guarantee), currency);
+    custodyByCurrency.set(currency, (custodyByCurrency.get(currency) ?? 0) + custodyMinor);
+  }
+
+  const currencies = new Set<string>([
+    ...CASH_CURRENCIES,
+    ...fundByCurrency.keys(),
+    ...netMovementByCurrency.keys(),
+    ...custodyByCurrency.keys(),
+  ]);
+
+  const expectations = [...currencies]
+    .sort()
+    .map((currency) => {
+      const fundMinor = fundByCurrency.get(currency) ?? 0;
+      const guaranteeCustodyMinor = custodyByCurrency.get(currency) ?? 0;
+      const netMovementMinor = netMovementByCurrency.get(currency) ?? 0;
+      return normalizeExpectation({
+        currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor: netMovementMinor - guaranteeCustodyMinor,
+      });
+    });
+
+  return {
+    funds,
+    guarantees,
+    expectations,
+    latestMovementAt: latestMovement?.createdAt ?? null,
+  };
+}
+
 function countedLines(
   lines: Array<{ quantity: number; denomination: { currency: string; value: Prisma.Decimal } }>,
 ): CountedDenomination[] {
@@ -78,6 +233,8 @@ const countInclude = {
 export type HandoverCashState = {
   enabled: boolean;
   funds: Array<{ currency: string; amount: number }>;
+  latestMovementAt: Date | null;
+  currentExpectations: CashExpectation[];
   declared: {
     countedByName: string;
     countedAt: Date;
@@ -117,6 +274,9 @@ export type HandoverCashState = {
     id: string;
     currency: string;
     amount: number;
+    originalAmount: number;
+    appliedAmount: number;
+    penaltyAmount: number;
     state: string;
     reservationCode: string;
     roomNumber: string | null;
@@ -128,8 +288,8 @@ export async function getHandoverCashState(
   handoverId: string,
   client: Client = prisma,
 ): Promise<HandoverCashState> {
-  const [funds, counts, transfers, elements, guarantees, approvalAlerts] = await Promise.all([
-    listFunds(client),
+  const [composition, counts, transfers, elements, approvalAlerts] = await Promise.all([
+    getCurrentCashComposition(client),
     client.cashCount.findMany({ where: { handoverId }, include: countInclude }),
     client.cashTransfer.findMany({
       where: { handoverId },
@@ -141,20 +301,6 @@ export async function getHandoverCashState(
       include: { elementType: true },
       orderBy: { elementType: { order: 'asc' } },
     }),
-    client.guarantee.findMany({
-      where: {
-        deletedAt: null,
-        kind: GuaranteeKind.EFECTIVO,
-        state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
-      },
-      include: {
-        stay: { include: { room: { select: { number: true } } } },
-        reservationReference: {
-          include: { guest: { select: { fullName: true } } },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    }),
     client.alert.findMany({
       where: {
         handoverId,
@@ -165,7 +311,6 @@ export async function getHandoverCashState(
     }),
   ]);
 
-  const targets = fundTargets(funds);
   const byKind = (kind: CashCountKind) => counts.find((count) => count.kind === kind);
   const approvalByTransfer = new Map(
     approvalAlerts.map((alert) => [
@@ -180,7 +325,10 @@ export async function getHandoverCashState(
           countedByName: count.countedBy.name,
           countedAt: count.countedAt,
           notes: count.notes,
-          statuses: fundStatuses(targets, countedLines(count.lines)),
+          statuses: cashStatuses(
+            parseExpectationSnapshot(count.expectedSnapshot, composition.expectations),
+            countedLines(count.lines),
+          ),
         }
       : null;
 
@@ -188,8 +336,13 @@ export async function getHandoverCashState(
   const confirmedCount = byKind(CashCountKind.CONFIRMADO);
 
   return {
-    enabled: funds.length > 0,
-    funds: funds.map((fund) => ({ currency: fund.currency, amount: Number(fund.amount) })),
+    enabled: composition.funds.length > 0,
+    funds: composition.funds.map((fund) => ({
+      currency: fund.currency,
+      amount: Number(fund.amount),
+    })),
+    latestMovementAt: composition.latestMovementAt,
+    currentExpectations: composition.expectations,
     declared: shape(declaredCount),
     confirmed: shape(confirmedCount),
     discrepancies:
@@ -218,10 +371,13 @@ export async function getHandoverCashState(
       confirmed: element.confirmed,
       notes: element.notes,
     })),
-    cashGuarantees: guarantees.map((guarantee) => ({
+    cashGuarantees: composition.guarantees.map((guarantee) => ({
       id: guarantee.id,
       currency: guarantee.currency,
-      amount: Number(guarantee.amount),
+      amount: guaranteeCustodyAmount(guarantee),
+      originalAmount: Number(guarantee.amount),
+      appliedAmount: Number(guarantee.appliedAmount ?? 0),
+      penaltyAmount: Number(guarantee.penaltyAmount ?? 0),
       state: guarantee.state,
       reservationCode: guarantee.reservationReference.code,
       roomNumber: guarantee.stay?.room?.number ?? guarantee.reservationReference.roomNumber,

@@ -53,26 +53,11 @@ export const entryCreateSchema = z.object({
 });
 
 /**
- * Una incidencia sin contexto no sirve: nadie sabe dónde ir. Se exige
- * habitación o área, y la comprobación vive en el esquema para que valga tanto
- * en el formulario como en cualquier otra vía de creación.
+ * Desde v1.4.0 Novedades e Incidencias no dependen de PMS ni de una habitación
+ * estructurada. Área, categoría y responsable son suficientes como contexto
+ * operativo; cualquier número de habitación puede escribirse en el texto.
  */
-const REQUIRES_CONTEXT: EntryType[] = [EntryType.INCIDENCIA, EntryType.MANTENIMIENTO];
-
-function hasContext(data: { type?: EntryType; roomId?: unknown; departmentId?: unknown }): boolean {
-  if (!data.type || !REQUIRES_CONTEXT.includes(data.type)) return true;
-  return Boolean(data.roomId) || Boolean(data.departmentId);
-}
-
-const CONTEXT_MESSAGE =
-  'Indica la habitación o el área a la que corresponde: una incidencia sin contexto no puede atenderse.';
-
-export const entryCreateWithContextSchema = entryCreateSchema.superRefine((data, ctx) => {
-  if (hasContext(data)) return;
-  for (const path of ['roomId', 'departmentId'] as const) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: CONTEXT_MESSAGE });
-  }
-});
+export const entryCreateWithContextSchema = entryCreateSchema;
 
 export const entryUpdateSchema = entryCreateSchema.partial().extend({
   id: z.string().min(1),
@@ -81,13 +66,7 @@ export const entryUpdateSchema = entryCreateSchema.partial().extend({
   resolution: zOptionalString,
 });
 
-export const entryUpdateWithContextSchema = entryUpdateSchema.superRefine((data, ctx) => {
-  // En la edición sólo se exige contexto si el tipo viene en el formulario.
-  if (!data.type || hasContext(data)) return;
-  for (const path of ['roomId', 'departmentId'] as const) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: CONTEXT_MESSAGE });
-  }
-});
+export const entryUpdateWithContextSchema = entryUpdateSchema;
 
 export const entryStatusSchema = z.object({
   id: z.string().min(1),
@@ -283,13 +262,17 @@ const zMoney = z
   .refine((value) => Number.isFinite(value) && value >= 0, 'Monto inválido');
 
 export const guaranteeCreateSchema = z.object({
-  reservationReferenceId: z.string().min(1, 'Selecciona la reserva'),
-  /** Contexto opcional: desde una estadía/habitación se resuelve sin duplicar datos. */
+  /** Vínculo PMS legado: opcional y nunca requerido para garantías nuevas. */
+  reservationReferenceId: zOptionalCuid,
   stayId: zOptionalCuid,
   roomId: zOptionalCuid,
+  /** Contexto directo de Caja. Todos son opcionales. */
+  guestName: zOptionalString,
+  roomNumber: zOptionalString,
+  reference: zOptionalString,
+  dueAt: zOptionalDate,
   kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),
   amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero'),
-  /** Código ISO de tres letras. La operación es en CLP, pero no sólo. */
   currency: z
     .string()
     .trim()

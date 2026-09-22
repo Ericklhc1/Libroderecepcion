@@ -52,6 +52,137 @@ export async function listFunds(client: Client = prisma) {
   });
 }
 
+
+function guaranteeCustodyAmount(guarantee: {
+  amount: Prisma.Decimal;
+  appliedAmount: Prisma.Decimal | null;
+  penaltyAmount: Prisma.Decimal | null;
+}): number {
+  return Math.max(
+    0,
+    Number(guarantee.amount) -
+      Number(guarantee.appliedAmount ?? 0) -
+      Number(guarantee.penaltyAmount ?? 0),
+  );
+}
+
+function serializeExpectations(expectations: CashExpectation[]): Prisma.InputJsonValue {
+  return expectations.map((row) => ({
+    currency: row.currency,
+    fundMinor: row.fundMinor,
+    guaranteeCustodyMinor: row.guaranteeCustodyMinor,
+    operationalMinor: row.operationalMinor,
+    expectedMinor: row.expectedMinor,
+    transferableMinor: row.transferableMinor,
+  }));
+}
+
+function parseExpectationSnapshot(
+  snapshot: Prisma.JsonValue | null,
+  fallback: CashExpectation[],
+): CashExpectation[] {
+  if (!Array.isArray(snapshot)) return fallback;
+  const parsed = snapshot.flatMap((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+    const value = row as Record<string, Prisma.JsonValue>;
+    if (typeof value.currency !== 'string') return [];
+
+    const fundMinor = Number(value.fundMinor ?? 0);
+    const guaranteeCustodyMinor = Number(value.guaranteeCustodyMinor ?? 0);
+    const operationalMinor = Number(value.operationalMinor ?? 0);
+    if (![fundMinor, guaranteeCustodyMinor, operationalMinor].every(Number.isFinite)) return [];
+
+    return [
+      normalizeExpectation({
+        currency: value.currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor,
+      }),
+    ];
+  });
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+async function getCurrentCashComposition(client: Client = prisma) {
+  const [funds, movementTotals, guarantees, latestMovement] = await Promise.all([
+    listFunds(client),
+    client.$queryRaw<Array<{ currency: string; net: Prisma.Decimal }>>`
+      SELECT "currency",
+             COALESCE(SUM(CASE WHEN "direction" = 'ENTRADA' THEN "amount" ELSE -"amount" END), 0) AS "net"
+      FROM "CashMovement"
+      WHERE "voidedAt" IS NULL
+      GROUP BY "currency"
+    `,
+    client.guarantee.findMany({
+      where: {
+        deletedAt: null,
+        kind: 'EFECTIVO',
+        state: { in: ['VIGENTE', 'APLICADA_PARCIALMENTE'] },
+      },
+      include: {
+        stay: { include: { room: { select: { number: true } } } },
+        reservationReference: {
+          include: { guest: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    client.cashMovement.findFirst({
+      where: { voidedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const fundByCurrency = new Map(
+    funds.map((fund) => [
+      fund.currency.toUpperCase(),
+      toMinor(Number(fund.amount), fund.currency),
+    ]),
+  );
+  const netMovementByCurrency = new Map(
+    movementTotals.map((row) => [
+      row.currency.toUpperCase(),
+      toMinor(Number(row.net), row.currency),
+    ]),
+  );
+  const custodyByCurrency = new Map<string, number>();
+  for (const guarantee of guarantees) {
+    const currency = guarantee.currency.toUpperCase();
+    const custodyMinor = toMinor(guaranteeCustodyAmount(guarantee), currency);
+    custodyByCurrency.set(currency, (custodyByCurrency.get(currency) ?? 0) + custodyMinor);
+  }
+
+  const currencies = new Set<string>([
+    ...CASH_CURRENCIES,
+    ...fundByCurrency.keys(),
+    ...netMovementByCurrency.keys(),
+    ...custodyByCurrency.keys(),
+  ]);
+
+  const expectations = [...currencies]
+    .sort()
+    .map((currency) => {
+      const fundMinor = fundByCurrency.get(currency) ?? 0;
+      const guaranteeCustodyMinor = custodyByCurrency.get(currency) ?? 0;
+      const netMovementMinor = netMovementByCurrency.get(currency) ?? 0;
+      return normalizeExpectation({
+        currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor: netMovementMinor - guaranteeCustodyMinor,
+      });
+    });
+
+  return {
+    funds,
+    guarantees,
+    expectations,
+    latestMovementAt: latestMovement?.createdAt ?? null,
+  };
+}
+
 async function lockCashCurrency(client: Client, currency: string): Promise<void> {
   await client.$executeRaw`
     SELECT pg_advisory_xact_lock(hashtext(${`cash-treasury:${currency.toUpperCase()}`}))

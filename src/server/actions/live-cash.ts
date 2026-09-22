@@ -25,6 +25,7 @@ import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { notify } from '@/server/notifications';
+import { parseHotelDateTimeLocal } from '@/domain/time';
 import {
   cashApprovalRequired,
   listCashApproverIds,
@@ -78,6 +79,10 @@ const movementSchema = z.object({
   currency: z.enum(['CLP', 'USD']),
   amount: z.coerce.number().positive('El monto debe ser mayor que cero.'),
   reference: z.string().trim().min(2, 'Indica el concepto del movimiento.').max(120),
+  effectiveAt: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Indica una fecha/hora efectiva válida.').optional(),
+  ),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
 });
 
@@ -87,6 +92,7 @@ async function applyAuthorizedManualMovement(
   user: Awaited<ReturnType<typeof requireUser>>,
   input: ManualMovementInput,
   shiftId: string | null,
+  effectiveAt: Date,
 ) {
   const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
@@ -101,6 +107,7 @@ async function applyAuthorizedManualMovement(
       shiftId,
       reference: input.reference,
       notes: input.notes,
+      effectiveAt,
     });
 
     const entry = await tx.operationalEntry.create({
@@ -115,7 +122,7 @@ async function applyAuthorizedManualMovement(
         priority: shiftId ? Priority.BAJA : Priority.CRITICA,
         ownerId: user.id,
         shiftId,
-        occurredAt: new Date(),
+        occurredAt: effectiveAt,
         tags: [
           'caja',
           input.direction.toLowerCase(),
@@ -166,6 +173,7 @@ async function applyAuthorizedManualMovement(
           reference: input.reference,
           notes: input.notes,
           shiftId,
+          effectiveAt: effectiveAt.toISOString(),
           withoutCashSession: !shiftId,
           noSessionAlertId,
           performedBy: user.id,
@@ -190,15 +198,17 @@ export async function createManualCashMovementAction(
       throw new RuleError(`Tu rol no tiene habilitado ${input.direction === 'ENTRADA' ? 'registrar ingresos' : 'registrar egresos'} manuales de Caja.`);
     }
     const shift = await getMyOpenShift(user.id) ?? await getCurrentShift();
+    const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
 
     const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
     const needsApproval = await cashApprovalRequired(user, permission);
 
     if (!needsApproval) {
-      const movementId = await applyAuthorizedManualMovement(user, input, shift?.id ?? null);
+      const movementId = await applyAuthorizedManualMovement(user, input, shift?.id ?? null, effectiveAt);
       revalidatePath('/caja');
       revalidatePath('/libro');
       revalidatePath('/turno');
+      revalidatePath('/supervision');
       return {
         ok: true as const,
         message: shift
@@ -238,6 +248,7 @@ export async function createManualCashMovementAction(
             `moneda-${input.currency}`,
             `monto-${input.amount}`,
             `referencia-${encodeURIComponent(input.reference)}`,
+            `efectiva-${encodeURIComponent(effectiveAt.toISOString())}`,
             ...(input.notes ? [`notas-${encodeURIComponent(input.notes)}`] : []),
           ],
           requiresFollowUp: true,
@@ -272,6 +283,7 @@ export async function createManualCashMovementAction(
             shiftId: shift?.id ?? null,
             alertId: alert.id,
             withoutCashSession: !shift,
+            effectiveAt: effectiveAt.toISOString(),
             permission,
             status: 'PENDIENTE_APROBACION',
           },

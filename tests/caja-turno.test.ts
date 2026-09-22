@@ -310,17 +310,11 @@ describe('caja en la entrega de turno', () => {
     ).rejects.toThrow(/saldo operacional disponible/i);
   });
 
-  it('un egreso pendiente de revisión de Supervisión no bloquea el envío', async () => {
+  it('una transferencia revisable por Supervisión no bloquea el envío si el arqueo es posterior', async () => {
     await seedFunds();
     const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
-    const quantities = await exactFundQuantities();
 
-    await saveCashCount(saliente, {
-      handoverId: handover.id,
-      kind: 'DECLARADO',
-      quantities,
-    });
     await insertCashMovement(prisma, {
       userId: saliente.id,
       kind: 'AJUSTE_ENTRADA',
@@ -337,12 +331,19 @@ describe('caja en la entrega de turno', () => {
       reference: 'SOBRE-PENDIENTE',
     });
 
+    const quantities = await exactFundQuantities();
+    await saveCashCount(saliente, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities,
+    });
+
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
 
-  it('un egreso sin monto o con divisa inválida se rechaza', async () => {
+  it('una transferencia sin monto o con divisa inválida se rechaza', async () => {
     await seedFunds();
     const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);

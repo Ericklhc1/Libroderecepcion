@@ -24,6 +24,9 @@ type CashSnapshot = {
     currency: string;
     fund: number;
     netMovements: number;
+    guaranteeCustody: number;
+    operational: number;
+    transferable: number;
     expected: number;
     counted: number;
     difference: number;
@@ -132,6 +135,16 @@ export async function closeShiftCash(
       })
     : null;
 
+  if (
+    state.declared &&
+    state.latestMovementAt &&
+    state.latestMovementAt > state.declared.countedAt
+  ) {
+    throw new RuleError(
+      'Caja cambió después del arqueo. Vuelve a contar el efectivo antes de cerrar formalmente.',
+    );
+  }
+
   const unbalanced = state.declared?.statuses.filter((status) => !status.balanced) ?? [];
   if (unbalanced.length > 0 && !state.declared?.notes?.trim() && !params.notes?.trim()) {
     throw new RuleError(
@@ -145,8 +158,14 @@ export async function closeShiftCash(
     currencies: (state.declared?.statuses ?? []).map((status) => ({
       currency: status.currency,
       fund: fromMinor(status.fundMinor, status.currency),
-      netMovements: fromMinor(status.differenceMinor, status.currency),
-      expected: fromMinor(status.fundMinor, status.currency),
+      netMovements: fromMinor(
+        status.guaranteeCustodyMinor + status.operationalMinor,
+        status.currency,
+      ),
+      guaranteeCustody: fromMinor(status.guaranteeCustodyMinor, status.currency),
+      operational: fromMinor(status.operationalMinor, status.currency),
+      transferable: fromMinor(status.transferableMinor, status.currency),
+      expected: fromMinor(status.expectedMinor, status.currency),
       counted: fromMinor(status.countedMinor, status.currency),
       difference: fromMinor(status.differenceMinor, status.currency),
       auditId: declaredCount?.id ?? `handover:${handoverId}`,

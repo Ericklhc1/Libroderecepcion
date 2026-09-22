@@ -434,6 +434,25 @@ conserva su modelo y sus reglas.
     `npm run demo:purge`, que exigía abrir una terminal contra producción.
     Lo vigila `tests/puesta-en-cero.test.ts`.
 
+## Caja — semántica canónica v1.3.1
+
+- **Fondo fijo no es saldo esperado.** Caja física = fondo fijo + garantías
+  reembolsables bajo custodia + saldo operacional.
+- **Arqueo = contado vs esperado físico.** Nunca se deriva recaudación con
+  `contado - fondo`; un sobrante físico es una diferencia no explicada.
+- **Tesorería es transferencia interna, no gasto.** Sólo puede mover saldo
+  operacional positivo. El servidor protege fondo fijo y garantías incluso si
+  físicamente están en el mismo cajón.
+- **Garantía parcial:** sólo el remanente reembolsable sigue siendo custodia.
+  Lo aplicado/multado pasa a saldo operacional sin crear un movimiento físico;
+  una multa parcial devuelve automáticamente el resto.
+- Cada `CashCount` guarda `expectedSnapshot`; si Caja cambia después de un
+  arqueo, éste queda obsoleto y debe repetirse antes de transferir custodia.
+- Transferencias a Tesorería se serializan por divisa con advisory lock para
+  impedir que dos operaciones concurrentes gasten el mismo disponible.
+- El código histórico `TESORERIA` se conserva por compatibilidad de datos,
+  pero su significado funcional es **TRANSFERENCIA INTERNA**.
+
 ## Rendimiento: lo aprendido en producción
 
 La base está en `sa-east-1`. Production se sirve desde **Vercel** y la única

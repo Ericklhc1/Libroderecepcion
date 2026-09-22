@@ -105,7 +105,7 @@ export const DEFAULT_SETTINGS = {
   'cash.treasuryTransfersEnabled': {
     value: true,
     category: 'caja',
-    description: 'Permite registrar egresos a tesorería durante la entrega de turno.',
+    description: 'Permite registrar transferencias internas de Recepción a Tesorería durante la entrega de turno.',
   },
   'cash.transferReceiptRequired': {
     value: false,

@@ -3,8 +3,6 @@ import {
   AlertStatus,
   AuditAction,
   CashCountKind,
-  GuaranteeKind,
-  GuaranteeState,
   Prisma,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -14,15 +12,16 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import {
   assertValidQuantities,
   cashHandoverProblems,
+  cashStatuses,
   countDiscrepancies,
-  fundStatuses,
   fromMinor,
+  normalizeExpectation,
   toMinor,
+  type CashExpectation,
   type CountedDenomination,
   type CashCountKindValue,
   type FundStatus,
 } from '@/domain/cash';
-import { OPEN_GUARANTEE_STATES } from '@/domain/guarantees';
 import { getSettingBool } from '@/server/services/settings';
 import { insertCashMovement } from '@/server/services/live-cash';
 
@@ -53,11 +52,180 @@ export async function listFunds(client: Client = prisma) {
   });
 }
 
-function fundTargets(funds: Array<{ currency: string; amount: Prisma.Decimal }>) {
-  return funds.map((fund) => ({
-    currency: fund.currency,
-    minorAmount: toMinor(Number(fund.amount), fund.currency),
+
+function guaranteeCustodyAmount(guarantee: {
+  amount: Prisma.Decimal;
+  appliedAmount: Prisma.Decimal | null;
+  penaltyAmount: Prisma.Decimal | null;
+}): number {
+  return Math.max(
+    0,
+    Number(guarantee.amount) -
+      Number(guarantee.appliedAmount ?? 0) -
+      Number(guarantee.penaltyAmount ?? 0),
+  );
+}
+
+function serializeExpectations(expectations: CashExpectation[]): Prisma.InputJsonValue {
+  return expectations.map((row) => ({
+    currency: row.currency,
+    fundMinor: row.fundMinor,
+    guaranteeCustodyMinor: row.guaranteeCustodyMinor,
+    operationalMinor: row.operationalMinor,
+    expectedMinor: row.expectedMinor,
+    transferableMinor: row.transferableMinor,
   }));
+}
+
+function parseExpectationSnapshot(
+  snapshot: Prisma.JsonValue | null,
+  fallback: CashExpectation[],
+): CashExpectation[] {
+  if (!Array.isArray(snapshot)) return fallback;
+  const parsed = snapshot.flatMap((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+    const value = row as Record<string, Prisma.JsonValue>;
+    if (typeof value.currency !== 'string') return [];
+
+    const fundMinor = Number(value.fundMinor ?? 0);
+    const guaranteeCustodyMinor = Number(value.guaranteeCustodyMinor ?? 0);
+    const operationalMinor = Number(value.operationalMinor ?? 0);
+    if (![fundMinor, guaranteeCustodyMinor, operationalMinor].every(Number.isFinite)) return [];
+
+    return [
+      normalizeExpectation({
+        currency: value.currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor,
+      }),
+    ];
+  });
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+async function getCurrentCashComposition(client: Client = prisma) {
+  const [funds, movementTotals, guarantees, latestMovement] = await Promise.all([
+    listFunds(client),
+    client.$queryRaw<Array<{ currency: string; net: Prisma.Decimal }>>`
+      SELECT "currency",
+             COALESCE(SUM(CASE WHEN "direction" = 'ENTRADA' THEN "amount" ELSE -"amount" END), 0) AS "net"
+      FROM "CashMovement"
+      WHERE "voidedAt" IS NULL
+      GROUP BY "currency"
+    `,
+    client.guarantee.findMany({
+      where: {
+        deletedAt: null,
+        kind: 'EFECTIVO',
+        state: { in: ['VIGENTE', 'APLICADA_PARCIALMENTE'] },
+      },
+      include: {
+        stay: { include: { room: { select: { number: true } } } },
+        reservationReference: {
+          include: { guest: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    client.cashMovement.findFirst({
+      where: { voidedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const fundByCurrency = new Map(
+    funds.map((fund) => [
+      fund.currency.toUpperCase(),
+      toMinor(Number(fund.amount), fund.currency),
+    ]),
+  );
+  const netMovementByCurrency = new Map(
+    movementTotals.map((row) => [
+      row.currency.toUpperCase(),
+      toMinor(Number(row.net), row.currency),
+    ]),
+  );
+  const custodyByCurrency = new Map<string, number>();
+  for (const guarantee of guarantees) {
+    const currency = guarantee.currency.toUpperCase();
+    const custodyMinor = toMinor(guaranteeCustodyAmount(guarantee), currency);
+    custodyByCurrency.set(currency, (custodyByCurrency.get(currency) ?? 0) + custodyMinor);
+  }
+
+  const currencies = new Set<string>([
+    ...fundByCurrency.keys(),
+    ...netMovementByCurrency.keys(),
+    ...custodyByCurrency.keys(),
+  ]);
+
+  const expectations = [...currencies]
+    .sort()
+    .map((currency) => {
+      const fundMinor = fundByCurrency.get(currency) ?? 0;
+      const guaranteeCustodyMinor = custodyByCurrency.get(currency) ?? 0;
+      const netMovementMinor = netMovementByCurrency.get(currency) ?? 0;
+      return normalizeExpectation({
+        currency,
+        fundMinor,
+        guaranteeCustodyMinor,
+        operationalMinor: netMovementMinor - guaranteeCustodyMinor,
+      });
+    });
+
+  return {
+    funds,
+    guarantees,
+    expectations,
+    latestMovementAt: latestMovement?.createdAt ?? null,
+  };
+}
+
+async function lockCashCurrency(client: Client, currency: string): Promise<void> {
+  await client.$executeRaw`
+    SELECT pg_advisory_xact_lock(hashtext(${`cash-treasury:${currency.toUpperCase()}`}))
+  `;
+}
+
+async function availableForTreasuryMinor(
+  client: Client,
+  currency: string,
+  excludeTransferId?: string,
+): Promise<number> {
+  const normalized = currency.toUpperCase();
+  const composition = await getCurrentCashComposition(client);
+  const expectation = composition.expectations.find((row) => row.currency === normalized);
+  const pending = await client.cashTransfer.aggregate({
+    where: {
+      currency: normalized,
+      cashMovement: null,
+      ...(excludeTransferId ? { id: { not: excludeTransferId } } : {}),
+    },
+    _sum: { amount: true },
+  });
+  const committedMinor = toMinor(Number(pending._sum.amount ?? 0), normalized);
+  return Math.max(0, (expectation?.transferableMinor ?? 0) - committedMinor);
+}
+
+async function assertTreasuryTransferAvailable(
+  client: Client,
+  params: { currency: string; amount: number; excludeTransferId?: string },
+): Promise<void> {
+  const availableMinor = await availableForTreasuryMinor(
+    client,
+    params.currency,
+    params.excludeTransferId,
+  );
+  const requestedMinor = toMinor(params.amount, params.currency);
+  if (requestedMinor > availableMinor) {
+    throw new RuleError(
+      `La transferencia a Tesorería excede el saldo operacional disponible. Disponible: ${fromMinor(
+        availableMinor,
+        params.currency,
+      )} ${params.currency}. El fondo fijo y las garantías bajo custodia no se transfieren.`,
+    );
+  }
 }
 
 function countedLines(
@@ -78,6 +246,8 @@ const countInclude = {
 export type HandoverCashState = {
   enabled: boolean;
   funds: Array<{ currency: string; amount: number }>;
+  latestMovementAt: Date | null;
+  currentExpectations: CashExpectation[];
   declared: {
     countedByName: string;
     countedAt: Date;
@@ -117,6 +287,9 @@ export type HandoverCashState = {
     id: string;
     currency: string;
     amount: number;
+    originalAmount: number;
+    appliedAmount: number;
+    penaltyAmount: number;
     state: string;
     reservationCode: string;
     roomNumber: string | null;
@@ -128,8 +301,8 @@ export async function getHandoverCashState(
   handoverId: string,
   client: Client = prisma,
 ): Promise<HandoverCashState> {
-  const [funds, counts, transfers, elements, guarantees, approvalAlerts] = await Promise.all([
-    listFunds(client),
+  const [composition, counts, transfers, elements, approvalAlerts] = await Promise.all([
+    getCurrentCashComposition(client),
     client.cashCount.findMany({ where: { handoverId }, include: countInclude }),
     client.cashTransfer.findMany({
       where: { handoverId },
@@ -141,20 +314,6 @@ export async function getHandoverCashState(
       include: { elementType: true },
       orderBy: { elementType: { order: 'asc' } },
     }),
-    client.guarantee.findMany({
-      where: {
-        deletedAt: null,
-        kind: GuaranteeKind.EFECTIVO,
-        state: { in: OPEN_GUARANTEE_STATES.map((state) => GuaranteeState[state]) },
-      },
-      include: {
-        stay: { include: { room: { select: { number: true } } } },
-        reservationReference: {
-          include: { guest: { select: { fullName: true } } },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    }),
     client.alert.findMany({
       where: {
         handoverId,
@@ -165,7 +324,6 @@ export async function getHandoverCashState(
     }),
   ]);
 
-  const targets = fundTargets(funds);
   const byKind = (kind: CashCountKind) => counts.find((count) => count.kind === kind);
   const approvalByTransfer = new Map(
     approvalAlerts.map((alert) => [
@@ -180,7 +338,18 @@ export async function getHandoverCashState(
           countedByName: count.countedBy.name,
           countedAt: count.countedAt,
           notes: count.notes,
-          statuses: fundStatuses(targets, countedLines(count.lines)),
+          statuses: cashStatuses(
+            parseExpectationSnapshot(
+              count.expectedSnapshot,
+              composition.funds.map((fund) =>
+                normalizeExpectation({
+                  currency: fund.currency,
+                  fundMinor: toMinor(Number(fund.amount), fund.currency),
+                }),
+              ),
+            ),
+            countedLines(count.lines),
+          ),
         }
       : null;
 
@@ -188,8 +357,13 @@ export async function getHandoverCashState(
   const confirmedCount = byKind(CashCountKind.CONFIRMADO);
 
   return {
-    enabled: funds.length > 0,
-    funds: funds.map((fund) => ({ currency: fund.currency, amount: Number(fund.amount) })),
+    enabled: composition.funds.length > 0,
+    funds: composition.funds.map((fund) => ({
+      currency: fund.currency,
+      amount: Number(fund.amount),
+    })),
+    latestMovementAt: composition.latestMovementAt,
+    currentExpectations: composition.expectations,
     declared: shape(declaredCount),
     confirmed: shape(confirmedCount),
     discrepancies:
@@ -218,10 +392,13 @@ export async function getHandoverCashState(
       confirmed: element.confirmed,
       notes: element.notes,
     })),
-    cashGuarantees: guarantees.map((guarantee) => ({
+    cashGuarantees: composition.guarantees.map((guarantee) => ({
       id: guarantee.id,
       currency: guarantee.currency,
-      amount: Number(guarantee.amount),
+      amount: guaranteeCustodyAmount(guarantee),
+      originalAmount: Number(guarantee.amount),
+      appliedAmount: Number(guarantee.appliedAmount ?? 0),
+      penaltyAmount: Number(guarantee.penaltyAmount ?? 0),
       state: guarantee.state,
       reservationCode: guarantee.reservationReference.code,
       roomNumber: guarantee.stay?.room?.number ?? guarantee.reservationReference.roomNumber,
@@ -258,12 +435,12 @@ export async function saveCashCount(
     throw new RuleError('El arqueo incluye una denominación que no existe o una divisa no habilitada.');
   }
 
-  const funds = await listFunds();
+  const composition = await getCurrentCashComposition();
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
   });
-  const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
+  const statuses = cashStatuses(composition.expectations, countedLines(lines));
 
   await prisma.$transaction(async (tx) => {
     await tx.cashCount.deleteMany({
@@ -275,6 +452,7 @@ export async function saveCashCount(
         kind: params.kind as CashCountKind,
         countedById: user.id,
         notes: params.notes?.trim() || null,
+        expectedSnapshot: serializeExpectations(composition.expectations),
         lines: {
           createMany: {
             data: lines.map((line) => ({
@@ -291,7 +469,7 @@ export async function saveCashCount(
         entity: 'CashCount',
         entityId: params.handoverId,
         action: AuditAction.CREAR,
-        summary: `Arqueo de caja ${params.kind === 'DECLARADO' ? 'declarado' : 'confirmado'}: ${statuses
+        summary: `Arqueo de Caja ${params.kind === 'DECLARADO' ? 'declarado' : 'confirmado'}: ${statuses
           .map((status) => `${fromMinor(status.countedMinor, status.currency)} ${status.currency}`)
           .join(', ')}`,
         user,
@@ -347,12 +525,23 @@ export async function confirmHandoverCash(
     );
   }
 
+  const latestMovement = await tx.cashMovement.findFirst({
+    where: { voidedAt: null },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (latestMovement && latestMovement.createdAt > declared.countedAt) {
+    throw new RuleError(
+      'Caja cambió después del arqueo saliente. El turno saliente debe volver a contar antes de transferir la custodia.',
+    );
+  }
+
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
   });
-  const funds = await listFunds(tx);
-  const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
+  const composition = await getCurrentCashComposition(tx);
+  const statuses = cashStatuses(composition.expectations, countedLines(lines));
 
   await tx.cashCount.create({
     data: {
@@ -360,6 +549,7 @@ export async function confirmHandoverCash(
       kind: CashCountKind.CONFIRMADO,
       countedById: user.id,
       notes: params.notes?.trim() || null,
+      expectedSnapshot: serializeExpectations(composition.expectations),
       lines: {
         createMany: {
           data: lines.map((line) => ({
@@ -414,8 +604,8 @@ export function isCashAlreadyReceived(error: unknown): boolean {
 }
 
 /**
- * Refleja un egreso a tesorería en la Caja central de forma idempotente.
- * Se usa tanto al registrar directo como al aprobar una solicitud.
+ * Refleja la salida física de una transferencia interna a Tesorería.
+ * No es un gasto: el efectivo cambia de custodia/ubicación.
  */
 export async function applyCashTransferToLiveCash(
   client: Client,
@@ -431,7 +621,14 @@ export async function applyCashTransferToLiveCash(
     where: { id: transferId },
     include: { handover: { select: { fromShiftId: true } } },
   });
-  if (!transfer) throw new NotFoundError('El egreso a tesorería ya no existe.');
+  if (!transfer) throw new NotFoundError('La transferencia a Tesorería ya no existe.');
+
+  await lockCashCurrency(client, transfer.currency);
+  await assertTreasuryTransferAvailable(client, {
+    currency: transfer.currency,
+    amount: Number(transfer.amount),
+    excludeTransferId: transfer.id,
+  });
 
   return insertCashMovement(client, {
     userId: transfer.createdById,
@@ -442,13 +639,13 @@ export async function applyCashTransferToLiveCash(
     shiftId: transfer.handover.fromShiftId,
     cashTransferId: transfer.id,
     reference: transfer.reference
-      ? `Tesorería · ${transfer.reference}`
-      : 'Egreso a tesorería',
+      ? `Transferencia a Tesorería · ${transfer.reference}`
+      : 'Transferencia a Tesorería',
     notes: transfer.notes,
   });
 }
 
-/** Egreso a tesorería. Se registra una vez y se refleja en Caja según política. */
+/** Transferencia interna a Tesorería. Sólo puede usar saldo operacional transferible. */
 export async function recordCashTransfer(
   user: CurrentUser,
   params: {
@@ -461,16 +658,16 @@ export async function recordCashTransfer(
   },
 ) {
   if (!(await getSettingBool('cash.treasuryTransfersEnabled', true))) {
-    throw new RuleError('Los egresos a tesorería están desactivados en la configuración de Caja.');
+    throw new RuleError('Las transferencias a Tesorería están desactivadas en la configuración de Caja.');
   }
   if (!(params.amount > 0)) {
-    throw new RuleError('El monto del egreso debe ser mayor que cero.');
+    throw new RuleError('El monto de la transferencia debe ser mayor que cero.');
   }
   if (
     (await getSettingBool('cash.transferReceiptRequired', false)) &&
     !params.reference?.trim()
   ) {
-    throw new RuleError('La configuración de Caja exige indicar el comprobante del egreso.');
+    throw new RuleError('La configuración de Caja exige indicar el comprobante de la transferencia.');
   }
 
   const handover = await prisma.shiftHandover.findUnique({
@@ -485,6 +682,12 @@ export async function recordCashTransfer(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockCashCurrency(tx, currency);
+    await assertTreasuryTransferAvailable(tx, {
+      currency,
+      amount: params.amount,
+    });
+
     const transfer = await tx.cashTransfer.create({
       data: {
         handoverId: params.handoverId,
@@ -506,7 +709,7 @@ export async function recordCashTransfer(
         entity: 'CashTransfer',
         entityId: transfer.id,
         action: AuditAction.CREAR,
-        summary: `Egreso a tesorería de ${params.amount} ${currency}${
+        summary: `Transferencia a Tesorería de ${params.amount} ${currency}${
           transfer.reference ? ` (comprobante ${transfer.reference})` : ''
         }; registrado con trazabilidad.`,
         user,
@@ -598,6 +801,12 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     return problems;
   }
 
+  if (state.latestMovementAt && state.latestMovementAt > state.declared.countedAt) {
+    problems.push(
+      'Caja cambió después del arqueo. Vuelve a contar el efectivo antes de entregar la custodia.',
+    );
+  }
+
   const requireDifferenceNote = await getSettingBool('cash.requireDifferenceNote', true);
   problems.push(
     ...cashHandoverProblems({
@@ -624,7 +833,7 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
     }
   }
 
-  // Los egresos pendientes siguen visibles y auditados, pero Supervisión los
+  // Las transferencias pendientes siguen visibles y auditados, pero Supervisión los
   // revisa después: nunca paralizan la entrega ni el cierre.
   return problems;
 }
@@ -637,7 +846,7 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
 
   if (!state.confirmed) {
     problems.push(
-      'Cuenta la caja y confirma el fondo fijo antes de recibir el turno. Si no coincide con lo declarado, la diferencia queda registrada.',
+      'Cuenta el efectivo recibido antes de tomar la custodia. Si no coincide con lo declarado, la diferencia queda registrada.',
     );
   }
 

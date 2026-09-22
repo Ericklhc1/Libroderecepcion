@@ -9,6 +9,7 @@ import {
   OPEN_GUARANTEE_STATES,
   canTransition,
   deriveReservationGuaranteeSummary,
+  outstandingAmount,
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
 import { getMyOpenShift } from './shifts';
@@ -261,15 +262,41 @@ export async function changeGuaranteeState(
     }
 
     const total = money(guarantee.amount) ?? 0;
-    const aplicado = input.appliedAmount ?? 0;
-    const multa = input.penaltyAmount ?? 0;
+    const aplicado =
+      input.appliedAmount !== undefined
+        ? (input.appliedAmount ?? 0)
+        : (money(guarantee.appliedAmount) ?? 0);
+    const multa =
+      input.penaltyAmount !== undefined
+        ? (input.penaltyAmount ?? 0)
+        : (money(guarantee.penaltyAmount) ?? 0);
     if (aplicado + multa > total) {
       throw new RuleError(
         `Lo aplicado y la multa (${aplicado + multa}) superan la garantía tomada (${total}).`,
       );
     }
 
-    const devuelta = to === 'DEVUELTA';
+    const refundable = outstandingAmount({
+      amount: total,
+      appliedAmount: aplicado,
+      penaltyAmount: multa,
+    });
+
+    if (
+      guarantee.kind === GuaranteeKind.EFECTIVO &&
+      to === 'CERRADA' &&
+      (from === 'VIGENTE' || from === 'APLICADA_PARCIALMENTE') &&
+      refundable > 0
+    ) {
+      throw new RuleError(
+        'No puedes cerrar una garantía en efectivo mientras quede saldo reembolsable. Devuelve el saldo o resuélvelo como aplicación/multa antes de cerrarla.',
+      );
+    }
+
+    // DEVUELTA devuelve el remanente. MULTA retiene sólo lo aplicado/multado y
+    // devuelve automáticamente cualquier resto: una multa parcial no convierte
+    // silenciosamente todo el depósito en ingreso del hotel.
+    const returnsRemainder = to === 'DEVUELTA' || to === 'MULTA';
     await tx.guarantee.update({
       where: { id: guarantee.id },
       data: {
@@ -290,7 +317,9 @@ export async function changeGuaranteeState(
             }
           : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
-        ...(devuelta ? { returnedAt: new Date(), returnedById: user.id } : {}),
+        ...(returnsRemainder && refundable > 0
+          ? { returnedAt: new Date(), returnedById: user.id }
+          : {}),
       },
     });
 
@@ -321,24 +350,19 @@ export async function changeGuaranteeState(
         });
       }
 
-      if (to === 'DEVUELTA') {
-        const alreadyApplied = money(guarantee.appliedAmount) ?? 0;
-        const alreadyPenalty = money(guarantee.penaltyAmount) ?? 0;
-        const refundable = Math.max(0, total - alreadyApplied - alreadyPenalty);
-        if (refundable > 0) {
-          await recordGuaranteeCashOut(tx, {
-            user,
-            guaranteeId: guarantee.id,
-            reservationReferenceId: guarantee.reservationReferenceId,
-            reservationCode: guarantee.reservationReference.code,
-            roomId: context.roomId,
-            stayId: context.stayId,
-            guestId: context.guestId,
-            currency: guarantee.currency,
-            amount: refundable,
-            shiftId: shift?.id ?? null,
-          });
-        }
+      if (returnsRemainder && refundable > 0) {
+        await recordGuaranteeCashOut(tx, {
+          user,
+          guaranteeId: guarantee.id,
+          reservationReferenceId: guarantee.reservationReferenceId,
+          reservationCode: guarantee.reservationReference.code,
+          roomId: context.roomId,
+          stayId: context.stayId,
+          guestId: context.guestId,
+          currency: guarantee.currency,
+          amount: refundable,
+          shiftId: shift?.id ?? null,
+        });
       }
     }
 

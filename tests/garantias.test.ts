@@ -18,6 +18,7 @@ import { runAlertEngine } from '@/server/services/alert-engine';
 import { getSupervisionData } from '@/server/services/supervision';
 import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { getLiveCashState } from '@/server/services/live-cash';
 
 /**
  * Garantías como entidad.
@@ -275,6 +276,66 @@ describe('garantías', () => {
     expect(guarantee.appliedAmount?.toNumber()).toBe(30000);
   });
 
+  it('una garantía en efectivo parcialmente aplicada conserva sólo el remanente como custodia', async () => {
+    await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    const r = await reserva({ code: 'R-CUSTODIA' });
+    const { id } = await createGuarantee(user, {
+      reservationReferenceId: r.id,
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await changeGuaranteeState(user, {
+      id,
+      state: GuaranteeState.APLICADA_PARCIALMENTE,
+      appliedAmount: 30_000,
+      applicationReason: 'Consumo imputado',
+    });
+
+    const state = await getLiveCashState();
+    const clp = state.currencies.find((row) => row.currency === 'CLP');
+    const guarantee = state.cashGuarantees.find((row) => row.id === id);
+
+    expect(guarantee?.amount).toBe(70_000);
+    expect(guarantee?.originalAmount).toBe(100_000);
+    expect(clp?.guaranteeCustody).toBe(70_000);
+    expect(clp?.operational).toBe(30_000);
+    expect(clp?.expected).toBe(200_000);
+  });
+
+  it('una multa parcial devuelve el remanente y deja sólo lo retenido como saldo operacional', async () => {
+    await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    const r = await reserva({ code: 'R-MULTA-PARCIAL' });
+    const { id } = await createGuarantee(user, {
+      reservationReferenceId: r.id,
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await changeGuaranteeState(user, {
+      id,
+      state: GuaranteeState.MULTA,
+      penaltyAmount: 25_000,
+      notes: 'Daño documentado',
+    });
+
+    const out = await prisma.cashMovement.findFirstOrThrow({
+      where: { guaranteeId: id, kind: 'GARANTIA_DEVOLUCION' },
+    });
+    expect(out.amount.toNumber()).toBe(75_000);
+
+    const state = await getLiveCashState();
+    const clp = state.currencies.find((row) => row.currency === 'CLP');
+    expect(state.cashGuarantees.find((row) => row.id === id)).toBeUndefined();
+    expect(clp?.guaranteeCustody).toBe(0);
+    expect(clp?.operational).toBe(25_000);
+    expect(clp?.expected).toBe(125_000);
+  });
+
   it('no se puede aplicar ni multar más de lo tomado', async () => {
     const r = await reserva();
     const { id } = await createGuarantee(user, {
@@ -293,6 +354,21 @@ describe('garantías', () => {
         applicationReason: 'daños',
       }),
     ).rejects.toBeInstanceOf(RuleError);
+  });
+
+  it('no permite cerrar una garantía en efectivo si todavía queda saldo reembolsable', async () => {
+    const r = await reserva({ code: 'R-CIERRE-EFECTIVO' });
+    const { id } = await createGuarantee(user, {
+      reservationReferenceId: r.id,
+      kind: 'EFECTIVO',
+      amount: 50_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await expect(
+      changeGuaranteeState(user, { id, state: GuaranteeState.CERRADA }),
+    ).rejects.toThrow(/saldo reembolsable/i);
   });
 
   it('devolverla registra quién y cuándo', async () => {

@@ -96,7 +96,7 @@ export const PERMISSIONS = {
   'cash.audit': { group: 'Caja', name: 'Corroborar efectivo' },
   'cash.guarantee_in': { group: 'Caja', name: 'Registrar garantías en efectivo' },
   'cash.guarantee_out': { group: 'Caja', name: 'Devolver garantías en efectivo' },
-  'cash.treasury_transfer': { group: 'Caja', name: 'Registrar egresos a tesorería' },
+  'cash.treasury_transfer': { group: 'Caja', name: 'Registrar transferencias a Tesorería' },
   'cash.count_declare': { group: 'Caja', name: 'Declarar arqueo al entregar turno' },
   'cash.count_receive': { group: 'Caja', name: 'Confirmar arqueo al recibir turno' },
   'cash.usd_rate': { group: 'Caja', name: 'Declarar tipo de cambio USD/CLP' },

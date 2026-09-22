@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-21** · Simplificación operativa · versión propuesta **v1.3.0**
+Actualizado: **2026-09-22** · Semántica financiera de Caja · versión propuesta **v1.3.1**
 
 ## Estados canónicos
 
@@ -22,7 +22,7 @@ Actualizado: **2026-09-21** · Simplificación operativa · versión propuesta *
 | Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
 | Turnos + transferencia de Caja | `PRODUCTION` | #59 · #60 · #66 | Turnos solapados, participación y cierre coherentes |
 | ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
-| Caja unificada | `PRODUCTION` | #63 · #67 · #68 | Arqueo, garantías y cierre formal integrados |
+| Caja unificada | `EN_DESARROLLO` | v1.3.1 · `fix/semantica-caja-v1-3-1` | Arqueo contra efectivo esperado; fondo, garantías y saldo operacional separados; Tesorería como transferencia interna |
 | Habitaciones + Reservas | `PRODUCTION` | #64 · #68 | Núcleo por habitación e ID FNS desplegado |
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
@@ -31,14 +31,14 @@ Actualizado: **2026-09-21** · Simplificación operativa · versión propuesta *
 
 ## Iteración actual
 
-**Simplificación operativa v1.3.0** · rama **`feat/simplificacion-operativa-v1-3-0`**
+**Semántica financiera de Caja v1.3.1** · rama **`fix/semantica-caja-v1-3-1`**
 
-Objetivo: reducir la carga cognitiva de Recepción sin eliminar trazabilidad ni
-capacidades existentes. El núcleo visible queda en **Novedades + Caja + Llaves**,
-con Inicio y Mi turno como envolvente operativa. Reservas, habitaciones y datos
-del PMS se conservan como contexto opcional y evidencia consultable: no son
-requisito para registrar una novedad, operar movimientos de Caja o mantener el
-inventario físico de llaves. No requiere migración destructiva.
+Objetivo: eliminar la equivalencia incorrecta «todo lo que supera el fondo es
+recaudación». Caja se compone de **fondo fijo + garantías reembolsables bajo
+custodia + saldo operacional**. El arqueo compara contado contra el efectivo
+esperado completo; sólo el saldo operacional positivo puede transferirse a
+Tesorería. Cada arqueo congela su composición y cualquier movimiento posterior
+obliga a recontar antes de transferir custodia.
 
 ## Infraestructura vigente
 

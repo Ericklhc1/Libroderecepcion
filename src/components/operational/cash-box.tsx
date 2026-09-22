@@ -35,21 +35,29 @@ function FundRow({
   status: NonNullable<HandoverCashState['declared']>['statuses'][number];
 }) {
   return (
-    <li className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
-      <span className="font-medium text-petrol-900">{status.currency}</span>
-      <span className="tabular text-slate-600">
-        contado {formatMinor(status.countedMinor, status.currency)} · mínimo{' '}
-        {formatMinor(status.fundMinor, status.currency)}
-      </span>
-      {status.balanced ? (
-        <Badge tone="resuelto">Cuadra</Badge>
-      ) : status.shortfallMinor > 0 ? (
-        <Badge tone="atencion">Falta {formatMinor(status.shortfallMinor, status.currency)}</Badge>
-      ) : (
-        <Badge tone="pendiente">
-          Sobra {formatMinor(status.surplusMinor, status.currency)}
-        </Badge>
-      )}
+    <li className="grid gap-1 py-2 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-medium text-petrol-900">{status.currency}</span>
+        <span className="tabular text-slate-600">
+          contado {formatMinor(status.countedMinor, status.currency)} · esperado{' '}
+          {formatMinor(status.expectedMinor, status.currency)}
+        </span>
+        {status.balanced ? (
+          <Badge tone="resuelto">Cuadra</Badge>
+        ) : status.shortfallMinor > 0 ? (
+          <Badge tone="atencion">Falta {formatMinor(status.shortfallMinor, status.currency)}</Badge>
+        ) : (
+          <Badge tone="pendiente">
+            Sobra físico {formatMinor(status.overageMinor, status.currency)}
+          </Badge>
+        )}
+      </div>
+      <p className="text-xs tabular text-slate-500">
+        Fondo {formatMinor(status.fundMinor, status.currency)} · garantías{' '}
+        {formatMinor(status.guaranteeCustodyMinor, status.currency)} · saldo operacional{' '}
+        {formatMinor(status.operationalMinor, status.currency)} · transferible{' '}
+        {formatMinor(status.transferableMinor, status.currency)}
+      </p>
     </li>
   );
 }
@@ -275,9 +283,9 @@ export function CashBox({
       />
       <div className="space-y-4 px-4 py-4">
         <p className="text-xs text-slate-500">
-          Este es el arqueo formal del turno: se cuenta por denominación, congela la Caja que se entrega y conserva garantías, elementos y egresos asociados. Divisas operativas: CLP y USD. Caja mínima:{' '}
+          Este es el arqueo formal del turno: se cuenta por denominación y compara el efectivo físico contra su composición esperada (fondo + garantías bajo custodia + saldo operacional). Las transferencias a Tesorería no son gastos. Divisas operativas: CLP y USD. Fondo fijo:{' '}
           {state.funds.map((fund) => `${fund.currency} ${fund.amount.toLocaleString('es-CL')}`).join(' · ')}.
-          Estos mínimos se configuran desde Administración → Parámetros.
+          Estos fondos se configuran desde Administración → Parámetros.
         </p>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -332,7 +340,7 @@ export function CashBox({
         ) : null}
 
         <section>
-          <h3 className="text-sm font-semibold text-petrol-900">Garantías en efectivo heredables</h3>
+          <h3 className="text-sm font-semibold text-petrol-900">Garantías en efectivo bajo custodia</h3>
           {state.cashGuarantees.length === 0 ? (
             <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 ring-1 ring-slate-200">
               No se evidencian garantías en efectivo en caja.
@@ -364,7 +372,7 @@ export function CashBox({
             </ul>
           )}
           <p className="mt-1 text-xs text-slate-500">
-            Las garantías pertenecen a la reserva/estadía, no a la habitación; se heredan entre turnos hasta su devolución, aplicación o cierre.
+            El monto mostrado es el saldo reembolsable todavía bajo custodia. Lo aplicado o multado deja de ser garantía y pasa al saldo operacional, aunque los billetes sigan físicamente en Caja hasta su transferencia.
           </p>
         </section>
 
@@ -394,7 +402,7 @@ export function CashBox({
 
         {state.transfers.length > 0 ? (
           <section>
-            <h3 className="text-sm font-semibold text-petrol-900">Egresos a tesorería</h3>
+            <h3 className="text-sm font-semibold text-petrol-900">Transferencias a Tesorería</h3>
             <ul className="mt-1 space-y-1 text-sm text-slate-600">
               {state.transfers.map((transfer) => (
                 <li key={transfer.id} className="flex flex-wrap items-center gap-2 tabular">
@@ -483,9 +491,9 @@ export function CashBox({
             </div>
 
             <div className="border-t border-slate-100 pt-3 no-print">
-              <h3 className="mb-1 text-sm font-semibold text-petrol-900">Egreso de Caja a tesorería</h3>
+              <h3 className="mb-1 text-sm font-semibold text-petrol-900">Transferencia interna a Tesorería</h3>
               <p className="mb-2 text-xs text-slate-500">
-                Es un movimiento real de Caja. Todo monto mayor que 0 genera un aviso inmediato para revisión de Supervisión; no bloquea la operación.
+                Mueve efectivo desde Recepción a Tesorería; no es un gasto. Sólo permite transferir saldo operacional disponible: nunca fondo fijo ni garantías bajo custodia. Todo monto mayor que 0 genera trazabilidad y revisión según la política vigente.
               </p>
               <ActionForm action={recordCashTransferAction}>
                 <input type="hidden" name="handoverId" value={handoverId} />
@@ -507,7 +515,7 @@ export function CashBox({
                     <Input name="reference" maxLength={60} placeholder="SOBRE-0912" />
                   </Field>
                 </div>
-                <SubmitButton variant="secondary" pendingLabel="Registrando…">Registrar egreso</SubmitButton>
+                <SubmitButton variant="secondary" pendingLabel="Registrando…">Registrar transferencia</SubmitButton>
               </ActionForm>
             </div>
           </>

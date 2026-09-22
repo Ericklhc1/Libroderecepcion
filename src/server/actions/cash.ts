@@ -143,7 +143,7 @@ export async function recordCashTransferAction(
     const input = transferSchema.parse(formDataToObject(formData));
 
     if (input.amount === 0) {
-      return { ok: true as const, message: 'Sin egreso a tesorería: monto 0.' };
+      return { ok: true as const, message: 'Sin transferencia a Tesorería: monto 0.' };
     }
 
     const needsApproval = await cashApprovalRequired(user, 'cash.treasury_transfer');

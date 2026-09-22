@@ -290,7 +290,7 @@ export async function resolveAlert(
   if (cashTransfer) {
     const transferId = alert.dedupeKey?.replace('cash-transfer:', '');
     if (!transferId) {
-      throw new RuleError('La solicitud de tesorería no contiene el egreso vinculado.');
+      throw new RuleError('La solicitud de Tesorería no contiene la transferencia vinculada.');
     }
     await prisma.$transaction(async (tx) => {
       await applyCashTransferToLiveCash(tx, transferId);

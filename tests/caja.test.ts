@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   assertValidQuantities,
   cashHandoverProblems,
+  cashStatuses,
   countDiscrepancies,
   countTotals,
   fromMinor,
   fundStatuses,
   minorUnitDigits,
+  normalizeExpectation,
   toMinor,
   type CountedDenomination,
 } from '@/domain/cash';
@@ -94,7 +96,7 @@ describe('fondo fijo', () => {
     }
   });
 
-  it('el excedente sobre el fondo es la recaudación a entregar a tesorería', () => {
+  it('en el modo legado, exceder el fondo es un sobrante físico no explicado', () => {
     const conRecaudacion = [
       ...CLP_EXACTO,
       { currency: 'CLP', minorValue: 20_000, quantity: 3 },
@@ -104,6 +106,7 @@ describe('fondo fijo', () => {
     expect(clp?.countedMinor).toBe(160_000);
     expect(clp?.fundMinor).toBe(100_000);
     expect(clp?.surplusMinor).toBe(60_000);
+    expect(clp?.transferableMinor).toBe(0);
     expect(clp?.shortfallMinor).toBe(0);
     expect(clp?.balanced).toBe(false);
   });
@@ -138,6 +141,64 @@ describe('fondo fijo', () => {
     expect(eur?.fundMinor).toBe(0);
     expect(eur?.countedMinor).toBe(10_000);
     expect(eur?.surplusMinor).toBe(10_000);
+  });
+});
+
+describe('composición financiera de Caja', () => {
+  it('una garantía en efectivo forma parte del esperado pero NO de lo transferible', () => {
+    const expectation = normalizeExpectation({
+      currency: 'CLP',
+      fundMinor: 100_000,
+      guaranteeCustodyMinor: 150_000,
+      operationalMinor: 0,
+    });
+    const [status] = cashStatuses(
+      [expectation],
+      [{ currency: 'CLP', minorValue: 50_000, quantity: 5 }],
+    );
+
+    expect(status?.expectedMinor).toBe(250_000);
+    expect(status?.countedMinor).toBe(250_000);
+    expect(status?.balanced).toBe(true);
+    expect(status?.guaranteeCustodyMinor).toBe(150_000);
+    expect(status?.transferableMinor).toBe(0);
+  });
+
+  it('la recaudación sí es transferible sin tocar fondo ni garantía', () => {
+    const expectation = normalizeExpectation({
+      currency: 'CLP',
+      fundMinor: 100_000,
+      guaranteeCustodyMinor: 150_000,
+      operationalMinor: 80_000,
+    });
+    const [status] = cashStatuses(
+      [expectation],
+      [
+        { currency: 'CLP', minorValue: 100_000, quantity: 3 },
+        { currency: 'CLP', minorValue: 10_000, quantity: 3 },
+      ],
+    );
+
+    expect(status?.expectedMinor).toBe(330_000);
+    expect(status?.transferableMinor).toBe(80_000);
+    expect(status?.balanced).toBe(true);
+  });
+
+  it('un sobrante físico no se convierte automáticamente en recaudación', () => {
+    const expectation = normalizeExpectation({
+      currency: 'CLP',
+      fundMinor: 100_000,
+      guaranteeCustodyMinor: 150_000,
+      operationalMinor: 0,
+    });
+    const [status] = cashStatuses(
+      [expectation],
+      [{ currency: 'CLP', minorValue: 50_000, quantity: 6 }],
+    );
+
+    expect(status?.differenceMinor).toBe(50_000);
+    expect(status?.overageMinor).toBe(50_000);
+    expect(status?.transferableMinor).toBe(0);
   });
 });
 

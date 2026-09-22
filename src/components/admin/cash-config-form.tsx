@@ -69,14 +69,14 @@ export function CashConfigForm({
         <div className="grid gap-2">
           <Toggle
             name="treasuryTransfersEnabled"
-            label="Egresos a Tesorería"
-            hint="Permite registrar egresos. Todo monto mayor que 0 seguirá requiriendo validación de un Supervisor; esa seguridad no se puede desactivar."
+            label="Transferencias a Tesorería"
+            hint="Permite registrar transferencias internas de efectivo. Todo monto mayor que 0 seguirá requiriendo validación de un Supervisor; esa seguridad no se puede desactivar."
             defaultChecked={treasuryTransfersEnabled}
           />
           <Toggle
             name="transferReceiptRequired"
-            label="Exigir comprobante en egresos"
-            hint="Cuando esté activo, no se podrá registrar un egreso sin referencia o número de comprobante."
+            label="Exigir comprobante en transferencias"
+            hint="Cuando esté activo, no se podrá registrar una transferencia sin referencia o número de comprobante."
             defaultChecked={transferReceiptRequired}
           />
           <Toggle

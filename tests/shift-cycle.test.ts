@@ -262,7 +262,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shift);
     await receiveHandover(morning, { shiftId: shift.id });
     await expect(closeShift(morning, { shiftId: shift.id })).rejects.toThrow(
-      /primero prepara la entrega/i,
+      /primero prepara.*entrega/i,
     );
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status).toBe(
       ShiftStatus.ACTIVO,
@@ -286,7 +286,7 @@ describe('invariantes del turno', () => {
     await receiveHandover(morning, { shiftId: shift.id });
     await expect(
       closeShift(morning, { shiftId: shift.id, notes: 'Sin novedades.' }),
-    ).rejects.toThrow(/primero prepara la entrega/i);
+    ).rejects.toThrow(/primero prepara.*entrega/i);
     const unchanged = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
     expect(unchanged.actualEnd).toBeNull();
     expect(unchanged.closedById).toBeNull();

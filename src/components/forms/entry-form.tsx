@@ -150,7 +150,7 @@ export function EntryForm({
       <Checkbox
         name="requiresFollowUp"
         label="Requiere seguimiento"
-        description="Mantener visible hasta que alguien registre el resultado o próximo paso."
+        hint="Mantener visible hasta que alguien registre el resultado o próximo paso."
       />
 
       <div className="flex justify-end">

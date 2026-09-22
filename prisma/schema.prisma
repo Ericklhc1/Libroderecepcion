@@ -2158,6 +2158,8 @@ model CashMovement {
   reference              String?
   notes                  String?
   createdAt              DateTime              @default(now())
+  /// Cuándo impacta operacionalmente. Puede diferir de createdAt si se registra atrasado.
+  effectiveAt            DateTime              @default(now())
   /// Anulación con motivo obligatorio: el movimiento no se borra nunca.
   voidedAt               DateTime?
   voidedById             String?
@@ -2174,6 +2176,7 @@ model CashMovement {
   shift                  Shift?                @relation(fields: [shiftId], references: [id])
 
   @@index([createdAt])
+  @@index([effectiveAt])
   @@index([currency])
   @@index([reservationReferenceId])
   @@index([roomId])

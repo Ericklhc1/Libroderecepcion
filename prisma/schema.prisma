@@ -1655,8 +1655,11 @@ model CashCount {
   countedById String
   countedBy   User            @relation("cashCountBy", fields: [countedById], references: [id])
   countedAt   DateTime        @default(now())
-  notes       String?
-  lines       CashCountLine[]
+  notes            String?
+  /// Fotografía inmutable de la composición esperada de Caja al momento del conteo.
+  /// Evita que un movimiento posterior reescriba retrospectivamente un arqueo ya firmado.
+  expectedSnapshot Json?
+  lines            CashCountLine[]
 
   /// Un solo arqueo declarado y uno confirmado por entrega.
   @@unique([handoverId, kind])
@@ -1675,7 +1678,7 @@ model CashCountLine {
   @@index([denominationId])
 }
 
-/// Egreso a tesorería: el excedente sobre el fondo fijo sale de la caja.
+/// Transferencia interna a Tesorería: efectivo que cambia de custodia/ubicación; no es un gasto.
 model CashTransfer {
   id           String        @id @default(cuid())
   handoverId   String
@@ -1688,7 +1691,7 @@ model CashTransfer {
   createdById  String
   createdBy    User          @relation("cashTransferBy", fields: [createdById], references: [id])
   createdAt    DateTime      @default(now())
-  /// Reflejo del egreso en la Caja central. Nulo sólo mientras espera aprobación.
+  /// Reflejo de la salida física de Recepción. Nulo sólo mientras la transferencia espera aprobación.
   cashMovement CashMovement?
 
   @@index([handoverId])

@@ -1594,15 +1594,15 @@ model Guarantee {
 
 // ============================ CAJA Y ELEMENTOS =============================
 //
-// La caja se traspasa entre turnos con FONDO FIJO: un monto por divisa que
-// SIEMPRE debe quedar en el cajón. Lo que excede ese fondo es recaudación del
-// turno y sale como egreso a tesorería.
+// La Caja física contiene varias naturalezas de dinero que NO se mezclan:
+// FONDO FIJO + GARANTÍAS BAJO CUSTODIA + SALDO OPERACIONAL.
+// El efectivo esperado es la suma de esas capas. Sólo el saldo operacional
+// positivo puede transferirse a Tesorería; fondo y garantías quedan protegidos.
 //
-// El arqueo se cuenta por DENOMINACIÓN, no por total: así el conteo es
-// verificable y el fondo fijo se reconstruye exacto. Se cuenta dos veces —lo
-// declara quien entrega y lo confirma quien recibe— y la diferencia entre
-// ambos conteos **se calcula, nunca se almacena**, igual que los conflictos de
-// importación: un dato derivado que se guarda es un dato que se desincroniza.
+// El arqueo se cuenta por DENOMINACIÓN, no por total. Cada conteo congela una
+// fotografía de la composición esperada en ese instante y compara CONTADO vs
+// ESPERADO. La diferencia entre los dos conteos del relevo se calcula; nunca se
+// usa «contado - fondo» como sinónimo de recaudación.
 
 enum CashMedium {
   BILLETE
@@ -1685,7 +1685,7 @@ model CashTransfer {
   handover     ShiftHandover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
   currency     String        @db.VarChar(3)
   amount       Decimal       @db.Decimal(12, 2)
-  /// Número de comprobante o sobre. Sin esto un egreso no es rastreable.
+  /// Número de comprobante o sobre. Sin esto la transferencia no es rastreable.
   reference    String?
   notes        String?
   createdById  String

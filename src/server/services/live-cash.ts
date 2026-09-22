@@ -2,16 +2,13 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import {
   AuditAction,
-  EntryStatus,
-  EntryType,
   GuaranteeKind,
   GuaranteeState,
-  Priority,
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
-import { NotFoundError, RuleError } from '@/server/errors';
+import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { outstandingAmount } from '@/domain/guarantees';
 
@@ -27,8 +24,6 @@ export type CashMovementKind =
   | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
   | 'AJUSTE_SALIDA';
-export type GymPaymentMethod = 'EFECTIVO' | 'TARJETA' | 'OTRO';
-
 export type LiveCashMovement = {
   id: string;
   kind: CashMovementKind;
@@ -43,21 +38,6 @@ export type LiveCashMovement = {
   guestName: string | null;
   createdByName: string;
   createdAt: Date;
-};
-
-export type GymPassRow = {
-  id: string;
-  folio: number;
-  reservationCode: string;
-  roomNumber: string;
-  guestName: string;
-  receptionistName: string;
-  currency: string;
-  amount: number;
-  paymentMethod: GymPaymentMethod;
-  status: 'EMITIDO' | 'ANULADO';
-  issuedAt: Date;
-  voidReason: string | null;
 };
 
 export type CashAuditRow = {
@@ -103,25 +83,12 @@ export type LiveCashState = {
     state: string;
     createdAt: Date;
   }>;
-  gymPasses: GymPassRow[];
   audits: CashAuditRow[];
 };
 
 function decimal(value: Prisma.Decimal | number | string | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return Number(value);
-}
-
-export function formatGymFolio(folio: number): string {
-  return String(folio).padStart(6, '0');
-}
-
-export async function gymPrices() {
-  const [clp, usd] = await Promise.all([
-    getSettingNumber('gym.passPriceCLP', 6000),
-    getSettingNumber('gym.passPriceUSD', 6),
-  ]);
-  return { CLP: clp, USD: usd };
 }
 
 async function cashMovementExists(
@@ -480,8 +447,6 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       state: row.state,
       createdAt: row.createdAt,
     })),
-    // Compatibilidad de forma para módulos históricos; Caja v1.4.0 no consulta gimnasio.
-    gymPasses: [],
     audits: auditRows.map((row) => ({
       ...row,
       expectedAmount: decimal(row.expectedAmount),

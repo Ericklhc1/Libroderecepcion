@@ -108,7 +108,7 @@ async function ensureClosureValidationTask(
       title: 'Validar cierre de turno',
       description:
         alert.message ??
-        'Revisión posterior obligatoria del cierre: informes, caja, elementos y trazabilidad.',
+        'Revisión posterior obligatoria del cierre: Caja, pendientes, entrega y trazabilidad.',
       status: 'PENDIENTE',
       priority: Priority.CRITICA,
       origin: TaskOrigin.ALERTA,

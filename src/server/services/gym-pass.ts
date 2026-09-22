@@ -7,7 +7,7 @@ import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { calendarDateKey } from '@/domain/time';
-import { getLiveCashState, insertCashMovement, type LiveCashState } from './live-cash';
+import { insertCashMovement } from './live-cash';
 import { getMyOpenShift } from './shifts';
 
 export type GymPassRow = {
@@ -275,30 +275,5 @@ export async function listGymPasses(params: {
     total: rows.length,
     emitted: rows.filter((row) => row.status === 'EMITIDO').length,
     voided: rows.filter((row) => row.status === 'ANULADO').length,
-  };
-}
-
-export async function getLiveCashStateWithGym(limit = 30): Promise<LiveCashState> {
-  const [state, summary] = await Promise.all([
-    getLiveCashState(limit),
-    listGymPasses({ limit }),
-  ]);
-
-  return {
-    ...state,
-    gymPasses: summary.rows.map((row) => ({
-      id: row.id,
-      folio: row.folio,
-      reservationCode: '',
-      roomNumber: row.roomNumber,
-      guestName: row.guestName,
-      receptionistName: row.receptionistName,
-      currency: '',
-      amount: 0,
-      paymentMethod: 'OTRO',
-      status: row.status,
-      issuedAt: row.issuedAt,
-      voidReason: row.voidReason,
-    })),
   };
 }

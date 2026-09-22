@@ -155,7 +155,6 @@ async function getCurrentCashComposition(client: Client = prisma) {
   }
 
   const currencies = new Set<string>([
-    ...CASH_CURRENCIES,
     ...fundByCurrency.keys(),
     ...netMovementByCurrency.keys(),
     ...custodyByCurrency.keys(),

@@ -17,13 +17,11 @@ import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import {
-  activateShift,
   addShiftMember,
   cancelHandoverPreparation,
   closeShift,
   endShiftParticipation,
   getShiftById,
-  getShiftDesk,
   openShift,
   prepareHandover,
   receiveHandover,
@@ -64,20 +62,14 @@ export async function openShiftAction(
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
 
     const { shift } = await openShift(user, { type: input.type });
-    const desk = await getShiftDesk(user);
-    const activeShift =
-      shift.status === ShiftStatus.INICIADO && !desk.pending && !desk.cashPending
-        ? await activateShift(user, { shiftId: shift.id })
-        : shift;
-
-    refresh(activeShift.id);
+    refresh(shift.id);
 
     return {
       ok: true as const,
       message:
-        activeShift.status === ShiftStatus.ACTIVO
-          ? `Tu turno de ${SHIFT_TYPE_LABEL[activeShift.type]} está activo (${SHIFT_WINDOW_LABEL[activeShift.type]}).`
-          : `Tu turno de ${SHIFT_TYPE_LABEL[activeShift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[activeShift.type]}).`,
+        shift.status === ShiftStatus.ACTIVO
+          ? `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo (${SHIFT_WINDOW_LABEL[shift.type]}).`
+          : `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[shift.type]}).`,
     };
   });
 }

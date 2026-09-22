@@ -12,6 +12,26 @@ export type TutorialStep = {
 const ROUTE_TARGET = '[data-tour="route-title"], main h1';
 
 /**
+ * Decide si el recorrido debe mover al usuario a la ruta del paso actual.
+ *
+ * `usePathname()` no incluye query string, por lo que primero comparamos sólo
+ * el pathname de la ruta del tutorial. Cuando el usuario elige «Ahora no», el
+ * recorrido queda completamente pasivo: no navega ni secuestra la pantalla.
+ */
+export function shouldNavigateTutorial(
+  dismissed: boolean,
+  pathname: string,
+  route?: string,
+): boolean {
+  if (dismissed || !route) return false;
+
+  const routePath = route.split(/[?#]/, 1)[0] || '/';
+  if (routePath === '/') return pathname !== '/';
+
+  return pathname !== routePath && !pathname.startsWith(`${routePath}/`);
+}
+
+/**
  * Recorrido de producto v1.4.0.
  *
  * El Libro gira alrededor de Novedades + Caja. Turno y Supervisión existen

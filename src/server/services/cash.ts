@@ -54,6 +54,12 @@ export async function listFunds(client: Client = prisma) {
   });
 }
 
+async function lockCashCurrency(client: Client, currency: string): Promise<void> {
+  await client.$executeRaw`
+    SELECT pg_advisory_xact_lock(hashtext(${`cash-treasury:${currency.toUpperCase()}`}))
+  `;
+}
+
 async function availableForTreasuryMinor(
   client: Client,
   currency: string,
@@ -205,7 +211,15 @@ export async function getHandoverCashState(
           countedAt: count.countedAt,
           notes: count.notes,
           statuses: cashStatuses(
-            parseExpectationSnapshot(count.expectedSnapshot, composition.expectations),
+            parseExpectationSnapshot(
+              count.expectedSnapshot,
+              composition.funds.map((fund) =>
+                normalizeExpectation({
+                  currency: fund.currency,
+                  fundMinor: toMinor(Number(fund.amount), fund.currency),
+                }),
+              ),
+            ),
             countedLines(count.lines),
           ),
         }
@@ -481,6 +495,7 @@ export async function applyCashTransferToLiveCash(
   });
   if (!transfer) throw new NotFoundError('La transferencia a Tesorería ya no existe.');
 
+  await lockCashCurrency(client, transfer.currency);
   await assertTreasuryTransferAvailable(client, {
     currency: transfer.currency,
     amount: Number(transfer.amount),
@@ -539,6 +554,7 @@ export async function recordCashTransfer(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockCashCurrency(tx, currency);
     await assertTreasuryTransferAvailable(tx, {
       currency,
       amount: params.amount,

@@ -41,11 +41,12 @@ describe('ciclo de turno de punta a punta', () => {
     });
   });
 
-  it('recorre programado → activo → entrega → recibido → cerrado', async () => {
+  it('recorre programado → activo automático → entrega → recibido → cerrado', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
     const started = await openShiftAs(morning, shiftA);
+    // Sin relevo ni Caja pendiente, abrir el turno lo deja operativo en una sola acción.
     expect(started.status).toBe(ShiftStatus.ACTIVO);
     expect(started.actualStart).not.toBeNull();
     expect(started.startedById).toBe(morning.id);

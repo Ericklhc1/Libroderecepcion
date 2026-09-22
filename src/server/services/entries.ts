@@ -123,7 +123,6 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           ownerId: created.ownerId,
           departmentId: created.departmentId,
           category: created.category,
-          departmentId: created.departmentId,
         },
       },
       tx,

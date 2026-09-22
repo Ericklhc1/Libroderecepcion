@@ -22,19 +22,7 @@ export const entryInclude = {
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true, key: true } },
-  room: { select: { id: true, number: true, floor: true } },
   shift: { select: { id: true, type: true, date: true } },
-  guest: { select: { id: true, fullName: true, roomNumber: true, vip: true } },
-  reservation: { select: { id: true, code: true, roomNumber: true, status: true } },
-  stay: {
-    select: {
-      id: true,
-      reservationId: true,
-      status: true,
-      stage: true,
-      room: { select: { id: true, number: true } },
-    },
-  },
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
 
@@ -48,6 +36,7 @@ type EntryCreateInput = {
   description: string;
   category?: string | null;
   departmentId?: string | null;
+  /** Legado de compatibilidad: se acepta pero se ignora. */
   roomId?: string | null;
   priority: Prisma.OperationalEntryCreateInput['priority'];
   ownerId?: string | null;
@@ -55,6 +44,7 @@ type EntryCreateInput = {
   dueAt?: Date | null;
   tags: string[];
   requiresFollowUp: boolean;
+  /** Legado de compatibilidad: se aceptan pero se ignoran. */
   guestId?: string | null;
   reservationId?: string | null;
   stayId?: string | null;

@@ -53,7 +53,7 @@ const HANDOVER_GRACE_MINUTES = 60;
 export async function collectAlertCandidates(now = new Date()): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
 
-  const [overdueTasks, criticalIncidents, staleMaintenance, guestRequests] =
+  const [overdueTasks, criticalIncidents, staleMaintenance, followUpEntries] =
     await Promise.all([
       prisma.task.findMany({
         where: {
@@ -89,11 +89,10 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
       prisma.operationalEntry.findMany({
         where: {
           deletedAt: null,
-          type: EntryType.HUESPED,
           requiresFollowUp: true,
           status: { in: ENTRY_OPEN_STATUSES },
         },
-        select: { id: true, title: true, guestId: true, departmentId: true },
+        select: { id: true, title: true, departmentId: true },
         take: 100,
       }),
     ]);
@@ -137,15 +136,14 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     });
   }
 
-  for (const entry of guestRequests) {
+  for (const entry of followUpEntries) {
     candidates.push({
-      dedupeKey: `guest-request:${entry.id}`,
-      type: AlertType.SOLICITUD_HUESPED_PENDIENTE,
+      dedupeKey: `entry-followup:${entry.id}`,
+      type: AlertType.OTRO,
       level: AlertLevel.ATENCION,
-      title: `Solicitud de huésped pendiente: ${entry.title}`,
-      message: 'La solicitud sigue abierta y requiere seguimiento.',
+      title: `Novedad requiere seguimiento: ${entry.title}`,
+      message: 'El registro sigue abierto y está marcado para seguimiento.',
       entryId: entry.id,
-      guestId: entry.guestId,
       departmentId: entry.departmentId,
     });
   }

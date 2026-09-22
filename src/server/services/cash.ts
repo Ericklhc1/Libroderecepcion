@@ -414,12 +414,12 @@ export async function saveCashCount(
     throw new RuleError('El arqueo incluye una denominación que no existe o una divisa no habilitada.');
   }
 
-  const funds = await listFunds();
+  const composition = await getCurrentCashComposition();
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
   });
-  const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
+  const statuses = cashStatuses(composition.expectations, countedLines(lines));
 
   await prisma.$transaction(async (tx) => {
     await tx.cashCount.deleteMany({
@@ -431,6 +431,7 @@ export async function saveCashCount(
         kind: params.kind as CashCountKind,
         countedById: user.id,
         notes: params.notes?.trim() || null,
+        expectedSnapshot: serializeExpectations(composition.expectations),
         lines: {
           createMany: {
             data: lines.map((line) => ({
@@ -447,7 +448,7 @@ export async function saveCashCount(
         entity: 'CashCount',
         entityId: params.handoverId,
         action: AuditAction.CREAR,
-        summary: `Arqueo de caja ${params.kind === 'DECLARADO' ? 'declarado' : 'confirmado'}: ${statuses
+        summary: `Arqueo de Caja ${params.kind === 'DECLARADO' ? 'declarado' : 'confirmado'}: ${statuses
           .map((status) => `${fromMinor(status.countedMinor, status.currency)} ${status.currency}`)
           .join(', ')}`,
         user,
@@ -503,12 +504,23 @@ export async function confirmHandoverCash(
     );
   }
 
+  const latestMovement = await tx.cashMovement.findFirst({
+    where: { voidedAt: null },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (latestMovement && latestMovement.createdAt > declared.countedAt) {
+    throw new RuleError(
+      'Caja cambió después del arqueo saliente. El turno saliente debe volver a contar antes de transferir la custodia.',
+    );
+  }
+
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
   });
-  const funds = await listFunds(tx);
-  const statuses = fundStatuses(fundTargets(funds), countedLines(lines));
+  const composition = await getCurrentCashComposition(tx);
+  const statuses = cashStatuses(composition.expectations, countedLines(lines));
 
   await tx.cashCount.create({
     data: {
@@ -516,6 +528,7 @@ export async function confirmHandoverCash(
       kind: CashCountKind.CONFIRMADO,
       countedById: user.id,
       notes: params.notes?.trim() || null,
+      expectedSnapshot: serializeExpectations(composition.expectations),
       lines: {
         createMany: {
           data: lines.map((line) => ({

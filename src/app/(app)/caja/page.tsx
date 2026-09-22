@@ -1,18 +1,23 @@
-import { Banknote, PlusCircle, Scale, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { Banknote, Download, PlusCircle, Scale, ShieldCheck, Ticket } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getLiveCashState } from '@/server/services/live-cash';
+import { listGymPasses } from '@/server/services/gym-pass';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import {
   CreateCashGuaranteeForm,
+  CreateGymPassForm,
   LiveCashAuditForm,
   ManualCashMovementForm,
   ReturnCashGuaranteeForm,
+  VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
-import { formatDateTime } from '@/lib/format';
+import { formatCalendarDate, formatDateTime } from '@/lib/format';
+import { hotelDateKey } from '@/domain/time';
 import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Caja' };
@@ -46,7 +51,14 @@ export default async function LiveCashPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
-  const state = await getLiveCashState();
+  const todayKey = hotelDateKey(new Date());
+  const defaultFrom = `${todayKey.slice(0, 8)}01`;
+  const gymFrom = typeof params.desde === 'string' && params.desde ? params.desde : defaultFrom;
+  const gymTo = typeof params.hasta === 'string' && params.hasta ? params.hasta : todayKey;
+  const [state, gymSummary] = await Promise.all([
+    getLiveCashState(),
+    listGymPasses({ from: gymFrom, to: gymTo, limit: 1000 }),
+  ]);
 
   const canManualIn = hasPermission(user, 'cash.manual_in');
   const canManualOut = hasPermission(user, 'cash.manual_out');
@@ -100,8 +112,18 @@ export default async function LiveCashPage({
         item.createdByName,
       ]),
   );
+  const visibleGymPasses = gymSummary.rows.filter((item) =>
+    matches([
+      item.formattedFolio,
+      item.roomNumber,
+      item.guestName,
+      item.receptionistName,
+      item.status,
+    ]),
+  );
 
   const show = (name: string) => !seccion || seccion === name;
+  const gymCsvQuery = new URLSearchParams({ desde: gymFrom, hasta: gymTo }).toString();
 
   return (
     <div className="space-y-5">
@@ -133,6 +155,22 @@ export default async function LiveCashPage({
               <CreateCashGuaranteeForm />
             </Dialog>
           ) : null}
+
+          <Dialog
+            title="Generar folio de gimnasio"
+            description="Registra fecha, habitación y huésped. El recepcionista se toma automáticamente de tu sesión."
+            triggerVariant="secondary"
+            triggerSize="sm"
+            width="sm"
+            trigger={
+              <>
+                <Ticket className="h-4 w-4" aria-hidden="true" />
+                Folio gimnasio
+              </>
+            }
+          >
+            <CreateGymPassForm defaultServiceDate={todayKey} />
+          </Dialog>
 
           {canManual ? (
             <Dialog
@@ -173,8 +211,27 @@ export default async function LiveCashPage({
             <option value="">Todas</option>
             <option value="garantias">Garantías</option>
             <option value="auditorias">Corroboraciones</option>
+            <option value="gimnasio">Folios gimnasio</option>
             <option value="movimientos">Movimientos</option>
           </select>
+        </label>
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
+          <input
+            type="date"
+            name="desde"
+            defaultValue={gymFrom}
+            className="input-base w-full"
+          />
+        </label>
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
+          <input
+            type="date"
+            name="hasta"
+            defaultValue={gymTo}
+            className="input-base w-full"
+          />
         </label>
       </ListFilterBar>
 
@@ -354,6 +411,94 @@ export default async function LiveCashPage({
           </Card>
         ) : null}
       </div>
+
+      {show('gimnasio') ? (
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            <div>
+              <h2 className="font-semibold text-petrol-900">Folios de gimnasio</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {formatCalendarDate(new Date(`${gymFrom}T00:00:00.000Z`))} a{' '}
+                {formatCalendarDate(new Date(`${gymTo}T00:00:00.000Z`))}
+              </p>
+            </div>
+            <Link
+              href={`/api/caja/gimnasio?${gymCsvQuery}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-petrol-700 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-800"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Descargar CSV
+            </Link>
+          </div>
+
+          <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-3">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Total folios</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{gymSummary.total}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Emitidos</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{gymSummary.emitted}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Anulados</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{gymSummary.voided}</p>
+            </div>
+          </div>
+
+          {visibleGymPasses.length === 0 ? (
+            <EmptyState message="No hay folios de gimnasio en el rango seleccionado." />
+          ) : (
+            <CardScroll>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Folio</th>
+                      <th className="px-4 py-2 font-medium">Fecha</th>
+                      <th className="px-4 py-2 font-medium">Habitación</th>
+                      <th className="px-4 py-2 font-medium">Huésped</th>
+                      <th className="px-4 py-2 font-medium">Recepcionista</th>
+                      <th className="px-4 py-2 font-medium">Estado</th>
+                      <th className="px-4 py-2 text-right font-medium">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleGymPasses.map((pass) => (
+                      <tr key={pass.id}>
+                        <td className="px-4 py-2 font-semibold tabular text-petrol-900">
+                          {pass.formattedFolio}
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">
+                          {formatCalendarDate(pass.serviceDate)}
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{pass.roomNumber}</td>
+                        <td className="px-4 py-2 text-slate-600">{pass.guestName}</td>
+                        <td className="px-4 py-2 text-slate-600">{pass.receptionistName}</td>
+                        <td className="px-4 py-2">
+                          <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>
+                            {pass.status === 'EMITIDO' ? 'Emitido' : 'Anulado'}
+                          </Badge>
+                          {pass.voidReason ? (
+                            <p className="mt-1 max-w-[14rem] text-xs text-slate-500">{pass.voidReason}</p>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {pass.status === 'EMITIDO' ? (
+                            <VoidGymPassDialog id={pass.id} folio={pass.folio} />
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardScroll>
+          )}
+        </Card>
+      ) : null}
 
       {show('movimientos') ? (
         <Card>

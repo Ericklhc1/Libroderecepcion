@@ -120,12 +120,6 @@ async function getCurrentCashComposition(client: Client = prisma) {
         kind: 'EFECTIVO',
         state: { in: ['VIGENTE', 'APLICADA_PARCIALMENTE'] },
       },
-      include: {
-        stay: { include: { room: { select: { number: true } } } },
-        reservationReference: {
-          include: { guest: { select: { fullName: true } } },
-        },
-      },
       orderBy: { createdAt: 'asc' },
     }),
     client.cashMovement.findFirst({
@@ -291,9 +285,10 @@ export type HandoverCashState = {
     appliedAmount: number;
     penaltyAmount: number;
     state: string;
-    reservationCode: string;
+    reference: string | null;
     roomNumber: string | null;
     guestName: string | null;
+    dueAt: Date | null;
   }>;
 };
 
@@ -400,9 +395,10 @@ export async function getHandoverCashState(
       appliedAmount: Number(guarantee.appliedAmount ?? 0),
       penaltyAmount: Number(guarantee.penaltyAmount ?? 0),
       state: guarantee.state,
-      reservationCode: guarantee.reservationReference.code,
-      roomNumber: guarantee.stay?.room?.number ?? guarantee.reservationReference.roomNumber,
-      guestName: guarantee.reservationReference.guest?.fullName ?? null,
+      reference: guarantee.reference ?? null,
+      roomNumber: guarantee.roomNumber ?? null,
+      guestName: guarantee.guestName ?? null,
+      dueAt: guarantee.dueAt ?? null,
     })),
   };
 }

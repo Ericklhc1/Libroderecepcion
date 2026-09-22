@@ -568,7 +568,7 @@ export async function saveLiveCashAudit(
 }
 
 export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
-  const [denominations, funds, totals, movementRows, guarantees, gymRows, auditRows] = await Promise.all([
+  const [denominations, funds, totals, movementRows, guarantees, auditRows] = await Promise.all([
     prisma.cashDenomination.findMany({
       where: { active: true, currency: { in: ['CLP', 'USD'] } },
       select: { id: true, currency: true, value: true, medium: true },
@@ -604,15 +604,12 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       }>
     >`
       SELECT m."id", m."kind", m."direction", m."currency", m."amount",
-             m."reference", m."notes", r."number" AS "roomNumber",
-             rr."code" AS "reservationCode", m."stayId",
-             g."fullName" AS "guestName", u."name" AS "createdByName",
+             m."reference", m."notes", NULL::text AS "roomNumber",
+             NULL::text AS "reservationCode", NULL::text AS "stayId",
+             NULL::text AS "guestName", u."name" AS "createdByName",
              m."createdAt"
       FROM "CashMovement" m
       JOIN "User" u ON u."id" = m."createdById"
-      LEFT JOIN "Room" r ON r."id" = m."roomId"
-      LEFT JOIN "ReservationReference" rr ON rr."id" = m."reservationReferenceId"
-      LEFT JOIN "GuestReference" g ON g."id" = m."guestId"
       WHERE m."voidedAt" IS NULL
       ORDER BY m."createdAt" DESC
       LIMIT ${limit}
@@ -628,15 +625,6 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
           ],
         },
       },
-      include: {
-        reservationReference: {
-          select: {
-            code: true,
-            roomNumber: true,
-            guest: { select: { fullName: true } },
-          },
-        },
-      },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.$queryRaw<
@@ -647,25 +635,7 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         roomNumber: string;
         guestName: string;
         receptionistName: string;
-        currency: string;
-        amount: Prisma.Decimal;
-        paymentMethod: GymPaymentMethod;
-        status: 'EMITIDO' | 'ANULADO';
-        issuedAt: Date;
-        voidReason: string | null;
-      }>
-    >`
-      SELECT g."id", g."folio", rr."code" AS "reservationCode", r."number" AS "roomNumber",
-             g."guestName", u."name" AS "receptionistName", g."currency", g."amount",
-             g."paymentMethod", g."status", g."issuedAt", g."voidReason"
-      FROM "GymPass" g
-      JOIN "ReservationReference" rr ON rr."id" = g."reservationReferenceId"
-      JOIN "Room" r ON r."id" = g."roomId"
-      JOIN "User" u ON u."id" = g."receptionistId"
-      ORDER BY g."issuedAt" DESC
-      LIMIT ${limit}
-    `,
-    prisma.$queryRaw<
+          prisma.$queryRaw<
       Array<{
         id: string;
         currency: string;
@@ -728,9 +698,9 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
     movements: movementRows.map((row) => ({ ...row, amount: decimal(row.amount) })),
     cashGuarantees: guarantees.map((row) => ({
       id: row.id,
-      reservationCode: row.reservationReference?.code ?? null,
-      roomNumber: row.roomNumber ?? row.reservationReference?.roomNumber ?? null,
-      guestName: row.guestName ?? row.reservationReference?.guest?.fullName ?? null,
+      reservationCode: null,
+      roomNumber: row.roomNumber ?? null,
+      guestName: row.guestName ?? null,
       reference: row.reference ?? null,
       dueAt: row.dueAt ?? null,
       currency: row.currency,
@@ -745,7 +715,8 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       state: row.state,
       createdAt: row.createdAt,
     })),
-    gymPasses: gymRows.map((row) => ({ ...row, amount: decimal(row.amount) })),
+    // Compatibilidad de forma para módulos históricos; Caja v1.4.0 no consulta gimnasio.
+    gymPasses: [],
     audits: auditRows.map((row) => ({
       ...row,
       expectedAmount: decimal(row.expectedAmount),

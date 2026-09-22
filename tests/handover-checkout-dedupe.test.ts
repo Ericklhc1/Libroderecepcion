@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { AlertLevel, AlertStatus, AlertType, RoomStayStage, RoomStayStatus } from '@prisma/client';
+import { RoomStayStage, RoomStayStatus } from '@prisma/client';
 import {
   prisma,
   resetOperationalData,
@@ -8,7 +8,7 @@ import {
 } from './helpers';
 import { buildHandoverSnapshot } from '@/server/services/handover-snapshot';
 
-describe('deduplicación de salidas en la entrega', () => {
+describe('PMS retirado de la entrega', () => {
   beforeAll(async () => {
     await resetRoomsAndKeys();
     await seedCatalog();
@@ -20,9 +20,9 @@ describe('deduplicación de salidas en la entrega', () => {
     await seedCatalog();
   });
 
-  it('una salida pendiente aparece una vez aunque tenga su alerta automática', async () => {
+  it('una salida PMS pendiente no aparece en el snapshot de entrega', async () => {
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '408' } });
-    const stay = await prisma.roomStay.create({
+    await prisma.roomStay.create({
       data: {
         reservationId: 'REG-CO-408',
         roomId: room.id,
@@ -35,28 +35,12 @@ describe('deduplicación de salidas en la entrega', () => {
       },
     });
 
-    await prisma.alert.create({
-      data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Check-out sin confirmar: hab. 408',
-        message: 'La salida sigue pendiente después de la hora límite.',
-        auto: true,
-        dedupeKey: `checkout-unconfirmed:${stay.id}`,
-      },
-    });
-
     const snapshot = await buildHandoverSnapshot(
       new Date('2026-09-17T15:00:00.000Z'),
       { shiftId: null, includeMetrics: false },
     );
 
-    expect(snapshot.filter((item) => item.section === 'Salidas por confirmar')).toHaveLength(1);
-    expect(
-      snapshot.filter(
-        (item) => item.section === 'Alertas activas' && item.title.includes('Check-out sin confirmar'),
-      ),
-    ).toHaveLength(0);
+    expect(snapshot.some((item) => item.section === 'Salidas por confirmar')).toBe(false);
+    expect(snapshot.some((item) => item.title.includes('Check-out'))).toBe(false);
   });
 });

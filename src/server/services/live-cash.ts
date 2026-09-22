@@ -92,9 +92,11 @@ export type LiveCashState = {
   movements: LiveCashMovement[];
   cashGuarantees: Array<{
     id: string;
-    reservationCode: string;
+    reservationCode: string | null;
     roomNumber: string | null;
     guestName: string | null;
+    reference: string | null;
+    dueAt: Date | null;
     currency: string;
     amount: number;
     originalAmount: number;
@@ -187,8 +189,9 @@ export async function recordGuaranteeCashIn(
   params: {
     user: CurrentUser;
     guaranteeId: string;
-    reservationReferenceId: string;
-    reservationCode: string;
+    reservationReferenceId?: string | null;
+    reservationCode?: string | null;
+    reference?: string | null;
     roomId?: string | null;
     stayId?: string | null;
     guestId?: string | null;
@@ -214,10 +217,12 @@ export async function recordGuaranteeCashIn(
     roomId: params.roomId ?? null,
     stayId: params.stayId ?? null,
     guestId: params.guestId ?? null,
-    reservationReferenceId: params.reservationReferenceId,
+    reservationReferenceId: params.reservationReferenceId ?? null,
     guaranteeId: params.guaranteeId,
-    reference: `Garantía reserva ${params.reservationCode}`,
-    notes: 'Garantía en efectivo ingresada a caja.',
+    reference:
+      params.reference?.trim() ||
+      (params.reservationCode ? `Garantía reserva ${params.reservationCode}` : 'Garantía en efectivo'),
+    notes: 'Garantía en efectivo ingresada a Caja.',
   });
 }
 
@@ -226,8 +231,9 @@ export async function recordGuaranteeCashOut(
   params: {
     user: CurrentUser;
     guaranteeId: string;
-    reservationReferenceId: string;
-    reservationCode: string;
+    reservationReferenceId?: string | null;
+    reservationCode?: string | null;
+    reference?: string | null;
     roomId?: string | null;
     stayId?: string | null;
     guestId?: string | null;
@@ -268,10 +274,12 @@ export async function recordGuaranteeCashOut(
     roomId: originalContext?.roomId ?? params.roomId ?? null,
     stayId: originalContext?.stayId ?? params.stayId ?? null,
     guestId: originalContext?.guestId ?? params.guestId ?? null,
-    reservationReferenceId: params.reservationReferenceId,
+    reservationReferenceId: params.reservationReferenceId ?? null,
     guaranteeId: params.guaranteeId,
-    reference: `Devolución garantía ${params.reservationCode}`,
-    notes: 'Garantía en efectivo devuelta al huésped.',
+    reference:
+      params.reference?.trim() ||
+      (params.reservationCode ? `Devolución garantía ${params.reservationCode}` : 'Devolución de garantía'),
+    notes: 'Garantía en efectivo devuelta.',
   });
 }
 
@@ -720,9 +728,11 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
     movements: movementRows.map((row) => ({ ...row, amount: decimal(row.amount) })),
     cashGuarantees: guarantees.map((row) => ({
       id: row.id,
-      reservationCode: row.reservationReference.code,
-      roomNumber: row.reservationReference.roomNumber,
-      guestName: row.reservationReference.guest?.fullName ?? null,
+      reservationCode: row.reservationReference?.code ?? null,
+      roomNumber: row.roomNumber ?? row.reservationReference?.roomNumber ?? null,
+      guestName: row.guestName ?? row.reservationReference?.guest?.fullName ?? null,
+      reference: row.reference ?? null,
+      dueAt: row.dueAt ?? null,
       currency: row.currency,
       amount: outstandingAmount({
         amount: decimal(row.amount),

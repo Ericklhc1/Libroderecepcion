@@ -25,7 +25,8 @@ function visibleTarget(selector?: string): HTMLElement | null {
 /**
  * Recorrido guiado con foco real sobre la interfaz.
  *
- * Cada paso puede navegar a su pantalla y señalar un elemento visible. El
+ * El recorrido nunca secuestra la navegación normal. Sólo cambia de pantalla
+ * cuando la persona pulsa Siguiente/Atrás dentro del propio recorrido. El
  * recuadro y la flecha se calculan en el navegador, por lo que siguen al
  * elemento incluso si cambia el tamaño de la ventana. Si una sección no está
  * disponible en esa resolución, el recorrido conserva el texto y no bloquea.
@@ -47,10 +48,16 @@ export function TutorialTour({
   const isLast = index === steps.length - 1;
   const first = index === 0;
 
-  useEffect(() => {
-    if (!step?.route || pathname === step.route || pathname.startsWith(`${step.route}/`)) return;
-    router.push(step.route);
-  }, [pathname, router, step]);
+  const moveTo = (nextIndex: number) => {
+    const bounded = Math.max(0, Math.min(steps.length - 1, nextIndex));
+    const next = steps[bounded];
+    setIndex(bounded);
+
+    if (!next?.route) return;
+    const nextPath = next.route.split(/[?#]/, 1)[0] ?? next.route;
+    if (pathname === nextPath || pathname.startsWith(`${nextPath}/`)) return;
+    router.push(next.route);
+  };
 
   useEffect(() => {
     if (!step) return;
@@ -145,13 +152,13 @@ export function TutorialTour({
 
             <div className="flex items-center gap-1">
               {!first ? (
-                <Button variant="ghost" size="sm" onClick={() => setIndex((current) => current - 1)}>
+                <Button variant="ghost" size="sm" onClick={() => moveTo(index - 1)}>
                   <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   Atrás
                 </Button>
               ) : null}
               {!isLast ? (
-                <Button variant="gold" size="sm" onClick={() => setIndex((current) => current + 1)}>
+                <Button variant="gold" size="sm" onClick={() => moveTo(index + 1)}>
                   Siguiente
                   <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>

@@ -15,6 +15,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { getMyOpenShift } from './shifts';
 import { getSettingNumber } from './settings';
+import { outstandingAmount } from '@/domain/guarantees';
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
@@ -82,6 +83,9 @@ export type LiveCashState = {
   currencies: Array<{
     currency: string;
     fund: number;
+    guaranteeCustody: number;
+    operational: number;
+    transferable: number;
     netMovements: number;
     expected: number;
   }>;
@@ -93,6 +97,9 @@ export type LiveCashState = {
     guestName: string | null;
     currency: string;
     amount: number;
+    originalAmount: number;
+    appliedAmount: number;
+    penaltyAmount: number;
     state: string;
     createdAt: Date;
   }>;
@@ -610,7 +617,6 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
           in: [
             GuaranteeState.VIGENTE,
             GuaranteeState.APLICADA_PARCIALMENTE,
-            GuaranteeState.MULTA,
           ],
         },
       },
@@ -674,14 +680,34 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
 
   const fundsMap = new Map(funds.map((row) => [row.currency, decimal(row.amount)]));
   const netMap = new Map(totals.map((row) => [row.currency, decimal(row.net)]));
-  const currencies = Array.from(new Set([...fundsMap.keys(), ...netMap.keys()]))
+  const custodyMap = new Map<string, number>();
+  for (const row of guarantees) {
+    const custody = outstandingAmount({
+      amount: decimal(row.amount),
+      appliedAmount: decimal(row.appliedAmount),
+      penaltyAmount: decimal(row.penaltyAmount),
+    });
+    custodyMap.set(row.currency, (custodyMap.get(row.currency) ?? 0) + custody);
+  }
+  const currencies = Array.from(
+    new Set([...fundsMap.keys(), ...netMap.keys(), ...custodyMap.keys()]),
+  )
     .sort()
-    .map((currency) => ({
-      currency,
-      fund: fundsMap.get(currency) ?? 0,
-      netMovements: netMap.get(currency) ?? 0,
-      expected: (fundsMap.get(currency) ?? 0) + (netMap.get(currency) ?? 0),
-    }));
+    .map((currency) => {
+      const fund = fundsMap.get(currency) ?? 0;
+      const netMovements = netMap.get(currency) ?? 0;
+      const guaranteeCustody = custodyMap.get(currency) ?? 0;
+      const operational = netMovements - guaranteeCustody;
+      return {
+        currency,
+        fund,
+        guaranteeCustody,
+        operational,
+        transferable: Math.max(operational, 0),
+        netMovements,
+        expected: fund + netMovements,
+      };
+    });
 
   return {
     denominations: denominations.map((row) => ({
@@ -698,7 +724,14 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       roomNumber: row.reservationReference.roomNumber,
       guestName: row.reservationReference.guest?.fullName ?? null,
       currency: row.currency,
-      amount: decimal(row.amount),
+      amount: outstandingAmount({
+        amount: decimal(row.amount),
+        appliedAmount: decimal(row.appliedAmount),
+        penaltyAmount: decimal(row.penaltyAmount),
+      }),
+      originalAmount: decimal(row.amount),
+      appliedAmount: decimal(row.appliedAmount),
+      penaltyAmount: decimal(row.penaltyAmount),
       state: row.state,
       createdAt: row.createdAt,
     })),

@@ -41,21 +41,19 @@ describe('ciclo de turno de punta a punta', () => {
     });
   });
 
-  it('recorre programado → iniciado → activo → entrega → recibido → cerrado', async () => {
+  it('recorre programado → activo → entrega → recibido → cerrado', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
     const started = await openShiftAs(morning, shiftA);
-    expect(started.status).toBe(ShiftStatus.INICIADO);
+    expect(started.status).toBe(ShiftStatus.ACTIVO);
     expect(started.actualStart).not.toBeNull();
     expect(started.startedById).toBe(morning.id);
 
-    const activated = await receiveHandover(morning, { shiftId: shiftA.id });
-    expect(activated.status).toBe(ShiftStatus.ACTIVO);
     const activationLog = await prisma.auditLog.findFirst({
       where: { entity: 'Shift', entityId: shiftA.id, action: 'TURNO_RECIBIR' },
     });
-    expect(activationLog?.summary).toContain('sin Caja previa');
+    expect(activationLog?.summary).toContain('activado automáticamente');
 
     const draft = await prepareHandover(morning, shiftA.id);
     expect(draft.status).toBe(HandoverStatus.BORRADOR);

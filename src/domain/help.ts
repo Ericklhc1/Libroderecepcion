@@ -122,8 +122,9 @@ export const HELP_TOPICS: HelpTopic[] = [
       'Envía la entrega. Cuando el turno siguiente confirma la recepción, tu turno se cierra automáticamente.',
     ],
     caveat:
-      'Si la caja no cuadra con el fondo fijo, hay que explicar la diferencia antes de ' +
-      'entregar. Un faltante existe y se declara; lo que no se admite es el silencio.',
+      'El arqueo compara lo contado con el efectivo físico esperado: fondo fijo + garantías ' +
+      'bajo custodia + saldo operacional. Si hay diferencia, se explica y se conserva; nunca ' +
+      'se transforma automáticamente en recaudación.',
     route: '/turno',
     anyOf: ['shift.handover'],
     keywords: ['entregar', 'entrega', 'cierre', 'turno', 'resumen', 'traspaso', 'recibir'],
@@ -198,7 +199,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
     caveat:
       'Sólo se ofrecen los estados a los que la garantía puede pasar desde donde está. Una ' +
-      'garantía aplicada en parte exige monto y motivo.',
+      'garantía en efectivo conserva como custodia sólo el saldo reembolsable; lo aplicado o ' +
+      'multado pasa al saldo operacional y un remanente debe devolverse antes de cerrarla.',
     route: '/huespedes',
     anyOf: ['guest.manage'],
     keywords: ['garantía', 'garantia', 'deposito', 'tarjeta', 'multa', 'devolver'],

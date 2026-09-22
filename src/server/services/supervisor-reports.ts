@@ -39,10 +39,6 @@ function when(date: Date) {
   return formatDateTime(date);
 }
 
-function tag(tags: string[], prefix: string) {
-  return tags.find((value) => value.startsWith(prefix))?.slice(prefix.length) ?? null;
-}
-
 export function reportDateRange(fromRaw?: string | null, toRaw?: string | null): { from: Date; to: Date } {
   const today = dateKey(new Date());
   const fromKey = /^\d{4}-\d{2}-\d{2}$/.test(fromRaw ?? '') ? fromRaw! : today;

@@ -114,6 +114,11 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
     const amount = Number(tagValue(entry.tags, 'monto-'));
     const reference = decodeTag(tagValue(entry.tags, 'referencia-')) ?? entry.title;
     const notes = decodeTag(tagValue(entry.tags, 'notas-'));
+    const effectiveAtIso = decodeTag(tagValue(entry.tags, 'efectiva-'));
+    const effectiveAt = effectiveAtIso ? new Date(effectiveAtIso) : new Date();
+    if (Number.isNaN(effectiveAt.getTime())) {
+      throw new RuleError('La solicitud de Caja contiene una fecha efectiva inválida.');
+    }
     if (
       (direction !== 'ENTRADA' && direction !== 'SALIDA') ||
       (currency !== 'CLP' && currency !== 'USD') ||
@@ -145,6 +150,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       shiftId: entry.shiftId,
       reference,
       notes,
+      effectiveAt,
     });
 
     if (!entry.shiftId) {
@@ -191,6 +197,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
           reference,
           requestEntryId: entry.id,
           shiftId: entry.shiftId,
+          effectiveAt: effectiveAt.toISOString(),
           requestedById: entry.createdById,
           approvedById: user.id,
           withoutCashSession: !entry.shiftId,

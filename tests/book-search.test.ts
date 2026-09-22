@@ -117,7 +117,11 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     );
     expect((await getBookItems({ q: 'E-04' })).items).toHaveLength(1);
     expect((await getBookItems({ q: 'climatizacion' })).items.length).toBeGreaterThanOrEqual(2);
-    expect((await getBookItems({ q: 'Whitaker' })).items).toHaveLength(1);
+    const porPersonaEnTexto = await getBookItems({ q: 'Whitaker' });
+    expect(porPersonaEnTexto.items).toHaveLength(3);
+    expect(new Set(porPersonaEnTexto.items.map((item) => item.kind))).toEqual(
+      new Set(['entry', 'task', 'followup']),
+    );
     expect((await getBookItems({ q: 'Diego Alarcón' })).items.length).toBeGreaterThanOrEqual(2);
     expect((await getBookItems({ q: 'no-existe-en-ningun-registro' })).items).toHaveLength(0);
   });

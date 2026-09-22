@@ -1,12 +1,10 @@
 import 'server-only';
-import { EntryType, RoomStayStage, RoomStayStatus } from '@prisma/client';
+import { EntryType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 /**
  * Una incidencia no es sólo una etiqueta: siempre nace con una tarea y un
- * seguimiento. Si viene desde una habitación, fija además la reserva/huésped
- * activos para que el pendiente pueda sobrevivir al check-out sin pertenecer
- * al próximo ocupante de ese número.
+ * seguimiento. Desde v1.4.0 no resuelve ni hereda contexto PMS.
  */
 export async function ensureIncidentWorkflow(entryId: string) {
   const entry = await prisma.operationalEntry.findUnique({
@@ -22,38 +20,9 @@ export async function ensureIncidentWorkflow(entryId: string) {
       createdById: true,
       departmentId: true,
       shiftId: true,
-      roomId: true,
-      guestId: true,
-      reservationId: true,
     },
   });
   if (!entry || entry.type !== EntryType.INCIDENCIA) return;
-
-  let reservationId = entry.reservationId;
-  let guestId = entry.guestId;
-  if (entry.roomId && (!reservationId || !guestId)) {
-    const stay = await prisma.roomStay.findFirst({
-      where: {
-        roomId: entry.roomId,
-        deletedAt: null,
-        stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
-        status: { in: [RoomStayStatus.IN_HOUSE, RoomStayStatus.CHECK_OUT] },
-      },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-      select: {
-        reservationRefId: true,
-        reservationRef: { select: { guestId: true } },
-      },
-    });
-    reservationId = reservationId ?? stay?.reservationRefId ?? null;
-    guestId = guestId ?? stay?.reservationRef?.guestId ?? null;
-    if (reservationId || guestId) {
-      await prisma.operationalEntry.update({
-        where: { id: entry.id },
-        data: { reservationId, guestId },
-      });
-    }
-  }
 
   const ownerId = entry.ownerId ?? entry.createdById;
   await prisma.$transaction(async (tx) => {

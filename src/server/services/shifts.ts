@@ -351,7 +351,7 @@ export async function getShiftById(shiftId: string): Promise<ShiftWithDetail> {
  */
 export async function getShiftBriefing(shift: { id: string; date: Date; type: ShiftType }) {
   const now = new Date();
-  const [incoming, openEntries, overdueTasks, myTasks, alerts, followUps, vipGuests, reservations] =
+  const [incoming, openEntries, overdueTasks, myTasks, alerts, followUps] =
     await Promise.all([
       getPendingHandover(shift.id),
       prisma.operationalEntry.findMany({
@@ -359,7 +359,6 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         include: {
           owner: { select: { id: true, name: true } },
           department: { select: { name: true } },
-          guest: { select: { fullName: true, roomNumber: true } },
         },
         orderBy: [{ priority: 'desc' }, { occurredAt: 'desc' }],
         take: 25,
@@ -397,25 +396,6 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         orderBy: { scheduledAt: 'asc' },
         take: 25,
       }),
-      prisma.guestReference.findMany({
-        where: { deletedAt: null, vip: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 10,
-      }),
-      prisma.reservationReference.findMany({
-        where: {
-          deletedAt: null,
-          OR: [
-            { requiresAction: true },
-            { guaranteeStatus: { in: ['PENDIENTE', 'RECHAZADA'] } },
-            { balanceDue: { gt: 0 } },
-            { status: 'PENDIENTE' },
-          ],
-        },
-        include: { guest: { select: { fullName: true, vip: true } } },
-        orderBy: { checkIn: 'asc' },
-        take: 20,
-      }),
     ]);
 
   const comments = await prisma.comment.findMany({
@@ -436,8 +416,9 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
     myTasks,
     alerts,
     followUps,
-    vipGuests,
-    reservations,
+    // Compatibilidad de forma: PMS dejó de alimentar el briefing.
+    vipGuests: [] as const,
+    reservations: [] as const,
     comments,
   };
 }

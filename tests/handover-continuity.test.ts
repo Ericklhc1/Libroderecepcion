@@ -95,7 +95,7 @@ describe('continuidad de la entrega de turno', () => {
     expect(followUpItem?.detail).toContain(`Caso #${incident.seq}`);
   });
 
-  it('guarda ocupación y dólar como fotografía operativa de la entrega', async () => {
+  it('no mezcla ocupación ni dólar con la entrega de turno', async () => {
     const shift = await abrirTurno();
     await prisma.systemSetting.upsert({
       where: { key: 'reception.usdRateCLP' },
@@ -112,15 +112,8 @@ describe('continuidad de la entrega de turno', () => {
       includeMetrics: true,
     });
 
-    expect(
-      snapshot.some((item) => item.refType === 'metric' && item.refId === 'occupancy'),
-    ).toBe(true);
-    expect(
-      snapshot.some(
-        (item) =>
-          item.refType === 'metric' && item.refId === 'usd-rate' && item.title.includes('950'),
-      ),
-    ).toBe(true);
+    expect(snapshot.some((item) => item.refType === 'metric')).toBe(false);
+    expect(snapshot.some((item) => item.title.includes('950'))).toBe(false);
   });
 
   it('una tarea independiente completada durante el turno también queda informada', async () => {

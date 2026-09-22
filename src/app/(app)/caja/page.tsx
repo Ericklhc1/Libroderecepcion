@@ -27,7 +27,7 @@ const MOVEMENT_LABEL: Record<string, string> = {
   GARANTIA_DEVOLUCION: 'Garantía devuelta',
   VENTA_GIMNASIO: 'Pase gimnasio histórico',
   ANULACION_GIMNASIO: 'Anulación gimnasio histórica',
-  TESORERIA: 'Egreso a tesorería',
+  TESORERIA: 'Transferencia a Tesorería',
   AJUSTE_ENTRADA: 'Ingreso manual',
   AJUSTE_SALIDA: 'Egreso manual',
 };
@@ -99,7 +99,7 @@ export default async function LiveCashPage({
         <div>
           <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Fuente operativa del efectivo: fondo fijo, saldo esperado, ingresos, egresos, garantías en custodia y corroboraciones. La habitación o reserva sólo agregan contexto cuando corresponde.
+            Fuente operativa del efectivo: fondo fijo, garantías bajo custodia, saldo operacional, transferencias internas, arqueos y diferencia real. La habitación o reserva sólo agregan contexto cuando corresponde.
           </p>
         </div>
         {canManual || canOperateRooms ? (
@@ -183,16 +183,28 @@ export default async function LiveCashPage({
                     </dd>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
-                    <dt className="text-slate-500">Movimientos netos</dt>
+                    <dt className="text-slate-500">Garantías bajo custodia</dt>
                     <dd className="mt-0.5 font-semibold tabular text-petrol-900">
-                      {item.netMovements > 0 ? '+' : ''}{amount(item.currency, item.netMovements)}
+                      {amount(item.currency, item.guaranteeCustody)}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <dt className="text-slate-500">Saldo operacional</dt>
+                    <dd className="mt-0.5 font-semibold tabular text-petrol-900">
+                      {item.operational > 0 ? '+' : ''}{amount(item.currency, item.operational)}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <dt className="text-slate-500">Transferible a Tesorería</dt>
+                    <dd className="mt-0.5 font-semibold tabular text-petrol-900">
+                      {amount(item.currency, item.transferable)}
                     </dd>
                   </div>
                 </dl>
                 {canAudit ? <div className="mt-3 no-print">
                   <Dialog
                     title={`Corroborar caja ${item.currency}`}
-                    description={`El sistema espera ${amount(item.currency, item.expected)}. Cuenta lo que existe físicamente ahora.`}
+                    description={`Efectivo físico esperado: ${amount(item.currency, item.expected)}. Cuenta lo que existe físicamente ahora; la diferencia se calcula contra esa composición, no contra el fondo fijo.`}
                     triggerVariant="secondary"
                     triggerSize="sm"
                     width="sm"

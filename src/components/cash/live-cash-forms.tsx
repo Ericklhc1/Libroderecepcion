@@ -118,6 +118,14 @@ export function ManualCashMovementForm({
       </Field>
 
       <Field
+        label="Fecha/hora efectiva"
+        name="effectiveAt"
+        hint="Opcional. Vacío = ahora. La fecha real de registro se conserva aparte."
+      >
+        <Input name="effectiveAt" type="datetime-local" />
+      </Field>
+
+      <Field
         label="Concepto"
         name="reference"
         required
@@ -136,7 +144,7 @@ export function ManualCashMovementForm({
       </Field>
 
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        El movimiento queda ligado al usuario, al turno, a Caja y a Auditoría. No necesita reserva, habitación ni estadía.
+        El movimiento queda ligado al usuario y a Auditoría. Si no existe turno abierto, se registra igual y Supervisión recibe una alerta crítica. No necesita reserva, habitación ni estadía.
       </p>
 
       <div className="flex justify-end">

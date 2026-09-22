@@ -67,7 +67,7 @@ describe('regla de cierre de turno', () => {
   it('bloquea el cierre de un turno que no inició la entrega', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.INICIADO, handoverStatus: 'NONE' }),
-    ).toThrow(/primero prepara la entrega/i);
+    ).toThrow(/primero prepara.*entrega/i);
   });
 
   it('bloquea el cierre con la entrega en borrador', () => {
@@ -76,7 +76,7 @@ describe('regla de cierre de turno', () => {
         status: ShiftStatus.PREPARANDO_ENTREGA,
         handoverStatus: 'BORRADOR',
       }),
-    ).toThrow(/primero prepara la entrega/i);
+    ).toThrow(/primero prepara.*entrega/i);
   });
 
   it('con la entrega enviada, el saliente puede cerrar sin esperar recepción', () => {
@@ -94,7 +94,7 @@ describe('regla de cierre de turno', () => {
   it('bloquea cerrar directamente desde ACTIVO aunque todavía no exista entrega', () => {
     expect(() =>
       assertCanClose({ status: ShiftStatus.ACTIVO, handoverStatus: 'NONE' }),
-    ).toThrow(/primero prepara la entrega/i);
+    ).toThrow(/primero prepara.*entrega/i);
   });
 
   it('no permite cerrar dos veces', () => {

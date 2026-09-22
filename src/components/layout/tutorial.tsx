@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Compass } from 'lucide-react';
 import { Button, SubmitButton } from '@/components/ui/button';
 import { ActionForm } from '@/components/ui/form';
 import { finishTutorialAction } from '@/server/actions/tutorial';
-import type { TutorialStep } from '@/domain/tutorial-tour';
+import { shouldNavigateTutorial, type TutorialStep } from '@/domain/tutorial-tour';
 
 type Rect = { top: number; left: number; width: number; height: number };
 
@@ -48,12 +48,15 @@ export function TutorialTour({
   const first = index === 0;
 
   useEffect(() => {
-    if (!step?.route || pathname === step.route || pathname.startsWith(`${step.route}/`)) return;
+    if (!step?.route || !shouldNavigateTutorial(dismissed, pathname, step.route)) return;
     router.push(step.route);
-  }, [pathname, router, step]);
+  }, [dismissed, pathname, router, step]);
 
   useEffect(() => {
-    if (!step) return;
+    if (dismissed || !step) {
+      setTargetRect(null);
+      return;
+    }
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const locate = () => {
@@ -77,7 +80,7 @@ export function TutorialTour({
       window.removeEventListener('resize', locate);
       window.removeEventListener('scroll', locate, true);
     };
-  }, [pathname, step]);
+  }, [dismissed, pathname, step]);
 
   const pointer = useMemo(() => {
     if (!targetRect) return null;

@@ -1,27 +1,14 @@
 import { redirect } from 'next/navigation';
-import type { RawSearchParams } from '@/lib/search-params';
 
-export const metadata = { title: 'Cargar huéspedes & reservas' };
-export const dynamic = 'force-dynamic';
+export const metadata = { title: 'Importación PMS retirada' };
 
 /**
- * Ruta histórica.
+ * Ruta operativa retirada en v1.4.0.
  *
- * La importación PMS tiene una sola pantalla y una sola acción canónica en
- * `/huespedes/importar`. Se conserva este redirect para marcadores, enlaces
- * antiguos y pestañas abiertas, evitando mantener dos flujos que puedan
- * aplicar reglas distintas sobre las mismas estadías.
+ * El Libro ya no administra PMS, habitaciones, huéspedes ni llaves. Se mantiene
+ * la ruta únicamente para que marcadores y enlaces históricos lleguen al nuevo
+ * núcleo operativo sin reactivar consultas legadas.
  */
-export default async function LegacyRoomImportPage({
-  searchParams,
-}: {
-  searchParams: Promise<RawSearchParams>;
-}) {
-  const params = await searchParams;
-  const query = new URLSearchParams();
-  const revision = typeof params.revision === 'string' ? params.revision : null;
-  if (revision) query.set('revision', revision);
-
-  const suffix = query.toString();
-  redirect(suffix ? `/huespedes/importar?${suffix}` : '/huespedes/importar');
+export default function RetiredOperationalRoute() {
+  redirect('/libro');
 }

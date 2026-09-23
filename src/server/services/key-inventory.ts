@@ -15,6 +15,14 @@ import { NotFoundError, RuleError } from '@/server/errors';
 const INVENTORY_FLOORS = [4, 5, 6] as const;
 export type InventoryFloor = (typeof INVENTORY_FLOORS)[number];
 
+export const KEY_INVENTORY_MINIMUM_BY_FLOOR: Record<InventoryFloor, number> = {
+  4: 29,
+  5: 30,
+  6: 30,
+};
+export const KEY_INVENTORY_MINIMUM_TOTAL = 89;
+const MINIMUM_KEYS_PER_ROOM = 1;
+
 export function isInventoryFloor(value: number): value is InventoryFloor {
   return INVENTORY_FLOORS.includes(value as InventoryFloor);
 }
@@ -152,6 +160,10 @@ export async function getPhysicalKeyInventory(input: {
       roomNumber: room.number,
       floor,
       ...count,
+      // El inventario oficial mide la cobertura física mínima del hotel:
+      // una llave por habitación, independientemente de si está entregada,
+      // extraviada o fuera de servicio.
+      expected: MINIMUM_KEYS_PER_ROOM,
       keys: room.keys.map((key) => ({
         id: key.id,
         code: key.code,
@@ -208,7 +220,15 @@ export async function savePhysicalKeyInventoryCount(
     select: { id: true, number: true },
   });
 
+  const requiredRooms = KEY_INVENTORY_MINIMUM_BY_FLOOR[input.floor];
+  if (rooms.length !== requiredRooms) {
+    throw new RuleError(
+      `El piso ${input.floor} debe tener ${requiredRooms} habitaciones activas para tomar inventario; actualmente hay ${rooms.length}.`,
+    );
+  }
+
   const roomIds = new Set(rooms.map((room) => room.id));
+  const roomNumberById = new Map(rooms.map((room) => [room.id, room.number]));
   const received = new Set(input.items.map((item) => item.roomId));
   if (received.size !== roomIds.size || [...roomIds].some((id) => !received.has(id))) {
     throw new RuleError('El conteo debe incluir todas las habitaciones activas del piso.');
@@ -219,16 +239,12 @@ export async function savePhysicalKeyInventoryCount(
     if (!Number.isInteger(item.outOfService) || item.outOfService < 0) {
       throw new RuleError('La cantidad fuera de servicio debe ser un entero igual o mayor que cero.');
     }
+    if (item.found < MINIMUM_KEYS_PER_ROOM && !item.notes?.trim()) {
+      throw new RuleError(
+        `La habitación ${roomNumberById.get(item.roomId) ?? item.roomId} tiene una llave faltante: agrega una observación o justificación.`,
+      );
+    }
   }
-
-  const expectedRows = await prisma.roomKey.groupBy({
-    by: ['roomId'],
-    where: { roomId: { in: [...roomIds] }, status: KeyStatus.DISPONIBLE },
-    _count: { _all: true },
-  });
-  const expectedByRoom = new Map(
-    expectedRows.filter((row) => row.roomId).map((row) => [row.roomId!, row._count._all]),
-  );
 
   const created = await prisma.keyInventoryCount.create({
     data: {
@@ -238,7 +254,7 @@ export async function savePhysicalKeyInventoryCount(
       items: {
         create: input.items.map((item) => ({
           roomId: item.roomId,
-          expected: expectedByRoom.get(item.roomId) ?? 0,
+          expected: MINIMUM_KEYS_PER_ROOM,
           found: item.found,
           outOfService: item.outOfService,
           notes: item.notes?.trim() || null,

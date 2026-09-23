@@ -78,11 +78,6 @@ describe('ciclo de turno de punta a punta', () => {
     const incoming = await getPendingHandover(shiftB.id);
     expect(incoming?.id).toBe(sent.id);
 
-    // El saliente cierra por su cuenta: no espera al turno siguiente.
-    const closedA = await closeShift(morning, { shiftId: shiftA.id });
-    expect(closedA.status).toBe(ShiftStatus.CERRADO);
-    expect(closedA.actualEnd).not.toBeNull();
-
     await openShiftAs(evening, shiftB);
     const received = await receiveHandover(evening, {
       shiftId: shiftB.id,
@@ -96,6 +91,10 @@ describe('ciclo de turno de punta a punta', () => {
     expect(confirmed.receivedById).toBe(evening.id);
     expect(confirmed.receivedAt).not.toBeNull();
     expect(confirmed.receiverObservations).toBe('Recibido conforme.');
+
+    const closedA = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
+    expect(closedA.status).toBe(ShiftStatus.CERRADO);
+    expect(closedA.actualEnd).not.toBeNull();
 
     const validationAlert = await prisma.alert.findUnique({
       where: { dedupeKey: `shift-validation:${shiftA.id}` },
@@ -367,7 +366,7 @@ describe('invariantes del turno', () => {
     await expect(cancelHandoverPreparation(morning, shiftA.id)).rejects.toThrow(RuleError);
   });
 
-  it('recibir NO cierra al saliente; el saliente cierra de forma autónoma', async () => {
+  it('recibir cierra automáticamente al saliente y deja validación posterior', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.NOCHE });
 
@@ -379,11 +378,9 @@ describe('invariantes del turno', () => {
     await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
 
-    const stillOpen = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
-    expect(stillOpen.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
-
-    const closed = await closeShift(morning, { shiftId: shiftA.id });
+    const closed = await prisma.shift.findUniqueOrThrow({ where: { id: shiftA.id } });
     expect(closed.status).toBe(ShiftStatus.CERRADO);
+    expect(closed.actualEnd).not.toBeNull();
 
     const task = await prisma.task.findFirst({
       where: { shiftId: shiftA.id, title: 'Validar cierre de turno' },
@@ -401,7 +398,7 @@ describe('invariantes del turno', () => {
     );
   });
 
-  it('getMyOpenShift conserva el turno enviado hasta que su dueño lo cierra', async () => {
+  it('getMyOpenShift deja de devolver el turno cuando su entrega es recibida', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.NOCHE });
     expect(await getMyOpenShift(morning.id)).toBeNull();
@@ -413,9 +410,6 @@ describe('invariantes del turno', () => {
 
     await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
-    expect((await getMyOpenShift(morning.id))?.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
-
-    await closeShift(morning, { shiftId: shiftA.id });
     expect(await getMyOpenShift(morning.id)).toBeNull();
   });
 
@@ -428,7 +422,6 @@ describe('invariantes del turno', () => {
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
     await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
-    await closeShift(morning, { shiftId: shiftA.id });
 
     const actions = await prisma.auditLog.findMany({
       where: { entity: { in: ['Shift', 'ShiftHandover'] } },

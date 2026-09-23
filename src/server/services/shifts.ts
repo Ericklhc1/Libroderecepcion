@@ -931,6 +931,50 @@ export async function receiveHandover(
       });
     }
 
+    // La recepción completa el relevo: el turno emisor deja de ser operativo
+    // en la misma transacción. La validación de jefatura es posterior y no
+    // mantiene abierto al saliente.
+    const sourceShift = incoming.fromShift;
+    if (
+      sourceShift.status === ShiftStatus.ENTREGA_ENVIADA ||
+      sourceShift.status === ShiftStatus.RECIBIDO
+    ) {
+      const closed = await tx.shift.updateMany({
+        where: {
+          id: sourceShift.id,
+          status: { in: [ShiftStatus.ENTREGA_ENVIADA, ShiftStatus.RECIBIDO] },
+        },
+        data: {
+          status: ShiftStatus.CERRADO,
+          actualEnd: sourceShift.actualEnd ?? now,
+          closedById: sourceShift.closedById ?? incoming.issuedById,
+        },
+      });
+
+      if (closed.count > 0) {
+        await endShiftParticipation(tx, sourceShift.id, now);
+        await ensureClosureValidationTask(tx, sourceShift.id, incoming.issuedById);
+        await recordAudit(
+          {
+            entity: 'Shift',
+            entityId: sourceShift.id,
+            action: AuditAction.TURNO_CERRAR,
+            summary: 'Turno cerrado automáticamente al confirmarse la recepción de su entrega',
+            user,
+            before: { status: sourceShift.status },
+            after: {
+              status: ShiftStatus.CERRADO,
+              actualEnd: sourceShift.actualEnd ?? now,
+              automatic: true,
+              handoverId: incoming.id,
+            },
+            reason: 'La entrega operativa fue recibida por el turno entrante.',
+          },
+          tx,
+        );
+      }
+    }
+
     await tx.alert.updateMany({
       where: { handoverId: incoming.id, auto: true, status: { not: AlertStatus.RESUELTA } },
       data: {

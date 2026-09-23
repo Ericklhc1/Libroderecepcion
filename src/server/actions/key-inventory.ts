@@ -88,7 +88,7 @@ export async function savePhysicalKeyCountAction(
     return {
       ok: true as const,
       message:
-        `Conteo del piso ${floor} guardado: ${result.totals.found}/${result.totals.expected} encontradas; ` +
+        `Inventario del piso ${floor} guardado: ${result.totals.found}/${result.totals.expected} encontradas; ` +
         `${result.totals.missing} faltante(s), ${result.totals.surplus} sobrante(s), ` +
         `${result.totals.outOfService} fuera de servicio.`,
     };

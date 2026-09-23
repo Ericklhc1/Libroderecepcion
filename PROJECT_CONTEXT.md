@@ -34,7 +34,7 @@ página. La navegación sólo esconde; nunca autoriza.
 
 ## Navegación (simplificada)
 
-Cinco módulos raíz, uno por trabajo concreto del mesón:
+El núcleo operativo se organiza por trabajo concreto, no por entidades del PMS:
 
 | Destino | Pregunta |
 |---|---|
@@ -42,18 +42,19 @@ Cinco módulos raíz, uno por trabajo concreto del mesón:
 | `/turno` Mi turno | ¿En qué estado está mi relevo y qué debo entregar? |
 | `/libro?clase=entry` Novedades | ¿Qué ocurrió y qué queda pendiente? |
 | `/caja` Caja | ¿Qué dinero entró, salió o debe corroborarse? |
-| `/llaves` Llaves | ¿Dónde está cada llave y qué falta devolver? |
+| `/llaves` Llaves | ¿Dónde está cada llave física y qué arrojó el último inventario? |
+| `/supervision` Supervisión | ¿Qué requiere control, seguimiento o validación del Supervisor? |
 
 **Inicio es una ventana operativa, no un segundo Libro.** Muestra el estado del
 turno, cuatro indicadores accionables y una única bandeja priorizada construida
 por reglas determinísticas. No vuelve a listar por separado tareas, incidencias,
 alertas, seguimientos, novedades y entregas.
 
-`/reservas`, `/habitaciones`, `/supervision`, `/historial` e
-`/indicadores` siguen existiendo como vistas especializadas y accesos
-contextuales; no compiten como módulos raíz. Reservas/estadías/PMS enriquecen
-el contexto cuando existe evidencia suficiente, pero no son requisito para
-registrar Novedades, operar Caja ni mantener el inventario de Llaves.
+`/reservas`, `/habitaciones` y la importación PMS son legado aislable:
+pueden conservar datos y rutas históricas mientras existan consumidores, pero
+no forman parte de la navegación operativa ni conceden capacidades PMS a
+Recepción, Auditor nocturno o Supervisor. Habitación y huésped pueden seguir
+apareciendo como referencias opcionales.
 
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
@@ -102,11 +103,10 @@ conserva su modelo y sus reglas.
    habitual**: no inicia, recibe ni entrega turno, no confirma salidas ni
    entradas, no entrega llaves. Ésas son las acciones en que aparecería como
    responsable operativo.
-   **Sí importa los informes del PMS.** Cargar los tres informes no es
-   operar: es alimentar el sistema con su fuente de datos y no asigna a nadie
-   como responsable. Excluirlo dejaba un callejón sin salida —en un hotel
-   recién instalado la única cuenta es la suya y no podía cargar el primer
-   día de datos—. Vive en `ROLE_PERMISSIONS`.
+   El PMS es **legado técnico**, no una capacidad del flujo operativo.
+   El Administrador de sistema puede conservar acceso histórico mientras el
+   código legado siga existiendo, pero PMS/RoomStay/Reservation no pueden
+   volver a convertirse en dependencia global ni requisito de Recepción.
    ⚠️ **La matriz se siembra al instalar.** Cambiar `ROLE_PERMISSIONS` no
    altera una base ya instalada: todo cambio necesita su migración, uniendo
    por clave y sin tocar otras filas (el administrador puede ajustar permisos
@@ -434,27 +434,45 @@ conserva su modelo y sus reglas.
     `npm run demo:purge`, que exigía abrir una terminal contra producción.
     Lo vigila `tests/puesta-en-cero.test.ts`.
 
-## Arquitectura operativa canónica v1.4.0 — Novedades + Caja
+## Arquitectura operativa canónica v1.5.0
 
-- **PMS fuera del runtime operativo.** Reservas, huéspedes, habitaciones,
-  estadías, importaciones PMS, llaves y conflictos de ocupación no gobiernan
-  Inicio, Novedades, Caja, Turno, entrega ni Supervisión.
-- **Novedades describe hechos directamente.** Para registrar una novedad o
-  incidencia no se resuelve habitación, huésped, reserva ni estadía. Área,
-  categoría, responsable, prioridad y texto son el contexto operativo.
-- **Caja es autónoma.** Movimientos manuales sólo necesitan dirección, moneda,
-  monto, concepto, usuario y turno. Garantías nuevas pertenecen a Caja y usan
-  contexto libre opcional: persona, habitación, referencia y fecha objetivo.
-- **Legado no es dependencia.** Los FK PMS antiguos de Guarantee quedan
-  opcionales temporalmente para conservar histórico. No se rellenan en flujos
-  nuevos y no deben reintroducirse como requisito.
-- **Rutas antiguas retiradas.** Reservas, huéspedes, habitaciones, importación
-  PMS y llaves redirigen al Libro; no ejecutan sus antiguos servicios al abrirse.
-- **Entrega de turno** transmite sólo Novedades/Incidencias, Tareas,
-  Seguimientos y Alertas. Caja mantiene su propia transferencia de custodia.
-- **Supervisión** vigila excepciones de Libro, Caja y Turnos; no interpreta PMS.
-- La limpieza física de tablas PMS es una fase posterior y destructiva que sólo
-  se ejecuta después de validar esta arquitectura en Production.
+**El Libro Operativo de Recepción no es un PMS.**
+
+El PMS externo constituye, cuando corresponda, una fuente opcional de contexto.
+El núcleo funcional es:
+
+```text
+Turnos
+├─ Novedades
+├─ Caja
+├─ Llaves
+└─ Supervisión
+```
+
+Infraestructura: Usuarios · Roles · Permisos · Auditoría · Configuración.
+
+Referencias opcionales: Habitación · Huésped · Reserva · identificadores externos.
+
+- **Novedades** funciona sin PMS, reserva ni estadía.
+- **Caja** funciona sin PMS; habitación, huésped y referencia son contexto opcional.
+- **Supervisión** administra su propio turno, tareas, seguimientos, notas,
+  auditorías e indicadores sin interpretar PMS.
+- **Turnos** coordinan relevo y entrega operativa; PMS no es una precondición.
+- **Llaves** es inventario físico autónomo. Cada movimiento nuevo puede existir
+  con `stayId = null`; el inventario por pisos 4, 5 y 6 persiste conteos,
+  faltantes, sobrantes y fuera de servicio.
+- `Room` se conserva como referencia física (número/piso), no como motor de
+  ocupación.
+- `RoomStay`, `ReservationReference`, `GuestReference`,
+  `PmsImportBatch` y conciliación PMS son **LEGADO AISLABLE**. Se conservan
+  mientras tengan consumidores históricos; no deben intervenir indirectamente
+  en navegación, permisos operativos, apertura/cierre de turno, Novedades,
+  Caja, Supervisión ni inventario físico de Llaves.
+- Los vínculos históricos PMS de entidades activas permanecen opcionales para
+  no destruir trazabilidad. Un FK histórico no autoriza a reintroducirlo como
+  requisito funcional.
+- La limpieza física de tablas o datos PMS es una fase destructiva separada y
+  requiere justificación y autorización explícita.
 
 ## Caja — semántica canónica v1.3.1
 

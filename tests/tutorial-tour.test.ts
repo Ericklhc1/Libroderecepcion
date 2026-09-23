@@ -26,12 +26,13 @@ describe('recorrido guiado', () => {
     expect(missing).toEqual([]);
   });
 
-  it('explica Novedades + Caja sin enseñar PMS, Habitaciones ni Llaves', () => {
+  it('explica el núcleo vigente sin enseñar PMS ni Habitaciones', () => {
     const routes = TUTORIAL_STEPS.map((step) => step.route).filter(Boolean);
 
     expect(routes).toContain('/libro?clase=entry');
     expect(routes).toContain('/caja');
     expect(routes).toContain('/turno');
+    expect(routes).toContain('/llaves');
     expect(routes).toContain('/supervision');
 
     for (const retired of [
@@ -39,7 +40,6 @@ describe('recorrido guiado', () => {
       '/huespedes',
       '/huespedes/importar',
       '/habitaciones',
-      '/llaves',
     ]) {
       expect(routes).not.toContain(retired);
     }

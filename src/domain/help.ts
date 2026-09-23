@@ -12,26 +12,17 @@ import type { PermissionKey } from '@/lib/permissions';
  * También es la fuente del **tutorial guiado**: el recorrido del primer
  * ingreso no repite estos textos, los reutiliza.
  *
- * `action` es lo único que ejecuta. Sólo acciones **reversibles**: reconciliar
- * llaves es idempotente, regenerar el borrador de una entrega no destruye las
- * notas manuales. Confirmar una salida, un check-in o un arqueo NO están acá y
- * no deben estarlo: esas las firma una persona.
+ * `action` es lo único que ejecuta. Sólo acciones **reversibles** del núcleo
+ * vigente. El legado PMS/estadías no se ejecuta desde la ayuda.
  */
 
 /** Acciones que la ayuda puede ejecutar. Todas reversibles, sin excepción. */
-export type HelpActionKey = 'reconciliar-llaves' | 'regenerar-entrega';
+export type HelpActionKey = 'regenerar-entrega';
 
 export const HELP_ACTIONS: Record<
   HelpActionKey,
   { label: string; permission: PermissionKey; explains: string }
 > = {
-  'reconciliar-llaves': {
-    label: 'Reconciliar el inventario de llaves',
-    permission: 'key.stock',
-    explains:
-      'Entrega cada llave principal a quien está dentro de su habitación. Es idempotente: ' +
-      'correrlo dos veces da el mismo resultado, y no le quita la llave a nadie.',
-  },
   'regenerar-entrega': {
     label: 'Regenerar el resumen de mi entrega',
     permission: 'shift.handover',
@@ -93,7 +84,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     route: '/turno',
     anyOf: ['pms.import'],
     keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'actividad', 'entradas', 'salidas', 'in house'],
-    tutorial: true,
+    tutorial: false,
   },
   {
     id: 'recibir-caja',
@@ -174,36 +165,35 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
-    id: 'llaves-sin-asignar',
-    question: 'Las llaves no aparecen asignadas a nadie. ¿Cómo lo arreglo?',
+    id: 'inventario-llaves',
+    question: '¿Cómo hago el inventario físico de llaves por piso?',
     steps: [
-      'Entra a Llaves.',
-      'Pulsa «Reconciliar con las estadías».',
-      'Cada llave principal queda con quien está dentro de su habitación.',
+      'Entra a Llaves y elige Piso 4, 5 o 6.',
+      'Quita los filtros antes de iniciar un conteo oficial.',
+      'Registra cuántas llaves encontraste por habitación y cuántas están fuera de servicio.',
+      'Guarda el conteo: el sistema calcula faltantes y sobrantes y conserva fecha, hora y usuario.',
     ],
     caveat:
-      'Pasa cuando se cargaron estadías antes de que existiera la regla. Es idempotente: ' +
-      'correrlo de nuevo no rompe nada.',
+      'El inventario físico no consulta PMS, reservas ni estadías. Si una llave está entregada o extraviada, su estado se gestiona como objeto físico.',
     route: '/llaves',
-    anyOf: ['key.stock'],
-    keywords: ['llave', 'llaves', 'asignar', 'reconciliar', 'inventario', 'disponible'],
-    action: 'reconciliar-llaves',
+    anyOf: ['key.inventory', 'key.stock'],
+    keywords: ['llave', 'llaves', 'inventario', 'piso', 'contar', 'faltante', 'sobrante', 'extraviada'],
+    tutorial: true,
   },
   {
     id: 'garantia',
-    question: '¿Cómo registro o resuelvo una garantía?',
+    question: '¿Cómo registro o devuelvo una garantía en efectivo?',
     steps: [
-      'Entra a Huéspedes y reservas.',
-      'Busca la reserva y usa «Agregar garantía» para registrarla.',
-      'Para cerrarla, usa «Resolver» y elige qué pasó: devuelta, aplicada, multa o cerrada.',
+      'Entra a Caja.',
+      'Usa «Nueva garantía» para registrar el dinero bajo custodia.',
+      'El nombre, habitación o referencia son contexto libre opcional: no necesitas crear una reserva.',
+      'Cuando corresponda devolverla, usa la acción de devolución en la misma sección de Caja.',
     ],
     caveat:
-      'Sólo se ofrecen los estados a los que la garantía puede pasar desde donde está. Una ' +
-      'garantía en efectivo conserva como custodia sólo el saldo reembolsable; lo aplicado o ' +
-      'multado pasa al saldo operacional y un remanente debe devolverse antes de cerrarla.',
-    route: '/huespedes',
-    anyOf: ['guest.manage'],
-    keywords: ['garantía', 'garantia', 'deposito', 'tarjeta', 'multa', 'devolver'],
+      'Caja conserva la trazabilidad financiera sin depender de PMS. Los vínculos históricos de reservas sólo existen para datos antiguos.',
+    route: '/caja',
+    anyOf: ['cash.guarantee_in', 'cash.guarantee_out'],
+    keywords: ['garantía', 'garantia', 'deposito', 'efectivo', 'devolver', 'caja'],
   },
   {
     id: 'incidencia',

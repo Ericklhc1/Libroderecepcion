@@ -91,7 +91,7 @@ describe('central de ayuda', () => {
   it('la pregunta pesa más que una mención de paso', () => {
     const ids = searchHelp('llaves', SUPERVISOR).map((topic) => topic.id);
     // Varios procedimientos mencionan llaves; el de llaves va primero.
-    expect(ids[0]).toBe('llaves-sin-asignar');
+    expect(ids[0]).toBe('inventario-llaves');
   });
 
   it('sin consulta muestra el índice, no una pantalla vacía', () => {

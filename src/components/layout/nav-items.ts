@@ -46,6 +46,13 @@ const PRIMARY: NavItem[] = [
     mobile: true,
   },
   {
+    href: '/llaves',
+    label: 'Llaves',
+    icon: 'key',
+    anyOf: ['key.assign', 'key.inventory', 'key.stock'],
+    mobile: true,
+  },
+  {
     href: '/supervision',
     label: 'Centro de Supervisión',
     icon: 'supervision',

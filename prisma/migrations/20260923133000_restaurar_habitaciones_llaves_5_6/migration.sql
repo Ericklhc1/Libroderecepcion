@@ -32,8 +32,11 @@ SELECT
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
 FROM "Room" AS r
-WHERE
-  (r."number"::int BETWEEN 501 AND 530 OR r."number"::int BETWEEN 601 AND 630)
+WHERE r."number" IN (
+  SELECT gs::text FROM generate_series(501, 530) AS gs
+  UNION ALL
+  SELECT gs::text FROM generate_series(601, 630) AS gs
+)
 ON CONFLICT ("code") DO NOTHING;
 
 UPDATE "RoomKey" AS k
@@ -44,4 +47,8 @@ FROM "Room" AS r
 WHERE
   k."roomId" IS NULL
   AND k."code" = 'P-' || r."number"
-  AND (r."number"::int BETWEEN 501 AND 530 OR r."number"::int BETWEEN 601 AND 630);
+  AND r."number" IN (
+    SELECT gs::text FROM generate_series(501, 530) AS gs
+    UNION ALL
+    SELECT gs::text FROM generate_series(601, 630) AS gs
+  );

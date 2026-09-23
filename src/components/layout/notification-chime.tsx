@@ -1,64 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
-
 /**
- * El aviso sonoro de las notificaciones.
+ * Audio del sistema de notificaciones.
  *
- * Existe porque un recordatorio que sólo cambia un número en la esquina no
- * avisa de nada: en el mesón nadie está mirando la campana. El sonido es lo
- * que convierte un contador en un aviso.
- *
- * **El tono se sintetiza, no es un archivo.** Dos notas cortas con Web Audio:
- * ni se descarga nada, ni hay un `.mp3` en el repositorio, ni el primer aviso
- * llega tarde porque el audio todavía se estaba bajando. Y permite que la
- * alerta suene distinto de la notificación sin duplicar assets.
- *
- * **Discreto pero que se note**, que es lo que se pidió: dos notas
- * ascendentes, ~90 ms cada una, con entrada y salida suaves para que no
- * chasquee, y volumen bajo. No es un pitido de error; es el sonido de algo que
- * acaba de llegar.
+ * Se mantiene separado del widget para que el transporte realtime y la UI no
+ * conozcan detalles de Web Audio. No hay archivos de sonido ni dependencias.
  */
 
-/** Intervalo de consulta. 20 s: el mesón no necesita más, la base tampoco. */
-const POLL_MS = 20_000;
-const KEEP_ALIVE_MS = 4 * 60_000;
-const RECENT_ACTIVITY_MS = 10 * 60_000;
-const MUTE_KEY = 'libro.avisoSonoro.silenciado';
-
-type Counts = { notifications: number; alerts: number };
-
-/**
- * Un `AudioContext` por pestaña, creado al primer gesto.
- *
- * Los navegadores no dejan sonar nada antes de que la persona interactúe con
- * la página: un contexto creado al cargar nace suspendido. Se crea perezoso y
- * se intenta reanudar, y si el navegador se niega no pasa nada —el aviso
- * visual sigue estando—.
- */
 let audioContext: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
+
   try {
-    const Ctor = window.AudioContext ?? (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const Ctor =
+      window.AudioContext ??
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
+
     audioContext ??= new Ctor();
     if (audioContext.state === 'suspended') void audioContext.resume();
     return audioContext;
   } catch {
-    // Sin audio disponible. El contador rojo sigue avisando.
     return null;
   }
 }
 
-/**
- * Una nota con envolvente suave.
- *
- * La envolvente no es un adorno: un oscilador que arranca y se corta en seco
- * produce un chasquido que suena a falla, no a aviso.
- */
+export function primeNotificationAudio(): void {
+  getAudioContext();
+}
+
 function playNote(
   context: AudioContext,
   frequency: number,
@@ -69,7 +40,6 @@ function playNote(
   const oscillator = context.createOscillator();
   const gain = context.createGain();
 
-  // Triangular: tiene algo de cuerpo sin el filo de una cuadrada.
   oscillator.type = 'triangle';
   oscillator.frequency.value = frequency;
 
@@ -82,14 +52,7 @@ function playNote(
   oscillator.stop(startAt + duration + 0.02);
 }
 
-/**
- * El aviso.
- *
- * `urgent` sube el tono y agrega una tercera nota: una alerta crítica y una
- * notificación cualquiera no pueden sonar igual, o deja de distinguirse lo que
- * hay que atender ya.
- */
-export function playChime(urgent = false) {
+export function playChime(urgent = false): void {
   const context = getAudioContext();
   if (!context) return;
 
@@ -97,203 +60,12 @@ export function playChime(urgent = false) {
   const peak = urgent ? 0.16 : 0.11;
 
   if (urgent) {
-    playNote(context, 784, now, 0.1, peak); // G5
-    playNote(context, 988, now + 0.11, 0.1, peak); // B5
-    playNote(context, 1175, now + 0.22, 0.14, peak); // D6
-  } else {
-    playNote(context, 659, now, 0.09, peak); // E5
-    playNote(context, 880, now + 0.1, 0.13, peak); // A5
+    playNote(context, 784, now, 0.1, peak);
+    playNote(context, 988, now + 0.11, 0.1, peak);
+    playNote(context, 1175, now + 0.22, 0.14, peak);
+    return;
   }
-}
 
-export function NotificationChime({
-  initialNotifications,
-  initialAlerts,
-}: {
-  initialNotifications: number;
-  initialAlerts: number;
-}) {
-  /*
-    Lo último que se VIO, no lo último que hay. El aviso suena cuando el número
-    SUBE: si sonara con cualquier valor distinto de cero, sonaría en cada
-    consulta mientras quedara algo sin leer, que es la forma más rápida de que
-    alguien apague el sonido para siempre.
-  */
-  const seen = useRef<Counts>({
-    notifications: initialNotifications,
-    alerts: initialAlerts,
-  });
-  const lastActivityAt = useRef(Date.now());
-  const lastKeepAliveAt = useRef(0);
-  const [muted, setMuted] = useState(false);
-  const [ready, setReady] = useState(false);
-
-  // La preferencia se lee en el cliente: en el servidor no existe.
-  useEffect(() => {
-    try {
-      setMuted(window.localStorage.getItem(MUTE_KEY) === '1');
-    } catch {
-      // Navegación privada o almacenamiento bloqueado: suena, que es el defecto.
-    }
-    setReady(true);
-  }, []);
-
-  /*
-    El navegador exige un gesto antes de permitir audio. Se prepara el contexto
-    con el primer clic o tecla de la sesión, de modo que el primer aviso de
-    verdad ya encuentre el audio listo en lugar de perderse.
-  */
-  useEffect(() => {
-    const prime = () => getAudioContext();
-    window.addEventListener('pointerdown', prime, { once: true });
-    window.addEventListener('keydown', prime, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', prime);
-      window.removeEventListener('keydown', prime);
-    };
-  }, []);
-
-  /*
-    La sesión se mantiene viva mientras el recepcionista realmente está usando
-    el Libro. Una pestaña visible pero abandonada NO renueva por sí sola la
-    sesión: hace falta actividad reciente de teclado, puntero, toque o scroll.
-  */
-  useEffect(() => {
-    const keepAlive = async () => {
-      const now = Date.now();
-      if (document.visibilityState !== 'visible') return;
-      if (now - lastActivityAt.current > RECENT_ACTIVITY_MS) return;
-      if (now - lastKeepAliveAt.current < KEEP_ALIVE_MS - 10_000) return;
-
-      lastKeepAliveAt.current = now;
-      try {
-        const response = await fetch('/api/asistente?heartbeat=1&active=1', {
-          cache: 'no-store',
-        });
-        if (response.status === 401) window.location.assign('/login');
-      } catch {
-        // La red puede fallar momentáneamente; el siguiente pulso reintentará.
-      }
-    };
-
-    const markActivity = () => {
-      lastActivityAt.current = Date.now();
-      void keepAlive();
-    };
-
-    const interval = window.setInterval(() => void keepAlive(), KEEP_ALIVE_MS);
-    window.addEventListener('pointerdown', markActivity, { passive: true });
-    window.addEventListener('keydown', markActivity);
-    window.addEventListener('touchstart', markActivity, { passive: true });
-    window.addEventListener('scroll', markActivity, { passive: true });
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') markActivity();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('pointerdown', markActivity);
-      window.removeEventListener('keydown', markActivity);
-      window.removeEventListener('touchstart', markActivity);
-      window.removeEventListener('scroll', markActivity);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, []);
-
-  const check = useCallback(async () => {
-    try {
-      const response = await fetch('/api/notifications/unread', {
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      });
-      if (response.status === 401) {
-        window.location.assign('/login');
-        return;
-      }
-      if (!response.ok) return;
-
-      const counts = (await response.json()) as Counts;
-      const previous = seen.current;
-
-      const newNotifications = counts.notifications > previous.notifications;
-      const newAlerts = counts.alerts > previous.alerts;
-
-      /*
-        Se actualiza SIEMPRE, incluso en silencio: si sólo se actualizara al
-        sonar, al quitar el silencio sonaría de golpe por todo lo acumulado.
-      */
-      seen.current = counts;
-
-      if (muted) return;
-      if (newAlerts) playChime(true);
-      else if (newNotifications) playChime(false);
-    } catch {
-      /*
-        Una consulta fallida no hace nada: el aviso sonoro es una comodidad, y
-        no puede ensuciar la consola del mesón ni romper la pantalla. El
-        intervalo sigue vivo y el siguiente intento puede funcionar.
-      */
-    }
-  }, [muted]);
-
-  useEffect(() => {
-    const id = window.setInterval(check, POLL_MS);
-    /*
-      Al volver a la pestaña se comprueba de inmediato: es justo el momento en
-      que alguien vuelve al mesón y quiere saber si pasó algo.
-    */
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void check();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [check]);
-
-  const toggle = () => {
-    const next = !muted;
-    setMuted(next);
-    try {
-      window.localStorage.setItem(MUTE_KEY, next ? '1' : '0');
-    } catch {
-      // Si no se puede guardar, al menos vale para esta sesión.
-    }
-    // Al activarlo suena una vez: así se sabe qué se acaba de activar y
-    // además queda el gesto que el navegador exige para permitir audio.
-    if (!next) playChime(false);
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      // Hasta leer la preferencia no se pinta el estado, para no mostrar
-      // "activado" un instante y cambiar a "silenciado" al hidratar.
-      className={`rounded-lg p-2 transition-colors ${
-        ready && muted
-          ? 'text-slate-400 hover:bg-slate-100'
-          : 'text-petrol-700 hover:bg-petrol-50'
-      }`}
-      aria-label={
-        muted ? 'Aviso sonoro silenciado. Activarlo' : 'Aviso sonoro activo. Silenciarlo'
-      }
-      title={
-        muted
-          ? 'El aviso sonoro está silenciado'
-          : 'Suena al llegar una notificación o una alerta'
-      }
-    >
-      {/* Altavoz y no campana: al lado de la campana de notificaciones, dos
-          campanas no dirían cuál es cuál. */}
-      {ready && muted ? (
-        <VolumeX className="h-5 w-5" aria-hidden="true" />
-      ) : (
-        <Volume2 className="h-5 w-5" aria-hidden="true" />
-      )}
-    </button>
-  );
+  playNote(context, 659, now, 0.09, peak);
+  playNote(context, 880, now + 0.1, 0.13, peak);
 }

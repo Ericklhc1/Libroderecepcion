@@ -1,9 +1,7 @@
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
-import {
-  getNotificationFeedForUser,
-  type NotificationFeedSnapshot,
-} from '@/server/services/notification-feed';
+import { getNotificationFeedForUser } from '@/server/services/notification-feed';
+import type { NotificationFeedSnapshot } from '@/domain/notifications';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

@@ -183,7 +183,7 @@ export default async function HandoverPage({
                 {handover.toShift ? (
                   <Chip>
                     → Turno {SHIFT_TYPE_LABEL[handover.toShift.type]} ·{' '}
-                    {formatDate(handover.toShift.date)}
+                    {formatCalendarDate(handover.toShift.date)}
                   </Chip>
                 ) : (
                   <Chip>En bandeja · sin receptor confirmado</Chip>

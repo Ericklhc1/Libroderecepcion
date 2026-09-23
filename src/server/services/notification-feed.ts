@@ -1,26 +1,9 @@
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
+import type { NotificationFeedSnapshot } from '@/domain/notifications';
 
 export const NOTIFICATION_FEED_LIMIT = 40;
-
-export type NotificationFeedItem = {
-  id: string;
-  type: string;
-  title: string;
-  body: string | null;
-  link: string | null;
-  entity: string | null;
-  entityId: string | null;
-  readAt: string | null;
-  createdAt: string;
-};
-
-export type NotificationFeedSnapshot = {
-  unread: number;
-  items: NotificationFeedItem[];
-  generatedAt: string;
-};
 
 /**
  * Snapshot compacto para la campana global.

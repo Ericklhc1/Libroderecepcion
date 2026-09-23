@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Banknote, Download, PlusCircle, Scale, ShieldCheck, Ticket } from 'lucide-react';
+import { Banknote, Download, PlusCircle, ShieldCheck, Ticket } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getLiveCashState } from '@/server/services/live-cash';
@@ -210,7 +210,7 @@ export default async function LiveCashPage({
           <select name="seccion" defaultValue={seccion} className="input-base w-full">
             <option value="">Todas</option>
             <option value="garantias">Garantías</option>
-            <option value="auditorias">Corroboraciones</option>
+            <option value="auditorias">Arqueos</option>
             <option value="gimnasio">Folios gimnasio</option>
             <option value="movimientos">Movimientos</option>
           </select>
@@ -287,15 +287,15 @@ export default async function LiveCashPage({
                 {canAudit ? (
                   <div className="mt-3 no-print">
                     <Dialog
-                      title={`Corroborar Caja ${item.currency}`}
+                      title={`Arquear Caja ${item.currency}`}
                       description={`Efectivo físico esperado: ${amount(item.currency, item.expected)}. La diferencia se calcula contra la composición real, no contra el fondo fijo.`}
                       triggerVariant="secondary"
                       triggerSize="sm"
                       width="sm"
                       trigger={
                         <>
-                          <Scale className="h-4 w-4" aria-hidden="true" />
-                          Corroborar ahora
+                          <Banknote className="h-4 w-4" aria-hidden="true" />
+                          Generar arqueo
                         </>
                       }
                     >
@@ -373,9 +373,9 @@ export default async function LiveCashPage({
 
         {show('auditorias') ? (
           <Card>
-            <CardHeader title="Últimas corroboraciones" count={visibleAudits.length} />
+            <CardHeader title="Últimos arqueos" count={visibleAudits.length} />
             {visibleAudits.length === 0 ? (
-              <EmptyState message="Todavía no se ha corroborado la Caja desde esta pantalla." />
+              <EmptyState message="Todavía no se ha registrado ningún arqueo desde esta pantalla." />
             ) : (
               <CardScroll>
                 <ul className="divide-y divide-slate-100">

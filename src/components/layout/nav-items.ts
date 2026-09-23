@@ -16,6 +16,7 @@ export type NavItem = {
     | 'metrics'
     | 'room'
     | 'key'
+    | 'cash'
     | 'admin';
   anyOf?: PermissionKey[];
   mobile?: boolean;
@@ -34,7 +35,7 @@ const PRIMARY: NavItem[] = [
   {
     href: '/caja',
     label: 'Caja',
-    icon: 'key',
+    icon: 'cash',
     anyOf: ['cash.view'],
     mobile: true,
   },

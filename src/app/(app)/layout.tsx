@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { Bell, BookOpen, LogOut, Search, UserRound } from 'lucide-react';
-import { NotificationChime } from '@/components/layout/notification-chime';
+import { BookOpen, LogOut, Search, UserRound } from 'lucide-react';
+import { NotificationCenter } from '@/components/layout/notification-center';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -21,6 +21,7 @@ import { logoutAction } from '@/server/actions/auth';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
+import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { AiAttribution } from '@/components/ai/ai-attribution';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -32,11 +33,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
 
-  const [hotelName, alerts, unreadNotifications, myOpenTasks, blocking, tutorialRow] =
+  const [hotelName, alerts, notificationFeed, myOpenTasks, blocking, tutorialRow] =
     await Promise.all([
       getSettingString('hotel.name', 'Hotel'),
       countLiveAlerts(),
-      prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+      getNotificationFeedForUser(user.id),
       prisma.task.count({
         where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
       }),
@@ -116,19 +117,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
 
             <div className="ml-auto flex items-center gap-2">
-              <NotificationChime initialNotifications={unreadNotifications} initialAlerts={alerts} />
-              <Link
-                href="/notificaciones"
-                className="relative rounded-lg p-2 text-petrol-700 hover:bg-petrol-50"
-                aria-label={`Notificaciones${unreadNotifications > 0 ? ` (${unreadNotifications} sin leer)` : ''}`}
-              >
-                <Bell className="h-5 w-5" aria-hidden="true" />
-                {unreadNotifications > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[0.6rem] font-semibold tabular text-white">
-                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                  </span>
-                ) : null}
-              </Link>
+              <NotificationCenter initialSnapshot={notificationFeed} />
               <div data-tour="help-center">
                 <HelpCenter permissions={user.permissions} />
               </div>

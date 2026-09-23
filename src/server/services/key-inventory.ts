@@ -127,8 +127,8 @@ export async function getPhysicalKeyInventory(input: {
     },
   });
 
-  // El conteo esperado no puede depender del filtro visual de estado: representa
-  // lo que el sistema espera encontrar físicamente disponible en el mesón.
+  // El stock registrado sí depende de las llaves físicas existentes. El mínimo esperado
+  // se fija más abajo en una llave por habitación y no depende del estado de la llave.
   const roomIds = rooms.map((room) => room.id);
   const expectedRows = roomIds.length
     ? await prisma.roomKey.groupBy({
@@ -231,10 +231,10 @@ export async function savePhysicalKeyInventoryCount(
   const roomNumberById = new Map(rooms.map((room) => [room.id, room.number]));
   const received = new Set(input.items.map((item) => item.roomId));
   if (received.size !== roomIds.size || [...roomIds].some((id) => !received.has(id))) {
-    throw new RuleError('El conteo debe incluir todas las habitaciones activas del piso.');
+    throw new RuleError('El inventario debe incluir todas las habitaciones activas del piso.');
   }
   for (const item of input.items) {
-    if (!roomIds.has(item.roomId)) throw new RuleError('El conteo contiene una habitación de otro piso.');
+    if (!roomIds.has(item.roomId)) throw new RuleError('El inventario contiene una habitación de otro piso.');
     if (!Number.isInteger(item.found) || item.found < 0) throw new RuleError('La cantidad encontrada debe ser un entero igual o mayor que cero.');
     if (!Number.isInteger(item.outOfService) || item.outOfService < 0) {
       throw new RuleError('La cantidad fuera de servicio debe ser un entero igual o mayor que cero.');
@@ -284,7 +284,7 @@ export async function savePhysicalKeyInventoryCount(
     entityId: created.id,
     action: AuditAction.CREAR,
     user,
-    summary: `Conteo físico de llaves del piso ${input.floor}: ${totals.found}/${totals.expected} encontradas`,
+    summary: `Inventario físico de llaves del piso ${input.floor}: ${totals.found}/${totals.expected} encontradas`,
     after: totals,
   });
 

@@ -11,6 +11,7 @@ import {
   voidGymPassAction,
 } from '@/server/actions/live-cash';
 import { createGuaranteeAction } from '@/server/actions/references';
+import { DenominationVisual } from '@/components/cash/denomination-visual';
 
 function formatFolio(folio: number) {
   return String(folio).padStart(4, '0');
@@ -243,9 +244,11 @@ export function LiveCashAuditForm({
               key={denomination.id}
               className="grid grid-cols-[1fr_7rem] items-center gap-3 px-3 py-2"
             >
-              <span className="text-sm font-medium tabular text-petrol-900">
-                {currency} {denomination.value.toLocaleString('es-CL')}
-              </span>
+              <DenominationVisual
+                currency={currency}
+                value={denomination.value}
+                medium={denomination.medium}
+              />
               <Input
                 name={`d_${denomination.id}`}
                 type="number"
@@ -272,13 +275,13 @@ export function LiveCashAuditForm({
         {rows(coins, 'Monedas')}
       </div>
       <Field label="Observaciones" name="notes" hint="Opcional. Úsalo para explicar una diferencia.">
-        <Textarea name="notes" rows={2} maxLength={1000} placeholder="Ej.: faltan CLP 2.000 al corroborar." />
+        <Textarea name="notes" rows={2} maxLength={1000} placeholder="Ej.: faltan CLP 2.000 al arquear." />
       </Field>
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
-        Corroborar no ajusta ni «hace cuadrar» la Caja. Si existe una diferencia, queda registrada y visible para seguimiento.
+        Arquear no ajusta ni «hace cuadrar» la Caja. Si existe una diferencia, queda registrada y visible para seguimiento.
       </p>
       <div className="flex justify-end">
-        <SubmitButton pendingLabel="Corroborando…">Guardar corroboración</SubmitButton>
+        <SubmitButton pendingLabel="Arqueando…">Guardar arqueo</SubmitButton>
       </div>
     </ActionForm>
   );

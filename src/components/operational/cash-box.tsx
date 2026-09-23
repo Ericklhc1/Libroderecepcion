@@ -17,6 +17,7 @@ import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/ca
 import type { HandoverCashState } from '@/server/services/cash';
 import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
 import { closeShiftCashAction } from '@/server/actions/cash-closure';
+import { DenominationVisual } from '@/components/cash/denomination-visual';
 
 export type DenominationOption = {
   id: string;
@@ -108,9 +109,12 @@ function CountForm({
                         key={denomination.id}
                         className="grid grid-cols-[1fr_6.5rem] items-center gap-3 px-3 py-2"
                       >
-                        <span className="text-sm font-medium tabular text-petrol-900">
-                          {currency} {denomination.value.toLocaleString('es-CL')}
-                        </span>
+                        <DenominationVisual
+                          currency={currency}
+                          value={denomination.value}
+                          medium={denomination.medium}
+                          compact
+                        />
                         <Input
                           name={`d_${denomination.id}`}
                           type="number"

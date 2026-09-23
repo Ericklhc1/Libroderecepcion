@@ -94,7 +94,7 @@ export const PERMISSIONS = {
   'cash.view': { group: 'Caja', name: 'Consultar Caja' },
   'cash.manual_in': { group: 'Caja', name: 'Registrar ingresos manuales' },
   'cash.manual_out': { group: 'Caja', name: 'Registrar egresos manuales' },
-  'cash.audit': { group: 'Caja', name: 'Corroborar efectivo' },
+  'cash.audit': { group: 'Caja', name: 'Arquear efectivo' },
   'cash.guarantee_in': { group: 'Caja', name: 'Registrar garantías en efectivo' },
   'cash.guarantee_out': { group: 'Caja', name: 'Devolver garantías en efectivo' },
   'cash.treasury_transfer': { group: 'Caja', name: 'Registrar transferencias a Tesorería' },

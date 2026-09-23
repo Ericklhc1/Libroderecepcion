@@ -5,8 +5,8 @@ import {
   KeyAction,
   KeyStatus,
   KeyType,
-  Prisma,
 } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -421,7 +421,7 @@ export async function returnPhysicalKey(
   return prisma.$transaction(async (tx) => {
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
     if (!key) throw new NotFoundError('La llave no existe.');
-    if (![KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION].includes(key.status)) {
+    if (!([KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION] as KeyStatus[]).includes(key.status)) {
       throw new RuleError('La llave no está entregada ni pendiente de devolución.');
     }
 
@@ -493,7 +493,7 @@ export async function recoverPhysicalKey(
     if (key.movements[0]?.action === KeyAction.BAJA) {
       throw new RuleError('Una llave dada de baja no se recupera: registra una nueva llave física.');
     }
-    if (![KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO].includes(key.status)) {
+    if (!([KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO] as KeyStatus[]).includes(key.status)) {
       throw new RuleError('Sólo se recuperan llaves extraviadas o fuera de servicio.');
     }
 

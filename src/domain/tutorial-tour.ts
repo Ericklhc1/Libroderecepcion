@@ -32,11 +32,10 @@ export function shouldNavigateTutorial(
 }
 
 /**
- * Recorrido de producto v1.4.0.
+ * Recorrido de producto v1.5.0.
  *
- * El Libro gira alrededor de Novedades + Caja. Turno y Supervisión existen
- * para continuidad, custodia y control; PMS, Habitaciones, Huéspedes y Llaves
- * ya no forman parte del producto operativo.
+ * El Libro gira alrededor de Turnos + Novedades + Caja + Llaves + Supervisión.
+ * PMS, estadías y reservas quedan como contexto legado opcional.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -86,6 +85,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     route: '/turno',
     target: ROUTE_TARGET,
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
+  },
+  {
+    id: 'llaves',
+    title: 'Llaves',
+    description:
+      'Inventario físico por pisos 4, 5 y 6. Entregas, devoluciones, extravíos y conteos funcionan sin PMS, reserva ni estadía.',
+    route: '/llaves',
+    target: ROUTE_TARGET,
+    anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   {
     id: 'supervision',

@@ -23,6 +23,12 @@ export const KEY_INVENTORY_MINIMUM_BY_FLOOR: Record<InventoryFloor, number> = {
 export const KEY_INVENTORY_MINIMUM_TOTAL = 89;
 const MINIMUM_KEYS_PER_ROOM = 1;
 
+const KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR: Record<InventoryFloor, string[]> = {
+  4: Array.from({ length: 29 }, (_, index) => String(401 + index)),
+  5: Array.from({ length: 30 }, (_, index) => String(501 + index)),
+  6: Array.from({ length: 30 }, (_, index) => String(601 + index)),
+};
+
 export function isInventoryFloor(value: number): value is InventoryFloor {
   return INVENTORY_FLOORS.includes(value as InventoryFloor);
 }
@@ -92,6 +98,7 @@ export async function getPhysicalKeyInventory(input: {
     where: {
       active: true,
       floor: input.floor,
+      number: { in: KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR[input.floor] },
       ...(query
         ? {
             OR: [
@@ -215,7 +222,11 @@ export async function savePhysicalKeyInventoryCount(
   if (!isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
 
   const rooms = await prisma.room.findMany({
-    where: { active: true, floor: input.floor },
+    where: {
+      active: true,
+      floor: input.floor,
+      number: { in: KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR[input.floor] },
+    },
     orderBy: { number: 'asc' },
     select: { id: true, number: true },
   });

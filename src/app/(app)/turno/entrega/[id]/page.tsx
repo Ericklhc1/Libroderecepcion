@@ -28,7 +28,8 @@ import {
   HANDOVER_STATUS_TONE,
 } from '@/domain/labels';
 import { SHIFT_TYPE_LABEL } from '@/domain/shift';
-import { formatDate, formatDateTime, relativeTime } from '@/lib/format';
+import { addCalendarDateDays } from '@/domain/time';
+import { formatCalendarDate, formatDateTime, relativeTime } from '@/lib/format';
 
 export const metadata = { title: 'Entrega de turno' };
 export const dynamic = 'force-dynamic';
@@ -141,6 +142,23 @@ export default async function HandoverPage({
     informativo: handover.items.filter((i) => i.level === HandoverLevel.INFORMATIVO).length,
   };
 
+  /*
+    `Shift.date` es una fecha calendario (`@db.Date`). No se debe formatear
+    con la zona horaria del hotel porque eso la desplaza al día anterior en
+    Santiago. Para NOCHE, la entrega explicita además la transición al día
+    siguiente: 22/09/2026 al 23/09/2026.
+  */
+  const shiftStartDate = handover.fromShift.date;
+  const shiftPeriod =
+    handover.fromShift.type === 'NOCHE'
+      ? `${formatCalendarDate(shiftStartDate)} al ${formatCalendarDate(addCalendarDateDays(shiftStartDate, 1))}`
+      : formatCalendarDate(shiftStartDate);
+  const shiftParticipants =
+    new Intl.ListFormat('es-CL', { style: 'long', type: 'conjunction' }).format(
+      handover.fromShift.assignments.map((assignment) => assignment.user.name),
+    ) || handover.issuedBy.name;
+  const shiftTypeTitle = SHIFT_TYPE_LABEL[handover.fromShift.type].toUpperCase();
+
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
@@ -162,10 +180,6 @@ export default async function HandoverPage({
                 <Badge tone={HANDOVER_STATUS_TONE[handover.status]}>
                   {HANDOVER_STATUS_LABEL[handover.status]}
                 </Badge>
-                <Chip>
-                  Turno {SHIFT_TYPE_LABEL[handover.fromShift.type]} ·{' '}
-                  {formatDate(handover.fromShift.date)}
-                </Chip>
                 {handover.toShift ? (
                   <Chip>
                     → Turno {SHIFT_TYPE_LABEL[handover.toShift.type]} ·{' '}
@@ -175,7 +189,9 @@ export default async function HandoverPage({
                   <Chip>En bandeja · sin receptor confirmado</Chip>
                 )}
               </div>
-              <h1 className="mt-2 text-xl font-semibold text-petrol-900">Entrega de turno</h1>
+              <h1 className="mt-2 text-xl font-semibold text-petrol-900">
+                Entrega de turno {shiftTypeTitle} · {shiftPeriod} · por {shiftParticipants}
+              </h1>
               <dl className="mt-2 space-y-1 text-sm text-slate-600">
                 <div className="flex items-center gap-2">
                   <User className="h-3.5 w-3.5" aria-hidden="true" />

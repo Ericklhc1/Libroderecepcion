@@ -204,7 +204,7 @@ export default async function KeysPage({
         <StatTile
           label="Último inventario"
           value={latest?.totals.found ?? '—'}
-          hint={latest ? formatDateTime(latest.countedAt) : 'Sin conteos guardados'}
+          hint={latest ? formatDateTime(latest.countedAt) : 'Sin inventarios guardados'}
         />
         <StatTile
           label="Faltantes"
@@ -244,7 +244,7 @@ export default async function KeysPage({
                   <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-2.5">Habitación</th>
-                      <th className="px-3 py-2.5 text-center">Esperadas</th>
+                      <th className="px-3 py-2.5 text-center">Mínimo</th>
                       <th className="px-3 py-2.5 text-center">Encontradas</th>
                       <th className="px-3 py-2.5 text-center">Fuera servicio</th>
                       <th className="px-3 py-2.5">Observación</th>
@@ -334,7 +334,7 @@ export default async function KeysPage({
                     <div>
                       <h3 className="font-semibold text-petrol-900">Habitación {room.roomNumber}</h3>
                       <p className="text-xs text-slate-500">
-                        {room.registered} registrada(s) · {room.expected} esperada(s) en recepción
+                        {room.registered} registrada(s) · {room.expected} mínima(s)
                       </p>
                     </div>
                     {room.lost || room.outOfService ? (
@@ -499,9 +499,9 @@ export default async function KeysPage({
       </Card>
 
       <Card>
-        <CardHeader title={`Historial de conteos · Piso ${floor}`} count={recentCounts.length} />
+        <CardHeader title={`Historial de inventarios · Piso ${floor}`} count={recentCounts.length} />
         {recentCounts.length === 0 ? (
-          <EmptyState message="Todavía no hay conteos físicos guardados para este piso." />
+          <EmptyState message="Todavía no hay inventarios físicos guardados para este piso." />
         ) : (
           <ul className="divide-y divide-slate-100">
             {recentCounts.map((count) => (

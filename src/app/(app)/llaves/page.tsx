@@ -24,6 +24,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
+import type { Tone } from '@/domain/labels';
 
 export const metadata = { title: 'Llaves' };
 export const dynamic = 'force-dynamic';
@@ -45,13 +46,13 @@ const TYPE_LABEL: Record<KeyType, string> = {
   MAESTRA: 'Maestra',
 };
 
-function statusTone(status: KeyStatus): 'neutro' | 'informativo' | 'atencion' | 'critico' | 'exito' {
-  if (status === KeyStatus.DISPONIBLE) return 'exito';
+function statusTone(status: KeyStatus): Tone {
+  if (status === KeyStatus.DISPONIBLE) return 'resuelto';
   if (status === KeyStatus.EXTRAVIADA) return 'critico';
   if (status === KeyStatus.FUERA_DE_SERVICIO || status === KeyStatus.PENDIENTE_DEVOLUCION) {
     return 'atencion';
   }
-  return 'informativo';
+  return 'curso';
 }
 
 function readOne(value: string | string[] | undefined) {
@@ -378,7 +379,7 @@ export default async function KeysPage({
                             ) : null}
 
                             {canAssign &&
-                            [KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION].includes(
+                            ([KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION] as KeyStatus[]).includes(
                               key.status,
                             ) ? (
                               <Dialog
@@ -401,7 +402,7 @@ export default async function KeysPage({
                             ) : null}
 
                             {canStock &&
-                            ![KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO].includes(key.status) ? (
+                            !([KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO] as KeyStatus[]).includes(key.status) ? (
                               <Dialog
                                 title={`Registrar incidencia · ${key.code}`}
                                 description="Marca el objeto físico sin alterar reservas ni estadías."
@@ -432,7 +433,7 @@ export default async function KeysPage({
                             ) : null}
 
                             {canStock &&
-                            [KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO].includes(key.status) ? (
+                            ([KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO] as KeyStatus[]).includes(key.status) ? (
                               <Dialog
                                 title={`Recuperar ${key.code}`}
                                 description="Reintegra la llave al inventario disponible."

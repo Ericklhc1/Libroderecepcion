@@ -66,8 +66,9 @@ export const PERMISSIONS = {
 
   'room.view': { group: 'Habitaciones y llaves', name: 'Ver el estado de habitaciones' },
   'room.manage': { group: 'Habitaciones y llaves', name: 'Confirmar salidas y check-in' },
-  'key.assign': { group: 'Habitaciones y llaves', name: 'Entregar y recibir llaves' },
-  'key.stock': { group: 'Habitaciones y llaves', name: 'Administrar el stock de llaves' },
+  'key.assign': { group: 'Llaves', name: 'Entregar y recibir llaves físicas' },
+  'key.inventory': { group: 'Llaves', name: 'Realizar inventarios físicos por piso' },
+  'key.stock': { group: 'Llaves', name: 'Administrar el stock físico de llaves' },
   'pms.import': { group: 'Habitaciones y llaves', name: 'Importar informes del PMS' },
   /*
     Reparación, no operación: elimina lógicamente una estadía incoherente para
@@ -170,13 +171,12 @@ const OPERATIONAL_BASE: PermissionKey[] = [
   'shift.receive',
   'shift.handover',
   'shift.close',
+  // Habitación y huésped quedan como referencias de consulta, no como dominio obligatorio.
   'guest.view',
-  'guest.manage',
   'metrics.view',
   'room.view',
-  'room.manage',
   'key.assign',
-  'pms.import',
+  'key.inventory',
   'cash.view',
   'cash.manual_in',
   'cash.manual_out',

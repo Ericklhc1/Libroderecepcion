@@ -6,6 +6,8 @@ import { hasPermission } from '@/server/auth/current-user';
 import {
   getPhysicalKeyInventory,
   isInventoryFloor,
+  KEY_INVENTORY_MINIMUM_BY_FLOOR,
+  KEY_INVENTORY_MINIMUM_TOTAL,
   listRecentPhysicalKeyCounts,
 } from '@/server/services/key-inventory';
 import {
@@ -99,10 +101,11 @@ export default async function KeysPage({
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-petrol-900">Inventario físico de llaves</h1>
+          <h1 className="text-2xl font-semibold text-petrol-900">Tomar inventario de llaves</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Control autónomo por pisos 4, 5 y 6. Las llaves existen como objetos físicos:
-            no requieren PMS, reserva, huésped ni estadía para funcionar.
+            Cuadre físico mínimo del hotel: 89 habitaciones. Piso 4: 29 habitaciones;
+            pisos 5 y 6: 30 habitaciones cada uno. Se espera al menos una llave por habitación,
+            sin depender de PMS, reserva, huésped ni estadía.
           </p>
         </div>
 
@@ -166,7 +169,7 @@ export default async function KeysPage({
                 : 'rounded-lg bg-white px-4 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50'
             }
           >
-            Piso {value}
+            Piso {value} · {KEY_INVENTORY_MINIMUM_BY_FLOOR[value as 4 | 5 | 6]} hab.
           </Link>
         ))}
       </nav>
@@ -190,11 +193,16 @@ export default async function KeysPage({
         </label>
       </ListFilterBar>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile label="Esperadas en recepción" value={inventory.summary.expected} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <StatTile label="Mínimo hotel" value={KEY_INVENTORY_MINIMUM_TOTAL} hint="89 habitaciones" />
+        <StatTile
+          label={`Mínimo piso ${floor}`}
+          value={inventory.summary.expected}
+          hint={`${KEY_INVENTORY_MINIMUM_BY_FLOOR[floor]} habitaciones`}
+        />
         <StatTile label="Registradas" value={inventory.summary.registered} />
         <StatTile
-          label="Último conteo"
+          label="Último inventario"
           value={latest?.totals.found ?? '—'}
           hint={latest ? formatDateTime(latest.countedAt) : 'Sin conteos guardados'}
         />
@@ -213,10 +221,10 @@ export default async function KeysPage({
       {canInventory ? (
         <Card>
           <CardHeader
-            title={`Conteo físico · Piso ${floor}`}
+            title={`Tomar inventario · Piso ${floor}`}
             action={
               filtersActive ? (
-                <Chip>Quita los filtros para registrar un conteo oficial</Chip>
+                <Chip>Quita los filtros para registrar un inventario oficial</Chip>
               ) : latest ? (
                 <Chip>Último: {formatDateTime(latest.countedAt)} · {latest.countedBy.name}</Chip>
               ) : null
@@ -225,7 +233,7 @@ export default async function KeysPage({
           {filtersActive ? (
             <div className="flex items-start gap-3 px-4 py-5 text-sm text-slate-600">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-              El conteo oficial exige todas las habitaciones activas del piso. La búsqueda y el filtro
+              El inventario oficial exige todas las habitaciones del piso. La búsqueda y el filtro
               sirven para consulta, pero no para guardar un inventario parcial.
             </div>
           ) : (
@@ -240,7 +248,7 @@ export default async function KeysPage({
                       <th className="px-3 py-2.5 text-center">Encontradas</th>
                       <th className="px-3 py-2.5 text-center">Fuera servicio</th>
                       <th className="px-3 py-2.5">Observación</th>
-                      <th className="px-4 py-2.5">Último conteo</th>
+                      <th className="px-4 py-2.5">Último inventario</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -282,13 +290,14 @@ export default async function KeysPage({
                               name={`notes:${room.roomId}`}
                               maxLength={180}
                               className="input-base w-full min-w-[12rem]"
-                              placeholder="Opcional"
+                              placeholder="Obligatoria si falta la llave"
+                              aria-label={`Observación habitación ${room.roomNumber}`}
                             />
                           </td>
                           <td className="px-4 py-2.5 text-xs text-slate-500">
                             {previous
                               ? `${previous.found}/${previous.expected}`
-                              : 'Sin conteo previo'}
+                              : 'Sin inventario previo'}
                           </td>
                         </tr>
                       );
@@ -297,11 +306,11 @@ export default async function KeysPage({
                 </table>
               </div>
               <div className="border-t border-slate-200 p-4">
-                <Field label="Observación general del conteo" name="notes">
+                <Field label="Observación general del inventario" name="notes">
                   <Input name="notes" maxLength={300} placeholder="Opcional" />
                 </Field>
                 <div className="mt-3 flex justify-end">
-                  <SubmitButton pendingLabel="Guardando conteo…">Guardar conteo del piso {floor}</SubmitButton>
+                  <SubmitButton pendingLabel="Guardando inventario…">Guardar inventario del piso {floor}</SubmitButton>
                 </div>
               </div>
             </ActionForm>

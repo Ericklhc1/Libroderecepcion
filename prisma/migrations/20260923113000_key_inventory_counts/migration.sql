@@ -1,3 +1,8 @@
+-- Acciones del inventario físico. Son aditivas y conservan los valores históricos.
+ALTER TYPE "KeyAction" ADD VALUE IF NOT EXISTS 'INGRESO_INVENTARIO';
+ALTER TYPE "KeyAction" ADD VALUE IF NOT EXISTS 'BAJA';
+ALTER TYPE "KeyAction" ADD VALUE IF NOT EXISTS 'AJUSTE_INVENTARIO';
+
 -- Inventario físico autónomo de llaves por piso.
 -- Cambio aditivo: no elimina ni modifica datos históricos de PMS/estadías.
 

@@ -32,6 +32,57 @@ describe('inventario físico de llaves independiente de PMS', () => {
     await seedCatalog();
   });
 
+  it('cubre las 89 habitaciones canónicas de los pisos 4, 5 y 6', async () => {
+    const floor4 = await getPhysicalKeyInventory({ floor: 4 });
+    const floor5 = await getPhysicalKeyInventory({ floor: 5 });
+    const floor6 = await getPhysicalKeyInventory({ floor: 6 });
+
+    expect(floor4.rooms).toHaveLength(29);
+    expect(floor5.rooms).toHaveLength(30);
+    expect(floor6.rooms).toHaveLength(30);
+    expect(floor4.summary.expected + floor5.summary.expected + floor6.summary.expected).toBe(89);
+    expect(floor5.rooms[0]?.roomNumber).toBe('501');
+    expect(floor5.rooms.at(-1)?.roomNumber).toBe('530');
+    expect(floor6.rooms[0]?.roomNumber).toBe('601');
+    expect(floor6.rooms.at(-1)?.roomNumber).toBe('630');
+  });
+
+  it('exige observación o justificación cuando falta una llave mínima', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción faltante llave',
+    });
+    const inventory = await getPhysicalKeyInventory({ floor: 4 });
+
+    const items = inventory.rooms.map((room, index) => ({
+      roomId: room.roomId,
+      found: index === 0 ? 0 : 1,
+      outOfService: 0,
+      notes: null,
+    }));
+
+    await expect(
+      savePhysicalKeyInventoryCount(receptionist, {
+        floor: 4,
+        items,
+      }),
+    ).rejects.toThrow('tiene una llave faltante: agrega una observación o justificación');
+  });
+
+  it('mantiene el mínimo esperado aunque la llave principal no esté disponible', async () => {
+    const key = await prisma.roomKey.findUniqueOrThrow({ where: { code: 'P-401' } });
+    await prisma.roomKey.update({
+      where: { id: key.id },
+      data: { status: KeyStatus.EXTRAVIADA },
+    });
+
+    const inventory = await getPhysicalKeyInventory({ floor: 4 });
+    const room401 = inventory.rooms.find((room) => room.roomNumber === '401');
+
+    expect(room401?.expected).toBe(1);
+    expect(inventory.summary.expected).toBe(29);
+  });
+
   it('entrega y recibe una llave sin crear ni consultar estadías o reservas', async () => {
     const receptionist = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,

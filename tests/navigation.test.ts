@@ -28,7 +28,7 @@ describe('menú principal', () => {
     }
   });
 
-  it('expone Novedades y Caja como núcleo operativo y el Centro privado', () => {
+  it('expone el núcleo operativo y el Centro privado', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual([
@@ -36,6 +36,7 @@ describe('menú principal', () => {
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
+      '/llaves', // inventario físico autónomo
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
@@ -75,7 +76,7 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves']);
   });
 
   it('el Supervisor ve el Centro como módulo raíz privado', () => {
@@ -210,11 +211,13 @@ describe('todo el menú es alcanzable en móvil', () => {
     });
   }
 
-  it('el PMS y Llaves no vuelven a aparecer como destinos alcanzables', () => {
+  it('el PMS no vuelve a aparecer como destino alcanzable', () => {
     const permissions = [...ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]] as PermissionKey[];
     const visibles = visibleNavItems(permissions).map((item) => item.href);
 
-    for (const retired of ['/llaves', '/reservas', '/huespedes', '/habitaciones']) {
+    expect(visibles).toContain('/llaves');
+
+    for (const retired of ['/reservas', '/huespedes', '/habitaciones']) {
       expect(visibles).not.toContain(retired);
     }
   });

@@ -12,7 +12,6 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import {
   assertValidQuantities,
   cashHandoverProblems,
-  cashStatuses,
   countDiscrepancies,
   fromMinor,
   fundStatuses,

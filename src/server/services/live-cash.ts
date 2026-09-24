@@ -51,6 +51,8 @@ export type CashAuditRow = {
   difference: number;
   countedByName: string;
   notes: string | null;
+  guaranteeCount: number;
+  guaranteeAmount: number;
   createdAt: Date;
 };
 
@@ -289,24 +291,81 @@ export async function getExpectedCash(): Promise<Map<string, number>> {
 
 export async function saveLiveCashAudit(
   user: CurrentUser,
-  params: { currency: string; countedAmount: number; notes?: string | null },
-): Promise<{ expected: number; difference: number }> {
+  params: {
+    currency: string;
+    countedAmount: number;
+    guaranteeIds: string[];
+    notes?: string | null;
+  },
+): Promise<{ expected: number; difference: number; guaranteeCount: number }> {
   if (params.countedAmount < 0 || !Number.isFinite(params.countedAmount)) {
     throw new RuleError('El monto contado no es válido.');
   }
   const currency = params.currency.toUpperCase();
-  const expectedMap = await getExpectedCash();
-  const expected = expectedMap.get(currency) ?? 0;
+  const [fund, guarantees] = await Promise.all([
+    prisma.cashFund.findFirst({
+      where: { active: true, currency },
+      select: { amount: true },
+    }),
+    prisma.guarantee.findMany({
+      where: {
+        deletedAt: null,
+        kind: GuaranteeKind.EFECTIVO,
+        currency,
+        state: {
+          in: [
+            GuaranteeState.VIGENTE,
+            GuaranteeState.APLICADA_PARCIALMENTE,
+          ],
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
+
+  const selected = new Set(params.guaranteeIds);
+  const current = new Set(guarantees.map((row) => row.id));
+  if ([...selected].some((id) => !current.has(id))) {
+    throw new RuleError(
+      'El arqueo incluye una garantía que ya no está vigente. Actualiza la pantalla y vuelve a validar.',
+    );
+  }
+  const missing = guarantees.filter((row) => !selected.has(row.id));
+  if (missing.length > 0) {
+    const labels = missing.slice(0, 3).map(
+      (row) => row.guestName ?? row.reference ?? row.roomNumber ?? row.id,
+    );
+    throw new RuleError(
+      `Debes validar físicamente todas las garantías vigentes antes de guardar el arqueo: ${labels.join(', ')}${missing.length > 3 ? '…' : ''}.`,
+    );
+  }
+
+  // La denominación representa exclusivamente el fondo fijo.
+  const expected = decimal(fund?.amount);
   const difference = params.countedAmount - expected;
   const id = randomUUID();
+  const guaranteeSnapshot = guarantees.map((row) => ({
+    id: row.id,
+    currency: row.currency,
+    amount: outstandingAmount({
+      amount: decimal(row.amount),
+      appliedAmount: decimal(row.appliedAmount),
+      penaltyAmount: decimal(row.penaltyAmount),
+    }),
+    state: row.state,
+    reference: row.reference ?? null,
+    roomNumber: row.roomNumber ?? null,
+    guestName: row.guestName ?? null,
+  }));
+  const guaranteeSnapshotJson = JSON.stringify(guaranteeSnapshot);
 
   await prisma.$executeRaw`
     INSERT INTO "CashAudit" (
       "id", "currency", "expectedAmount", "countedAmount", "difference",
-      "countedById", "notes"
+      "countedById", "notes", "guaranteeSnapshot"
     ) VALUES (
       ${id}, ${currency}, ${expected}, ${params.countedAmount}, ${difference},
-      ${user.id}, ${params.notes?.trim() || null}
+      ${user.id}, ${params.notes?.trim() || null}, ${guaranteeSnapshotJson}::jsonb
     )
   `;
   await recordAudit({
@@ -314,9 +373,17 @@ export async function saveLiveCashAudit(
     entityId: id,
     action: AuditAction.CREAR,
     user,
-    summary: `Auditoría de caja ${currency}: esperado ${expected}, contado ${params.countedAmount}, diferencia ${difference}`,
+    summary:
+      `Arqueo de fondo fijo ${currency}: esperado ${expected}, contado ${params.countedAmount}, diferencia ${difference}` +
+      ` · ${guaranteeSnapshot.length} garantía(s) en efectivo validadas por separado`,
+    after: {
+      fundExpected: expected,
+      fundCounted: params.countedAmount,
+      difference,
+      guarantees: guaranteeSnapshot,
+    },
   });
-  return { expected, difference };
+  return { expected, difference, guaranteeCount: guaranteeSnapshot.length };
 }
 
 export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
@@ -391,11 +458,12 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         difference: Prisma.Decimal;
         countedByName: string;
         notes: string | null;
+        guaranteeSnapshot: Prisma.JsonValue | null;
         createdAt: Date;
       }>
     >`
       SELECT a."id", a."currency", a."expectedAmount", a."countedAmount", a."difference",
-             u."name" AS "countedByName", a."notes", a."createdAt"
+             u."name" AS "countedByName", a."notes", a."guaranteeSnapshot", a."createdAt"
       FROM "CashAudit" a
       JOIN "User" u ON u."id" = a."countedById"
       ORDER BY a."createdAt" DESC
@@ -462,12 +530,30 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       state: row.state,
       createdAt: row.createdAt,
     })),
-    audits: auditRows.map((row) => ({
-      ...row,
-      expectedAmount: decimal(row.expectedAmount),
-      countedAmount: decimal(row.countedAmount),
-      difference: decimal(row.difference),
-    })),
+    audits: auditRows.map((row) => {
+      const guaranteeRows = Array.isArray(row.guaranteeSnapshot)
+        ? row.guaranteeSnapshot.filter(
+            (item): item is Prisma.JsonObject =>
+              Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+          )
+        : [];
+      const guaranteeAmount = guaranteeRows.reduce(
+        (sum, item) => sum + Number(item.amount ?? 0),
+        0,
+      );
+      return {
+        id: row.id,
+        currency: row.currency,
+        expectedAmount: decimal(row.expectedAmount),
+        countedAmount: decimal(row.countedAmount),
+        difference: decimal(row.difference),
+        countedByName: row.countedByName,
+        notes: row.notes,
+        guaranteeCount: guaranteeRows.length,
+        guaranteeAmount,
+        createdAt: row.createdAt,
+      };
+    }),
   };
 }
 

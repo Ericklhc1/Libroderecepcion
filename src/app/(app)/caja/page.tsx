@@ -9,10 +9,12 @@ import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import {
+  CashDifferenceRegularizationForm,
   CreateCashGuaranteeForm,
   CreateGymPassForm,
   LiveCashAuditForm,
   ManualCashMovementForm,
+  ReclassifyCashMovementDialog,
   ReturnCashGuaranteeForm,
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
@@ -65,6 +67,7 @@ export default async function LiveCashPage({
   const canManual = canManualIn || canManualOut;
   const canAudit = hasPermission(user, 'cash.audit');
   const canCreateGuarantee = hasPermission(user, 'cash.guarantee_in');
+  const canReconcileDifference = hasPermission(user, 'cash.approve');
   const canReturnGuarantee = hasPermission(user, 'cash.guarantee_out');
 
   const matches = (values: Array<string | number | null | undefined>) =>
@@ -172,10 +175,28 @@ export default async function LiveCashPage({
             <CreateGymPassForm defaultServiceDate={todayKey} />
           </Dialog>
 
+          {canReconcileDifference ? (
+            <Dialog
+              title="Regularizar diferencia de Caja"
+              description="Úsalo cuando vuelve dinero que ya debía estar en Caja, o cuando sale un sobrante previamente detectado. Queda auditado sin crear un nuevo saldo esperado."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                  Regularizar diferencia
+                </>
+              }
+            >
+              <CashDifferenceRegularizationForm />
+            </Dialog>
+          ) : null}
+
           {canManual ? (
             <Dialog
               title="Registrar movimiento de Caja"
-              description="Registra un ingreso o egreso real. No requiere reserva, habitación ni estadía."
+              description="Registra un ingreso o egreso operativo nuevo. Si el dinero sólo corrige un faltante o sobrante anterior, usa «Regularizar diferencia»."
               triggerVariant="primary"
               triggerSize="sm"
               width="sm"
@@ -517,6 +538,7 @@ export default async function LiveCashPage({
                       <th className="px-4 py-2 font-medium">Referencia</th>
                       <th className="px-4 py-2 font-medium">Usuario</th>
                       <th className="px-4 py-2 text-right font-medium">Monto</th>
+                      <th className="px-4 py-2 text-right font-medium">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -530,8 +552,15 @@ export default async function LiveCashPage({
                         </td>
                         <td className="px-4 py-2">
                           <span className="font-medium text-petrol-900">
-                            {MOVEMENT_LABEL[movement.kind] ?? human(movement.kind)}
+                            {movement.affectsExpected
+                              ? MOVEMENT_LABEL[movement.kind] ?? human(movement.kind)
+                              : 'Regularización de diferencia'}
                           </span>
+                          {!movement.affectsExpected ? (
+                            <div className="mt-1">
+                              <Badge tone="resuelto">No altera esperado</Badge>
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-2 text-xs text-slate-600">
                           {movement.reference ?? movement.notes ?? '—'}
@@ -548,6 +577,18 @@ export default async function LiveCashPage({
                         >
                           {movement.direction === 'ENTRADA' ? '+' : '−'}
                           {amount(movement.currency, movement.amount)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {canReconcileDifference &&
+                          movement.affectsExpected &&
+                          (movement.kind === 'AJUSTE_ENTRADA' || movement.kind === 'AJUSTE_SALIDA') ? (
+                            <ReclassifyCashMovementDialog
+                              movementId={movement.id}
+                              label={`${movement.currency} ${movement.amount.toLocaleString('es-CL')} · ${movement.reference ?? 'sin referencia'}`}
+                            />
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}

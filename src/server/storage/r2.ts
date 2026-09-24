@@ -31,19 +31,32 @@ function hmac(key: Buffer | string, value: string): Buffer {
 }
 
 function amzDate(now = new Date()): { full: string; day: string } {
-  const iso = now.toISOString().replace(/[:-]|.d{3}/g, '');
-  return { full: iso, day: iso.slice(0, 8) };
+  const full = now
+    .toISOString()
+    .replace(/[:-]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
+  return { full, day: full.slice(0, 8) };
+}
+
+function encodeAws(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 function canonicalPath(bucket: string, key: string): string {
-  const segments = [bucket, ...key.split('/')].map((part) =>
-    encodeURIComponent(part).replace(/%2F/gi, '/'),
-  );
-  return '/' + segments.join('/');
+  return '/' + [bucket, ...key.split('/')].map(encodeAws).join('/');
+}
+
+function signingKey(secret: string, day: string): Buffer {
+  const kDate = hmac(`AWS4${secret}`, day);
+  const kRegion = hmac(kDate, 'auto');
+  const kService = hmac(kRegion, 's3');
+  return hmac(kService, 'aws4_request');
 }
 
 async function signedRequest(
-  method: 'GET' | 'PUT' | 'DELETE',
+  method: 'GET' | 'PUT' | 'DELETE' | 'HEAD',
   key: string,
   body?: Buffer,
   contentType?: string,
@@ -65,7 +78,9 @@ async function signedRequest(
   if (contentType) headerPairs.push(['content-type', contentType]);
   headerPairs.sort(([a], [b]) => a.localeCompare(b));
 
-  const canonicalHeaders = headerPairs.map(([name, value]) => `${name}:${value.trim()}\n`).join('');
+  const canonicalHeaders = headerPairs
+    .map(([name, value]) => `${name}:${value.trim()}\n`)
+    .join('');
   const signedHeaders = headerPairs.map(([name]) => name).join(';');
   const canonicalRequest = [
     method,
@@ -76,9 +91,7 @@ async function signedRequest(
     payloadHash,
   ].join('\n');
 
-  const region = 'auto';
-  const service = 's3';
-  const scope = `${day}/${region}/${service}/aws4_request`;
+  const scope = `${day}/auto/s3/aws4_request`;
   const stringToSign = [
     'AWS4-HMAC-SHA256',
     full,
@@ -86,11 +99,9 @@ async function signedRequest(
     sha256Hex(canonicalRequest),
   ].join('\n');
 
-  const kDate = hmac(`AWS4${current.secretAccessKey}`, day);
-  const kRegion = hmac(kDate, region);
-  const kService = hmac(kRegion, service);
-  const kSigning = hmac(kService, 'aws4_request');
-  const signature = createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  const signature = createHmac('sha256', signingKey(current.secretAccessKey, day))
+    .update(stringToSign)
+    .digest('hex');
 
   const headers = new Headers();
   for (const [name, value] of headerPairs) headers.set(name, value);
@@ -107,6 +118,56 @@ async function signedRequest(
   });
 }
 
+export function createR2PresignedPutUrl(
+  key: string,
+  expiresSeconds = 300,
+): { url: string; expiresAt: string } {
+  const current = config();
+  if (!current) throw new Error('R2 no está configurado.');
+
+  const host = `${current.accountId}.r2.cloudflarestorage.com`;
+  const path = canonicalPath(current.bucket, key);
+  const now = new Date();
+  const { full, day } = amzDate(now);
+  const scope = `${day}/auto/s3/aws4_request`;
+  const expires = Math.min(Math.max(Math.trunc(expiresSeconds), 60), 900);
+
+  const query = new Map<string, string>([
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Credential', `${current.accessKeyId}/${scope}`],
+    ['X-Amz-Date', full],
+    ['X-Amz-Expires', String(expires)],
+    ['X-Amz-SignedHeaders', 'host'],
+  ]);
+  const canonicalQuery = Array.from(query.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => `${encodeAws(name)}=${encodeAws(value)}`)
+    .join('&');
+
+  const canonicalRequest = [
+    'PUT',
+    path,
+    canonicalQuery,
+    `host:${host}\n`,
+    'host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    full,
+    scope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const signature = createHmac('sha256', signingKey(current.secretAccessKey, day))
+    .update(stringToSign)
+    .digest('hex');
+
+  return {
+    url: `https://${host}${path}?${canonicalQuery}&X-Amz-Signature=${signature}`,
+    expiresAt: new Date(now.getTime() + expires * 1000).toISOString(),
+  };
+}
+
 export async function putR2Object(
   key: string,
   bytes: Buffer,
@@ -117,6 +178,10 @@ export async function putR2Object(
     const detail = await response.text().catch(() => '');
     throw new Error(`R2 PUT falló (${response.status}) ${detail.slice(0, 300)}`);
   }
+}
+
+export async function headR2Object(key: string): Promise<Response> {
+  return signedRequest('HEAD', key);
 }
 
 export async function getR2Object(key: string): Promise<Response> {

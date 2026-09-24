@@ -777,8 +777,36 @@ export async function sendChatMessage(
         ? 'GIF · Wikimedia Commons'
         : body?.slice(0, 180) ?? contextLabel ?? 'Compartió un contexto del Libro';
 
+    const mentionedUsernames = extractMentionUsernames(body);
+    const mentionedUsers = mentionedUsernames.length
+      ? await tx.user.findMany({
+          where: {
+            username: { in: mentionedUsernames, mode: 'insensitive' },
+            id: { in: recipients.map((item) => item.userId) },
+            active: true,
+            deletedAt: null,
+          },
+          select: { id: true, username: true },
+        })
+      : [];
+    const mentionedIds = new Set(mentionedUsers.map((item) => item.id));
+
     for (const recipient of recipients) {
       if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+
+      if (mentionedIds.has(recipient.userId)) {
+        await tx.notification.create({
+          data: {
+            userId: recipient.userId,
+            type: NotificationType.MENCION,
+            title: `${user.name} te mencionó en ${conversation.title?.trim() || 'el chat'}`,
+            body: body?.slice(0, 180) ?? 'Te mencionaron en una conversación.',
+            link: `/?chat=${conversation.id}`,
+            entity: 'ChatConversation',
+            entityId: conversation.id,
+          },
+        });
+      }
 
       const existing = await tx.notification.findFirst({
         where: {
@@ -821,6 +849,167 @@ export async function sendChatMessage(
   });
 
   return result;
+}
+
+
+function extractMentionUsernames(body: string | null): string[] {
+  if (!body) return [];
+  const usernames = new Set<string>();
+  const pattern = /(^|\s)@([A-Za-z0-9._-]{2,40})\b/g;
+  for (const match of body.matchAll(pattern)) {
+    const username = match[2]?.trim();
+    if (username) usernames.add(username.toLocaleLowerCase('es-CL'));
+  }
+  return Array.from(usernames);
+}
+
+export async function toggleChatReaction(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string; emoji: string },
+) {
+  await assertParticipant(user, input.conversationId);
+  const emoji = input.emoji.trim().slice(0, 16);
+  if (!emoji) throw new RuleError('Selecciona una reacción.');
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje ya no está disponible.');
+
+  const existing = await prisma.chatReaction.findUnique({
+    where: {
+      messageId_userId_emoji: {
+        messageId: message.id,
+        userId: user.id,
+        emoji,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.chatReaction.delete({ where: { id: existing.id } });
+    return { active: false };
+  }
+
+  await prisma.chatReaction.create({
+    data: {
+      messageId: message.id,
+      userId: user.id,
+      emoji,
+    },
+  });
+  return { active: true };
+}
+
+export async function toggleSavedChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string },
+) {
+  await assertParticipant(user, input.conversationId);
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje ya no está disponible.');
+
+  const key = { userId_messageId: { userId: user.id, messageId: message.id } };
+  const existing = await prisma.chatSavedMessage.findUnique({
+    where: key,
+    select: { userId: true },
+  });
+
+  if (existing) {
+    await prisma.chatSavedMessage.delete({ where: key });
+    return { saved: false };
+  }
+
+  await prisma.chatSavedMessage.create({
+    data: { userId: user.id, messageId: message.id },
+  });
+  return { saved: true };
+}
+
+export async function setChatTyping(
+  user: CurrentUser,
+  input: { conversationId: string; active: boolean },
+) {
+  await assertParticipant(user, input.conversationId);
+
+  if (!input.active) {
+    await prisma.chatTyping.deleteMany({
+      where: { conversationId: input.conversationId, userId: user.id },
+    });
+    return { active: false };
+  }
+
+  await prisma.chatTyping.upsert({
+    where: {
+      conversationId_userId: {
+        conversationId: input.conversationId,
+        userId: user.id,
+      },
+    },
+    create: {
+      conversationId: input.conversationId,
+      userId: user.id,
+    },
+    update: {
+      updatedAt: new Date(),
+    },
+  });
+
+  return { active: true };
+}
+
+export async function listSavedChatMessages(user: CurrentUser) {
+  assertChatActor(user);
+  const rows = await prisma.chatSavedMessage.findMany({
+    where: {
+      userId: user.id,
+      message: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: { some: { userId: user.id, leftAt: null } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: {
+      message: {
+        include: {
+          sender: { select: { name: true } },
+          conversation: { select: { id: true, title: true, type: true } },
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    conversationId: row.message.conversation.id,
+    conversationTitle:
+      row.message.conversation.type === ChatConversationType.GRUPO
+        ? row.message.conversation.title?.trim() || 'Grupo'
+        : row.message.sender.name,
+    senderName: row.message.sender.name,
+    body: row.message.body,
+    kind: row.message.kind,
+    createdAt: row.message.createdAt.toISOString(),
+    savedAt: row.createdAt.toISOString(),
+  }));
 }
 
 export async function markChatConversationRead(user: CurrentUser, conversationId: string) {

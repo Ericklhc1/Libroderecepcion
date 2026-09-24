@@ -1,7 +1,10 @@
 'use client';
 
+import { useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2 } from 'lucide-react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
-import { SubmitButton } from '@/components/ui/button';
+import { Button, SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
   createCashDifferenceRegularizationAction,
@@ -342,23 +345,44 @@ export function CreateCashGuaranteeForm() {
   );
 }
 
+type CashAuditGuarantee = {
+  id: string;
+  amount: number;
+  guestName: string | null;
+  roomNumber: string | null;
+  reference: string | null;
+};
+
+type CashAuditDenomination = {
+  id: string;
+  value: number;
+  medium: 'BILLETE' | 'MONEDA';
+};
+
 export function LiveCashAuditForm({
   currency,
   denominations,
   guarantees,
+  onSuccess,
 }: {
   currency: string;
-  denominations: Array<{ id: string; value: number; medium: 'BILLETE' | 'MONEDA' }>;
-  guarantees: Array<{
-    id: string;
-    amount: number;
-    guestName: string | null;
-    roomNumber: string | null;
-    reference: string | null;
-  }>;
+  denominations: CashAuditDenomination[];
+  guarantees: CashAuditGuarantee[];
+  onSuccess?: (state: { ok: true; message: string; id?: string }) => void;
 }) {
+  const [validatedIds, setValidatedIds] = useState<Set<string>>(() => new Set());
   const bills = denominations.filter((row) => row.medium === 'BILLETE');
   const coins = denominations.filter((row) => row.medium === 'MONEDA');
+  const allGuaranteesValidated = validatedIds.size === guarantees.length;
+
+  function toggleGuarantee(id: string) {
+    setValidatedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const rows = (items: typeof denominations, label: string) =>
     items.length ? (
@@ -394,7 +418,12 @@ export function LiveCashAuditForm({
     ) : null;
 
   return (
-    <ActionForm action={saveLiveCashAuditAction} className="space-y-3" resetOnSuccess>
+    <ActionForm
+      action={saveLiveCashAuditAction}
+      className="space-y-3"
+      hideSuccess
+      onSuccess={onSuccess}
+    >
       <input type="hidden" name="currency" value={currency} />
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
         Cuenta por billetes y monedas únicamente el fondo fijo. No incluyas aquí dinero de garantías.
@@ -415,30 +444,53 @@ export function LiveCashAuditForm({
         {guarantees.length === 0 ? (
           <p className="px-3 py-3 text-sm text-slate-500">No hay garantías vigentes en {currency}.</p>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {guarantees.map((guarantee) => (
-              <label key={guarantee.id} className="flex cursor-pointer items-start gap-3 px-3 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  name={`g_${guarantee.id}`}
-                  value="1"
-                  required
-                  className="mt-1 h-4 w-4 rounded border-slate-300"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-petrol-900">
-                    {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
-                    {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
-                  </span>
-                  <span className="block text-xs tabular text-slate-500">
-                    {currency} {guarantee.amount.toLocaleString('es-CL')}
-                    {guarantee.reference ? ` · ${guarantee.reference}` : ''}
-                  </span>
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Validar</span>
-              </label>
-            ))}
-          </div>
+          <>
+            <div className="divide-y divide-slate-100">
+              {guarantees.map((guarantee) => {
+                const validated = validatedIds.has(guarantee.id);
+                return (
+                  <div
+                    key={guarantee.id}
+                    className={`flex items-start gap-3 px-3 py-3 text-sm ${validated ? 'bg-emerald-50/60' : 'bg-white'}`}
+                  >
+                    {validated ? (
+                      <input type="hidden" name={`g_${guarantee.id}`} value="1" />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-petrol-900">
+                        {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
+                        {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
+                      </p>
+                      <p className="text-xs tabular text-slate-500">
+                        {currency} {guarantee.amount.toLocaleString('es-CL')}
+                        {guarantee.reference ? ` · ${guarantee.reference}` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={validated ? 'secondary' : 'gold'}
+                      aria-pressed={validated}
+                      onClick={() => toggleGuarantee(guarantee.id)}
+                      className={validated ? 'text-emerald-800 ring-emerald-300' : undefined}
+                    >
+                      {validated ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          Validada
+                        </>
+                      ) : (
+                        'Validar'
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="border-t border-gold-100 bg-gold-50/60 px-3 py-2 text-xs font-medium text-slate-600">
+              {validatedIds.size} de {guarantees.length} garantías validadas.
+            </p>
+          </>
         )}
       </fieldset>
 
@@ -448,10 +500,91 @@ export function LiveCashAuditForm({
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
         El descuadre se calcula únicamente sobre el fondo fijo. Las garantías quedan registradas como validaciones independientes del mismo arqueo.
       </p>
-      <div className="flex justify-end">
-        <SubmitButton pendingLabel="Arqueando…">Guardar arqueo</SubmitButton>
+      <div className="flex items-center justify-between gap-3">
+        {guarantees.length > 0 && !allGuaranteesValidated ? (
+          <p className="text-xs text-slate-500">Valida todas las garantías para continuar.</p>
+        ) : (
+          <span />
+        )}
+        <SubmitButton pendingLabel="Arqueando…" disabled={!allGuaranteesValidated}>
+          Guardar arqueo
+        </SubmitButton>
       </div>
     </ActionForm>
+  );
+}
+
+export function LiveCashAuditDialog({
+  currency,
+  fund,
+  denominations,
+  guarantees,
+}: {
+  currency: string;
+  fund: number;
+  denominations: CashAuditDenomination[];
+  guarantees: CashAuditGuarantee[];
+}) {
+  const router = useRouter();
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const handleSuccess = useCallback((state: { ok: true; message: string }) => {
+    setSuccessMessage(state.message);
+    setAuditOpen(false);
+    setSuccessOpen(true);
+  }, []);
+
+  function acceptSuccess() {
+    setSuccessOpen(false);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <Dialog
+        open={auditOpen}
+        onOpenChange={setAuditOpen}
+        title={`Arquear Caja ${currency}`}
+        description={`Fondo fijo esperado: ${currency} ${fund.toLocaleString('es-CL')}. Las denominaciones validan sólo el fondo fijo; las garantías se confirman aparte.`}
+        triggerVariant="secondary"
+        triggerSize="sm"
+        width="sm"
+        trigger={
+          <>
+            <span aria-hidden="true">💵</span>
+            Generar arqueo
+          </>
+        }
+      >
+        <LiveCashAuditForm
+          currency={currency}
+          denominations={denominations}
+          guarantees={guarantees}
+          onSuccess={handleSuccess}
+        />
+      </Dialog>
+
+      <Dialog
+        open={successOpen}
+        onOpenChange={setSuccessOpen}
+        dismissible={false}
+        title="Arqueo guardado correctamente"
+        description="La Caja fue actualizada con el nuevo arqueo."
+        width="sm"
+      >
+        <div className="space-y-4 text-center">
+          <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
+          <p className="text-sm text-slate-600" role="status">{successMessage}</p>
+          <div className="flex justify-center">
+            <Button type="button" variant="gold" onClick={acceptSuccess}>
+              Aceptar
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

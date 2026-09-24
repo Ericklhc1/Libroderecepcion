@@ -561,20 +561,53 @@ export function ChatWidget({
     setUploading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.set('file', file);
-      if (text) form.set('body', text);
-      if (quotedId) form.set('replyToId', quotedId);
-      const response = await fetch(
-        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments`,
-        { method: 'POST', body: form },
+      const init = await requestJson<{
+        storageKey: string;
+        uploadUrl: string;
+        fileName: string;
+        mimeType: string;
+        size: number;
+        expiresAt: string;
+      }>(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments/init`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            size: file.size,
+          }),
+        },
       );
-      if (response.status === 401) {
-        window.location.assign('/login');
-        return;
+
+      const upload = await fetch(init.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': init.mimeType },
+        body: file,
+      });
+      if (!upload.ok) {
+        throw new Error(
+          upload.status === 403
+            ? 'R2 rechazó la subida. Revisa el CORS del bucket.'
+            : `R2 no pudo recibir el archivo (${upload.status}).`,
+        );
       }
-      const payload = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'No se pudo subir el archivo.');
+
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            storageKey: init.storageKey,
+            fileName: init.fileName,
+            mimeType: init.mimeType,
+            size: init.size,
+            body: text || null,
+            replyToId: quotedId || null,
+          }),
+        },
+      );
+
       await loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
     } catch (cause) {
@@ -589,12 +622,47 @@ export function ChatWidget({
     setUploading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.set('file', file);
-      form.set('conversationId', selectedId);
-      const response = await fetch('/api/chat/stickers', { method: 'POST', body: form });
-      const payload = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'No se pudo crear el sticker.');
+      const init = await requestJson<{
+        storageKey: string;
+        uploadUrl: string;
+        fileName: string;
+        mimeType: string;
+        size: number;
+        expiresAt: string;
+      }>('/api/chat/stickers/init', {
+        method: 'POST',
+        body: JSON.stringify({
+          conversationId: selectedId,
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          size: file.size,
+        }),
+      });
+
+      const upload = await fetch(init.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': init.mimeType },
+        body: file,
+      });
+      if (!upload.ok) {
+        throw new Error(
+          upload.status === 403
+            ? 'R2 rechazó el sticker. Revisa el CORS del bucket.'
+            : `R2 no pudo recibir el sticker (${upload.status}).`,
+        );
+      }
+
+      await requestJson('/api/chat/stickers', {
+        method: 'POST',
+        body: JSON.stringify({
+          conversationId: selectedId,
+          storageKey: init.storageKey,
+          fileName: init.fileName,
+          mimeType: init.mimeType,
+          size: init.size,
+        }),
+      });
+
       await loadStickerLibrary();
       setStickersOpen(true);
       setStickerTab('mine');

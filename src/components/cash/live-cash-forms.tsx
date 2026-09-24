@@ -132,7 +132,7 @@ export function ManualCashMovementForm({
         label="Concepto"
         name="reference"
         required
-        hint="Ej.: cambio para Caja, reembolso, compra menor o diferencia autorizada."
+        hint="Ej.: cambio para Caja, reembolso o compra menor. No uses esta opción para devolver un faltante anterior."
       >
         <Input
           name="reference"
@@ -147,7 +147,7 @@ export function ManualCashMovementForm({
       </Field>
 
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        El movimiento queda ligado al usuario y a Auditoría. Si no existe turno abierto, se registra igual y Supervisión recibe una alerta crítica. No necesita reserva, habitación ni estadía.
+        El movimiento queda ligado al usuario y a Auditoría. Ingreso/egreso cambia el efectivo esperado. Si el dinero sólo corrige un faltante o sobrante previo, usa «Regularizar diferencia».
       </p>
 
       <div className="flex justify-end">

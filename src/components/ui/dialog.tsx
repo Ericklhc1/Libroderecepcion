@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -51,10 +51,13 @@ export function Dialog({
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
-  const setOpen = (next: boolean) => {
-    if (controlledOpen === undefined) setInternalOpen(next);
-    onOpenChange?.(next);
-  };
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (controlledOpen === undefined) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [controlledOpen, onOpenChange],
+  );
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +79,7 @@ export function Dialog({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, dismissible]);
+  }, [open, dismissible, setOpen]);
 
   const overlay = (
     <div

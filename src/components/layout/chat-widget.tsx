@@ -2193,7 +2193,7 @@ export function ChatWidget({
               </div>
             ) : null}
 
-            {mentionState && mentionState.candidates.length > 0 ? (
+            {mentionState && (mentionState.candidates.length > 0 || snapshot?.type === 'GRUPO') ? (
               <div className="mb-2 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200">
                 <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
                   <AtSign className="h-3.5 w-3.5" aria-hidden="true" />

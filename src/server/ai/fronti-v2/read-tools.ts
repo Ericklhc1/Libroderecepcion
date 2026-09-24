@@ -1,7 +1,6 @@
 import 'server-only';
 
 import {
-  AlertStatus,
   FollowUpStatus,
   SupervisionVisibility,
 } from '@prisma/client';

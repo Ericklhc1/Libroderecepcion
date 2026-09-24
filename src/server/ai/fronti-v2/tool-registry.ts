@@ -129,6 +129,185 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
   },
   {
     type: 'function',
+    name: 'consultar_turnos',
+    description:
+      'Consulta el turno propio, participantes, entregas pendientes y turnos esperando recepción. Úsala para preguntas sobre quién está en turno, qué turno está abierto o qué entrega falta recibir.',
+    strict: true,
+    mode: 'read',
+    area: 'turnos',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_novedades',
+    description:
+      'Consulta novedades e incidencias del Libro con responsable, prioridad, estado, habitación y vencimiento. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'novedades',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        onlyOpen: {
+          type: 'boolean',
+          description: 'true para devolver sólo registros abiertos; false para incluir cerrados recientes.',
+        },
+      },
+      required: ['limit', 'onlyOpen'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_garantias',
+    description:
+      'Consulta garantías abiertas con referencia, habitación, huésped, estado, monto, divisa y fecha objetivo. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'caja',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+      required: ['limit'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_tareas',
+    description:
+      'Consulta tareas abiertas. Puede limitarse a las tareas del usuario o, si sus permisos lo permiten, mostrar las abiertas del equipo.',
+    strict: true,
+    mode: 'read',
+    area: 'tareas',
+    parameters: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', enum: ['mias', 'abiertas'] },
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+      required: ['scope', 'limit'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_seguimientos',
+    description:
+      'Consulta seguimientos operativos visibles para el usuario, respetando la privacidad de Supervisión.',
+    strict: true,
+    mode: 'read',
+    area: 'seguimientos',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        onlyOpen: { type: 'boolean' },
+      },
+      required: ['limit', 'onlyOpen'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_supervision',
+    description:
+      'Consulta el panorama de Supervisión o el Centro de Supervisión según los permisos de la cuenta. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'supervision',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_alertas',
+    description:
+      'Consulta alertas operativas vivas con nivel, estado, origen y vencimiento. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'alertas',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+      required: ['limit'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_auditoria',
+    description:
+      'Consulta la trazabilidad reciente del sistema. Requiere permiso de auditoría y nunca expone secretos ni credenciales.',
+    strict: true,
+    mode: 'read',
+    area: 'auditoria',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        entity: {
+          type: ['string', 'null'],
+          description: 'Entidad exacta a filtrar, o null para auditoría reciente general.',
+        },
+      },
+      required: ['limit', 'entity'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_usuarios',
+    description:
+      'Consulta usuarios operativos y roles. Las cuentas inactivas sólo se incluyen si quien pregunta administra usuarios.',
+    strict: true,
+    mode: 'read',
+    area: 'usuarios',
+    parameters: {
+      type: 'object',
+      properties: {
+        includeInactive: { type: 'boolean' },
+      },
+      required: ['includeInactive'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_configuracion_operativa',
+    description:
+      'Consulta parámetros configurables del Libro. Sólo está disponible para quien tenga permiso de configuración del sistema y no expone credenciales.',
+    strict: true,
+    mode: 'read',
+    area: 'configuracion',
+    parameters: {
+      type: 'object',
+      properties: {
+        category: {
+          type: ['string', 'null'],
+          description: 'Categoría exacta de configuración o null para todas.',
+        },
+      },
+      required: ['category'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'proponer_checkouts',
     description:
       'Prepara la confirmación de salida de una o más habitaciones. Nunca afirmes que el check-out fue realizado hasta que el usuario confirme la tarjeta de acción.',
@@ -305,6 +484,16 @@ const ALWAYS_AVAILABLE = new Set([
   'consultar_estado_operativo',
   'consultar_caja',
   'consultar_llaves',
+  'consultar_turnos',
+  'consultar_novedades',
+  'consultar_garantias',
+  'consultar_tareas',
+  'consultar_seguimientos',
+  'consultar_supervision',
+  'consultar_alertas',
+  'consultar_auditoria',
+  'consultar_usuarios',
+  'consultar_configuracion_operativa',
   'reportar_hallazgo',
   'proponer_registro',
   'proponer_resolver_tarea',

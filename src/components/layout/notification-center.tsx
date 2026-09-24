@@ -201,7 +201,7 @@ export function NotificationCenter({
 
       lastKeepAliveAt.current = now;
       try {
-        const response = await fetch('/api/asistente?heartbeat=1&active=1', {
+        const response = await fetch('/api/session/heartbeat', {
           cache: 'no-store',
         });
         if (response.status === 401) window.location.assign('/login');

@@ -24,6 +24,10 @@ import {
 import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import { canUseFronti } from '@/server/ai/fronti-access';
+import {
+  buildFrontiRuntimeContext,
+  runtimeContextMessage,
+} from '@/server/ai/fronti-v2/context-builder';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export const runtime = 'nodejs';
@@ -37,6 +41,9 @@ const requestSchema = z
     pageContext: z
       .object({
         pathname: z.string().trim().min(1).max(500),
+        entityType: z.string().trim().max(120).nullable().optional(),
+        entityId: z.string().trim().max(200).nullable().optional(),
+        label: z.string().trim().max(300).nullable().optional(),
       })
       .optional(),
   })
@@ -199,7 +206,20 @@ export async function POST(request: Request) {
     }
 
     const context = await prepareAssistantContext(user, rawMessage);
-    const sharedShiftMemory = await getSharedShiftMemoryContext(user);
+    const [sharedShiftMemory, runtimeContext] = await Promise.all([
+      getSharedShiftMemoryContext(user),
+      buildFrontiRuntimeContext(
+        user,
+        body.pageContext
+          ? {
+              pathname: body.pageContext.pathname,
+              entityType: body.pageContext.entityType ?? null,
+              entityId: body.pageContext.entityId ?? null,
+              label: body.pageContext.label ?? null,
+            }
+          : null,
+      ),
+    ]);
     const lastMessage = context.messages[context.messages.length - 1];
 
     const contextualMessages = sharedShiftMemory && lastMessage
@@ -218,26 +238,22 @@ export async function POST(request: Request) {
     const identity = {
       role: 'assistant' as const,
       content:
-        `Tu nombre visible es ${config.displayName}. Eres el asistente operativo de Recepción del Hotel HW Libertad. ` +
+        `Tu nombre visible es ${config.displayName}. Eres FRONTI v2 alpha, el agente operativo contextual del Libro de Recepción del Hotel HW Libertad. ` +
         `Si el usuario pregunta quién eres o cómo te llamas, responde que eres ${config.displayName}. ` +
+        'Puedes encadenar varias herramientas antes de responder. No abandones una consulta sólo porque la primera herramienta no sea suficiente: usa las capacidades disponibles para reunir la evidencia necesaria. ' +
         'Mantén un tono claro, breve, amable y operativo. La memoria es contexto y nunca sustituye el estado real del Libro.',
     };
 
-    const pageContext = body.pageContext?.pathname
-      ? {
-          role: 'assistant' as const,
-          content:
-            'Contexto efímero de la pantalla actual (no es fuente de verdad): ' +
-            JSON.stringify({ pathname: body.pageContext.pathname }) +
-            '. Úsalo para entender referencias como «esta habitación» o «esta tarea» y verifica la entidad con herramientas antes de escribir.',
-        }
-      : null;
+    const runtime = {
+      role: 'assistant' as const,
+      content: runtimeContextMessage(runtimeContext),
+    };
 
     const modelMessages = [
       identity,
-      ...(pageContext ? [pageContext] : []),
+      runtime,
       ...contextualMessages,
-    ].slice(-(config.modelHistoryLimit + 4));
+    ].slice(-(config.modelHistoryLimit + 5));
     const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);

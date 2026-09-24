@@ -8,7 +8,78 @@ import {
   resetFrontiSettingsAction,
   saveFrontiProviderCredentialAction,
   saveFrontiSettingAction,
+  setFrontiUserAccessAction,
 } from '@/server/actions/fronti';
+
+export type FrontiUserAccessRow = {
+  id: string;
+  name: string;
+  username: string;
+  roleName: string;
+  active: boolean;
+  enabled: boolean;
+  alwaysEnabled: boolean;
+};
+
+export function FrontiUserAccessList({
+  users,
+}: {
+  users: FrontiUserAccessRow[];
+}) {
+  return (
+    <div className="divide-y divide-slate-100">
+      {users.map((user) => (
+        <div
+          key={user.id}
+          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium text-petrol-900">{user.name}</p>
+              <span className="text-sm font-medium text-petrol-600">@{user.username}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-medium text-slate-600">
+                {user.roleName}
+              </span>
+              {!user.active ? (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-medium text-slate-500">
+                  Cuenta inactiva
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {user.alwaysEnabled
+                ? 'Fronti permanece siempre disponible para esta cuenta.'
+                : user.enabled
+                  ? 'Incluido en el despliegue gradual de Fronti.'
+                  : 'Fronti no se muestra ni acepta solicitudes de esta cuenta.'}
+            </p>
+          </div>
+
+          {user.alwaysEnabled ? (
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+              Siempre activo
+            </span>
+          ) : (
+            <ActionForm action={setFrontiUserAccessAction} className="flex items-end gap-2 space-y-0">
+              <input type="hidden" name="userId" value={user.id} />
+              <select
+                name="enabled"
+                defaultValue={user.enabled ? 'true' : 'false'}
+                className="input-base min-w-[9rem]"
+              >
+                <option value="true">Activado</option>
+                <option value="false">Desactivado</option>
+              </select>
+              <SubmitButton size="sm" variant="secondary" pendingLabel="Guardando…">
+                Guardar
+              </SubmitButton>
+            </ActionForm>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export type FrontiSettingRow = {
   key: string;

@@ -45,7 +45,18 @@ import {
 import { playChime } from '@/components/layout/notification-chime';
 
 type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile' | 'settings';
-type HomeTab = 'chats' | 'online' | 'groups';
+type HomeTab = 'chats' | 'online' | 'groups' | 'saved';
+
+type SavedChatItem = {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  senderName: string;
+  body: string | null;
+  kind: string;
+  createdAt: string;
+  savedAt: string;
+};
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -156,6 +167,8 @@ export function ChatWidget({
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('list');
   const [homeTab, setHomeTab] = useState<HomeTab>('chats');
+  const [savedItems, setSavedItems] = useState<SavedChatItem[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
   const [bootstrap, setBootstrap] = useState<ChatBootstrap | null>(null);
   const [snapshot, setSnapshot] = useState<ChatConversationSnapshot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -476,6 +489,19 @@ export function ChatWidget({
     return { start, candidates };
   }, [body, currentUserId, snapshot?.participants]);
 
+
+  async function loadSavedMessages() {
+    setSavedLoading(true);
+    try {
+      const data = await requestJson<{ items: SavedChatItem[] }>('/api/chat/saved');
+      setSavedItems(data.items);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudieron cargar los mensajes guardados.');
+      setSavedItems([]);
+    } finally {
+      setSavedLoading(false);
+    }
+  }
 
   async function loadStickerLibrary() {
     try {
@@ -1058,6 +1084,17 @@ export function ChatWidget({
                 : 'Mensajería interna del Libro'}
           </p>
         </div>
+        {view === 'conversation' && snapshot?.type === 'GRUPO' ? (
+          <button
+            type="button"
+            onClick={openGroupSettings}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Información del grupo"
+            title="Información del grupo"
+          >
+            <Users className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
         {view === 'conversation' ? (
           <button
             type="button"
@@ -1132,6 +1169,7 @@ export function ChatWidget({
                 ['chats', 'CHATS'],
                 ['online', 'EN LÍNEA'],
                 ['groups', 'GRUPOS'],
+                ['saved', '★ GUARDADOS'],
               ] as const).map(([tab, label]) => (
                 <button
                   key={tab}
@@ -1139,6 +1177,7 @@ export function ChatWidget({
                   onClick={() => {
                     setHomeTab(tab);
                     setQuery('');
+                    if (tab === 'saved') void loadSavedMessages();
                   }}
                   className={`flex-1 rounded-lg px-2 py-2 text-[0.7rem] font-bold tracking-wide ${
                     homeTab === tab
@@ -1157,7 +1196,13 @@ export function ChatWidget({
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={homeTab === 'online' ? 'Buscar persona…' : 'Buscar conversación…'}
+                  placeholder={
+                    homeTab === 'online'
+                      ? 'Buscar persona…'
+                      : homeTab === 'saved'
+                        ? 'Buscar guardados…'
+                        : 'Buscar conversación…'
+                  }
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400 focus:bg-white"
                 />
               </label>
@@ -1233,6 +1278,69 @@ export function ChatWidget({
                     </span>
                   </button>
                 ))
+              )
+            ) : homeTab === 'saved' ? (
+              savedLoading ? (
+                <p className="p-6 text-center text-sm text-slate-500">Cargando guardados…</p>
+              ) : savedItems.filter((item) => {
+                  const needle = query.trim().toLocaleLowerCase('es-CL');
+                  if (!needle) return true;
+                  return [item.body, item.senderName, item.conversationTitle]
+                    .filter(Boolean)
+                    .some((value) => String(value).toLocaleLowerCase('es-CL').includes(needle));
+                }).length === 0 ? (
+                <div className="p-8 text-center">
+                  <Star className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                  <p className="mt-2 text-sm font-medium text-slate-700">No hay mensajes guardados</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Usa la estrella de cualquier mensaje para encontrarlo aquí después.
+                  </p>
+                </div>
+              ) : (
+                savedItems
+                  .filter((item) => {
+                    const needle = query.trim().toLocaleLowerCase('es-CL');
+                    if (!needle) return true;
+                    return [item.body, item.senderName, item.conversationTitle]
+                      .filter(Boolean)
+                      .some((value) => String(value).toLocaleLowerCase('es-CL').includes(needle));
+                  })
+                  .map((item) => (
+                    <button
+                      key={item.messageId}
+                      type="button"
+                      onClick={async () => {
+                        await loadConversation(item.conversationId);
+                        window.setTimeout(() => {
+                          document.querySelector(`[data-chat-message-id="${item.messageId}"]`)?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center',
+                          });
+                        }, 100);
+                      }}
+                      className="flex w-full gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-50 text-gold-700">
+                        <Star className="h-4 w-4 fill-current" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+                            {item.conversationTitle}
+                          </span>
+                          <span className="shrink-0 text-[0.66rem] text-slate-400">
+                            {relativeActivity(item.savedAt)}
+                          </span>
+                        </span>
+                        <span className="block truncate text-xs font-medium text-petrol-700">
+                          {item.senderName}
+                        </span>
+                        <span className="mt-0.5 block line-clamp-2 text-xs text-slate-500">
+                          {item.body || (item.kind === 'GIF' ? 'GIF' : item.kind === 'STICKER' ? 'Sticker' : 'Mensaje')}
+                        </span>
+                      </span>
+                    </button>
+                  ))
               )
             ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center">
@@ -1701,7 +1809,11 @@ export function ChatWidget({
                     : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
 
                 return (
-                  <div key={message.id} className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={message.id}
+                    data-chat-message-id={message.id}
+                    className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}
+                  >
                     <div className="max-w-[88%] sm:max-w-[84%]">
                       <div className={bubbleClass}>
                         {!mine && !sticker && !gif ? (

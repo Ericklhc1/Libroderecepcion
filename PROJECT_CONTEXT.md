@@ -610,8 +610,17 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
 - **PMS e inventario tienen cobertura funcional e invariantes auditables.** El
   estado y los conteos concretos de Production pertenecen al control operativo
   privado y no se documentan en el repositorio público.
-- `Attachment` existe en el esquema sin ninguna implementación, y no hay
-  almacenamiento de archivos definido (FASE G).
+- **Chat v1.9:** `Attachment` ya tiene implementación para mensajería. Los
+  binarios viven en **Cloudflare R2 privado** y el navegador sube directamente
+  mediante URL temporal firmada; Neon conserva sólo metadatos. La descarga
+  vuelve a pasar por una ruta autenticada del Libro que comprueba pertenencia
+  a la conversación. Sin las variables R2 configuradas, la mensajería de texto
+  sigue operativa y la subida binaria se mantiene deshabilitada.
+- El chat incluye directos/grupos, presencia y estado de turno, respuestas,
+  reacciones, guardados, búsqueda, escritura en curso, recibos de lectura,
+  @menciones (incluidos `@todos` y `@turno`), GIF con Tenor opcional y
+  Wikimedia como respaldo, stickers de imágenes, capturas pegadas/arrastradas,
+  archivos y notas de voz.
 - Sin dominio propio del hotel.
 - No existe una prueba de navegador autenticada en CI. La compuerta cubre
   servicios, dominio, base real efímera, tipos y build; Production comprueba

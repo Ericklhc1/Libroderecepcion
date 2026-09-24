@@ -660,7 +660,7 @@ export async function receiveShiftCash(
     shiftId: string;
     handoverId: string;
     quantities: Record<string, number>;
-    guaranteeIds: string[];
+    guaranteeIds?: string[];
     notes?: string | null;
   },
 ): Promise<{

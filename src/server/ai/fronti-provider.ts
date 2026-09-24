@@ -110,6 +110,60 @@ export type FrontiToolDefinition = {
   };
 };
 
+export function normalizeFrontiToolsForProvider(
+  provider: FrontiProviderName,
+  tools?: FrontiToolDefinition[],
+): FrontiToolDefinition[] | undefined {
+  if (!tools?.length || provider !== 'groq') return tools;
+
+  return tools.map((tool) => {
+    const parameters = tool.function.parameters;
+    const properties =
+      parameters.properties &&
+      typeof parameters.properties === 'object' &&
+      !Array.isArray(parameters.properties)
+        ? (parameters.properties as Record<string, unknown>)
+        : null;
+
+    if (
+      parameters.type !== 'object' ||
+      !properties ||
+      Object.keys(properties).length > 0
+    ) {
+      return tool;
+    }
+
+    /*
+     * Groq rechaza schemas estrictos de herramientas sin argumentos aunque
+     * properties: {} sea JSON Schema válido: lo reporta como si
+     * properties faltara. Se añade un marcador técnico obligatorio que el
+     * ejecutor ignora. Así las herramientas semánticamente sin argumentos
+     * siguen siéndolo para FRONTI, pero el transporte cumple el validador de
+     * Groq. Se aplica en la capa del proveedor para proteger también futuras
+     * herramientas vacías.
+     */
+    return {
+      ...tool,
+      function: {
+        ...tool.function,
+        parameters: {
+          ...parameters,
+          properties: {
+            _fronti: {
+              type: 'string',
+              enum: ['current'],
+              description:
+                'Marcador interno del Libro para herramientas sin argumentos. Usa siempre "current".',
+            },
+          },
+          required: ['_fronti'],
+          additionalProperties: false,
+        },
+      },
+    };
+  });
+}
+
 export type FrontiToolCall = {
   id: string;
   type: 'function';
@@ -253,6 +307,11 @@ export async function chatWithFrontiProvider(args: {
     throw new FrontiProviderError('SIN_CLAVE');
   }
 
+  const transportTools = normalizeFrontiToolsForProvider(
+    args.provider.provider,
+    args.tools,
+  );
+
   let response: Response;
   try {
     response = await fetch(`${args.provider.baseUrl}/chat/completions`, {
@@ -266,8 +325,8 @@ export async function chatWithFrontiProvider(args: {
       body: JSON.stringify({
         model: args.provider.model,
         messages: args.messages,
-        tools: args.tools?.length ? args.tools : undefined,
-        tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
+        tools: transportTools?.length ? transportTools : undefined,
+        tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
         parallel_tool_calls: false,
         ...(args.provider.provider === 'groq' &&
         args.provider.model.startsWith('openai/gpt-oss-')

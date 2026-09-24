@@ -102,7 +102,7 @@ async function signedRequest(
   return fetch(url, {
     method,
     headers,
-    body: method === 'PUT' ? body : undefined,
+    body: method === 'PUT' && body ? new Uint8Array(body) : undefined,
     cache: 'no-store',
   });
 }

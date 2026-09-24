@@ -216,7 +216,8 @@ function authHeaders(apiKey: string | null): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-const MAX_RATE_LIMIT_RETRY_MS = 12_500;
+const MAX_RATE_LIMIT_RETRY_MS = 5_000;
+const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b';
 
 function retryAfterMs(response: Response): number | null {
   const raw = response.headers.get('retry-after');
@@ -263,6 +264,7 @@ export async function chatWithFrontiProvider(args: {
   text: string;
   toolCalls: FrontiToolCall[];
   assistantMessage: FrontiChatMessage;
+  modelUsed: string;
 }> {
   if (!providerIsConfigured(args.provider)) {
     throw new FrontiProviderError('SIN_CLAVE');
@@ -273,25 +275,25 @@ export async function chatWithFrontiProvider(args: {
     args.tools,
   );
 
-  const requestBody = JSON.stringify({
-    model: args.provider.model,
-    messages: args.messages,
-    tools: transportTools?.length ? transportTools : undefined,
-    tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
-    parallel_tool_calls: false,
-    ...(args.provider.provider === 'groq' &&
-    args.provider.model.startsWith('openai/gpt-oss-')
-      ? {
-          reasoning_effort: args.provider.reasoningEffort,
-          reasoning_format: 'hidden',
-        }
-      : {}),
-  });
+  const buildRequestBody = (model: string) =>
+    JSON.stringify({
+      model,
+      messages: args.messages,
+      tools: transportTools?.length ? transportTools : undefined,
+      tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
+      parallel_tool_calls: false,
+      ...(args.provider.provider === 'groq' &&
+      model.startsWith('openai/gpt-oss-')
+        ? {
+            reasoning_effort: args.provider.reasoningEffort,
+            reasoning_format: 'hidden',
+          }
+        : {}),
+    });
 
-  let response: Response;
-  for (let attempt = 0; ; attempt += 1) {
+  const performRequest = async (model: string): Promise<Response> => {
     try {
-      response = await fetch(`${args.provider.baseUrl}/chat/completions`, {
+      return await fetch(`${args.provider.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           ...authHeaders(args.provider.apiKey),
@@ -299,7 +301,7 @@ export async function chatWithFrontiProvider(args: {
         },
         cache: 'no-store',
         signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
-        body: requestBody,
+        body: buildRequestBody(model),
       });
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'TimeoutError';
@@ -308,21 +310,42 @@ export async function chatWithFrontiProvider(args: {
         error instanceof Error ? error : undefined,
       );
     }
+  };
 
-    if (response.status !== 429 || attempt > 0) break;
+  let modelUsed = args.provider.model;
+  let response = await performRequest(modelUsed);
 
-    const delay = retryAfterMs(response);
-    if (delay === null || delay > MAX_RATE_LIMIT_RETRY_MS) break;
-
+  if (
+    response.status === 429 &&
+    args.provider.provider === 'groq' &&
+    modelUsed === 'openai/gpt-oss-120b'
+  ) {
     console.info(
-      '[fronti-provider] rate limit temporal; reintento interno',
+      '[fronti-provider] 120b saturado; usando fallback de continuidad',
       JSON.stringify({
         provider: args.provider.provider,
-        model: args.provider.model,
-        retryMs: delay,
+        primaryModel: modelUsed,
+        fallbackModel: GROQ_FALLBACK_MODEL,
       }),
     );
-    await wait(delay);
+    modelUsed = GROQ_FALLBACK_MODEL;
+    response = await performRequest(modelUsed);
+  }
+
+  if (response.status === 429) {
+    const delay = retryAfterMs(response);
+    if (delay !== null && delay <= MAX_RATE_LIMIT_RETRY_MS) {
+      console.info(
+        '[fronti-provider] rate limit temporal; reintento interno',
+        JSON.stringify({
+          provider: args.provider.provider,
+          model: modelUsed,
+          retryMs: delay,
+        }),
+      );
+      await wait(delay);
+      response = await performRequest(modelUsed);
+    }
   }
 
   if (!response.ok) {
@@ -348,7 +371,7 @@ export async function chatWithFrontiProvider(args: {
     ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
   };
 
-  return { text, toolCalls, assistantMessage };
+  return { text, toolCalls, assistantMessage, modelUsed };
 }
 
 export async function probeFrontiProvider(

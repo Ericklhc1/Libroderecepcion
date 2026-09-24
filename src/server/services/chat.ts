@@ -1015,6 +1015,37 @@ export async function sendChatMessage(
         })
       : [];
     const mentionedIds = new Set(mentionedUsers.map((item) => item.id));
+    const normalizedBody = body?.toLocaleLowerCase('es-CL') ?? '';
+    const mentionEveryone =
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@todos\b/.test(normalizedBody);
+    const mentionShift =
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@turno\b/.test(normalizedBody);
+
+    if (mentionEveryone) {
+      for (const recipient of recipients) mentionedIds.add(recipient.userId);
+    }
+
+    if (mentionShift && recipients.length > 0) {
+      const activeShiftUsers = await tx.user.findMany({
+        where: {
+          id: { in: recipients.map((item) => item.userId) },
+          assignments: {
+            some: {
+              activatedAt: { not: null },
+              leftAt: null,
+              shift: {
+                archivedAt: null,
+                status: { in: ACTIVE_SHIFT_STATUSES },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      for (const active of activeShiftUsers) mentionedIds.add(active.id);
+    }
 
     for (const recipient of recipients) {
       if (recipient.mutedUntil && recipient.mutedUntil > now) continue;

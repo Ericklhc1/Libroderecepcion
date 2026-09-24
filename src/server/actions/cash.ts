@@ -42,6 +42,12 @@ import {
 const handoverIdSchema = z.object({ handoverId: z.string().min(1) });
 
 /** Extrae las cantidades de los campos `d_<id>` del formulario. */
+function guaranteeIdsFrom(formData: FormData): string[] {
+  return [...formData.entries()]
+    .filter(([key, value]) => key.startsWith('g_') && value === '1')
+    .map(([key]) => key.slice(2));
+}
+
 function quantitiesFrom(formData: FormData): Record<string, number> {
   const quantities: Record<string, number> = {};
   for (const [key, value] of formData.entries()) {
@@ -80,6 +86,7 @@ export async function declareCashCountAction(
       handoverId,
       kind: 'DECLARADO',
       quantities: quantitiesFrom(formData),
+      guaranteeIds: guaranteeIdsFrom(formData),
       notes: typeof notes === 'string' ? notes : null,
     });
 
@@ -107,6 +114,7 @@ export async function confirmCashCountAction(
       shiftId: shift.id,
       handoverId,
       quantities: quantitiesFrom(formData),
+      guaranteeIds: guaranteeIdsFrom(formData),
       notes: typeof notes === 'string' ? notes : null,
     });
 

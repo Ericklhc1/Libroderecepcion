@@ -40,8 +40,8 @@ function FundRow({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium text-petrol-900">{status.currency}</span>
         <span className="tabular text-slate-600">
-          contado {formatMinor(status.countedMinor, status.currency)} · esperado{' '}
-          {formatMinor(status.expectedMinor, status.currency)}
+          fondo contado {formatMinor(status.countedMinor, status.currency)} · fondo esperado{' '}
+          {formatMinor(status.fundMinor, status.currency)}
         </span>
         {status.balanced ? (
           <Badge tone="resuelto">Cuadra</Badge>
@@ -54,10 +54,7 @@ function FundRow({
         )}
       </div>
       <p className="text-xs tabular text-slate-500">
-        Fondo {formatMinor(status.fundMinor, status.currency)} · garantías{' '}
-        {formatMinor(status.guaranteeCustodyMinor, status.currency)} · saldo operacional{' '}
-        {formatMinor(status.operationalMinor, status.currency)} · transferible{' '}
-        {formatMinor(status.transferableMinor, status.currency)}
+        Las denominaciones validan únicamente el fondo fijo. Las garantías se validan por separado.
       </p>
     </li>
   );
@@ -66,11 +63,13 @@ function FundRow({
 function CountForm({
   handoverId,
   denominations,
+  guarantees,
   kind,
   previous,
 }: {
   handoverId: string;
   denominations: DenominationOption[];
+  guarantees: HandoverCashState['cashGuarantees'];
   kind: 'declarar' | 'confirmar';
   previous: Record<string, number>;
 }) {
@@ -87,6 +86,9 @@ function CountForm({
   return (
     <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}>
       <input type="hidden" name="handoverId" value={handoverId} />
+      <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        Cuenta por denominación exclusivamente el fondo fijo. No incluyas las garantías en este conteo.
+      </p>
       <div className="grid gap-3 lg:grid-cols-2">
         {currencies.map(([currency, rows]) => (
           <fieldset key={currency} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
@@ -134,6 +136,47 @@ function CountForm({
           </fieldset>
         ))}
       </div>
+
+      <fieldset className="mt-4 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+        <legend className="sr-only">Validación de garantías en efectivo</legend>
+        <div className="border-b border-slate-100 bg-gold-50 px-3 py-2">
+          <p className="text-sm font-semibold text-petrol-900">Validación de garantías en efectivo</p>
+          <p className="mt-0.5 text-xs text-slate-600">
+            Confirma físicamente cada garantía vigente. Estas garantías no forman parte del conteo por denominación.
+          </p>
+        </div>
+        {guarantees.length === 0 ? (
+          <p className="px-3 py-3 text-sm text-slate-500">No hay garantías en efectivo vigentes que validar.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {guarantees.map((guarantee) => (
+              <label
+                key={guarantee.id}
+                className="flex cursor-pointer items-start gap-3 px-3 py-3 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  name={`g_${guarantee.id}`}
+                  value="1"
+                  required
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-petrol-900">
+                    {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
+                    {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
+                    {guarantee.reference ? ` · ${guarantee.reference}` : ''}
+                  </span>
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Validar</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
 
       <Field
         label="Observaciones del arqueo"
@@ -287,7 +330,7 @@ export function CashBox({
       />
       <div className="space-y-4 px-4 py-4">
         <p className="text-xs text-slate-500">
-          Este es el arqueo formal del turno: se cuenta por denominación y compara el efectivo físico contra su composición esperada (fondo + garantías bajo custodia + saldo operacional). Las transferencias a Tesorería no son gastos. Divisas operativas: CLP y USD. Fondo fijo:{' '}
+          Este es el arqueo formal del turno. Las denominaciones verifican exclusivamente el fondo fijo; las garantías en efectivo se validan una a una en un bloque separado. Los movimientos operacionales y las transferencias mantienen su propia trazabilidad. Fondo fijo:{' '}
           {state.funds.map((fund) => `${fund.currency} ${fund.amount.toLocaleString('es-CL')}`).join(' · ')}.
           Estos fondos se configuran desde Administración → Parámetros.
         </p>
@@ -380,7 +423,7 @@ export function CashBox({
             </ul>
           )}
           <p className="mt-1 text-xs text-slate-500">
-            El monto mostrado es el saldo reembolsable todavía bajo custodia. Lo aplicado o multado deja de ser garantía y pasa al saldo operacional, aunque los billetes sigan físicamente en Caja hasta su transferencia.
+            El monto mostrado es el saldo reembolsable todavía bajo custodia. Durante el arqueo cada garantía vigente debe validarse físicamente por separado; nunca se suma al conteo por denominación del fondo fijo.
           </p>
         </section>
 
@@ -435,6 +478,7 @@ export function CashBox({
             <CountForm
               handoverId={handoverId}
               denominations={denominations}
+              guarantees={state.cashGuarantees}
               kind={role === 'emisor' ? 'declarar' : 'confirmar'}
               previous={previous}
             />

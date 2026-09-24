@@ -148,6 +148,7 @@ export async function createUser(options: {
     mustChangePassword: false,
     permissions: role.permissions.map((rp) => rp.permission.key as PermissionKey),
     isSystemAdmin: role.key === ROLE_KEYS.SYSTEM_ADMIN,
+    frontiAccessEnabled: user.frontiAccessEnabled,
     passwordPlain: password,
     username: user.username,
   };

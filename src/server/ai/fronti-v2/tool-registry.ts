@@ -302,6 +302,9 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
 ] as const;
 
 const ALWAYS_AVAILABLE = new Set([
+  'consultar_estado_operativo',
+  'consultar_caja',
+  'consultar_llaves',
   'reportar_hallazgo',
   'proponer_registro',
   'proponer_resolver_tarea',

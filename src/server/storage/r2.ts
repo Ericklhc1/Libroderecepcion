@@ -30,6 +30,7 @@ function resolveEnv(
 function resolveAccountId(): { value: string; source: string | null } {
   const direct = resolveEnv([
     'R2_ACCOUNT_ID',
+    'R2_ACCOUND_ID',
     'CLOUDFLARE_ACCOUNT_ID',
     'CF_ACCOUNT_ID',
     'CLOUDFLARE_R2_ACCOUNT_ID',

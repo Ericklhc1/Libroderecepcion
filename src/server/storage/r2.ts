@@ -9,26 +9,117 @@ type R2Config = {
   bucket: string;
 };
 
+function normalizeEnvKey(key: string): string {
+  return key.trim().toUpperCase();
+}
+
+function resolveEnv(
+  aliases: string[],
+): { value: string; source: string | null } {
+  const wanted = new Set(aliases.map(normalizeEnvKey));
+
+  for (const [rawKey, rawValue] of Object.entries(process.env)) {
+    if (!wanted.has(normalizeEnvKey(rawKey))) continue;
+    const value = rawValue?.trim() ?? '';
+    if (value) return { value, source: rawKey };
+  }
+
+  return { value: '', source: null };
+}
+
+function resolveAccountId(): { value: string; source: string | null } {
+  const direct = resolveEnv([
+    'R2_ACCOUNT_ID',
+    'CLOUDFLARE_ACCOUNT_ID',
+    'CF_ACCOUNT_ID',
+    'CLOUDFLARE_R2_ACCOUNT_ID',
+  ]);
+  if (direct.value) return direct;
+
+  const endpoint = resolveEnv([
+    'R2_ENDPOINT',
+    'CLOUDFLARE_R2_ENDPOINT',
+    'CLOUDFLARE_ENDPOINT',
+  ]);
+  if (!endpoint.value) return { value: '', source: null };
+
+  try {
+    const url = new URL(endpoint.value);
+    const match = url.hostname.match(/^([a-f0-9]{32})\.r2\.cloudflarestorage\.com$/i);
+    if (match?.[1]) {
+      return { value: match[1], source: endpoint.source };
+    }
+  } catch {
+    // El diagnóstico sólo intenta recuperar una configuración válida.
+  }
+
+  return { value: '', source: null };
+}
+
+function resolvedConfigParts() {
+  return {
+    accountId: resolveAccountId(),
+    accessKeyId: resolveEnv([
+      'R2_ACCESS_KEY_ID',
+      'CLOUDFLARE_R2_ACCESS_KEY_ID',
+      'CF_R2_ACCESS_KEY_ID',
+    ]),
+    secretAccessKey: resolveEnv([
+      'R2_SECRET_ACCESS_KEY',
+      'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+      'CF_R2_SECRET_ACCESS_KEY',
+    ]),
+    bucket: resolveEnv([
+      'R2_BUCKET',
+      'CLOUDFLARE_R2_BUCKET',
+      'R2_BUCKET_NAME',
+    ]),
+  };
+}
+
 function config(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID?.trim();
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
-  const bucket = process.env.R2_BUCKET?.trim();
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
-  return { accountId, accessKeyId, secretAccessKey, bucket };
+  const parts = resolvedConfigParts();
+  if (
+    !parts.accountId.value ||
+    !parts.accessKeyId.value ||
+    !parts.secretAccessKey.value ||
+    !parts.bucket.value
+  ) {
+    return null;
+  }
+
+  return {
+    accountId: parts.accountId.value,
+    accessKeyId: parts.accessKeyId.value,
+    secretAccessKey: parts.secretAccessKey.value,
+    bucket: parts.bucket.value,
+  };
 }
 
 export function getR2ConfigStatus() {
+  const parts = resolvedConfigParts();
   const values = {
-    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID?.trim() ?? '',
-    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID?.trim() ?? '',
-    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY?.trim() ?? '',
-    R2_BUCKET: process.env.R2_BUCKET?.trim() ?? '',
+    R2_ACCOUNT_ID: parts.accountId.value,
+    R2_ACCESS_KEY_ID: parts.accessKeyId.value,
+    R2_SECRET_ACCESS_KEY: parts.secretAccessKey.value,
+    R2_BUCKET: parts.bucket.value,
   };
 
   const missing = Object.entries(values)
     .filter(([, value]) => !value)
     .map(([key]) => key);
+
+  const detectedKeys = Object.keys(process.env)
+    .filter((key) => {
+      const normalized = normalizeEnvKey(key);
+      return (
+        normalized.startsWith('R2') ||
+        normalized.startsWith('CLOUDFLARE_R2') ||
+        normalized === 'CLOUDFLARE_ACCOUNT_ID' ||
+        normalized === 'CF_ACCOUNT_ID'
+      );
+    })
+    .sort();
 
   return {
     configured: missing.length === 0,
@@ -36,6 +127,15 @@ export function getR2ConfigStatus() {
     present: Object.fromEntries(
       Object.entries(values).map(([key, value]) => [key, Boolean(value)]),
     ) as Record<keyof typeof values, boolean>,
+    resolvedFrom: {
+      R2_ACCOUNT_ID: parts.accountId.source,
+      R2_ACCESS_KEY_ID: parts.accessKeyId.source,
+      R2_SECRET_ACCESS_KEY: parts.secretAccessKey.source,
+      R2_BUCKET: parts.bucket.source,
+    },
+    detectedKeys,
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+    vercelTargetEnv: process.env.VERCEL_TARGET_ENV ?? null,
   };
 }
 

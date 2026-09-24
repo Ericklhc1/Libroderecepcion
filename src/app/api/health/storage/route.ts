@@ -13,6 +13,10 @@ export async function GET() {
       configured: status.configured,
       missing: status.missing,
       present: status.present,
+      resolvedFrom: status.resolvedFrom,
+      detectedKeys: status.detectedKeys,
+      vercelEnv: status.vercelEnv,
+      vercelTargetEnv: status.vercelTargetEnv,
     },
     {
       status: 200,

@@ -22,10 +22,10 @@ import {
   isChatAvatarKey,
   isChatNotificationTone,
   isChatStickerKey,
+  normalizeChatMediaUrl,
   normalizeChatStatus,
   normalizeChatText,
   normalizeInternalChatHref,
-  normalizeWikimediaMediaUrl,
   type ChatBootstrap,
   type ChatConversationListItem,
   type ChatConversationSnapshot,
@@ -673,10 +673,17 @@ export async function sendChatMessage(
 
   const body = normalizeChatText(input.body);
   const stickerKey = isChatStickerKey(input.stickerKey) ? input.stickerKey : null;
-  const mediaUrl = normalizeWikimediaMediaUrl(input.mediaUrl);
-  const mediaPageUrl = mediaUrl ? normalizeWikimediaMediaUrl(input.mediaPageUrl) : null;
-  const mediaSource =
-    mediaUrl && input.mediaSource === 'WIKIMEDIA_COMMONS' ? 'WIKIMEDIA_COMMONS' : null;
+  const requestedMediaSource =
+    input.mediaSource === 'TENOR' || input.mediaSource === 'WIKIMEDIA_COMMONS'
+      ? input.mediaSource
+      : null;
+  const mediaUrl = requestedMediaSource
+    ? normalizeChatMediaUrl(input.mediaUrl, requestedMediaSource)
+    : null;
+  const mediaPageUrl = mediaUrl && requestedMediaSource
+    ? normalizeChatMediaUrl(input.mediaPageUrl, requestedMediaSource)
+    : null;
+  const mediaSource = mediaUrl ? requestedMediaSource : null;
   const mediaAlt =
     mediaUrl && typeof input.mediaAlt === 'string'
       ? input.mediaAlt.replace(/\s+/g, ' ').trim().slice(0, 180) || 'GIF'
@@ -699,7 +706,7 @@ export async function sendChatMessage(
     throw new RuleError('Escribe un mensaje, envía un sticker, GIF o contexto.');
   }
 
-  if (mediaUrl && mediaSource !== 'WIKIMEDIA_COMMONS') {
+  if (input.mediaUrl && (!mediaUrl || !mediaSource)) {
     throw new RuleError('La fuente del GIF no es válida.');
   }
 
@@ -812,7 +819,7 @@ export async function sendChatMessage(
     const preview = stickerKey
       ? `${chatStickerGlyph(stickerKey) ?? 'Sticker'} Sticker`
       : mediaUrl
-        ? 'GIF · Wikimedia Commons'
+        ? `GIF · ${mediaSource === 'TENOR' ? 'Tenor' : 'Wikimedia Commons'}`
         : body?.slice(0, 180) ?? contextLabel ?? 'Compartió un contexto del Libro';
 
     const mentionedUsernames = extractMentionUsernames(body);

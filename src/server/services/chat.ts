@@ -15,19 +15,25 @@ import {
   CHAT_DIRECTORY_LIMIT,
   CHAT_GROUP_TITLE_MAX,
   CHAT_HISTORY_LIMIT,
+  avatarGlyph,
   chatStickerGlyph,
   directConversationKey,
+  isChatAvatarKey,
+  isChatNotificationTone,
   isChatStickerKey,
+  normalizeChatStatus,
   normalizeChatText,
   normalizeInternalChatHref,
+  normalizeWikimediaMediaUrl,
   type ChatBootstrap,
   type ChatConversationListItem,
   type ChatConversationSnapshot,
   type ChatPerson,
   type ChatPresence,
+  type ChatProfile,
 } from '@/domain/chat';
 
-const ONLINE_WINDOW_MS = 6 * 60_000;
+const ONLINE_WINDOW_MS = 150_000;
 const ACTIVE_SHIFT_STATUSES = [
   ShiftStatus.INICIADO,
   ShiftStatus.ACTIVO,
@@ -41,6 +47,11 @@ const presenceSelect = (now: Date) =>
     id: true,
     name: true,
     username: true,
+    updatedAt: true,
+    chatAvatarKey: true,
+    chatStatusText: true,
+    chatNotificationTone: true,
+    chatSoundEnabled: true,
     role: { select: { name: true } },
     sessions: {
       where: {
@@ -63,6 +74,7 @@ const presenceSelect = (now: Date) =>
       orderBy: { activatedAt: 'desc' as const },
       take: 1,
       select: {
+        shiftId: true,
         shift: { select: { type: true } },
       },
     },
@@ -74,6 +86,15 @@ function assertChatActor(user: CurrentUser) {
   if (!user.roleOperational || user.isSystemAdmin) {
     throw new RuleError('El chat está disponible sólo para cuentas operativas.');
   }
+}
+
+function serializeProfile(user: PresenceUser): ChatProfile {
+  return {
+    avatarKey: user.chatAvatarKey,
+    statusText: user.chatStatusText,
+    notificationTone: user.chatNotificationTone,
+    soundEnabled: user.chatSoundEnabled,
+  };
 }
 
 function serializePresence(user: PresenceUser, now: Date): ChatPresence {
@@ -93,6 +114,8 @@ function serializePerson(user: PresenceUser, now: Date): ChatPerson {
     name: user.name,
     username: user.username,
     roleName: user.role.name,
+    avatarKey: user.chatAvatarKey,
+    statusText: user.chatStatusText,
     presence: serializePresence(user, now),
   };
 }
@@ -116,6 +139,24 @@ export async function getChatUnreadCount(userId: string): Promise<number> {
     _sum: { unreadCount: true },
   });
   return result._sum.unreadCount ?? 0;
+}
+
+export async function getChatProfileForUser(userId: string): Promise<ChatProfile> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      chatAvatarKey: true,
+      chatStatusText: true,
+      chatNotificationTone: true,
+      chatSoundEnabled: true,
+    },
+  });
+  return {
+    avatarKey: row?.chatAvatarKey ?? 'dragon',
+    statusText: row?.chatStatusText ?? null,
+    notificationTone: row?.chatNotificationTone ?? 'chime',
+    soundEnabled: row?.chatSoundEnabled ?? true,
+  };
 }
 
 export async function listChatPeople(user: CurrentUser): Promise<ChatPerson[]> {
@@ -160,10 +201,12 @@ function serializeConversation(
 ): ChatConversationListItem {
   const me = row.participants.find((item) => item.userId === viewerId);
   const others = row.participants.filter((item) => item.userId !== viewerId);
-  const counterpart = row.type === ChatConversationType.DIRECTO && others[0]
-    ? serializePerson(others[0].user, now)
-    : null;
+  const counterpart =
+    row.type === ChatConversationType.DIRECTO && others[0]
+      ? serializePerson(others[0].user, now)
+      : null;
   const latest = row.messages[0] ?? null;
+
   return {
     id: row.id,
     type: row.type,
@@ -179,6 +222,7 @@ function serializeConversation(
           kind: latest.kind,
           body: latest.body,
           stickerKey: latest.stickerKey,
+          mediaUrl: latest.mediaUrl,
           senderName: latest.sender.name,
           createdAt: latest.createdAt.toISOString(),
         }
@@ -191,7 +235,7 @@ function serializeConversation(
 export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap> {
   assertChatActor(user);
   const now = new Date();
-  const [rows, people, totalUnread] = await Promise.all([
+  const [rows, people, totalUnread, me] = await Promise.all([
     prisma.chatConversation.findMany({
       where: {
         deletedAt: null,
@@ -203,13 +247,129 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
     }),
     listChatPeople(user),
     getChatUnreadCount(user.id),
+    prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: presenceSelect(now),
+    }),
   ]);
 
   return {
     conversations: rows.map((row) => serializeConversation(row, user.id, now)),
     people,
+    profile: serializeProfile(me),
     totalUnread,
     generatedAt: now.toISOString(),
+  };
+}
+
+export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
+  assertChatActor(user);
+  const now = new Date();
+
+  const [participations, people] = await Promise.all([
+    prisma.chatParticipant.findMany({
+      where: {
+        userId: user.id,
+        leftAt: null,
+        conversation: { deletedAt: null },
+      },
+      orderBy: { conversationId: 'asc' },
+      select: {
+        conversationId: true,
+        unreadCount: true,
+        lastReadAt: true,
+        conversation: {
+          select: {
+            updatedAt: true,
+            lastMessageAt: true,
+          },
+        },
+      },
+    }),
+    prisma.user.findMany({
+      where: {
+        active: true,
+        deletedAt: null,
+        role: { operational: true },
+      },
+      orderBy: { id: 'asc' },
+      select: presenceSelect(now),
+      take: CHAT_DIRECTORY_LIMIT + 1,
+    }),
+  ]);
+
+  return JSON.stringify({
+    c: participations.map((item) => [
+      item.conversationId,
+      item.unreadCount,
+      item.lastReadAt?.toISOString() ?? null,
+      item.conversation.updatedAt.toISOString(),
+      item.conversation.lastMessageAt.toISOString(),
+    ]),
+    p: people.map((person) => [
+      person.id,
+      person.updatedAt.toISOString(),
+      person.sessions[0]?.lastSeenAt?.toISOString() ?? null,
+      person.assignments[0]?.shiftId ?? null,
+      person.chatAvatarKey,
+      person.chatStatusText,
+      person.chatNotificationTone,
+      person.chatSoundEnabled,
+    ]),
+  });
+}
+
+export async function updateOwnChatProfile(
+  user: CurrentUser,
+  input: {
+    avatarKey?: unknown;
+    statusText?: unknown;
+    notificationTone?: unknown;
+    soundEnabled?: unknown;
+  },
+): Promise<ChatProfile> {
+  assertChatActor(user);
+
+  const current = await prisma.user.findUniqueOrThrow({
+    where: { id: user.id },
+    select: {
+      chatAvatarKey: true,
+      chatStatusText: true,
+      chatNotificationTone: true,
+      chatSoundEnabled: true,
+    },
+  });
+
+  const avatarKey = isChatAvatarKey(input.avatarKey) ? input.avatarKey : current.chatAvatarKey;
+  const notificationTone = isChatNotificationTone(input.notificationTone)
+    ? input.notificationTone
+    : current.chatNotificationTone;
+  const statusText =
+    input.statusText === undefined ? current.chatStatusText : normalizeChatStatus(input.statusText);
+  const soundEnabled =
+    typeof input.soundEnabled === 'boolean' ? input.soundEnabled : current.chatSoundEnabled;
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      chatAvatarKey: avatarKey,
+      chatStatusText: statusText,
+      chatNotificationTone: notificationTone,
+      chatSoundEnabled: soundEnabled,
+    },
+    select: {
+      chatAvatarKey: true,
+      chatStatusText: true,
+      chatNotificationTone: true,
+      chatSoundEnabled: true,
+    },
+  });
+
+  return {
+    avatarKey: updated.chatAvatarKey,
+    statusText: updated.chatStatusText,
+    notificationTone: updated.chatNotificationTone,
+    soundEnabled: updated.chatSoundEnabled,
   };
 }
 
@@ -356,6 +516,10 @@ export async function getChatConversationSnapshot(
       kind: message.kind,
       body: message.body,
       stickerKey: message.stickerKey,
+      mediaUrl: message.mediaUrl,
+      mediaPageUrl: message.mediaPageUrl,
+      mediaSource: message.mediaSource,
+      mediaAlt: message.mediaAlt,
       contextLabel: message.contextLabel,
       contextHref: message.contextHref,
       contextEntity: message.contextEntity,
@@ -372,82 +536,16 @@ export async function getChatConversationSnapshot(
   };
 }
 
-export async function getChatConversationVersion(
-  user: CurrentUser,
-  conversationId: string,
-): Promise<string> {
-  await assertParticipant(user, conversationId);
-  const now = new Date();
-  const onlineCutoff = new Date(now.getTime() - ONLINE_WINDOW_MS);
-
-  const row = await prisma.chatConversation.findFirst({
-    where: { id: conversationId, deletedAt: null },
-    select: {
-      updatedAt: true,
-      lastMessageAt: true,
-      messages: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { id: true, editedAt: true, deletedAt: true },
-      },
-      participants: {
-        where: { leftAt: null },
-        orderBy: { userId: 'asc' },
-        select: {
-          userId: true,
-          unreadCount: true,
-          user: {
-            select: {
-              sessions: {
-                where: {
-                  revokedAt: null,
-                  expiresAt: { gt: now },
-                  lastSeenAt: { gte: onlineCutoff },
-                },
-                take: 1,
-                select: { lastSeenAt: true },
-              },
-              assignments: {
-                where: {
-                  activatedAt: { not: null },
-                  leftAt: null,
-                  shift: {
-                    archivedAt: null,
-                    status: { in: ACTIVE_SHIFT_STATUSES },
-                  },
-                },
-                take: 1,
-                select: { shiftId: true },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-  if (!row) throw new NotFoundError('La conversación ya no está disponible.');
-
-  return JSON.stringify({
-    u: row.updatedAt.toISOString(),
-    l: row.lastMessageAt.toISOString(),
-    m: row.messages[0]
-      ? [row.messages[0].id, row.messages[0].editedAt?.toISOString(), row.messages[0].deletedAt?.toISOString()]
-      : null,
-    p: row.participants.map((item) => [
-      item.userId,
-      item.unreadCount,
-      item.user.sessions[0]?.lastSeenAt?.toISOString() ?? null,
-      item.user.assignments[0]?.shiftId ?? null,
-    ]),
-  });
-}
-
 export async function sendChatMessage(
   user: CurrentUser,
   input: {
     conversationId: string;
     body?: unknown;
     stickerKey?: unknown;
+    mediaUrl?: unknown;
+    mediaPageUrl?: unknown;
+    mediaSource?: unknown;
+    mediaAlt?: unknown;
     contextLabel?: unknown;
     contextHref?: unknown;
     contextEntity?: unknown;
@@ -459,6 +557,14 @@ export async function sendChatMessage(
 
   const body = normalizeChatText(input.body);
   const stickerKey = isChatStickerKey(input.stickerKey) ? input.stickerKey : null;
+  const mediaUrl = normalizeWikimediaMediaUrl(input.mediaUrl);
+  const mediaPageUrl = mediaUrl ? normalizeWikimediaMediaUrl(input.mediaPageUrl) : null;
+  const mediaSource =
+    mediaUrl && input.mediaSource === 'WIKIMEDIA_COMMONS' ? 'WIKIMEDIA_COMMONS' : null;
+  const mediaAlt =
+    mediaUrl && typeof input.mediaAlt === 'string'
+      ? input.mediaAlt.replace(/\s+/g, ' ').trim().slice(0, 180) || 'GIF'
+      : null;
   const contextHref = normalizeInternalChatHref(input.contextHref);
   const contextLabel =
     typeof input.contextLabel === 'string' && contextHref
@@ -473,8 +579,12 @@ export async function sendChatMessage(
   const replyToId =
     typeof input.replyToId === 'string' ? input.replyToId.trim() || null : null;
 
-  if (!body && !stickerKey && !contextHref) {
-    throw new RuleError('Escribe un mensaje, envía un sticker o adjunta un contexto.');
+  if (!body && !stickerKey && !mediaUrl && !contextHref) {
+    throw new RuleError('Escribe un mensaje, envía un sticker, GIF o contexto.');
+  }
+
+  if (mediaUrl && mediaSource !== 'WIKIMEDIA_COMMONS') {
+    throw new RuleError('La fuente del GIF no es válida.');
   }
 
   if (replyToId) {
@@ -482,14 +592,18 @@ export async function sendChatMessage(
       where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
       select: { id: true },
     });
-    if (!replyTarget) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+    if (!replyTarget) {
+      throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+    }
   }
 
   const kind = stickerKey
     ? ChatMessageKind.STICKER
-    : contextHref
-      ? ChatMessageKind.CONTEXTO
-      : ChatMessageKind.TEXTO;
+    : mediaUrl
+      ? ChatMessageKind.GIF
+      : contextHref
+        ? ChatMessageKind.CONTEXTO
+        : ChatMessageKind.TEXTO;
   const now = new Date();
 
   const result = await prisma.$transaction(async (tx) => {
@@ -511,6 +625,10 @@ export async function sendChatMessage(
         kind,
         body,
         stickerKey,
+        mediaUrl,
+        mediaPageUrl,
+        mediaSource,
+        mediaAlt,
         contextLabel,
         contextHref,
         contextEntity,
@@ -541,12 +659,16 @@ export async function sendChatMessage(
       conversation.type === ChatConversationType.GRUPO
         ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
         : user.name;
+
     const preview = stickerKey
       ? `${chatStickerGlyph(stickerKey) ?? 'Sticker'} Sticker`
-      : body?.slice(0, 180) ?? contextLabel ?? 'Compartió un contexto del Libro';
+      : mediaUrl
+        ? 'GIF · Wikimedia Commons'
+        : body?.slice(0, 180) ?? contextLabel ?? 'Compartió un contexto del Libro';
 
     for (const recipient of recipients) {
       if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+
       const existing = await tx.notification.findFirst({
         where: {
           userId: recipient.userId,
@@ -558,6 +680,7 @@ export async function sendChatMessage(
         orderBy: { createdAt: 'desc' },
         select: { id: true },
       });
+
       if (existing) {
         await tx.notification.update({
           where: { id: existing.id },
@@ -608,4 +731,8 @@ export async function markChatConversationRead(user: CurrentUser, conversationId
       data: { readAt: now },
     }),
   ]);
+}
+
+export function chatAvatarPreview(key: string): string {
+  return avatarGlyph(key);
 }

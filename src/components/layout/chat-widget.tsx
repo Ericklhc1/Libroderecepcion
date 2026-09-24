@@ -10,7 +10,9 @@ import {
   Image as ImageIcon,
   Link2,
   MessageCircle,
+  Mic,
   Paperclip,
+  Pencil,
   Plus,
   Reply,
   Search,
@@ -82,6 +84,33 @@ function previewText(item: ChatBootstrap['conversations'][number]): string {
   return message.body?.replace(/\s+/g, ' ').trim() || 'Nuevo mensaje';
 }
 
+function renderMessageBody(body: string) {
+  const parts = body.split(/(https?:\/\/[^\s]+|@[A-Za-z0-9._-]{2,40})/g);
+  return parts.map((part, index) => {
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="underline decoration-current/40 underline-offset-2 hover:decoration-current"
+        >
+          {part}
+        </a>
+      );
+    }
+    if (/^@[A-Za-z0-9._-]{2,40}$/.test(part)) {
+      return (
+        <span key={`mention-${index}`} className="rounded bg-gold-200/50 px-0.5 font-semibold">
+          {part}
+        </span>
+      );
+    }
+    return <span key={`text-${index}`}>{part}</span>;
+  });
+}
+
 function relativeActivity(value: string): string {
   const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
   const minutes = Math.floor(elapsed / 60_000);
@@ -137,6 +166,7 @@ export function ChatWidget({
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessageItem | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessageItem | null>(null);
   const [reactionMessageId, setReactionMessageId] = useState<string | null>(null);
   const [context, setContext] = useState<{ label: string; href: string } | null>(null);
   const [stickersOpen, setStickersOpen] = useState(false);
@@ -172,6 +202,11 @@ export function ChatWidget({
   const typingTimerRef = useRef<number | null>(null);
   const typingActiveRef = useRef(false);
   const typingLastSentAtRef = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const storageAvailable = attachmentsEnabled || bootstrap?.storageEnabled === true;
 
@@ -290,6 +325,16 @@ export function ChatWidget({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const started = Date.now();
+    setRecordingSeconds(0);
+    const timer = window.setInterval(() => {
+      setRecordingSeconds(Math.floor((Date.now() - started) / 1000));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [recording]);
 
   useEffect(() => {
     if (!pendingFile || !pendingFile.type.startsWith('image/')) {
@@ -533,6 +578,113 @@ export function ChatWidget({
     }
   }
 
+  async function startVoiceRecording() {
+    if (!storageAvailable) {
+      setError('Activa Cloudflare R2 para enviar notas de voz.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Este navegador no permite grabar notas de voz.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      const preferred = [
+        'audio/webm;codecs=opus',
+        'audio/mp4',
+        'audio/webm',
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = preferred ? new MediaRecorder(stream, { mimeType: preferred }) : new MediaRecorder(stream);
+      voiceChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const actualType = recorder.mimeType || voiceChunksRef.current[0]?.type || 'audio/webm';
+        const blob = new Blob(voiceChunksRef.current, { type: actualType });
+        const ext = actualType.includes('mp4') ? 'm4a' : actualType.includes('ogg') ? 'ogg' : 'webm';
+        const file = new File([blob], `nota-de-voz-${Date.now()}.${ext}`, { type: actualType.split(';')[0] });
+        voiceChunksRef.current = [];
+        voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setRecording(false);
+        if (blob.size > 0) selectIncomingFile(file);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+      setPlusOpen(false);
+      setRecording(true);
+    } catch {
+      setError('No se pudo acceder al micrófono.');
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+    }
+  }
+
+  function stopVoiceRecording(cancel = false) {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    if (cancel) {
+      recorder.onstop = () => {
+        voiceChunksRef.current = [];
+        voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setRecording(false);
+      };
+    }
+    recorder.stop();
+  }
+
+  async function createStickerFromAttachment(attachment: ChatMessageItem['attachments'][number]) {
+    if (!storageAvailable || !attachment.mimeType.startsWith('image/')) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const response = await fetch(attachment.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error('No se pudo leer la imagen.');
+      const blob = await response.blob();
+      const file = new File([blob], attachment.fileName, { type: attachment.mimeType });
+      await createStickerFromFile(file);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo crear el sticker.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function editMessage(messageId: string, nextBody: string) {
+    if (!selectedId) return;
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/messages/${encodeURIComponent(messageId)}`,
+        { method: 'PATCH', body: JSON.stringify({ body: nextBody }) },
+      );
+      setEditingMessage(null);
+      setBody('');
+      await loadConversation(selectedId, { mark: true, busy: false });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo editar el mensaje.');
+    }
+  }
+
+  async function deleteMessage(messageId: string) {
+    if (!selectedId) return;
+    if (!window.confirm('¿Eliminar este mensaje?')) return;
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/messages/${encodeURIComponent(messageId)}`,
+        { method: 'DELETE', body: '{}' },
+      );
+      await loadConversation(selectedId, { mark: true, busy: false });
+      void loadBootstrap();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo eliminar el mensaje.');
+    }
+  }
+
   async function createDirect(person: ChatPerson) {
     setLoading(true);
     setError(null);
@@ -645,6 +797,13 @@ export function ChatWidget({
 
   async function sendMessage() {
     const text = body.trim();
+    if (editingMessage) {
+      if (!text) return;
+      await stopTyping();
+      await editMessage(editingMessage.id, text);
+      return;
+    }
+
     const file = pendingFile;
     if (!text && !context && !file) return;
     setBody('');
@@ -823,6 +982,7 @@ export function ChatWidget({
     setSelectedId(null);
     setProfileDraft(null);
     setReplyTo(null);
+    setEditingMessage(null);
     setReactionMessageId(null);
     setConversationQuery('');
     setConversationSearchOpen(false);
@@ -1611,7 +1771,7 @@ export function ChatWidget({
                         ) : (
                           <>
                             {message.body ? (
-                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
+                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderMessageBody(message.body)}</p>
                             ) : null}
                             {message.contextHref ? (
                               <a
@@ -1628,21 +1788,35 @@ export function ChatWidget({
                             ) : null}
                             {message.attachments.map((attachment) =>
                               attachment.mimeType.startsWith('image/') ? (
-                                <a
-                                  key={attachment.id}
-                                  href={attachment.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-2 block overflow-hidden rounded-xl bg-black/5"
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={attachment.url}
-                                    alt={attachment.fileName}
-                                    loading="lazy"
-                                    className="max-h-72 w-full object-contain"
-                                  />
-                                </a>
+                                <div key={attachment.id} className="mt-2 overflow-hidden rounded-xl bg-black/5">
+                                  <a
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={attachment.url}
+                                      alt={attachment.fileName}
+                                      loading="lazy"
+                                      className="max-h-72 w-full object-contain"
+                                    />
+                                  </a>
+                                  {storageAvailable ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void createStickerFromAttachment(attachment)}
+                                      className="block w-full border-t border-black/5 px-2 py-1.5 text-center text-[0.68rem] font-semibold hover:bg-black/5"
+                                    >
+                                      Crear sticker
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : attachment.mimeType.startsWith('audio/') ? (
+                                <div key={attachment.id} className="mt-2 rounded-xl bg-black/5 p-2">
+                                  <audio controls preload="metadata" src={attachment.url} className="max-w-full" />
+                                </div>
                               ) : (
                                 <a
                                   key={attachment.id}
@@ -1731,6 +1905,33 @@ export function ChatWidget({
                         >
                           <Star className={`h-3.5 w-3.5 ${message.saved ? 'fill-current' : ''}`} aria-hidden="true" />
                         </button>
+                        {mine && message.body && ['TEXTO', 'CONTEXTO', 'ARCHIVO'].includes(message.kind) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingMessage(message);
+                              setReplyTo(null);
+                              setBody(message.body ?? '');
+                              window.requestAnimationFrame(() => composerRef.current?.focus());
+                            }}
+                            className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-petrol-700"
+                            title="Editar mensaje"
+                            aria-label="Editar mensaje"
+                          >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        {mine ? (
+                          <button
+                            type="button"
+                            onClick={() => void deleteMessage(message.id)}
+                            className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-700"
+                            title="Eliminar mensaje"
+                            aria-label="Eliminar mensaje"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        ) : null}
                       </div>
 
                       {reactionMessageId === message.id ? (
@@ -1773,7 +1974,52 @@ export function ChatWidget({
           </div>
 
           <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-            {replyTo ? (
+            {recording ? (
+              <div className="mb-2 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-600" aria-hidden="true" />
+                <span className="min-w-0 flex-1 font-medium">
+                  Grabando nota de voz · {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => stopVoiceRecording(false)}
+                  className="rounded-lg bg-rose-700 px-2.5 py-1.5 text-xs font-semibold text-white"
+                >
+                  Enviar grabación
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stopVoiceRecording(true)}
+                  className="rounded-lg p-1.5 text-rose-700 hover:bg-rose-100"
+                  aria-label="Cancelar grabación"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+
+            {editingMessage ? (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-gold-500 bg-gold-50 px-2.5 py-2 text-xs text-slate-700">
+                <Pencil className="h-4 w-4 shrink-0 text-gold-700" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">Editando mensaje</span>
+                  <span className="block truncate">{editingMessage.body}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingMessage(null);
+                    setBody('');
+                  }}
+                  className="rounded p-1 hover:bg-gold-100"
+                  aria-label="Cancelar edición"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+
+            {replyTo && !editingMessage ? (
               <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-petrol-500 bg-slate-50 px-2.5 py-2 text-xs text-slate-700">
                 <Reply className="h-4 w-4 shrink-0 text-petrol-700" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
@@ -1909,6 +2155,15 @@ export function ChatWidget({
                 >
                   <Link2 className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   Compartir Libro
+                </button>
+                <button
+                  type="button"
+                  disabled={!storageAvailable || recording}
+                  onClick={() => void startVoiceRecording()}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Mic className="h-5 w-5 text-petrol-700" aria-hidden="true" />
+                  Nota de voz
                 </button>
                 {!storageAvailable ? (
                   <p className="col-span-2 text-center text-[0.68rem] text-slate-500">
@@ -2215,7 +2470,7 @@ export function ChatWidget({
                   }
                 }}
                 rows={1}
-                placeholder="Mensaje…"
+                placeholder={editingMessage ? "Editar mensaje…" : "Mensaje…"}
                 className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
               />
               <button

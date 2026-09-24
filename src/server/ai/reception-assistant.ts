@@ -24,10 +24,13 @@ import { createEntry } from '@/server/services/entries';
 import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
 import { reportFrontiFinding } from './fronti-findings';
 import {
-  frontiToolSettingForFunction,
   getFrontiConfig,
   type FrontiConfig,
 } from './fronti-config';
+import {
+  assertFrontiToolEnabled,
+  enabledFrontiToolDefinitions,
+} from './fronti-v2/tool-registry';
 import {
   chatWithFrontiProvider,
   FrontiProviderError,
@@ -123,240 +126,6 @@ type PendingAction =
 
 const MAX_TOOL_LOOPS = 5;
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
-
-const TOOL_DEFINITIONS = [
-  {
-    type: 'function',
-    name: 'consultar_habitacion',
-    description:
-      'Consulta el estado operativo actual de una habitación, su salida, ocupante, entrada, llaves, incidencias y garantías. No modifica nada.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        roomNumber: { type: 'string', description: 'Número de habitación, por ejemplo 415.' },
-      },
-      required: ['roomNumber'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'consultar_prioridades',
-    description:
-      'Obtiene el panorama operativo para sugerir qué revisar primero: habitaciones que requieren acción, tareas vencidas, alertas, seguimientos e incidencias críticas. No modifica nada.',
-    strict: true,
-    parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
-  },
-  {
-    type: 'function',
-    name: 'consultar_vencimientos',
-    description:
-      'Lista próximos vencimientos de tareas, seguimientos y registros operativos. Úsala cuando pregunten qué vence pronto o qué está por vencer.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        hours: {
-          type: 'integer',
-          minimum: 1,
-          maximum: 168,
-          description: 'Horizonte en horas. Usa 24 si el usuario no especifica otro.',
-        },
-      },
-      required: ['hours'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'proponer_checkouts',
-    description:
-      'Prepara la confirmación de salida de una o más habitaciones. Nunca afirmes que el check-out fue realizado hasta que el usuario confirme la tarjeta de acción.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        roomNumbers: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 20,
-          items: { type: 'string' },
-        },
-        note: { type: ['string', 'null'] },
-      },
-      required: ['roomNumbers', 'note'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'proponer_recordatorio',
-    description:
-      'Prepara una tarea-recordatorio asignada al usuario actual con fecha y hora. Requiere confirmación antes de crearla.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', minLength: 3, maxLength: 200 },
-        description: { type: ['string', 'null'], maxLength: 2000 },
-        dueAt: {
-          type: 'string',
-          description:
-            'Fecha y hora ISO 8601 con zona horaria explícita, por ejemplo 2026-09-16T18:30:00-03:00.',
-        },
-        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
-      },
-      required: ['title', 'description', 'dueAt', 'priority'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'proponer_registro',
-    description:
-      'Prepara una novedad o incidencia del Libro siguiendo la instrucción del usuario. Si se conoce una habitación, úsala. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', enum: ['NOVEDAD', 'INCIDENCIA'] },
-        title: { type: 'string', minLength: 3, maxLength: 200 },
-        description: { type: 'string', minLength: 3, maxLength: 4000 },
-        roomNumber: { type: ['string', 'null'] },
-        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
-        severity: {
-          type: ['string', 'null'],
-          enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null],
-        },
-        requiresFollowUp: { type: 'boolean' },
-      },
-      required: [
-        'type',
-        'title',
-        'description',
-        'roomNumber',
-        'priority',
-        'severity',
-        'requiresFollowUp',
-      ],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'proponer_resolver_tarea',
-    description:
-      'Prepara la finalización de una tarea existente. Identifica la tarea por id interno o por número T#. Requiere permiso task.close y confirmación antes de modificarla.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        taskId: { type: ['string', 'null'] },
-        taskSeq: { type: ['integer', 'null'], minimum: 1 },
-        reason: { type: ['string', 'null'], maxLength: 1000 },
-      },
-      required: ['taskId', 'taskSeq', 'reason'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'reportar_hallazgo',
-    description:
-      'Reporta a Supervisor y Administrador de sistema un fallo concreto o una mejora de proceso detectada por Fronti. Úsala sólo con evidencia específica y accionable; no para preferencias de estilo, ideas vagas ni duplicados.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string', enum: ['FALLO', 'MEJORA'] },
-        severity: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
-        area: { type: 'string', minLength: 2, maxLength: 120 },
-        title: { type: 'string', minLength: 4, maxLength: 200 },
-        evidence: { type: 'string', minLength: 8, maxLength: 1200 },
-        recommendation: { type: ['string', 'null'], maxLength: 1200 },
-      },
-      required: ['kind', 'severity', 'area', 'title', 'evidence', 'recommendation'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'proponer_multa',
-    description:
-      'Prepara una multa para una habitación usando el contexto real de la estadía. Requiere permiso de gestión de incidencias y confirmación. Nunca inventes monto, tipo de daño ni antecedentes.',
-    strict: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        roomNumber: { type: 'string' },
-        kind: { type: 'string', enum: ['BLANCO', 'DANO', 'FALTANTE', 'OTRO'] },
-        linenKind: {
-          type: ['string', 'null'],
-          enum: [
-            'TOALLA_MANO',
-            'TOALLA_CUERPO',
-            'TOALLA_PISO',
-            'SABANA',
-            'FUNDA_ALMOHADA',
-            'CUBRECAMA',
-            'PROTECTOR_COLCHON',
-            'BATA',
-            'MANTEL',
-            'CORTINA',
-            'OTRO',
-            null,
-          ],
-        },
-        itemDetail: { type: ['string', 'null'] },
-        stainType: { type: ['string', 'null'] },
-        reason: { type: 'string', minLength: 3, maxLength: 2000 },
-        guestStatement: { type: ['string', 'null'] },
-        amount: {
-          type: ['number', 'null'],
-          description: 'Monto sólo si el usuario lo indicó. Si no lo indicó, null.',
-        },
-        currency: { type: 'string', enum: ['CLP', 'USD'] },
-      },
-      required: [
-        'roomNumber',
-        'kind',
-        'linenKind',
-        'itemDetail',
-        'stainType',
-        'reason',
-        'guestStatement',
-        'amount',
-        'currency',
-      ],
-      additionalProperties: false,
-    },
-  },
-] as const;
-
-function enabledToolDefinitions(config: FrontiConfig) {
-  return TOOL_DEFINITIONS.filter((definition) => {
-    if (
-      definition.name === 'reportar_hallazgo' ||
-      definition.name === 'proponer_registro' ||
-      definition.name === 'proponer_resolver_tarea'
-    ) return true;
-    const key = frontiToolSettingForFunction(definition.name);
-    return key ? config.tools[key] : false;
-  });
-}
-
-function assertToolEnabled(config: FrontiConfig, functionName: string) {
-  if (
-    functionName === 'reportar_hallazgo' ||
-    functionName === 'proponer_registro' ||
-    functionName === 'proponer_resolver_tarea'
-  ) return;
-  const key = frontiToolSettingForFunction(functionName);
-  if (!key || !config.tools[key]) {
-    throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
-  }
-}
 
 function hasPermission(user: CurrentUser, permission: string): boolean {
   return user.permissions.some((value) => value === permission);
@@ -868,7 +637,7 @@ async function executeTool(
   args: Record<string, unknown>,
   config: FrontiConfig,
 ) {
-  assertToolEnabled(config, name);
+  assertFrontiToolEnabled(config, name);
   switch (name) {
     case 'consultar_habitacion':
       return roomTool(user, args);
@@ -946,7 +715,7 @@ function systemInstructions(config: FrontiConfig): string {
 }
 
 function chatTools(config: FrontiConfig): FrontiToolDefinition[] {
-  return enabledToolDefinitions(config).map((definition) => ({
+  return enabledFrontiToolDefinitions(config).map((definition) => ({
     type: 'function',
     function: {
       name: definition.name,
@@ -1092,7 +861,7 @@ export async function executeReceptionConfirmation(
 
   try {
   if (pending.action === 'create_reminder') {
-    assertToolEnabled(config, 'proponer_recordatorio');
+    assertFrontiToolEnabled(config, 'proponer_recordatorio');
     requireToolPermission(user, 'task.create');
     const dueAt = new Date(pending.args.dueAt);
     if (Number.isNaN(dueAt.getTime())) {
@@ -1118,7 +887,7 @@ export async function executeReceptionConfirmation(
   }
 
   if (pending.action === 'create_fine') {
-    assertToolEnabled(config, 'proponer_multa');
+    assertFrontiToolEnabled(config, 'proponer_multa');
     requireToolPermission(user, 'incident.manage');
     const context = await fineContextForRoom(pending.args.roomNumber);
     const fine = await createFine(user, {
@@ -1196,7 +965,7 @@ export async function executeReceptionConfirmation(
     return { reply: `Tarea T#${task.seq} completada: ${task.title}.` };
   }
 
-  assertToolEnabled(config, 'proponer_checkouts');
+  assertFrontiToolEnabled(config, 'proponer_checkouts');
   requireToolPermission(user, 'room.manage');
   const validated: Array<{ roomNumber: string; stayId: string }> = [];
   for (const roomNumber of pending.args.roomNumbers) {

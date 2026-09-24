@@ -9,6 +9,16 @@
 html,
 body {
   height: 100%;
+  max-width: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
 }
 
 body {
@@ -36,8 +46,8 @@ h4 {
 
 @layer components {
   .input-base {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-petrol-900
-      placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500;
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-petrol-900
+      placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500 sm:text-sm;
   }
 
   .label-base {
@@ -127,5 +137,33 @@ h4 {
   a {
     color: inherit !important;
     text-decoration: none !important;
+  }
+}
+
+
+/*
+  Móvil / iOS:
+  Safari hace zoom automático al enfocar controles con tipografía menor a 16 px.
+  No desactivamos el zoom del usuario (sería un problema de accesibilidad);
+  simplemente garantizamos 16 px en campos editables en pantallas pequeñas.
+*/
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+    line-height: 1.4;
+  }
+
+  button,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    touch-action: manipulation;
   }
 }

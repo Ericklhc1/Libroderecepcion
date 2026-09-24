@@ -12,6 +12,15 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { NotFoundError, RuleError } from '@/server/errors';
 import {
+  createR2PresignedPutUrl,
+  deleteR2Object,
+  getR2Object,
+  headR2Object,
+  isR2Configured,
+  makeChatStorageKey,
+  putR2Object,
+} from '@/server/storage/r2';
+import {
   CHAT_DIRECTORY_LIMIT,
   CHAT_GROUP_TITLE_MAX,
   CHAT_HISTORY_LIMIT,
@@ -21,10 +30,10 @@ import {
   isChatAvatarKey,
   isChatNotificationTone,
   isChatStickerKey,
+  normalizeChatMediaUrl,
   normalizeChatStatus,
   normalizeChatText,
   normalizeInternalChatHref,
-  normalizeWikimediaMediaUrl,
   type ChatBootstrap,
   type ChatConversationListItem,
   type ChatConversationSnapshot,
@@ -275,6 +284,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
     people,
     profile: serializeProfile(me),
     totalUnread,
+    storageEnabled: isR2Configured(),
     generatedAt: now.toISOString(),
   };
 }
@@ -283,7 +293,8 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
   assertChatActor(user);
   const now = new Date();
 
-  const [participations, people] = await Promise.all([
+  const typingCutoff = new Date(now.getTime() - 10_000);
+  const [participations, people, typingRows] = await Promise.all([
     prisma.chatParticipant.findMany({
       where: {
         userId: user.id,
@@ -313,6 +324,18 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
       select: presenceSelect(now),
       take: CHAT_DIRECTORY_LIMIT + 1,
     }),
+    prisma.chatTyping.findMany({
+      where: {
+        userId: { not: user.id },
+        updatedAt: { gt: typingCutoff },
+        conversation: {
+          deletedAt: null,
+          participants: { some: { userId: user.id, leftAt: null } },
+        },
+      },
+      orderBy: [{ conversationId: 'asc' }, { userId: 'asc' }],
+      select: { conversationId: true, userId: true, updatedAt: true },
+    }),
   ]);
 
   return JSON.stringify({
@@ -332,6 +355,11 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
       person.chatStatusText,
       person.chatNotificationTone,
       person.chatSoundEnabled,
+    ]),
+    t: typingRows.map((item) => [
+      item.conversationId,
+      item.userId,
+      item.updatedAt.toISOString(),
     ]),
   });
 }
@@ -486,6 +514,201 @@ export async function createGroupConversation(
   });
 }
 
+
+export async function manageGroupConversation(
+  user: CurrentUser,
+  input:
+    | { conversationId: string; action: 'rename'; title: string }
+    | { conversationId: string; action: 'add'; userId: string }
+    | { conversationId: string; action: 'remove'; userId: string }
+    | { conversationId: string; action: 'promote'; userId: string }
+    | { conversationId: string; action: 'demote'; userId: string }
+    | { conversationId: string; action: 'mute'; muted: boolean }
+    | { conversationId: string; action: 'leave' },
+) {
+  assertChatActor(user);
+
+  const conversation = await prisma.chatConversation.findFirst({
+    where: { id: input.conversationId, deletedAt: null },
+    include: {
+      participants: {
+        where: { leftAt: null },
+        orderBy: { joinedAt: 'asc' },
+        select: { userId: true, role: true, joinedAt: true },
+      },
+    },
+  });
+  if (!conversation || conversation.type !== ChatConversationType.GRUPO) {
+    throw new NotFoundError('El grupo no existe o ya no está disponible.');
+  }
+
+  const me = conversation.participants.find((item) => item.userId === user.id);
+  if (!me) throw new NotFoundError('No perteneces a este grupo.');
+  const canManage = me.role === ChatParticipantRole.CREADOR || me.role === ChatParticipantRole.ADMIN;
+
+  if (input.action === 'mute') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: { conversationId: conversation.id, userId: user.id },
+      },
+      data: { mutedUntil: input.muted ? new Date('9999-12-31T23:59:59.999Z') : null },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'leave') {
+    await prisma.$transaction(async (tx) => {
+      if (me.role === ChatParticipantRole.CREADOR) {
+        const successor = conversation.participants.find((item) => item.userId !== user.id);
+        if (successor) {
+          await tx.chatParticipant.update({
+            where: {
+              conversationId_userId: {
+                conversationId: conversation.id,
+                userId: successor.userId,
+              },
+            },
+            data: { role: ChatParticipantRole.CREADOR },
+          });
+        }
+      }
+      await tx.chatParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: conversation.id, userId: user.id },
+        },
+        data: { leftAt: new Date(), unreadCount: 0 },
+      });
+      await tx.chatConversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      });
+    });
+    return { ok: true };
+  }
+
+  if (!canManage) throw new RuleError('Sólo administradores del grupo pueden hacer ese cambio.');
+
+  if (input.action === 'rename') {
+    const title = input.title.trim().slice(0, CHAT_GROUP_TITLE_MAX);
+    if (title.length < 2) throw new RuleError('El grupo necesita un nombre.');
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { title },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'add') {
+    if (!input.userId || input.userId === user.id) throw new RuleError('Selecciona otra persona.');
+    const target = await prisma.user.findFirst({
+      where: {
+        id: input.userId,
+        active: true,
+        deletedAt: null,
+        role: { operational: true },
+      },
+      select: { id: true },
+    });
+    if (!target) throw new NotFoundError('La persona ya no está disponible.');
+
+    const existing = await prisma.chatParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: conversation.id, userId: target.id },
+      },
+      select: { leftAt: true },
+    });
+    if (existing) {
+      await prisma.chatParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: conversation.id, userId: target.id },
+        },
+        data: {
+          leftAt: null,
+          joinedAt: new Date(),
+          role: ChatParticipantRole.MIEMBRO,
+          unreadCount: 0,
+        },
+      });
+    } else {
+      await prisma.chatParticipant.create({
+        data: {
+          conversationId: conversation.id,
+          userId: target.id,
+          role: ChatParticipantRole.MIEMBRO,
+        },
+      });
+    }
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  if (input.userId === user.id && input.action === 'remove') {
+    throw new RuleError('Para salir del grupo usa «Salir del grupo».');
+  }
+
+  const targetParticipant = conversation.participants.find((item) => item.userId === input.userId);
+  if (!targetParticipant) throw new NotFoundError('La persona no pertenece al grupo.');
+  if (targetParticipant.role === ChatParticipantRole.CREADOR) {
+    throw new RuleError('No puedes quitar ni degradar al creador del grupo.');
+  }
+
+  if (input.action === 'remove') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { leftAt: new Date(), unreadCount: 0 },
+    });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'promote') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { role: ChatParticipantRole.ADMIN },
+    });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'demote') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { role: ChatParticipantRole.MIEMBRO },
+    });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  throw new RuleError('Acción de grupo no válida.');
+}
+
 export async function getChatConversationSnapshot(
   user: CurrentUser,
   conversationId: string,
@@ -505,18 +728,45 @@ export async function getChatConversationSnapshot(
   });
   if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
 
-  const rows = await prisma.chatMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' },
-    take: CHAT_HISTORY_LIMIT,
-    include: {
-      sender: { select: { id: true, name: true } },
-      attachments: {
-        where: { deletedAt: null },
-        select: { id: true, fileName: true, mimeType: true, size: true },
+  const [rows, typingRows] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: CHAT_HISTORY_LIMIT,
+      include: {
+        sender: { select: { id: true, name: true } },
+        replyTo: {
+          select: {
+            id: true,
+            body: true,
+            kind: true,
+            sender: { select: { name: true } },
+          },
+        },
+        reactions: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        savedBy: {
+          where: { userId: user.id },
+          select: { userId: true },
+        },
+        attachments: {
+          where: { deletedAt: null },
+          select: { id: true, fileName: true, mimeType: true, size: true },
+        },
       },
-    },
-  });
+    }),
+    prisma.chatTyping.findMany({
+      where: {
+        conversationId,
+        userId: { not: user.id },
+        updatedAt: { gt: new Date(now.getTime() - 10_000) },
+      },
+      include: { user: { select: { name: true } } },
+      orderBy: { updatedAt: 'desc' },
+    }),
+  ]);
   rows.reverse();
 
   const other = conversation.participants.find((item) => item.userId !== user.id);
@@ -527,27 +777,84 @@ export async function getChatConversationSnapshot(
       conversation.type === ChatConversationType.DIRECTO
         ? other?.user.name ?? 'Conversación'
         : conversation.title?.trim() || 'Grupo',
-    participants: conversation.participants.map((item) => serializePerson(item.user, now)),
-    messages: rows.map((message) => ({
-      id: message.id,
-      kind: message.kind,
-      body: message.body,
-      stickerKey: message.stickerKey,
-      mediaUrl: message.mediaUrl,
-      mediaPageUrl: message.mediaPageUrl,
-      mediaSource: message.mediaSource,
-      mediaAlt: message.mediaAlt,
-      contextLabel: message.contextLabel,
-      contextHref: message.contextHref,
-      contextEntity: message.contextEntity,
-      contextEntityId: message.contextEntityId,
-      senderId: message.senderId,
-      senderName: message.sender.name,
-      createdAt: message.createdAt.toISOString(),
-      editedAt: message.editedAt?.toISOString() ?? null,
-      deletedAt: message.deletedAt?.toISOString() ?? null,
-      replyToId: message.replyToId,
-      attachments: message.attachments,
+    participants: conversation.participants.map((item) => ({
+      ...serializePerson(item.user, now),
+      conversationRole: item.role,
+    })),
+    myRole: conversation.participants.find((item) => item.userId === user.id)?.role ?? ChatParticipantRole.MIEMBRO,
+    mutedUntil: conversation.participants.find((item) => item.userId === user.id)?.mutedUntil?.toISOString() ?? null,
+    messages: rows.map((message) => {
+      const grouped = new Map<string, {
+        emoji: string;
+        count: number;
+        mine: boolean;
+        users: Array<{ id: string; name: string }>;
+      }>();
+      for (const reaction of message.reactions) {
+        const current = grouped.get(reaction.emoji) ?? {
+          emoji: reaction.emoji,
+          count: 0,
+          mine: false,
+          users: [],
+        };
+        current.count += 1;
+        current.mine ||= reaction.userId === user.id;
+        current.users.push({ id: reaction.user.id, name: reaction.user.name });
+        grouped.set(reaction.emoji, current);
+      }
+
+      const readBy = conversation.participants
+        .filter((item) =>
+          item.userId !== message.senderId &&
+          Boolean(item.lastReadAt && item.lastReadAt >= message.createdAt),
+        )
+        .map((item) => ({
+          userId: item.userId,
+          name: item.user.name,
+          readAt: item.lastReadAt!.toISOString(),
+        }));
+
+      return {
+        id: message.id,
+        kind: message.kind,
+        body: message.body,
+        stickerKey: message.stickerKey,
+        stickerId: message.stickerId,
+        mediaUrl: message.mediaUrl,
+        mediaPageUrl: message.mediaPageUrl,
+        mediaSource: message.mediaSource,
+        mediaAlt: message.mediaAlt,
+        contextLabel: message.contextLabel,
+        contextHref: message.contextHref,
+        contextEntity: message.contextEntity,
+        contextEntityId: message.contextEntityId,
+        senderId: message.senderId,
+        senderName: message.sender.name,
+        createdAt: message.createdAt.toISOString(),
+        editedAt: message.editedAt?.toISOString() ?? null,
+        deletedAt: message.deletedAt?.toISOString() ?? null,
+        replyToId: message.replyToId,
+        replyTo: message.replyTo
+          ? {
+              id: message.replyTo.id,
+              senderName: message.replyTo.sender.name,
+              body: message.replyTo.body,
+              kind: message.replyTo.kind,
+            }
+          : null,
+        reactions: Array.from(grouped.values()),
+        saved: message.savedBy.length > 0,
+        readBy,
+        attachments: message.attachments.map((attachment) => ({
+          ...attachment,
+          url: `/api/chat/attachments/${attachment.id}`,
+        })),
+      };
+    }),
+    typing: typingRows.map((item) => ({
+      userId: item.userId,
+      name: item.user.name,
+      updatedAt: item.updatedAt.toISOString(),
     })),
     generatedAt: now.toISOString(),
   };
@@ -574,10 +881,17 @@ export async function sendChatMessage(
 
   const body = normalizeChatText(input.body);
   const stickerKey = isChatStickerKey(input.stickerKey) ? input.stickerKey : null;
-  const mediaUrl = normalizeWikimediaMediaUrl(input.mediaUrl);
-  const mediaPageUrl = mediaUrl ? normalizeWikimediaMediaUrl(input.mediaPageUrl) : null;
-  const mediaSource =
-    mediaUrl && input.mediaSource === 'WIKIMEDIA_COMMONS' ? 'WIKIMEDIA_COMMONS' : null;
+  const requestedMediaSource =
+    input.mediaSource === 'TENOR' || input.mediaSource === 'WIKIMEDIA_COMMONS'
+      ? input.mediaSource
+      : null;
+  const mediaUrl = requestedMediaSource
+    ? normalizeChatMediaUrl(input.mediaUrl, requestedMediaSource)
+    : null;
+  const mediaPageUrl = mediaUrl && requestedMediaSource
+    ? normalizeChatMediaUrl(input.mediaPageUrl, requestedMediaSource)
+    : null;
+  const mediaSource = mediaUrl ? requestedMediaSource : null;
   const mediaAlt =
     mediaUrl && typeof input.mediaAlt === 'string'
       ? input.mediaAlt.replace(/\s+/g, ' ').trim().slice(0, 180) || 'GIF'
@@ -600,7 +914,7 @@ export async function sendChatMessage(
     throw new RuleError('Escribe un mensaje, envía un sticker, GIF o contexto.');
   }
 
-  if (mediaUrl && mediaSource !== 'WIKIMEDIA_COMMONS') {
+  if (input.mediaUrl && (!mediaUrl || !mediaSource)) {
     throw new RuleError('La fuente del GIF no es válida.');
   }
 
@@ -660,6 +974,39 @@ export async function sendChatMessage(
       data: { lastMessageAt: now },
     });
 
+    if (mediaUrl && mediaSource) {
+      await tx.chatMediaPreference.upsert({
+        where: {
+          userId_kind_refKey: {
+            userId: user.id,
+            kind: 'gif',
+            refKey: mediaUrl,
+          },
+        },
+        create: {
+          userId: user.id,
+          kind: 'gif',
+          refKey: mediaUrl,
+          payload: {
+            title: mediaAlt ?? 'GIF',
+            url: mediaUrl,
+            pageUrl: mediaPageUrl,
+            source: mediaSource,
+          },
+          usedAt: now,
+        },
+        update: {
+          payload: {
+            title: mediaAlt ?? 'GIF',
+            url: mediaUrl,
+            pageUrl: mediaPageUrl,
+            source: mediaSource,
+          },
+          usedAt: now,
+        },
+      });
+    }
+
     const recipients = conversation.participants.filter((item) => item.userId !== user.id);
     if (recipients.length) {
       await tx.chatParticipant.updateMany({
@@ -680,11 +1027,70 @@ export async function sendChatMessage(
     const preview = stickerKey
       ? `${chatStickerGlyph(stickerKey) ?? 'Sticker'} Sticker`
       : mediaUrl
-        ? 'GIF · Wikimedia Commons'
+        ? `GIF · ${mediaSource === 'TENOR' ? 'Tenor' : 'Wikimedia Commons'}`
         : body?.slice(0, 180) ?? contextLabel ?? 'Compartió un contexto del Libro';
+
+    const mentionedUsernames = extractMentionUsernames(body);
+    const mentionedUsers = mentionedUsernames.length
+      ? await tx.user.findMany({
+          where: {
+            username: { in: mentionedUsernames, mode: 'insensitive' },
+            id: { in: recipients.map((item) => item.userId) },
+            active: true,
+            deletedAt: null,
+          },
+          select: { id: true, username: true },
+        })
+      : [];
+    const mentionedIds = new Set(mentionedUsers.map((item) => item.id));
+    const normalizedBody = body?.toLocaleLowerCase('es-CL') ?? '';
+    const mentionEveryone =
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@todos\b/.test(normalizedBody);
+    const mentionShift =
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@turno\b/.test(normalizedBody);
+
+    if (mentionEveryone) {
+      for (const recipient of recipients) mentionedIds.add(recipient.userId);
+    }
+
+    if (mentionShift && recipients.length > 0) {
+      const activeShiftUsers = await tx.user.findMany({
+        where: {
+          id: { in: recipients.map((item) => item.userId) },
+          assignments: {
+            some: {
+              activatedAt: { not: null },
+              leftAt: null,
+              shift: {
+                archivedAt: null,
+                status: { in: ACTIVE_SHIFT_STATUSES },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      for (const active of activeShiftUsers) mentionedIds.add(active.id);
+    }
 
     for (const recipient of recipients) {
       if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+
+      if (mentionedIds.has(recipient.userId)) {
+        await tx.notification.create({
+          data: {
+            userId: recipient.userId,
+            type: NotificationType.MENCION,
+            title: `${user.name} te mencionó en ${conversation.title?.trim() || 'el chat'}`,
+            body: body?.slice(0, 180) ?? 'Te mencionaron en una conversación.',
+            link: `/?chat=${conversation.id}`,
+            entity: 'ChatConversation',
+            entityId: conversation.id,
+          },
+        });
+      }
 
       const existing = await tx.notification.findFirst({
         where: {
@@ -727,6 +1133,1014 @@ export async function sendChatMessage(
   });
 
   return result;
+}
+
+
+function extractMentionUsernames(body: string | null): string[] {
+  if (!body) return [];
+  const usernames = new Set<string>();
+  const pattern = /(^|\s)@([A-Za-z0-9._-]{2,40})\b/g;
+  for (const match of body.matchAll(pattern)) {
+    const username = match[2]?.trim();
+    if (username) usernames.add(username.toLocaleLowerCase('es-CL'));
+  }
+  return Array.from(usernames);
+}
+
+
+const CHAT_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+const CHAT_STICKER_MAX_BYTES = 8 * 1024 * 1024;
+const CHAT_ALLOWED_UPLOAD_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'audio/webm',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'audio/webm',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/x-m4a',
+]);
+
+function safeUploadName(value: string): string {
+  const trimmed = value.replace(/[\\/\0\r\n]/g, '_').trim();
+  return (trimmed || 'archivo').slice(0, 180);
+}
+
+function validateChatUploadDescriptor(input: {
+  fileName: string;
+  mimeType: string;
+  size: number;
+}) {
+  const fileName = safeUploadName(input.fileName);
+  const mimeType = input.mimeType.trim().toLocaleLowerCase('en-US');
+  const size = Math.trunc(input.size);
+  if (!CHAT_ALLOWED_UPLOAD_TYPES.has(mimeType)) {
+    throw new RuleError('Este tipo de archivo no está permitido en el chat.');
+  }
+  if (!Number.isFinite(size) || size < 1 || size > CHAT_UPLOAD_MAX_BYTES) {
+    throw new RuleError('El archivo debe pesar como máximo 20 MB.');
+  }
+  return { fileName, mimeType, size };
+}
+
+function validateStickerUploadDescriptor(input: {
+  fileName: string;
+  mimeType: string;
+  size: number;
+}) {
+  const fileName = safeUploadName(input.fileName);
+  const mimeType = input.mimeType.trim().toLocaleLowerCase('en-US');
+  const size = Math.trunc(input.size);
+  if (!['image/png', 'image/webp', 'image/jpeg'].includes(mimeType)) {
+    throw new RuleError('Los stickers deben ser PNG, WEBP o JPEG.');
+  }
+  if (!Number.isFinite(size) || size < 1 || size > CHAT_STICKER_MAX_BYTES) {
+    throw new RuleError('El sticker debe pesar como máximo 8 MB.');
+  }
+  return { fileName, mimeType, size };
+}
+
+async function verifyDirectUpload(
+  storageKey: string,
+  expectedSize: number,
+  expectedMimeType: string,
+) {
+  const response = await headR2Object(storageKey);
+  if (!response.ok) throw new RuleError('La subida a R2 no se completó correctamente.');
+
+  const actualLength = Number(response.headers.get('content-length') ?? '-1');
+  if (actualLength !== expectedSize) {
+    throw new RuleError('El tamaño del archivo recibido no coincide con la subida iniciada.');
+  }
+
+  const actualType = (response.headers.get('content-type') ?? '')
+    .split(';')[0]
+    ?.trim()
+    .toLocaleLowerCase('en-US');
+  if (actualType && actualType !== expectedMimeType) {
+    throw new RuleError('El tipo del archivo recibido no coincide con la subida iniciada.');
+  }
+}
+
+export async function beginChatAttachmentUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  }
+  const descriptor = validateChatUploadDescriptor(input);
+  const storageKey = makeChatStorageKey(
+    input.conversationId,
+    descriptor.fileName,
+    'attachment',
+  );
+  const signed = createR2PresignedPutUrl(storageKey, descriptor.mimeType, 300);
+  return {
+    ...descriptor,
+    storageKey,
+    uploadUrl: signed.url,
+    expiresAt: signed.expiresAt,
+  };
+}
+
+export async function finalizeChatAttachmentUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    storageKey: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    body?: string | null;
+    replyToId?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  }
+
+  const descriptor = validateChatUploadDescriptor(input);
+  const expectedPrefix = `chat/${input.conversationId}/attachment/`;
+  if (!input.storageKey.startsWith(expectedPrefix) || input.storageKey.includes('..')) {
+    throw new RuleError('La referencia del archivo no es válida.');
+  }
+
+  await verifyDirectUpload(input.storageKey, descriptor.size, descriptor.mimeType);
+
+  const body = normalizeChatText(input.body);
+  const replyToId = typeof input.replyToId === 'string' ? input.replyToId.trim() || null : null;
+  if (replyToId) {
+    const target = await prisma.chatMessage.findFirst({
+      where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!target) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const conversation = await tx.chatConversation.findFirst({
+      where: { id: input.conversationId, deletedAt: null },
+      include: {
+        participants: {
+          where: { leftAt: null },
+          select: { userId: true, mutedUntil: true },
+        },
+      },
+    });
+    if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
+
+    const message = await tx.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: user.id,
+        kind: ChatMessageKind.ARCHIVO,
+        body,
+        replyToId,
+        attachments: {
+          create: {
+            fileName: descriptor.fileName,
+            mimeType: descriptor.mimeType,
+            size: descriptor.size,
+            storageKey: input.storageKey,
+            uploadedById: user.id,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    const now = new Date();
+    await tx.chatConversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: now },
+    });
+
+    const recipients = conversation.participants.filter((item) => item.userId !== user.id);
+    if (recipients.length > 0) {
+      await tx.chatParticipant.updateMany({
+        where: {
+          conversationId: conversation.id,
+          userId: { in: recipients.map((item) => item.userId) },
+          leftAt: null,
+        },
+        data: { unreadCount: { increment: 1 } },
+      });
+    }
+
+    const mentionedUsernames = extractMentionUsernames(body);
+    const mentionedUsers = mentionedUsernames.length
+      ? await tx.user.findMany({
+          where: {
+            username: { in: mentionedUsernames, mode: 'insensitive' },
+            id: { in: recipients.map((item) => item.userId) },
+            active: true,
+            deletedAt: null,
+          },
+          select: { id: true },
+        })
+      : [];
+    const mentionedIds = new Set(mentionedUsers.map((item) => item.id));
+    const normalizedBody = body?.toLocaleLowerCase('es-CL') ?? '';
+
+    if (
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@todos\b/.test(normalizedBody)
+    ) {
+      for (const recipient of recipients) mentionedIds.add(recipient.userId);
+    }
+    if (
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@turno\b/.test(normalizedBody) &&
+      recipients.length > 0
+    ) {
+      const active = await tx.user.findMany({
+        where: {
+          id: { in: recipients.map((item) => item.userId) },
+          assignments: {
+            some: {
+              activatedAt: { not: null },
+              leftAt: null,
+              shift: {
+                archivedAt: null,
+                status: { in: ACTIVE_SHIFT_STATUSES },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      for (const item of active) mentionedIds.add(item.id);
+    }
+
+    const preview = descriptor.mimeType.startsWith('image/')
+      ? 'Imagen'
+      : descriptor.mimeType.startsWith('audio/')
+        ? 'Nota de voz'
+        : `Archivo · ${descriptor.fileName}`;
+
+    for (const recipient of recipients) {
+      if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+
+      if (mentionedIds.has(recipient.userId)) {
+        await tx.notification.create({
+          data: {
+            userId: recipient.userId,
+            type: NotificationType.MENCION,
+            title: `${user.name} te mencionó en ${conversation.title?.trim() || 'el chat'}`,
+            body: body?.slice(0, 180) ?? preview,
+            link: `/?chat=${conversation.id}`,
+            entity: 'ChatConversation',
+            entityId: conversation.id,
+          },
+        });
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: recipient.userId,
+          type: NotificationType.CHAT_MENSAJE,
+          title: conversation.type === ChatConversationType.GRUPO
+            ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
+            : user.name,
+          body: body?.slice(0, 180) ?? preview,
+          link: `/?chat=${conversation.id}`,
+          entity: 'ChatConversation',
+          entityId: conversation.id,
+        },
+      });
+    }
+
+    return message;
+  });
+}
+
+export async function beginChatStickerUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  }
+  const descriptor = validateStickerUploadDescriptor(input);
+  const storageKey = makeChatStorageKey(
+    input.conversationId,
+    descriptor.fileName,
+    'sticker',
+  );
+  const signed = createR2PresignedPutUrl(storageKey, descriptor.mimeType, 300);
+  return {
+    ...descriptor,
+    storageKey,
+    uploadUrl: signed.url,
+    expiresAt: signed.expiresAt,
+  };
+}
+
+export async function finalizeChatStickerUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    storageKey: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    label?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  }
+
+  const descriptor = validateStickerUploadDescriptor(input);
+  const expectedPrefix = `chat/${input.conversationId}/sticker/`;
+  if (!input.storageKey.startsWith(expectedPrefix) || input.storageKey.includes('..')) {
+    throw new RuleError('La referencia del sticker no es válida.');
+  }
+
+  await verifyDirectUpload(input.storageKey, descriptor.size, descriptor.mimeType);
+
+  return prisma.chatSticker.create({
+    data: {
+      ownerId: user.id,
+      storageKey: input.storageKey,
+      fileName: descriptor.fileName,
+      mimeType: descriptor.mimeType,
+      size: descriptor.size,
+      label: input.label?.replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+    },
+    select: { id: true },
+  });
+}
+
+export async function createChatAttachmentMessage(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    bytes: Buffer;
+    body?: string | null;
+    replyToId?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  if (!CHAT_ALLOWED_UPLOAD_TYPES.has(input.mimeType)) {
+    throw new RuleError('Este tipo de archivo no está permitido en el chat.');
+  }
+  if (input.bytes.byteLength < 1 || input.bytes.byteLength > CHAT_UPLOAD_MAX_BYTES) {
+    throw new RuleError('El archivo debe pesar como máximo 20 MB.');
+  }
+
+  const fileName = safeUploadName(input.fileName);
+  const storageKey = makeChatStorageKey(input.conversationId, fileName);
+  await putR2Object(storageKey, input.bytes, input.mimeType);
+
+  try {
+    const body = normalizeChatText(input.body);
+    const replyToId = typeof input.replyToId === 'string' ? input.replyToId.trim() || null : null;
+    if (replyToId) {
+      const target = await prisma.chatMessage.findFirst({
+        where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!target) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const conversation = await tx.chatConversation.findFirst({
+        where: { id: input.conversationId, deletedAt: null },
+        include: {
+          participants: {
+            where: { leftAt: null },
+            select: { userId: true, mutedUntil: true },
+          },
+        },
+      });
+      if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
+
+      const message = await tx.chatMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: user.id,
+          kind: ChatMessageKind.ARCHIVO,
+          body,
+          replyToId,
+          attachments: {
+            create: {
+              fileName,
+              mimeType: input.mimeType,
+              size: input.bytes.byteLength,
+              storageKey,
+              uploadedById: user.id,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const now = new Date();
+      await tx.chatConversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: now },
+      });
+
+      const recipients = conversation.participants.filter((item) => item.userId !== user.id);
+      if (recipients.length) {
+        await tx.chatParticipant.updateMany({
+          where: {
+            conversationId: conversation.id,
+            userId: { in: recipients.map((item) => item.userId) },
+            leftAt: null,
+          },
+          data: { unreadCount: { increment: 1 } },
+        });
+      }
+
+      for (const recipient of recipients) {
+        if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+        await tx.notification.create({
+          data: {
+            userId: recipient.userId,
+            type: NotificationType.CHAT_MENSAJE,
+            title: conversation.type === ChatConversationType.GRUPO
+              ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
+              : user.name,
+            body: input.mimeType.startsWith('image/') ? 'Imagen' : `Archivo · ${fileName}`,
+            link: `/?chat=${conversation.id}`,
+            entity: 'ChatConversation',
+            entityId: conversation.id,
+          },
+        });
+      }
+
+      return message;
+    });
+  } catch (error) {
+    await deleteR2Object(storageKey).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function getChatAttachmentObject(user: CurrentUser, attachmentId: string) {
+  assertChatActor(user);
+  const attachment = await prisma.attachment.findFirst({
+    where: {
+      id: attachmentId,
+      deletedAt: null,
+      chatMessage: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: { some: { userId: user.id, leftAt: null } },
+        },
+      },
+    },
+    select: {
+      id: true,
+      fileName: true,
+      mimeType: true,
+      size: true,
+      storageKey: true,
+    },
+  });
+  if (!attachment) throw new NotFoundError('El archivo no existe o no tienes acceso.');
+
+  const response = await getR2Object(attachment.storageKey);
+  if (!response.ok) throw new NotFoundError('El archivo ya no está disponible.');
+
+  return { attachment, response };
+}
+
+export async function createChatSticker(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    bytes: Buffer;
+    label?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  if (!['image/png', 'image/webp', 'image/jpeg'].includes(input.mimeType)) {
+    throw new RuleError('Los stickers deben ser PNG, WEBP o JPEG.');
+  }
+  if (input.bytes.byteLength < 1 || input.bytes.byteLength > CHAT_STICKER_MAX_BYTES) {
+    throw new RuleError('El sticker debe pesar como máximo 8 MB.');
+  }
+
+  const fileName = safeUploadName(input.fileName);
+  const storageKey = makeChatStorageKey(input.conversationId, fileName, 'sticker');
+  await putR2Object(storageKey, input.bytes, input.mimeType);
+  try {
+    return await prisma.chatSticker.create({
+      data: {
+        ownerId: user.id,
+        storageKey,
+        fileName,
+        mimeType: input.mimeType,
+        size: input.bytes.byteLength,
+        label: input.label?.replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+      },
+      select: { id: true },
+    });
+  } catch (error) {
+    await deleteR2Object(storageKey).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function listChatStickers(user: CurrentUser) {
+  assertChatActor(user);
+  const rows = await prisma.chatSticker.findMany({
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+    take: 120,
+    select: {
+      id: true,
+      ownerId: true,
+      label: true,
+      createdAt: true,
+    },
+  });
+
+  const preferences = await prisma.chatMediaPreference.findMany({
+    where: { userId: user.id, kind: 'sticker', refKey: { in: rows.map((row) => row.id) } },
+    select: { refKey: true, favorite: true, usedAt: true },
+  });
+  const pref = new Map(preferences.map((item) => [item.refKey, item]));
+
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    url: `/api/chat/stickers/${row.id}`,
+    mine: row.ownerId === user.id,
+    favorite: pref.get(row.id)?.favorite ?? false,
+    usedAt: pref.get(row.id)?.usedAt.toISOString() ?? null,
+  }));
+}
+
+export async function sendCustomStickerMessage(
+  user: CurrentUser,
+  input: { conversationId: string; stickerId: string; replyToId?: string | null },
+) {
+  await assertParticipant(user, input.conversationId);
+  const sticker = await prisma.chatSticker.findFirst({
+    where: { id: input.stickerId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!sticker) throw new NotFoundError('El sticker ya no está disponible.');
+
+  const replyToId = input.replyToId?.trim() || null;
+  if (replyToId) {
+    const replyTarget = await prisma.chatMessage.findFirst({
+      where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!replyTarget) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const conversation = await tx.chatConversation.findFirst({
+      where: { id: input.conversationId, deletedAt: null },
+      include: {
+        participants: {
+          where: { leftAt: null },
+          select: { userId: true, mutedUntil: true },
+        },
+      },
+    });
+    if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
+
+    const message = await tx.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: user.id,
+        kind: ChatMessageKind.STICKER,
+        stickerId: sticker.id,
+        replyToId,
+      },
+      select: { id: true },
+    });
+
+    const now = new Date();
+    await tx.chatConversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: now },
+    });
+    const recipients = conversation.participants.filter((item) => item.userId !== user.id);
+    if (recipients.length) {
+      await tx.chatParticipant.updateMany({
+        where: { conversationId: conversation.id, userId: { in: recipients.map((item) => item.userId) } },
+        data: { unreadCount: { increment: 1 } },
+      });
+    }
+
+    for (const recipient of recipients) {
+      if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+      await tx.notification.create({
+        data: {
+          userId: recipient.userId,
+          type: NotificationType.CHAT_MENSAJE,
+          title: conversation.type === ChatConversationType.GRUPO
+            ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
+            : user.name,
+          body: 'Sticker',
+          link: `/?chat=${conversation.id}`,
+          entity: 'ChatConversation',
+          entityId: conversation.id,
+        },
+      });
+    }
+
+    await tx.chatMediaPreference.upsert({
+      where: {
+        userId_kind_refKey: { userId: user.id, kind: 'sticker', refKey: sticker.id },
+      },
+      create: {
+        userId: user.id,
+        kind: 'sticker',
+        refKey: sticker.id,
+        payload: {},
+        usedAt: now,
+      },
+      update: { usedAt: now },
+    });
+
+    return message;
+  });
+
+  return result;
+}
+
+export async function getChatStickerObject(user: CurrentUser, stickerId: string) {
+  assertChatActor(user);
+  const sticker = await prisma.chatSticker.findFirst({
+    where: { id: stickerId, deletedAt: null },
+    select: { id: true, fileName: true, mimeType: true, size: true, storageKey: true },
+  });
+  if (!sticker) throw new NotFoundError('El sticker no existe.');
+
+  const response = await getR2Object(sticker.storageKey);
+  if (!response.ok) throw new NotFoundError('El sticker ya no está disponible.');
+  return { sticker, response };
+}
+
+
+export async function getChatMediaPreferences(
+  user: CurrentUser,
+  kind: 'gif' | 'sticker',
+) {
+  assertChatActor(user);
+  const rows = await prisma.chatMediaPreference.findMany({
+    where: { userId: user.id, kind },
+    orderBy: [{ favorite: 'desc' }, { usedAt: 'desc' }],
+    take: 80,
+    select: {
+      kind: true,
+      refKey: true,
+      payload: true,
+      favorite: true,
+      usedAt: true,
+    },
+  });
+  return rows.map((row) => ({
+    kind: row.kind,
+    refKey: row.refKey,
+    payload: row.payload,
+    favorite: row.favorite,
+    usedAt: row.usedAt.toISOString(),
+  }));
+}
+
+export async function toggleChatMediaFavorite(
+  user: CurrentUser,
+  input: {
+    kind: 'gif' | 'sticker';
+    refKey: string;
+    payload?: Prisma.InputJsonValue;
+  },
+) {
+  assertChatActor(user);
+  const refKey = input.refKey.trim().slice(0, 1900);
+  if (!refKey) throw new RuleError('No se pudo identificar el elemento.');
+
+  const current = await prisma.chatMediaPreference.findUnique({
+    where: {
+      userId_kind_refKey: {
+        userId: user.id,
+        kind: input.kind,
+        refKey,
+      },
+    },
+    select: { favorite: true },
+  });
+
+  const favorite = !current?.favorite;
+  const row = await prisma.chatMediaPreference.upsert({
+    where: {
+      userId_kind_refKey: {
+        userId: user.id,
+        kind: input.kind,
+        refKey,
+      },
+    },
+    create: {
+      userId: user.id,
+      kind: input.kind,
+      refKey,
+      payload: input.payload ?? {},
+      favorite,
+      usedAt: new Date(),
+    },
+    update: {
+      favorite,
+      ...(input.payload !== undefined ? { payload: input.payload } : {}),
+    },
+    select: { favorite: true },
+  });
+  return row;
+}
+
+export async function toggleChatReaction(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string; emoji: string },
+) {
+  await assertParticipant(user, input.conversationId);
+  const emoji = input.emoji.trim().slice(0, 16);
+  if (!emoji) throw new RuleError('Selecciona una reacción.');
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje ya no está disponible.');
+
+  const existing = await prisma.chatReaction.findUnique({
+    where: {
+      messageId_userId_emoji: {
+        messageId: message.id,
+        userId: user.id,
+        emoji,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.$transaction([
+      prisma.chatReaction.delete({ where: { id: existing.id } }),
+      prisma.chatConversation.update({
+        where: { id: input.conversationId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
+    return { active: false };
+  }
+
+  await prisma.$transaction([
+    prisma.chatReaction.create({
+      data: {
+        messageId: message.id,
+        userId: user.id,
+        emoji,
+      },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: new Date() },
+    }),
+  ]);
+  return { active: true };
+}
+
+export async function toggleSavedChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string },
+) {
+  await assertParticipant(user, input.conversationId);
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje ya no está disponible.');
+
+  const key = { userId_messageId: { userId: user.id, messageId: message.id } };
+  const existing = await prisma.chatSavedMessage.findUnique({
+    where: key,
+    select: { userId: true },
+  });
+
+  if (existing) {
+    await prisma.chatSavedMessage.delete({ where: key });
+    return { saved: false };
+  }
+
+  await prisma.chatSavedMessage.create({
+    data: { userId: user.id, messageId: message.id },
+  });
+  return { saved: true };
+}
+
+export async function setChatTyping(
+  user: CurrentUser,
+  input: { conversationId: string; active: boolean },
+) {
+  await assertParticipant(user, input.conversationId);
+
+  if (!input.active) {
+    await prisma.chatTyping.deleteMany({
+      where: { conversationId: input.conversationId, userId: user.id },
+    });
+    return { active: false };
+  }
+
+  await prisma.chatTyping.upsert({
+    where: {
+      conversationId_userId: {
+        conversationId: input.conversationId,
+        userId: user.id,
+      },
+    },
+    create: {
+      conversationId: input.conversationId,
+      userId: user.id,
+    },
+    update: {
+      updatedAt: new Date(),
+    },
+  });
+
+  return { active: true };
+}
+
+export async function listSavedChatMessages(user: CurrentUser) {
+  assertChatActor(user);
+  const rows = await prisma.chatSavedMessage.findMany({
+    where: {
+      userId: user.id,
+      message: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: { some: { userId: user.id, leftAt: null } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: {
+      message: {
+        include: {
+          sender: { select: { name: true } },
+          conversation: {
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              participants: {
+                where: { leftAt: null },
+                select: {
+                  userId: true,
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    conversationId: row.message.conversation.id,
+    conversationTitle:
+      row.message.conversation.type === ChatConversationType.GRUPO
+        ? row.message.conversation.title?.trim() || 'Grupo'
+        : row.message.conversation.participants.find((item) => item.userId !== user.id)?.user.name ??
+          'Conversación',
+    senderName: row.message.sender.name,
+    body: row.message.body,
+    kind: row.message.kind,
+    createdAt: row.message.createdAt.toISOString(),
+    savedAt: row.createdAt.toISOString(),
+  }));
+}
+
+
+export async function editOwnChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string; body: unknown },
+) {
+  await assertParticipant(user, input.conversationId);
+  const body = normalizeChatText(input.body);
+  if (!body) throw new RuleError('El mensaje no puede quedar vacío.');
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      senderId: user.id,
+      deletedAt: null,
+      kind: { in: [ChatMessageKind.TEXTO, ChatMessageKind.CONTEXTO, ChatMessageKind.ARCHIVO] },
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje no se puede editar.');
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.chatMessage.update({
+      where: { id: message.id },
+      data: { body, editedAt: now },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: now },
+    }),
+  ]);
+  return { ok: true };
+}
+
+export async function deleteOwnChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string },
+) {
+  await assertParticipant(user, input.conversationId);
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      senderId: user.id,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje no se puede eliminar.');
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        deletedAt: now,
+        body: null,
+        mediaUrl: null,
+        mediaPageUrl: null,
+        mediaSource: null,
+        mediaAlt: null,
+        contextLabel: null,
+        contextHref: null,
+        contextEntity: null,
+        contextEntityId: null,
+        stickerKey: null,
+        stickerId: null,
+      },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: now },
+    }),
+  ]);
+  return { ok: true };
 }
 
 export async function markChatConversationRead(user: CurrentUser, conversationId: string) {

@@ -7,6 +7,7 @@ import {
   isChatAvatarKey,
   isChatNotificationTone,
   isChatStickerKey,
+  normalizeChatMediaUrl,
   normalizeChatStatus,
   normalizeChatText,
   normalizeInternalChatHref,
@@ -51,7 +52,14 @@ describe('contrato ligero del chat', () => {
     expect(isChatNotificationTone('sirena-externa')).toBe(false);
   });
 
-  it('acepta sólo media HTTPS de Wikimedia para GIF', () => {
+  it('acepta sólo hosts HTTPS autorizados por proveedor GIF', () => {
+    expect(normalizeChatMediaUrl('https://media.tenor.com/demo.gif', 'TENOR')).toBe(
+      'https://media.tenor.com/demo.gif',
+    );
+    expect(normalizeChatMediaUrl('https://upload.wikimedia.org/example.gif', 'TENOR')).toBeNull();
+    expect(normalizeChatMediaUrl('https://media.tenor.com/demo.gif', 'WIKIMEDIA_COMMONS')).toBeNull();
+
+
     expect(normalizeWikimediaMediaUrl('https://upload.wikimedia.org/example.gif')).toBe(
       'https://upload.wikimedia.org/example.gif',
     );

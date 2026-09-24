@@ -3,6 +3,7 @@ import { requireUser } from '@/server/auth/guard';
 import {
   getChatConversationSnapshot,
   sendChatMessage,
+  sendCustomStickerMessage,
 } from '@/server/services/chat';
 import { chatApiError, chatJson } from '@/server/api/chat';
 
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic';
 const messageSchema = z.object({
   body: z.unknown().optional(),
   stickerKey: z.unknown().optional(),
+  stickerId: z.string().min(1).optional(),
   mediaUrl: z.unknown().optional(),
   mediaPageUrl: z.unknown().optional(),
   mediaSource: z.unknown().optional(),
@@ -44,10 +46,16 @@ export async function POST(
     const user = await requireUser();
     const { id } = await params;
     const payload = messageSchema.parse(await request.json());
-    const message = await sendChatMessage(user, {
-      conversationId: id,
-      ...payload,
-    });
+    const message = payload.stickerId
+      ? await sendCustomStickerMessage(user, {
+          conversationId: id,
+          stickerId: payload.stickerId,
+          replyToId: typeof payload.replyToId === 'string' ? payload.replyToId : null,
+        })
+      : await sendChatMessage(user, {
+          conversationId: id,
+          ...payload,
+        });
     return chatJson(message, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {

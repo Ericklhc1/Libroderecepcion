@@ -23,6 +23,7 @@ import {
 } from '@/server/ai/memory';
 import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { canUseFronti } from '@/server/ai/fronti-access';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export const runtime = 'nodejs';
@@ -71,9 +72,12 @@ async function authenticatedUser() {
   return user;
 }
 
-function publicConfig(config: Awaited<ReturnType<typeof getFrontiConfig>>) {
+function publicConfig(
+  config: Awaited<ReturnType<typeof getFrontiConfig>>,
+  enabled: boolean,
+) {
   return {
-    enabled: config.enabled,
+    enabled,
     displayName: config.displayName,
     welcomeMessage: config.welcomeMessage,
     sessionActivityMinutes: config.sessionActivityMinutes,
@@ -88,6 +92,14 @@ export async function GET(request: Request) {
   }
 
   const config = await getFrontiConfig();
+  const accessEnabled = canUseFronti(user, config.enabled);
+  if (!accessEnabled) {
+    return NextResponse.json(
+      { error: `${config.displayName} no está habilitado para tu cuenta.` },
+      { status: 403, headers: noStoreHeaders() },
+    );
+  }
+
   const url = new URL(request.url);
   if (url.searchParams.get('heartbeat') === '1') {
     if (url.searchParams.get('active') === '1') {
@@ -95,7 +107,7 @@ export async function GET(request: Request) {
       if (!alive) return expiredResponse();
     }
     return NextResponse.json(
-      { ok: true, assistant: config.displayName, config: publicConfig(config) },
+      { ok: true, assistant: config.displayName, config: publicConfig(config, accessEnabled) },
       { headers: noStoreHeaders() },
     );
   }
@@ -104,21 +116,9 @@ export async function GET(request: Request) {
   if (!alive) return expiredResponse();
 
   try {
-    if (!config.enabled) {
-      return NextResponse.json(
-        {
-          assistant: config.displayName,
-          retentionDays: config.memoryRetentionDays,
-          messages: [],
-          config: publicConfig(config),
-        },
-        { headers: noStoreHeaders() },
-      );
-    }
-
     const bootstrap = await getAssistantBootstrap(user);
     return NextResponse.json(
-      { ...bootstrap, assistant: config.displayName, config: publicConfig(config) },
+      { ...bootstrap, assistant: config.displayName, config: publicConfig(config, accessEnabled) },
       { headers: noStoreHeaders() },
     );
   } catch (error) {
@@ -136,9 +136,10 @@ export async function POST(request: Request) {
 
   try {
     const config = await getFrontiConfig();
-    if (!config.enabled) {
+    const accessEnabled = canUseFronti(user, config.enabled);
+    if (!accessEnabled) {
       return NextResponse.json(
-        { error: `${config.displayName} está desactivado por el Administrador de sistema.` },
+        { error: `${config.displayName} no está habilitado para tu cuenta.` },
         { status: 403, headers: noStoreHeaders() },
       );
     }
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
         {
           ...bootstrap,
           assistant: config.displayName,
-          config: publicConfig(config),
+          config: publicConfig(config, accessEnabled),
           reset: true,
           reply: 'Nueva conversación iniciada.',
         },
@@ -165,7 +166,7 @@ export async function POST(request: Request) {
         {
           ...bootstrap,
           assistant: config.displayName,
-          config: publicConfig(config),
+          config: publicConfig(config, accessEnabled),
           reset: true,
           reply: `${config.displayName} eliminó esta conversación y las memorias derivadas de ella.`,
         },
@@ -177,7 +178,7 @@ export async function POST(request: Request) {
       const result = await executeReceptionConfirmation(user, body.confirmationToken);
       await persistAssistantEvent(user, result.reply);
       return NextResponse.json(
-        { ...result, assistant: config.displayName, config: publicConfig(config) },
+        { ...result, assistant: config.displayName, config: publicConfig(config, accessEnabled) },
         { headers: noStoreHeaders() },
       );
     }
@@ -189,7 +190,7 @@ export async function POST(request: Request) {
         {
           ...bootstrap,
           assistant: config.displayName,
-          config: publicConfig(config),
+          config: publicConfig(config, accessEnabled),
           reset: true,
           reply: `${config.displayName} eliminó esta conversación y las memorias derivadas de ella.`,
         },
@@ -250,7 +251,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { ...result, assistant: config.displayName, config: publicConfig(config) },
+      { ...result, assistant: config.displayName, config: publicConfig(config, accessEnabled) },
       { headers: noStoreHeaders() },
     );
   } catch (error) {

@@ -284,16 +284,18 @@ describe('credenciales administrables de Fronti', () => {
     expect(source).toContain('runtime.FRONTI_API_KEY');
   });
 
-  it('todos los consumidores operativos resuelven la credencial efectiva', () => {
-    for (const file of [
-      'src/server/ai/reception-assistant.ts',
-      'src/server/ai/operational-brief.ts',
-      'src/server/ai/memory.ts',
-      'src/app/api/health/asistente/route.ts',
-      'src/app/(app)/admin/fronti/page.tsx',
-    ]) {
+  it('todos los consumidores operativos resuelven credenciales efectivas mediante el router adecuado', () => {
+    const consumers: Array<[string, string]> = [
+      ['src/server/ai/reception-assistant.ts', 'resolveFrontiProviderChainRuntime'],
+      ['src/server/ai/operational-brief.ts', 'resolveFrontiProviderChainRuntime'],
+      ['src/server/ai/memory.ts', 'resolveFrontiAuxiliaryProviderRuntime'],
+      ['src/app/api/health/asistente/route.ts', 'resolveFrontiProviderChainRuntime'],
+      ['src/app/(app)/admin/fronti/page.tsx', 'resolveFrontiProviderRuntime'],
+    ];
+
+    for (const [file, resolver] of consumers) {
       const source = readFileSync(file, 'utf-8');
-      expect(source, file).toContain('resolveFrontiProviderRuntime');
+      expect(source, file).toContain(resolver);
       expect(source, file).not.toContain('resolveFrontiProvider(config)');
     }
   });

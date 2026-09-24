@@ -841,6 +841,129 @@ export function ChatWidget({
         </>
       ) : null}
 
+      {view === 'profile' && profileDraft ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-petrol-50 text-4xl">
+                {avatarGlyph(profileDraft.avatarKey)}
+              </div>
+              <p className="mt-2 text-sm font-semibold text-petrol-950">Editar avatar, estado y sonido</p>
+              <p className="text-xs text-slate-500">Tu identidad dentro del IM del Libro.</p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Avatar</p>
+              <div className="grid grid-cols-7 gap-1.5">
+                {CHAT_AVATARS.map((avatar) => (
+                  <button
+                    key={avatar.key}
+                    type="button"
+                    title={avatar.label}
+                    onClick={() =>
+                      setProfileDraft((current) =>
+                        current ? { ...current, avatarKey: avatar.key } : current,
+                      )
+                    }
+                    className={`flex aspect-square items-center justify-center rounded-xl text-2xl ${
+                      profileDraft.avatarKey === avatar.key
+                        ? 'bg-petrol-100 ring-2 ring-petrol-700'
+                        : 'bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    {avatar.glyph}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Estado personal
+              </span>
+              <input
+                value={profileDraft.statusText ?? ''}
+                onChange={(event) =>
+                  setProfileDraft((current) =>
+                    current
+                      ? { ...current, statusText: event.target.value.slice(0, CHAT_STATUS_MAX) }
+                      : current,
+                  )
+                }
+                maxLength={CHAT_STATUS_MAX}
+                placeholder="Ej. En recepción ☕"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+              />
+              <span className="mt-1 block text-right text-[0.65rem] text-slate-400">
+                {(profileDraft.statusText ?? '').length}/{CHAT_STATUS_MAX}
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Tono de notificación
+              </span>
+              <select
+                value={profileDraft.notificationTone}
+                onChange={(event) =>
+                  setProfileDraft((current) =>
+                    current ? { ...current, notificationTone: event.target.value } : current,
+                  )
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+              >
+                {CHAT_NOTIFICATION_TONES.map((tone) => (
+                  <option key={tone.key} value={tone.key}>{tone.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Sonido</p>
+                <p className="text-xs text-slate-500">Usar el tono seleccionado para mensajes.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setProfileDraft((current) =>
+                    current ? { ...current, soundEnabled: !current.soundEnabled } : current,
+                  )
+                }
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  profileDraft.soundEnabled
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
+                {profileDraft.soundEnabled ? 'Activado' : 'Desactivado'}
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!profileDraft.soundEnabled}
+                onClick={testProfileTone}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-petrol-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Volume2 className="h-4 w-4" aria-hidden="true" />
+                Probar tono
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => void saveChatProfile()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-petrol-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:opacity-50"
+              >
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {view === 'conversation' && snapshot ? (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4">
@@ -848,16 +971,17 @@ export function ChatWidget({
               {snapshot.messages.map((message) => {
                 const mine = message.senderId === currentUserId;
                 const sticker = chatStickerGlyph(message.stickerKey);
+                const gif = message.kind === 'GIF' && Boolean(message.mediaUrl);
                 return (
                   <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[84%] ${
-                      sticker
+                      sticker || gif
                         ? 'px-2 py-1'
                         : mine
                           ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
                           : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100'
                     }`}>
-                      {!mine && !sticker ? (
+                      {!mine && !sticker && !gif ? (
                         <p className="mb-0.5 text-[0.67rem] font-semibold text-petrol-700">
                           {message.senderName}
                         </p>
@@ -867,6 +991,30 @@ export function ChatWidget({
                           <span className="text-5xl" role="img" aria-label="Sticker">{sticker}</span>
                           {!mine ? (
                             <p className="mt-1 text-[0.65rem] font-medium text-slate-500">{message.senderName}</p>
+                          ) : null}
+                        </div>
+                      ) : gif && message.mediaUrl ? (
+                        <div className="max-w-[280px]">
+                          {!mine ? (
+                            <p className="mb-1 text-[0.67rem] font-semibold text-petrol-700">
+                              {message.senderName}
+                            </p>
+                          ) : null}
+                          <img
+                            src={message.mediaUrl}
+                            alt={message.mediaAlt || 'GIF'}
+                            loading="lazy"
+                            className="max-h-64 w-auto max-w-full rounded-xl object-contain"
+                          />
+                          {message.mediaPageUrl ? (
+                            <a
+                              href={message.mediaPageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 block text-right text-[0.62rem] text-slate-400 hover:text-petrol-700"
+                            >
+                              Wikimedia Commons
+                            </a>
                           ) : null}
                         </div>
                       ) : (
@@ -895,7 +1043,7 @@ export function ChatWidget({
                           ))}
                         </>
                       )}
-                      {!sticker ? (
+                      {!sticker && !gif ? (
                         <p className={`mt-1 text-right text-[0.6rem] ${
                           mine ? 'text-petrol-100' : 'text-slate-400'
                         }`}>

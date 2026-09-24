@@ -206,6 +206,43 @@ export async function resolveFrontiProviderRuntime(input: {
   return stored.value ? { ...resolved, apiKey: stored.value } : resolved;
 }
 
+
+export async function resolveFrontiProviderChainRuntime(input: {
+  reasoningEffort: 'low' | 'medium' | 'high';
+}): Promise<FrontiProviderConfig[]> {
+  const [openai, groq] = await Promise.all([
+    resolveFrontiProviderRuntime({
+      provider: 'openai',
+      model: OPENAI_PRIMARY_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'groq',
+      model: GROQ_PRIMARY_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
+  ]);
+
+  return [openai, groq].filter(providerIsConfigured);
+}
+
+export async function resolveFrontiAuxiliaryProviderRuntime(): Promise<FrontiProviderConfig | null> {
+  const [groq, openai] = await Promise.all([
+    resolveFrontiProviderRuntime({
+      provider: 'groq',
+      model: GROQ_FALLBACK_MODEL,
+      reasoningEffort: 'low',
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'openai',
+      model: OPENAI_AUXILIARY_MODEL,
+      reasoningEffort: 'low',
+    }),
+  ]);
+
+  return [groq, openai].find(providerIsConfigured) ?? null;
+}
+
 export function providerIsConfigured(config: FrontiProviderConfig): boolean {
   if (!config.baseUrl) return false;
   if (config.provider === 'vllm') return true;
@@ -217,7 +254,10 @@ function authHeaders(apiKey: string | null): Record<string, string> {
 }
 
 const MAX_RATE_LIMIT_RETRY_MS = 5_000;
-const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b';
+export const OPENAI_PRIMARY_MODEL = 'gpt-5.6-sol';
+export const OPENAI_AUXILIARY_MODEL = 'gpt-5.6-luna';
+export const GROQ_PRIMARY_MODEL = 'openai/gpt-oss-120b';
+export const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b';
 
 function retryAfterMs(response: Response): number | null {
   const raw = response.headers.get('retry-after');

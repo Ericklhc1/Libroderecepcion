@@ -72,6 +72,63 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
   },
   {
     type: 'function',
+    name: 'consultar_estado_operativo',
+    description:
+      'Construye una vista transversal del estado actual del Libro usando las áreas que la cuenta puede consultar: prioridades, Caja y Llaves. Úsala para preguntas amplias como “qué está pasando”, “qué falta”, “dame un panorama” o “qué cosas raras hay”. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'sistema',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_caja',
+    description:
+      'Consulta el estado actual de Caja: fondo fijo, esperado, movimientos, custodia de garantías, transferible y arqueos recientes. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'caja',
+    parameters: {
+      type: 'object',
+      properties: {
+        movements: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 30,
+          description: 'Cantidad máxima de movimientos recientes a incluir. Usa 10 por defecto.',
+        },
+      },
+      required: ['movements'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'consultar_llaves',
+    description:
+      'Consulta el inventario físico de llaves y sus estados. Puede mostrar faltantes, asignadas, pendientes de devolución, extraviadas y fuera de servicio. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'llaves',
+    parameters: {
+      type: 'object',
+      properties: {
+        onlyAttention: {
+          type: 'boolean',
+          description: 'Si es true, devuelve sólo llaves que requieren atención.',
+        },
+      },
+      required: ['onlyAttention'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'proponer_checkouts',
     description:
       'Prepara la confirmación de salida de una o más habitaciones. Nunca afirmes que el check-out fue realizado hasta que el usuario confirme la tarjeta de acción.',

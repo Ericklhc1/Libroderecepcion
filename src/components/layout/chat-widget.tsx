@@ -1014,6 +1014,7 @@ export function ChatWidget({
                               {message.senderName}
                             </p>
                           ) : null}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={message.mediaUrl}
                             alt={message.mediaAlt || 'GIF'}

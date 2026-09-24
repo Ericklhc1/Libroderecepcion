@@ -506,6 +506,181 @@ export async function createGroupConversation(
   });
 }
 
+
+export async function manageGroupConversation(
+  user: CurrentUser,
+  input:
+    | { conversationId: string; action: 'rename'; title: string }
+    | { conversationId: string; action: 'add'; userId: string }
+    | { conversationId: string; action: 'remove'; userId: string }
+    | { conversationId: string; action: 'promote'; userId: string }
+    | { conversationId: string; action: 'demote'; userId: string }
+    | { conversationId: string; action: 'mute'; muted: boolean }
+    | { conversationId: string; action: 'leave' },
+) {
+  assertChatActor(user);
+
+  const conversation = await prisma.chatConversation.findFirst({
+    where: { id: input.conversationId, deletedAt: null },
+    include: {
+      participants: {
+        where: { leftAt: null },
+        orderBy: { joinedAt: 'asc' },
+        select: { userId: true, role: true, joinedAt: true },
+      },
+    },
+  });
+  if (!conversation || conversation.type !== ChatConversationType.GRUPO) {
+    throw new NotFoundError('El grupo no existe o ya no está disponible.');
+  }
+
+  const me = conversation.participants.find((item) => item.userId === user.id);
+  if (!me) throw new NotFoundError('No perteneces a este grupo.');
+  const canManage = me.role === ChatParticipantRole.CREADOR || me.role === ChatParticipantRole.ADMIN;
+
+  if (input.action === 'mute') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: { conversationId: conversation.id, userId: user.id },
+      },
+      data: { mutedUntil: input.muted ? new Date('9999-12-31T23:59:59.999Z') : null },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'leave') {
+    await prisma.$transaction(async (tx) => {
+      if (me.role === ChatParticipantRole.CREADOR) {
+        const successor = conversation.participants.find((item) => item.userId !== user.id);
+        if (successor) {
+          await tx.chatParticipant.update({
+            where: {
+              conversationId_userId: {
+                conversationId: conversation.id,
+                userId: successor.userId,
+              },
+            },
+            data: { role: ChatParticipantRole.CREADOR },
+          });
+        }
+      }
+      await tx.chatParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: conversation.id, userId: user.id },
+        },
+        data: { leftAt: new Date(), unreadCount: 0 },
+      });
+    });
+    return { ok: true };
+  }
+
+  if (!canManage) throw new RuleError('Sólo administradores del grupo pueden hacer ese cambio.');
+
+  if (input.action === 'rename') {
+    const title = input.title.trim().slice(0, CHAT_GROUP_TITLE_MAX);
+    if (title.length < 2) throw new RuleError('El grupo necesita un nombre.');
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { title },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'add') {
+    if (!input.userId || input.userId === user.id) throw new RuleError('Selecciona otra persona.');
+    const target = await prisma.user.findFirst({
+      where: {
+        id: input.userId,
+        active: true,
+        deletedAt: null,
+        role: { operational: true },
+      },
+      select: { id: true },
+    });
+    if (!target) throw new NotFoundError('La persona ya no está disponible.');
+
+    const existing = await prisma.chatParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: conversation.id, userId: target.id },
+      },
+      select: { leftAt: true },
+    });
+    if (existing) {
+      await prisma.chatParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: conversation.id, userId: target.id },
+        },
+        data: {
+          leftAt: null,
+          joinedAt: new Date(),
+          role: ChatParticipantRole.MIEMBRO,
+          unreadCount: 0,
+        },
+      });
+    } else {
+      await prisma.chatParticipant.create({
+        data: {
+          conversationId: conversation.id,
+          userId: target.id,
+          role: ChatParticipantRole.MIEMBRO,
+        },
+      });
+    }
+    return { ok: true };
+  }
+
+  if (input.userId === user.id && input.action === 'remove') {
+    throw new RuleError('Para salir del grupo usa «Salir del grupo».');
+  }
+
+  const targetParticipant = conversation.participants.find((item) => item.userId === input.userId);
+  if (!targetParticipant) throw new NotFoundError('La persona no pertenece al grupo.');
+  if (targetParticipant.role === ChatParticipantRole.CREADOR) {
+    throw new RuleError('No puedes quitar ni degradar al creador del grupo.');
+  }
+
+  if (input.action === 'remove') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { leftAt: new Date(), unreadCount: 0 },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'promote') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { role: ChatParticipantRole.ADMIN },
+    });
+    return { ok: true };
+  }
+
+  if (input.action === 'demote') {
+    await prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId: input.userId,
+        },
+      },
+      data: { role: ChatParticipantRole.MIEMBRO },
+    });
+    return { ok: true };
+  }
+
+  throw new RuleError('Acción de grupo no válida.');
+}
+
 export async function getChatConversationSnapshot(
   user: CurrentUser,
   conversationId: string,
@@ -574,7 +749,12 @@ export async function getChatConversationSnapshot(
       conversation.type === ChatConversationType.DIRECTO
         ? other?.user.name ?? 'Conversación'
         : conversation.title?.trim() || 'Grupo',
-    participants: conversation.participants.map((item) => serializePerson(item.user, now)),
+    participants: conversation.participants.map((item) => ({
+      ...serializePerson(item.user, now),
+      conversationRole: item.role,
+    })),
+    myRole: conversation.participants.find((item) => item.userId === user.id)?.role ?? ChatParticipantRole.MIEMBRO,
+    mutedUntil: conversation.participants.find((item) => item.userId === user.id)?.mutedUntil?.toISOString() ?? null,
     messages: rows.map((message) => {
       const grouped = new Map<string, {
         emoji: string;

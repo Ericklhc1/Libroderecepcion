@@ -230,10 +230,20 @@ export async function resolveFrontiProviderRuntime(input: {
 export async function resolveFrontiProviderChainRuntime(input: {
   reasoningEffort: 'low' | 'medium' | 'high';
 }): Promise<FrontiProviderConfig[]> {
-  const [openai, groq] = await Promise.all([
+  const [sol, terra, luna, groq] = await Promise.all([
     resolveFrontiProviderRuntime({
       provider: 'openai',
       model: OPENAI_PRIMARY_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'openai',
+      model: OPENAI_SECONDARY_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'openai',
+      model: OPENAI_TERTIARY_MODEL,
       reasoningEffort: input.reasoningEffort,
     }),
     resolveFrontiProviderRuntime({
@@ -243,7 +253,7 @@ export async function resolveFrontiProviderChainRuntime(input: {
     }),
   ]);
 
-  return [openai, groq].filter(providerIsConfigured);
+  return [sol, terra, luna, groq].filter(providerIsConfigured);
 }
 
 export async function resolveFrontiAuxiliaryProviderRuntime(): Promise<FrontiProviderConfig | null> {
@@ -273,9 +283,12 @@ function authHeaders(apiKey: string | null): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-const MAX_RATE_LIMIT_RETRY_MS = 5_000;
+const MAX_RATE_LIMIT_RETRY_MS = 12_500;
+const MAX_MODEL_OUTPUT_TOKENS = 1_800;
 export const OPENAI_PRIMARY_MODEL = 'gpt-5.6-sol';
-export const OPENAI_AUXILIARY_MODEL = 'gpt-5.6-luna';
+export const OPENAI_SECONDARY_MODEL = 'gpt-5.6-terra';
+export const OPENAI_TERTIARY_MODEL = 'gpt-5.6-luna';
+export const OPENAI_AUXILIARY_MODEL = OPENAI_TERTIARY_MODEL;
 export const GROQ_PRIMARY_MODEL = 'openai/gpt-oss-120b';
 export const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b';
 
@@ -391,6 +404,7 @@ async function chatWithOpenAIResponses(args: {
         tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
         parallel_tool_calls: false,
         reasoning: { effort: args.provider.reasoningEffort },
+        max_output_tokens: MAX_MODEL_OUTPUT_TOKENS,
       }),
     });
   } catch (error) {
@@ -494,6 +508,7 @@ export async function chatWithFrontiProvider(args: {
       tools: transportTools?.length ? transportTools : undefined,
       tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
       parallel_tool_calls: false,
+      max_completion_tokens: MAX_MODEL_OUTPUT_TOKENS,
       ...(args.provider.provider === 'groq' &&
       model.startsWith('openai/gpt-oss-')
         ? {
@@ -625,6 +640,7 @@ export async function chatWithFrontiProviderChain(args: {
           provider: provider.provider,
           model: provider.model,
           failure: error.failure,
+          detail: error.detail?.slice(0, 500) ?? null,
         }),
       );
     }

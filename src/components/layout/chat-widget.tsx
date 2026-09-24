@@ -38,6 +38,7 @@ import {
   type ChatMessageItem,
   type ChatPerson,
   type ChatProfile,
+  type ChatStickerItem,
 } from '@/domain/chat';
 import { playChime } from '@/components/layout/notification-chime';
 
@@ -142,6 +143,19 @@ export function ChatWidget({
   const [stickersOpen, setStickersOpen] = useState(false);
   const [emojisOpen, setEmojisOpen] = useState(false);
   const [gifsOpen, setGifsOpen] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [customStickers, setCustomStickers] = useState<ChatStickerItem[]>([]);
+  const [stickerTab, setStickerTab] = useState<'favorites' | 'recent' | 'mine' | 'all'>('favorites');
+  const [gifTab, setGifTab] = useState<'search' | 'favorites' | 'recent'>('search');
+  const [gifPreferences, setGifPreferences] = useState<Array<{
+    refKey: string;
+    payload: unknown;
+    favorite: boolean;
+    usedAt: string;
+  }>>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [gifQuery, setGifQuery] = useState('');
   const [gifItems, setGifItems] = useState<ChatGifItem[]>([]);
   const [gifLoading, setGifLoading] = useState(false);
@@ -150,11 +164,15 @@ export function ChatWidget({
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
   const listEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const stickerInputRef = useRef<HTMLInputElement>(null);
   const openedFromQuery = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingActiveRef = useRef(false);
   const typingLastSentAtRef = useRef(0);
+
+  const storageAvailable = attachmentsEnabled || bootstrap?.storageEnabled === true;
 
   useEffect(() => setMounted(true), []);
 
@@ -273,6 +291,16 @@ export function ChatWidget({
   }, [open]);
 
   useEffect(() => {
+    if (!pendingFile || !pendingFile.type.startsWith('image/')) {
+      setPendingPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingFile);
+    setPendingPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingFile]);
+
+  useEffect(() => {
     if (!gifsOpen) return;
     const q = gifQuery.trim();
     if (q.length < 2) {
@@ -366,6 +394,108 @@ export function ChatWidget({
   }, [body, currentUserId, snapshot?.participants]);
 
 
+  async function loadStickerLibrary() {
+    try {
+      const data = await requestJson<{ items: ChatStickerItem[] }>('/api/chat/stickers');
+      setCustomStickers(data.items);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudieron cargar los stickers.');
+    }
+  }
+
+  async function loadGifPreferences() {
+    try {
+      const data = await requestJson<{ items: Array<{
+        refKey: string;
+        payload: unknown;
+        favorite: boolean;
+        usedAt: string;
+      }> }>('/api/chat/media?kind=gif');
+      setGifPreferences(data.items);
+    } catch {
+      setGifPreferences([]);
+    }
+  }
+
+  async function toggleMediaFavorite(
+    kind: 'gif' | 'sticker',
+    refKey: string,
+    payload?: unknown,
+  ) {
+    try {
+      await requestJson('/api/chat/media', {
+        method: 'POST',
+        body: JSON.stringify({ kind, refKey, payload }),
+      });
+      if (kind === 'gif') await loadGifPreferences();
+      else await loadStickerLibrary();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo actualizar favoritos.');
+    }
+  }
+
+  function selectIncomingFile(file: File) {
+    if (!storageAvailable) {
+      setError('Activa Cloudflare R2 para enviar imágenes y archivos.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setError('El archivo debe pesar como máximo 20 MB.');
+      return;
+    }
+    setPendingFile(file);
+    setPlusOpen(false);
+  }
+
+  async function uploadAttachment(file: File, text?: string, quotedId?: string) {
+    if (!selectedId) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      if (text) form.set('body', text);
+      if (quotedId) form.set('replyToId', quotedId);
+      const response = await fetch(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments`,
+        { method: 'POST', body: form },
+      );
+      if (response.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'No se pudo subir el archivo.');
+      await loadConversation(selectedId, { mark: true, busy: false });
+      void loadBootstrap();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo subir el archivo.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function createStickerFromFile(file: File) {
+    if (!selectedId || !storageAvailable) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      form.set('conversationId', selectedId);
+      const response = await fetch('/api/chat/stickers', { method: 'POST', body: form });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'No se pudo crear el sticker.');
+      await loadStickerLibrary();
+      setStickersOpen(true);
+      setStickerTab('mine');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo crear el sticker.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function createDirect(person: ChatPerson) {
     setLoading(true);
     setError(null);
@@ -410,6 +540,7 @@ export function ChatWidget({
   async function postMessage(payload: {
     body?: string;
     stickerKey?: string;
+    stickerId?: string;
     mediaUrl?: string;
     mediaPageUrl?: string;
     mediaSource?: 'TENOR' | 'WIKIMEDIA_COMMONS';
@@ -437,13 +568,27 @@ export function ChatWidget({
 
   async function sendMessage() {
     const text = body.trim();
-    if (!text && !context) return;
+    const file = pendingFile;
+    if (!text && !context && !file) return;
     setBody('');
+    setPendingFile(null);
     const attached = context;
     const quoted = replyTo;
     setContext(null);
     setReplyTo(null);
     await stopTyping();
+
+    if (file) {
+      await uploadAttachment(file, text || undefined, quoted?.id);
+      if (attached) {
+        await postMessage({
+          contextLabel: attached.label,
+          contextHref: attached.href,
+        });
+      }
+      return;
+    }
+
     await postMessage({
       body: text || undefined,
       contextLabel: attached?.label,
@@ -568,6 +713,7 @@ export function ChatWidget({
     setEmojisOpen(false);
     setStickersOpen(false);
     setGifsOpen(false);
+    setPlusOpen(false);
   }
 
   function insertEmoji(emoji: string) {

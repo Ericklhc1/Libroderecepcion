@@ -42,6 +42,7 @@ import {
   isCashAlreadyReceived,
   isCashEnabled,
 } from './cash';
+import { assertShiftCashClosed } from './cash-closure';
 
 /** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
@@ -1228,6 +1229,12 @@ export async function closeShift(
     ? shift.handoverOut.status
     : 'NONE';
   assertCanClose({ status: shift.status, handoverStatus });
+
+  // La base de datos conserva el trigger como última barrera, pero el flujo
+  // normal debe fallar antes con una regla de negocio legible para Recepción.
+  if (await isCashEnabled()) {
+    await assertShiftCashClosed(shift.id);
+  }
 
   return prisma.$transaction(async (tx) => {
     const now = new Date();

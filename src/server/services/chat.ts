@@ -1452,7 +1452,7 @@ export async function beginChatStickerUpload(
     descriptor.fileName,
     'sticker',
   );
-  const signed = createR2PresignedPutUrl(storageKey, 300);
+  const signed = createR2PresignedPutUrl(storageKey, descriptor.mimeType, 300);
   return {
     ...descriptor,
     storageKey,

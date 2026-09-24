@@ -8,8 +8,7 @@ import type { AssistantMessage } from './reception-assistant';
 import { getFrontiConfig } from './fronti-config';
 import {
   chatWithFrontiProvider,
-  providerIsConfigured,
-  resolveFrontiProviderRuntime,
+  resolveFrontiAuxiliaryProviderRuntime,
 } from './fronti-provider';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -397,16 +396,8 @@ export async function extractAndStoreMemories(
 
   try {
     const config = await getFrontiConfig();
-    const resolvedProvider = await resolveFrontiProviderRuntime(config);
-    const provider =
-      resolvedProvider.provider === 'groq'
-        ? {
-            ...resolvedProvider,
-            model: 'openai/gpt-oss-20b',
-            reasoningEffort: 'low' as const,
-          }
-        : resolvedProvider;
-    if (!providerIsConfigured(provider)) return;
+    const provider = await resolveFrontiAuxiliaryProviderRuntime();
+    if (!provider) return;
 
     const response = await chatWithFrontiProvider({
       provider,

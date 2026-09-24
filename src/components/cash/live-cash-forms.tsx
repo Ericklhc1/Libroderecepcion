@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2 } from 'lucide-react';
+import { Banknote, CheckCircle2 } from 'lucide-react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { Button, SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -373,7 +373,7 @@ export function LiveCashAuditForm({
   const [validatedIds, setValidatedIds] = useState<Set<string>>(() => new Set());
   const bills = denominations.filter((row) => row.medium === 'BILLETE');
   const coins = denominations.filter((row) => row.medium === 'MONEDA');
-  const allGuaranteesValidated = validatedIds.size === guarantees.length;
+  const allGuaranteesValidated = guarantees.every((guarantee) => validatedIds.has(guarantee.id));
 
   function toggleGuarantee(id: string) {
     setValidatedIds((current) => {
@@ -553,7 +553,7 @@ export function LiveCashAuditDialog({
         width="sm"
         trigger={
           <>
-            <span aria-hidden="true">💵</span>
+            <Banknote className="h-4 w-4" aria-hidden="true" />
             Generar arqueo
           </>
         }

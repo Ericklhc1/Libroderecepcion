@@ -19,6 +19,7 @@ import {
   Send,
   Star,
   Settings2,
+  Trash2,
   Smile,
   UserPlus,
   Users,
@@ -1071,7 +1072,28 @@ export function ChatWidget({
             <Search className="h-5 w-5" aria-hidden="true" />
           </button>
         ) : null}
-        {view === 'conversation' && conversationSearchOpen ? (
+      {view === 'list' ? (
+          <button
+            type="button"
+            onClick={() => void openChatProfile()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-petrol-50 text-xl hover:bg-petrol-100"
+            aria-label="Mi perfil de chat"
+            title="Mi perfil de chat"
+          >
+            {avatarGlyph(bootstrap?.profile.avatarKey)}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+          aria-label="Cerrar chat"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </header>
+
+      {view === 'conversation' && conversationSearchOpen ? (
         <div className="shrink-0 border-b border-slate-100 bg-white px-3 py-2">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -1095,27 +1117,6 @@ export function ChatWidget({
           </label>
         </div>
       ) : null}
-
-      {view === 'list' ? (
-          <button
-            type="button"
-            onClick={() => void openChatProfile()}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-petrol-50 text-xl hover:bg-petrol-100"
-            aria-label="Mi perfil de chat"
-            title="Mi perfil de chat"
-          >
-            {avatarGlyph(bootstrap?.profile.avatarKey)}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-          aria-label="Cerrar chat"
-        >
-          <X className="h-5 w-5" aria-hidden="true" />
-        </button>
-      </header>
 
       {error ? (
         <div className="shrink-0 border-b border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-800">

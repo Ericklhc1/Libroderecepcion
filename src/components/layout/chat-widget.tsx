@@ -140,6 +140,7 @@ export function ChatWidget({
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
   const listEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const openedFromQuery = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
 
@@ -446,6 +447,19 @@ export function ChatWidget({
     setEmojisOpen(false);
     setStickersOpen(false);
     setGifsOpen(false);
+  }
+
+  function insertEmoji(emoji: string) {
+    const textarea = composerRef.current;
+    const start = textarea?.selectionStart ?? body.length;
+    const end = textarea?.selectionEnd ?? start;
+    const next = (body.slice(0, start) + emoji + body.slice(end)).slice(0, CHAT_BODY_MAX);
+    const caret = Math.min(start + emoji.length, next.length);
+    setBody(next);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(caret, caret);
+    });
   }
 
   function attachCurrentContext() {
@@ -1074,33 +1088,138 @@ export function ChatWidget({
               </div>
             ) : null}
 
+            {emojisOpen ? (
+              <div className="mb-2 max-h-40 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <div className="grid grid-cols-10 gap-1">
+                  {CHAT_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => insertEmoji(emoji)}
+                      className="rounded-lg p-1.5 text-xl hover:bg-white hover:shadow-sm"
+                      aria-label={`Insertar emoji ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {stickersOpen ? (
-              <div className="mb-2 grid grid-cols-8 gap-1 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
-                {CHAT_STICKERS.map((sticker) => (
-                  <button
-                    key={sticker.key}
-                    type="button"
-                    title={sticker.label}
-                    onClick={() => {
-                      setStickersOpen(false);
-                      void postMessage({ stickerKey: sticker.key });
-                    }}
-                    className="rounded-lg p-1.5 text-2xl hover:bg-white hover:shadow-sm"
-                  >
-                    {sticker.glyph}
-                  </button>
-                ))}
+              <div className="mb-2 max-h-44 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <div className="grid grid-cols-8 gap-1">
+                  {CHAT_STICKERS.map((sticker) => (
+                    <button
+                      key={sticker.key}
+                      type="button"
+                      title={sticker.label}
+                      onClick={() => {
+                        setStickersOpen(false);
+                        void postMessage({ stickerKey: sticker.key });
+                      }}
+                      className="rounded-lg p-1.5 text-2xl hover:bg-white hover:shadow-sm"
+                    >
+                      {sticker.glyph}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {gifsOpen ? (
+              <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <input
+                    value={gifQuery}
+                    onChange={(event) => setGifQuery(event.target.value)}
+                    placeholder="Buscar GIF en Wikimedia Commons…"
+                    autoFocus
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400"
+                  />
+                </label>
+                <div className="mt-2 max-h-52 overflow-y-auto">
+                  {gifLoading ? (
+                    <p className="py-6 text-center text-xs text-slate-500">Buscando GIF…</p>
+                  ) : gifQuery.trim().length < 2 ? (
+                    <p className="py-6 text-center text-xs text-slate-500">Escribe al menos 2 caracteres.</p>
+                  ) : gifItems.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-slate-500">No se encontraron GIF compatibles.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {gifItems.map((gif) => (
+                        <button
+                          key={gif.url}
+                          type="button"
+                          onClick={() => {
+                            setGifsOpen(false);
+                            setGifQuery('');
+                            setGifItems([]);
+                            void postMessage({
+                              mediaUrl: gif.url,
+                              mediaPageUrl: gif.pageUrl,
+                              mediaSource: gif.source,
+                              mediaAlt: gif.title,
+                            });
+                          }}
+                          className="overflow-hidden rounded-lg bg-white ring-1 ring-slate-200 hover:ring-petrol-400"
+                          title={gif.title}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={gif.url}
+                            alt={gif.title}
+                            loading="lazy"
+                            className="h-24 w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
 
             <div className="flex items-end gap-1">
               <button
                 type="button"
-                onClick={() => setStickersOpen((value) => !value)}
+                onClick={() => {
+                  setEmojisOpen((value) => !value);
+                  setStickersOpen(false);
+                  setGifsOpen(false);
+                }}
                 className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-                aria-label="Stickers"
+                aria-label="Emojis"
+                title="Emojis"
               >
                 <Smile className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStickersOpen((value) => !value);
+                  setEmojisOpen(false);
+                  setGifsOpen(false);
+                }}
+                className="shrink-0 rounded-lg px-2 py-2 text-base text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+                aria-label="Stickers"
+                title="Stickers"
+              >
+                🀄
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGifsOpen((value) => !value);
+                  setEmojisOpen(false);
+                  setStickersOpen(false);
+                }}
+                className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+                aria-label="GIF"
+                title="GIF"
+              >
+                <ImageIcon className="h-5 w-5" aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -1121,6 +1240,7 @@ export function ChatWidget({
                 <Paperclip className="h-5 w-5" aria-hidden="true" />
               </button>
               <textarea
+                ref={composerRef}
                 value={body}
                 onChange={(event) => setBody(event.target.value.slice(0, CHAT_BODY_MAX))}
                 onKeyDown={(event) => {

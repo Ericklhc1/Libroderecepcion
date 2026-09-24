@@ -276,6 +276,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
     people,
     profile: serializeProfile(me),
     totalUnread,
+    storageEnabled: isR2Configured(),
     generatedAt: now.toISOString(),
   };
 }

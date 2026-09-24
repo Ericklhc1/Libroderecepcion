@@ -197,3 +197,17 @@ Posibles etapas posteriores, sujetas a aprobación:
 6. Todo cambio relevante queda auditado.
 7. El Administrador de sistema tiene FRONTI siempre disponible.
 8. El rollout por usuario se conserva durante todo FRONTI v2.
+
+
+### Estado alpha.4 — Router de modelos
+
+Durante el piloto alpha se adopta un router automático:
+
+1. OpenAI GPT-5.6 Sol como cerebro principal cuando exista credencial OpenAI válida.
+2. Groq GPT-OSS 120B como fallback de proveedor/modelo.
+3. Groq GPT-OSS 20B como fallback de continuidad ante saturación y para tareas auxiliares.
+4. OpenAI GPT-5.6 Luna puede asumir tareas auxiliares si Groq no está disponible.
+
+La extracción de memoria deja de ejecutarse después de cada consulta. Sólo se intenta cuando el mensaje contiene una intención durable de recordar, una preferencia o una regla. Esto evita gastar capacidad del modelo principal en mantenimiento de memoria.
+
+El router no requiere redeploy para empezar a usar OpenAI: al guardar una credencial OpenAI válida en Administración > Fronti, Sol pasa automáticamente a ser el primer proveedor de la cadena.

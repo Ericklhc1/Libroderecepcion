@@ -7,10 +7,16 @@ export type FrontiToolTrace = {
   ok: boolean;
 };
 
+export type FrontiModelTrace = {
+  provider: string;
+  model: string;
+};
+
 export type FrontiAgentRunTelemetry = {
   userId: string;
   provider: string;
   model: string;
+  models: FrontiModelTrace[];
   durationMs: number;
   loops: number;
   tools: FrontiToolTrace[];

@@ -9,9 +9,9 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { getDashboardData } from '@/server/services/dashboard';
 import { getFrontiConfig } from './fronti-config';
 import {
-  chatWithFrontiProvider,
+  chatWithFrontiProviderChain,
   FrontiProviderError,
-  resolveFrontiProviderRuntime,
+  resolveFrontiProviderChainRuntime,
 } from './fronti-provider';
 
 export class OperationalBriefError extends Error {
@@ -60,11 +60,13 @@ export async function generateOperationalBrief(user: CurrentUser) {
     nextAction: item.action,
   }));
 
-  const provider = await resolveFrontiProviderRuntime(config);
+  const providers = await resolveFrontiProviderChainRuntime({
+    reasoningEffort: config.reasoningEffort,
+  });
   let result;
   try {
-    result = await chatWithFrontiProvider({
-      provider,
+    result = await chatWithFrontiProviderChain({
+      providers,
       messages: [
         {
           role: 'system',

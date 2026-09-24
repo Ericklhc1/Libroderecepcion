@@ -8,8 +8,7 @@ import type { AssistantMessage } from './reception-assistant';
 import { getFrontiConfig } from './fronti-config';
 import {
   chatWithFrontiProvider,
-  providerIsConfigured,
-  resolveFrontiProviderRuntime,
+  resolveFrontiAuxiliaryProviderRuntime,
 } from './fronti-provider';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -152,6 +151,28 @@ function containsSecretLikeData(message: string): boolean {
 
 function shouldPersist(message: string): boolean {
   return !hasNoStoreDirective(message) && !containsSecretLikeData(message);
+}
+
+
+export function shouldAttemptMemoryExtraction(message: string): boolean {
+  const normalized = message.trim().toLocaleLowerCase('es-CL');
+  if (!shouldPersist(message) || normalized.length < 8) return false;
+
+  return [
+    /\brecuerda\b/,
+    /\brecuerdame\b/,
+    /\bacu[eé]rdate\b/,
+    /\bprefiero\b/,
+    /\bpreferencia\b/,
+    /\bde ahora en adelante\b/,
+    /\bsiempre que\b/,
+    /\bquiero que\b/,
+    /\bno quiero que\b/,
+    /\bregla\b/,
+    /\bprocedimiento\b/,
+    /\bten presente\b/,
+    /\bimportante para m[ií]\b/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function normalizeToken(value: string): string {
@@ -371,12 +392,12 @@ export async function extractAndStoreMemories(
   userMessage: string,
   assistantReply: string,
 ): Promise<void> {
-  if (!shouldPersist(userMessage) || userMessage.trim().length < 8) return;
+  if (!shouldAttemptMemoryExtraction(userMessage)) return;
 
   try {
     const config = await getFrontiConfig();
-    const provider = await resolveFrontiProviderRuntime(config);
-    if (!providerIsConfigured(provider)) return;
+    const provider = await resolveFrontiAuxiliaryProviderRuntime();
+    if (!provider) return;
 
     const response = await chatWithFrontiProvider({
       provider,
@@ -389,7 +410,8 @@ export async function extractAndStoreMemories(
             'No guardes contraseñas, claves, tokens, números completos de tarjetas, CVV/CVC ni secretos. ' +
             'No dupliques como memoria datos que deberían consultarse como fuente de verdad en tareas, multas, garantías, habitaciones o reservas. ' +
             `PERSONAL sirve para contexto útil al mismo usuario durante hasta ${config.memoryRetentionDays} días. TURNO sirve sólo para contexto útil al turno actual. ` +
-            'Si no hay nada que merezca recordarse, devuelve una lista vacía. Resume sin adornos y minimiza datos personales.',
+            'Si no hay nada que merezca recordarse, devuelve una lista vacía. Resume sin adornos y minimiza datos personales. ' +
+            'La importancia debe expresarse idealmente en escala 1 a 5; el Libro normaliza cualquier desviación.',
         },
         {
           role: 'user',
@@ -418,7 +440,10 @@ export async function extractAndStoreMemories(
                       summary: { type: 'string', minLength: 5, maxLength: 600 },
                       entityType: { type: ['string', 'null'] },
                       entityId: { type: ['string', 'null'] },
-                      importance: { type: 'integer', minimum: 1, maximum: 5 },
+                      importance: {
+                        type: 'integer',
+                        description: 'Importancia sugerida. Usa preferentemente 1 a 5; el Libro normaliza el valor.',
+                      },
                     },
                     required: [
                       'scope',

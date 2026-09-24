@@ -929,11 +929,15 @@ export function ChatWidget({
     }, 2_500);
   }
 
-  function insertMention(person: ChatPerson) {
+  function insertMentionToken(token: string) {
     if (!mentionState) return;
-    const next = `${body.slice(0, mentionState.start)}@${person.username} `;
+    const next = `${body.slice(0, mentionState.start)}@${token} `;
     setBody(next.slice(0, CHAT_BODY_MAX));
     window.requestAnimationFrame(() => composerRef.current?.focus());
+  }
+
+  function insertMention(person: ChatPerson) {
+    insertMentionToken(person.username);
   }
 
   async function openChatProfile() {
@@ -2195,6 +2199,36 @@ export function ChatWidget({
                   <AtSign className="h-3.5 w-3.5" aria-hidden="true" />
                   Mencionar
                 </div>
+                {snapshot?.type === 'GRUPO' &&
+                (!body.slice(mentionState.start + 1).trim() ||
+                  'todos'.startsWith(body.slice(mentionState.start + 1).trim().toLocaleLowerCase('es-CL'))) ? (
+                  <button
+                    type="button"
+                    onClick={() => insertMentionToken('todos')}
+                    className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold-50 text-sm">👥</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-900">@todos</span>
+                      <span className="block text-xs text-slate-500">Todos los integrantes del grupo</span>
+                    </span>
+                  </button>
+                ) : null}
+                {snapshot?.type === 'GRUPO' &&
+                (!body.slice(mentionState.start + 1).trim() ||
+                  'turno'.startsWith(body.slice(mentionState.start + 1).trim().toLocaleLowerCase('es-CL'))) ? (
+                  <button
+                    type="button"
+                    onClick={() => insertMentionToken('turno')}
+                    className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-50 text-sm">🟢</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-900">@turno</span>
+                      <span className="block text-xs text-slate-500">@turno · quienes están trabajando ahora</span>
+                    </span>
+                  </button>
+                ) : null}
                 {mentionState.candidates.map((person) => (
                   <button
                     key={person.id}

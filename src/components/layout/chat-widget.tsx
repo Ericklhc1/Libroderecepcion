@@ -664,7 +664,46 @@ export function ChatWidget({
               : 'Mensajería interna del Libro'}
           </p>
         </div>
-        {view === 'list' ? (
+        {view === 'conversation' ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConversationSearchOpen((value) => !value);
+              if (conversationSearchOpen) setConversationQuery('');
+            }}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Buscar en esta conversación"
+            title="Buscar en esta conversación"
+          >
+            <Search className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
+        {view === 'conversation' && conversationSearchOpen ? (
+        <div className="shrink-0 border-b border-slate-100 bg-white px-3 py-2">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input
+              value={conversationQuery}
+              onChange={(event) => setConversationQuery(event.target.value)}
+              placeholder="Buscar dentro del chat…"
+              autoFocus
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
+            />
+            {conversationQuery ? (
+              <button
+                type="button"
+                onClick={() => setConversationQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100"
+                aria-label="Limpiar búsqueda"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+          </label>
+        </div>
+      ) : null}
+
+      {view === 'list' ? (
           <button
             type="button"
             onClick={() => void openChatProfile()}
@@ -1108,103 +1147,239 @@ export function ChatWidget({
         <>
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4">
             <div className="space-y-2">
-              {snapshot.messages.map((message) => {
+              {conversationQuery.trim() && visibleMessages.length === 0 ? (
+                <div className="py-10 text-center text-sm text-slate-500">
+                  No hay mensajes que coincidan con «{conversationQuery.trim()}».
+                </div>
+              ) : null}
+              {visibleMessages.map((message) => {
                 const mine = message.senderId === currentUserId;
                 const sticker = chatStickerGlyph(message.stickerKey);
                 const gif = message.kind === 'GIF' && Boolean(message.mediaUrl);
+                const bubbleClass = sticker || gif
+                  ? 'px-2 py-1'
+                  : mine
+                    ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
+                    : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
+
                 return (
-                  <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[84%] ${
-                      sticker || gif
-                        ? 'px-2 py-1'
-                        : mine
-                          ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
-                          : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100'
-                    }`}>
-                      {!mine && !sticker && !gif ? (
-                        <p className="mb-0.5 text-[0.67rem] font-semibold text-petrol-700">
-                          {message.senderName}
-                        </p>
-                      ) : null}
-                      {sticker ? (
-                        <div className="text-center">
-                          <span className="text-5xl" role="img" aria-label="Sticker">{sticker}</span>
-                          {!mine ? (
-                            <p className="mt-1 text-[0.65rem] font-medium text-slate-500">{message.senderName}</p>
-                          ) : null}
-                        </div>
-                      ) : gif && message.mediaUrl ? (
-                        <div className="max-w-[280px]">
-                          {!mine ? (
-                            <p className="mb-1 text-[0.67rem] font-semibold text-petrol-700">
-                              {message.senderName}
-                            </p>
-                          ) : null}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={message.mediaUrl}
-                            alt={message.mediaAlt || 'GIF'}
-                            loading="lazy"
-                            className="max-h-64 w-auto max-w-full rounded-xl object-contain"
-                          />
-                          {message.mediaPageUrl ? (
-                            <a
-                              href={message.mediaPageUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-1 block text-right text-[0.62rem] text-slate-400 hover:text-petrol-700"
-                            >
-                              Wikimedia Commons
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <>
-                          {message.body ? (
-                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
-                          ) : null}
-                          {message.contextHref ? (
-                            <a
-                              href={message.contextHref}
-                              className={`mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium ${
-                                mine
-                                  ? 'bg-white/10 text-white hover:bg-white/20'
-                                  : 'bg-petrol-50 text-petrol-800 hover:bg-petrol-100'
+                  <div key={message.id} className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[88%] sm:max-w-[84%]">
+                      <div className={bubbleClass}>
+                        {!mine && !sticker && !gif ? (
+                          <p className="mb-0.5 text-[0.67rem] font-semibold text-petrol-700">
+                            {message.senderName}
+                          </p>
+                        ) : null}
+
+                        {message.replyTo ? (
+                          <button
+                            type="button"
+                            className={`mb-2 block w-full rounded-lg border-l-2 px-2 py-1.5 text-left text-[0.72rem] ${
+                              mine
+                                ? 'border-gold-300 bg-white/10 text-petrol-50'
+                                : 'border-petrol-500 bg-slate-50 text-slate-600'
+                            }`}
+                            title="Mensaje respondido"
+                          >
+                            <span className="block font-semibold">{message.replyTo.senderName}</span>
+                            <span className="block truncate">
+                              {message.replyTo.body || (message.replyTo.kind === 'GIF' ? 'GIF' : 'Mensaje')}
+                            </span>
+                          </button>
+                        ) : null}
+
+                        {sticker ? (
+                          <div className="text-center">
+                            <span className="text-5xl" role="img" aria-label="Sticker">{sticker}</span>
+                            {!mine ? (
+                              <p className="mt-1 text-[0.65rem] font-medium text-slate-500">{message.senderName}</p>
+                            ) : null}
+                          </div>
+                        ) : gif && message.mediaUrl ? (
+                          <div className="max-w-[280px]">
+                            {!mine ? (
+                              <p className="mb-1 text-[0.67rem] font-semibold text-petrol-700">
+                                {message.senderName}
+                              </p>
+                            ) : null}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={message.mediaUrl}
+                              alt={message.mediaAlt || 'GIF'}
+                              loading="lazy"
+                              className="max-h-64 w-auto max-w-full rounded-xl object-contain"
+                            />
+                            {message.mediaPageUrl ? (
+                              <a
+                                href={message.mediaPageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 block text-right text-[0.62rem] text-slate-400 hover:text-petrol-700"
+                              >
+                                {message.mediaSource === 'WIKIMEDIA_COMMONS' ? 'Wikimedia Commons' : 'Fuente del GIF'}
+                              </a>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <>
+                            {message.body ? (
+                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.body}</p>
+                            ) : null}
+                            {message.contextHref ? (
+                              <a
+                                href={message.contextHref}
+                                className={`mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium ${
+                                  mine
+                                    ? 'bg-white/10 text-white hover:bg-white/20'
+                                    : 'bg-petrol-50 text-petrol-800 hover:bg-petrol-100'
+                                }`}
+                              >
+                                <Link2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                <span className="truncate">{message.contextLabel || 'Abrir en el Libro'}</span>
+                              </a>
+                            ) : null}
+                            {message.attachments.map((attachment) => (
+                              <div key={attachment.id} className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-xs">
+                                <Paperclip className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+                                {attachment.fileName}
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {!sticker && !gif ? (
+                          <div className={`mt-1 flex items-center justify-end gap-1 text-[0.6rem] ${
+                            mine ? 'text-petrol-100' : 'text-slate-400'
+                          }`}>
+                            <span>
+                              {new Intl.DateTimeFormat('es-CL', {
+                                timeZone: 'America/Santiago',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: false,
+                              }).format(new Date(message.createdAt))}
+                            </span>
+                            {mine ? (
+                              message.readBy.length > 0
+                                ? <CheckCheck className="h-3 w-3" aria-label={`Leído por ${message.readBy.length}`} />
+                                : <Check className="h-3 w-3" aria-label="Enviado" />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {message.reactions.length > 0 ? (
+                        <div className={`mt-1 flex flex-wrap gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>
+                          {message.reactions.map((reaction) => (
+                            <button
+                              key={reaction.emoji}
+                              type="button"
+                              onClick={() => void toggleReaction(message.id, reaction.emoji)}
+                              title={reaction.users.map((item) => item.name).join(', ')}
+                              className={`rounded-full px-2 py-0.5 text-xs ring-1 ${
+                                reaction.mine
+                                  ? 'bg-petrol-50 text-petrol-800 ring-petrol-200'
+                                  : 'bg-white text-slate-600 ring-slate-200'
                               }`}
                             >
-                              <Link2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                              <span className="truncate">{message.contextLabel || 'Abrir en el Libro'}</span>
-                            </a>
-                          ) : null}
-                          {message.attachments.map((attachment) => (
-                            <div key={attachment.id} className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-xs">
-                              <Paperclip className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
-                              {attachment.fileName}
-                            </div>
+                              {reaction.emoji} {reaction.count}
+                            </button>
                           ))}
-                        </>
-                      )}
-                      {!sticker && !gif ? (
-                        <p className={`mt-1 text-right text-[0.6rem] ${
-                          mine ? 'text-petrol-100' : 'text-slate-400'
-                        }`}>
-                          {new Intl.DateTimeFormat('es-CL', {
-                            timeZone: 'America/Santiago',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: false,
-                          }).format(new Date(message.createdAt))}
+                        </div>
+                      ) : null}
+
+                      <div className={`mt-1 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 ${mine ? 'justify-end' : 'justify-start'}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyTo(message);
+                            composerRef.current?.focus();
+                          }}
+                          className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-petrol-700"
+                          title="Responder"
+                          aria-label="Responder"
+                        >
+                          <Reply className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReactionMessageId((current) => current === message.id ? null : message.id)}
+                          className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-petrol-700"
+                          title="Reaccionar"
+                          aria-label="Reaccionar"
+                        >
+                          <Smile className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleSaved(message.id)}
+                          className={`rounded-md p-1.5 hover:bg-white ${message.saved ? 'text-gold-600' : 'text-slate-400 hover:text-gold-600'}`}
+                          title={message.saved ? 'Quitar de guardados' : 'Guardar mensaje'}
+                          aria-label={message.saved ? 'Quitar de guardados' : 'Guardar mensaje'}
+                        >
+                          <Star className={`h-3.5 w-3.5 ${message.saved ? 'fill-current' : ''}`} aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      {reactionMessageId === message.id ? (
+                        <div className={`mt-1 flex gap-1 rounded-full bg-white p-1 shadow-lg ring-1 ring-slate-200 ${mine ? 'ml-auto' : 'mr-auto'} w-fit`}>
+                          {['👍','😂','💀','👀','❤️','😭','🤡'].map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => void toggleReaction(message.id, emoji)}
+                              className="rounded-full p-1 text-lg hover:bg-slate-100"
+                              aria-label={`Reaccionar con ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {mine && message.readBy.length > 0 ? (
+                        <p className="mt-0.5 text-right text-[0.6rem] text-slate-400" title={message.readBy.map((item) => item.name).join(', ')}>
+                          Leído por {message.readBy.length}
                         </p>
                       ) : null}
                     </div>
                   </div>
                 );
               })}
+
+              {snapshot.typing.length > 0 ? (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-bl-md bg-white px-3 py-2 text-xs italic text-slate-500 shadow-sm ring-1 ring-slate-100">
+                    {snapshot.typing.length === 1
+                      ? `${snapshot.typing[0]?.name} está escribiendo…`
+                      : `${snapshot.typing.slice(0, 2).map((item) => item.name).join(' y ')} están escribiendo…`}
+                  </div>
+                </div>
+              ) : null}
               <div ref={listEndRef} />
             </div>
           </div>
 
           <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+            {replyTo ? (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-petrol-500 bg-slate-50 px-2.5 py-2 text-xs text-slate-700">
+                <Reply className="h-4 w-4 shrink-0 text-petrol-700" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{replyTo.senderName}</span>
+                  <span className="block truncate">{replyTo.body || (replyTo.kind === 'GIF' ? 'GIF' : 'Mensaje')}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplyTo(null)}
+                  className="rounded p-1 hover:bg-slate-200"
+                  aria-label="Cancelar respuesta"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+
             {context ? (
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-petrol-50 px-2.5 py-2 text-xs text-petrol-800">
                 <Link2 className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1212,6 +1387,32 @@ export function ChatWidget({
                 <button type="button" onClick={() => setContext(null)} className="rounded p-1 hover:bg-petrol-100" aria-label="Quitar contexto">
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
+              </div>
+            ) : null}
+
+            {mentionState && mentionState.candidates.length > 0 ? (
+              <div className="mb-2 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
+                  <AtSign className="h-3.5 w-3.5" aria-hidden="true" />
+                  Mencionar
+                </div>
+                {mentionState.candidates.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    onClick={() => insertMention(person)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                    aria-label="Seleccionar mención"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-petrol-50 text-base">
+                      {avatarGlyph(person.avatarKey)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">{person.name}</span>
+                      <span className="block truncate text-xs text-slate-500">@{person.username}</span>
+                    </span>
+                  </button>
+                ))}
               </div>
             ) : null}
 
@@ -1369,7 +1570,11 @@ export function ChatWidget({
               <textarea
                 ref={composerRef}
                 value={body}
-                onChange={(event) => setBody(event.target.value.slice(0, CHAT_BODY_MAX))}
+                onChange={(event) => {
+                  const next = event.target.value.slice(0, CHAT_BODY_MAX);
+                  setBody(next);
+                  signalTyping(next);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
@@ -1378,7 +1583,7 @@ export function ChatWidget({
                 }}
                 rows={1}
                 placeholder="Mensaje…"
-                className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-petrol-400 focus:bg-white"
+                className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
               />
               <button
                 type="button"

@@ -660,6 +660,7 @@ export async function receiveShiftCash(
     shiftId: string;
     handoverId: string;
     quantities: Record<string, number>;
+    guaranteeIds: string[];
     notes?: string | null;
   },
 ): Promise<{
@@ -716,6 +717,7 @@ export async function receiveShiftCash(
       const confirmed = await confirmHandoverCash(tx, user, {
         handoverId: handover.id,
         quantities: params.quantities,
+        guaranteeIds: params.guaranteeIds,
         notes: params.notes,
       });
       statuses = confirmed.statuses;

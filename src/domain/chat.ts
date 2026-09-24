@@ -249,7 +249,7 @@ export type ChatGifItem = {
   pageUrl: string;
   width: number | null;
   height: number | null;
-  source: 'WIKIMEDIA_COMMONS';
+  source: 'TENOR' | 'WIKIMEDIA_COMMONS';
 };
 
 export function directConversationKey(a: string, b: string): string {
@@ -277,16 +277,28 @@ export function normalizeInternalChatHref(value: unknown): string | null {
   return href;
 }
 
-export function normalizeWikimediaMediaUrl(value: unknown): string | null {
+export function normalizeChatMediaUrl(
+  value: unknown,
+  source: unknown,
+): string | null {
   if (typeof value !== 'string') return null;
   try {
     const url = new URL(value.trim());
     if (url.protocol !== 'https:') return null;
-    if (!['upload.wikimedia.org', 'commons.wikimedia.org'].includes(url.hostname)) return null;
-    return url.toString().slice(0, 1800);
+    const allowed =
+      source === 'TENOR'
+        ? ['media.tenor.com', 'tenor.com'].includes(url.hostname)
+        : source === 'WIKIMEDIA_COMMONS'
+          ? ['upload.wikimedia.org', 'commons.wikimedia.org'].includes(url.hostname)
+          : false;
+    return allowed ? url.toString().slice(0, 1800) : null;
   } catch {
     return null;
   }
+}
+
+export function normalizeWikimediaMediaUrl(value: unknown): string | null {
+  return normalizeChatMediaUrl(value, 'WIKIMEDIA_COMMONS');
 }
 
 export function avatarGlyph(key: string | null | undefined): string {

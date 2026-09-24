@@ -202,7 +202,7 @@ export function resolveFrontiProvider(input: {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: runtime.OPENAI_API_KEY ?? null,
-      model: runtime.OPENAI_MODEL?.trim() || input.model,
+      model: input.model.trim() || runtime.OPENAI_MODEL?.trim() || OPENAI_PRIMARY_MODEL,
       reasoningEffort: input.reasoningEffort,
     };
   }

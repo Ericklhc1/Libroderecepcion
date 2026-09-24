@@ -1,18 +1,15 @@
 /**
- * Caja de recepción: composición del efectivo, arqueo por denominación y
- * transferencias internas.
+ * Caja de recepción: composición financiera, arqueo del fondo fijo por
+ * denominación y transferencias internas.
  *
- * Regla central: el fondo fijo NO es el saldo esperado de Caja. El efectivo
- * físico esperado se compone de:
+ * Regla central:
+ * - las DENOMINACIONES representan exclusivamente el FONDO FIJO;
+ * - las GARANTÍAS EN EFECTIVO se validan una a una, por separado;
+ * - el SALDO OPERACIONAL se concilia mediante sus movimientos y transferencias.
  *
- *   fondo fijo
- * + garantías reembolsables bajo custodia
- * + saldo operacional (recaudación/ajustes netos que siguen en Recepción)
- * = efectivo físico esperado
- *
- * Un arqueo compara CONTADO contra ESPERADO. El monto transferible a Tesorería
- * se deriva del saldo operacional disponible; nunca de «contado - fondo».
- * Así una garantía en efectivo jamás se confunde con recaudación.
+ * La composición total sigue siendo útil para saber qué dinero está bajo
+ * custodia, pero nunca se usa para exigir que el recepcionista mezcle garantías
+ * con el conteo por billetes/monedas del fondo fijo.
  */
 
 export type CashMediumValue = 'BILLETE' | 'MONEDA';
@@ -192,8 +189,8 @@ export function countDiscrepancies(
 }
 
 /**
- * Una diferencia real se puede declarar y entregar; ocultarla no.
- * El bloqueo se basa en CONTADO vs ESPERADO, no en CONTADO vs FONDO.
+ * Una diferencia del fondo fijo se puede declarar y entregar; ocultarla no.
+ * Las garantías se validan aparte y no alteran este cálculo.
  */
 export function cashHandoverProblems(params: {
   statuses: CashPosition[];

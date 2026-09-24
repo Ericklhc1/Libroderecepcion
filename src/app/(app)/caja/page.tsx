@@ -309,7 +309,7 @@ export default async function LiveCashPage({
                   <div className="mt-3 no-print">
                     <Dialog
                       title={`Arquear Caja ${item.currency}`}
-                      description={`Efectivo físico esperado: ${amount(item.currency, item.expected)}. La diferencia se calcula contra la composición real, no contra el fondo fijo.`}
+                      description={`Fondo fijo esperado: ${amount(item.currency, item.fund)}. Las denominaciones validan sólo el fondo fijo; las garantías se confirman aparte.`}
                       triggerVariant="secondary"
                       triggerSize="sm"
                       width="sm"
@@ -328,6 +328,15 @@ export default async function LiveCashPage({
                             id: row.id,
                             value: row.value,
                             medium: row.medium,
+                          }))}
+                        guarantees={state.cashGuarantees
+                          .filter((guarantee) => guarantee.currency === item.currency)
+                          .map((guarantee) => ({
+                            id: guarantee.id,
+                            amount: guarantee.amount,
+                            guestName: guarantee.guestName,
+                            roomNumber: guarantee.roomNumber,
+                            reference: guarantee.reference,
                           }))}
                       />
                     </Dialog>
@@ -418,8 +427,12 @@ export default async function LiveCashPage({
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-slate-600">
-                        Esperado {amount(audit.currency, audit.expectedAmount)} · contado{' '}
+                        Fondo esperado {amount(audit.currency, audit.expectedAmount)} · fondo contado{' '}
                         {amount(audit.currency, audit.countedAmount)}
+                        {' · '}garantías validadas {audit.guaranteeCount}
+                        {audit.guaranteeCount > 0
+                          ? ` (${amount(audit.currency, audit.guaranteeAmount)})`
+                          : ''}
                       </p>
                       {audit.notes ? (
                         <p className="mt-1 text-xs text-slate-500">{audit.notes}</p>

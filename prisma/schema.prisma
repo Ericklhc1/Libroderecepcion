@@ -1643,13 +1643,12 @@ model Guarantee {
 //
 // La Caja física contiene varias naturalezas de dinero que NO se mezclan:
 // FONDO FIJO + GARANTÍAS BAJO CUSTODIA + SALDO OPERACIONAL.
-// El efectivo esperado es la suma de esas capas. Sólo el saldo operacional
-// positivo puede transferirse a Tesorería; fondo y garantías quedan protegidos.
+// Sólo el saldo operacional positivo puede transferirse a Tesorería.
 //
-// El arqueo se cuenta por DENOMINACIÓN, no por total. Cada conteo congela una
-// fotografía de la composición esperada en ese instante y compara CONTADO vs
-// ESPERADO. La diferencia entre los dos conteos del relevo se calcula; nunca se
-// usa «contado - fondo» como sinónimo de recaudación.
+// El arqueo por DENOMINACIÓN verifica EXCLUSIVAMENTE el FONDO FIJO.
+// Las garantías en efectivo se validan individualmente y quedan congeladas
+// como snapshot del mismo arqueo. Saldo operacional y transferencias se
+// concilian por sus movimientos, nunca dentro del conteo de denominaciones.
 
 enum CashMedium {
   BILLETE
@@ -2227,7 +2226,7 @@ model CashMovement {
   @@index([shiftId])
 }
 
-/// Arqueo: lo que la caja debería tener contra lo que se contó.
+/// Arqueo: denominaciones del fondo fijo + validación separada de garantías vigentes.
 model CashAudit {
   id             String   @id
   currency       String   @db.VarChar(3)
@@ -2236,6 +2235,9 @@ model CashAudit {
   difference     Decimal  @db.Decimal(12, 2)
   countedById    String
   notes          String?
+  /// Garantías en efectivo que fueron verificadas físicamente durante este arqueo.
+  /// Se guardan como snapshot para que el historial no cambie si luego se devuelven o aplican.
+  guaranteeSnapshot Json?
   createdAt      DateTime @default(now())
   countedBy      User     @relation("cashAuditCountedBy", fields: [countedById], references: [id])
 

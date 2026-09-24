@@ -474,9 +474,14 @@ export async function saveLiveCashAuditAction(
       0,
     );
 
+    const guaranteeIds = [...formData.entries()]
+      .filter(([key, value]) => key.startsWith('g_') && value === '1')
+      .map(([key]) => key.slice(2));
+
     const result = await saveLiveCashAudit(user, {
       currency: input.currency,
       countedAmount,
+      guaranteeIds,
       notes: input.notes,
     });
 
@@ -488,8 +493,8 @@ export async function saveLiveCashAuditAction(
       ok: true as const,
       message:
         result.difference === 0
-          ? `Caja ${input.currency} corroborada por denominación: cuadra exactamente.`
-          : `Caja ${input.currency} corroborada por denominación: diferencia ${result.difference > 0 ? '+' : ''}${result.difference}. La diferencia queda registrada y no bloquea la operación.`,
+          ? `Fondo fijo ${input.currency} corroborado por denominación y ${result.guaranteeCount} garantía(s) validadas por separado: cuadra exactamente.`
+          : `Fondo fijo ${input.currency} corroborado por denominación: diferencia ${result.difference > 0 ? '+' : ''}${result.difference}. Se validaron ${result.guaranteeCount} garantía(s) por separado; la diferencia queda registrada.`,
     };
   });
 }

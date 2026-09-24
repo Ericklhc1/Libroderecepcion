@@ -167,11 +167,32 @@ export type ChatAttachmentMeta = {
   size: number;
 };
 
+export type ChatReactionSummary = {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  users: Array<{ id: string; name: string }>;
+};
+
+export type ChatReplyPreview = {
+  id: string;
+  senderName: string;
+  body: string | null;
+  kind: string;
+};
+
+export type ChatReadReceipt = {
+  userId: string;
+  name: string;
+  readAt: string;
+};
+
 export type ChatMessageItem = {
   id: string;
   kind: string;
   body: string | null;
   stickerKey: string | null;
+  stickerId: string | null;
   mediaUrl: string | null;
   mediaPageUrl: string | null;
   mediaSource: string | null;
@@ -186,6 +207,10 @@ export type ChatMessageItem = {
   editedAt: string | null;
   deletedAt: string | null;
   replyToId: string | null;
+  replyTo: ChatReplyPreview | null;
+  reactions: ChatReactionSummary[];
+  saved: boolean;
+  readBy: ChatReadReceipt[];
   attachments: ChatAttachmentMeta[];
 };
 
@@ -195,6 +220,7 @@ export type ChatConversationSnapshot = {
   title: string;
   participants: ChatPerson[];
   messages: ChatMessageItem[];
+  typing: Array<{ userId: string; name: string; updatedAt: string }>;
   generatedAt: string;
 };
 

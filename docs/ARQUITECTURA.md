@@ -422,9 +422,12 @@ respuesta es válida.
 
 ## Limitaciones conocidas
 
-1. **Adjuntos**: el modelo `Attachment` existe y está relacionado, pero no hay
-   subida de archivos en la interfaz. Falta decidir el almacenamiento (disco
-   local frente a S3) antes de implementarlo.
+1. **Adjuntos**: desde v1.9 el chat usa Cloudflare R2 privado mediante su API
+   compatible con S3. La aplicación emite URLs PUT temporales y el navegador
+   sube el binario directamente a R2; la función de Vercel sólo inicia y
+   finaliza la operación. Neon guarda metadatos. La lectura pasa por una ruta
+   autenticada que valida pertenencia a la conversación. Sin credenciales R2
+   la subida se deshabilita sin afectar la mensajería de texto.
 2. **Canales externos de notificación**: `dispatchExternal()` en
    `src/server/notifications.ts` es el punto de extensión y está vacío a
    propósito. Correo y WhatsApp quedan para una versión posterior.

@@ -34,6 +34,15 @@ type CashSnapshot = {
     auditedAt: string;
   }>;
   openCashGuarantees: number;
+  guarantees: Array<{
+    id: string;
+    currency: string;
+    amount: number;
+    state: string;
+    reference: string | null;
+    roomNumber: string | null;
+    guestName: string | null;
+  }>;
 };
 
 export type ShiftCashClosure = {
@@ -145,6 +154,19 @@ export async function closeShiftCash(
     );
   }
 
+  if (state.declared) {
+    const validatedIds = new Set(state.declared.validatedGuarantees.map((row) => row.id));
+    const currentIds = new Set(state.cashGuarantees.map((row) => row.id));
+    const guaranteesChanged =
+      validatedIds.size !== currentIds.size ||
+      [...validatedIds].some((id) => !currentIds.has(id));
+    if (guaranteesChanged) {
+      throw new RuleError(
+        'Las garantías en efectivo cambiaron después del arqueo. Vuelve a arquear y valida nuevamente todas las garantías antes de cerrar Caja.',
+      );
+    }
+  }
+
   const unbalanced = state.declared?.statuses.filter((status) => !status.balanced) ?? [];
   if (unbalanced.length > 0 && !state.declared?.notes?.trim() && !params.notes?.trim()) {
     throw new RuleError(
@@ -155,23 +177,40 @@ export async function closeShiftCash(
   const snapshot: CashSnapshot = {
     shiftId: shift.id,
     capturedAt: new Date().toISOString(),
-    currencies: (state.declared?.statuses ?? []).map((status) => ({
-      currency: status.currency,
-      fund: fromMinor(status.fundMinor, status.currency),
-      netMovements: fromMinor(
-        status.guaranteeCustodyMinor + status.operationalMinor,
-        status.currency,
-      ),
-      guaranteeCustody: fromMinor(status.guaranteeCustodyMinor, status.currency),
-      operational: fromMinor(status.operationalMinor, status.currency),
-      transferable: fromMinor(status.transferableMinor, status.currency),
-      expected: fromMinor(status.expectedMinor, status.currency),
-      counted: fromMinor(status.countedMinor, status.currency),
-      difference: fromMinor(status.differenceMinor, status.currency),
-      auditId: declaredCount?.id ?? `handover:${handoverId}`,
-      auditedAt: (declaredCount?.countedAt ?? new Date()).toISOString(),
-    })),
+    currencies: (state.declared?.statuses ?? []).map((status) => {
+      const composition = state.currentExpectations.find(
+        (row) => row.currency === status.currency,
+      );
+      return {
+        currency: status.currency,
+        fund: fromMinor(status.fundMinor, status.currency),
+        netMovements: fromMinor(
+          (composition?.guaranteeCustodyMinor ?? 0) + (composition?.operationalMinor ?? 0),
+          status.currency,
+        ),
+        guaranteeCustody: fromMinor(
+          composition?.guaranteeCustodyMinor ?? 0,
+          status.currency,
+        ),
+        operational: fromMinor(composition?.operationalMinor ?? 0, status.currency),
+        transferable: fromMinor(composition?.transferableMinor ?? 0, status.currency),
+        expected: fromMinor(status.fundMinor, status.currency),
+        counted: fromMinor(status.countedMinor, status.currency),
+        difference: fromMinor(status.differenceMinor, status.currency),
+        auditId: declaredCount?.id ?? `handover:${handoverId}`,
+        auditedAt: (declaredCount?.countedAt ?? new Date()).toISOString(),
+      };
+    }),
     openCashGuarantees: state.cashGuarantees.length,
+    guarantees: (state.declared?.validatedGuarantees ?? []).map((guarantee) => ({
+      id: guarantee.id,
+      currency: guarantee.currency,
+      amount: fromMinor(guarantee.amountMinor, guarantee.currency),
+      state: guarantee.state,
+      reference: guarantee.reference,
+      roomNumber: guarantee.roomNumber,
+      guestName: guarantee.guestName,
+    })),
   };
 
   const id = randomUUID();

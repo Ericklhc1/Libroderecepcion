@@ -514,7 +514,9 @@ export function ChatWidget({
                 ? 'Nuevo mensaje'
                 : view === 'group'
                   ? 'Nuevo grupo'
-                  : 'Chat operativo'}
+                  : view === 'profile'
+                    ? 'Mi perfil de chat'
+                    : 'Chat operativo'}
           </p>
           <p className="truncate text-[0.7rem] text-slate-500">
             {view === 'conversation' && snapshot
@@ -522,6 +524,17 @@ export function ChatWidget({
               : 'Mensajería interna del Libro'}
           </p>
         </div>
+        {view === 'list' ? (
+          <button
+            type="button"
+            onClick={() => void openChatProfile()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-petrol-50 text-xl hover:bg-petrol-100"
+            aria-label="Mi perfil de chat"
+            title="Mi perfil de chat"
+          >
+            {avatarGlyph(bootstrap?.profile.avatarKey)}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -540,49 +553,129 @@ export function ChatWidget({
 
       {view === 'list' ? (
         <>
-          <div className="shrink-0 space-y-2 border-b border-slate-100 px-3 py-3">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  setView('direct');
-                }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-petrol-800 px-3 py-2 text-xs font-semibold text-white hover:bg-petrol-700"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Mensaje
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  setView('group');
-                }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-petrol-900 hover:bg-slate-200"
-              >
-                <Users className="h-4 w-4" aria-hidden="true" />
-                Grupo
-              </button>
+          <div className="shrink-0 border-b border-slate-100 bg-white">
+            <div className="flex items-center gap-1 px-3 pt-3">
+              {([
+                ['chats', 'CHATS'],
+                ['online', 'EN LÍNEA'],
+                ['groups', 'GRUPOS'],
+              ] as const).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setHomeTab(tab);
+                    setQuery('');
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-2 text-[0.7rem] font-bold tracking-wide ${
+                    homeTab === tab
+                      ? 'bg-petrol-800 text-white'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-petrol-900'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar conversación…"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400 focus:bg-white"
-              />
-            </label>
+
+            <div className="flex items-center gap-2 px-3 py-3">
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={homeTab === 'online' ? 'Buscar persona…' : 'Buscar conversación…'}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400 focus:bg-white"
+                />
+              </label>
+
+              {homeTab === 'chats' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setView('direct');
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-white hover:bg-petrol-700"
+                  aria-label="Nuevo mensaje"
+                  title="Nuevo mensaje"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+
+              {homeTab === 'groups' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setView('group');
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-white hover:bg-petrol-700"
+                  aria-label="Crear grupo"
+                  title="Crear grupo"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
           </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading && !bootstrap ? (
               <p className="p-6 text-center text-sm text-slate-500">Cargando chat…</p>
+            ) : homeTab === 'online' ? (
+              onlinePeople.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Users className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                  <p className="mt-2 text-sm font-medium text-slate-700">Nadie aparece en línea</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    La presencia se actualiza automáticamente.
+                  </p>
+                </div>
+              ) : (
+                onlinePeople.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void createDirect(person)}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-2xl">
+                      {avatarGlyph(person.avatarKey)}
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-900">{person.name}</span>
+                      <span className="block truncate text-xs text-slate-500">@{person.username}</span>
+                      {person.statusText ? (
+                        <span className="mt-0.5 block truncate text-xs italic text-slate-500">
+                          {person.statusText}
+                        </span>
+                      ) : null}
+                      <span className="mt-1 block">
+                        <PersonPresence person={person} />
+                      </span>
+                    </span>
+                  </button>
+                ))
+              )
             ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center">
-                <MessageCircle className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
-                <p className="mt-2 text-sm font-medium text-slate-700">No hay conversaciones</p>
-                <p className="mt-1 text-xs text-slate-500">Inicia un mensaje directo o crea un grupo.</p>
+                {homeTab === 'groups' ? (
+                  <Users className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                ) : (
+                  <MessageCircle className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                )}
+                <p className="mt-2 text-sm font-medium text-slate-700">
+                  {homeTab === 'groups' ? 'No hay grupos' : 'No hay conversaciones'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {homeTab === 'groups'
+                    ? 'Crea un grupo para conversar con varios integrantes.'
+                    : 'Inicia un mensaje directo para comenzar.'}
+                </p>
               </div>
             ) : (
               filteredConversations.map((item) => (
@@ -592,20 +685,24 @@ export function ChatWidget({
                   onClick={() => void loadConversation(item.id)}
                   className="flex w-full gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50"
                 >
-                  <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-sm font-semibold text-petrol-800">
+                  <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-2xl text-petrol-800">
                     {item.type === 'GRUPO' ? (
                       <Users className="h-5 w-5" aria-hidden="true" />
                     ) : (
-                      item.title.slice(0, 1).toUpperCase()
+                      avatarGlyph(item.counterpart?.avatarKey)
                     )}
                     {item.counterpart?.presence.online ? (
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />
                     ) : null}
                   </span>
+
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                         {item.title}
+                      </span>
+                      <span className="shrink-0 text-[0.66rem] text-slate-400">
+                        {relativeActivity(item.lastMessageAt)}
                       </span>
                       {item.unreadCount > 0 ? (
                         <span className="rounded-full bg-petrol-800 px-1.5 py-0.5 text-[0.62rem] font-bold text-white">
@@ -656,8 +753,8 @@ export function ChatWidget({
                 onClick={() => void createDirect(person)}
                 className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-petrol-800">
-                  {person.name.slice(0, 1).toUpperCase()}
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl text-petrol-800">
+                  {avatarGlyph(person.avatarKey)}
                   <span
                     className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
                       person.presence.online ? 'bg-emerald-500' : 'bg-slate-300'

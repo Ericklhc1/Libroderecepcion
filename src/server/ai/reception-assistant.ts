@@ -18,6 +18,8 @@ import {
 } from '@/domain/fines';
 import { getRoomDetail, confirmCheckOutBatch } from '@/server/services/rooms';
 import { getDashboardData } from '@/server/services/dashboard';
+import { getLiveCashState } from '@/server/services/live-cash';
+import { getKeyInventory } from '@/server/services/keys';
 import { fineContextForRoom, createFine } from '@/server/services/fines';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { createEntry } from '@/server/services/entries';
@@ -382,6 +384,98 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
   return { now, until, hours, items };
 }
 
+async function cashStateTool(user: CurrentUser, args: Record<string, unknown>) {
+  requireToolPermission(user, 'cash.view');
+  const requested = Number(args.movements ?? 10);
+  const limit = Number.isFinite(requested)
+    ? Math.min(30, Math.max(1, Math.round(requested)))
+    : 10;
+  const state = await getLiveCashState(limit);
+
+  return {
+    currencies: state.currencies,
+    movements: state.movements.slice(0, limit),
+    cashGuarantees: state.cashGuarantees,
+    audits: state.audits.slice(0, 6),
+    instruction:
+      'Fondo fijo, garantías en efectivo y saldo operacional son conceptos separados. No combines garantías con denominaciones del fondo fijo.',
+  };
+}
+
+async function keyInventoryTool(user: CurrentUser, args: Record<string, unknown>) {
+  requireToolPermission(user, 'key.inventory');
+  const inventory = await getKeyInventory();
+  const onlyAttention = args.onlyAttention === true;
+  const attentionStatuses = new Set([
+    'PENDIENTE_DEVOLUCION',
+    'EXTRAVIADA',
+    'FUERA_DE_SERVICIO',
+  ]);
+
+  return {
+    stock: inventory.stock,
+    keys: onlyAttention
+      ? inventory.keys.filter((row) => attentionStatuses.has(row.status))
+      : inventory.keys,
+  };
+}
+
+async function operationalStateTool(user: CurrentUser) {
+  const canDashboard =
+    hasPermission(user, 'metrics.view') || hasPermission(user, 'room.view');
+  const canCash = hasPermission(user, 'cash.view');
+  const canKeys = hasPermission(user, 'key.inventory');
+
+  const [dashboard, cash, keys] = await Promise.all([
+    canDashboard ? getDashboardData(user) : Promise.resolve(null),
+    canCash ? getLiveCashState(8) : Promise.resolve(null),
+    canKeys ? getKeyInventory() : Promise.resolve(null),
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    availableAreas: {
+      operation: Boolean(dashboard),
+      cash: Boolean(cash),
+      keys: Boolean(keys),
+    },
+    operation: dashboard
+      ? {
+          counters: dashboard.counters,
+          attention: dashboard.attention.slice(0, 12).map((item, index) => ({
+            order: index + 1,
+            kind: item.kind,
+            level: item.tone,
+            title: item.title,
+            reason: item.reason,
+            nextAction: item.action,
+            href: item.href,
+          })),
+        }
+      : null,
+    cash: cash
+      ? {
+          currencies: cash.currencies,
+          recentMovements: cash.movements.slice(0, 8),
+          guaranteeCount: cash.cashGuarantees.length,
+          recentAudits: cash.audits.slice(0, 3),
+        }
+      : null,
+    keys: keys
+      ? {
+          stock: keys.stock,
+          attention: keys.keys
+            .filter((row) =>
+              ['PENDIENTE_DEVOLUCION', 'EXTRAVIADA', 'FUERA_DE_SERVICIO'].includes(row.status),
+            )
+            .slice(0, 20),
+        }
+      : null,
+    instruction:
+      'Esta herramienta es una fotografía transversal. Si una sección sugiere una anomalía, usa después la herramienta específica del área antes de afirmar la causa.',
+  };
+}
+
 async function checkoutsProposalTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'room.manage');
   const raw = Array.isArray(args.roomNumbers) ? args.roomNumbers : [];
@@ -645,6 +739,12 @@ async function executeTool(
       return prioritiesTool(user);
     case 'consultar_vencimientos':
       return deadlinesTool(user, args);
+    case 'consultar_estado_operativo':
+      return operationalStateTool(user);
+    case 'consultar_caja':
+      return cashStateTool(user, args);
+    case 'consultar_llaves':
+      return keyInventoryTool(user, args);
     case 'proponer_checkouts':
       return checkoutsProposalTool(user, args);
     case 'proponer_recordatorio':

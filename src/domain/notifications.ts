@@ -28,6 +28,7 @@ export const NOTIFICATION_WIDGET_LABELS: Record<string, string> = {
   ACCION_REQUERIDA: 'Acción requerida',
   ACTUALIZACION_OPERATIVA: 'Actualización operativa',
   FRONTI_HALLAZGO: 'Hallazgo de Fronti',
+  CHAT_MENSAJE: 'Nuevo mensaje',
 };
 
 export const URGENT_NOTIFICATION_TYPES = new Set([

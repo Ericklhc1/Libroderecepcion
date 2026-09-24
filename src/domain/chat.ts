@@ -165,6 +165,7 @@ export type ChatAttachmentMeta = {
   fileName: string;
   mimeType: string;
   size: number;
+  url: string;
 };
 
 export type ChatReactionSummary = {
@@ -230,6 +231,15 @@ export type ChatBootstrap = {
   profile: ChatProfile;
   totalUnread: number;
   generatedAt: string;
+};
+
+export type ChatStickerItem = {
+  id: string;
+  label: string | null;
+  url: string;
+  mine: boolean;
+  favorite: boolean;
+  usedAt: string | null;
 };
 
 export type ChatGifItem = {

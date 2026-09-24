@@ -635,3 +635,14 @@ están justificados en `prisma/migrations/20260915210000_indices_libro_y_reserva
 `npx tsc --noEmit` · `npx next lint` · `npm test` · `npm run build`.
 Las cuatro en verde antes de dar algo por terminado. Ningún error conocido
 queda sin documentar acá.
+
+
+## FRONTI v2 — rollout controlado
+- FRONTI v2 se implementará por etapas: alpha → beta → RC → 2.0.0.
+- El plan detallado vive en `docs/FRONTI_V2_ROADMAP.md`.
+- El acceso se controla por usuario desde Administración.
+- Administrador de sistema: siempre habilitado.
+- `@eherrera`: habilitado desde la primera etapa.
+- Resto de usuarios: deshabilitado por defecto hasta aprobación explícita.
+- El bloqueo se aplica tanto en UI como en `/api/fronti`; no es sólo ocultamiento visual.
+- Durante alpha se conserva FRONTI v1 como fallback técnico mientras se construye el nuevo núcleo multi-paso, Context Builder y Tool Registry.

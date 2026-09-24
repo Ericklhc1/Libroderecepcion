@@ -296,6 +296,25 @@ enum ReservationStatus {
   CANCELADA
 }
 
+enum ChatConversationType {
+  DIRECTO
+  GRUPO
+}
+
+enum ChatParticipantRole {
+  CREADOR
+  ADMIN
+  MIEMBRO
+}
+
+enum ChatMessageKind {
+  TEXTO
+  STICKER
+  CONTEXTO
+  ARCHIVO
+  SISTEMA
+}
+
 enum NotificationType {
   TAREA_ASIGNADA
   RESPONSABLE_CAMBIADO
@@ -314,6 +333,7 @@ enum NotificationType {
   ACCION_REQUERIDA
   ACTUALIZACION_OPERATIVA
   FRONTI_HALLAZGO
+  CHAT_MENSAJE
 }
 
 // =============================== IDENTIDAD ================================
@@ -464,6 +484,9 @@ model User {
   gymPassesVoided                 GymPass[]                  @relation("gymPassVoidedBy")
   assistantActionReceipts         AssistantActionReceipt[]
   legalAcceptances                LegalAcceptance[]
+  chatConversationsCreated          ChatConversation[]          @relation("chatConversationCreatedBy")
+  chatParticipations                ChatParticipant[]           @relation("chatParticipantUser")
+  chatMessages                      ChatMessage[]               @relation("chatMessageSender")
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -1094,6 +1117,8 @@ model Attachment {
   entry        OperationalEntry? @relation(fields: [entryId], references: [id], onDelete: Cascade)
   taskId       String?
   task         Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  chatMessageId String?
+  chatMessage   ChatMessage?      @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
   createdAt    DateTime          @default(now())
   deletedAt    DateTime?
   deletedById  String?
@@ -1101,6 +1126,7 @@ model Attachment {
 
   @@index([entryId])
   @@index([taskId])
+  @@index([chatMessageId])
 }
 
 // ===================== REFERENCIAS DE HUÉSPED / RESERVA ====================
@@ -1191,6 +1217,72 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@index([action])
+}
+
+
+model ChatConversation {
+  id            String               @id @default(cuid())
+  type          ChatConversationType
+  title         String?
+  directKey     String?              @unique
+  createdById   String
+  createdBy     User                 @relation("chatConversationCreatedBy", fields: [createdById], references: [id])
+  lastMessageAt DateTime             @default(now())
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  deletedAt     DateTime?
+  isDemo        Boolean              @default(false)
+
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@index([lastMessageAt])
+  @@index([deletedAt])
+}
+
+model ChatParticipant {
+  conversationId String
+  conversation   ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation("chatParticipantUser", fields: [userId], references: [id], onDelete: Cascade)
+  role           ChatParticipantRole @default(MIEMBRO)
+  joinedAt       DateTime           @default(now())
+  leftAt         DateTime?
+  lastReadAt     DateTime?
+  unreadCount    Int                @default(0)
+  mutedUntil     DateTime?
+
+  @@id([conversationId, userId])
+  @@index([userId, leftAt])
+  @@index([userId, unreadCount])
+}
+
+model ChatMessage {
+  id              String          @id @default(cuid())
+  conversationId  String
+  conversation    ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User             @relation("chatMessageSender", fields: [senderId], references: [id])
+  kind            ChatMessageKind  @default(TEXTO)
+  body            String?
+  stickerKey      String?
+  contextLabel    String?
+  contextHref     String?
+  contextEntity   String?
+  contextEntityId String?
+  replyToId       String?
+  replyTo         ChatMessage?     @relation("chatMessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         ChatMessage[]    @relation("chatMessageReply")
+  createdAt       DateTime         @default(now())
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  isDemo          Boolean          @default(false)
+
+  attachments Attachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([replyToId])
 }
 
 model Notification {

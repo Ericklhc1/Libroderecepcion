@@ -3,6 +3,7 @@ import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
 import { BookOpen, LogOut, Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
+import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -22,6 +23,7 @@ import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
+import { getChatUnreadCount } from '@/server/services/chat';
 import { AiAttribution } from '@/components/ai/ai-attribution';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -33,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
 
-  const [hotelName, alerts, notificationFeed, myOpenTasks, blocking, tutorialRow] =
+  const [hotelName, alerts, notificationFeed, myOpenTasks, blocking, tutorialRow, chatUnread] =
     await Promise.all([
       getSettingString('hotel.name', 'Hotel'),
       countLiveAlerts(),
@@ -46,6 +48,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         where: { id: user.id },
         select: { tutorialDoneAt: true },
       }),
+      user.roleOperational && !user.isSystemAdmin
+        ? getChatUnreadCount(user.id)
+        : Promise.resolve(0),
     ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
@@ -118,6 +123,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
             <div className="ml-auto flex items-center gap-2">
               <NotificationCenter initialSnapshot={notificationFeed} />
+              {user.roleOperational && !user.isSystemAdmin ? (
+                <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
+              ) : null}
               <div data-tour="help-center">
                 <HelpCenter permissions={user.permissions} />
               </div>

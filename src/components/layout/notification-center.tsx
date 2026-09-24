@@ -111,6 +111,9 @@ export function NotificationCenter({
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);
+      window.dispatchEvent(
+        new CustomEvent('libro:notification-feed', { detail: snapshot }),
+      );
 
       if (fresh.length > 0) {
         const newest = fresh[0];

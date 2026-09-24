@@ -129,6 +129,23 @@ async function assertParticipant(user: CurrentUser, conversationId: string) {
   if (!participant) throw new NotFoundError('La conversación no existe o no tienes acceso.');
 }
 
+export async function touchChatPresence(user: CurrentUser): Promise<void> {
+  assertChatActor(user);
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 45_000);
+
+  await prisma.session.updateMany({
+    where: {
+      id: user.sessionId,
+      userId: user.id,
+      revokedAt: null,
+      expiresAt: { gt: now },
+      lastSeenAt: { lt: staleBefore },
+    },
+    data: { lastSeenAt: now },
+  });
+}
+
 export async function getChatUnreadCount(userId: string): Promise<number> {
   const result = await prisma.chatParticipant.aggregate({
     where: {

@@ -5,27 +5,39 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   Check,
+  Image as ImageIcon,
   Link2,
   MessageCircle,
   Paperclip,
   Plus,
   Search,
   Send,
+  Settings2,
   Smile,
   UserPlus,
   Users,
+  Volume2,
   X,
 } from 'lucide-react';
 import {
+  CHAT_AVATARS,
   CHAT_BODY_MAX,
+  CHAT_EMOJIS,
+  CHAT_NOTIFICATION_TONES,
+  CHAT_STATUS_MAX,
   CHAT_STICKERS,
+  avatarGlyph,
   chatStickerGlyph,
   type ChatBootstrap,
   type ChatConversationSnapshot,
+  type ChatGifItem,
   type ChatPerson,
+  type ChatProfile,
 } from '@/domain/chat';
+import { playChime } from '@/components/layout/notification-chime';
 
-type View = 'list' | 'direct' | 'group' | 'conversation';
+type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile';
+type HomeTab = 'chats' | 'online' | 'groups';
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -60,7 +72,23 @@ function previewText(item: ChatBootstrap['conversations'][number]): string {
   if (message.stickerKey) {
     return `${chatStickerGlyph(message.stickerKey) ?? '💬'} Sticker`;
   }
-  return message.body?.replace(/\s+/g, ' ').trim() || 'Compartió un contexto del Libro';
+  if (message.mediaUrl) return 'GIF';
+  if (message.kind === 'CONTEXTO') return 'Compartió un contexto del Libro';
+  return message.body?.replace(/\s+/g, ' ').trim() || 'Nuevo mensaje';
+}
+
+function relativeActivity(value: string): string {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return 'ahora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} d`;
+  return new Intl.DateTimeFormat('es-CL', { day: '2-digit', month: '2-digit' }).format(
+    new Date(value),
+  );
 }
 
 function PersonPresence({ person, compact = false }: { person: ChatPerson; compact?: boolean }) {
@@ -92,6 +120,7 @@ export function ChatWidget({
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('list');
+  const [homeTab, setHomeTab] = useState<HomeTab>('chats');
   const [bootstrap, setBootstrap] = useState<ChatBootstrap | null>(null);
   const [snapshot, setSnapshot] = useState<ChatConversationSnapshot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,6 +131,12 @@ export function ChatWidget({
   const [body, setBody] = useState('');
   const [context, setContext] = useState<{ label: string; href: string } | null>(null);
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [emojisOpen, setEmojisOpen] = useState(false);
+  const [gifsOpen, setGifsOpen] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifItems, setGifItems] = useState<ChatGifItem[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<ChatProfile | null>(null);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
   const listEndRef = useRef<HTMLDivElement>(null);
@@ -238,11 +273,22 @@ export function ChatWidget({
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('es-CL');
     const conversations = bootstrap?.conversations ?? [];
-    if (!needle) return conversations;
-    return conversations.filter((item) =>
+    const scoped = homeTab === 'groups'
+      ? conversations.filter((item) => item.type === 'GRUPO')
+      : conversations;
+    if (!needle) return scoped;
+    return scoped.filter((item) =>
       item.title.toLocaleLowerCase('es-CL').includes(needle),
     );
-  }, [bootstrap?.conversations, query]);
+  }, [bootstrap?.conversations, homeTab, query]);
+
+  const onlinePeople = useMemo(() => {
+    const people = filteredPeople.filter((person) => person.presence.online);
+    return people.sort((a, b) => {
+      if (a.presence.inShift !== b.presence.inShift) return a.presence.inShift ? -1 : 1;
+      return a.name.localeCompare(b.name, 'es');
+    });
+  }, [filteredPeople]);
 
   async function createDirect(person: ChatPerson) {
     setLoading(true);
@@ -288,6 +334,10 @@ export function ChatWidget({
   async function postMessage(payload: {
     body?: string;
     stickerKey?: string;
+    mediaUrl?: string;
+    mediaPageUrl?: string;
+    mediaSource?: 'WIKIMEDIA_COMMONS';
+    mediaAlt?: string;
     contextLabel?: string;
     contextHref?: string;
   }) {

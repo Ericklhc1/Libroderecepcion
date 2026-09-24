@@ -1232,7 +1232,7 @@ export async function beginChatAttachmentUpload(
     descriptor.fileName,
     'attachment',
   );
-  const signed = createR2PresignedPutUrl(storageKey, 300);
+  const signed = createR2PresignedPutUrl(storageKey, descriptor.mimeType, 300);
   return {
     ...descriptor,
     storageKey,

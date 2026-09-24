@@ -38,6 +38,7 @@ import {
   recordFrontiAgentRun,
   type FrontiToolTrace,
 } from './fronti-v2/telemetry';
+import { serializeToolResultForModel } from './fronti-v2/context-budget';
 import {
   chatWithFrontiProvider,
   FrontiProviderError,
@@ -947,7 +948,7 @@ export async function runReceptionAssistant(
           toolMessages.push({
             role: 'tool',
             tool_call_id: call.id,
-            content: JSON.stringify({ ok: true, result: modelResult }),
+            content: serializeToolResultForModel(modelResult),
           });
         } catch (error) {
           toolTrace.push({ name: call.function.name, ok: false });

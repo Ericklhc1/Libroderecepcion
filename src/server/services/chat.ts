@@ -578,6 +578,10 @@ export async function manageGroupConversation(
         },
         data: { leftAt: new Date(), unreadCount: 0 },
       });
+      await tx.chatConversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      });
     });
     return { ok: true };
   }
@@ -634,6 +638,10 @@ export async function manageGroupConversation(
         },
       });
     }
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -657,6 +665,10 @@ export async function manageGroupConversation(
       },
       data: { leftAt: new Date(), unreadCount: 0 },
     });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -670,6 +682,10 @@ export async function manageGroupConversation(
       },
       data: { role: ChatParticipantRole.ADMIN },
     });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -682,6 +698,10 @@ export async function manageGroupConversation(
         },
       },
       data: { role: ChatParticipantRole.MIEMBRO },
+    });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
     });
     return { ok: true };
   }
@@ -2052,10 +2072,17 @@ export async function editOwnChatMessage(
   });
   if (!message) throw new NotFoundError('El mensaje no se puede editar.');
 
-  await prisma.chatMessage.update({
-    where: { id: message.id },
-    data: { body, editedAt: new Date() },
-  });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.chatMessage.update({
+      where: { id: message.id },
+      data: { body, editedAt: now },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: now },
+    }),
+  ]);
   return { ok: true };
 }
 
@@ -2075,23 +2102,30 @@ export async function deleteOwnChatMessage(
   });
   if (!message) throw new NotFoundError('El mensaje no se puede eliminar.');
 
-  await prisma.chatMessage.update({
-    where: { id: message.id },
-    data: {
-      deletedAt: new Date(),
-      body: null,
-      mediaUrl: null,
-      mediaPageUrl: null,
-      mediaSource: null,
-      mediaAlt: null,
-      contextLabel: null,
-      contextHref: null,
-      contextEntity: null,
-      contextEntityId: null,
-      stickerKey: null,
-      stickerId: null,
-    },
-  });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        deletedAt: now,
+        body: null,
+        mediaUrl: null,
+        mediaPageUrl: null,
+        mediaSource: null,
+        mediaAlt: null,
+        contextLabel: null,
+        contextHref: null,
+        contextEntity: null,
+        contextEntityId: null,
+        stickerKey: null,
+        stickerId: null,
+      },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: now },
+    }),
+  ]);
   return { ok: true };
 }
 

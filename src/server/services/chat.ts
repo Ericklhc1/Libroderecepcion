@@ -283,7 +283,8 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
   assertChatActor(user);
   const now = new Date();
 
-  const [participations, people] = await Promise.all([
+  const typingCutoff = new Date(now.getTime() - 10_000);
+  const [participations, people, typingRows] = await Promise.all([
     prisma.chatParticipant.findMany({
       where: {
         userId: user.id,
@@ -313,6 +314,18 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
       select: presenceSelect(now),
       take: CHAT_DIRECTORY_LIMIT + 1,
     }),
+    prisma.chatTyping.findMany({
+      where: {
+        userId: { not: user.id },
+        updatedAt: { gt: typingCutoff },
+        conversation: {
+          deletedAt: null,
+          participants: { some: { userId: user.id, leftAt: null } },
+        },
+      },
+      orderBy: [{ conversationId: 'asc' }, { userId: 'asc' }],
+      select: { conversationId: true, userId: true, updatedAt: true },
+    }),
   ]);
 
   return JSON.stringify({
@@ -332,6 +345,11 @@ export async function getChatGlobalVersion(user: CurrentUser): Promise<string> {
       person.chatStatusText,
       person.chatNotificationTone,
       person.chatSoundEnabled,
+    ]),
+    t: typingRows.map((item) => [
+      item.conversationId,
+      item.userId,
+      item.updatedAt.toISOString(),
     ]),
   });
 }
@@ -505,18 +523,45 @@ export async function getChatConversationSnapshot(
   });
   if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
 
-  const rows = await prisma.chatMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' },
-    take: CHAT_HISTORY_LIMIT,
-    include: {
-      sender: { select: { id: true, name: true } },
-      attachments: {
-        where: { deletedAt: null },
-        select: { id: true, fileName: true, mimeType: true, size: true },
+  const [rows, typingRows] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: CHAT_HISTORY_LIMIT,
+      include: {
+        sender: { select: { id: true, name: true } },
+        replyTo: {
+          select: {
+            id: true,
+            body: true,
+            kind: true,
+            sender: { select: { name: true } },
+          },
+        },
+        reactions: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        savedBy: {
+          where: { userId: user.id },
+          select: { userId: true },
+        },
+        attachments: {
+          where: { deletedAt: null },
+          select: { id: true, fileName: true, mimeType: true, size: true },
+        },
       },
-    },
-  });
+    }),
+    prisma.chatTyping.findMany({
+      where: {
+        conversationId,
+        userId: { not: user.id },
+        updatedAt: { gt: new Date(now.getTime() - 10_000) },
+      },
+      include: { user: { select: { name: true } } },
+      orderBy: { updatedAt: 'desc' },
+    }),
+  ]);
   rows.reverse();
 
   const other = conversation.participants.find((item) => item.userId !== user.id);
@@ -528,26 +573,75 @@ export async function getChatConversationSnapshot(
         ? other?.user.name ?? 'Conversación'
         : conversation.title?.trim() || 'Grupo',
     participants: conversation.participants.map((item) => serializePerson(item.user, now)),
-    messages: rows.map((message) => ({
-      id: message.id,
-      kind: message.kind,
-      body: message.body,
-      stickerKey: message.stickerKey,
-      mediaUrl: message.mediaUrl,
-      mediaPageUrl: message.mediaPageUrl,
-      mediaSource: message.mediaSource,
-      mediaAlt: message.mediaAlt,
-      contextLabel: message.contextLabel,
-      contextHref: message.contextHref,
-      contextEntity: message.contextEntity,
-      contextEntityId: message.contextEntityId,
-      senderId: message.senderId,
-      senderName: message.sender.name,
-      createdAt: message.createdAt.toISOString(),
-      editedAt: message.editedAt?.toISOString() ?? null,
-      deletedAt: message.deletedAt?.toISOString() ?? null,
-      replyToId: message.replyToId,
-      attachments: message.attachments,
+    messages: rows.map((message) => {
+      const grouped = new Map<string, {
+        emoji: string;
+        count: number;
+        mine: boolean;
+        users: Array<{ id: string; name: string }>;
+      }>();
+      for (const reaction of message.reactions) {
+        const current = grouped.get(reaction.emoji) ?? {
+          emoji: reaction.emoji,
+          count: 0,
+          mine: false,
+          users: [],
+        };
+        current.count += 1;
+        current.mine ||= reaction.userId === user.id;
+        current.users.push({ id: reaction.user.id, name: reaction.user.name });
+        grouped.set(reaction.emoji, current);
+      }
+
+      const readBy = conversation.participants
+        .filter((item) =>
+          item.userId !== message.senderId &&
+          Boolean(item.lastReadAt && item.lastReadAt >= message.createdAt),
+        )
+        .map((item) => ({
+          userId: item.userId,
+          name: item.user.name,
+          readAt: item.lastReadAt!.toISOString(),
+        }));
+
+      return {
+        id: message.id,
+        kind: message.kind,
+        body: message.body,
+        stickerKey: message.stickerKey,
+        stickerId: message.stickerId,
+        mediaUrl: message.mediaUrl,
+        mediaPageUrl: message.mediaPageUrl,
+        mediaSource: message.mediaSource,
+        mediaAlt: message.mediaAlt,
+        contextLabel: message.contextLabel,
+        contextHref: message.contextHref,
+        contextEntity: message.contextEntity,
+        contextEntityId: message.contextEntityId,
+        senderId: message.senderId,
+        senderName: message.sender.name,
+        createdAt: message.createdAt.toISOString(),
+        editedAt: message.editedAt?.toISOString() ?? null,
+        deletedAt: message.deletedAt?.toISOString() ?? null,
+        replyToId: message.replyToId,
+        replyTo: message.replyTo
+          ? {
+              id: message.replyTo.id,
+              senderName: message.replyTo.sender.name,
+              body: message.replyTo.body,
+              kind: message.replyTo.kind,
+            }
+          : null,
+        reactions: Array.from(grouped.values()),
+        saved: message.savedBy.length > 0,
+        readBy,
+        attachments: message.attachments,
+      };
+    }),
+    typing: typingRows.map((item) => ({
+      userId: item.userId,
+      name: item.user.name,
+      updatedAt: item.updatedAt.toISOString(),
     })),
     generatedAt: now.toISOString(),
   };

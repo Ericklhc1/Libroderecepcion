@@ -112,6 +112,7 @@ async function getCurrentCashComposition(client: Client = prisma) {
              COALESCE(SUM(CASE WHEN "direction" = 'ENTRADA' THEN "amount" ELSE -"amount" END), 0) AS "net"
       FROM "CashMovement"
       WHERE "voidedAt" IS NULL
+        AND "affectsExpected" = TRUE
       GROUP BY "currency"
     `,
     client.guarantee.findMany({

@@ -106,6 +106,7 @@ export function ChatWidget({
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
   const listEndRef = useRef<HTMLDivElement>(null);
   const openedFromQuery = useRef(false);
+  const selectedIdRef = useRef<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -114,6 +115,9 @@ export function ChatWidget({
       const data = await requestJson<ChatBootstrap>('/api/chat/bootstrap');
       setBootstrap(data);
       setUnread(data.totalUnread);
+      window.dispatchEvent(
+        new CustomEvent('libro:chat-profile', { detail: data.profile }),
+      );
       return data;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo abrir el chat.');
@@ -166,6 +170,10 @@ export function ChatWidget({
   );
 
   useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!open) return;
     void loadBootstrap();
   }, [open, loadBootstrap]);
@@ -191,20 +199,21 @@ export function ChatWidget({
   }, [loadBootstrap]);
 
   useEffect(() => {
-    if (!open || !selectedId || view !== 'conversation') return;
-    const source = new EventSource(
-      `/api/chat/stream?conversationId=${encodeURIComponent(selectedId)}`,
-    );
+    if (!mounted) return;
+    const source = new EventSource('/api/chat/stream');
     const refresh = () => {
-      void loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
+      const conversationId = selectedIdRef.current;
+      if (conversationId) {
+        void loadConversation(conversationId, { mark: true, busy: false });
+      }
     };
     source.addEventListener('chat-change', refresh);
     return () => {
       source.removeEventListener('chat-change', refresh);
       source.close();
     };
-  }, [open, selectedId, view, loadConversation, loadBootstrap]);
+  }, [mounted, loadConversation, loadBootstrap]);
 
   useEffect(() => {
     if (!open) return;

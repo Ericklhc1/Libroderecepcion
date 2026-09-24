@@ -12,6 +12,10 @@ export const dynamic = 'force-dynamic';
 const messageSchema = z.object({
   body: z.unknown().optional(),
   stickerKey: z.unknown().optional(),
+  mediaUrl: z.unknown().optional(),
+  mediaPageUrl: z.unknown().optional(),
+  mediaSource: z.unknown().optional(),
+  mediaAlt: z.unknown().optional(),
   contextLabel: z.unknown().optional(),
   contextHref: z.unknown().optional(),
   contextEntity: z.unknown().optional(),

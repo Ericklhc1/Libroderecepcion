@@ -5,27 +5,39 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   Check,
+  Image as ImageIcon,
   Link2,
   MessageCircle,
   Paperclip,
   Plus,
   Search,
   Send,
+  Settings2,
   Smile,
   UserPlus,
   Users,
+  Volume2,
   X,
 } from 'lucide-react';
 import {
+  CHAT_AVATARS,
   CHAT_BODY_MAX,
+  CHAT_EMOJIS,
+  CHAT_NOTIFICATION_TONES,
+  CHAT_STATUS_MAX,
   CHAT_STICKERS,
+  avatarGlyph,
   chatStickerGlyph,
   type ChatBootstrap,
   type ChatConversationSnapshot,
+  type ChatGifItem,
   type ChatPerson,
+  type ChatProfile,
 } from '@/domain/chat';
+import { playChime } from '@/components/layout/notification-chime';
 
-type View = 'list' | 'direct' | 'group' | 'conversation';
+type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile';
+type HomeTab = 'chats' | 'online' | 'groups';
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -60,7 +72,23 @@ function previewText(item: ChatBootstrap['conversations'][number]): string {
   if (message.stickerKey) {
     return `${chatStickerGlyph(message.stickerKey) ?? '💬'} Sticker`;
   }
-  return message.body?.replace(/\s+/g, ' ').trim() || 'Compartió un contexto del Libro';
+  if (message.mediaUrl) return 'GIF';
+  if (message.kind === 'CONTEXTO') return 'Compartió un contexto del Libro';
+  return message.body?.replace(/\s+/g, ' ').trim() || 'Nuevo mensaje';
+}
+
+function relativeActivity(value: string): string {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return 'ahora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} d`;
+  return new Intl.DateTimeFormat('es-CL', { day: '2-digit', month: '2-digit' }).format(
+    new Date(value),
+  );
 }
 
 function PersonPresence({ person, compact = false }: { person: ChatPerson; compact?: boolean }) {
@@ -92,6 +120,7 @@ export function ChatWidget({
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('list');
+  const [homeTab, setHomeTab] = useState<HomeTab>('chats');
   const [bootstrap, setBootstrap] = useState<ChatBootstrap | null>(null);
   const [snapshot, setSnapshot] = useState<ChatConversationSnapshot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,10 +131,18 @@ export function ChatWidget({
   const [body, setBody] = useState('');
   const [context, setContext] = useState<{ label: string; href: string } | null>(null);
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [emojisOpen, setEmojisOpen] = useState(false);
+  const [gifsOpen, setGifsOpen] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifItems, setGifItems] = useState<ChatGifItem[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<ChatProfile | null>(null);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
   const listEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const openedFromQuery = useRef(false);
+  const selectedIdRef = useRef<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -114,6 +151,9 @@ export function ChatWidget({
       const data = await requestJson<ChatBootstrap>('/api/chat/bootstrap');
       setBootstrap(data);
       setUnread(data.totalUnread);
+      window.dispatchEvent(
+        new CustomEvent('libro:chat-profile', { detail: data.profile }),
+      );
       return data;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo abrir el chat.');
@@ -166,6 +206,10 @@ export function ChatWidget({
   );
 
   useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!open) return;
     void loadBootstrap();
   }, [open, loadBootstrap]);
@@ -191,20 +235,21 @@ export function ChatWidget({
   }, [loadBootstrap]);
 
   useEffect(() => {
-    if (!open || !selectedId || view !== 'conversation') return;
-    const source = new EventSource(
-      `/api/chat/stream?conversationId=${encodeURIComponent(selectedId)}`,
-    );
+    if (!mounted) return;
+    const source = new EventSource('/api/chat/stream');
     const refresh = () => {
-      void loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
+      const conversationId = selectedIdRef.current;
+      if (conversationId) {
+        void loadConversation(conversationId, { mark: true, busy: false });
+      }
     };
     source.addEventListener('chat-change', refresh);
     return () => {
       source.removeEventListener('chat-change', refresh);
       source.close();
     };
-  }, [open, selectedId, view, loadConversation, loadBootstrap]);
+  }, [mounted, loadConversation, loadBootstrap]);
 
   useEffect(() => {
     if (!open) return;
@@ -214,6 +259,41 @@ export function ChatWidget({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  useEffect(() => {
+    if (!gifsOpen) return;
+    const q = gifQuery.trim();
+    if (q.length < 2) {
+      setGifItems([]);
+      setGifLoading(false);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setGifLoading(true);
+      void requestJson<{ items: ChatGifItem[] }>(
+        `/api/chat/gifs?q=${encodeURIComponent(q)}`,
+      )
+        .then((data) => {
+          if (active) setGifItems(data.items);
+        })
+        .catch((cause) => {
+          if (active) {
+            setGifItems([]);
+            setError(cause instanceof Error ? cause.message : 'No se pudieron buscar GIF.');
+          }
+        })
+        .finally(() => {
+          if (active) setGifLoading(false);
+        });
+    }, 400);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [gifQuery, gifsOpen]);
 
   const filteredPeople = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('es-CL');
@@ -229,11 +309,22 @@ export function ChatWidget({
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('es-CL');
     const conversations = bootstrap?.conversations ?? [];
-    if (!needle) return conversations;
-    return conversations.filter((item) =>
+    const scoped = homeTab === 'groups'
+      ? conversations.filter((item) => item.type === 'GRUPO')
+      : conversations;
+    if (!needle) return scoped;
+    return scoped.filter((item) =>
       item.title.toLocaleLowerCase('es-CL').includes(needle),
     );
-  }, [bootstrap?.conversations, query]);
+  }, [bootstrap?.conversations, homeTab, query]);
+
+  const onlinePeople = useMemo(() => {
+    const people = filteredPeople.filter((person) => person.presence.online);
+    return people.sort((a, b) => {
+      if (a.presence.inShift !== b.presence.inShift) return a.presence.inShift ? -1 : 1;
+      return a.name.localeCompare(b.name, 'es');
+    });
+  }, [filteredPeople]);
 
   async function createDirect(person: ChatPerson) {
     setLoading(true);
@@ -279,6 +370,10 @@ export function ChatWidget({
   async function postMessage(payload: {
     body?: string;
     stickerKey?: string;
+    mediaUrl?: string;
+    mediaPageUrl?: string;
+    mediaSource?: 'WIKIMEDIA_COMMONS';
+    mediaAlt?: string;
     contextLabel?: string;
     contextHref?: string;
   }) {
@@ -312,6 +407,61 @@ export function ChatWidget({
     });
   }
 
+  async function openChatProfile() {
+    const data = bootstrap ?? (await loadBootstrap());
+    if (!data) return;
+    setProfileDraft({ ...data.profile });
+    setView('profile');
+  }
+
+  async function saveChatProfile() {
+    if (!profileDraft) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const profile = await requestJson<ChatProfile>('/api/chat/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profileDraft),
+      });
+      setProfileDraft(profile);
+      setBootstrap((current) => (current ? { ...current, profile } : current));
+      window.dispatchEvent(
+        new CustomEvent('libro:chat-profile', { detail: profile }),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el perfil de chat.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function testProfileTone() {
+    if (!profileDraft?.soundEnabled) return;
+    const tone =
+      CHAT_NOTIFICATION_TONES.find((item) => item.key === profileDraft.notificationTone)?.key ??
+      'chime';
+    playChime(false, tone);
+  }
+
+  function closeComposerPickers() {
+    setEmojisOpen(false);
+    setStickersOpen(false);
+    setGifsOpen(false);
+  }
+
+  function insertEmoji(emoji: string) {
+    const textarea = composerRef.current;
+    const start = textarea?.selectionStart ?? body.length;
+    const end = textarea?.selectionEnd ?? start;
+    const next = (body.slice(0, start) + emoji + body.slice(end)).slice(0, CHAT_BODY_MAX);
+    const caret = Math.min(start + emoji.length, next.length);
+    setBody(next);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(caret, caret);
+    });
+  }
+
   function attachCurrentContext() {
     const url = new URL(window.location.href);
     url.searchParams.delete('chat');
@@ -327,6 +477,8 @@ export function ChatWidget({
   function goBack() {
     setSnapshot(null);
     setSelectedId(null);
+    setProfileDraft(null);
+    closeComposerPickers();
     setView('list');
     setQuery('');
     void loadBootstrap();
@@ -376,7 +528,9 @@ export function ChatWidget({
                 ? 'Nuevo mensaje'
                 : view === 'group'
                   ? 'Nuevo grupo'
-                  : 'Chat operativo'}
+                  : view === 'profile'
+                    ? 'Mi perfil de chat'
+                    : 'Chat operativo'}
           </p>
           <p className="truncate text-[0.7rem] text-slate-500">
             {view === 'conversation' && snapshot
@@ -384,6 +538,17 @@ export function ChatWidget({
               : 'Mensajería interna del Libro'}
           </p>
         </div>
+        {view === 'list' ? (
+          <button
+            type="button"
+            onClick={() => void openChatProfile()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-petrol-50 text-xl hover:bg-petrol-100"
+            aria-label="Mi perfil de chat"
+            title="Mi perfil de chat"
+          >
+            {avatarGlyph(bootstrap?.profile.avatarKey)}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -402,49 +567,129 @@ export function ChatWidget({
 
       {view === 'list' ? (
         <>
-          <div className="shrink-0 space-y-2 border-b border-slate-100 px-3 py-3">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  setView('direct');
-                }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-petrol-800 px-3 py-2 text-xs font-semibold text-white hover:bg-petrol-700"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Mensaje
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  setView('group');
-                }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-petrol-900 hover:bg-slate-200"
-              >
-                <Users className="h-4 w-4" aria-hidden="true" />
-                Grupo
-              </button>
+          <div className="shrink-0 border-b border-slate-100 bg-white">
+            <div className="flex items-center gap-1 px-3 pt-3">
+              {([
+                ['chats', 'CHATS'],
+                ['online', 'EN LÍNEA'],
+                ['groups', 'GRUPOS'],
+              ] as const).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setHomeTab(tab);
+                    setQuery('');
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-2 text-[0.7rem] font-bold tracking-wide ${
+                    homeTab === tab
+                      ? 'bg-petrol-800 text-white'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-petrol-900'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar conversación…"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400 focus:bg-white"
-              />
-            </label>
+
+            <div className="flex items-center gap-2 px-3 py-3">
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={homeTab === 'online' ? 'Buscar persona…' : 'Buscar conversación…'}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400 focus:bg-white"
+                />
+              </label>
+
+              {homeTab === 'chats' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setView('direct');
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-white hover:bg-petrol-700"
+                  aria-label="Nuevo mensaje"
+                  title="Nuevo mensaje"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+
+              {homeTab === 'groups' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setView('group');
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-white hover:bg-petrol-700"
+                  aria-label="Crear grupo"
+                  title="Crear grupo"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
           </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading && !bootstrap ? (
               <p className="p-6 text-center text-sm text-slate-500">Cargando chat…</p>
+            ) : homeTab === 'online' ? (
+              onlinePeople.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Users className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                  <p className="mt-2 text-sm font-medium text-slate-700">Nadie aparece en línea</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    La presencia se actualiza automáticamente.
+                  </p>
+                </div>
+              ) : (
+                onlinePeople.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void createDirect(person)}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-2xl">
+                      {avatarGlyph(person.avatarKey)}
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-900">{person.name}</span>
+                      <span className="block truncate text-xs text-slate-500">@{person.username}</span>
+                      {person.statusText ? (
+                        <span className="mt-0.5 block truncate text-xs italic text-slate-500">
+                          {person.statusText}
+                        </span>
+                      ) : null}
+                      <span className="mt-1 block">
+                        <PersonPresence person={person} />
+                      </span>
+                    </span>
+                  </button>
+                ))
+              )
             ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center">
-                <MessageCircle className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
-                <p className="mt-2 text-sm font-medium text-slate-700">No hay conversaciones</p>
-                <p className="mt-1 text-xs text-slate-500">Inicia un mensaje directo o crea un grupo.</p>
+                {homeTab === 'groups' ? (
+                  <Users className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                ) : (
+                  <MessageCircle className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
+                )}
+                <p className="mt-2 text-sm font-medium text-slate-700">
+                  {homeTab === 'groups' ? 'No hay grupos' : 'No hay conversaciones'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {homeTab === 'groups'
+                    ? 'Crea un grupo para conversar con varios integrantes.'
+                    : 'Inicia un mensaje directo para comenzar.'}
+                </p>
               </div>
             ) : (
               filteredConversations.map((item) => (
@@ -454,20 +699,24 @@ export function ChatWidget({
                   onClick={() => void loadConversation(item.id)}
                   className="flex w-full gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50"
                 >
-                  <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-sm font-semibold text-petrol-800">
+                  <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-2xl text-petrol-800">
                     {item.type === 'GRUPO' ? (
                       <Users className="h-5 w-5" aria-hidden="true" />
                     ) : (
-                      item.title.slice(0, 1).toUpperCase()
+                      avatarGlyph(item.counterpart?.avatarKey)
                     )}
                     {item.counterpart?.presence.online ? (
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />
                     ) : null}
                   </span>
+
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                         {item.title}
+                      </span>
+                      <span className="shrink-0 text-[0.66rem] text-slate-400">
+                        {relativeActivity(item.lastMessageAt)}
                       </span>
                       {item.unreadCount > 0 ? (
                         <span className="rounded-full bg-petrol-800 px-1.5 py-0.5 text-[0.62rem] font-bold text-white">
@@ -518,8 +767,8 @@ export function ChatWidget({
                 onClick={() => void createDirect(person)}
                 className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-petrol-800">
-                  {person.name.slice(0, 1).toUpperCase()}
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl text-petrol-800">
+                  {avatarGlyph(person.avatarKey)}
                   <span
                     className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
                       person.presence.online ? 'bg-emerald-500' : 'bg-slate-300'
@@ -606,6 +855,129 @@ export function ChatWidget({
         </>
       ) : null}
 
+      {view === 'profile' && profileDraft ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-petrol-50 text-4xl">
+                {avatarGlyph(profileDraft.avatarKey)}
+              </div>
+              <p className="mt-2 text-sm font-semibold text-petrol-950">Editar avatar, estado y sonido</p>
+              <p className="text-xs text-slate-500">Tu identidad dentro del IM del Libro.</p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Avatar</p>
+              <div className="grid grid-cols-7 gap-1.5">
+                {CHAT_AVATARS.map((avatar) => (
+                  <button
+                    key={avatar.key}
+                    type="button"
+                    title={avatar.label}
+                    onClick={() =>
+                      setProfileDraft((current) =>
+                        current ? { ...current, avatarKey: avatar.key } : current,
+                      )
+                    }
+                    className={`flex aspect-square items-center justify-center rounded-xl text-2xl ${
+                      profileDraft.avatarKey === avatar.key
+                        ? 'bg-petrol-100 ring-2 ring-petrol-700'
+                        : 'bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    {avatar.glyph}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Estado personal
+              </span>
+              <input
+                value={profileDraft.statusText ?? ''}
+                onChange={(event) =>
+                  setProfileDraft((current) =>
+                    current
+                      ? { ...current, statusText: event.target.value.slice(0, CHAT_STATUS_MAX) }
+                      : current,
+                  )
+                }
+                maxLength={CHAT_STATUS_MAX}
+                placeholder="Ej. En recepción ☕"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+              />
+              <span className="mt-1 block text-right text-[0.65rem] text-slate-400">
+                {(profileDraft.statusText ?? '').length}/{CHAT_STATUS_MAX}
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Tono de notificación
+              </span>
+              <select
+                value={profileDraft.notificationTone}
+                onChange={(event) =>
+                  setProfileDraft((current) =>
+                    current ? { ...current, notificationTone: event.target.value } : current,
+                  )
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+              >
+                {CHAT_NOTIFICATION_TONES.map((tone) => (
+                  <option key={tone.key} value={tone.key}>{tone.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Sonido</p>
+                <p className="text-xs text-slate-500">Usar el tono seleccionado para mensajes.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setProfileDraft((current) =>
+                    current ? { ...current, soundEnabled: !current.soundEnabled } : current,
+                  )
+                }
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  profileDraft.soundEnabled
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
+                {profileDraft.soundEnabled ? 'Activado' : 'Desactivado'}
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!profileDraft.soundEnabled}
+                onClick={testProfileTone}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-petrol-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Volume2 className="h-4 w-4" aria-hidden="true" />
+                Probar tono
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => void saveChatProfile()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-petrol-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:opacity-50"
+              >
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {view === 'conversation' && snapshot ? (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4">
@@ -613,16 +985,17 @@ export function ChatWidget({
               {snapshot.messages.map((message) => {
                 const mine = message.senderId === currentUserId;
                 const sticker = chatStickerGlyph(message.stickerKey);
+                const gif = message.kind === 'GIF' && Boolean(message.mediaUrl);
                 return (
                   <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[84%] ${
-                      sticker
+                      sticker || gif
                         ? 'px-2 py-1'
                         : mine
                           ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
                           : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100'
                     }`}>
-                      {!mine && !sticker ? (
+                      {!mine && !sticker && !gif ? (
                         <p className="mb-0.5 text-[0.67rem] font-semibold text-petrol-700">
                           {message.senderName}
                         </p>
@@ -632,6 +1005,31 @@ export function ChatWidget({
                           <span className="text-5xl" role="img" aria-label="Sticker">{sticker}</span>
                           {!mine ? (
                             <p className="mt-1 text-[0.65rem] font-medium text-slate-500">{message.senderName}</p>
+                          ) : null}
+                        </div>
+                      ) : gif && message.mediaUrl ? (
+                        <div className="max-w-[280px]">
+                          {!mine ? (
+                            <p className="mb-1 text-[0.67rem] font-semibold text-petrol-700">
+                              {message.senderName}
+                            </p>
+                          ) : null}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={message.mediaUrl}
+                            alt={message.mediaAlt || 'GIF'}
+                            loading="lazy"
+                            className="max-h-64 w-auto max-w-full rounded-xl object-contain"
+                          />
+                          {message.mediaPageUrl ? (
+                            <a
+                              href={message.mediaPageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 block text-right text-[0.62rem] text-slate-400 hover:text-petrol-700"
+                            >
+                              Wikimedia Commons
+                            </a>
                           ) : null}
                         </div>
                       ) : (
@@ -660,7 +1058,7 @@ export function ChatWidget({
                           ))}
                         </>
                       )}
-                      {!sticker ? (
+                      {!sticker && !gif ? (
                         <p className={`mt-1 text-right text-[0.6rem] ${
                           mine ? 'text-petrol-100' : 'text-slate-400'
                         }`}>
@@ -691,33 +1089,138 @@ export function ChatWidget({
               </div>
             ) : null}
 
+            {emojisOpen ? (
+              <div className="mb-2 max-h-40 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <div className="grid grid-cols-10 gap-1">
+                  {CHAT_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => insertEmoji(emoji)}
+                      className="rounded-lg p-1.5 text-xl hover:bg-white hover:shadow-sm"
+                      aria-label={`Insertar emoji ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {stickersOpen ? (
-              <div className="mb-2 grid grid-cols-8 gap-1 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
-                {CHAT_STICKERS.map((sticker) => (
-                  <button
-                    key={sticker.key}
-                    type="button"
-                    title={sticker.label}
-                    onClick={() => {
-                      setStickersOpen(false);
-                      void postMessage({ stickerKey: sticker.key });
-                    }}
-                    className="rounded-lg p-1.5 text-2xl hover:bg-white hover:shadow-sm"
-                  >
-                    {sticker.glyph}
-                  </button>
-                ))}
+              <div className="mb-2 max-h-44 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <div className="grid grid-cols-8 gap-1">
+                  {CHAT_STICKERS.map((sticker) => (
+                    <button
+                      key={sticker.key}
+                      type="button"
+                      title={sticker.label}
+                      onClick={() => {
+                        setStickersOpen(false);
+                        void postMessage({ stickerKey: sticker.key });
+                      }}
+                      className="rounded-lg p-1.5 text-2xl hover:bg-white hover:shadow-sm"
+                    >
+                      {sticker.glyph}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {gifsOpen ? (
+              <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <input
+                    value={gifQuery}
+                    onChange={(event) => setGifQuery(event.target.value)}
+                    placeholder="Buscar GIF en Wikimedia Commons…"
+                    autoFocus
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400"
+                  />
+                </label>
+                <div className="mt-2 max-h-52 overflow-y-auto">
+                  {gifLoading ? (
+                    <p className="py-6 text-center text-xs text-slate-500">Buscando GIF…</p>
+                  ) : gifQuery.trim().length < 2 ? (
+                    <p className="py-6 text-center text-xs text-slate-500">Escribe al menos 2 caracteres.</p>
+                  ) : gifItems.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-slate-500">No se encontraron GIF compatibles.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {gifItems.map((gif) => (
+                        <button
+                          key={gif.url}
+                          type="button"
+                          onClick={() => {
+                            setGifsOpen(false);
+                            setGifQuery('');
+                            setGifItems([]);
+                            void postMessage({
+                              mediaUrl: gif.url,
+                              mediaPageUrl: gif.pageUrl,
+                              mediaSource: gif.source,
+                              mediaAlt: gif.title,
+                            });
+                          }}
+                          className="overflow-hidden rounded-lg bg-white ring-1 ring-slate-200 hover:ring-petrol-400"
+                          title={gif.title}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={gif.url}
+                            alt={gif.title}
+                            loading="lazy"
+                            className="h-24 w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
 
             <div className="flex items-end gap-1">
               <button
                 type="button"
-                onClick={() => setStickersOpen((value) => !value)}
+                onClick={() => {
+                  setEmojisOpen((value) => !value);
+                  setStickersOpen(false);
+                  setGifsOpen(false);
+                }}
                 className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-                aria-label="Stickers"
+                aria-label="Emojis"
+                title="Emojis"
               >
                 <Smile className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStickersOpen((value) => !value);
+                  setEmojisOpen(false);
+                  setGifsOpen(false);
+                }}
+                className="shrink-0 rounded-lg px-2 py-2 text-base text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+                aria-label="Stickers"
+                title="Stickers"
+              >
+                🀄
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGifsOpen((value) => !value);
+                  setEmojisOpen(false);
+                  setStickersOpen(false);
+                }}
+                className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+                aria-label="GIF"
+                title="GIF"
+              >
+                <ImageIcon className="h-5 w-5" aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -738,6 +1241,7 @@ export function ChatWidget({
                 <Paperclip className="h-5 w-5" aria-hidden="true" />
               </button>
               <textarea
+                ref={composerRef}
                 value={body}
                 onChange={(event) => setBody(event.target.value.slice(0, CHAT_BODY_MAX))}
                 onKeyDown={(event) => {

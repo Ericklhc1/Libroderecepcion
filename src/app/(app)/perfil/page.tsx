@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
 import { displayUsername } from '@/domain/username';
 import { logoutAction } from '@/server/actions/auth';
+import { avatarGlyph } from '@/domain/chat';
 
 export const metadata = { title: 'Mi perfil' };
 export const dynamic = 'force-dynamic';
@@ -107,6 +108,28 @@ export default async function ProfilePage() {
           </form>
         </div>
       </Card>
+
+      {record.role.operational ? (
+        <Card>
+          <CardHeader title="Perfil de chat" />
+          <div className="flex items-center gap-4 px-4 py-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-3xl">
+              {avatarGlyph(record.chatAvatarKey)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-petrol-900">
+                {record.chatStatusText || 'Sin estado personal'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Tono: {record.chatNotificationTone} · Sonido {record.chatSoundEnabled ? 'activado' : 'desactivado'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Edita avatar, estado y sonido tocando tu avatar dentro del chat.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader title="Ayuda" />

@@ -7,6 +7,12 @@ describe('notificaciones realtime resistentes a deployments', () => {
   const readRoute = readFileSync('src/app/api/notifications/read/route.ts', 'utf-8');
   const feed = readFileSync('src/server/services/notification-feed.ts', 'utf-8');
 
+  it('monta toast y panel en document.body para no quedar recortados por el header sticky', () => {
+    expect(center).toContain("import { createPortal } from 'react-dom'");
+    expect(center.match(/createPortal\(/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(center.match(/document\.body/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('el cliente mantiene un EventSource y no hace polling HTTP de no leídos', () => {
     expect(center).toContain("new EventSource('/api/notifications/stream')");
     expect(center).not.toContain("fetch('/api/notifications/unread'");

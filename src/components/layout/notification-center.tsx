@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   Bell,
@@ -326,7 +327,7 @@ export function NotificationCenter({
         ) : null}
       </button>
 
-      {toast && !open ? (
+      {toast && !open ? createPortal(
         <button
           type="button"
           onClick={() => {
@@ -358,10 +359,11 @@ export function NotificationCenter({
               ) : null}
             </span>
           </div>
-        </button>
+        </button>,
+        document.body,
       ) : null}
 
-      {open ? (
+      {open ? createPortal(
         <div className="fixed inset-0 z-[70] no-print" role="presentation">
           <button
             type="button"
@@ -493,7 +495,8 @@ export function NotificationCenter({
               Mostrando las {items.length} notificaciones más recientes.
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

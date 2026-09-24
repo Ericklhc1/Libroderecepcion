@@ -11,7 +11,15 @@ import {
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { NotFoundError, RuleError } from '@/server/errors';
-import { deleteR2Object, getR2Object, isR2Configured, makeChatStorageKey, putR2Object } from '@/server/storage/r2';
+import {
+  createR2PresignedPutUrl,
+  deleteR2Object,
+  getR2Object,
+  headR2Object,
+  isR2Configured,
+  makeChatStorageKey,
+  putR2Object,
+} from '@/server/storage/r2';
 import {
   CHAT_DIRECTORY_LIMIT,
   CHAT_GROUP_TITLE_MAX,
@@ -1147,6 +1155,327 @@ const CHAT_ALLOWED_UPLOAD_TYPES = new Set([
 function safeUploadName(value: string): string {
   const trimmed = value.replace(/[\\/\0\r\n]/g, '_').trim();
   return (trimmed || 'archivo').slice(0, 180);
+}
+
+function validateChatUploadDescriptor(input: {
+  fileName: string;
+  mimeType: string;
+  size: number;
+}) {
+  const fileName = safeUploadName(input.fileName);
+  const mimeType = input.mimeType.trim().toLocaleLowerCase('en-US');
+  const size = Math.trunc(input.size);
+  if (!CHAT_ALLOWED_UPLOAD_TYPES.has(mimeType)) {
+    throw new RuleError('Este tipo de archivo no está permitido en el chat.');
+  }
+  if (!Number.isFinite(size) || size < 1 || size > CHAT_UPLOAD_MAX_BYTES) {
+    throw new RuleError('El archivo debe pesar como máximo 20 MB.');
+  }
+  return { fileName, mimeType, size };
+}
+
+function validateStickerUploadDescriptor(input: {
+  fileName: string;
+  mimeType: string;
+  size: number;
+}) {
+  const fileName = safeUploadName(input.fileName);
+  const mimeType = input.mimeType.trim().toLocaleLowerCase('en-US');
+  const size = Math.trunc(input.size);
+  if (!['image/png', 'image/webp', 'image/jpeg'].includes(mimeType)) {
+    throw new RuleError('Los stickers deben ser PNG, WEBP o JPEG.');
+  }
+  if (!Number.isFinite(size) || size < 1 || size > CHAT_STICKER_MAX_BYTES) {
+    throw new RuleError('El sticker debe pesar como máximo 8 MB.');
+  }
+  return { fileName, mimeType, size };
+}
+
+async function verifyDirectUpload(
+  storageKey: string,
+  expectedSize: number,
+  expectedMimeType: string,
+) {
+  const response = await headR2Object(storageKey);
+  if (!response.ok) throw new RuleError('La subida a R2 no se completó correctamente.');
+
+  const actualLength = Number(response.headers.get('content-length') ?? '-1');
+  if (actualLength !== expectedSize) {
+    throw new RuleError('El tamaño del archivo recibido no coincide con la subida iniciada.');
+  }
+
+  const actualType = (response.headers.get('content-type') ?? '')
+    .split(';')[0]
+    ?.trim()
+    .toLocaleLowerCase('en-US');
+  if (actualType && actualType !== expectedMimeType) {
+    throw new RuleError('El tipo del archivo recibido no coincide con la subida iniciada.');
+  }
+}
+
+export async function beginChatAttachmentUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  }
+  const descriptor = validateChatUploadDescriptor(input);
+  const storageKey = makeChatStorageKey(
+    input.conversationId,
+    descriptor.fileName,
+    'attachment',
+  );
+  const signed = createR2PresignedPutUrl(storageKey, 300);
+  return {
+    ...descriptor,
+    storageKey,
+    uploadUrl: signed.url,
+    expiresAt: signed.expiresAt,
+  };
+}
+
+export async function finalizeChatAttachmentUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    storageKey: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    body?: string | null;
+    replyToId?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  }
+
+  const descriptor = validateChatUploadDescriptor(input);
+  const expectedPrefix = `chat/${input.conversationId}/attachment/`;
+  if (!input.storageKey.startsWith(expectedPrefix) || input.storageKey.includes('..')) {
+    throw new RuleError('La referencia del archivo no es válida.');
+  }
+
+  await verifyDirectUpload(input.storageKey, descriptor.size, descriptor.mimeType);
+
+  const body = normalizeChatText(input.body);
+  const replyToId = typeof input.replyToId === 'string' ? input.replyToId.trim() || null : null;
+  if (replyToId) {
+    const target = await prisma.chatMessage.findFirst({
+      where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!target) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const conversation = await tx.chatConversation.findFirst({
+      where: { id: input.conversationId, deletedAt: null },
+      include: {
+        participants: {
+          where: { leftAt: null },
+          select: { userId: true, mutedUntil: true },
+        },
+      },
+    });
+    if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
+
+    const message = await tx.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: user.id,
+        kind: ChatMessageKind.ARCHIVO,
+        body,
+        replyToId,
+        attachments: {
+          create: {
+            fileName: descriptor.fileName,
+            mimeType: descriptor.mimeType,
+            size: descriptor.size,
+            storageKey: input.storageKey,
+            uploadedById: user.id,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    const now = new Date();
+    await tx.chatConversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: now },
+    });
+
+    const recipients = conversation.participants.filter((item) => item.userId !== user.id);
+    if (recipients.length > 0) {
+      await tx.chatParticipant.updateMany({
+        where: {
+          conversationId: conversation.id,
+          userId: { in: recipients.map((item) => item.userId) },
+          leftAt: null,
+        },
+        data: { unreadCount: { increment: 1 } },
+      });
+    }
+
+    const mentionedUsernames = extractMentionUsernames(body);
+    const mentionedUsers = mentionedUsernames.length
+      ? await tx.user.findMany({
+          where: {
+            username: { in: mentionedUsernames, mode: 'insensitive' },
+            id: { in: recipients.map((item) => item.userId) },
+            active: true,
+            deletedAt: null,
+          },
+          select: { id: true },
+        })
+      : [];
+    const mentionedIds = new Set(mentionedUsers.map((item) => item.id));
+    const normalizedBody = body?.toLocaleLowerCase('es-CL') ?? '';
+
+    if (
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@todos\b/.test(normalizedBody)
+    ) {
+      for (const recipient of recipients) mentionedIds.add(recipient.userId);
+    }
+    if (
+      conversation.type === ChatConversationType.GRUPO &&
+      /(^|\s)@turno\b/.test(normalizedBody) &&
+      recipients.length > 0
+    ) {
+      const active = await tx.user.findMany({
+        where: {
+          id: { in: recipients.map((item) => item.userId) },
+          assignments: {
+            some: {
+              activatedAt: { not: null },
+              leftAt: null,
+              shift: {
+                archivedAt: null,
+                status: { in: ACTIVE_SHIFT_STATUSES },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      for (const item of active) mentionedIds.add(item.id);
+    }
+
+    const preview = descriptor.mimeType.startsWith('image/')
+      ? 'Imagen'
+      : descriptor.mimeType.startsWith('audio/')
+        ? 'Nota de voz'
+        : `Archivo · ${descriptor.fileName}`;
+
+    for (const recipient of recipients) {
+      if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+
+      if (mentionedIds.has(recipient.userId)) {
+        await tx.notification.create({
+          data: {
+            userId: recipient.userId,
+            type: NotificationType.MENCION,
+            title: `${user.name} te mencionó en ${conversation.title?.trim() || 'el chat'}`,
+            body: body?.slice(0, 180) ?? preview,
+            link: `/?chat=${conversation.id}`,
+            entity: 'ChatConversation',
+            entityId: conversation.id,
+          },
+        });
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: recipient.userId,
+          type: NotificationType.CHAT_MENSAJE,
+          title: conversation.type === ChatConversationType.GRUPO
+            ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
+            : user.name,
+          body: body?.slice(0, 180) ?? preview,
+          link: `/?chat=${conversation.id}`,
+          entity: 'ChatConversation',
+          entityId: conversation.id,
+        },
+      });
+    }
+
+    return message;
+  });
+}
+
+export async function beginChatStickerUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  }
+  const descriptor = validateStickerUploadDescriptor(input);
+  const storageKey = makeChatStorageKey(
+    input.conversationId,
+    descriptor.fileName,
+    'sticker',
+  );
+  const signed = createR2PresignedPutUrl(storageKey, 300);
+  return {
+    ...descriptor,
+    storageKey,
+    uploadUrl: signed.url,
+    expiresAt: signed.expiresAt,
+  };
+}
+
+export async function finalizeChatStickerUpload(
+  user: CurrentUser,
+  input: {
+    conversationId: string;
+    storageKey: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    label?: string | null;
+  },
+) {
+  await assertParticipant(user, input.conversationId);
+  if (!isR2Configured()) {
+    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  }
+
+  const descriptor = validateStickerUploadDescriptor(input);
+  const expectedPrefix = `chat/${input.conversationId}/sticker/`;
+  if (!input.storageKey.startsWith(expectedPrefix) || input.storageKey.includes('..')) {
+    throw new RuleError('La referencia del sticker no es válida.');
+  }
+
+  await verifyDirectUpload(input.storageKey, descriptor.size, descriptor.mimeType);
+
+  return prisma.chatSticker.create({
+    data: {
+      ownerId: user.id,
+      storageKey: input.storageKey,
+      fileName: descriptor.fileName,
+      mimeType: descriptor.mimeType,
+      size: descriptor.size,
+      label: input.label?.replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+    },
+    select: { id: true },
+  });
 }
 
 export async function createChatAttachmentMessage(

@@ -1608,6 +1608,35 @@ export function ChatWidget({
               </div>
             ) : null}
 
+            {pendingFile ? (
+              <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                {pendingPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={pendingPreview}
+                    alt={pendingFile.name}
+                    className="h-14 w-14 rounded-lg object-cover"
+                  />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200">
+                    <Paperclip className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-800">{pendingFile.name}</span>
+                  <span className="block text-xs text-slate-500">{Math.max(1, Math.round(pendingFile.size / 1024))} KB</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPendingFile(null)}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700"
+                  aria-label="Quitar archivo pendiente"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+
             {mentionState && mentionState.candidates.length > 0 ? (
               <div className="mb-2 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200">
                 <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
@@ -1631,6 +1660,68 @@ export function ChatWidget({
                     </span>
                   </button>
                 ))}
+              </div>
+            ) : null}
+
+            {plusOpen ? (
+              <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGifsOpen(true);
+                    setGifTab('search');
+                    setPlusOpen(false);
+                    setEmojisOpen(false);
+                    setStickersOpen(false);
+                    void loadGifPreferences();
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  <ImageIcon className="h-5 w-5 text-petrol-700" aria-hidden="true" />
+                  GIF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStickersOpen(true);
+                    setPlusOpen(false);
+                    setEmojisOpen(false);
+                    setGifsOpen(false);
+                    void loadStickerLibrary();
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  <span className="text-lg" aria-hidden="true">🖼️</span>
+                  Stickers
+                </button>
+                <button
+                  type="button"
+                  disabled={!storageAvailable}
+                  onClick={() => {
+                    setPlusOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Paperclip className="h-5 w-5 text-petrol-700" aria-hidden="true" />
+                  Foto / archivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    attachCurrentContext();
+                    setPlusOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  <Link2 className="h-5 w-5 text-petrol-700" aria-hidden="true" />
+                  Compartir Libro
+                </button>
+                {!storageAvailable ? (
+                  <p className="col-span-2 text-center text-[0.68rem] text-slate-500">
+                    Fotos, archivos y stickers propios se activarán al conectar Cloudflare R2.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -1854,11 +1945,34 @@ export function ChatWidget({
               </div>
             ) : null}
 
-            <div className="flex items-end gap-1">
+            <div
+              className="flex items-end gap-1"
+              onDragOver={(event) => {
+                if (storageAvailable) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (!storageAvailable) return;
+                event.preventDefault();
+                const file = event.dataTransfer.files?.[0];
+                if (file) selectIncomingFile(file);
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/csv,.docx,.xlsx"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) selectIncomingFile(file);
+                }}
+              />
               <button
                 type="button"
                 onClick={() => {
                   setEmojisOpen((value) => !value);
+                  setPlusOpen(false);
                   setStickersOpen(false);
                   setGifsOpen(false);
                 }}
@@ -1871,46 +1985,18 @@ export function ChatWidget({
               <button
                 type="button"
                 onClick={() => {
-                  setStickersOpen((value) => !value);
-                  setEmojisOpen(false);
-                  setGifsOpen(false);
-                }}
-                className="shrink-0 rounded-lg px-2 py-2 text-base text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-                aria-label="Stickers"
-                title="Stickers"
-              >
-                🀄
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setGifsOpen((value) => !value);
+                  setPlusOpen((value) => !value);
                   setEmojisOpen(false);
                   setStickersOpen(false);
+                  setGifsOpen(false);
                 }}
-                className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-                aria-label="GIF"
-                title="GIF"
+                className={`shrink-0 rounded-lg p-2 hover:bg-slate-100 hover:text-petrol-800 ${
+                  plusOpen ? 'bg-slate-100 text-petrol-800' : 'text-slate-500'
+                }`}
+                aria-label="Más opciones"
+                title="Más opciones"
               >
-                <ImageIcon className="h-5 w-5" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                onClick={attachCurrentContext}
-                className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-                aria-label="Adjuntar pantalla actual del Libro"
-                title="Adjuntar enlace a la pantalla actual"
-              >
-                <Link2 className="h-5 w-5" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                disabled={!attachmentsEnabled}
-                className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Adjuntar archivo"
-                title={attachmentsEnabled ? 'Adjuntar archivo' : 'Adjuntos disponibles al activar almacenamiento de objetos'}
-              >
-                <Paperclip className="h-5 w-5" aria-hidden="true" />
+                <Plus className="h-5 w-5" aria-hidden="true" />
               </button>
               <textarea
                 ref={composerRef}
@@ -1919,6 +2005,15 @@ export function ChatWidget({
                   const next = event.target.value.slice(0, CHAT_BODY_MAX);
                   setBody(next);
                   signalTyping(next);
+                }}
+                onPaste={(event) => {
+                  const image = Array.from(event.clipboardData.files).find((file) =>
+                    file.type.startsWith('image/'),
+                  );
+                  if (image) {
+                    event.preventDefault();
+                    selectIncomingFile(image);
+                  }
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -1933,7 +2028,7 @@ export function ChatWidget({
               <button
                 type="button"
                 onClick={() => void sendMessage()}
-                disabled={!body.trim() && !context}
+                disabled={uploading || (!body.trim() && !context && !pendingFile)}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-petrol-800 text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Enviar"
               >

@@ -2236,6 +2236,9 @@ model CashAudit {
   difference     Decimal  @db.Decimal(12, 2)
   countedById    String
   notes          String?
+  /// Garantías en efectivo que fueron verificadas físicamente durante este arqueo.
+  /// Se guardan como snapshot para que el historial no cambie si luego se devuelven o aplican.
+  guaranteeSnapshot Json?
   createdAt      DateTime @default(now())
   countedBy      User     @relation("cashAuditCountedBy", fields: [countedById], references: [id])
 

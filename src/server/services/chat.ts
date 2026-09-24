@@ -1106,6 +1106,11 @@ const CHAT_ALLOWED_UPLOAD_TYPES = new Set([
   'text/csv',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'audio/webm',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/x-m4a',
 ]);
 
 function safeUploadName(value: string): string {

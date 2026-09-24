@@ -120,6 +120,7 @@ async function signedRequest(
 
 export function createR2PresignedPutUrl(
   key: string,
+  contentType: string,
   expiresSeconds = 300,
 ): { url: string; expiresAt: string } {
   const current = config();
@@ -134,10 +135,11 @@ export function createR2PresignedPutUrl(
 
   const query = new Map<string, string>([
     ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Content-Sha256', 'UNSIGNED-PAYLOAD'],
     ['X-Amz-Credential', `${current.accessKeyId}/${scope}`],
     ['X-Amz-Date', full],
     ['X-Amz-Expires', String(expires)],
-    ['X-Amz-SignedHeaders', 'host'],
+    ['X-Amz-SignedHeaders', 'content-type;host'],
   ]);
   const canonicalQuery = Array.from(query.entries())
     .sort(([a], [b]) => a.localeCompare(b))
@@ -148,8 +150,8 @@ export function createR2PresignedPutUrl(
     'PUT',
     path,
     canonicalQuery,
-    `host:${host}\n`,
-    'host',
+    `content-type:${contentType.trim().toLocaleLowerCase('en-US')}\nhost:${host}\n`,
+    'content-type;host',
     'UNSIGNED-PAYLOAD',
   ].join('\n');
   const stringToSign = [

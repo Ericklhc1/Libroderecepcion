@@ -215,11 +215,17 @@ export type ChatMessageItem = {
   attachments: ChatAttachmentMeta[];
 };
 
+export type ChatConversationParticipant = ChatPerson & {
+  conversationRole: 'CREADOR' | 'ADMIN' | 'MIEMBRO';
+};
+
 export type ChatConversationSnapshot = {
   id: string;
   type: 'DIRECTO' | 'GRUPO';
   title: string;
-  participants: ChatPerson[];
+  participants: ChatConversationParticipant[];
+  myRole: 'CREADOR' | 'ADMIN' | 'MIEMBRO';
+  mutedUntil: string | null;
   messages: ChatMessageItem[];
   typing: Array<{ userId: string; name: string; updatedAt: string }>;
   generatedAt: string;

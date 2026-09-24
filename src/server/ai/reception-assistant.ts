@@ -35,6 +35,10 @@ import {
 } from './fronti-v2/tool-registry';
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import {
+  recordFrontiAgentRun,
+  type FrontiToolTrace,
+} from './fronti-v2/telemetry';
+import {
   chatWithFrontiProvider,
   FrontiProviderError,
   resolveFrontiProviderRuntime,
@@ -850,106 +854,153 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
 ): Promise<AssistantResult> {
-  const config = await getFrontiConfig();
-  if (!config.enabled && !user.isSystemAdmin) {
-    throw new AssistantError('DESACTIVADO');
-  }
+  const startedAt = Date.now();
+  const toolTrace: FrontiToolTrace[] = [];
+  let loops = 0;
+  let config: FrontiConfig | null = null;
 
-  const provider = await resolveFrontiProviderRuntime(config);
-  const tools = chatTools(config);
-  let chat = messagesAsChat(messages, config);
-  const confirmations: AssistantConfirmation[] = [];
-
-  for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
-    let response;
-    try {
-      response = await chatWithFrontiProvider({
-        provider,
-        messages: chat,
-        tools,
-      });
-    } catch (error) {
-      if (error instanceof FrontiProviderError) {
-        throw new AssistantError(error.failure, error);
-      }
-      throw error;
+  try {
+    config = await getFrontiConfig();
+    if (!config.enabled && !user.isSystemAdmin) {
+      throw new AssistantError('DESACTIVADO');
     }
 
-    if (!response.toolCalls.length) {
-      return {
-        reply:
-          response.text ||
-          'No pude formular una respuesta. Intenta decirlo de otra forma.',
-        confirmations,
-      };
-    }
+    const provider = await resolveFrontiProviderRuntime(config);
+    const tools = chatTools(config);
+    let chat = messagesAsChat(messages, config);
+    const confirmations: AssistantConfirmation[] = [];
 
-    const toolMessages: FrontiChatMessage[] = [];
-    for (const call of response.toolCalls) {
-      let args: Record<string, unknown>;
+    for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
+      loops = loop + 1;
+      let response;
       try {
-        args = JSON.parse(call.function.arguments) as Record<string, unknown>;
-      } catch {
-        toolMessages.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: JSON.stringify({
-            ok: false,
-            error: 'Los parámetros no eran JSON válido.',
-          }),
-        });
-        continue;
-      }
-
-      try {
-        const result = await executeTool(user, call.function.name, args, config);
-        let modelResult: unknown = result;
-        if (
-          result &&
-          typeof result === 'object' &&
-          'confirmation' in result &&
-          (result as { confirmation?: AssistantConfirmation }).confirmation
-        ) {
-          const card = (result as { confirmation: AssistantConfirmation }).confirmation;
-          confirmations.push(card);
-          modelResult = {
-            ...(result as Record<string, unknown>),
-            confirmation: {
-              title: card.title,
-              detail: card.detail,
-              risk: card.risk,
-            },
-          };
-        }
-
-        toolMessages.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: JSON.stringify({ ok: true, result: modelResult }),
+        response = await chatWithFrontiProvider({
+          provider,
+          messages: chat,
+          tools,
         });
       } catch (error) {
-        toolMessages.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: JSON.stringify({
-            ok: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : 'La operación no pudo completarse.',
-          }),
-        });
+        if (error instanceof FrontiProviderError) {
+          throw new AssistantError(error.failure, error);
+        }
+        throw error;
       }
+
+      if (!response.toolCalls.length) {
+        recordFrontiAgentRun({
+          userId: user.id,
+          provider: config.provider,
+          model: config.model,
+          durationMs: Date.now() - startedAt,
+          loops,
+          tools: toolTrace,
+          outcome: toolTrace.some((item) => !item.ok) ? 'partial' : 'success',
+        });
+        return {
+          reply:
+            response.text ||
+            'No pude formular una respuesta. Intenta decirlo de otra forma.',
+          confirmations,
+        };
+      }
+
+      const toolMessages: FrontiChatMessage[] = [];
+      for (const call of response.toolCalls) {
+        let args: Record<string, unknown>;
+        try {
+          args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+        } catch {
+          toolTrace.push({ name: call.function.name, ok: false });
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              ok: false,
+              error: 'Los parámetros no eran JSON válido.',
+            }),
+          });
+          continue;
+        }
+
+        try {
+          const result = await executeTool(user, call.function.name, args, config);
+          toolTrace.push({ name: call.function.name, ok: true });
+          let modelResult: unknown = result;
+          if (
+            result &&
+            typeof result === 'object' &&
+            'confirmation' in result &&
+            (result as { confirmation?: AssistantConfirmation }).confirmation
+          ) {
+            const card = (result as { confirmation: AssistantConfirmation }).confirmation;
+            confirmations.push(card);
+            modelResult = {
+              ...(result as Record<string, unknown>),
+              confirmation: {
+                title: card.title,
+                detail: card.detail,
+                risk: card.risk,
+              },
+            };
+          }
+
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({ ok: true, result: modelResult }),
+          });
+        } catch (error) {
+          toolTrace.push({ name: call.function.name, ok: false });
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              ok: false,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'La operación no pudo completarse.',
+            }),
+          });
+        }
+      }
+
+      chat = [...chat, response.assistantMessage, ...toolMessages];
     }
 
-    chat = [...chat, response.assistantMessage, ...toolMessages];
+    recordFrontiAgentRun({
+      userId: user.id,
+      provider: config.provider,
+      model: config.model,
+      durationMs: Date.now() - startedAt,
+      loops,
+      tools: toolTrace,
+      outcome: 'limit',
+      failure: 'MAX_TOOL_LOOPS',
+    });
+    return {
+      reply:
+        'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
+      confirmations,
+    };
+  } catch (error) {
+    recordFrontiAgentRun({
+      userId: user.id,
+      provider: config?.provider ?? 'unknown',
+      model: config?.model ?? 'unknown',
+      durationMs: Date.now() - startedAt,
+      loops,
+      tools: toolTrace,
+      outcome: 'error',
+      failure:
+        error instanceof AssistantError
+          ? error.failure
+          : error instanceof Error
+            ? error.name
+            : 'UNKNOWN',
+    });
+    throw error;
   }
-
-  return {
-    reply:
-      'La solicitud requiere demasiados pasos automáticos. Divídela en dos instrucciones para evitar una ejecución ambigua.',
-    confirmations,
-  };
 }
 
 export async function executeReceptionConfirmation(

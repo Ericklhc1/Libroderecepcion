@@ -416,6 +416,9 @@ model User {
   chatStatusText      String?
   chatNotificationTone String     @default("chime")
   chatSoundEnabled    Boolean     @default(true)
+  /// Feature flag de Fronti por usuario. El Administrador de sistema lo ignora
+  /// porque Fronti permanece siempre disponible para ese rol.
+  frontiAccessEnabled Boolean     @default(false)
   failedAttempts     Int         @default(0)
   lockedUntil        DateTime?
   isDemo             Boolean     @default(false)

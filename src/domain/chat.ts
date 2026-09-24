@@ -230,6 +230,7 @@ export type ChatBootstrap = {
   people: ChatPerson[];
   profile: ChatProfile;
   totalUnread: number;
+  storageEnabled: boolean;
   generatedAt: string;
 };
 

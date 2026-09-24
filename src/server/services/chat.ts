@@ -759,6 +759,39 @@ export async function sendChatMessage(
       data: { lastMessageAt: now },
     });
 
+    if (mediaUrl && mediaSource) {
+      await tx.chatMediaPreference.upsert({
+        where: {
+          userId_kind_refKey: {
+            userId: user.id,
+            kind: 'gif',
+            refKey: mediaUrl,
+          },
+        },
+        create: {
+          userId: user.id,
+          kind: 'gif',
+          refKey: mediaUrl,
+          payload: {
+            title: mediaAlt ?? 'GIF',
+            url: mediaUrl,
+            pageUrl: mediaPageUrl,
+            source: mediaSource,
+          },
+          usedAt: now,
+        },
+        update: {
+          payload: {
+            title: mediaAlt ?? 'GIF',
+            url: mediaUrl,
+            pageUrl: mediaPageUrl,
+            source: mediaSource,
+          },
+          usedAt: now,
+        },
+      });
+    }
+
     const recipients = conversation.participants.filter((item) => item.userId !== user.id);
     if (recipients.length) {
       await tx.chatParticipant.updateMany({
@@ -1175,6 +1208,82 @@ export async function getChatStickerObject(user: CurrentUser, stickerId: string)
   const response = await getR2Object(sticker.storageKey);
   if (!response.ok) throw new NotFoundError('El sticker ya no está disponible.');
   return { sticker, response };
+}
+
+
+export async function getChatMediaPreferences(
+  user: CurrentUser,
+  kind: 'gif' | 'sticker',
+) {
+  assertChatActor(user);
+  const rows = await prisma.chatMediaPreference.findMany({
+    where: { userId: user.id, kind },
+    orderBy: [{ favorite: 'desc' }, { usedAt: 'desc' }],
+    take: 80,
+    select: {
+      kind: true,
+      refKey: true,
+      payload: true,
+      favorite: true,
+      usedAt: true,
+    },
+  });
+  return rows.map((row) => ({
+    kind: row.kind,
+    refKey: row.refKey,
+    payload: row.payload,
+    favorite: row.favorite,
+    usedAt: row.usedAt.toISOString(),
+  }));
+}
+
+export async function toggleChatMediaFavorite(
+  user: CurrentUser,
+  input: {
+    kind: 'gif' | 'sticker';
+    refKey: string;
+    payload?: Prisma.InputJsonValue;
+  },
+) {
+  assertChatActor(user);
+  const refKey = input.refKey.trim().slice(0, 1900);
+  if (!refKey) throw new RuleError('No se pudo identificar el elemento.');
+
+  const current = await prisma.chatMediaPreference.findUnique({
+    where: {
+      userId_kind_refKey: {
+        userId: user.id,
+        kind: input.kind,
+        refKey,
+      },
+    },
+    select: { favorite: true },
+  });
+
+  const favorite = !current?.favorite;
+  const row = await prisma.chatMediaPreference.upsert({
+    where: {
+      userId_kind_refKey: {
+        userId: user.id,
+        kind: input.kind,
+        refKey,
+      },
+    },
+    create: {
+      userId: user.id,
+      kind: input.kind,
+      refKey,
+      payload: input.payload ?? {},
+      favorite,
+      usedAt: new Date(),
+    },
+    update: {
+      favorite,
+      ...(input.payload !== undefined ? { payload: input.payload } : {}),
+    },
+    select: { favorite: true },
+  });
+  return row;
 }
 
 export async function toggleChatReaction(

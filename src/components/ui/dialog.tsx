@@ -31,8 +31,11 @@ export function Dialog({
   triggerVariant = 'primary',
   triggerSize = 'md',
   triggerClassName,
+  open: controlledOpen,
+  onOpenChange,
+  dismissible = true,
 }: {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
   title: string;
   description?: string;
   children: React.ReactNode;
@@ -40,8 +43,18 @@ export function Dialog({
   triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold';
   triggerSize?: 'sm' | 'md' | 'lg';
   triggerClassName?: string;
+  /** Permite que un flujo compuesto controle el diálogo desde fuera. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Cuando es false, sólo una acción explícita del contenido puede cerrarlo. */
+  dismissible?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +64,7 @@ export function Dialog({
     if (!open) return;
 
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (dismissible && event.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', onKey);
 
@@ -63,13 +76,13 @@ export function Dialog({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open]);
+  }, [open, dismissible]);
 
   const overlay = (
     <div
       className="fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setOpen(false);
+        if (dismissible && event.target === event.currentTarget) setOpen(false);
       }}
     >
       <div
@@ -98,14 +111,16 @@ export function Dialog({
               <p className="mt-0.5 text-xs text-slate-500">{description}</p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Cerrar"
-            className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
+          {dismissible ? (
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Cerrar"
+              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -117,15 +132,17 @@ export function Dialog({
 
   return (
     <>
-      <Button
-        type="button"
-        variant={triggerVariant}
-        size={triggerSize}
-        className={triggerClassName}
-        onClick={() => setOpen(true)}
-      >
-        {trigger}
-      </Button>
+      {trigger !== undefined && trigger !== null ? (
+        <Button
+          type="button"
+          variant={triggerVariant}
+          size={triggerSize}
+          className={triggerClassName}
+          onClick={() => setOpen(true)}
+        >
+          {trigger}
+        </Button>
+      ) : null}
 
       {open && mounted ? createPortal(overlay, document.body) : null}
     </>

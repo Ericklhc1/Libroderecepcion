@@ -4,14 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
+  AtSign,
   Check,
+  CheckCheck,
   Image as ImageIcon,
   Link2,
   MessageCircle,
   Paperclip,
   Plus,
+  Reply,
   Search,
   Send,
+  Star,
   Settings2,
   Smile,
   UserPlus,
@@ -31,6 +35,7 @@ import {
   type ChatBootstrap,
   type ChatConversationSnapshot,
   type ChatGifItem,
+  type ChatMessageItem,
   type ChatPerson,
   type ChatProfile,
 } from '@/domain/chat';
@@ -128,7 +133,11 @@ export function ChatWidget({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [conversationQuery, setConversationQuery] = useState('');
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
   const [body, setBody] = useState('');
+  const [replyTo, setReplyTo] = useState<ChatMessageItem | null>(null);
+  const [reactionMessageId, setReactionMessageId] = useState<string | null>(null);
   const [context, setContext] = useState<{ label: string; href: string } | null>(null);
   const [stickersOpen, setStickersOpen] = useState(false);
   const [emojisOpen, setEmojisOpen] = useState(false);
@@ -143,6 +152,9 @@ export function ChatWidget({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const openedFromQuery = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
+  const typingActiveRef = useRef(false);
+  const typingLastSentAtRef = useRef(0);
 
   useEffect(() => setMounted(true), []);
 
@@ -326,6 +338,34 @@ export function ChatWidget({
     });
   }, [filteredPeople]);
 
+  const visibleMessages = useMemo(() => {
+    const messages = snapshot?.messages ?? [];
+    const needle = conversationQuery.trim().toLocaleLowerCase('es-CL');
+    if (!needle) return messages;
+    return messages.filter((message) =>
+      [message.body, message.senderName, message.contextLabel, message.mediaAlt]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase('es-CL').includes(needle)),
+    );
+  }, [snapshot?.messages, conversationQuery]);
+
+  const mentionState = useMemo(() => {
+    const match = body.match(/(^|\s)@([A-Za-z0-9._-]*)$/);
+    if (!match) return null;
+    const fragment = (match[2] ?? '').toLocaleLowerCase('es-CL');
+    const start = body.length - (match[2]?.length ?? 0) - 1;
+    const candidates = (snapshot?.participants ?? [])
+      .filter((person) => person.id !== currentUserId)
+      .filter((person) =>
+        !fragment ||
+        person.username.toLocaleLowerCase('es-CL').includes(fragment) ||
+        person.name.toLocaleLowerCase('es-CL').includes(fragment),
+      )
+      .slice(0, 6);
+    return { start, candidates };
+  }, [body, currentUserId, snapshot?.participants]);
+
+
   async function createDirect(person: ChatPerson) {
     setLoading(true);
     setError(null);
@@ -376,6 +416,7 @@ export function ChatWidget({
     mediaAlt?: string;
     contextLabel?: string;
     contextHref?: string;
+    replyToId?: string;
   }) {
     if (!selectedId) return;
     setError(null);
@@ -399,12 +440,92 @@ export function ChatWidget({
     if (!text && !context) return;
     setBody('');
     const attached = context;
+    const quoted = replyTo;
     setContext(null);
+    setReplyTo(null);
+    await stopTyping();
     await postMessage({
       body: text || undefined,
       contextLabel: attached?.label,
       contextHref: attached?.href,
+      replyToId: quoted?.id,
     });
+  }
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    if (!selectedId) return;
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+        { method: 'POST', body: JSON.stringify({ emoji }) },
+      );
+      setReactionMessageId(null);
+      await loadConversation(selectedId, { mark: true, busy: false });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar la reacción.');
+    }
+  }
+
+  async function toggleSaved(messageId: string) {
+    if (!selectedId) return;
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/messages/${encodeURIComponent(messageId)}/saved`,
+        { method: 'POST', body: '{}' },
+      );
+      await loadConversation(selectedId, { mark: true, busy: false });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el mensaje.');
+    }
+  }
+
+  async function postTyping(active: boolean) {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId) return;
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(conversationId)}/typing`,
+        { method: 'POST', body: JSON.stringify({ active }) },
+      );
+    } catch {
+      // El typing es efímero: un fallo no debe interrumpir la conversación.
+    }
+  }
+
+  async function stopTyping() {
+    if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = null;
+    if (!typingActiveRef.current) return;
+    typingActiveRef.current = false;
+    await postTyping(false);
+  }
+
+  function signalTyping(nextBody: string) {
+    if (!selectedId || view !== 'conversation') return;
+    if (!nextBody.trim()) {
+      void stopTyping();
+      return;
+    }
+
+    const now = Date.now();
+    if (!typingActiveRef.current || now - typingLastSentAtRef.current > 2_000) {
+      typingActiveRef.current = true;
+      typingLastSentAtRef.current = now;
+      void postTyping(true);
+    }
+
+    if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = window.setTimeout(() => {
+      typingActiveRef.current = false;
+      void postTyping(false);
+    }, 2_500);
+  }
+
+  function insertMention(person: ChatPerson) {
+    if (!mentionState) return;
+    const next = `${body.slice(0, mentionState.start)}@${person.username} `;
+    setBody(next.slice(0, CHAT_BODY_MAX));
+    window.requestAnimationFrame(() => composerRef.current?.focus());
   }
 
   async function openChatProfile() {
@@ -478,6 +599,11 @@ export function ChatWidget({
     setSnapshot(null);
     setSelectedId(null);
     setProfileDraft(null);
+    setReplyTo(null);
+    setReactionMessageId(null);
+    setConversationQuery('');
+    setConversationSearchOpen(false);
+    void stopTyping();
     closeComposerPickers();
     setView('list');
     setQuery('');

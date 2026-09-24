@@ -28,6 +28,7 @@ import {
   buildFrontiRuntimeContext,
   runtimeContextMessage,
 } from '@/server/ai/fronti-v2/context-builder';
+import { budgetConversationMessages } from '@/server/ai/fronti-v2/context-budget';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 
 export const runtime = 'nodejs';
@@ -249,11 +250,11 @@ export async function POST(request: Request) {
       content: runtimeContextMessage(runtimeContext),
     };
 
-    const modelMessages = [
-      identity,
-      runtime,
-      ...contextualMessages,
-    ].slice(-(config.modelHistoryLimit + 5));
+    const recentContext = budgetConversationMessages(contextualMessages, {
+      maxMessages: config.modelHistoryLimit,
+      maxChars: 6_500,
+    });
+    const modelMessages = [identity, runtime, ...recentContext];
     const result = await runReceptionAssistant(user, modelMessages);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);

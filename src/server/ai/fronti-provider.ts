@@ -216,6 +216,20 @@ function authHeaders(apiKey: string | null): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
+const MAX_RATE_LIMIT_RETRY_MS = 12_500;
+
+function retryAfterMs(response: Response): number | null {
+  const raw = response.headers.get('retry-after');
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.ceil(seconds * 1000) + 250;
+}
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function parseFailure(
   response: Response,
 ): Promise<{ failure: AssistantFailure; detail?: string }> {
@@ -259,44 +273,56 @@ export async function chatWithFrontiProvider(args: {
     args.tools,
   );
 
+  const requestBody = JSON.stringify({
+    model: args.provider.model,
+    messages: args.messages,
+    tools: transportTools?.length ? transportTools : undefined,
+    tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
+    parallel_tool_calls: false,
+    ...(args.provider.provider === 'groq' &&
+    args.provider.model.startsWith('openai/gpt-oss-')
+      ? {
+          reasoning_effort: args.provider.reasoningEffort,
+          reasoning_format: 'hidden',
+        }
+      : {}),
+  });
+
   let response: Response;
-  try {
-    response = await fetch(`${args.provider.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        ...authHeaders(args.provider.apiKey),
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
-      body: JSON.stringify({
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(`${args.provider.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(args.provider.apiKey),
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
+        body: requestBody,
+      });
+    } catch (error) {
+      const aborted = error instanceof Error && error.name === 'TimeoutError';
+      throw new FrontiProviderError(
+        classifyAssistantFailure({ aborted, network: !aborted }),
+        error instanceof Error ? error : undefined,
+      );
+    }
+
+    if (response.status !== 429 || attempt > 0) break;
+
+    const delay = retryAfterMs(response);
+    if (delay === null || delay > MAX_RATE_LIMIT_RETRY_MS) break;
+
+    console.info(
+      '[fronti-provider] rate limit temporal; reintento interno',
+      JSON.stringify({
+        provider: args.provider.provider,
         model: args.provider.model,
-        messages: args.messages,
-        tools: transportTools?.length ? transportTools : undefined,
-        tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
-        parallel_tool_calls: false,
-        ...(args.provider.provider === 'groq' &&
-        args.provider.model.startsWith('openai/gpt-oss-')
-          ? {
-              reasoning_effort: args.provider.reasoningEffort,
-              /*
-               * Groq exige reasoning_format="hidden" (o "parsed") cuando
-               * GPT-OSS usa tool calling. include_reasoning=false sirve para
-               * respuestas de texto, pero combinado con tools provoca un 400
-               * de petición inválida. Fronti usa herramientas en toda
-               * conversación operativa, por lo que este campo es obligatorio.
-               */
-              reasoning_format: 'hidden',
-            }
-          : {}),
+        retryMs: delay,
       }),
-    });
-  } catch (error) {
-    const aborted = error instanceof Error && error.name === 'TimeoutError';
-    throw new FrontiProviderError(
-      classifyAssistantFailure({ aborted, network: !aborted }),
-      error instanceof Error ? error : undefined,
     );
+    await wait(delay);
   }
 
   if (!response.ok) {

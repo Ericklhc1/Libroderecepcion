@@ -329,7 +329,7 @@ export default async function LiveCashPage({
                             value: row.value,
                             medium: row.medium,
                           }))}
-                        guarantees={visibleGuarantees
+                        guarantees={state.cashGuarantees
                           .filter((guarantee) => guarantee.currency === item.currency)
                           .map((guarantee) => ({
                             id: guarantee.id,

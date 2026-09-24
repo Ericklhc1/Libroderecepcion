@@ -2226,7 +2226,7 @@ model CashMovement {
   @@index([shiftId])
 }
 
-/// Arqueo: lo que la caja debería tener contra lo que se contó.
+/// Arqueo: denominaciones del fondo fijo + validación separada de garantías vigentes.
 model CashAudit {
   id             String   @id
   currency       String   @db.VarChar(3)

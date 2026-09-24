@@ -259,6 +259,41 @@ export function ChatWidget({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  useEffect(() => {
+    if (!gifsOpen) return;
+    const q = gifQuery.trim();
+    if (q.length < 2) {
+      setGifItems([]);
+      setGifLoading(false);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setGifLoading(true);
+      void requestJson<{ items: ChatGifItem[] }>(
+        `/api/chat/gifs?q=${encodeURIComponent(q)}`,
+      )
+        .then((data) => {
+          if (active) setGifItems(data.items);
+        })
+        .catch((cause) => {
+          if (active) {
+            setGifItems([]);
+            setError(cause instanceof Error ? cause.message : 'No se pudieron buscar GIF.');
+          }
+        })
+        .finally(() => {
+          if (active) setGifLoading(false);
+        });
+    }, 400);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [gifQuery, gifsOpen]);
+
   const filteredPeople = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('es-CL');
     const people = bootstrap?.people ?? [];
@@ -371,6 +406,48 @@ export function ChatWidget({
     });
   }
 
+  async function openChatProfile() {
+    const data = bootstrap ?? (await loadBootstrap());
+    if (!data) return;
+    setProfileDraft({ ...data.profile });
+    setView('profile');
+  }
+
+  async function saveChatProfile() {
+    if (!profileDraft) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const profile = await requestJson<ChatProfile>('/api/chat/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profileDraft),
+      });
+      setProfileDraft(profile);
+      setBootstrap((current) => (current ? { ...current, profile } : current));
+      window.dispatchEvent(
+        new CustomEvent('libro:chat-profile', { detail: profile }),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el perfil de chat.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function testProfileTone() {
+    if (!profileDraft?.soundEnabled) return;
+    const tone =
+      CHAT_NOTIFICATION_TONES.find((item) => item.key === profileDraft.notificationTone)?.key ??
+      'chime';
+    playChime(false, tone);
+  }
+
+  function closeComposerPickers() {
+    setEmojisOpen(false);
+    setStickersOpen(false);
+    setGifsOpen(false);
+  }
+
   function attachCurrentContext() {
     const url = new URL(window.location.href);
     url.searchParams.delete('chat');
@@ -386,6 +463,8 @@ export function ChatWidget({
   function goBack() {
     setSnapshot(null);
     setSelectedId(null);
+    setProfileDraft(null);
+    closeComposerPickers();
     setView('list');
     setQuery('');
     void loadBootstrap();

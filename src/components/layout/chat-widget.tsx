@@ -556,64 +556,121 @@ export function ChatWidget({
     setPlusOpen(false);
   }
 
+  async function uploadAttachmentViaProxy(
+    file: File,
+    text?: string,
+    quotedId?: string,
+  ) {
+    if (!selectedId) return;
+    const form = new FormData();
+    form.set('file', file);
+    if (text) form.set('body', text);
+    if (quotedId) form.set('replyToId', quotedId);
+
+    const response = await fetch(
+      `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments/proxy`,
+      { method: 'POST', body: form },
+    );
+    if (response.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudo subir el archivo por el canal alternativo.');
+    }
+  }
+
   async function uploadAttachment(file: File, text?: string, quotedId?: string) {
     if (!selectedId) return;
     setUploading(true);
     setError(null);
     try {
-      const init = await requestJson<{
-        storageKey: string;
-        uploadUrl: string;
-        fileName: string;
-        mimeType: string;
-        size: number;
-        expiresAt: string;
-      }>(
-        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments/init`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            fileName: file.name,
-            mimeType: file.type || 'application/octet-stream',
-            size: file.size,
-          }),
-        },
-      );
-
-      const upload = await fetch(init.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': init.mimeType },
-        body: file,
-      });
-      if (!upload.ok) {
-        throw new Error(
-          upload.status === 403
-            ? 'R2 rechazó la subida. Revisa el CORS del bucket.'
-            : `R2 no pudo recibir el archivo (${upload.status}).`,
+      let directError: unknown = null;
+      try {
+        const init = await requestJson<{
+          storageKey: string;
+          uploadUrl: string;
+          fileName: string;
+          mimeType: string;
+          size: number;
+          expiresAt: string;
+        }>(
+          `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments/init`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              fileName: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              size: file.size,
+            }),
+          },
         );
-      }
 
-      await requestJson(
-        `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            storageKey: init.storageKey,
-            fileName: init.fileName,
-            mimeType: init.mimeType,
-            size: init.size,
-            body: text || null,
-            replyToId: quotedId || null,
-          }),
-        },
-      );
+        const upload = await fetch(init.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': init.mimeType },
+          body: file,
+        });
+        if (!upload.ok) {
+          throw new Error(`R2 directo respondió ${upload.status}.`);
+        }
+
+        await requestJson(
+          `/api/chat/conversations/${encodeURIComponent(selectedId)}/attachments`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              storageKey: init.storageKey,
+              fileName: init.fileName,
+              mimeType: init.mimeType,
+              size: init.size,
+              body: text || null,
+              replyToId: quotedId || null,
+            }),
+          },
+        );
+      } catch (cause) {
+        directError = cause;
+        if (file.size > 3 * 1024 * 1024) {
+          throw new Error(
+            'La subida directa a R2 está bloqueada y este archivo supera 3 MB. ' +
+            'El chat puede enviar archivos pequeños por el canal alternativo mientras se corrige CORS.',
+          );
+        }
+        await uploadAttachmentViaProxy(file, text, quotedId);
+      }
 
       await loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
+
+      if (directError) {
+        console.info('Chat upload: se utilizó fallback same-origin hacia R2.');
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo subir el archivo.');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function createStickerViaProxy(file: File) {
+    if (!selectedId) return;
+    const form = new FormData();
+    form.set('file', file);
+    form.set('conversationId', selectedId);
+
+    const response = await fetch('/api/chat/stickers/proxy', {
+      method: 'POST',
+      body: form,
+    });
+    if (response.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudo crear el sticker por el canal alternativo.');
     }
   }
 
@@ -622,50 +679,62 @@ export function ChatWidget({
     setUploading(true);
     setError(null);
     try {
-      const init = await requestJson<{
-        storageKey: string;
-        uploadUrl: string;
-        fileName: string;
-        mimeType: string;
-        size: number;
-        expiresAt: string;
-      }>('/api/chat/stickers/init', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversationId: selectedId,
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          size: file.size,
-        }),
-      });
+      let directError: unknown = null;
+      try {
+        const init = await requestJson<{
+          storageKey: string;
+          uploadUrl: string;
+          fileName: string;
+          mimeType: string;
+          size: number;
+          expiresAt: string;
+        }>('/api/chat/stickers/init', {
+          method: 'POST',
+          body: JSON.stringify({
+            conversationId: selectedId,
+            fileName: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            size: file.size,
+          }),
+        });
 
-      const upload = await fetch(init.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': init.mimeType },
-        body: file,
-      });
-      if (!upload.ok) {
-        throw new Error(
-          upload.status === 403
-            ? 'R2 rechazó el sticker. Revisa el CORS del bucket.'
-            : `R2 no pudo recibir el sticker (${upload.status}).`,
-        );
+        const upload = await fetch(init.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': init.mimeType },
+          body: file,
+        });
+        if (!upload.ok) {
+          throw new Error(`R2 directo respondió ${upload.status}.`);
+        }
+
+        await requestJson('/api/chat/stickers', {
+          method: 'POST',
+          body: JSON.stringify({
+            conversationId: selectedId,
+            storageKey: init.storageKey,
+            fileName: init.fileName,
+            mimeType: init.mimeType,
+            size: init.size,
+          }),
+        });
+      } catch (cause) {
+        directError = cause;
+        if (file.size > 3 * 1024 * 1024) {
+          throw new Error(
+            'La imagen del sticker supera 3 MB y la subida directa a R2 está bloqueada. ' +
+            'Usa una imagen más pequeña mientras se corrige CORS.',
+          );
+        }
+        await createStickerViaProxy(file);
       }
-
-      await requestJson('/api/chat/stickers', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversationId: selectedId,
-          storageKey: init.storageKey,
-          fileName: init.fileName,
-          mimeType: init.mimeType,
-          size: init.size,
-        }),
-      });
 
       await loadStickerLibrary();
       setStickersOpen(true);
       setStickerTab('mine');
+
+      if (directError) {
+        console.info('Sticker upload: se utilizó fallback same-origin hacia R2.');
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo crear el sticker.');
     } finally {

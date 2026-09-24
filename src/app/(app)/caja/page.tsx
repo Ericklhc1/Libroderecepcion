@@ -12,7 +12,7 @@ import {
   CashDifferenceRegularizationForm,
   CreateCashGuaranteeForm,
   CreateGymPassForm,
-  LiveCashAuditForm,
+  LiveCashAuditDialog,
   ManualCashMovementForm,
   ReclassifyCashMovementDialog,
   ReturnCashGuaranteeForm,
@@ -307,39 +307,26 @@ export default async function LiveCashPage({
 
                 {canAudit ? (
                   <div className="mt-3 no-print">
-                    <Dialog
-                      title={`Arquear Caja ${item.currency}`}
-                      description={`Fondo fijo esperado: ${amount(item.currency, item.fund)}. Las denominaciones validan sólo el fondo fijo; las garantías se confirman aparte.`}
-                      triggerVariant="secondary"
-                      triggerSize="sm"
-                      width="sm"
-                      trigger={
-                        <>
-                          <Banknote className="h-4 w-4" aria-hidden="true" />
-                          Generar arqueo
-                        </>
-                      }
-                    >
-                      <LiveCashAuditForm
-                        currency={item.currency}
-                        denominations={state.denominations
-                          .filter((row) => row.currency === item.currency)
-                          .map((row) => ({
-                            id: row.id,
-                            value: row.value,
-                            medium: row.medium,
-                          }))}
-                        guarantees={state.cashGuarantees
-                          .filter((guarantee) => guarantee.currency === item.currency)
-                          .map((guarantee) => ({
-                            id: guarantee.id,
-                            amount: guarantee.amount,
-                            guestName: guarantee.guestName,
-                            roomNumber: guarantee.roomNumber,
-                            reference: guarantee.reference,
-                          }))}
-                      />
-                    </Dialog>
+                    <LiveCashAuditDialog
+                      currency={item.currency}
+                      fund={item.fund}
+                      denominations={state.denominations
+                        .filter((row) => row.currency === item.currency)
+                        .map((row) => ({
+                          id: row.id,
+                          value: row.value,
+                          medium: row.medium,
+                        }))}
+                      guarantees={state.cashGuarantees
+                        .filter((guarantee) => guarantee.currency === item.currency)
+                        .map((guarantee) => ({
+                          id: guarantee.id,
+                          amount: guarantee.amount,
+                          guestName: guarantee.guestName,
+                          roomNumber: guarantee.roomNumber,
+                          reference: guarantee.reference,
+                        }))}
+                    />
                   </div>
                 ) : null}
               </div>

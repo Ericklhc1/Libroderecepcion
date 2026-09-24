@@ -519,7 +519,7 @@ export async function saveCashCount(
     handoverId: string;
     kind: CashCountKindValue;
     quantities: Record<string, number>;
-    guaranteeIds: string[];
+    guaranteeIds?: string[];
     notes?: string | null;
   },
 ): Promise<{ statuses: FundStatus[] }> {
@@ -543,7 +543,7 @@ export async function saveCashCount(
   }
 
   const composition = await getCurrentCashComposition();
-  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds);
+  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds ?? []);
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
@@ -608,7 +608,7 @@ export async function confirmHandoverCash(
   params: {
     handoverId: string;
     quantities: Record<string, number>;
-    guaranteeIds: string[];
+    guaranteeIds?: string[];
     notes?: string | null;
   },
 ): Promise<{
@@ -656,7 +656,7 @@ export async function confirmHandoverCash(
     return { denominationId, quantity, denomination };
   });
   const composition = await getCurrentCashComposition(tx);
-  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds);
+  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds ?? []);
   const statuses = fundStatuses(
     composition.funds.map((fund) => ({
       currency: fund.currency,

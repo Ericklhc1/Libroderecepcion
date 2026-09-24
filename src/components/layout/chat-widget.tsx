@@ -41,7 +41,7 @@ import {
 } from '@/domain/chat';
 import { playChime } from '@/components/layout/notification-chime';
 
-type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile';
+type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile' | 'settings';
 type HomeTab = 'chats' | 'online' | 'groups';
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -161,6 +161,8 @@ export function ChatWidget({
   const [profileDraft, setProfileDraft] = useState<ChatProfile | null>(null);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupMembers, setGroupMembers] = useState<Set<string>>(() => new Set());
+  const [groupSettingsTitle, setGroupSettingsTitle] = useState('');
+  const [groupManageQuery, setGroupManageQuery] = useState('');
   const listEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -548,6 +550,46 @@ export function ChatWidget({
     }
   }
 
+  async function manageGroup(
+    payload:
+      | { action: 'rename'; title: string }
+      | { action: 'add'; userId: string }
+      | { action: 'remove'; userId: string }
+      | { action: 'promote'; userId: string }
+      | { action: 'demote'; userId: string }
+      | { action: 'mute'; muted: boolean }
+      | { action: 'leave' },
+  ) {
+    if (!selectedId) return false;
+    setLoading(true);
+    setError(null);
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}`,
+        { method: 'PATCH', body: JSON.stringify(payload) },
+      );
+      if (payload.action === 'leave') {
+        goBack();
+        return true;
+      }
+      await loadConversation(selectedId, { mark: true, busy: false });
+      await loadBootstrap();
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo actualizar el grupo.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openGroupSettings() {
+    if (!snapshot || snapshot.type !== 'GRUPO') return;
+    setGroupSettingsTitle(snapshot.title);
+    setGroupManageQuery('');
+    setView('settings');
+  }
+
   async function createGroup() {
     if (!groupTitle.trim() || groupMembers.size < 1) return;
     setLoading(true);
@@ -816,7 +858,13 @@ export function ChatWidget({
         {view !== 'list' ? (
           <button
             type="button"
-            onClick={goBack}
+            onClick={() => {
+              if (view === 'settings') {
+                setView('conversation');
+                return;
+              }
+              goBack();
+            }}
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
             aria-label="Volver a conversaciones"
           >
@@ -837,12 +885,16 @@ export function ChatWidget({
                   ? 'Nuevo grupo'
                   : view === 'profile'
                     ? 'Mi perfil de chat'
-                    : 'Chat operativo'}
+                    : view === 'settings'
+                      ? 'Información del grupo'
+                      : 'Chat operativo'}
           </p>
           <p className="truncate text-[0.7rem] text-slate-500">
             {view === 'conversation' && snapshot
               ? `${snapshot.participants.length} participante${snapshot.participants.length === 1 ? '' : 's'}`
-              : 'Mensajería interna del Libro'}
+              : view === 'settings' && snapshot
+                ? snapshot.title
+                : 'Mensajería interna del Libro'}
           </p>
         </div>
         {view === 'conversation' ? (
@@ -1199,6 +1251,148 @@ export function ChatWidget({
             </button>
           </div>
         </>
+      ) : null}
+
+      {view === 'settings' && snapshot?.type === 'GRUPO' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <div className="space-y-4">
+            <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grupo</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={groupSettingsTitle}
+                  onChange={(event) => setGroupSettingsTitle(event.target.value.slice(0, 80))}
+                  disabled={snapshot.myRole === 'MIEMBRO'}
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-base outline-none focus:border-petrol-400 disabled:bg-slate-100 sm:text-sm"
+                />
+                {snapshot.myRole !== 'MIEMBRO' ? (
+                  <button
+                    type="button"
+                    disabled={loading || groupSettingsTitle.trim().length < 2 || groupSettingsTitle.trim() === snapshot.title}
+                    onClick={() => void manageGroup({ action: 'rename', title: groupSettingsTitle })}
+                    className="rounded-xl bg-petrol-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                    title="Guardar nombre del grupo"
+                  >
+                    Guardar
+                  </button>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void manageGroup({
+                  action: 'mute',
+                  muted: !snapshot.mutedUntil,
+                })}
+                className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                {snapshot.mutedUntil ? '🔔 Activar notificaciones del grupo' : '🔕 Silenciar notificaciones del grupo'}
+              </button>
+            </section>
+
+            <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Participantes · {snapshot.participants.length}
+                </p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {snapshot.participants.map((person) => {
+                  const canManage = snapshot.myRole === 'CREADOR' || snapshot.myRole === 'ADMIN';
+                  const targetProtected = person.conversationRole === 'CREADOR';
+                  return (
+                    <div key={person.id} className="flex items-center gap-3 px-4 py-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-xl">
+                        {avatarGlyph(person.avatarKey)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-900">
+                          {person.name}{person.id === currentUserId ? ' · Tú' : ''}
+                        </span>
+                        <span className="block truncate text-xs text-slate-500">
+                          @{person.username} · {person.conversationRole === 'CREADOR' ? 'Creador' : person.conversationRole === 'ADMIN' ? 'Administrador' : 'Miembro'}
+                        </span>
+                      </span>
+                      {canManage && person.id !== currentUserId && !targetProtected ? (
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void manageGroup({
+                              action: person.conversationRole === 'ADMIN' ? 'demote' : 'promote',
+                              userId: person.id,
+                            })}
+                            className="rounded-lg bg-slate-100 px-2 py-1 text-[0.65rem] font-semibold text-slate-600 hover:bg-slate-200"
+                          >
+                            {person.conversationRole === 'ADMIN' ? 'Miembro' : 'Admin'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void manageGroup({ action: 'remove', userId: person.id })}
+                            className="rounded-lg bg-rose-50 px-2 py-1 text-[0.65rem] font-semibold text-rose-700 hover:bg-rose-100"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {snapshot.myRole !== 'MIEMBRO' ? (
+              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Agregar personas</p>
+                <label className="relative mt-2 block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <input
+                    value={groupManageQuery}
+                    onChange={(event) => setGroupManageQuery(event.target.value)}
+                    placeholder="Buscar persona…"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-base outline-none focus:border-petrol-400 sm:text-sm"
+                  />
+                </label>
+                <div className="mt-2 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                  {(bootstrap?.people ?? [])
+                    .filter((person) => !snapshot.participants.some((item) => item.id === person.id))
+                    .filter((person) => {
+                      const needle = groupManageQuery.trim().toLocaleLowerCase('es-CL');
+                      return !needle ||
+                        person.name.toLocaleLowerCase('es-CL').includes(needle) ||
+                        person.username.toLocaleLowerCase('es-CL').includes(needle);
+                    })
+                    .slice(0, 12)
+                    .map((person) => (
+                      <button
+                        key={person.id}
+                        type="button"
+                        onClick={() => void manageGroup({ action: 'add', userId: person.id })}
+                        className="flex w-full items-center gap-2 px-1 py-2 text-left hover:bg-slate-50"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-petrol-50 text-lg">
+                          {avatarGlyph(person.avatarKey)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{person.name}</span>
+                          <span className="block truncate text-xs text-slate-500">@{person.username}</span>
+                        </span>
+                        <Plus className="h-4 w-4 text-petrol-700" aria-hidden="true" />
+                      </button>
+                    ))}
+                </div>
+              </section>
+            ) : null}
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void manageGroup({ action: 'leave' })}
+              className="w-full rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-40"
+            >
+              Salir del grupo
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {view === 'profile' && profileDraft ? (

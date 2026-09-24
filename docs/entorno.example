@@ -56,3 +56,22 @@ MAIL_FROM="Libro Operativo <no-reply@hoteleshw.com>"
 
 # Casilla que recibe las credenciales de los usuarios nuevos
 CREDENTIALS_MAIL_TO="recepcion@hoteleshw.com"
+
+
+# ---------------------------------------------------------------------------
+# Multimedia del chat (opcional).
+#
+# Cloudflare R2: si las cuatro variables están presentes, se habilitan
+# capturas, imágenes, archivos, notas de voz y stickers personalizados.
+# El bucket debe permanecer PRIVADO y permitir por CORS PUT desde el origen
+# web del Libro. Nunca expongas estas credenciales como NEXT_PUBLIC_*.
+# ---------------------------------------------------------------------------
+R2_ACCOUNT_ID=""
+R2_ACCESS_KEY_ID=""
+R2_SECRET_ACCESS_KEY=""
+R2_BUCKET="libro-recepcion-chat"
+
+# GIF (opcional). Sin Tenor, el sistema conserva Wikimedia Commons como
+# respaldo automático.
+TENOR_API_KEY=""
+TENOR_CLIENT_KEY="libro_operativo_recepcion"

@@ -377,6 +377,42 @@ export function ChatWidget({
     );
   }, [snapshot?.messages, conversationQuery]);
 
+  const visibleCustomStickers = useMemo(() => {
+    const rows = [...customStickers];
+    if (stickerTab === 'favorites') return rows.filter((item) => item.favorite);
+    if (stickerTab === 'mine') return rows.filter((item) => item.mine);
+    if (stickerTab === 'recent') {
+      return rows
+        .filter((item) => item.usedAt)
+        .sort((a, b) => String(b.usedAt).localeCompare(String(a.usedAt)));
+    }
+    return rows;
+  }, [customStickers, stickerTab]);
+
+  const savedGifItems = useMemo(() => {
+    return gifPreferences
+      .filter((item) => gifTab === 'favorites' ? item.favorite : true)
+      .map((item) => {
+        const payload = item.payload as Partial<ChatGifItem> | null;
+        if (
+          !payload ||
+          typeof payload.url !== 'string' ||
+          typeof payload.pageUrl !== 'string' ||
+          typeof payload.title !== 'string' ||
+          (payload.source !== 'TENOR' && payload.source !== 'WIKIMEDIA_COMMONS')
+        ) return null;
+        return {
+          title: payload.title,
+          url: payload.url,
+          pageUrl: payload.pageUrl,
+          width: typeof payload.width === 'number' ? payload.width : null,
+          height: typeof payload.height === 'number' ? payload.height : null,
+          source: payload.source,
+        } satisfies ChatGifItem;
+      })
+      .filter((item): item is ChatGifItem => item !== null);
+  }, [gifPreferences, gifTab]);
+
   const mentionState = useMemo(() => {
     const match = body.match(/(^|\s)@([A-Za-z0-9._-]*)$/);
     if (!match) return null;
@@ -1300,7 +1336,9 @@ export function ChatWidget({
               ) : null}
               {visibleMessages.map((message) => {
                 const mine = message.senderId === currentUserId;
-                const sticker = chatStickerGlyph(message.stickerKey);
+                const stickerGlyph = chatStickerGlyph(message.stickerKey);
+                const customStickerUrl = message.stickerId ? `/api/chat/stickers/${message.stickerId}` : null;
+                const sticker = Boolean(stickerGlyph || customStickerUrl);
                 const gif = message.kind === 'GIF' && Boolean(message.mediaUrl);
                 const bubbleClass = sticker || gif
                   ? 'px-2 py-1'
@@ -1337,7 +1375,17 @@ export function ChatWidget({
 
                         {sticker ? (
                           <div className="text-center">
-                            <span className="text-5xl" role="img" aria-label="Sticker">{sticker}</span>
+                            {customStickerUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={customStickerUrl}
+                                alt="Sticker"
+                                loading="lazy"
+                                className="mx-auto max-h-44 max-w-[180px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-5xl" role="img" aria-label="Sticker">{stickerGlyph}</span>
+                            )}
                             {!mine ? (
                               <p className="mt-1 text-[0.65rem] font-medium text-slate-500">{message.senderName}</p>
                             ) : null}
@@ -1385,12 +1433,36 @@ export function ChatWidget({
                                 <span className="truncate">{message.contextLabel || 'Abrir en el Libro'}</span>
                               </a>
                             ) : null}
-                            {message.attachments.map((attachment) => (
-                              <div key={attachment.id} className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-xs">
-                                <Paperclip className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
-                                {attachment.fileName}
-                              </div>
-                            ))}
+                            {message.attachments.map((attachment) =>
+                              attachment.mimeType.startsWith('image/') ? (
+                                <a
+                                  key={attachment.id}
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 block overflow-hidden rounded-xl bg-black/5"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={attachment.url}
+                                    alt={attachment.fileName}
+                                    loading="lazy"
+                                    className="max-h-72 w-full object-contain"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  key={attachment.id}
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 flex items-center gap-2 rounded-lg bg-black/5 px-2.5 py-2 text-xs hover:bg-black/10"
+                                >
+                                  <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                  <span className="min-w-0 flex-1 truncate">{attachment.fileName}</span>
+                                </a>
+                              ),
+                            )}
                           </>
                         )}
 
@@ -1581,75 +1653,202 @@ export function ChatWidget({
             ) : null}
 
             {stickersOpen ? (
-              <div className="mb-2 max-h-44 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
-                <div className="grid grid-cols-8 gap-1">
-                  {CHAT_STICKERS.map((sticker) => (
+              <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+                <div className="mb-2 flex items-center gap-1 overflow-x-auto">
+                  {([
+                    ['favorites', '⭐ Favoritos'],
+                    ['recent', 'Recientes'],
+                    ['mine', 'Míos'],
+                    ['all', 'Todos'],
+                  ] as const).map(([tab, label]) => (
                     <button
-                      key={sticker.key}
+                      key={tab}
                       type="button"
-                      title={sticker.label}
-                      onClick={() => {
-                        setStickersOpen(false);
-                        void postMessage({ stickerKey: sticker.key });
-                      }}
-                      className="rounded-lg p-1.5 text-2xl hover:bg-white hover:shadow-sm"
+                      onClick={() => setStickerTab(tab)}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ${
+                        stickerTab === tab ? 'bg-petrol-800 text-white' : 'bg-white text-slate-600'
+                      }`}
                     >
-                      {sticker.glyph}
+                      {label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    disabled={!storageAvailable || uploading}
+                    onClick={() => stickerInputRef.current?.click()}
+                    className="ml-auto shrink-0 rounded-full bg-white px-2.5 py-1 text-[0.68rem] font-semibold text-petrol-700 ring-1 ring-slate-200 disabled:opacity-40"
+                  >
+                    + Crear
+                  </button>
+                </div>
+                <input
+                  ref={stickerInputRef}
+                  type="file"
+                  accept="image/png,image/webp,image/jpeg"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = '';
+                    if (file) void createStickerFromFile(file);
+                  }}
+                />
+                <div className="max-h-52 overflow-y-auto">
+                  {!storageAvailable ? (
+                    <p className="py-5 text-center text-xs text-slate-500">
+                      Activa R2 para crear stickers desde fotos o imágenes.
+                    </p>
+                  ) : visibleCustomStickers.length === 0 ? (
+                    <div className="py-5 text-center">
+                      <p className="text-xs text-slate-500">Todavía no hay stickers aquí.</p>
+                      <button
+                        type="button"
+                        onClick={() => stickerInputRef.current?.click()}
+                        className="mt-2 text-xs font-semibold text-petrol-700 hover:underline"
+                      >
+                        Crear el primero desde una imagen
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2">
+                      {visibleCustomStickers.map((sticker) => (
+                        <div key={sticker.id} className="group/sticker relative rounded-xl bg-white p-1 ring-1 ring-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStickersOpen(false);
+                              void postMessage({
+                                stickerId: sticker.id,
+                                replyToId: replyTo?.id,
+                              });
+                              setReplyTo(null);
+                            }}
+                            className="flex aspect-square w-full items-center justify-center"
+                            title={sticker.label || 'Sticker'}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={sticker.url}
+                              alt={sticker.label || 'Sticker'}
+                              loading="lazy"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleMediaFavorite('sticker', sticker.id)}
+                            className={`absolute right-1 top-1 rounded-full bg-white/90 p-1 shadow-sm ${
+                              sticker.favorite ? 'text-gold-600' : 'text-slate-400'
+                            }`}
+                            aria-label={sticker.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                          >
+                            <Star className={`h-3 w-3 ${sticker.favorite ? 'fill-current' : ''}`} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
 
             {gifsOpen ? (
               <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
-                <label className="relative block">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                  <input
-                    value={gifQuery}
-                    onChange={(event) => setGifQuery(event.target.value)}
-                    placeholder="Buscar GIF…"
-                    autoFocus
-                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400"
-                  />
-                </label>
-                <div className="mt-2 max-h-52 overflow-y-auto">
-                  {gifLoading ? (
+                <div className="mb-2 flex gap-1">
+                  {([
+                    ['search', 'Buscar'],
+                    ['favorites', '⭐ Favoritos'],
+                    ['recent', 'Recientes'],
+                  ] as const).map(([tab, label]) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => {
+                        setGifTab(tab);
+                        if (tab !== 'search') void loadGifPreferences();
+                      }}
+                      className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ${
+                        gifTab === tab ? 'bg-petrol-800 text-white' : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {gifTab === 'search' ? (
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                    <input
+                      value={gifQuery}
+                      onChange={(event) => setGifQuery(event.target.value)}
+                      placeholder="Buscar GIF…"
+                      autoFocus
+                      className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:border-petrol-400 sm:text-sm"
+                    />
+                  </label>
+                ) : null}
+
+                <div className="mt-2 max-h-56 overflow-y-auto">
+                  {gifTab === 'search' && gifLoading ? (
                     <p className="py-6 text-center text-xs text-slate-500">Buscando GIF…</p>
-                  ) : gifQuery.trim().length < 2 ? (
-                    <p className="py-6 text-center text-xs text-slate-500">Escribe al menos 2 caracteres.</p>
-                  ) : gifItems.length === 0 ? (
-                    <p className="py-6 text-center text-xs text-slate-500">No se encontraron GIF compatibles.</p>
+                  ) : gifTab === 'search' && gifQuery.trim().length < 2 ? (
+                    <p className="py-6 text-center text-xs text-slate-500">
+                      Busca algo o abre Favoritos/Recientes.
+                    </p>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {gifItems.map((gif) => (
-                        <button
-                          key={gif.url}
-                          type="button"
-                          onClick={() => {
-                            setGifsOpen(false);
-                            setGifQuery('');
-                            setGifItems([]);
-                            void postMessage({
-                              mediaUrl: gif.url,
-                              mediaPageUrl: gif.pageUrl,
-                              mediaSource: gif.source,
-                              mediaAlt: gif.title,
-                            });
-                          }}
-                          className="overflow-hidden rounded-lg bg-white ring-1 ring-slate-200 hover:ring-petrol-400"
-                          title={gif.title}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={gif.url}
-                            alt={gif.title}
-                            loading="lazy"
-                            className="h-24 w-full object-cover"
-                          />
-                        </button>
-                      ))}
-                    </div>
+                    (() => {
+                      const items = gifTab === 'search' ? gifItems : savedGifItems;
+                      if (items.length === 0) {
+                        return <p className="py-6 text-center text-xs text-slate-500">No hay GIF aquí todavía.</p>;
+                      }
+                      return (
+                        <div className="grid grid-cols-3 gap-2">
+                          {items.map((gif) => {
+                            const favorite = gifPreferences.some((item) => item.refKey === gif.url && item.favorite);
+                            return (
+                              <div key={gif.url} className="group/gif relative overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGifsOpen(false);
+                                    setGifQuery('');
+                                    setGifItems([]);
+                                    void postMessage({
+                                      mediaUrl: gif.url,
+                                      mediaPageUrl: gif.pageUrl,
+                                      mediaSource: gif.source,
+                                      mediaAlt: gif.title,
+                                      replyToId: replyTo?.id,
+                                    });
+                                    setReplyTo(null);
+                                  }}
+                                  className="block w-full"
+                                  title={gif.title}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={gif.url}
+                                    alt={gif.title}
+                                    loading="lazy"
+                                    className="h-24 w-full object-cover"
+                                  />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void toggleMediaFavorite('gif', gif.url, gif)}
+                                  className={`absolute right-1 top-1 rounded-full bg-white/90 p-1 shadow-sm ${
+                                    favorite ? 'text-gold-600' : 'text-slate-500'
+                                  }`}
+                                  aria-label={favorite ? 'Quitar GIF de favoritos' : 'Agregar GIF a favoritos'}
+                                >
+                                  <Star className={`h-3 w-3 ${favorite ? 'fill-current' : ''}`} aria-hidden="true" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               </div>

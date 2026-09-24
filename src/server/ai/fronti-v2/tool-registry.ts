@@ -537,7 +537,7 @@ export function selectFrontiToolDefinitions(
   const wanted = new Set<string>();
 
   const broad =
-    /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|que falta|cosas raras|incoherenc|contradic/.test(
+    /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|que falta|cosas raras/.test(
       text,
     );
 
@@ -580,6 +580,17 @@ export function selectFrontiToolDefinitions(
   }
   if (/reporta|reportar|informa al supervisor|avisa al administrador/.test(text)) {
     wanted.add('reportar_hallazgo');
+  }
+
+  if (wanted.size === 0 && /incoherenc|contradic/.test(text)) {
+    addMany(wanted, [
+      'consultar_estado_operativo',
+      'consultar_turnos',
+      'consultar_novedades',
+      'consultar_caja',
+      'consultar_garantias',
+      'consultar_llaves',
+    ]);
   }
 
   // Conversación, memoria o preguntas de identidad pueden resolverse sin

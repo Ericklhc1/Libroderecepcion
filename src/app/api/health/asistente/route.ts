@@ -8,6 +8,7 @@ import {
   probeFrontiProvider,
   resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
+import { FRONTI_AGENT_VERSION } from '@/server/ai/fronti-v2/version';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -51,6 +52,7 @@ export async function GET() {
     {
       ok: true,
       provider: cached.provider,
+      agentVersion: FRONTI_AGENT_VERSION,
       ...cached.health,
     },
     { headers: { 'Cache-Control': 'no-store' } },

@@ -1149,6 +1149,15 @@ export async function sendCustomStickerMessage(
   });
   if (!sticker) throw new NotFoundError('El sticker ya no está disponible.');
 
+  const replyToId = input.replyToId?.trim() || null;
+  if (replyToId) {
+    const replyTarget = await prisma.chatMessage.findFirst({
+      where: { id: replyToId, conversationId: input.conversationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!replyTarget) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const conversation = await tx.chatConversation.findFirst({
       where: { id: input.conversationId, deletedAt: null },
@@ -1167,7 +1176,7 @@ export async function sendCustomStickerMessage(
         senderId: user.id,
         kind: ChatMessageKind.STICKER,
         stickerId: sticker.id,
-        replyToId: input.replyToId?.trim() || null,
+        replyToId,
       },
       select: { id: true },
     });
@@ -1184,6 +1193,24 @@ export async function sendCustomStickerMessage(
         data: { unreadCount: { increment: 1 } },
       });
     }
+
+    for (const recipient of recipients) {
+      if (recipient.mutedUntil && recipient.mutedUntil > now) continue;
+      await tx.notification.create({
+        data: {
+          userId: recipient.userId,
+          type: NotificationType.CHAT_MENSAJE,
+          title: conversation.type === ChatConversationType.GRUPO
+            ? `${user.name} en ${conversation.title?.trim() || 'Grupo'}`
+            : user.name,
+          body: 'Sticker',
+          link: `/?chat=${conversation.id}`,
+          entity: 'ChatConversation',
+          entityId: conversation.id,
+        },
+      });
+    }
+
     await tx.chatMediaPreference.upsert({
       where: {
         userId_kind_refKey: { userId: user.id, kind: 'sticker', refKey: sticker.id },
@@ -1323,17 +1350,29 @@ export async function toggleChatReaction(
   });
 
   if (existing) {
-    await prisma.chatReaction.delete({ where: { id: existing.id } });
+    await prisma.$transaction([
+      prisma.chatReaction.delete({ where: { id: existing.id } }),
+      prisma.chatConversation.update({
+        where: { id: input.conversationId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
     return { active: false };
   }
 
-  await prisma.chatReaction.create({
-    data: {
-      messageId: message.id,
-      userId: user.id,
-      emoji,
-    },
-  });
+  await prisma.$transaction([
+    prisma.chatReaction.create({
+      data: {
+        messageId: message.id,
+        userId: user.id,
+        emoji,
+      },
+    }),
+    prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: new Date() },
+    }),
+  ]);
   return { active: true };
 }
 

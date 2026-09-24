@@ -8,6 +8,7 @@ import {
   classifyAssistantFailure,
   type AssistantFailure,
 } from '@/domain/assistant-status';
+import { normalizeFrontiToolsForProvider } from './fronti-v2/provider-schema';
 
 export type FrontiProviderName = 'groq' | 'vllm' | 'openai';
 
@@ -253,6 +254,11 @@ export async function chatWithFrontiProvider(args: {
     throw new FrontiProviderError('SIN_CLAVE');
   }
 
+  const transportTools = normalizeFrontiToolsForProvider(
+    args.provider.provider,
+    args.tools,
+  );
+
   let response: Response;
   try {
     response = await fetch(`${args.provider.baseUrl}/chat/completions`, {
@@ -266,8 +272,8 @@ export async function chatWithFrontiProvider(args: {
       body: JSON.stringify({
         model: args.provider.model,
         messages: args.messages,
-        tools: args.tools?.length ? args.tools : undefined,
-        tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
+        tools: transportTools?.length ? transportTools : undefined,
+        tool_choice: transportTools?.length ? (args.toolChoice ?? 'auto') : undefined,
         parallel_tool_calls: false,
         ...(args.provider.provider === 'groq' &&
         args.provider.model.startsWith('openai/gpt-oss-')

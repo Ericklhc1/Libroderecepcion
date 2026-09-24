@@ -432,41 +432,74 @@ async function operationalStateTool(user: CurrentUser) {
   const canCash = hasPermission(user, 'cash.view');
   const canKeys = hasPermission(user, 'key.inventory');
 
-  const [dashboard, cash, keys] = await Promise.all([
+  const safeRead = async (
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> => {
+    try {
+      const response = await executeFrontiV2ReadTool(user, name, args);
+      return response.handled ? response.result ?? null : null;
+    } catch (error) {
+      return {
+        available: false,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'Área no disponible para esta cuenta.',
+      };
+    }
+  };
+
+  const [
+    dashboard,
+    cash,
+    keys,
+    shifts,
+    entries,
+    guarantees,
+    tasks,
+    followUps,
+    supervision,
+    alerts,
+  ] = await Promise.all([
     canDashboard ? getDashboardData(user) : Promise.resolve(null),
-    canCash ? getLiveCashState(8) : Promise.resolve(null),
+    canCash ? getLiveCashState(6) : Promise.resolve(null),
     canKeys ? getKeyInventory() : Promise.resolve(null),
+    safeRead('consultar_turnos', {}),
+    safeRead('consultar_novedades', { limit: 8, onlyOpen: true }),
+    safeRead('consultar_garantias', { limit: 8 }),
+    safeRead('consultar_tareas', { scope: 'abiertas', limit: 8 }),
+    safeRead('consultar_seguimientos', { limit: 8, onlyOpen: true }),
+    safeRead('consultar_supervision', {}),
+    safeRead('consultar_alertas', { limit: 8 }),
   ]);
 
   return {
     generatedAt: new Date().toISOString(),
-    availableAreas: {
-      operation: Boolean(dashboard),
-      cash: Boolean(cash),
-      keys: Boolean(keys),
-    },
     operation: dashboard
       ? {
           counters: dashboard.counters,
-          attention: dashboard.attention.slice(0, 12).map((item, index) => ({
+          attention: dashboard.attention.slice(0, 8).map((item, index) => ({
             order: index + 1,
             kind: item.kind,
             level: item.tone,
             title: item.title,
             reason: item.reason,
             nextAction: item.action,
-            href: item.href,
           })),
         }
-      : null,
+      : { available: false },
+    shifts,
+    entries,
     cash: cash
       ? {
           currencies: cash.currencies,
-          recentMovements: cash.movements.slice(0, 8),
+          recentMovements: cash.movements.slice(0, 5),
           guaranteeCount: cash.cashGuarantees.length,
-          recentAudits: cash.audits.slice(0, 3),
+          recentAudits: cash.audits.slice(0, 2),
         }
-      : null,
+      : { available: false },
+    guarantees,
     keys: keys
       ? {
           stock: keys.stock,
@@ -474,11 +507,15 @@ async function operationalStateTool(user: CurrentUser) {
             .filter((row) =>
               ['PENDIENTE_DEVOLUCION', 'EXTRAVIADA', 'FUERA_DE_SERVICIO'].includes(row.status),
             )
-            .slice(0, 20),
+            .slice(0, 10),
         }
-      : null,
+      : { available: false },
+    tasks,
+    followUps,
+    supervision,
+    alerts,
     instruction:
-      'Esta herramienta es una fotografía transversal. Si una sección sugiere una anomalía, usa después la herramienta específica del área antes de afirmar la causa.',
+      'Snapshot operativo transversal del Libro. Resume primero lo importante. Distingue datos confirmados de inferencias. Si necesitas explicar una causa específica con más detalle, consulta sólo el área necesaria.',
   };
 }
 

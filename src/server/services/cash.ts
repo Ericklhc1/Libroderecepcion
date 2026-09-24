@@ -15,6 +15,7 @@ import {
   cashStatuses,
   countDiscrepancies,
   fromMinor,
+  fundStatuses,
   normalizeExpectation,
   toMinor,
   type CashExpectation,
@@ -66,7 +67,17 @@ function guaranteeCustodyAmount(guarantee: {
   );
 }
 
-function serializeExpectations(expectations: CashExpectation[]): Prisma.InputJsonValue {
+export type CashGuaranteeValidationSnapshot = {
+  id: string;
+  currency: string;
+  amountMinor: number;
+  state: string;
+  reference: string | null;
+  roomNumber: string | null;
+  guestName: string | null;
+};
+
+function serializeExpectationRows(expectations: CashExpectation[]) {
   return expectations.map((row) => ({
     currency: row.currency,
     fundMinor: row.fundMinor,
@@ -77,12 +88,55 @@ function serializeExpectations(expectations: CashExpectation[]): Prisma.InputJso
   }));
 }
 
+function guaranteeValidationSnapshot(
+  guarantees: Array<{
+    id: string;
+    currency: string;
+    amount: Prisma.Decimal;
+    appliedAmount: Prisma.Decimal | null;
+    penaltyAmount: Prisma.Decimal | null;
+    state: string;
+    reference: string | null;
+    roomNumber: string | null;
+    guestName: string | null;
+  }>,
+): CashGuaranteeValidationSnapshot[] {
+  return guarantees.map((guarantee) => ({
+    id: guarantee.id,
+    currency: guarantee.currency.toUpperCase(),
+    amountMinor: toMinor(guaranteeCustodyAmount(guarantee), guarantee.currency),
+    state: guarantee.state,
+    reference: guarantee.reference,
+    roomNumber: guarantee.roomNumber,
+    guestName: guarantee.guestName,
+  }));
+}
+
+function serializeCountSnapshot(
+  expectations: CashExpectation[],
+  guarantees: Parameters<typeof guaranteeValidationSnapshot>[0],
+): Prisma.InputJsonValue {
+  return {
+    version: 2,
+    expectations: serializeExpectationRows(expectations),
+    guarantees: guaranteeValidationSnapshot(guarantees),
+  };
+}
+
+function snapshotRows(snapshot: Prisma.JsonValue | null): Prisma.JsonValue[] | null {
+  if (Array.isArray(snapshot)) return snapshot;
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
+  const value = snapshot as Record<string, Prisma.JsonValue>;
+  return Array.isArray(value.expectations) ? value.expectations : null;
+}
+
 function parseExpectationSnapshot(
   snapshot: Prisma.JsonValue | null,
   fallback: CashExpectation[],
 ): CashExpectation[] {
-  if (!Array.isArray(snapshot)) return fallback;
-  const parsed = snapshot.flatMap((row) => {
+  const rows = snapshotRows(snapshot);
+  if (!rows) return fallback;
+  const parsed = rows.flatMap((row) => {
     if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
     const value = row as Record<string, Prisma.JsonValue>;
     if (typeof value.currency !== 'string') return [];
@@ -102,6 +156,55 @@ function parseExpectationSnapshot(
     ];
   });
   return parsed.length > 0 ? parsed : fallback;
+}
+
+function parseGuaranteeValidationSnapshot(
+  snapshot: Prisma.JsonValue | null,
+): CashGuaranteeValidationSnapshot[] {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return [];
+  const value = snapshot as Record<string, Prisma.JsonValue>;
+  if (!Array.isArray(value.guarantees)) return [];
+
+  return value.guarantees.flatMap((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+    const item = row as Record<string, Prisma.JsonValue>;
+    if (typeof item.id !== 'string' || typeof item.currency !== 'string') return [];
+    const amountMinor = Number(item.amountMinor ?? 0);
+    if (!Number.isFinite(amountMinor)) return [];
+    return [{
+      id: item.id,
+      currency: item.currency.toUpperCase(),
+      amountMinor,
+      state: typeof item.state === 'string' ? item.state : 'VIGENTE',
+      reference: typeof item.reference === 'string' ? item.reference : null,
+      roomNumber: typeof item.roomNumber === 'string' ? item.roomNumber : null,
+      guestName: typeof item.guestName === 'string' ? item.guestName : null,
+    }];
+  });
+}
+
+function assertGuaranteesValidated(
+  currentGuarantees: Array<{ id: string; reference: string | null; guestName: string | null; roomNumber: string | null }>,
+  guaranteeIds: string[],
+): void {
+  const selected = new Set(guaranteeIds);
+  const current = new Set(currentGuarantees.map((row) => row.id));
+  const unknown = [...selected].filter((id) => !current.has(id));
+  if (unknown.length > 0) {
+    throw new RuleError(
+      'El arqueo incluye una garantía que ya no está vigente. Actualiza la pantalla y vuelve a validar las garantías.',
+    );
+  }
+
+  const missing = currentGuarantees.filter((row) => !selected.has(row.id));
+  if (missing.length > 0) {
+    const labels = missing.slice(0, 3).map((row) =>
+      row.guestName ?? row.reference ?? (row.roomNumber ? `Hab. ${row.roomNumber}` : row.id),
+    );
+    throw new RuleError(
+      `Debes validar físicamente todas las garantías vigentes antes de guardar el arqueo: ${labels.join(', ')}${missing.length > 3 ? '…' : ''}.`,
+    );
+  }
 }
 
 async function getCurrentCashComposition(client: Client = prisma) {
@@ -248,12 +351,14 @@ export type HandoverCashState = {
     countedAt: Date;
     notes: string | null;
     statuses: FundStatus[];
+    validatedGuarantees: CashGuaranteeValidationSnapshot[];
   } | null;
   confirmed: {
     countedByName: string;
     countedAt: Date;
     notes: string | null;
     statuses: FundStatus[];
+    validatedGuarantees: CashGuaranteeValidationSnapshot[];
   } | null;
   discrepancies: Array<{
     currency: string;
@@ -334,7 +439,7 @@ export async function getHandoverCashState(
           countedByName: count.countedBy.name,
           countedAt: count.countedAt,
           notes: count.notes,
-          statuses: cashStatuses(
+          statuses: fundStatuses(
             parseExpectationSnapshot(
               count.expectedSnapshot,
               composition.funds.map((fund) =>
@@ -343,9 +448,13 @@ export async function getHandoverCashState(
                   fundMinor: toMinor(Number(fund.amount), fund.currency),
                 }),
               ),
-            ),
+            ).map((row) => ({
+              currency: row.currency,
+              minorAmount: row.fundMinor,
+            })),
             countedLines(count.lines),
           ),
+          validatedGuarantees: parseGuaranteeValidationSnapshot(count.expectedSnapshot),
         }
       : null;
 
@@ -410,6 +519,7 @@ export async function saveCashCount(
     handoverId: string;
     kind: CashCountKindValue;
     quantities: Record<string, number>;
+    guaranteeIds: string[];
     notes?: string | null;
   },
 ): Promise<{ statuses: FundStatus[] }> {
@@ -433,11 +543,18 @@ export async function saveCashCount(
   }
 
   const composition = await getCurrentCashComposition();
+  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds);
   const lines = entries.map(([denominationId, quantity]) => {
     const denomination = denominations.find((row) => row.id === denominationId)!;
     return { denominationId, quantity, denomination };
   });
-  const statuses = cashStatuses(composition.expectations, countedLines(lines));
+  const statuses = fundStatuses(
+    composition.funds.map((fund) => ({
+      currency: fund.currency,
+      minorAmount: toMinor(Number(fund.amount), fund.currency),
+    })),
+    countedLines(lines),
+  );
 
   await prisma.$transaction(async (tx) => {
     await tx.cashCount.deleteMany({
@@ -449,7 +566,7 @@ export async function saveCashCount(
         kind: params.kind as CashCountKind,
         countedById: user.id,
         notes: params.notes?.trim() || null,
-        expectedSnapshot: serializeExpectations(composition.expectations),
+        expectedSnapshot: serializeCountSnapshot(composition.expectations, composition.guarantees),
         lines: {
           createMany: {
             data: lines.map((line) => ({
@@ -491,6 +608,7 @@ export async function confirmHandoverCash(
   params: {
     handoverId: string;
     quantities: Record<string, number>;
+    guaranteeIds: string[];
     notes?: string | null;
   },
 ): Promise<{
@@ -538,7 +656,14 @@ export async function confirmHandoverCash(
     return { denominationId, quantity, denomination };
   });
   const composition = await getCurrentCashComposition(tx);
-  const statuses = cashStatuses(composition.expectations, countedLines(lines));
+  assertGuaranteesValidated(composition.guarantees, params.guaranteeIds);
+  const statuses = fundStatuses(
+    composition.funds.map((fund) => ({
+      currency: fund.currency,
+      minorAmount: toMinor(Number(fund.amount), fund.currency),
+    })),
+    countedLines(lines),
+  );
 
   await tx.cashCount.create({
     data: {
@@ -546,7 +671,7 @@ export async function confirmHandoverCash(
       kind: CashCountKind.CONFIRMADO,
       countedById: user.id,
       notes: params.notes?.trim() || null,
-      expectedSnapshot: serializeExpectations(composition.expectations),
+      expectedSnapshot: serializeCountSnapshot(composition.expectations, composition.guarantees),
       lines: {
         createMany: {
           data: lines.map((line) => ({

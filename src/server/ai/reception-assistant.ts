@@ -31,7 +31,7 @@ import {
 } from './fronti-config';
 import {
   assertFrontiToolEnabled,
-  enabledFrontiToolDefinitions,
+  selectFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import {
@@ -861,8 +861,8 @@ function systemInstructions(config: FrontiConfig): string {
   );
 }
 
-function chatTools(config: FrontiConfig): FrontiToolDefinition[] {
-  return enabledFrontiToolDefinitions(config).map((definition) => ({
+function chatTools(config: FrontiConfig, userMessage: string): FrontiToolDefinition[] {
+  return selectFrontiToolDefinitions(config, userMessage).map((definition) => ({
     type: 'function',
     function: {
       name: definition.name,
@@ -910,7 +910,9 @@ export async function runReceptionAssistant(
     if (!providers.length) {
       throw new AssistantError('SIN_CLAVE');
     }
-    const tools = chatTools(config);
+    const latestUserMessage =
+      [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+    const tools = chatTools(config, latestUserMessage);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
 

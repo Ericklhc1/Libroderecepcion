@@ -23,12 +23,15 @@ import {
 import { Card, CardHeader, CardScroll, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
+import { ROLE_KEYS } from '@/lib/permissions';
 import {
   FrontiMaintenanceActions,
   FrontiProviderCredentials,
   FrontiSettingControl,
+  FrontiUserAccessList,
   type FrontiProviderCredentialRow,
   type FrontiSettingRow,
+  type FrontiUserAccessRow,
 } from './fronti-settings';
 
 export const metadata = { title: 'Fronti · Administración' };
@@ -122,15 +125,34 @@ export default async function FrontiAdminPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const grupo = typeof params.grupo === 'string' ? params.grupo : '';
 
-  const [allSettings, config, counts, groqCredential, vllmCredential, openaiCredential] =
-    await Promise.all([
-      getAllSettings(),
-      getFrontiConfig(),
-      diagnostics(),
-      getFrontiProviderCredentialView('groq'),
-      getFrontiProviderCredentialView('vllm'),
-      getFrontiProviderCredentialView('openai'),
-    ]);
+  const [
+    allSettings,
+    config,
+    counts,
+    groqCredential,
+    vllmCredential,
+    openaiCredential,
+    accessUsers,
+  ] = await Promise.all([
+    getAllSettings(),
+    getFrontiConfig(),
+    diagnostics(),
+    getFrontiProviderCredentialView('groq'),
+    getFrontiProviderCredentialView('vllm'),
+    getFrontiProviderCredentialView('openai'),
+    prisma.user.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        active: true,
+        frontiAccessEnabled: true,
+        role: { select: { key: true, name: true, level: true } },
+      },
+      orderBy: [{ role: { level: 'desc' } }, { name: 'asc' }],
+    }),
+  ]);
   const settings = allSettings
     .filter((setting) => setting.key.startsWith('fronti.'))
     .map((setting) => ({
@@ -149,6 +171,17 @@ export default async function FrontiAdminPage({
     { provider: 'vllm', ...vllmCredential, active: config.provider === 'vllm' },
     { provider: 'openai', ...openaiCredential, active: config.provider === 'openai' },
   ] satisfies FrontiProviderCredentialRow[];
+
+  const userAccess = accessUsers.map((user) => ({
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    roleName: user.role.name,
+    active: user.active,
+    enabled:
+      user.role.key === ROLE_KEYS.SYSTEM_ADMIN ? true : user.frontiAccessEnabled,
+    alwaysEnabled: user.role.key === ROLE_KEYS.SYSTEM_ADMIN,
+  })) satisfies FrontiUserAccessRow[];
 
   const visibleGroups = GROUPS
     .filter((group) => !grupo || group.id === grupo)
@@ -256,6 +289,17 @@ export default async function FrontiAdminPage({
             <p className="mt-1 text-sm font-semibold text-petrol-900">{env().HOTEL_TIMEZONE}</p>
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Acceso por usuario" count={userAccess.length} />
+        <div className="border-b border-slate-100 px-4 py-3">
+          <p className="text-sm text-slate-600">
+            Fronti se habilita de forma gradual por cuenta. El Administrador de sistema permanece
+            siempre activo; el resto sólo puede usar Fronti cuando esté habilitado aquí.
+          </p>
+        </div>
+        <FrontiUserAccessList users={userAccess} />
       </Card>
 
       <Card>

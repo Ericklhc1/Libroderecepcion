@@ -19,6 +19,7 @@ export type CurrentUser = {
   mustChangePassword: boolean;
   permissions: PermissionKey[];
   isSystemAdmin: boolean;
+  frontiAccessEnabled: boolean;
 };
 
 /**
@@ -51,6 +52,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
       (rp) => rp.permission.key as PermissionKey,
     ),
     isSystemAdmin: user.role.key === ROLE_KEYS.SYSTEM_ADMIN,
+    frontiAccessEnabled: user.frontiAccessEnabled,
   };
 });
 

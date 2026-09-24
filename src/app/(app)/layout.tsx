@@ -25,6 +25,8 @@ import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getChatUnreadCount } from '@/server/services/chat';
 import { AiAttribution } from '@/components/ai/ai-attribution';
+import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { canUseFronti } from '@/server/ai/fronti-access';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -35,8 +37,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
 
-  const [hotelName, alerts, notificationFeed, myOpenTasks, blocking, tutorialRow, chatUnread] =
-    await Promise.all([
+  const [
+    hotelName,
+    alerts,
+    notificationFeed,
+    myOpenTasks,
+    blocking,
+    tutorialRow,
+    chatUnread,
+    frontiConfig,
+  ] = await Promise.all([
       getSettingString('hotel.name', 'Hotel'),
       countLiveAlerts(),
       getNotificationFeedForUser(user.id),
@@ -51,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       user.roleOperational && !user.isSystemAdmin
         ? getChatUnreadCount(user.id)
         : Promise.resolve(0),
+      getFrontiConfig(),
     ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
@@ -152,7 +163,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <MobileNav items={items} badges={badges} />
-      <ReceptionAssistant />
+      {canUseFronti(user, frontiConfig.enabled) ? <ReceptionAssistant /> : null}
 
       {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 

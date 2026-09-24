@@ -29,7 +29,6 @@ import {
   CHAT_EMOJIS,
   CHAT_NOTIFICATION_TONES,
   CHAT_STATUS_MAX,
-  CHAT_STICKERS,
   avatarGlyph,
   chatStickerGlyph,
   type ChatBootstrap,

@@ -8,6 +8,7 @@ import {
   classifyAssistantFailure,
   type AssistantFailure,
 } from '@/domain/assistant-status';
+import { normalizeFrontiToolsForProvider } from './fronti-v2/provider-schema';
 
 export type FrontiProviderName = 'groq' | 'vllm' | 'openai';
 
@@ -109,60 +110,6 @@ export type FrontiToolDefinition = {
     strict?: boolean;
   };
 };
-
-export function normalizeFrontiToolsForProvider(
-  provider: FrontiProviderName,
-  tools?: FrontiToolDefinition[],
-): FrontiToolDefinition[] | undefined {
-  if (!tools?.length || provider !== 'groq') return tools;
-
-  return tools.map((tool) => {
-    const parameters = tool.function.parameters;
-    const properties =
-      parameters.properties &&
-      typeof parameters.properties === 'object' &&
-      !Array.isArray(parameters.properties)
-        ? (parameters.properties as Record<string, unknown>)
-        : null;
-
-    if (
-      parameters.type !== 'object' ||
-      !properties ||
-      Object.keys(properties).length > 0
-    ) {
-      return tool;
-    }
-
-    /*
-     * Groq rechaza schemas estrictos de herramientas sin argumentos aunque
-     * properties: {} sea JSON Schema válido: lo reporta como si
-     * properties faltara. Se añade un marcador técnico obligatorio que el
-     * ejecutor ignora. Así las herramientas semánticamente sin argumentos
-     * siguen siéndolo para FRONTI, pero el transporte cumple el validador de
-     * Groq. Se aplica en la capa del proveedor para proteger también futuras
-     * herramientas vacías.
-     */
-    return {
-      ...tool,
-      function: {
-        ...tool.function,
-        parameters: {
-          ...parameters,
-          properties: {
-            _fronti: {
-              type: 'string',
-              enum: ['current'],
-              description:
-                'Marcador interno del Libro para herramientas sin argumentos. Usa siempre "current".',
-            },
-          },
-          required: ['_fronti'],
-          additionalProperties: false,
-        },
-      },
-    };
-  });
-}
 
 export type FrontiToolCall = {
   id: string;

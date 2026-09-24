@@ -9,6 +9,7 @@ import { requirePermission } from '@/server/auth/guard';
 import { recordAudit } from '@/server/audit';
 import { RuleError } from '@/server/errors';
 import { DEFAULT_SETTINGS, type SettingKey } from '@/server/services/settings';
+import { ROLE_KEYS } from '@/lib/permissions';
 import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
 import {
   clearFrontiProviderSecret,
@@ -33,6 +34,11 @@ const providerCredentialSchema = z.object({
 
 const providerOnlySchema = z.object({
   provider: z.enum(['groq', 'vllm', 'openai']),
+});
+
+const userAccessSchema = z.object({
+  userId: z.string().min(1),
+  enabled: z.enum(['true', 'false']),
 });
 
 const NUMBER_LIMITS: Partial<Record<SettingKey, { min: number; max: number }>> = {
@@ -132,6 +138,59 @@ export async function saveFrontiSettingAction(
     revalidatePath('/admin/parametros');
     revalidatePath('/');
     return { ok: true as const, message: 'Configuración de Fronti guardada.' };
+  });
+}
+
+export async function setFrontiUserAccessAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const actor = await requirePermission('system.configure');
+    const input = userAccessSchema.parse({
+      userId: String(formData.get('userId') ?? ''),
+      enabled: String(formData.get('enabled') ?? ''),
+    });
+    const enabled = input.enabled === 'true';
+
+    const target = await prisma.user.findFirst({
+      where: { id: input.userId, deletedAt: null },
+      include: { role: true },
+    });
+    if (!target) throw new RuleError('El usuario indicado no existe.');
+
+    if (target.role.key === ROLE_KEYS.SYSTEM_ADMIN) {
+      if (!enabled) {
+        throw new RuleError('Fronti permanece siempre activo para el Administrador de sistema.');
+      }
+      return {
+        ok: true as const,
+        message: 'Fronti ya está siempre activo para el Administrador de sistema.',
+      };
+    }
+
+    const previous = target.frontiAccessEnabled;
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { frontiAccessEnabled: enabled },
+    });
+
+    await recordAudit({
+      entity: 'User',
+      entityId: target.id,
+      action: AuditAction.PERMISOS,
+      summary: `Acceso a Fronti ${enabled ? 'habilitado' : 'deshabilitado'} para ${target.name} (@${target.username})`,
+      user: actor,
+      before: { frontiAccessEnabled: previous },
+      after: { frontiAccessEnabled: enabled },
+    });
+
+    revalidatePath('/admin/fronti');
+    revalidatePath('/');
+    return {
+      ok: true as const,
+      message: `Fronti ${enabled ? 'habilitado' : 'deshabilitado'} para @${target.username}.`,
+    };
   });
 }
 

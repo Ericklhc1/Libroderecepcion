@@ -20,6 +20,7 @@ import {
   type NotificationFeedSnapshot,
 } from '@/domain/notifications';
 import { playChime, primeNotificationAudio } from './notification-chime';
+import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
 
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 const KEEP_ALIVE_MS = 4 * 60_000;
@@ -72,6 +73,8 @@ export function NotificationCenter({
   const [toast, setToast] = useState<NotificationFeedItem | null>(null);
 
   const mutedRef = useRef(false);
+  const profileSoundEnabledRef = useRef(true);
+  const notificationToneRef = useRef<ChatNotificationTone>('chime');
   const knownIds = useRef(new Set(initialSnapshot.items.map((item) => item.id)));
   const lastActivityAt = useRef(Date.now());
   const lastKeepAliveAt = useRef(0);
@@ -79,6 +82,17 @@ export function NotificationCenter({
   useEffect(() => {
     mutedRef.current = muted;
   }, [muted]);
+
+  useEffect(() => {
+    const onChatProfile = (event: Event) => {
+      const profile = (event as CustomEvent<ChatProfile>).detail;
+      if (!profile) return;
+      profileSoundEnabledRef.current = profile.soundEnabled;
+      notificationToneRef.current = profile.notificationTone as ChatNotificationTone;
+    };
+    window.addEventListener('libro:chat-profile', onChatProfile);
+    return () => window.removeEventListener('libro:chat-profile', onChatProfile);
+  }, []);
 
   useEffect(() => {
     try {
@@ -119,7 +133,9 @@ export function NotificationCenter({
         const newest = fresh[0];
         if (newest) {
           setToast(newest);
-          if (!mutedRef.current) playChime(isUrgent(newest));
+          if (!mutedRef.current && profileSoundEnabledRef.current) {
+            playChime(isUrgent(newest), notificationToneRef.current);
+          }
         }
       }
     },
@@ -287,7 +303,7 @@ export function NotificationCenter({
 
     if (!next) {
       primeNotificationAudio();
-      playChime(false);
+      playChime(false, notificationToneRef.current);
     }
   };
 

@@ -1096,6 +1096,11 @@ const CHAT_ALLOWED_UPLOAD_TYPES = new Set([
   'image/png',
   'image/webp',
   'image/gif',
+  'audio/webm',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
   'application/pdf',
   'text/plain',
   'text/csv',
@@ -1659,6 +1664,70 @@ export async function listSavedChatMessages(user: CurrentUser) {
     createdAt: row.message.createdAt.toISOString(),
     savedAt: row.createdAt.toISOString(),
   }));
+}
+
+
+export async function editOwnChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string; body: unknown },
+) {
+  await assertParticipant(user, input.conversationId);
+  const body = normalizeChatText(input.body);
+  if (!body) throw new RuleError('El mensaje no puede quedar vacío.');
+
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      senderId: user.id,
+      deletedAt: null,
+      kind: { in: [ChatMessageKind.TEXTO, ChatMessageKind.CONTEXTO, ChatMessageKind.ARCHIVO] },
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje no se puede editar.');
+
+  await prisma.chatMessage.update({
+    where: { id: message.id },
+    data: { body, editedAt: new Date() },
+  });
+  return { ok: true };
+}
+
+export async function deleteOwnChatMessage(
+  user: CurrentUser,
+  input: { conversationId: string; messageId: string },
+) {
+  await assertParticipant(user, input.conversationId);
+  const message = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.messageId,
+      conversationId: input.conversationId,
+      senderId: user.id,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!message) throw new NotFoundError('El mensaje no se puede eliminar.');
+
+  await prisma.chatMessage.update({
+    where: { id: message.id },
+    data: {
+      deletedAt: new Date(),
+      body: null,
+      mediaUrl: null,
+      mediaPageUrl: null,
+      mediaSource: null,
+      mediaAlt: null,
+      contextLabel: null,
+      contextHref: null,
+      contextEntity: null,
+      contextEntityId: null,
+      stickerKey: null,
+      stickerId: null,
+    },
+  });
+  return { ok: true };
 }
 
 export async function markChatConversationRead(user: CurrentUser, conversationId: string) {

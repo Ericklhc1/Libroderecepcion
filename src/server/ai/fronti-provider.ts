@@ -135,6 +135,26 @@ type ChatCompletionPayload = {
   };
 };
 
+
+type OpenAIResponsePayload = {
+  output_text?: string;
+  output?: Array<{
+    type?: string;
+    call_id?: string;
+    name?: string;
+    arguments?: string;
+    content?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+  }>;
+  error?: {
+    message?: string;
+    code?: string;
+    type?: string;
+  };
+};
+
 export type FrontiProviderConfig = {
   provider: FrontiProviderName;
   baseUrl: string;
@@ -295,6 +315,154 @@ async function parseFailure(
   };
 }
 
+function openAIResponsesInput(messages: FrontiChatMessage[]): unknown[] {
+  const input: unknown[] = [];
+
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      input.push({
+        type: 'function_call_output',
+        call_id: message.tool_call_id,
+        output: message.content,
+      });
+      continue;
+    }
+
+    if (message.role === 'assistant' && message.tool_calls?.length) {
+      if (message.content) {
+        input.push({ role: 'assistant', content: message.content });
+      }
+      for (const call of message.tool_calls) {
+        input.push({
+          type: 'function_call',
+          call_id: call.id,
+          name: call.function.name,
+          arguments: call.function.arguments,
+        });
+      }
+      continue;
+    }
+
+    input.push({
+      role: message.role,
+      content: message.content ?? '',
+    });
+  }
+
+  return input;
+}
+
+function openAIResponsesTools(tools?: FrontiToolDefinition[]): unknown[] | undefined {
+  if (!tools?.length) return undefined;
+  return tools.map((tool) => ({
+    type: 'function',
+    name: tool.function.name,
+    description: tool.function.description,
+    parameters: tool.function.parameters,
+    strict: tool.function.strict ?? true,
+  }));
+}
+
+async function chatWithOpenAIResponses(args: {
+  provider: FrontiProviderConfig;
+  messages: FrontiChatMessage[];
+  tools?: FrontiToolDefinition[];
+  toolChoice?: 'auto' | 'required' | 'none';
+}): Promise<{
+  text: string;
+  toolCalls: FrontiToolCall[];
+  assistantMessage: FrontiChatMessage;
+  modelUsed: string;
+}> {
+  let response: Response;
+  try {
+    response = await fetch(`${args.provider.baseUrl}/responses`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(args.provider.apiKey),
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
+      body: JSON.stringify({
+        model: args.provider.model,
+        input: openAIResponsesInput(args.messages),
+        tools: openAIResponsesTools(args.tools),
+        tool_choice: args.tools?.length ? (args.toolChoice ?? 'auto') : undefined,
+        parallel_tool_calls: false,
+        reasoning: { effort: args.provider.reasoningEffort },
+      }),
+    });
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === 'TimeoutError';
+    throw new FrontiProviderError(
+      classifyAssistantFailure({ aborted, network: !aborted }),
+      error instanceof Error ? error : undefined,
+    );
+  }
+
+  if (!response.ok) {
+    const failure = await parseFailure(response);
+    throw new FrontiProviderError(failure.failure, undefined, failure.detail);
+  }
+
+  let payload: OpenAIResponsePayload;
+  try {
+    payload = (await response.json()) as OpenAIResponsePayload;
+  } catch (error) {
+    throw new FrontiProviderError('CAIDO', error instanceof Error ? error : undefined);
+  }
+
+  const toolCalls: FrontiToolCall[] = [];
+  const textParts: string[] = [];
+
+  if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
+    textParts.push(payload.output_text.trim());
+  }
+
+  for (const item of payload.output ?? []) {
+    if (
+      item.type === 'function_call' &&
+      typeof item.call_id === 'string' &&
+      typeof item.name === 'string' &&
+      typeof item.arguments === 'string'
+    ) {
+      toolCalls.push({
+        id: item.call_id,
+        type: 'function',
+        function: {
+          name: item.name,
+          arguments: item.arguments,
+        },
+      });
+      continue;
+    }
+
+    if (item.type === 'message') {
+      for (const content of item.content ?? []) {
+        if (content.type === 'output_text' && typeof content.text === 'string') {
+          const clean = content.text.trim();
+          if (clean && !textParts.includes(clean)) textParts.push(clean);
+        }
+      }
+    }
+  }
+
+  const text = textParts.join('\n\n').trim();
+  const assistantMessage: FrontiChatMessage = {
+    role: 'assistant',
+    content: text || null,
+    ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+  };
+
+  return {
+    text,
+    toolCalls,
+    assistantMessage,
+    modelUsed: args.provider.model,
+  };
+}
+
 export async function chatWithFrontiProvider(args: {
   provider: FrontiProviderConfig;
   messages: FrontiChatMessage[];
@@ -308,6 +476,10 @@ export async function chatWithFrontiProvider(args: {
 }> {
   if (!providerIsConfigured(args.provider)) {
     throw new FrontiProviderError('SIN_CLAVE');
+  }
+
+  if (args.provider.provider === 'openai') {
+    return chatWithOpenAIResponses(args);
   }
 
   const transportTools = normalizeFrontiToolsForProvider(
@@ -412,6 +584,53 @@ export async function chatWithFrontiProvider(args: {
   };
 
   return { text, toolCalls, assistantMessage, modelUsed };
+}
+
+export async function chatWithFrontiProviderChain(args: {
+  providers: FrontiProviderConfig[];
+  messages: FrontiChatMessage[];
+  tools?: FrontiToolDefinition[];
+  toolChoice?: 'auto' | 'required' | 'none';
+}): Promise<{
+  text: string;
+  toolCalls: FrontiToolCall[];
+  assistantMessage: FrontiChatMessage;
+  modelUsed: string;
+  providerUsed: FrontiProviderName;
+}> {
+  if (!args.providers.length) {
+    throw new FrontiProviderError('SIN_CLAVE');
+  }
+
+  let lastError: FrontiProviderError | null = null;
+
+  for (const provider of args.providers) {
+    try {
+      const result = await chatWithFrontiProvider({
+        provider,
+        messages: args.messages,
+        tools: args.tools,
+        toolChoice: args.toolChoice,
+      });
+      return {
+        ...result,
+        providerUsed: provider.provider,
+      };
+    } catch (error) {
+      if (!(error instanceof FrontiProviderError)) throw error;
+      lastError = error;
+      console.warn(
+        '[fronti-provider] proveedor no disponible; intentando fallback',
+        JSON.stringify({
+          provider: provider.provider,
+          model: provider.model,
+          failure: error.failure,
+        }),
+      );
+    }
+  }
+
+  throw lastError ?? new FrontiProviderError('CAIDO');
 }
 
 export async function probeFrontiProvider(

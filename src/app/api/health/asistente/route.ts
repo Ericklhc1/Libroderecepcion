@@ -6,7 +6,7 @@ import {
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
   probeFrontiProvider,
-  resolveFrontiProviderRuntime,
+  resolveFrontiProviderChainRuntime,
 } from '@/server/ai/fronti-provider';
 import { FRONTI_AGENT_VERSION } from '@/server/ai/fronti-v2/version';
 
@@ -19,6 +19,7 @@ let cached:
       at: number;
       provider: string;
       model: string;
+      chain: Array<{ provider: string; model: string }>;
       health: AssistantHealth;
     }
   | null = null;
@@ -26,18 +27,48 @@ let cached:
 async function probeAssistant(): Promise<{
   provider: string;
   model: string;
+  chain: Array<{ provider: string; model: string }>;
   health: AssistantHealth;
 }> {
   const config = await getFrontiConfig();
-  const provider = await resolveFrontiProviderRuntime(config);
-  const result = await probeFrontiProvider(provider);
+  const chain = await resolveFrontiProviderChainRuntime({
+    reasoningEffort: config.reasoningEffort,
+  });
+
+  if (!chain.length) {
+    return {
+      provider: 'none',
+      model: 'none',
+      chain: [],
+      health: assistantHealthFromFailure('SIN_CLAVE'),
+    };
+  }
+
+  let lastFailure: import('@/domain/assistant-status').AssistantFailure = 'CAIDO';
+  for (const provider of chain) {
+    const result = await probeFrontiProvider(provider);
+    if (result.ok) {
+      return {
+        provider: provider.provider,
+        model: provider.model,
+        chain: chain.map((item) => ({
+          provider: item.provider,
+          model: item.model,
+        })),
+        health: { estado: 'OK' },
+      };
+    }
+    lastFailure = result.failure;
+  }
 
   return {
-    provider: config.provider,
-    model: config.model,
-    health: result.ok
-      ? { estado: 'OK' }
-      : assistantHealthFromFailure(result.failure),
+    provider: chain[0]?.provider ?? 'none',
+    model: chain[0]?.model ?? 'none',
+    chain: chain.map((item) => ({
+      provider: item.provider,
+      model: item.model,
+    })),
+    health: assistantHealthFromFailure(lastFailure),
   };
 }
 
@@ -52,6 +83,8 @@ export async function GET() {
     {
       ok: true,
       provider: cached.provider,
+      model: cached.model,
+      providerChain: cached.chain,
       agentVersion: FRONTI_AGENT_VERSION,
       ...cached.health,
     },

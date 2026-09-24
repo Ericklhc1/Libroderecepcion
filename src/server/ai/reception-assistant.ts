@@ -919,7 +919,7 @@ export async function runReceptionAssistant(
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
       loops = loop + 1;
-      let response;
+      let response: Awaited<ReturnType<typeof chatWithFrontiProviderChain>>;
       try {
         response = await chatWithFrontiProviderChain({
           providers: activeProviders,

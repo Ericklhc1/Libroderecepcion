@@ -10,6 +10,8 @@ import {
   getShiftDesk,
 } from '@/server/services/shifts';
 import { getShiftMetrics } from '@/server/services/metrics';
+import { getShiftCashClosure } from '@/server/services/cash-closure';
+import { isCashEnabled } from '@/server/services/cash';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
@@ -71,6 +73,17 @@ export default async function ShiftPage({
     }),
     getMyPendingClosureShift(user.id),
   ]);
+
+  const cashEnabledForPendingClosure = pendingClosure ? await isCashEnabled() : false;
+  const pendingClosureCash =
+    pendingClosure && cashEnabledForPendingClosure
+      ? await getShiftCashClosure(pendingClosure.id)
+      : null;
+  const pendingClosureNeedsCash = Boolean(
+    pendingClosure &&
+      cashEnabledForPendingClosure &&
+      (!pendingClosureCash || pendingClosureCash.reopenedAt),
+  );
 
   const [briefing, metrics] = shift
     ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
@@ -185,8 +198,9 @@ export default async function ShiftPage({
                 {SHIFT_TYPE_LABEL[pendingClosure.type]} · {formatDate(pendingClosure.date)}
               </p>
               <p className="mt-1 text-xs text-slate-600">
-                La entrega ya fue enviada. Puedes cerrar este turno sin esperar a que el
-                siguiente confirme la recepción.
+                {pendingClosureNeedsCash
+                  ? 'La entrega ya fue enviada, pero falta completar el cierre formal de Caja antes de cerrar el turno.'
+                  : 'La entrega ya fue enviada. Puedes cerrar este turno sin esperar a que el siguiente confirme la recepción.'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -198,7 +212,22 @@ export default async function ShiftPage({
                   Ver entrega
                 </Link>
               ) : null}
-              <CloseShiftForm shiftId={pendingClosure.id} />
+              {pendingClosureNeedsCash ? (
+                pendingClosure.handoverOut ? (
+                  <Link
+                    href={`/turno/entrega/${pendingClosure.handoverOut.id}`}
+                    className="inline-flex items-center rounded-lg bg-gold-500 px-3 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                  >
+                    Cerrar Caja primero
+                  </Link>
+                ) : (
+                  <span className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
+                    Falta cerrar Caja antes del turno
+                  </span>
+                )
+              ) : (
+                <CloseShiftForm shiftId={pendingClosure.id} />
+              )}
             </div>
           </div>
         </Card>

@@ -8,7 +8,7 @@ import {
   resetOperationalData,
   seedCatalog,
 } from './helpers';
-import { prepareHandover, receiveHandover } from '@/server/services/shifts';
+import { closeShift, prepareHandover, receiveHandover } from '@/server/services/shifts';
 import { saveCashCount } from '@/server/services/cash';
 import {
   closeShiftCash,
@@ -44,6 +44,31 @@ describe('cierre de Caja previo al cierre del turno', () => {
     await expect(
       prisma.shift.update({ where: { id: shift.id }, data: { status: ShiftStatus.CERRADO } }),
     ).rejects.toThrow(/cerrar Caja/i);
+  });
+
+  it('el flujo de Turno devuelve una regla legible antes de llegar al trigger de PostgreSQL', async () => {
+    const shift = await activeShift(recepcionista);
+    await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    await prisma.shiftHandover.create({
+      data: {
+        fromShiftId: shift.id,
+        issuedById: recepcionista.id,
+        status: 'ENVIADA',
+        issuedAt: new Date(),
+      },
+    });
+    await prisma.shift.update({
+      where: { id: shift.id },
+      data: { status: ShiftStatus.ENTREGA_ENVIADA },
+    });
+
+    await expect(closeShift(recepcionista, { shiftId: shift.id })).rejects.toThrow(
+      /cierre formal de Caja/i,
+    );
+
+    const unchanged = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+    expect(unchanged.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
+    expect(unchanged.actualEnd).toBeNull();
   });
 
   it('usa el arqueo formal por denominación de la entrega y congela su fotografía', async () => {

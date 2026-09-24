@@ -206,6 +206,7 @@ export function ActionForm({
   resetOnSuccess = false,
   hideSuccess = false,
   refreshOnSuccess = false,
+  onSuccess,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
@@ -223,12 +224,15 @@ export function ActionForm({
    * base y la pantalla seguía bloqueada.
    */
   refreshOnSuccess?: boolean;
+  /** Callback cliente para encadenar un flujo visual después de guardar. */
+  onSuccess?: (state: Extract<ActionState, { ok: true }>) => void;
 }) {
   const [state, formAction] = useActionState(action, null);
   const router = useRouter();
   const close = useDialogClose();
   const formId = useId();
   const submitted = useRef<Map<string, ControlValue> | null>(null);
+  const handledSuccess = useRef<ActionState | null>(null);
 
   /*
     Si la respuesta trae credenciales, el formulario NO se cierra ni se vacía
@@ -248,10 +252,14 @@ export function ActionForm({
       if (resetOnSuccess) form?.reset();
       if (closeOnSuccess && close) close();
       if (refreshOnSuccess) router.refresh();
+      if (handledSuccess.current !== state) {
+        handledSuccess.current = state;
+        onSuccess?.(state);
+      }
       return;
     }
     if (form && submitted.current) writeControls(form, submitted.current);
-  }, [state, close, closeOnSuccess, resetOnSuccess, refreshOnSuccess, router, formId]);
+  }, [state, close, closeOnSuccess, resetOnSuccess, refreshOnSuccess, router, formId, onSuccess]);
 
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 

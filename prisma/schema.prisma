@@ -493,6 +493,11 @@ model User {
   chatConversationsCreated          ChatConversation[]          @relation("chatConversationCreatedBy")
   chatParticipations                ChatParticipant[]           @relation("chatParticipantUser")
   chatMessages                      ChatMessage[]               @relation("chatMessageSender")
+  chatReactions                     ChatReaction[]
+  chatSavedMessages                 ChatSavedMessage[]
+  chatTyping                        ChatTyping[]
+  chatStickers                      ChatSticker[]
+  chatMediaPreferences              ChatMediaPreference[]
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -1241,6 +1246,7 @@ model ChatConversation {
 
   participants ChatParticipant[]
   messages     ChatMessage[]
+  typing       ChatTyping[]
 
   @@index([lastMessageAt])
   @@index([deletedAt])
@@ -1272,6 +1278,8 @@ model ChatMessage {
   kind            ChatMessageKind  @default(TEXTO)
   body            String?
   stickerKey      String?
+  stickerId       String?
+  sticker         ChatSticker?     @relation(fields: [stickerId], references: [id], onDelete: SetNull)
   mediaUrl        String?
   mediaPageUrl    String?
   mediaSource     String?
@@ -1289,10 +1297,82 @@ model ChatMessage {
   isDemo          Boolean          @default(false)
 
   attachments Attachment[]
+  reactions   ChatReaction[]
+  savedBy     ChatSavedMessage[]
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
   @@index([replyToId])
+  @@index([stickerId])
+}
+
+model ChatReaction {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime    @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model ChatSavedMessage {
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+
+  @@id([userId, messageId])
+  @@index([messageId])
+}
+
+model ChatTyping {
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt      DateTime         @updatedAt
+
+  @@id([conversationId, userId])
+  @@index([conversationId, updatedAt])
+  @@index([userId])
+}
+
+model ChatSticker {
+  id          String        @id @default(cuid())
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  storageKey  String
+  fileName    String
+  mimeType    String
+  size        Int
+  label       String?
+  createdAt   DateTime      @default(now())
+  deletedAt   DateTime?
+  messages    ChatMessage[]
+
+  @@index([ownerId, createdAt])
+  @@index([deletedAt])
+}
+
+model ChatMediaPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  refKey    String
+  payload   Json
+  favorite  Boolean  @default(false)
+  usedAt    DateTime @default(now())
+
+  @@unique([userId, kind, refKey])
+  @@index([userId, kind, favorite])
+  @@index([userId, kind, usedAt])
 }
 
 model Notification {

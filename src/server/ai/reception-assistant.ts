@@ -40,9 +40,9 @@ import {
 } from './fronti-v2/telemetry';
 import { serializeToolResultForModel } from './fronti-v2/context-budget';
 import {
-  chatWithFrontiProvider,
+  chatWithFrontiProviderChain,
   FrontiProviderError,
-  resolveFrontiProviderRuntime,
+  resolveFrontiProviderChainRuntime,
   type FrontiChatMessage,
   type FrontiToolDefinition,
 } from './fronti-provider';
@@ -896,6 +896,7 @@ export async function runReceptionAssistant(
   const toolTrace: FrontiToolTrace[] = [];
   let loops = 0;
   let config: FrontiConfig | null = null;
+  const modelTrace: Array<{ provider: string; model: string }> = [];
 
   try {
     config = await getFrontiConfig();
@@ -903,7 +904,12 @@ export async function runReceptionAssistant(
       throw new AssistantError('DESACTIVADO');
     }
 
-    const provider = await resolveFrontiProviderRuntime(config);
+    const providers = await resolveFrontiProviderChainRuntime({
+      reasoningEffort: config.reasoningEffort,
+    });
+    if (!providers.length) {
+      throw new AssistantError('SIN_CLAVE');
+    }
     const tools = chatTools(config);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
@@ -912,10 +918,14 @@ export async function runReceptionAssistant(
       loops = loop + 1;
       let response;
       try {
-        response = await chatWithFrontiProvider({
-          provider,
+        response = await chatWithFrontiProviderChain({
+          providers,
           messages: chat,
           tools,
+        });
+        modelTrace.push({
+          provider: response.providerUsed,
+          model: response.modelUsed,
         });
       } catch (error) {
         if (error instanceof FrontiProviderError) {
@@ -927,8 +937,9 @@ export async function runReceptionAssistant(
       if (!response.toolCalls.length) {
         recordFrontiAgentRun({
           userId: user.id,
-          provider: config.provider,
-          model: config.model,
+          provider: modelTrace.at(-1)?.provider ?? config.provider,
+          model: modelTrace.at(-1)?.model ?? config.model,
+          models: modelTrace,
           durationMs: Date.now() - startedAt,
           loops,
           tools: toolTrace,
@@ -1008,8 +1019,9 @@ export async function runReceptionAssistant(
 
     recordFrontiAgentRun({
       userId: user.id,
-      provider: config.provider,
-      model: config.model,
+      provider: modelTrace.at(-1)?.provider ?? config.provider,
+      model: modelTrace.at(-1)?.model ?? config.model,
+      models: modelTrace,
       durationMs: Date.now() - startedAt,
       loops,
       tools: toolTrace,
@@ -1024,8 +1036,9 @@ export async function runReceptionAssistant(
   } catch (error) {
     recordFrontiAgentRun({
       userId: user.id,
-      provider: config?.provider ?? 'unknown',
-      model: config?.model ?? 'unknown',
+      provider: modelTrace.at(-1)?.provider ?? config?.provider ?? 'unknown',
+      model: modelTrace.at(-1)?.model ?? config?.model ?? 'unknown',
+      models: modelTrace,
       durationMs: Date.now() - startedAt,
       loops,
       tools: toolTrace,

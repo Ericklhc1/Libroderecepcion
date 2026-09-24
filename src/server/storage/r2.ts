@@ -18,8 +18,29 @@ function config(): R2Config | null {
   return { accountId, accessKeyId, secretAccessKey, bucket };
 }
 
+export function getR2ConfigStatus() {
+  const values = {
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID?.trim() ?? '',
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID?.trim() ?? '',
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY?.trim() ?? '',
+    R2_BUCKET: process.env.R2_BUCKET?.trim() ?? '',
+  };
+
+  const missing = Object.entries(values)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  return {
+    configured: missing.length === 0,
+    missing,
+    present: Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, Boolean(value)]),
+    ) as Record<keyof typeof values, boolean>,
+  };
+}
+
 export function isR2Configured(): boolean {
-  return Boolean(config());
+  return getR2ConfigStatus().configured;
 }
 
 function sha256Hex(value: Buffer | string): string {

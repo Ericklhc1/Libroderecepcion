@@ -2030,7 +2030,20 @@ export async function listSavedChatMessages(user: CurrentUser) {
       message: {
         include: {
           sender: { select: { name: true } },
-          conversation: { select: { id: true, title: true, type: true } },
+          conversation: {
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              participants: {
+                where: { leftAt: null },
+                select: {
+                  userId: true,
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -2042,7 +2055,8 @@ export async function listSavedChatMessages(user: CurrentUser) {
     conversationTitle:
       row.message.conversation.type === ChatConversationType.GRUPO
         ? row.message.conversation.title?.trim() || 'Grupo'
-        : row.message.sender.name,
+        : row.message.conversation.participants.find((item) => item.userId !== user.id)?.user.name ??
+          'Conversación',
     senderName: row.message.sender.name,
     body: row.message.body,
     kind: row.message.kind,

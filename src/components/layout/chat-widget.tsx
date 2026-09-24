@@ -412,7 +412,7 @@ export function ChatWidget({
     stickerKey?: string;
     mediaUrl?: string;
     mediaPageUrl?: string;
-    mediaSource?: 'WIKIMEDIA_COMMONS';
+    mediaSource?: 'TENOR' | 'WIKIMEDIA_COMMONS';
     mediaAlt?: string;
     contextLabel?: string;
     contextHref?: string;
@@ -1462,7 +1462,7 @@ export function ChatWidget({
                   <input
                     value={gifQuery}
                     onChange={(event) => setGifQuery(event.target.value)}
-                    placeholder="Buscar GIF en Wikimedia Commons…"
+                    placeholder="Buscar GIF…"
                     autoFocus
                     className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-petrol-400"
                   />

@@ -39,6 +39,8 @@ export type LiveCashMovement = {
   createdByName: string;
   createdAt: Date;
   effectiveAt: Date;
+  /** False cuando el movimiento sólo regulariza una diferencia física previa. */
+  affectsExpected: boolean;
 };
 
 export type CashAuditRow = {
@@ -128,6 +130,11 @@ export async function insertCashMovement(
     reference?: string | null;
     notes?: string | null;
     effectiveAt?: Date | null;
+    /**
+     * True para ingresos/egresos operativos que cambian lo esperado.
+     * False para regularizaciones que explican una diferencia física previa.
+     */
+    affectsExpected?: boolean;
   },
 ): Promise<string> {
   if (!(params.amount > 0)) throw new RuleError('El movimiento de caja debe ser mayor que cero.');
@@ -138,7 +145,8 @@ export async function insertCashMovement(
     INSERT INTO "CashMovement" (
       "id", "kind", "direction", "currency", "amount", "shiftId", "roomId",
       "stayId", "guestId", "reservationReferenceId", "guaranteeId", "gymPassId",
-      "cashTransferId", "createdById", "reference", "notes", "effectiveAt"
+      "cashTransferId", "createdById", "reference", "notes", "effectiveAt",
+      "affectsExpected"
     ) VALUES (
       ${id}, ${params.kind}, ${params.direction}, ${currency}, ${params.amount},
       ${params.shiftId ?? null}, ${params.roomId ?? null},
@@ -146,7 +154,7 @@ export async function insertCashMovement(
       ${params.reservationReferenceId ?? null}, ${params.guaranteeId ?? null},
       ${params.gymPassId ?? null}, ${params.cashTransferId ?? null},
       ${params.userId}, ${params.reference ?? null}, ${params.notes ?? null},
-      ${params.effectiveAt ?? new Date()}
+      ${params.effectiveAt ?? new Date()}, ${params.affectsExpected ?? true}
     )
   `;
   return id;
@@ -269,6 +277,7 @@ export async function getExpectedCash(): Promise<Map<string, number>> {
              COALESCE(SUM(CASE WHEN "direction" = 'ENTRADA' THEN "amount" ELSE -"amount" END), 0) AS "net"
       FROM "CashMovement"
       WHERE "voidedAt" IS NULL
+        AND "affectsExpected" = TRUE
       GROUP BY "currency"
     `,
   ]);
@@ -327,6 +336,7 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
              COALESCE(SUM(CASE WHEN "direction" = 'ENTRADA' THEN "amount" ELSE -"amount" END), 0) AS "net"
       FROM "CashMovement"
       WHERE "voidedAt" IS NULL
+        AND "affectsExpected" = TRUE
       GROUP BY "currency"
     `,
     prisma.$queryRaw<
@@ -345,13 +355,14 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         createdByName: string;
         createdAt: Date;
         effectiveAt: Date;
+        affectsExpected: boolean;
       }>
     >`
       SELECT m."id", m."kind", m."direction", m."currency", m."amount",
              m."reference", m."notes", NULL::text AS "roomNumber",
              NULL::text AS "reservationCode", NULL::text AS "stayId",
              NULL::text AS "guestName", u."name" AS "createdByName",
-             m."createdAt", m."effectiveAt"
+             m."createdAt", m."effectiveAt", m."affectsExpected"
       FROM "CashMovement" m
       JOIN "User" u ON u."id" = m."createdById"
       WHERE m."voidedAt" IS NULL
@@ -458,4 +469,62 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       difference: decimal(row.difference),
     })),
   };
+}
+
+
+/**
+ * Reclasifica un ingreso/egreso manual ya registrado como regularización de una
+ * diferencia física previa. No borra ni altera monto, dirección, fecha o autor:
+ * únicamente evita que vuelva a modificar el efectivo esperado.
+ */
+export async function markCashMovementAsRegularization(
+  user: CurrentUser,
+  params: { movementId: string; reason: string },
+): Promise<void> {
+  const movement = await prisma.cashMovement.findUnique({
+    where: { id: params.movementId },
+    select: {
+      id: true,
+      kind: true,
+      direction: true,
+      currency: true,
+      amount: true,
+      reference: true,
+      affectsExpected: true,
+      voidedAt: true,
+    },
+  });
+  if (!movement) throw new RuleError('El movimiento de Caja no existe.');
+  if (movement.voidedAt) throw new RuleError('Un movimiento anulado no puede regularizarse.');
+  if (!['AJUSTE_ENTRADA', 'AJUSTE_SALIDA'].includes(movement.kind)) {
+    throw new RuleError('Sólo un ingreso o egreso manual puede reclasificarse como regularización.');
+  }
+  if (!movement.affectsExpected) {
+    throw new RuleError('Ese movimiento ya está marcado como regularización de diferencia.');
+  }
+
+  const reason = params.reason.trim();
+  if (reason.length < 5) throw new RuleError('Indica el motivo de la regularización.');
+
+  await prisma.$transaction(async (tx) => {
+    await tx.cashMovement.update({
+      where: { id: movement.id },
+      data: { affectsExpected: false },
+    });
+
+    await recordAudit(
+      {
+        entity: 'CashMovement',
+        entityId: movement.id,
+        action: AuditAction.EDITAR,
+        user,
+        summary:
+          `Movimiento ${movement.direction === 'ENTRADA' ? 'de ingreso' : 'de egreso'} ${movement.currency} ${Number(movement.amount)} reclasificado como regularización de diferencia`,
+        before: { affectsExpected: true, reference: movement.reference },
+        after: { affectsExpected: false, reason },
+        reason,
+      },
+      tx,
+    );
+  });
 }

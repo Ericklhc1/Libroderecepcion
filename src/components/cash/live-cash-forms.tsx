@@ -4,8 +4,10 @@ import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
+  createCashDifferenceRegularizationAction,
   createGymPassAction,
   createManualCashMovementAction,
+  markCashMovementAsRegularizationAction,
   returnCashGuaranteeAction,
   saveLiveCashAuditAction,
   voidGymPassAction,
@@ -130,7 +132,7 @@ export function ManualCashMovementForm({
         label="Concepto"
         name="reference"
         required
-        hint="Ej.: cambio para Caja, reembolso, compra menor o diferencia autorizada."
+        hint="Ej.: cambio para Caja, reembolso o compra menor. No uses esta opción para devolver un faltante anterior."
       >
         <Input
           name="reference"
@@ -145,13 +147,132 @@ export function ManualCashMovementForm({
       </Field>
 
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        El movimiento queda ligado al usuario y a Auditoría. Si no existe turno abierto, se registra igual y Supervisión recibe una alerta crítica. No necesita reserva, habitación ni estadía.
+        El movimiento queda ligado al usuario y a Auditoría. Ingreso/egreso cambia el efectivo esperado. Si el dinero sólo corrige un faltante o sobrante previo, usa «Regularizar diferencia».
       </p>
 
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Registrando…">Registrar movimiento</SubmitButton>
       </div>
     </ActionForm>
+  );
+}
+
+
+export function CashDifferenceRegularizationForm() {
+  return (
+    <ActionForm
+      action={createCashDifferenceRegularizationAction}
+      className="space-y-3"
+      resetOnSuccess
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Movimiento físico" name="direction" required>
+          <Select
+            name="direction"
+            required
+            defaultValue="ENTRADA"
+            options={[
+              { value: 'ENTRADA', label: 'Entró dinero que faltaba' },
+              { value: 'SALIDA', label: 'Salió dinero que sobraba' },
+            ]}
+          />
+        </Field>
+        <Field label="Moneda" name="currency" required>
+          <Select
+            name="currency"
+            required
+            defaultValue="CLP"
+            options={[
+              { value: 'CLP', label: 'CLP · Pesos chilenos' },
+              { value: 'USD', label: 'USD · Dólares' },
+            ]}
+          />
+        </Field>
+      </div>
+
+      <Field label="Monto" name="amount" required>
+        <Input
+          name="amount"
+          inputMode="decimal"
+          min="0.01"
+          step="0.01"
+          required
+          placeholder="0"
+        />
+      </Field>
+
+      <Field
+        label="Fecha/hora efectiva"
+        name="effectiveAt"
+        hint="Opcional. Vacío = ahora."
+      >
+        <Input name="effectiveAt" type="datetime-local" />
+      </Field>
+
+      <Field
+        label="Concepto"
+        name="reference"
+        required
+        hint="Ej.: devolución de faltante detectado en arqueo anterior."
+      >
+        <Input
+          name="reference"
+          maxLength={120}
+          required
+          placeholder="Describe qué diferencia se está regularizando"
+        />
+      </Field>
+
+      <Field label="Observaciones" name="notes">
+        <Textarea name="notes" rows={2} maxLength={1000} placeholder="Opcional" />
+      </Field>
+
+      <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
+        Esta operación deja trazabilidad del dinero que vuelve o sale para corregir una diferencia previa, pero no crea un ingreso o egreso operativo nuevo ni modifica el efectivo esperado.
+      </p>
+
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Regularizando…">Registrar regularización</SubmitButton>
+      </div>
+    </ActionForm>
+  );
+}
+
+export function ReclassifyCashMovementDialog({
+  movementId,
+  label,
+}: {
+  movementId: string;
+  label: string;
+}) {
+  return (
+    <Dialog
+      title="Reclasificar como regularización"
+      description={`El movimiento ${label} seguirá existiendo y conservará su autor, fecha y monto. Sólo dejará de incrementar o disminuir el efectivo esperado.`}
+      triggerVariant="ghost"
+      triggerSize="sm"
+      width="sm"
+      trigger="Regularizar"
+    >
+      <ActionForm action={markCashMovementAsRegularizationAction} closeOnSuccess>
+        <input type="hidden" name="movementId" value={movementId} />
+        <Field label="Motivo" name="reason" required>
+          <Textarea
+            name="reason"
+            rows={3}
+            minLength={5}
+            maxLength={500}
+            required
+            placeholder="Ej.: corresponde a los CLP 2.000 que regresaron tras el faltante del arqueo anterior."
+          />
+        </Field>
+        <div className="flex justify-end">
+          <SubmitButton variant="gold" pendingLabel="Regularizando…">
+            Confirmar regularización
+          </SubmitButton>
+        </div>
+      </ActionForm>
+    </Dialog>
   );
 }
 

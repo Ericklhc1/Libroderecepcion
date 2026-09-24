@@ -2200,6 +2200,8 @@ model CashMovement {
   createdAt              DateTime              @default(now())
   /// Cuándo impacta operacionalmente. Puede diferir de createdAt si se registra atrasado.
   effectiveAt            DateTime              @default(now())
+  /// False cuando el movimiento sólo regulariza una diferencia física previa y no cambia lo esperado.
+  affectsExpected        Boolean               @default(true)
   /// Anulación con motivo obligatorio: el movimiento no se borra nunca.
   voidedAt               DateTime?
   voidedById             String?

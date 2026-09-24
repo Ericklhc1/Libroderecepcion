@@ -20,7 +20,11 @@ import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 import type { PermissionKey } from '@/lib/permissions';
 import { hasPermission } from '@/server/auth/current-user';
-import { insertCashMovement, saveLiveCashAudit } from '@/server/services/live-cash';
+import {
+  insertCashMovement,
+  markCashMovementAsRegularization,
+  saveLiveCashAudit,
+} from '@/server/services/live-cash';
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
@@ -93,9 +97,12 @@ async function applyAuthorizedManualMovement(
   input: ManualMovementInput,
   shiftId: string | null,
   effectiveAt: Date,
+  options: { affectsExpected?: boolean } = {},
 ) {
   const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
+  const affectsExpected = options.affectsExpected ?? true;
+  const regularization = !affectsExpected;
 
   return prisma.$transaction(async (tx) => {
     const movementId = await insertCashMovement(tx, {
@@ -108,17 +115,22 @@ async function applyAuthorizedManualMovement(
       reference: input.reference,
       notes: input.notes,
       effectiveAt,
+      affectsExpected,
     });
 
     const entry = await tx.operationalEntry.create({
       data: {
         type: EntryType.CAJA,
         status: EntryStatus.RESUELTO,
-        title: `${verb} de Caja · ${input.reference}`,
-        description:
-          `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.` +
-          (input.notes ? ` Observaciones: ${input.notes}` : ''),
-        category: kind,
+        title: regularization
+          ? `Regularización de diferencia · ${input.reference}`
+          : `${verb} de Caja · ${input.reference}`,
+        description: regularization
+          ? `${verb} físico de ${input.currency} ${input.amount} para regularizar una diferencia previa. Concepto: ${input.reference}. No modifica el efectivo esperado.` +
+            (input.notes ? ` Observaciones: ${input.notes}` : '')
+          : `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.` +
+            (input.notes ? ` Observaciones: ${input.notes}` : ''),
+        category: regularization ? 'REGULARIZACION_DIFERENCIA' : kind,
         priority: shiftId ? Priority.BAJA : Priority.CRITICA,
         ownerId: user.id,
         shiftId,
@@ -127,12 +139,15 @@ async function applyAuthorizedManualMovement(
           'caja',
           input.direction.toLowerCase(),
           'permiso-rol',
+          ...(regularization ? ['regularizacion-diferencia'] : []),
           ...(!shiftId ? ['movimiento-sin-sesion-caja'] : []),
         ],
         requiresFollowUp: false,
-        resolution: shiftId
-          ? 'Movimiento registrado con trazabilidad financiera.'
-          : 'Movimiento registrado sin turno abierto; excepción derivada a Supervisión.',
+        resolution: regularization
+          ? 'Regularización registrada con trazabilidad; no altera el efectivo esperado.'
+          : shiftId
+            ? 'Movimiento registrado con trazabilidad financiera.'
+            : 'Movimiento registrado sin turno abierto; excepción derivada a Supervisión.',
         createdById: user.id,
       },
       select: { id: true },
@@ -165,7 +180,9 @@ async function applyAuthorizedManualMovement(
         entityId: movementId,
         action: AuditAction.CREAR,
         user,
-        summary: `${verb} de Caja ${input.currency} ${input.amount} · ${input.reference}`,
+        summary: regularization
+          ? `Regularización de diferencia ${input.currency} ${input.amount} · ${input.reference}`
+          : `${verb} de Caja ${input.currency} ${input.amount} · ${input.reference}`,
         after: {
           direction: input.direction,
           currency: input.currency,
@@ -177,6 +194,8 @@ async function applyAuthorizedManualMovement(
           withoutCashSession: !shiftId,
           noSessionAlertId,
           performedBy: user.id,
+          affectsExpected,
+          regularization,
         },
       },
       tx,
@@ -314,6 +333,67 @@ export async function createManualCashMovementAction(
       ok: true as const,
       message: `${verb} solicitado. Caja no cambia hasta que alguien con permiso de aprobación lo autorice.`,
       id: request.entry.id,
+    };
+  });
+}
+
+
+export async function createCashDifferenceRegularizationAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('cash.approve');
+    const input = parseOrThrow(movementSchema, formDataToObject(formData));
+    const shift = (await getMyOpenShift(user.id)) ?? (await getCurrentShift());
+    const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
+
+    const movementId = await applyAuthorizedManualMovement(
+      user,
+      input,
+      shift?.id ?? null,
+      effectiveAt,
+      { affectsExpected: false },
+    );
+
+    revalidatePath('/caja');
+    revalidatePath('/libro');
+    revalidatePath('/turno');
+    revalidatePath('/supervision');
+
+    return {
+      ok: true as const,
+      message:
+        `Regularización registrada: ${input.direction === 'ENTRADA' ? '+' : '−'}${input.currency} ${input.amount.toLocaleString('es-CL')}. El movimiento queda trazado y no modifica el efectivo esperado.`,
+      id: movementId,
+    };
+  });
+}
+
+const regularizeExistingSchema = z.object({
+  movementId: z.string().min(1),
+  reason: z.string().trim().min(5, 'Indica por qué este movimiento regulariza una diferencia.').max(500),
+});
+
+export async function markCashMovementAsRegularizationAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('cash.approve');
+    const input = parseOrThrow(regularizeExistingSchema, formDataToObject(formData));
+
+    await markCashMovementAsRegularization(user, input);
+
+    revalidatePath('/caja');
+    revalidatePath('/libro');
+    revalidatePath('/turno');
+    revalidatePath('/supervision');
+
+    return {
+      ok: true as const,
+      message:
+        'Movimiento reclasificado como regularización. Ya no aumenta el efectivo esperado; realiza un nuevo arqueo para confirmar la diferencia actual.',
     };
   });
 }

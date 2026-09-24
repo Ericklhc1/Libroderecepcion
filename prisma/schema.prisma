@@ -959,7 +959,6 @@ model TaskChecklistItem {
   doneBy   User?     @relation(fields: [doneById], references: [id])
 
   @@index([taskId])
-  @@index([chatMessageId])
 }
 
 model FollowUp {
@@ -1127,6 +1126,7 @@ model Attachment {
 
   @@index([entryId])
   @@index([taskId])
+  @@index([chatMessageId])
 }
 
 // ===================== REFERENCIAS DE HUÉSPED / RESERVA ====================

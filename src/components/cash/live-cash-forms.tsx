@@ -345,9 +345,17 @@ export function CreateCashGuaranteeForm() {
 export function LiveCashAuditForm({
   currency,
   denominations,
+  guarantees,
 }: {
   currency: string;
   denominations: Array<{ id: string; value: number; medium: 'BILLETE' | 'MONEDA' }>;
+  guarantees: Array<{
+    id: string;
+    amount: number;
+    guestName: string | null;
+    roomNumber: string | null;
+    reference: string | null;
+  }>;
 }) {
   const bills = denominations.filter((row) => row.medium === 'BILLETE');
   const coins = denominations.filter((row) => row.medium === 'MONEDA');
@@ -389,17 +397,56 @@ export function LiveCashAuditForm({
     <ActionForm action={saveLiveCashAuditAction} className="space-y-3" resetOnSuccess>
       <input type="hidden" name="currency" value={currency} />
       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        Cuenta físicamente la Caja por billetes y monedas. El total se calcula a partir de las cantidades; no se escribe a mano.
+        Cuenta por billetes y monedas únicamente el fondo fijo. No incluyas aquí dinero de garantías.
       </p>
       <div className="space-y-3">
         {rows(bills, 'Billetes')}
         {rows(coins, 'Monedas')}
       </div>
-      <Field label="Observaciones" name="notes" hint="Opcional. Úsalo para explicar una diferencia.">
+
+      <fieldset className="overflow-hidden rounded-xl ring-1 ring-gold-200">
+        <legend className="sr-only">Validación de garantías</legend>
+        <div className="bg-gold-50 px-3 py-2">
+          <p className="text-sm font-semibold text-petrol-900">Validar garantías en efectivo</p>
+          <p className="mt-0.5 text-xs text-slate-600">
+            Confirma cada garantía físicamente por separado. No forman parte de las denominaciones del fondo.
+          </p>
+        </div>
+        {guarantees.length === 0 ? (
+          <p className="px-3 py-3 text-sm text-slate-500">No hay garantías vigentes en {currency}.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {guarantees.map((guarantee) => (
+              <label key={guarantee.id} className="flex cursor-pointer items-start gap-3 px-3 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  name={`g_${guarantee.id}`}
+                  value="1"
+                  required
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-petrol-900">
+                    {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
+                    {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
+                  </span>
+                  <span className="block text-xs tabular text-slate-500">
+                    {currency} {guarantee.amount.toLocaleString('es-CL')}
+                    {guarantee.reference ? ` · ${guarantee.reference}` : ''}
+                  </span>
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Validar</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
+
+      <Field label="Observaciones" name="notes" hint="Opcional. Úsalo para explicar una diferencia del fondo fijo.">
         <Textarea name="notes" rows={2} maxLength={1000} placeholder="Ej.: faltan CLP 2.000 al arquear." />
       </Field>
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
-        Arquear no ajusta ni «hace cuadrar» la Caja. Si existe una diferencia, queda registrada y visible para seguimiento.
+        El descuadre se calcula únicamente sobre el fondo fijo. Las garantías quedan registradas como validaciones independientes del mismo arqueo.
       </p>
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Arqueando…">Guardar arqueo</SubmitButton>

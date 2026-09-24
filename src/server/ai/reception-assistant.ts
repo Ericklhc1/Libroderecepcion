@@ -33,6 +33,7 @@ import {
   assertFrontiToolEnabled,
   enabledFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
+import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import {
   chatWithFrontiProvider,
   FrontiProviderError,
@@ -773,8 +774,11 @@ async function executeTool(
             ? args.recommendation
             : null,
       });
-    default:
+    default: {
+      const v2Read = await executeFrontiV2ReadTool(user, name, args);
+      if (v2Read.handled) return v2Read.result;
       throw new Error('La herramienta solicitada no existe.');
+    }
   }
 }
 
@@ -805,7 +809,8 @@ function systemInstructions(config: FrontiConfig): string {
     'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
     'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
-    'Sigue las instrucciones operativas del usuario usando herramientas: puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs según sus permisos. Si recibes contexto de pantalla, úsalo para resolver referencias como «esta habitación» o «esta tarea», pero verifica la entidad real antes de escribir. ' +
+    'Sigue las instrucciones operativas del usuario usando herramientas: puedes consultar transversalmente Turnos, Novedades, Caja, Garantías, Llaves, Tareas, Seguimientos, Supervisión, Alertas, Auditoría, Usuarios y configuración cuando sus permisos lo permitan; también puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs. ' +
+    'Para consultas amplias, combina varias herramientas antes de responder y diferencia hechos actuales de memoria conversacional. Si recibes contexto de pantalla, úsalo para resolver referencias como «esta habitación» o «esta tarea», pero verifica la entidad real antes de escribir. ' +
     `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
     'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
     'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
@@ -846,7 +851,7 @@ export async function runReceptionAssistant(
   messages: AssistantMessage[],
 ): Promise<AssistantResult> {
   const config = await getFrontiConfig();
-  if (!config.enabled) {
+  if (!config.enabled && !user.isSystemAdmin) {
     throw new AssistantError('DESACTIVADO');
   }
 

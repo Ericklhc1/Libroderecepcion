@@ -57,6 +57,14 @@ async function main() {
     ['sesiones demo', () => prisma.session.deleteMany({ where: { userId: { in: demoUserIds } } })],
     ['auditoría de usuarios demo', () => prisma.auditLog.deleteMany({ where: { userId: { in: demoUserIds } } })],
     ['notificaciones de usuarios demo', () => prisma.notification.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['preferencias de chat demo', () => prisma.chatMediaPreference.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['typing de chat demo', () => prisma.chatTyping.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['mensajes guardados demo', () => prisma.chatSavedMessage.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['reacciones de chat demo', () => prisma.chatReaction.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['conversaciones creadas por usuarios demo', () => prisma.chatConversation.deleteMany({ where: { createdById: { in: demoUserIds } } })],
+    ['mensajes de chat de usuarios demo', () => prisma.chatMessage.deleteMany({ where: { senderId: { in: demoUserIds } } })],
+    ['participaciones de chat demo', () => prisma.chatParticipant.deleteMany({ where: { userId: { in: demoUserIds } } })],
+    ['stickers de usuarios demo', () => prisma.chatSticker.deleteMany({ where: { ownerId: { in: demoUserIds } } })],
     ['usuarios demo', () => prisma.user.deleteMany({ where: { isDemo: true } })],
   ];
 

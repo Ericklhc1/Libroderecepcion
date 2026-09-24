@@ -220,6 +220,14 @@ export async function runFactoryReset(
       count('Conversaciones de Fronti', await tx.ai_conversation.deleteMany());
       count('Observaciones de rendimiento', await tx.performanceObservation.deleteMany());
       count('Adjuntos', await tx.attachment.deleteMany());
+      count('Reacciones de chat', await tx.chatReaction.deleteMany());
+      count('Mensajes guardados de chat', await tx.chatSavedMessage.deleteMany());
+      count('Indicadores de escritura', await tx.chatTyping.deleteMany());
+      count('Preferencias multimedia de chat', await tx.chatMediaPreference.deleteMany());
+      count('Mensajes de chat', await tx.chatMessage.deleteMany());
+      count('Participantes de chat', await tx.chatParticipant.deleteMany());
+      count('Conversaciones de chat', await tx.chatConversation.deleteMany());
+      count('Stickers de chat', await tx.chatSticker.deleteMany());
       count('Comentarios', await tx.comment.deleteMany());
       count('Pasos de tarea', await tx.taskChecklistItem.deleteMany());
       count('Alertas', await tx.alert.deleteMany());

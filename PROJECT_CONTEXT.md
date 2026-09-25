@@ -638,6 +638,7 @@ queda sin documentar acá.
 
 
 ## FRONTI v2 — rollout controlado
+- Política de inferencia: **costo monetario obligatorio USD 0**. Cadena actual: Groq Free 120B → Cloudflare Workers AI Free GLM-4.7-Flash → Groq Free 20B. OpenAI no participa en la ruta operativa.
 - FRONTI v2 se implementará por etapas: alpha → beta → RC → 2.0.0.
 - El plan detallado vive en `docs/FRONTI_V2_ROADMAP.md`.
 - El acceso se controla por usuario desde Administración.

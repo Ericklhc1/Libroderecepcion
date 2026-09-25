@@ -19,7 +19,7 @@ export function AcknowledgeAlertForm({ alertId }: { alertId: string }) {
     <ActionForm action={acknowledgeAlertAction} hideSuccess className="space-y-0">
       <input type="hidden" name="id" value={alertId} />
       <SubmitButton variant="secondary" size="sm" pendingLabel="Marcando…">
-        Marcar vista
+        Marcar como vista
       </SubmitButton>
     </ActionForm>
   );

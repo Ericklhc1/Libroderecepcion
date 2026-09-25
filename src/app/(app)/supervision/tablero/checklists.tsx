@@ -276,8 +276,8 @@ export function MarkItemForm({
           maxLength={1000}
           className="min-w-0 flex-1"
         />
-        <SubmitButton variant="ghost" size="sm" pendingLabel="…">
-          Guardar
+        <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
+          Guardar resultado
         </SubmitButton>
       </div>
     </ActionForm>
@@ -315,7 +315,7 @@ export function FinishRunDialog({ runId }: { runId: string }) {
           />
         </Field>
         <SubmitButton variant="gold" pendingLabel="Cerrando…">
-          Cerrar
+          Cerrar auditoría
         </SubmitButton>
       </ActionForm>
     </Dialog>

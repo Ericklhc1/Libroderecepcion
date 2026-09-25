@@ -183,22 +183,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     anyOf: ['user.manage'],
     keywords: ['usuario', 'cuenta', 'crear', 'clave', 'contraseña', 'personal', 'alta'],
   },
-  {
-    id: 'turno-largo',
-    question: '¿Cómo programo un turno que no dura ocho horas?',
-    steps: [
-      'Entra a Administración y luego a Turnos.',
-      'Elige fecha y tipo de turno como siempre.',
-      'Escribe hora de inicio y duración: hasta 12 horas, en horas o medias horas.',
-      'Deja las dos casillas vacías para usar el horario normal.',
-    ],
-    caveat:
-      'Las dos van juntas: una hora sin duración es una ventana a medias, y el sistema usa ' +
-      'el horario nominal en ese caso.',
-    route: '/admin/turnos',
-    anyOf: ['shift.manage'],
-    keywords: ['turno', 'horario', '12 horas', 'doce', 'duración', 'programar', 'archivar'],
-  },
+
   {
     id: 'configurar-correo',
     question: '¿Cómo configuro el correo del hotel?',

@@ -642,10 +642,12 @@ model Shift {
    * por dia, y de ahi salia la idea de «programar» los turnos. Los turnos se
    * crean a voluntad, asi que puede haber dos turnos de dia el mismo dia
    * (una cobertura partida, un relevo adelantado).
-   * Los turnos pueden solaparse. La invariante operativa es por persona:
-   * nadie puede participar activamente en dos turnos distintos a la vez.
-   * Esa garantía vive en ShiftAssignment mediante un índice único parcial
-   * creado en SQL porque Prisma no expresa índices parciales.
+   * El esquema no impone unicidad global por franja para conservar coberturas,
+   * históricos y recuperaciones administrativas. La operación normal de
+   * Recepción, sin embargo, es SECUENCIAL y la impone el servicio de turnos:
+   * el saliente debe cerrar antes de que el entrante pueda iniciar.
+   * ShiftAssignment mantiene además la invariante de una sola participación
+   * activa por persona mediante un índice único parcial en PostgreSQL.
    */
   @@index([status])
   @@index([date])

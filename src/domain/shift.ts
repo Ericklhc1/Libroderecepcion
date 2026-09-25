@@ -33,11 +33,11 @@ export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
 };
 
 /**
- * Estados de participación operativa activa.
+ * Estados del ciclo operativo antes de enviar la entrega.
  *
- * Ya no significan «bloquea abrir otro turno en el hotel». Dos turnos de
- * personas distintas pueden solaparse. La exclusividad es por persona y la
- * garantiza ShiftAssignment mediante un índice parcial en PostgreSQL.
+ * En Recepción el relevo es secuencial: el turno saliente conserva su
+ * participación también durante ENTREGA_ENVIADA y sólo se libera al cerrar.
+ * Esta lista se mantiene para transiciones y consultas históricas.
  */
 export const IN_PROGRESS_SHIFT_STATUSES: ShiftStatus[] = [
   ShiftStatus.INICIADO,
@@ -108,10 +108,12 @@ export function assertTransition(from: ShiftStatus, to: ShiftStatus): void {
 }
 
 /**
- * El cierre es autónomo del turno saliente.
+ * Cierre formal del turno saliente.
  *
- * La entrega debe existir y haber sido enviada. No se espera a que otro turno
- * la reciba. El estado RECIBIDO sólo se admite para compatibilidad histórica.
+ * La entrega debe existir y haber sido enviada. El entrante todavía no puede
+ * operar: primero se cierra el turno saliente y luego el entrante inicia,
+ * recuenta Caja y confirma la recepción. RECIBIDO se conserva por
+ * compatibilidad histórica.
  */
 export function assertCanClose(params: {
   status: ShiftStatus;

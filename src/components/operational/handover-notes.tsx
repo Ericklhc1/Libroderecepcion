@@ -73,7 +73,7 @@ export function RegenerateSummaryForm({ shiftId }: { shiftId: string }) {
   );
 }
 
-export function PrintButton() {
+export function PrintButton({ label = 'Imprimir' }: { label?: string }) {
   return (
     <Button
       type="button"
@@ -83,7 +83,7 @@ export function PrintButton() {
       className="no-print"
     >
       <Printer className="h-4 w-4" aria-hidden="true" />
-      Imprimir
+      {label}
     </Button>
   );
 }

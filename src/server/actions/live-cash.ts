@@ -28,6 +28,7 @@ import {
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
+import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { notify } from '@/server/notifications';
 import { parseHotelDateTimeLocal } from '@/domain/time';
 import {
@@ -216,6 +217,7 @@ export async function createManualCashMovementAction(
     if (!hasPermission(user, permission)) {
       throw new RuleError(`Tu rol no tiene habilitado ${input.direction === 'ENTRADA' ? 'registrar ingresos' : 'registrar egresos'} manuales de Caja.`);
     }
+    await assertReceptionOperationPermission(user, permission);
     const shift = await getMyOpenShift(user.id) ?? await getCurrentShift();
     const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
 

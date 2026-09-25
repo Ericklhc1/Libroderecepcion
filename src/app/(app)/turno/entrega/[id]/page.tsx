@@ -65,12 +65,20 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const [history, cashState, denominations, myActiveShift, formalCashClosure] = await Promise.all([
+  const [history, cashState, denominations, myActiveShift, formalCashClosure, closureValidation] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
     getMyActiveShift(user.id),
     getShiftCashClosure(handover.fromShiftId),
+    prisma.alert.findUnique({
+      where: { dedupeKey: `shift-validation:${handover.fromShiftId}` },
+      select: {
+        status: true,
+        resolvedAt: true,
+        resolvedBy: { select: { name: true } },
+      },
+    }),
   ]);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
@@ -95,16 +103,16 @@ export default async function HandoverPage({
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
 
   /*
-    La Caja se puede recibir antes que la entrega operativa: basta un arqueo
-    declarado y un turno entrante activo distinto del saliente.
+    El relevo es secuencial. El turno saliente debe haber enviado y cerrado
+    antes de que el entrante inicie el suyo; por eso la recepción de Caja sólo
+    ocurre sobre una entrega ENVIADA.
   */
   const canReceiveCash = Boolean(
     myActiveShift &&
       myActiveShift.id !== handover.fromShiftId &&
       cashState.declared &&
       !cashState.confirmed &&
-      (handover.status === HandoverStatus.BORRADOR ||
-        handover.status === HandoverStatus.ENVIADA) &&
+      handover.status === HandoverStatus.ENVIADA &&
       (!handover.toShiftId || handover.toShiftId === myActiveShift.id) &&
       user.permissions.includes('shift.receive'),
   );
@@ -169,7 +177,13 @@ export default async function HandoverPage({
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Volver al turno
         </Link>
-        <PrintButton />
+        {handover.status === HandoverStatus.RECIBIDA ? (
+          <PrintButton label="Imprimir informe Caja entrega/recepción" />
+        ) : (
+          <span className="text-xs font-medium text-slate-500">
+            El acta final se imprime después de que el entrante recuente Caja y confirme la recepción.
+          </span>
+        )}
       </div>
 
       <Card>
@@ -270,8 +284,9 @@ export default async function HandoverPage({
       </Card>
 
       {/*
-        La Caja puede transferirse mientras la entrega completa sigue en borrador.
-        Es la única recepción obligatoria para que el turno entrante continúe.
+        Caja se declara en el cierre saliente y el entrante la recuenta al iniciar
+        su turno. Hasta confirmar este recuento y la recepción, el entrante no
+        queda habilitado para operar.
       */}
       <CashBox
         handoverId={handover.id}
@@ -400,6 +415,56 @@ export default async function HandoverPage({
           </div>
         </Card>
       ) : null}
+
+      <Card className="print:break-inside-avoid">
+        <CardHeader title="Informe de Caja · entrega/recepción" />
+        <div className="px-4 py-5">
+          <p className="text-sm text-slate-700">
+            Este informe acredita el cierre del turno saliente, el recuento de Caja por el
+            turno entrante y la recepción de la entrega. Debe imprimirse y firmarse por ambas
+            personas. La validación posterior queda reservada a Supervisión o al auditor designado.
+          </p>
+
+          <div className="mt-8 grid gap-8 sm:grid-cols-3">
+            <div className="pt-8">
+              <div className="border-t border-slate-500 pt-2">
+                <p className="text-xs font-semibold text-petrol-900">Recepcionista saliente</p>
+                <p className="mt-1 text-xs text-slate-600">{handover.issuedBy.name}</p>
+                <p className="mt-4 text-[0.7rem] text-slate-500">Firma</p>
+              </div>
+            </div>
+
+            <div className="pt-8">
+              <div className="border-t border-slate-500 pt-2">
+                <p className="text-xs font-semibold text-petrol-900">Recepcionista entrante</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {handover.receivedBy?.name ?? 'Pendiente de recepción'}
+                </p>
+                <p className="mt-4 text-[0.7rem] text-slate-500">Firma</p>
+              </div>
+            </div>
+
+            <div className="pt-8">
+              <div className="border-t border-slate-500 pt-2">
+                <p className="text-xs font-semibold text-petrol-900">
+                  Validación / auditoría de cierre
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {closureValidation?.resolvedBy?.name
+                    ? `Validado por ${closureValidation.resolvedBy.name}`
+                    : 'Erick Herrera o auditor designado'}
+                </p>
+                <p className="mt-1 text-[0.7rem] text-slate-500">
+                  {closureValidation?.resolvedAt
+                    ? formatDateTime(closureValidation.resolvedAt)
+                    : 'Pendiente de validación'}
+                </p>
+                <p className="mt-4 text-[0.7rem] text-slate-500">Firma y fecha</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

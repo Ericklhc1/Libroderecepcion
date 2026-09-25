@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-23** · Desacoplamiento PMS + Llaves físicas · versión propuesta **v1.5.0**
+Actualizado: **2026-09-25** · Relevo secuencial de Recepción + Novedades operativas · versión propuesta **v1.10.8**nto PMS + Llaves físicas · versión propuesta **v1.5.0**
 
 ## Estados canónicos
 
@@ -20,7 +20,7 @@ Actualizado: **2026-09-23** · Desacoplamiento PMS + Llaves físicas · versión
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
-| Turnos + transferencia de Caja | `PRODUCTION` | #59 · #60 · #66 | Turnos solapados, participación y cierre coherentes |
+| Turnos + transferencia de Caja | `PR_ABIERTO` | #125 · v1.10.8 | Relevo secuencial: saliente cierra; entrante inicia, recuenta Caja y confirma recepción antes de operar |
 | ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
 | Caja unificada | `PRODUCTION` | v1.3.1 | Semántica financiera correcta desplegada | Arqueo contra efectivo esperado; fondo, garantías y saldo operacional separados; Tesorería como transferencia interna |
 | PMS / Habitaciones / Reservas | `RETIRADO_RUNTIME` | v1.4.0 | Legado histórico conservado; fuera de navegación, formularios y flujos operativos | Núcleo por habitación e ID FNS desplegado |
@@ -31,30 +31,30 @@ Actualizado: **2026-09-23** · Desacoplamiento PMS + Llaves físicas · versión
 
 ## Iteración actual
 
-**Desacoplamiento técnico v1.5.0** · rama **`refactor/deuda-tecnica-llaves-autonomas-20260923`**
+**Libro 1.10.8** · PR **#125** · rama **`fix/turno-gate-novedades-operativas`**
 
-Objetivo: consolidar el Libro como sistema operativo interno, no PMS. El núcleo
-vigente es **Turnos + Novedades + Caja + Llaves + Supervisión**.
+Objetivo: convertir el turno en la puerta obligatoria de Recepción y limpiar la
+vista Novedades para que muestre sólo gestión humana vigente del equipo.
 
 HECHO en la rama:
-- mapa técnico de dependencias y clasificación ACTIVO / LEGADO AISLABLE;
-- modelo aditivo para conteos físicos de llaves por piso;
-- servicio de Llaves nuevo que no consulta `RoomStay`, reservas ni PMS;
-- restauración de `/llaves` con pisos 4/5/6, búsqueda, filtros, conteo,
-  faltantes, sobrantes, extravío, devolución, recuperación y baja;
-- permiso `key.inventory` para Recepción/Supervisor/Auditor nocturno;
-- retirada de `pms.import`, `room.manage` y `guest.manage` de roles operativos;
-- retirada del reconciliador PMS de llaves desde la Central de ayuda;
-- documentación canónica actualizada.
+- gate de servidor + interfaz: Recepción sólo opera con turno `ACTIVO`;
+- relevo secuencial: el saliente conserva responsabilidad hasta cerrar;
+- el entrante no puede abrir mientras el saliente siga en curso;
+- el entrante abre `INICIADO`, recuenta Caja/garantías y permanece bloqueado
+  hasta confirmar la recepción;
+- informe imprimible de Caja/entrega-recepción con firmas de saliente, entrante
+  y espacio de validación por Erick Herrera o auditor designado;
+- Fronti respeta el mismo gate operativo;
+- Novedades limita la vista de Recepción a NOVEDAD/INCIDENCIA abiertas creadas
+  por recepcionistas; lo resuelto permanece en Historial;
+- alertas internas de validación de cierre dejan de contaminar Novedades;
+- ayuda y documentación canónica alineadas.
 
 PENDIENTE antes de Production:
-- compuerta completa (Prisma migrate/validate/generate, lint, TypeScript, tests, build);
-- corregir cualquier regresión detectada;
-- verificar que el deployment validado corresponda exactamente al SHA aprobado;
-- no migrar ni publicar Production hasta que la compuerta esté verde.
-
-La limpieza física de tablas PMS sigue fuera de alcance: conserva histórico y
-requiere una fase destructiva separada con autorización explícita.
+- Compuerta completa verde (tipos, regresiones y build);
+- merge de #125 a `main`;
+- despliegue Vercel del SHA fusionado y smoke de Production;
+- validación manual de relevo saliente → entrante en dos cuentas.
 
 ## Infraestructura vigente
 

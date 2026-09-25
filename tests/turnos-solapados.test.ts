@@ -1,59 +1,31 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { HandoverStatus, ShiftStatus, ShiftType } from '@prisma/client';
+import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
-  addShiftMember,
   closeShift,
+  getMyActiveShift,
   openShift,
   prepareHandover,
   receiveHandover,
-  receiveShiftCash,
   sendHandover,
 } from '@/server/services/shifts';
-import { saveCashCount } from '@/server/services/cash';
 import {
   ROLE_KEYS,
-  createShift,
   createUser,
-  openShiftAs,
   prisma,
   resetOperationalData,
   seedCatalog,
 } from './helpers';
 
-async function seedFunds() {
-  await prisma.cashFund.createMany({
-    data: [
-      { currency: 'CLP', amount: 100_000 },
-      { currency: 'USD', amount: 150 },
-    ],
-    skipDuplicates: true,
-  });
-}
-
-async function exactFundQuantities(): Promise<Record<string, number>> {
-  const denominations = await prisma.cashDenomination.findMany();
-  const find = (currency: string, value: number) => {
-    const row = denominations.find(
-      (denomination) =>
-        denomination.currency === currency && Number(denomination.value) === value,
-    );
-    if (!row) throw new Error(`Falta la denominación ${currency} ${value}`);
-    return row.id;
-  };
-  return {
-    [find('CLP', 20_000)]: 5,
-    [find('USD', 100)]: 1,
-    [find('USD', 50)]: 1,
-  };
-}
-
-async function activate(user: Awaited<ReturnType<typeof createUser>>, type: ShiftType) {
-  const shift = await openShiftAs(user, { type });
+async function activate(
+  user: Awaited<ReturnType<typeof createUser>>,
+  type: ShiftType,
+) {
+  const { shift } = await openShift(user, { type });
   await receiveHandover(user, { shiftId: shift.id });
   return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
 }
 
-describe('turnos solapados y transferencia independiente de Caja', () => {
+describe('relevo secuencial de Recepción', () => {
   beforeAll(async () => {
     await seedCatalog();
   });
@@ -63,157 +35,68 @@ describe('turnos solapados y transferencia independiente de Caja', () => {
     await seedCatalog();
   });
 
-  it('el entrante abre su turno mientras el saliente prepara la entrega', async () => {
+  it('bloquea al entrante mientras el saliente sigue activo', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
-    const turnoSaliente = await activate(saliente, ShiftType.DIA);
-    await prepareHandover(saliente, turnoSaliente.id);
-
-    const { shift: turnoEntrante } = await openShift(entrante, { type: ShiftType.NOCHE });
-
-    expect(turnoEntrante.id).not.toBe(turnoSaliente.id);
-    expect(
-      await prisma.shift.count({
-        where: { status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA'] } },
-      }),
-    ).toBe(2);
-
-    const activos = await prisma.shiftAssignment.findMany({
-      where: { activatedAt: { not: null }, leftAt: null },
-    });
-    expect(new Set(activos.map((assignment) => assignment.userId))).toEqual(
-      new Set([saliente.id, entrante.id]),
-    );
-  });
-
-  it('PostgreSQL impide que la misma persona esté activa como apoyo en otro turno', async () => {
-    const persona = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Persona' });
-    const otro = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Otro' });
-
-    await activate(persona, ShiftType.DIA);
-    const { shift: turnoOtro } = await openShift(otro, { type: ShiftType.NOCHE });
+    await activate(saliente, ShiftType.DIA);
 
     await expect(
-      addShiftMember(otro, { shiftId: turnoOtro.id, userId: persona.id }),
-    ).rejects.toThrow(/ya participa activamente/i);
+      openShift(entrante, { type: ShiftType.NOCHE }),
+    ).rejects.toThrow(/saliente todavía no está cerrado/i);
   });
 
-  it('una asignación PROGRAMADA no consume la participación activa', async () => {
-    const persona = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Persona' });
-    const programado = await createShift({
-      userId: persona.id,
-      type: ShiftType.DIA,
-      status: ShiftStatus.PROGRAMADO,
-    });
-
-    const { shift: activo } = await openShift(persona, { type: ShiftType.NOCHE });
-
-    expect(activo.id).not.toBe(programado.id);
-    const assignment = await prisma.shiftAssignment.findFirstOrThrow({
-      where: { shiftId: programado.id, userId: persona.id },
-    });
-    expect(assignment.activatedAt).toBeNull();
-    expect(assignment.leftAt).toBeNull();
-  });
-
-  it('recibe Caja con la entrega todavía en BORRADOR y no cierra al saliente', async () => {
-    await seedFunds();
+  it('bloquea al entrante mientras el saliente prepara la entrega', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
-    const turnoSaliente = await activate(saliente, ShiftType.DIA);
-    const handover = await prepareHandover(saliente, turnoSaliente.id);
-    const quantities = await exactFundQuantities();
-    await saveCashCount(saliente, {
-      handoverId: handover.id,
-      kind: 'DECLARADO',
-      quantities,
-    });
-
-    const { shift: turnoEntrante } = await openShift(entrante, { type: ShiftType.NOCHE });
-    const received = await receiveShiftCash(entrante, {
-      shiftId: turnoEntrante.id,
-      handoverId: handover.id,
-      quantities,
-    });
-
-    expect(received.shift.status).toBe(ShiftStatus.ACTIVO);
-    const stored = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(stored.status).toBe(HandoverStatus.BORRADOR);
-    expect(stored.receivedAt).toBeNull();
-    expect(stored.toShiftId).toBe(turnoEntrante.id);
-    expect(
-      (await prisma.shift.findUniqueOrThrow({ where: { id: turnoSaliente.id } })).status,
-    ).toBe(ShiftStatus.PREPARANDO_ENTREGA);
-  });
-
-  it('dos turnos entrantes no pueden reclamar la misma Caja', async () => {
-    await seedFunds();
-    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const primero = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const segundo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-
-    const turnoSaliente = await activate(saliente, ShiftType.DIA);
-    const handover = await prepareHandover(saliente, turnoSaliente.id);
-    const quantities = await exactFundQuantities();
-    await saveCashCount(saliente, {
-      handoverId: handover.id,
-      kind: 'DECLARADO',
-      quantities,
-    });
-
-    const { shift: turnoPrimero } = await openShift(primero, { type: ShiftType.NOCHE });
-    const { shift: turnoSegundo } = await openShift(segundo, { type: ShiftType.NOCHE });
-
-    await receiveShiftCash(primero, {
-      shiftId: turnoPrimero.id,
-      handoverId: handover.id,
-      quantities,
-    });
+    const turno = await activate(saliente, ShiftType.DIA);
+    await prepareHandover(saliente, turno.id);
 
     await expect(
-      receiveShiftCash(segundo, {
-        shiftId: turnoSegundo.id,
-        handoverId: handover.id,
-        quantities,
-      }),
-    ).rejects.toThrow(/otro turno|recibida/i);
+      openShift(entrante, { type: ShiftType.NOCHE }),
+    ).rejects.toThrow(/saliente todavía no está cerrado/i);
   });
 
-  it('al enviar la entrega termina la participación y la persona puede abrir otro turno', async () => {
-    const persona = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+  it('enviar la entrega no libera al saliente: debe cerrar formalmente', async () => {
+    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
+    const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
-    const primero = await activate(persona, ShiftType.DIA);
-    await prepareHandover(persona, primero.id);
-    await sendHandover(persona, { shiftId: primero.id });
+    const turno = await activate(saliente, ShiftType.DIA);
+    await prepareHandover(saliente, turno.id);
+    await sendHandover(saliente, { shiftId: turno.id });
 
     const participation = await prisma.shiftAssignment.findFirstOrThrow({
-      where: { shiftId: primero.id, userId: persona.id },
+      where: { shiftId: turno.id, userId: saliente.id },
     });
-    expect(participation.leftAt).toBeInstanceOf(Date);
+    expect(participation.leftAt).toBeNull();
+    expect((await getMyActiveShift(saliente.id))?.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
 
-    const { shift: segundo } = await openShift(persona, { type: ShiftType.NOCHE });
-    expect(segundo.id).not.toBe(primero.id);
-    expect(segundo.status).toBe(ShiftStatus.INICIADO);
+    await expect(
+      openShift(entrante, { type: ShiftType.NOCHE }),
+    ).rejects.toThrow(/saliente todavía no está cerrado/i);
   });
 
-  it('el saliente puede enviar y cerrar mientras el entrante ya está operando', async () => {
-    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+  it('después del cierre saliente el entrante inicia bloqueado hasta recibir', async () => {
+    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
+    const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
-    const turnoSaliente = await activate(saliente, ShiftType.DIA);
-    await prepareHandover(saliente, turnoSaliente.id);
+    const turno = await activate(saliente, ShiftType.DIA);
+    await prepareHandover(saliente, turno.id);
+    await sendHandover(saliente, { shiftId: turno.id });
+    await closeShift(saliente, { shiftId: turno.id });
 
-    const turnoEntrante = await activate(entrante, ShiftType.NOCHE);
-    expect(turnoEntrante.status).toBe(ShiftStatus.ACTIVO);
+    const closedParticipation = await prisma.shiftAssignment.findFirstOrThrow({
+      where: { shiftId: turno.id, userId: saliente.id },
+    });
+    expect(closedParticipation.leftAt).toBeInstanceOf(Date);
 
-    await sendHandover(saliente, { shiftId: turnoSaliente.id });
-    const closed = await closeShift(saliente, { shiftId: turnoSaliente.id });
+    const { shift: incoming } = await openShift(entrante, { type: ShiftType.NOCHE });
+    expect(incoming.status).toBe(ShiftStatus.INICIADO);
 
-    expect(closed.status).toBe(ShiftStatus.CERRADO);
+    await receiveHandover(entrante, { shiftId: incoming.id });
     expect(
-      (await prisma.shift.findUniqueOrThrow({ where: { id: turnoEntrante.id } })).status,
+      (await prisma.shift.findUniqueOrThrow({ where: { id: incoming.id } })).status,
     ).toBe(ShiftStatus.ACTIVO);
   });
 });

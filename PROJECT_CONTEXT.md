@@ -237,35 +237,19 @@ conserva su modelo y sus reglas.
     **código** de reserva (`linkStaysToReservations`), nunca por nombre, y
     queda nulo cuando la reserva no existe en el sistema. Una estadía sin
     vínculo sigue siendo válida y operable.
-11. **DOS ventanas fijas, turnos creados al abrir y relevo solapado.**
-    La lógica usa intervalos semiabiertos: día **[07:00,20:00)** y noche
-    **[20:00,08:00)** (`SHIFT_SCHEDULE`); la interfaz los comunica como
-    **07:00–20:00** y **20:00–08:00**. No hay un tercer turno ni ventanas a medida.
-    Los turnos **no se programan de antemano**: `openShift` los crea al entrar
-    al mesón. Durante el relevo pueden coexistir el turno saliente y el
-    entrante; la invariante real es **una sola participación activa por
-    persona**, garantizada por el índice parcial
-    `ShiftAssignment_una_participacion_activa_por_usuario`.
-    El titular es quien abrió el turno; quien se suma es apoyo. Pueden sumar
-    gente quien está en el turno y quien lo supervisa (`addShiftMember`).
-    ⚠️ **ESTO CORRIGIÓ UN FALLO QUE BLOQUEABA LA OPERACIÓN.** Antes había tres
-    franjas de ocho horas y una unicidad `(date, type)`, y de ahí salía la
-    necesidad de programar. Para recibir una entrega el sistema buscaba «el
-    turno de la franja anterior» por `(date, type)`: si esa fila no existía
-    —porque nadie la programó— no encontraba nada que recibir, y cerrar exigía
-    que existiera «el turno siguiente», que tampoco existía. En producción
-    había un turno ACTIVO del 14 de septiembre con la cadena cortada. La
-    **adyacencia se eliminó**: `nextShiftSlot`, `previousShiftSlot`,
-    `shiftOrder`, `slotKey`, `parseSlotKey`, `getStartableShifts`,
-    `currentShiftType`, `ensureShift` y `customWindow` **ya no existen**.
-    Ahora la entrega pendiente es **única y no se deduce**: la que está
-    ENVIADA y sin recibir (`getPendingHandover`). `toShiftId` queda **nulo**
-    al entregar y lo escribe quien recibe: cuando alguien entrega, el turno
-    que recibirá todavía no existe.
-    `ShiftAssignment` es el registro de quién estuvo, no un requisito.
-    Lo vigilan `tests/turnos.test.ts` y `tests/shift-state.test.ts`. Las
-    pruebas `turno-sin-asignacion` y `turno-duracion` se eliminaron: probaban
-    las franjas tomables y las duraciones libres, que ya no existen.
+11. **DOS ventanas fijas, turnos creados al abrir y relevo SECUENCIAL.**
+    La lógica usa día **07:00–20:00** y noche **20:00–08:00**. Recepción sólo
+    puede interactuar con la operación cuando su turno está **ACTIVO**.
+    El saliente inicia el cierre y queda limitado al flujo de Caja/entrega/cierre;
+    enviar la entrega NO libera su participación. Debe cerrar formalmente el turno.
+    Sólo entonces el entrante puede abrir el suyo. Si existe una entrega pendiente,
+    el entrante queda **INICIADO** y bloqueado hasta recontar Caja, validar las
+    garantías y confirmar la recepción; recién ahí pasa a **ACTIVO**.
+    La entrega/recepción genera un acta imprimible con firma del recepcionista
+    saliente, del entrante y espacio para validación de Supervisión/auditor designado.
+    `ShiftAssignment` conserva la trazabilidad de quién estuvo en cada turno.
+    Lo vigilan `tests/turnos.test.ts`, `tests/turnos-solapados.test.ts`,
+    `tests/shift-cycle.test.ts` y las pruebas del gate operativo.
 12. **La caja se traspasa con fondo fijo, y la exigencia la activa el fondo.**
     `CashFund` define cuánto debe quedar SIEMPRE en el cajón por divisa (en
     este hotel **CLP 100.000 y USD 150**). Lo que excede es recaudación del

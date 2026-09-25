@@ -4,6 +4,7 @@ import { AuthError, ForbiddenError } from '@/server/errors';
 import type { PermissionKey } from '@/lib/permissions';
 import { getCurrentUser, hasPermission, type CurrentUser } from './current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
+import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 
 /** Autenticación pura para los flujos previos al acceso: contraseña y términos. */
 export async function requireAuthenticatedUser(): Promise<CurrentUser> {
@@ -38,6 +39,7 @@ export async function requirePermission(
       `No tienes el permiso necesario (${permission}) para esta acción.`,
     );
   }
+  await assertReceptionOperationPermission(user, permission);
   return user;
 }
 
@@ -63,10 +65,16 @@ export async function requirePermissionOrOwner(
   loadOwnerIds: () => Promise<Array<string | null | undefined>>,
 ): Promise<CurrentUser> {
   const user = await requireUser();
-  if (hasPermission(user, permission)) return user;
+  if (hasPermission(user, permission)) {
+    await assertReceptionOperationPermission(user, permission);
+    return user;
+  }
 
   const ownerIds = await loadOwnerIds();
-  if (ownerIds.some((id) => id && id === user.id)) return user;
+  if (ownerIds.some((id) => id && id === user.id)) {
+    await assertReceptionOperationPermission(user, permission);
+    return user;
+  }
 
   throw new ForbiddenError(
     `No tienes el permiso necesario (${permission}) y no eres el responsable de este registro.`,

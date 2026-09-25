@@ -1,118 +1,99 @@
-# Cierre Operativo V2 — contrato de producto
+# Cierre Operativo — contrato vigente de Recepción
 
-Estado: aprobado para implementación.
-Fuente de verdad: este documento + código y esquema vigentes. No reconstruir módulos que ya funcionan.
+Estado: **vigente para Libro 1.10.8 / PR #125**.  
+Fuente de verdad superior: `PROJECT_CONTEXT.md` + código y esquema vigentes.
 
-## Flujo canónico
+> Este documento reemplaza el contrato V2 anterior. En particular, quedan
+> retiradas como reglas del cierre principal: la conciliación PMS obligatoria,
+> el cierre automático del saliente al recibir y el solapamiento de turnos de
+> Recepción.
 
-INICIAR CIERRE → CAJA → PMS → CONCILIACIÓN → PENDIENTES/ELEMENTOS → ENTREGAR → RECIBIR → VALIDACIÓN DE JEFATURA.
+## Principio de acceso
 
-No existe un segundo «Cerrar turno» después de Recibir. Al recibir correctamente:
-- el turno entrante queda ACTIVO;
-- el saliente queda CERRADO con hora real;
-- el cierre saliente queda CERRADO · PENDIENTE DE VALIDACIÓN.
+Un recepcionista sólo puede interactuar con la operación cuando su turno está
+**ACTIVO**.
 
-El cierre operacional no espera la validación administrativa.
+- Sin turno: sólo puede iniciar su propio turno.
+- `INICIADO`: está recibiendo; sólo puede recontar Caja/garantías y confirmar
+  la recepción.
+- `ACTIVO`: puede operar Novedades, Caja, Llaves y demás funciones habilitadas.
+- `PREPARANDO_ENTREGA` / `ENTREGA_ENVIADA`: la operación general queda
+  bloqueada para esa cuenta y sólo continúa el flujo de cierre.
+- `CERRADO`: el usuario ya no tiene un turno operativo.
 
-## Fotografía del cierre
+La regla se aplica en servidor, interfaz y Fronti. No es un bloqueo meramente
+visual.
 
-Iniciar cierre congela la configuración relevante del turno: Caja/divisas activas, elementos de entrega, garantías vigentes y pendientes. Cambios administrativos posteriores aplican al siguiente cierre.
+## Relevo secuencial
 
-## Caja
+Flujo canónico:
 
-Caja es el primer trabajo del cierre y se cierra una sola vez. Reutilizar ShiftCashClosure existente y su snapshot. Los permisos de Caja se configuran por rol y operación; ninguna operación rutinaria exige autorización por el solo hecho de mover efectivo. Cuando una operación tenga activado `requiere autorización`, sólo un usuario con `cash.approve` puede aprobarla y la mutación efectiva ocurre después de esa aprobación. Diferencias deben conciliarse antes de continuar. La revisión de excepciones operacionales no equivale a validar el cierre completo.
+`SALIENTE ACTIVO → INICIAR CIERRE → ARQUEAR/VALIDAR CAJA → ENVIAR ENTREGA → CERRAR TURNO → ENTRANTE INICIA → RECUENTA CAJA/GARANTÍAS → CONFIRMA RECEPCIÓN → ENTRANTE ACTIVO`
 
-## PMS
+No se abren dos turnos operativos de Recepción en paralelo. El relevo físico
+puede ocurrir con ambos recepcionistas presentes en el mesón, pero el control
+del sistema es secuencial.
 
-El cierre exige exactamente tres informes independientes: ACTIVIDAD, SALIDAS e IN_HOUSE. ENTRADAS puede seguir existiendo para otros flujos, pero no satisface el cierre.
+Enviar la entrega **no** libera al saliente. Su participación termina sólo
+cuando el turno queda formalmente `CERRADO`.
 
-Todo PDF que modifique estado vivo debe incluir «Informe generado el DD/MM/AAAA HH:MM:SS». La fecha/hora se interpreta en America/Santiago y se compara en servidor:
-- 0–15 minutos: válido;
-- >15 minutos: vencido;
-- fecha futura fuera de tolerancia: inválido;
-- timestamp ausente/ilegible: inválido.
+## Caja y garantías
 
-No hay override operacional. Una importación histórica futura debe ser explícitamente no operativa.
+El saliente:
+1. inicia la preparación de entrega;
+2. arquea por denominación;
+3. valida físicamente todas las garantías bajo custodia;
+4. documenta cualquier diferencia;
+5. completa el cierre formal de Caja;
+6. envía la entrega y cierra el turno.
 
-Cada archivo guarda hash criptográfico y metadatos de generación para impedir que el mismo informe se aplique como si fuera nuevo.
+El entrante:
+1. inicia su turno después del cierre saliente;
+2. permanece `INICIADO` y bloqueado;
+3. recuenta físicamente Caja;
+4. valida las garantías recibidas;
+5. documenta diferencias si existen;
+6. confirma la recepción de la entrega;
+7. sólo entonces pasa a `ACTIVO`.
 
-## Evidencia vectorial FNS
+El recuento de Caja por sí solo no activa el turno entrante.
 
-El lector PDF debe conservar, además de texto y posición, evidencia de estilo necesaria para el ID FNS (incluido color de fuente cuando pdf.js permita extraerlo de forma fiable).
+## Informe de Caja · entrega/recepción
 
-No codificar globalmente NEGRO=PROCESADO. El significado de color se define por tipo de informe y sólo después de fixtures reales. Si la señal no está confirmada, el color es evidencia informativa y nunca autoridad para una transición.
+Después de que el entrante confirma la recepción se habilita la impresión del
+informe final de entrega/recepción.
 
-## Identidad y ocupación
+Debe identificar y dejar espacio de firma para:
+- **Recepcionista saliente**;
+- **Recepcionista entrante**;
+- **Validación / auditoría de cierre**: Erick Herrera o auditor designado por él.
 
-reservationId (ID FNS) es identidad canónica de reserva.
-Una ocupación concreta se identifica por reservationId + habitación + segmento temporal.
+El informe conserva la evidencia de Caja, garantías, responsables, fechas y
+trazabilidad de la entrega. La validación administrativa puede ser posterior y
+no bloquea el inicio del siguiente turno una vez terminada la recepción.
 
-Una reserva puede producir varias ocupaciones, incluso en la misma habitación el mismo día. La conciliación nunca reconstruye el hotel desde cero: calcula delta contra el estado conocido.
+## Validación de cierre
 
-## Autoridad de datos
+Cada cierre genera la validación posterior existente de prioridad crítica,
+asignada a Erick Herrera. La validación/auditoría no se publica como una
+“Novedad” de Recepción.
 
-FNS puede confirmar estados PMS de check-in/check-out y datos de estancia.
-FNS NO tiene autoridad sobre hechos físicos que no conoce: devolución de llaves, efectivo físico, entrega de elementos, etc.
+Un auditor designado puede efectuar la revisión física/documental según la
+delegación operativa de Supervisión; el informe impreso dispone del espacio
+correspondiente para firma y fecha.
 
-Si un check-out queda procesado y hay llaves activas, mostrar cola compacta para confirmar cantidad devuelta. No marcar llaves como devueltas automáticamente.
+## Novedades
 
-## Conciliación por delta
+La vista operativa de Novedades para Recepción contiene únicamente:
+- registros tipo `NOVEDAD` o `INCIDENCIA`;
+- creados por un recepcionista;
+- todavía abiertos / en gestión.
 
-La interfaz muestra sólo cambios y revisiones, más un contador de condiciones sin cambio. Una condición que permanece igual no genera una nueva novedad. Resolver una condición cierra el evento; una anomalía posterior es un evento nuevo.
-
-Salida esperada:
-«N sin cambios · A check-in actualizados · B check-out procesados · C nuevas reservas · D requieren revisión».
-
-El botón «Validar y actualizar estado de habitaciones» permanece deshabilitado hasta que los tres informes requeridos sean válidos y frescos.
-
-## Pendientes y elementos
-
-Después de conciliación se presentan sólo alertas críticas, pendientes heredables, garantías no resueltas, elementos físicos y una observación única. Ningún elemento seleccionado exige justificación y revisión de Supervisor, pero no bloquea por sí solo la entrega.
-
-## Entrega y recepción
-
-Resumen de salida: Caja cerrada, edad de última actualización PMS, habitaciones conciliadas, garantías, cantidad de pendientes y elementos.
-
-El entrante verifica la Caja recibida y elementos; no vuelve a cerrar Caja. Diferencia abre excepción. Recibir es la única acción final operacional y cierra automáticamente el turno saliente.
-
-Eliminar del camino principal cualquier «Cerrar turno» manual posterior. Mantener sólo mecanismos administrativos auditados que sean imprescindibles para recuperación/anulación.
-
-## Validación obligatoria
-
-Todo cierre genera automáticamente una validación de cierre de prioridad alta asignada a Erick Herrera, sin excepción, incluso si participó en el cierre.
-
-No se resuelve desde un botón genérico de alertas. Sólo:
-- Validar cierre;
-- Devolver para corrección (observación obligatoria).
-
-El PDF de cierre registra inicialmente «Pendiente de validación de jefatura» y, tras validación, «Validado por Erick Herrera · fecha/hora».
-
-## PDF de cierre
-
-Generar al finalizar operación con Caja/arqueo, garantías, conciliación PMS, pendientes, novedades, elementos, responsables y horas. Mantener posibilidad de envío como adjunto a uno o más destinatarios.
-
-## Motor Operativo — siguiente capa
-
-No crear reglas duplicadas por pantalla. Evolucionar hacia un motor determinístico que proyecte:
-
-ESTADÍA + PMS + HABITACIÓN + GARANTÍA + LLAVES + CAJA + TURNO + PENDIENTES + TIEMPO = ESTADO OPERATIVO.
-
-El motor debe producir condiciones/acciones explicables y alimentar una Bandeja de Atención universal. La IA futura interpreta lenguaje y solicita acciones al motor; no inventa ni sustituye reglas operacionales.
+Procesos internos, alertas técnicas y validaciones de cierre no deben mezclarse
+con Novedades. Los registros resueltos permanecen disponibles en Historial.
 
 ## Seguridad de despliegue
 
-GitHub `main` es la única rama de release, Vercel es el único hosting de Production y Neon `production` es la única base persistente operativa. Los previews de Vercel están desactivados. Desarrollo y CI deben usar PostgreSQL local o efímero y nunca conectarse a Neon Production. La promoción exige Compuerta verde antes de entrar a `main`, incremento SemVer y verificación posterior de SHA + versión en Vercel.
-
-## Criterios de aceptación mínimos
-
-1. Caja cerrada es precondición real para avanzar.
-2. Cierre requiere ACTIVIDAD + SALIDAS + IN_HOUSE frescos ≤15 min.
-3. Repetir un PDF no duplica ni simula una actualización nueva.
-4. Caso mismo ID/misma habitación con check-out y nuevo check-in conserva dos segmentos.
-5. Check-out FNS no devuelve llaves automáticamente.
-6. Conciliación muestra delta, no tres tablas repetidas.
-7. Recibir activa entrante y cierra saliente atómicamente.
-8. No queda acción manual «Cerrar turno» en el flujo normal.
-9. Todo cierre genera validación de jefatura obligatoria.
-10. Validación posterior no bloquea el siguiente turno.
-11. Reglas críticas tienen pruebas automatizadas y Compuerta verde antes de merge.
+GitHub `main` es la rama de release, Vercel es Production y Neon
+`production` es la base persistente. Toda promoción requiere Compuerta verde,
+incremento SemVer y verificación posterior del SHA desplegado.

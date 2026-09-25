@@ -41,6 +41,11 @@ import {
 import { serializeToolResultForModel } from './fronti-v2/context-budget';
 import { normalizeFrontiReply } from './fronti-v2/response-style';
 import {
+  assertReceptionOperationPermission,
+  getReceptionOperationGate,
+} from '@/server/services/reception-operation-gate';
+import { ROLE_KEYS } from '@/lib/permissions';
+import {
   chatWithFrontiProviderChain,
   FrontiProviderError,
   resolveFrontiProviderChainRuntime,
@@ -776,6 +781,19 @@ async function executeTool(
   config: FrontiConfig,
 ) {
   assertFrontiToolEnabled(config, name);
+
+  if (user.roleKey === ROLE_KEYS.RECEPTIONIST && name !== 'reportar_hallazgo') {
+    const gate = await getReceptionOperationGate(user);
+    if (gate.mode !== 'ACTIVE') {
+      throw new Error(
+        gate.mode === 'NO_SHIFT'
+          ? 'Debes iniciar tu turno antes de consultar o modificar la operación con Fronti.'
+          : gate.mode === 'RECEIVING'
+            ? 'Primero recuenta Caja y confirma la recepción de tu turno. Fronti no puede operar el Libro mientras la recepción está pendiente.'
+            : 'Tu turno está en cierre. Completa Caja, entrega y cierre antes de volver a usar Fronti sobre la operación.',
+      );
+    }
+  }
   switch (name) {
     case 'consultar_habitacion':
       return roomTool(user, args);
@@ -1089,6 +1107,19 @@ export async function executeReceptionConfirmation(
   }
 
   const pending = verifyAction(token, user);
+  const pendingPermission =
+    pending.action === 'create_reminder'
+      ? 'task.create'
+      : pending.action === 'create_fine'
+        ? 'incident.manage'
+        : pending.action === 'create_entry'
+          ? pending.args.type === 'INCIDENCIA'
+            ? 'incident.create'
+            : 'entry.create'
+          : pending.action === 'complete_task'
+            ? 'task.close'
+            : 'room.manage';
+  await assertReceptionOperationPermission(user, pendingPermission);
   await claimConfirmation(pending);
 
   try {

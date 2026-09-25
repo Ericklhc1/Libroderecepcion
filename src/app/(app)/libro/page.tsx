@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
-import { getBookItems } from '@/server/services/book';
+import { getBookItems, type BookFilters } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
 import { getShiftOptions } from '@/server/services/shift-options';
 import { Card, CardScroll, EmptyState } from '@/components/ui/card';
@@ -14,17 +14,15 @@ import {
   parseBookFilters,
   type RawSearchParams,
 } from '@/lib/search-params';
+import { ROLE_KEYS } from '@/lib/permissions';
 
 export const metadata = { title: 'Novedades' };
 export const dynamic = 'force-dynamic';
 
 const TABS = [
-  { label: 'Todo', href: '/libro' },
-  { label: 'Registros', href: '/libro?clase=entry' },
+  { label: 'Novedades', href: '/libro?clase=entry' },
   { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
-  { label: 'Tareas', href: '/libro?clase=task' },
-  { label: 'Seguimientos', href: '/libro?clase=followup' },
-  { label: 'Alertas', href: '/libro?clase=alert' },
+  { label: 'Mis tareas', href: '/libro?clase=task' },
 ];
 
 export default async function BookPage({
@@ -34,22 +32,38 @@ export default async function BookPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  const filters = parseBookFilters(params);
+  const clase = typeof params.clase === 'string' ? params.clase : 'entry';
+  const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
+  const parsedFilters = parseBookFilters(params);
+  const receptionist = user.roleKey === ROLE_KEYS.RECEPTIONIST;
+
+  const filters: BookFilters = {
+    ...parsedFilters,
+    ...(clase === 'entry'
+      ? {
+          kinds: ['entry'],
+          receptionEntriesOnly: true,
+          onlyOpen: true,
+        }
+      : {}),
+    ...(receptionist && clase === 'task'
+      ? { ownerId: user.id, onlyOpen: true }
+      : {}),
+    ...(receptionist && clase === 'followup'
+      ? { ownerId: user.id, onlyOpen: true }
+      : {}),
+    hideClosureValidation: receptionist,
+  };
 
   const [result, options, shifts] = await Promise.all([
     getBookItems(filters),
     getFormOptions(),
     getShiftOptions(),
   ]);
-
-  const clase = typeof params.clase === 'string' ? params.clase : undefined;
-  const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
   const activeTab =
     clase === 'entry' && tipo === 'INCIDENCIA'
       ? '/libro?clase=entry&tipo=INCIDENCIA'
-      : clase
-        ? `/libro?clase=${clase}`
-        : '/libro';
+      : `/libro?clase=${clase}`;
 
   const SPECIALIZED: Record<string, { href: string; label: string }> = {
     task: { href: '/tareas', label: 'Abrir vista de tareas' },
@@ -72,13 +86,22 @@ export default async function BookPage({
         </h1>
         <p className="mt-0.5 text-sm text-slate-600">
           {isEntryView
-            ? 'Registra y consulta lo que ocurrió, qué queda pendiente, quién responde y cómo se resolvió.'
-            : 'Vista transversal de Novedades, tareas, seguimientos y alertas.'}
+            ? 'Sólo aparecen novedades e incidencias creadas por Recepción que siguen en gestión. Lo resuelto pasa al Historial.'
+            : clase === 'task'
+              ? 'Tus tareas operativas abiertas.'
+              : 'Vista especializada del Libro.'}
         </p>
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <ViewTabs label="Clase de registro" activeHref={activeTab} tabs={TABS} />
+        <ViewTabs label="Vista operativa" activeHref={activeTab} tabs={TABS} />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/historial"
+            className="text-xs font-medium text-petrol-600 underline-offset-2 hover:underline"
+          >
+            Ver historial
+          </Link>
         {specialized ? (
           <Link
             href={specialized.href}
@@ -87,13 +110,13 @@ export default async function BookPage({
             {specialized.label}
           </Link>
         ) : null}
+        </div>
       </div>
 
       <Filters
         action="/libro"
         fields={[
           'q',
-          'clase',
           'tipo',
           'estado',
           'prioridad',
@@ -104,6 +127,7 @@ export default async function BookPage({
           'hasta',
         ]}
         values={filterValues(params)}
+        extraHidden={{ clase }}
         options={{ departments: options.departments, users: options.users, shifts }}
       />
 

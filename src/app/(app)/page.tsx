@@ -35,6 +35,13 @@ export default async function DashboardPage() {
   const myOverdue = data.myTasks.filter(
     (task) => task.dueAt && task.dueAt < data.now,
   ).length;
+  const outgoingStillClosing = Boolean(
+    !shift &&
+      ((data.nextShift && data.nextShift.status !== ShiftStatus.CERRADO) ||
+        (data.incoming && data.incoming.fromShift.status !== ShiftStatus.CERRADO)),
+  );
+  const canStartReceptionShift =
+    !shift && user.roleOperational && !outgoingStillClosing;
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -86,18 +93,18 @@ export default async function DashboardPage() {
                 <p className="mt-1 text-sm text-slate-600">
                   {!user.roleOperational
                     ? 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'
-                    : data.nextShift
-                      ? 'Hay otro turno en curso. Puedes abrir el tuyo: durante el relevo los turnos se solapan.'
+                    : outgoingStillClosing
+                      ? 'El turno saliente todavía está en curso o cerrando. Debe quedar formalmente cerrado antes de que puedas iniciar el tuyo.'
                       : data.incoming
-                        ? 'Hay un cierre esperando en la bandeja: abre tu turno para revisarlo y recibir la caja.'
-                        : 'Abre tu turno para empezar.'}
+                        ? 'El turno saliente ya cerró. Inicia tu turno para recontar Caja y validar la recepción.'
+                        : 'Inicia tu turno para habilitar la operación.'}
                 </p>
               </>
             )}
           </div>
 
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            {!shift && user.roleOperational ? (
+            {canStartReceptionShift ? (
               <OpenShiftForm suggestedType={shiftTypeAt()} />
             ) : null}
 
@@ -183,8 +190,8 @@ export default async function DashboardPage() {
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-slate-700">
-                    El turno anterior no dejó entrega registrada. Puedes activar tu turno y quedará
-                    constancia en la auditoría.
+                    El turno anterior no dejó entrega registrada. Confirma la recepción sin entrega
+                    para activar tu turno; quedará constancia en la auditoría.
                   </p>
                 )}
               </div>

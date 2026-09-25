@@ -85,12 +85,28 @@ export default async function ShiftPage({
       (!pendingClosureCash || pendingClosureCash.reopenedAt),
   );
 
+  const cashEnabledForCurrentClose =
+    shift?.status === ShiftStatus.ENTREGA_ENVIADA ? await isCashEnabled() : false;
+  const currentShiftCash =
+    shift?.status === ShiftStatus.ENTREGA_ENVIADA && cashEnabledForCurrentClose
+      ? await getShiftCashClosure(shift.id)
+      : null;
+  const currentShiftNeedsCash = Boolean(
+    shift?.status === ShiftStatus.ENTREGA_ENVIADA &&
+      cashEnabledForCurrentClose &&
+      (!currentShiftCash || currentShiftCash.reopenedAt),
+  );
+
   const [briefing, metrics] = shift
     ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
     : [null, null];
 
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
+  const outgoingStillClosing = Boolean(
+    (incoming && incoming.fromShift.status !== ShiftStatus.CERRADO) ||
+      (cashIncoming && cashIncoming.fromShift.status !== ShiftStatus.CERRADO),
+  );
 
   /*
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
@@ -244,29 +260,34 @@ export default async function ShiftPage({
               />
             ) : (
               <>
-                {cashIncoming ? (
-                  <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
-                    <p className="font-medium text-petrol-900">
-                      El turno saliente ya declaró la Caja
+                {outgoingStillClosing ? (
+                  <div className="rounded-lg bg-amber-50 px-3 py-3 ring-1 ring-amber-300">
+                    <p className="font-medium text-amber-950">
+                      El turno saliente todavía está cerrando
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Abre tu turno propio. Después podrás recontar y recibir esa Caja sin
-                      esperar a que el saliente termine su entrega operativa.
+                    <p className="mt-1 text-xs text-amber-900">
+                      No puedes iniciar tu turno todavía. El recepcionista saliente debe completar
+                      Caja, enviar la entrega y cerrar formalmente su turno.
                     </p>
                   </div>
-                ) : incoming ? (
+                ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
-                    <p className="font-medium text-petrol-900">Hay una entrega operativa pendiente</p>
+                    <p className="font-medium text-petrol-900">
+                      Turno saliente cerrado · entrega pendiente de recepción
+                    </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Abre tu turno propio para revisarla. El turno saliente no bloquea tu apertura.
+                      Inicia tu turno. Quedará bloqueado en recepción hasta que recuentes Caja y
+                      confirmes la entrega del turno saliente.
                     </p>
                   </div>
                 ) : (
                   <p className="text-sm text-slate-600">
-                    Abre tu turno para empezar. Otro turno puede seguir cerrando en paralelo.
+                    Inicia tu turno para habilitar la operación de Recepción.
                   </p>
                 )}
-                <OpenShiftForm suggestedType={desk.suggestedType} />
+                {!outgoingStillClosing ? (
+                  <OpenShiftForm suggestedType={desk.suggestedType} />
+                ) : null}
               </>
             )}
           </div>
@@ -322,7 +343,8 @@ export default async function ShiftPage({
                     <>
                       <PrepareHandoverForm shiftId={shift.id} />
                       <p className="max-w-sm text-xs text-slate-500">
-                        Prepara y envía la entrega. Después podrás cerrar tu turno sin esperar la confirmación del siguiente.
+                        Al iniciar el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas
+                        para tu cuenta. Completa Caja, envía la entrega y cierra formalmente el turno.
                       </p>
                     </>
                   ) : null}
@@ -351,10 +373,33 @@ export default async function ShiftPage({
               </div>
 
               {shift.status === ShiftStatus.ENTREGA_ENVIADA ? (
-                <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 ring-1 ring-sky-200">
-                  Entrega enviada{shift.handoverOut?.issuedAt ? ` ${relativeTime(shift.handoverOut.issuedAt)}` : ''}.
-                  Tu participación operativa ya terminó. Puedes cerrar este turno sin esperar la confirmación del siguiente.
-                </p>
+                <div className="mt-3 rounded-lg bg-sky-50 px-3 py-3 text-sm text-sky-900 ring-1 ring-sky-200">
+                  <p>
+                    Entrega enviada{shift.handoverOut?.issuedAt ? ` ${relativeTime(shift.handoverOut.issuedAt)}` : ''}.
+                    Sigues siendo responsable del turno y la operación permanece bloqueada para tu
+                    cuenta hasta cerrarlo formalmente.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 no-print">
+                    {currentShiftNeedsCash && shift.handoverOut ? (
+                      <Link
+                        href={`/turno/entrega/${shift.handoverOut.id}`}
+                        className="inline-flex items-center rounded-lg bg-gold-500 px-3 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                      >
+                        Cerrar Caja primero
+                      </Link>
+                    ) : (
+                      <CloseShiftForm shiftId={shift.id} />
+                    )}
+                    {shift.handoverOut ? (
+                      <Link
+                        href={`/turno/entrega/${shift.handoverOut.id}`}
+                        className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-white"
+                      >
+                        Ver entrega
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
             </div>
 
@@ -368,8 +413,8 @@ export default async function ShiftPage({
                 {cashIncoming ? (
                   <>
                     <p className="mt-1 text-sm text-slate-700">
-                      La Caja del turno anterior ya está declarada. Recuéntala primero; no
-                      necesitas esperar a que la entrega completa sea enviada.
+                      El turno saliente ya está cerrado y dejó la Caja declarada. Recuéntala
+                      físicamente y valida las garantías antes de confirmar la recepción.
                     </p>
                     <Link
                       href={`/turno/entrega/${cashIncoming.id}`}

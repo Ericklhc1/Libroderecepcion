@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requireUser } from '@/server/auth/guard';
+import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { RuleError } from '@/server/errors';
 import { sendMail } from '@/server/mail';
 import type { BookKind } from '@/server/services/book';
@@ -203,7 +204,8 @@ export async function sendBookItemMailAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    await requireUser();
+    const user = await requireUser();
+    await assertReceptionOperationPermission(user, 'entry.edit');
     const input = parseOrThrow(schema, formDataToObject(formData));
     const record = await loadRecord(input.kind, input.id);
     if (!record) throw new RuleError('Ese registro ya no existe o no está disponible.');

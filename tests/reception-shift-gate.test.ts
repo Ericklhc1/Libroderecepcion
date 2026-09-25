@@ -24,6 +24,20 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(guard.match(/assertReceptionOperationPermission/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
+  it('las acciones operativas con guard propio también pasan por el gate', () => {
+    const keyInventory = readFileSync('src/server/actions/key-inventory.ts', 'utf8');
+    const comments = readFileSync('src/server/actions/comments.ts', 'utf8');
+    const bookMail = readFileSync('src/server/actions/book-mail.ts', 'utf8');
+
+    expect(keyInventory).toContain(
+      "await assertReceptionOperationPermission(user, 'key.inventory')",
+    );
+    expect(comments.match(/assertReceptionOperationPermission/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(bookMail).toContain(
+      "await assertReceptionOperationPermission(user, 'entry.edit')",
+    );
+  });
+
   it('Fronti no puede saltarse el gate operativo', () => {
     const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf8');
     expect(source).toContain('getReceptionOperationGate(user)');

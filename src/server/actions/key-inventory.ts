@@ -5,6 +5,7 @@ import { KeyType } from '@prisma/client';
 import { hasAnyPermission } from '@/server/auth/current-user';
 import { requirePermission, requireUser } from '@/server/auth/guard';
 import { ForbiddenError, RuleError } from '@/server/errors';
+import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { runAction, type ActionState } from '@/server/action';
 import {
   assignPhysicalKey,
@@ -28,6 +29,7 @@ async function requireKeyInventoryAccess() {
   if (!hasAnyPermission(user, ['key.inventory', 'key.stock'])) {
     throw new ForbiddenError('No tienes permiso para realizar inventarios de llaves.');
   }
+  await assertReceptionOperationPermission(user, 'key.inventory');
   return user;
 }
 

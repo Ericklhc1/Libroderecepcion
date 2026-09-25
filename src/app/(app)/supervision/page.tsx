@@ -201,6 +201,13 @@ export default async function SupervisionCenterPage({
         </nav>
       </header>
 
+      <nav className="flex flex-wrap gap-2 no-print" aria-label="Atajos del Centro de Supervisión">
+        <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Continuidad</a>
+        <a href="#pendientes" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Mis pendientes</a>
+        <a href="#seguimientos" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Siguiendo</a>
+        <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Señales del Libro</a>
+      </nav>
+
       <ListFilterBar searchValue={q} searchPlaceholder="Buscar persona, tarea, seguimiento, nota u origen…" clearHref="/supervision">
         <label className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Responsable</span>
@@ -273,6 +280,7 @@ export default async function SupervisionCenterPage({
         </div>
       </Card>
 
+      <section id="continuidad" className="scroll-mt-4">
       <Card>
         <CardHeader
           title={center.sinceLastShift ? 'Desde tu último turno' : 'Continuidad de Supervisión'}
@@ -290,6 +298,7 @@ export default async function SupervisionCenterPage({
           Tus tareas y seguimientos no se reinician con el turno: esta franja sólo resume qué cambió mientras no estabas ejerciendo Supervisión.
         </p>
       </Card>
+      </section>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Alertas críticas" value={critical} tone={critical ? 'alert' : 'good'} />
@@ -317,6 +326,7 @@ export default async function SupervisionCenterPage({
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <section id="pendientes" className="scroll-mt-4">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
           <CardHeader title="Mis pendientes" count={tasks.length} />
           {tasks.length === 0 ? <EmptyState message="No hay tareas abiertas con estos filtros." /> : (
@@ -336,7 +346,9 @@ export default async function SupervisionCenterPage({
             </CardScroll>
           )}
         </Card>
+        </section>
 
+        <section id="seguimientos" className="scroll-mt-4">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
           <CardHeader title="Siguiendo" count={followUps.length} />
           {followUps.length === 0 ? <EmptyState message="No hay seguimientos abiertos con estos filtros." /> : (
@@ -353,6 +365,7 @@ export default async function SupervisionCenterPage({
             </CardScroll>
           )}
         </Card>
+        </section>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -393,7 +406,7 @@ export default async function SupervisionCenterPage({
       ) : null}
 
       {blocks.length > 0 ? (
-        <section>
+        <section id="senales" className="scroll-mt-4">
           <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Ahora · señales que desembocan en Supervisión</h2>
           <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}

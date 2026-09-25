@@ -20,8 +20,6 @@ import {
   RestoreTaskForm,
   TaskStatusDialog,
 } from '@/components/operational/task-actions';
-import { FollowUpForm } from '@/components/forms/followup-form';
-import { createFollowUpAction } from '@/server/actions/followups';
 import {
   PRIORITY_LABEL,
   PRIORITY_TONE,
@@ -185,13 +183,13 @@ export default async function TaskDetailPage({
         {!task.deletedAt ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
             {task.status === TaskStatus.PENDIENTE ? (
-              <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar tarea" />
+              <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar" />
             ) : null}
             {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
                 status={TaskStatus.REALIZADA}
-                label="Marcar realizada"
+                label="Resolver"
                 variant="gold"
               />
             ) : null}
@@ -224,21 +222,6 @@ export default async function TaskDetailPage({
                 }}
                 departments={options.departments}
               />
-            ) : null}
-            {user.permissions.includes('followup.create') ? (
-              <Dialog
-                title="Registrar seguimiento de la tarea"
-                triggerVariant="secondary"
-                triggerSize="sm"
-                trigger="Registrar seguimiento"
-              >
-                <FollowUpForm
-                  action={createFollowUpAction}
-                  options={options}
-                  taskId={task.id}
-                  defaultOwnerId={task.assigneeId ?? user.id}
-                />
-              </Dialog>
             ) : null}
             {user.permissions.includes('entry.delete') ? (
               <DeleteTaskDialog taskId={task.id} />

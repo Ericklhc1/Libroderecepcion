@@ -299,6 +299,13 @@ enum ReservationStatus {
 enum ChatConversationType {
   DIRECTO
   GRUPO
+  FRONTI
+}
+
+enum ChatMessageAuthor {
+  USER
+  FRONTI
+  SYSTEM
 }
 
 enum ChatParticipantRole {
@@ -1276,8 +1283,9 @@ model ChatMessage {
   id              String          @id @default(cuid())
   conversationId  String
   conversation    ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId        String
-  sender          User             @relation("chatMessageSender", fields: [senderId], references: [id])
+  senderId        String?
+  sender          User?            @relation("chatMessageSender", fields: [senderId], references: [id])
+  author          ChatMessageAuthor @default(USER)
   kind            ChatMessageKind  @default(TEXTO)
   body            String?
   stickerKey      String?

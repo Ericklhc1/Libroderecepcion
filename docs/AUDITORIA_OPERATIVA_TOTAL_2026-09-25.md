@@ -46,8 +46,23 @@ La ventana de logs disponible muestra actividad humana principalmente en:
 - `/admin/turnos`
 - `/admin/auditoria`
 
-El tráfico más alto es técnico del widget de Chat:
-`/api/chat/bootstrap` y `/api/chat/stream`.
+El tráfico más alto es técnico del widget de Chat. En la ventana consultada de
+24 horas se observaron, entre otros:
+
+- `/api/chat/bootstrap`: **66**
+- `/api/chat/stream`: **12**
+- `/libro/[id]`: **12**
+- `/libro`: **10**
+- `/turno/entrega/[id]`: **8**
+- `/turno`: **6**
+- `/llaves`: **4**
+- `/caja`: **4**
+- `/admin/turnos`: **4**
+- `/admin/auditoria`: **4**
+- `/alertas`: **3**
+
+Los registros agrupados disponibles fueron **200 OK**; no se detectaron errores
+runtime recientes en Vercel durante la auditoría.
 
 No se observó actividad reciente en las rutas PMS profundas durante la ventana
 consultada. Esto no prueba ausencia histórica de uso, pero sí refuerza que no son
@@ -229,6 +244,55 @@ La fuente de verdad técnica ya es v1.10.8 en Production.
 
 Corregir el tablero en el siguiente PR y hacer que el workflow de release pueda
 actualizar automáticamente los campos verificables de versión/estado.
+
+---
+
+## P0.6 — Cloudflare está configurado pero su credencial sigue siendo rechazada
+
+El health vigente de FRONTI reporta:
+
+- Groq GPT-OSS 120B: **OK**
+- Cloudflare GLM-4.7-Flash: **CLAVE_RECHAZADA**
+- Groq GPT-OSS 20B: **OK**
+
+Por tanto, la cadena declarada es Groq → Cloudflare → Groq, pero la redundancia
+real hoy sigue siendo Groq 120B → Groq 20B.
+
+### Riesgo
+
+FRONTI continúa operativo, pero los dos modelos efectivos comparten proveedor.
+Una saturación o incidente general de Groq deja sin el fallback independiente
+que motivó alpha.6.
+
+### Simplificación propuesta
+
+No agregar más proveedores. Corregir una sola vez la credencial/account/token de
+Workers AI y comprobar una inferencia real con tools. Cuando esa ruta pase,
+congelar la arquitectura de proveedores para Alpha.
+
+---
+
+## P0.7 — La definición de “Incidencia” contradice su propia prueba
+
+`tests/simplificacion-operativa.test.ts` contiene una prueba llamada:
+
+> “una incidencia sigue exigiendo gravedad, no PMS”
+
+pero la expectativa considera correcto crear la incidencia **sin gravedad**.
+
+Eso deja dos reglas posibles coexistiendo:
+
+- la gravedad es obligatoria;
+- la gravedad es opcional aunque la prueba diga lo contrario.
+
+### Simplificación propuesta
+
+Elegir una sola regla de negocio y expresarla igual en schema, formulario,
+Ayuda y pruebas.
+
+Recomendación operativa: una **Novedad** no necesita gravedad; una **Incidencia**
+sí debe exigir una gravedad mínima, porque esa clasificación determina prioridad
+de respuesta y supervisión.
 
 ---
 
@@ -640,7 +704,9 @@ un flujo distinto, redirigir a secciones de `/caja`.
 
 ## P2.5 — Chat hace mucho bootstrap
 
-En la ventana reciente, `/api/chat/bootstrap` domina el tráfico.
+En la ventana reciente, `/api/chat/bootstrap` registró 66 solicitudes frente a
+12 conexiones/solicitudes de `/api/chat/stream`. No es una medida de usuarios
+únicos, pero sí confirma que el bootstrap completo se repite con frecuencia.
 
 No es una urgencia funcional, pero el objetivo técnico debe ser:
 
@@ -739,7 +805,9 @@ Sin cambios de esquema destructivos:
 3. sacar habitaciones PMS de `OperationalAttention`;
 4. unificar la semántica de tipos/pruebas de Caja;
 5. corregir `PROJECT_PROGRESS.md`;
-6. pruebas que impidan reintroducir esas cuatro deudas.
+6. resolver la credencial Cloudflare y validar el fallback independiente;
+7. decidir y fijar la regla de gravedad obligatoria para Incidencias;
+8. pruebas que impidan reintroducir estas deudas.
 
 ## Libro 1.11.0 — Simplificación de Recepción
 

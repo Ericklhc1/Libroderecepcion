@@ -112,6 +112,40 @@ const SECTIONS: Array<{
   },
 ];
 
+const SECTION_GROUPS: Array<{
+  title: string;
+  description: string;
+  hrefs: string[];
+  danger?: boolean;
+}> = [
+  {
+    title: 'Personas y acceso',
+    description: 'Quién puede entrar y qué puede hacer.',
+    hrefs: ['/admin/usuarios', '/admin/roles', '/admin/areas'],
+  },
+  {
+    title: 'Sistema',
+    description: 'Configuración técnica y servicios del Libro.',
+    hrefs: ['/admin/parametros', '/admin/correo', '/admin/fronti'],
+  },
+  {
+    title: 'Control y trazabilidad',
+    description: 'Historial, auditoría y recuperación sin tocar la operación diaria.',
+    hrefs: ['/admin/auditoria', '/admin/turnos', '/admin/eliminados'],
+  },
+  {
+    title: 'Mantenimiento',
+    description: 'Diagnóstico y reparación controlada.',
+    hrefs: ['/admin/diagnostico'],
+  },
+  {
+    title: 'Zona de riesgo',
+    description: 'Acciones excepcionales con impacto global.',
+    hrefs: ['/admin/puesta-en-cero'],
+    danger: true,
+  },
+];
+
 export default async function AdminPage() {
   const user = await requirePageUser();
   if (!hasTechnicalAdminAccess(user.permissions)) {
@@ -149,23 +183,64 @@ export default async function AdminPage() {
         <StatTile label="Eventos de auditoría" value={auditCount} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {allowed.map((section) => {
-          const Icon = section.icon;
+      <div className="space-y-5">
+        {SECTION_GROUPS.map((group) => {
+          const sections = allowed.filter((section) => group.hrefs.includes(section.href));
+          if (sections.length === 0) return null;
+
           return (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="card flex items-start gap-3 px-4 py-4 transition-colors hover:bg-slate-50"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
-                <Icon className="h-4.5 w-4.5" aria-hidden="true" />
-              </span>
-              <span>
-                <span className="block font-medium text-petrol-900">{section.title}</span>
-                <span className="block text-sm text-slate-600">{section.description}</span>
-              </span>
-            </Link>
+            <section key={group.title} className="space-y-2">
+              <div>
+                <h2
+                  className={
+                    group.danger
+                      ? 'text-sm font-semibold text-rose-800'
+                      : 'text-sm font-semibold text-petrol-900'
+                  }
+                >
+                  {group.title}
+                </h2>
+                <p className="text-xs text-slate-500">{group.description}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {sections.map((section) => {
+                  const Icon = section.icon;
+                  return (
+                    <Link
+                      key={section.href}
+                      href={section.href}
+                      className={
+                        group.danger
+                          ? 'card flex items-start gap-3 border-rose-200 px-4 py-4 transition-colors hover:bg-rose-50'
+                          : 'card flex items-start gap-3 px-4 py-4 transition-colors hover:bg-slate-50'
+                      }
+                    >
+                      <span
+                        className={
+                          group.danger
+                            ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-700'
+                            : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700'
+                        }
+                      >
+                        <Icon className="h-4.5 w-4.5" aria-hidden="true" />
+                      </span>
+                      <span>
+                        <span
+                          className={
+                            group.danger
+                              ? 'block font-medium text-rose-900'
+                              : 'block font-medium text-petrol-900'
+                          }
+                        >
+                          {section.title}
+                        </span>
+                        <span className="block text-sm text-slate-600">{section.description}</span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
           );
         })}
       </div>

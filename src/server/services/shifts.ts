@@ -143,7 +143,7 @@ export async function getMyOpenShift(userId: string) {
 export async function getMyActiveShift(userId: string) {
   return prisma.shift.findFirst({
     where: {
-      status: { in: OCCUPYING_SHIFT_STATUSES },
+      status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
       assignments: {
         some: {
           userId,
@@ -427,8 +427,10 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
 /**
  * Abre el turno propio de quien entra al mesón.
  *
- * Otro turno puede seguir ACTIVO o PREPARANDO_ENTREGA: el solapamiento es
- * normal durante el relevo. La única exclusividad es por persona.
+ * Recepción opera de forma secuencial: el turno saliente debe quedar cerrado
+ * antes de que el entrante inicie el suyo. El relevo físico puede ocurrir con
+ * ambas personas presentes, pero sólo un turno de Recepción controla la
+ * operación en el sistema.
  */
 export async function openShift(
   user: CurrentUser,
@@ -442,6 +444,33 @@ export async function openShift(
 
   const mine = await getMyActiveShift(user.id);
   if (mine) return { shift: mine, joined: false };
+
+  const outgoing = await prisma.shift.findFirst({
+    where: {
+      archivedAt: null,
+      status: {
+        in: [
+          ShiftStatus.INICIADO,
+          ShiftStatus.ACTIVO,
+          ShiftStatus.PREPARANDO_ENTREGA,
+          ShiftStatus.ENTREGA_ENVIADA,
+        ],
+      },
+      assignments: {
+        some: {
+          activatedAt: { not: null },
+          leftAt: null,
+        },
+      },
+    },
+    select: { id: true, type: true, status: true },
+    orderBy: { actualStart: 'asc' },
+  });
+  if (outgoing) {
+    throw new RuleError(
+      'El turno saliente todavía no está cerrado. Debe completar Caja, entrega y cierre antes de que el turno entrante pueda iniciar.',
+    );
+  }
 
   const [pendingOperational, pendingCash] = await Promise.all([
     getPendingHandover(),
@@ -1159,10 +1188,10 @@ export async function sendHandover(
       where: { id: shift.id, status: ShiftStatus.PREPARANDO_ENTREGA },
       data: { status: ShiftStatus.ENTREGA_ENVIADA },
     });
-    // ENVIAR termina la participación operativa: el usuario ya puede abrir
-    // otro turno aunque éste siga pendiente de cierre formal.
-    await endShiftParticipation(tx, shift.id, now);
-
+    // Enviar la entrega NO termina la participación. El recepcionista saliente
+    // queda bloqueado en el flujo de cierre hasta cerrar formalmente su turno.
+    // La participación se libera únicamente en closeShift().
+    
     await recordAudit(
       {
         entity: 'ShiftHandover',
@@ -1211,10 +1240,12 @@ export async function sendHandover(
 }
 
 /**
- * Paso 5: cierre autónomo del turno saliente.
+ * Paso 5: cierre formal del turno saliente.
  *
- * La entrega ya fue enviada. No se espera la recepción del turno siguiente.
- * La validación de Supervisión es posterior y no bloquea.
+ * La entrega ya fue enviada y Caja debe estar cerrada. Hasta este punto la
+ * participación del saliente sigue activa y la operación general queda
+ * bloqueada para esa cuenta. El turno entrante sólo puede iniciarse después.
+ * La validación de Supervisión/auditoría es posterior y queda trazada aparte.
  */
 export async function closeShift(
   user: CurrentUser,

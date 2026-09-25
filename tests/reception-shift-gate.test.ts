@@ -60,7 +60,7 @@ describe('Recepción · relevo secuencial', () => {
     expect(source).toContain('El turno saliente todavía no está cerrado');
   });
 
-  it('el informe imprimible identifica saliente, entrante y validación posterior', () => {
+  it('el informe imprimible identifica saliente, receptor y validación posterior', () => {
     const source = readFileSync(
       'src/app/(app)/turno/entrega/[id]/page.tsx',
       'utf8',
@@ -68,7 +68,7 @@ describe('Recepción · relevo secuencial', () => {
 
     expect(source).toContain('Informe de Caja · entrega/recepción');
     expect(source).toContain('Recepcionista saliente');
-    expect(source).toContain('Recepcionista entrante');
+    expect(source).toContain('Receptor de la entrega');
     expect(source).toContain('Validación / auditoría de cierre');
     expect(source).toContain('Erick Herrera o auditor designado');
     expect(source).toContain('Imprimir informe Caja entrega/recepción');

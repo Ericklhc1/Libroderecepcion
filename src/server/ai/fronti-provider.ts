@@ -570,7 +570,7 @@ export async function chatWithFrontiProvider(args: {
     }
   };
 
-  let modelUsed = args.provider.model;
+  const modelUsed = args.provider.model;
   let response = await performRequest(modelUsed);
 
   if (

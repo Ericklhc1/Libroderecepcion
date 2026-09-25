@@ -53,11 +53,11 @@ export function TaskStatusDialog({
 }) {
   return (
     <Dialog
-      title="Cambiar estado de la tarea"
+      title="Más opciones de la tarea"
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
-      trigger="Cambiar estado"
+      trigger="Más opciones"
     >
       <ActionForm action={changeTaskStatusAction} closeOnSuccess>
         <input type="hidden" name="id" value={taskId} />

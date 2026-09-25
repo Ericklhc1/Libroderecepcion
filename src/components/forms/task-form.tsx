@@ -61,7 +61,7 @@ export function TaskForm({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Tipo de asignación" name="targetType">
+        <Field label="Asignar a" name="targetType">
           <Select
             name="targetType"
             defaultValue="PERSONA"
@@ -70,7 +70,7 @@ export function TaskForm({
               { value: 'MULTIPLES', label: 'Varias personas' },
               { value: 'TURNO', label: 'Un turno' },
               { value: 'EQUIPO', label: 'Equipo completo' },
-              { value: 'PROPIO', label: 'Mi propia tarea' },
+              { value: 'PROPIO', label: 'Para mí' },
             ]}
           />
         </Field>
@@ -152,7 +152,7 @@ export function TaskForm({
       </Field>
 
       <div className="flex justify-end pt-1">
-        <SubmitButton pendingLabel="Creando…">Crear tarea</SubmitButton>
+        <SubmitButton pendingLabel="Asignando…">Asignar tarea</SubmitButton>
       </div>
     </ActionForm>
   );

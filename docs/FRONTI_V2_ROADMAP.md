@@ -106,11 +106,11 @@ No se promueve a beta hasta cumplir, como mínimo:
    - eliminar/corregir memoria;
    - caducidad por tipo.
 7. Añadir memoria compartida de turno con trazabilidad.
-8. Evaluar proveedores con un benchmark común:
-   - Groq;
-   - OpenAI;
-   - vLLM/autohospedado cuando corresponda.
-9. Elegir proveedor primario por calidad de tool-calling, precisión, latencia y costo; mantener fallback.
+8. Evaluar proveedores con un benchmark común dentro de la política de costo cero:
+   - Groq Free;
+   - Cloudflare Workers AI Free;
+   - vLLM/autohospedado cuando exista infraestructura sin costo incremental.
+9. Elegir proveedor primario por calidad de tool-calling, precisión y latencia, manteniendo siempre costo monetario cero y fallback independiente.
 
 ### Criterio de aprobación beta
 
@@ -199,15 +199,20 @@ Posibles etapas posteriores, sujetas a aprobación:
 8. El rollout por usuario se conserva durante todo FRONTI v2.
 
 
-### Estado alpha.4 — Router de modelos
+### Estado alpha.6 — Router de costo cero
 
-Durante el piloto alpha se adopta un router automático:
+Durante el piloto alpha se adopta una política no negociable de **USD 0 de gasto de inferencia**.
 
-1. OpenAI GPT-5.6 Sol como cerebro principal cuando exista credencial OpenAI válida.
-2. Groq GPT-OSS 120B como fallback de proveedor/modelo.
-3. Groq GPT-OSS 20B como fallback de continuidad ante saturación y para tareas auxiliares.
-4. OpenAI GPT-5.6 Luna puede asumir tareas auxiliares si Groq no está disponible.
+Cadena operativa:
 
-La extracción de memoria deja de ejecutarse después de cada consulta. Sólo se intenta cuando el mensaje contiene una intención durable de recordar, una preferencia o una regla. Esto evita gastar capacidad del modelo principal en mantenimiento de memoria.
+1. Groq Free · GPT-OSS 120B como cerebro principal.
+2. Cloudflare Workers AI Free · GLM-4.7-Flash como fallback de proveedor independiente.
+3. Groq Free · GPT-OSS 20B como continuidad liviana.
 
-El router no requiere redeploy para empezar a usar OpenAI: al guardar una credencial OpenAI válida en Administración > Fronti, Sol pasa automáticamente a ser el primer proveedor de la cadena.
+OpenAI queda fuera de la cadena operativa y de las tareas auxiliares. Puede conservarse únicamente como compatibilidad heredada de código/credenciales mientras se limpia la transición, pero FRONTI no lo selecciona para responder.
+
+La cuenta Cloudflare debe mantenerse en Workers Free: el límite gratuito vigente es 10.000 Neurons diarios y, en Free, al agotarse la cuota las operaciones fallan en lugar de generar cobros. FRONTI debe degradar al siguiente proveedor o informar indisponibilidad; nunca debe pasar a una ruta de pago.
+
+La extracción de memoria sigue siendo selectiva: sólo se intenta cuando el mensaje contiene una intención durable de recordar, una preferencia o una regla. Las tareas auxiliares usan Cloudflare Free o Groq Free.
+
+El criterio de promoción a beta exige probar tanto la ruta principal como la degradación Groq → Cloudflare → Groq sin errores evitables para el usuario.

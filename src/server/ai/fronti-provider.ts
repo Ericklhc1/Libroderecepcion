@@ -10,7 +10,7 @@ import {
 } from '@/domain/assistant-status';
 import { normalizeFrontiToolsForProvider } from './fronti-v2/provider-schema';
 
-export type FrontiProviderName = 'groq' | 'vllm' | 'openai';
+export type FrontiProviderName = 'groq' | 'cloudflare' | 'vllm' | 'openai';
 
 const SECRET_PURPOSE_PREFIX = 'fronti/provider/';
 const SECRET_SETTING_PREFIX = '__secret.fronti.provider.';
@@ -82,12 +82,19 @@ export async function getFrontiProviderCredentialView(
 }> {
   const stored = await readStoredProviderSecret(provider);
   const runtime = env();
+  const cloudflareAccountId =
+    runtime.CLOUDFLARE_ACCOUNT_ID ??
+    runtime.R2_ACCOUNT_ID ??
+    runtime.R2_ACCOUND_ID ??
+    null;
   const envConfigured =
     provider === 'groq'
       ? Boolean(runtime.GROQ_API_KEY)
-      : provider === 'openai'
-        ? Boolean(runtime.OPENAI_API_KEY)
-        : Boolean(runtime.FRONTI_API_KEY);
+      : provider === 'cloudflare'
+        ? Boolean(runtime.CLOUDFLARE_AI_API_TOKEN && cloudflareAccountId)
+        : provider === 'openai'
+          ? Boolean(runtime.OPENAI_API_KEY)
+          : Boolean(runtime.FRONTI_API_KEY);
 
   return {
     hasStoredSecret: stored.present && stored.value !== null,
@@ -197,6 +204,25 @@ export function resolveFrontiProvider(input: {
     };
   }
 
+  if (input.provider === 'cloudflare') {
+    const accountId =
+      runtime.CLOUDFLARE_ACCOUNT_ID ??
+      runtime.R2_ACCOUNT_ID ??
+      runtime.R2_ACCOUND_ID ??
+      '';
+    return {
+      provider: 'cloudflare',
+      baseUrl: accountId
+        ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`
+        : '',
+      apiKey: runtime.CLOUDFLARE_AI_API_TOKEN ?? null,
+      model: input.model.trim().startsWith('@cf/')
+        ? input.model.trim()
+        : CLOUDFLARE_FALLBACK_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    };
+  }
+
   if (input.provider === 'openai') {
     return {
       provider: 'openai',
@@ -230,47 +256,51 @@ export async function resolveFrontiProviderRuntime(input: {
 export async function resolveFrontiProviderChainRuntime(input: {
   reasoningEffort: 'low' | 'medium' | 'high';
 }): Promise<FrontiProviderConfig[]> {
-  const [sol, terra, luna, groq] = await Promise.all([
-    resolveFrontiProviderRuntime({
-      provider: 'openai',
-      model: OPENAI_PRIMARY_MODEL,
-      reasoningEffort: input.reasoningEffort,
-    }),
-    resolveFrontiProviderRuntime({
-      provider: 'openai',
-      model: OPENAI_SECONDARY_MODEL,
-      reasoningEffort: input.reasoningEffort,
-    }),
-    resolveFrontiProviderRuntime({
-      provider: 'openai',
-      model: OPENAI_TERTIARY_MODEL,
-      reasoningEffort: input.reasoningEffort,
-    }),
+  /*
+   * Modo costo cero obligatorio:
+   * 1) Groq 120B como cerebro principal.
+   * 2) Workers AI Free con GLM-4.7-Flash como proveedor independiente.
+   * 3) Groq 20B como continuidad liviana.
+   *
+   * OpenAI puede conservarse como integración heredada, pero nunca forma parte
+   * de la cadena operativa de FRONTI.
+   */
+  const [groq120b, cloudflare, groq20b] = await Promise.all([
     resolveFrontiProviderRuntime({
       provider: 'groq',
       model: GROQ_PRIMARY_MODEL,
       reasoningEffort: input.reasoningEffort,
     }),
+    resolveFrontiProviderRuntime({
+      provider: 'cloudflare',
+      model: CLOUDFLARE_FALLBACK_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'groq',
+      model: GROQ_FALLBACK_MODEL,
+      reasoningEffort: input.reasoningEffort,
+    }),
   ]);
 
-  return [sol, terra, luna, groq].filter(providerIsConfigured);
+  return [groq120b, cloudflare, groq20b].filter(providerIsConfigured);
 }
 
 export async function resolveFrontiAuxiliaryProviderRuntime(): Promise<FrontiProviderConfig | null> {
-  const [groq, openai] = await Promise.all([
+  const [cloudflare, groq] = await Promise.all([
+    resolveFrontiProviderRuntime({
+      provider: 'cloudflare',
+      model: CLOUDFLARE_FALLBACK_MODEL,
+      reasoningEffort: 'low',
+    }),
     resolveFrontiProviderRuntime({
       provider: 'groq',
       model: GROQ_FALLBACK_MODEL,
       reasoningEffort: 'low',
     }),
-    resolveFrontiProviderRuntime({
-      provider: 'openai',
-      model: OPENAI_AUXILIARY_MODEL,
-      reasoningEffort: 'low',
-    }),
   ]);
 
-  return [groq, openai].find(providerIsConfigured) ?? null;
+  return [cloudflare, groq].find(providerIsConfigured) ?? null;
 }
 
 export function providerIsConfigured(config: FrontiProviderConfig): boolean {
@@ -290,6 +320,7 @@ export const OPENAI_SECONDARY_MODEL = 'gpt-5.6-terra';
 export const OPENAI_TERTIARY_MODEL = 'gpt-5.6-luna';
 export const OPENAI_AUXILIARY_MODEL = OPENAI_TERTIARY_MODEL;
 export const GROQ_PRIMARY_MODEL = 'openai/gpt-oss-120b';
+export const CLOUDFLARE_FALLBACK_MODEL = '@cf/zai-org/glm-4.7-flash';
 export const GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b';
 
 function retryAfterMs(response: Response): number | null {
@@ -539,27 +570,13 @@ export async function chatWithFrontiProvider(args: {
     }
   };
 
-  let modelUsed = args.provider.model;
+  const modelUsed = args.provider.model;
   let response = await performRequest(modelUsed);
 
   if (
     response.status === 429 &&
-    args.provider.provider === 'groq' &&
-    modelUsed === 'openai/gpt-oss-120b'
+    !(args.provider.provider === 'groq' && modelUsed === GROQ_PRIMARY_MODEL)
   ) {
-    console.info(
-      '[fronti-provider] 120b saturado; usando fallback de continuidad',
-      JSON.stringify({
-        provider: args.provider.provider,
-        primaryModel: modelUsed,
-        fallbackModel: GROQ_FALLBACK_MODEL,
-      }),
-    );
-    modelUsed = GROQ_FALLBACK_MODEL;
-    response = await performRequest(modelUsed);
-  }
-
-  if (response.status === 429) {
     const delay = retryAfterMs(response);
     if (delay !== null && delay <= MAX_RATE_LIMIT_RETRY_MS) {
       console.info(
@@ -658,7 +675,11 @@ export async function probeFrontiProvider(
 
   let response: Response;
   try {
-    response = await fetch(`${provider.baseUrl}/models`, {
+    const probeUrl =
+      provider.provider === 'cloudflare'
+        ? `${provider.baseUrl.replace(/\/ai\/v1$/, '/ai')}/models/search?search=${encodeURIComponent(provider.model)}&per_page=5`
+        : `${provider.baseUrl}/models`;
+    response = await fetch(probeUrl, {
       headers: {
         ...authHeaders(provider.apiKey),
         'Content-Type': 'application/json',
@@ -678,6 +699,8 @@ export async function probeFrontiProvider(
     const failure = await parseFailure(response);
     return { ok: false, failure: failure.failure };
   }
+
+  if (provider.provider === 'cloudflare') return { ok: true };
 
   try {
     const payload = (await response.json()) as {

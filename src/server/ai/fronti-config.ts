@@ -34,7 +34,7 @@ function clamp(value: number, min: number, max: number, fallback: number): numbe
 }
 
 function provider(value: string): FrontiProviderName {
-  return value === 'vllm' || value === 'openai' ? value : 'groq';
+  return value === 'vllm' || value === 'cloudflare' ? value : 'groq';
 }
 
 function reasoning(value: string): 'low' | 'medium' | 'high' {

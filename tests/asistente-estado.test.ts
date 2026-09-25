@@ -235,11 +235,12 @@ describe('el modelo y el plazo están declarados', () => {
     expect(source).not.toContain('api.groq.com');
   });
 
-  it('el adaptador soporta Groq, vLLM y fallback OpenAI sin filtrar secretos', () => {
+  it('el adaptador soporta Groq, Cloudflare y vLLM sin filtrar secretos', () => {
     const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf-8');
     expect(source).toContain("provider === 'vllm'");
-    expect(source).toContain("provider === 'openai'");
+    expect(source).toContain("provider === 'cloudflare'");
     expect(source).toContain('api.groq.com/openai/v1');
+    expect(source).toContain('api.cloudflare.com/client/v4/accounts/');
     expect(source).toContain('/chat/completions');
     expect(source).toContain('AbortSignal.timeout(ASSISTANT_TIMEOUT_MS)');
   });
@@ -250,7 +251,7 @@ describe('el modelo y el plazo están declarados', () => {
     expect(source).toContain('value.trim()');
     expect(source).toContain('GROQ_API_KEY: secretEnv');
     expect(source).toContain('FRONTI_API_KEY: secretEnv');
-    expect(source).toContain('OPENAI_API_KEY: secretEnv');
+    expect(source).toContain('CLOUDFLARE_AI_API_TOKEN: secretEnv');
   });
 
   it('el endpoint de conversación responde con el estado de la causa', () => {
@@ -280,7 +281,7 @@ describe('credenciales administrables de Fronti', () => {
     expect(source).toContain("__secret.fronti.provider.");
     expect(source).toContain('resolveFrontiProviderRuntime');
     expect(source).toContain('runtime.GROQ_API_KEY');
-    expect(source).toContain('runtime.OPENAI_API_KEY');
+    expect(source).toContain('runtime.CLOUDFLARE_AI_API_TOKEN');
     expect(source).toContain('runtime.FRONTI_API_KEY');
   });
 

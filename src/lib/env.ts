@@ -34,7 +34,13 @@ const schema = z.object({
   FRONTI_BASE_URL: z.string().url().optional(),
   FRONTI_API_KEY: secretEnv,
 
-  // Compatibilidad temporal. OpenAI deja de ser la dependencia estructural,
+  // Workers AI Free. El Account ID puede reutilizar el ya configurado para R2.
+  CLOUDFLARE_ACCOUNT_ID: z.string().min(1).optional(),
+  R2_ACCOUNT_ID: z.string().min(1).optional(),
+  R2_ACCOUND_ID: z.string().min(1).optional(),
+  CLOUDFLARE_AI_API_TOKEN: secretEnv,
+
+  // Compatibilidad heredada. OpenAI no participa en la cadena operativa,
   // pero puede mantenerse como fallback explícito durante la transición.
   OPENAI_API_KEY: secretEnv,
   OPENAI_MODEL: z.string().min(1).optional(),

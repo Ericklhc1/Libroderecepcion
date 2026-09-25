@@ -238,6 +238,7 @@ export type ChatBootstrap = {
   profile: ChatProfile;
   totalUnread: number;
   storageEnabled: boolean;
+  frontiEnabled: boolean;
   generatedAt: string;
 };
 

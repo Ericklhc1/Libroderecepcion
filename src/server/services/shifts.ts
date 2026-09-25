@@ -200,12 +200,12 @@ export async function endShiftParticipation(
  *    nada que recibir ni podía cerrar. La adyacencia entre franjas **se
  *    eliminó**: ya no existe `nextShiftSlot` ni `previousShiftSlot`.
  *
- * 3. **Los turnos pueden solaparse.** Cada persona mantiene una sola
- *    participación activa, garantizada por ShiftAssignment. El entrante abre
- *    su propio turno aunque el saliente siga preparando o cerrando el suyo.
+ * 3. **El relevo de Recepción es secuencial.** El saliente mantiene su
+ *    participación hasta cerrar formalmente. Recién entonces el entrante puede
+ *    abrir, recontar Caja y confirmar la entrega antes de quedar ACTIVO.
  */
 
-/** Cualquier turno en curso. Se conserva para tableros agregados; ya no es único. */
+/** Turno operativo en curso. El servicio de apertura garantiza uno a la vez en Recepción. */
 export async function getCurrentShift(): Promise<ShiftWithDetail | null> {
   return prisma.shift.findFirst({
     where: { status: { in: OCCUPYING_SHIFT_STATUSES } },
@@ -241,8 +241,8 @@ export async function getShiftsAwaitingReceipt(): Promise<ShiftWithDetail[]> {
  *
  * Reemplaza a `getIncomingHandover(shift)`, que deducía el turno anterior por
  * adyacencia de franjas y devolvía `null` en cuanto la cadena tenía un hueco.
- * Ahora no hay nada que deducir: aunque los relevos se solapen, la entrega
- * pendiente es simplemente la que está enviada y sin recibir.
+ * Ahora no hay nada que deducir: la entrega pendiente es simplemente la que
+ * está enviada y sin recibir después del cierre saliente.
  *
  * `exceptShiftId` evita que un turno se reciba a sí mismo.
  */
@@ -268,14 +268,13 @@ export async function getPendingHandover(targetShiftId?: string | null) {
 /**
  * Caja declarada que todavía no fue recibida.
  *
- * Puede existir con la entrega completa aún en BORRADOR. Ese desacople es
- * deliberado: la Caja se transfiere primero y la entrega operativa puede seguir
- * preparándose después.
+ * Sólo se ofrece cuando la entrega ya fue ENVIADA. El entrante no puede
+ * reclamar ni recontar la Caja mientras el saliente siga preparando el cierre.
  */
 export async function getPendingCashHandover(targetShiftId?: string | null) {
   return prisma.shiftHandover.findFirst({
     where: {
-      status: { in: [HandoverStatus.BORRADOR, HandoverStatus.ENVIADA] },
+      status: HandoverStatus.ENVIADA,
       ...(targetShiftId ? { fromShiftId: { not: targetShiftId } } : {}),
       ...(targetShiftId
         ? { OR: [{ toShiftId: null }, { toShiftId: targetShiftId }] }
@@ -307,7 +306,7 @@ export type ShiftDesk = {
   iAmIn: boolean;
   /** Entrega operativa esperando recepción. */
   pending: Awaited<ReturnType<typeof getPendingHandover>>;
-  /** Caja declarada que puede recibirse antes de terminar la entrega. */
+  /** Caja declarada del turno saliente cerrado, pendiente de recuento entrante. */
   cashPending: Awaited<ReturnType<typeof getPendingCashHandover>>;
   /** Turnos que entregaron y esperan a alguien. */
   awaitingReceipt: ShiftWithDetail[];
@@ -681,7 +680,10 @@ export async function addShiftMember(
 }
 
 /**
- * Recibe la Caja del turno saliente. Puede ocurrir con la entrega aún BORRADOR.
+ * Recuenta la Caja del turno saliente ya enviado/cerrado.
+ *
+ * Este paso NO activa el turno entrante. La cuenta permanece en RECEIVING hasta
+ * que receiveHandover() confirme la entrega operativa completa.
  */
 export async function receiveShiftCash(
   user: CurrentUser,
@@ -721,8 +723,8 @@ export async function receiveShiftCash(
   if (handover.fromShiftId === shift.id) {
     throw new RuleError('Un turno no puede recibir su propia Caja.');
   }
-  if (handover.status !== HandoverStatus.BORRADOR && handover.status !== HandoverStatus.ENVIADA) {
-    throw new RuleError('Esa Caja ya no está disponible para recepción.');
+  if (handover.status !== HandoverStatus.ENVIADA) {
+    throw new RuleError('La Caja sólo puede recibirse después de que el turno saliente envíe su entrega.');
   }
   if (handover.toShiftId && handover.toShiftId !== shift.id) {
     throw new RuleError('Esa Caja ya fue reclamada por otro turno.');
@@ -812,12 +814,8 @@ export async function receiveShiftCash(
         );
       }
 
-      if (shift.status === ShiftStatus.INICIADO) {
-        await tx.shift.updateMany({
-          where: { id: shift.id, status: ShiftStatus.INICIADO },
-          data: { status: ShiftStatus.ACTIVO },
-        });
-      }
+      // El recuento de Caja es requisito de recepción, no activación.
+      // El turno continúa INICIADO hasta confirmar la entrega completa.
 
       await recordAudit(
         {

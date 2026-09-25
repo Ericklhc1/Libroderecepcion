@@ -66,7 +66,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'Recepción sólo puede operar con un turno ACTIVO. Sin turno, durante la recepción y durante el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas.',
     route: '/turno',
     anyOf: ['shift.start'],
-    keywords: ['turno', 'iniciar', 'abrir', 'recibir', 'relevo', 'caja', 'bloqueado', 'entrar'],
+    keywords: ['turno', 'iniciar', 'abrir', 'recibir', 'relevo', 'caja', 'recontar', 'firma', 'bloqueado', 'entrar'],
     tutorial: true,
   },
 
@@ -85,7 +85,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'El acta deja además un espacio de validación/auditoría para Supervisión o el auditor designado. Si el recuento no coincide, la diferencia debe quedar documentada; no se corrige ocultándola.',
     route: '/turno',
     anyOf: ['shift.receive'],
-    keywords: ['caja', 'arqueo', 'fondo', 'efectivo', 'recibir', 'recontar', 'dinero', 'garantía', 'firma'],
+    keywords: ['caja', 'arqueo', 'fondo', 'efectivo', 'recibir', 'recontar', 'dinero', 'divisa', 'garantía', 'firma'],
     tutorial: true,
   },
   {

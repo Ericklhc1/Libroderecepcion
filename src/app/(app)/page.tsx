@@ -35,13 +35,9 @@ export default async function DashboardPage() {
   const myOverdue = data.myTasks.filter(
     (task) => task.dueAt && task.dueAt < data.now,
   ).length;
-  const outgoingStillClosing = Boolean(
-    !shift &&
-      ((data.nextShift && data.nextShift.status !== ShiftStatus.CERRADO) ||
-        (data.incoming && data.incoming.fromShift.status !== ShiftStatus.CERRADO)),
-  );
+  const outgoingStillClosing = Boolean(!shift && data.blockingOutgoing);
   const canStartReceptionShift =
-    !shift && user.roleOperational && !outgoingStillClosing;
+    !shift && user.roleOperational && !outgoingStillClosing && !data.incoming;
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -96,7 +92,7 @@ export default async function DashboardPage() {
                     : outgoingStillClosing
                       ? 'El turno saliente todavía está en curso o cerrando. Debe quedar formalmente cerrado antes de que puedas iniciar el tuyo.'
                       : data.incoming
-                        ? 'El turno saliente ya cerró. Inicia tu turno para recontar Caja y validar la recepción.'
+                        ? 'El turno saliente ya cerró. Primero recibe la entrega; después podrás iniciar tu propio turno.'
                         : 'Inicia tu turno para habilitar la operación.'}
                 </p>
               </>
@@ -104,7 +100,15 @@ export default async function DashboardPage() {
           </div>
 
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            {canStartReceptionShift ? (
+            {data.incoming && !shift && !outgoingStillClosing && user.roleOperational ? (
+              <Link
+                href={`/turno/entrega/${data.incoming.id}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+              >
+                <Inbox className="h-4 w-4" aria-hidden="true" />
+                Revisar y recibir entrega
+              </Link>
+            ) : canStartReceptionShift ? (
               <OpenShiftForm suggestedType={shiftTypeAt()} />
             ) : null}
 

@@ -26,6 +26,9 @@ export type SupervisionRow = {
   detail: string | null;
   href: string;
   meta: string | null;
+  /** Objeto real del Libro que originó la señal. */
+  sourceEntity?: string;
+  sourceId?: string;
 };
 
 export type SupervisionBlock = {
@@ -52,8 +55,8 @@ function dueText(date: Date | null, now: Date): string | null {
 /**
  * Centro de Supervisión v1.4.0.
  *
- * Sólo proyecta excepciones del Libro, Caja y Turnos. No consulta PMS,
- * habitaciones, huéspedes, llaves, multas ni conflictos de ocupación.
+ * Proyecta excepciones de los brazos operativos del Libro hacia Supervisión:
+ * Novedades, Caja, Turnos y Llaves. No copia esos objetos ni consulta PMS.
  */
 export async function getSupervisionData(): Promise<{
   now: Date;
@@ -71,6 +74,8 @@ export async function getSupervisionData(): Promise<{
     openGuarantees,
     staleHandovers,
     pendingClosures,
+    cashAudits,
+    keyCounts,
   ] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: {
@@ -218,7 +223,59 @@ export async function getSupervisionData(): Promise<{
       orderBy: { date: 'asc' },
       take: 10,
     }),
+    // El último arqueo de cada divisa define si hoy existe una diferencia viva.
+    prisma.cashAudit.findMany({
+      select: {
+        id: true,
+        currency: true,
+        expectedAmount: true,
+        countedAmount: true,
+        difference: true,
+        createdAt: true,
+        countedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    }),
+    // Se leen conteos recientes y luego se conserva sólo el último de cada piso.
+    prisma.keyInventoryCount.findMany({
+      select: {
+        id: true,
+        floor: true,
+        countedAt: true,
+        countedBy: { select: { name: true } },
+        items: {
+          select: {
+            expected: true,
+            found: true,
+            outOfService: true,
+            room: { select: { number: true } },
+          },
+        },
+      },
+      orderBy: { countedAt: 'desc' },
+      take: 12,
+    }),
   ]);
+
+  const latestCashAudits = Array.from(
+    new Map(cashAudits.map((audit) => [audit.currency, audit])).values(),
+  ).filter((audit) => Number(audit.difference) !== 0);
+
+  const latestKeyCounts = Array.from(
+    new Map(keyCounts.map((count) => [count.floor, count])).values(),
+  )
+    .map((count) => ({
+      ...count,
+      missing: count.items.reduce(
+        (sum, item) => sum + Math.max(item.expected - item.found, 0),
+        0,
+      ),
+      missingRooms: count.items
+        .filter((item) => item.found < item.expected)
+        .map((item) => item.room.number),
+    }))
+    .filter((count) => count.missing > 0);
 
   const blocks: SupervisionBlock[] = [
     {
@@ -233,6 +290,8 @@ export async function getSupervisionData(): Promise<{
         detail: row.owner ? `Responsable: ${row.owner.name}` : 'Sin responsable asignado',
         href: `/libro/${row.id}`,
         meta: row.department?.name ?? null,
+        sourceEntity: 'OperationalEntry',
+        sourceId: row.id,
       })),
     },
     {
@@ -247,6 +306,8 @@ export async function getSupervisionData(): Promise<{
         detail: row.message,
         href: row.entry ? `/libro/${row.entry.id}` : `/alertas?alerta=${row.id}`,
         meta: dueText(row.dueAt, now),
+        sourceEntity: 'Alert',
+        sourceId: row.id,
       })),
     },
     {
@@ -277,8 +338,44 @@ export async function getSupervisionData(): Promise<{
           ]
             .filter(Boolean)
             .join(' · '),
+          sourceEntity: 'Guarantee',
+          sourceId: guarantee.id,
         };
       }),
+    },
+    {
+      key: 'caja',
+      title: 'Diferencias de Caja vigentes',
+      hint: 'Se muestra únicamente el último arqueo de cada divisa cuando todavía presenta diferencia.',
+      tone: 'critico',
+      rows: latestCashAudits.map((audit) => ({
+        id: audit.id,
+        ref: `Caja ${audit.currency}`,
+        title: `Diferencia ${Number(audit.difference).toLocaleString('es-CL')} ${audit.currency}`,
+        detail: `Esperado ${Number(audit.expectedAmount).toLocaleString('es-CL')} · contado ${Number(audit.countedAmount).toLocaleString('es-CL')}`,
+        href: '/caja',
+        meta: `${audit.countedBy.name} · ${formatCalendarDate(audit.createdAt)}`,
+        sourceEntity: 'CashAudit',
+        sourceId: audit.id,
+      })),
+    },
+    {
+      key: 'llaves',
+      title: 'Inventario de llaves con faltantes',
+      hint: 'Sólo el último conteo de cada piso; un conteo posterior reemplaza la señal anterior.',
+      tone: 'atencion',
+      rows: latestKeyCounts.map((count) => ({
+        id: count.id,
+        ref: `Piso ${count.floor}`,
+        title: `${count.missing} llave(s) faltante(s)`,
+        detail: count.missingRooms.length > 0
+          ? `Habitaciones: ${count.missingRooms.join(', ')}`
+          : null,
+        href: `/llaves?piso=${count.floor}`,
+        meta: `${count.countedBy.name} · ${formatCalendarDate(count.countedAt)}`,
+        sourceEntity: 'KeyInventoryCount',
+        sourceId: count.id,
+      })),
     },
     {
       key: 'tareas',
@@ -292,6 +389,8 @@ export async function getSupervisionData(): Promise<{
         detail: row.assignee ? `Asignada a ${row.assignee.name}` : 'Sin responsable asignado',
         href: `/tareas/${row.id}`,
         meta: [dueText(row.dueAt, now), row.department?.name].filter(Boolean).join(' · ') || null,
+        sourceEntity: 'Task',
+        sourceId: row.id,
       })),
     },
     {
@@ -308,6 +407,8 @@ export async function getSupervisionData(): Promise<{
         meta: [dueText(row.scheduledAt, now), `a cargo de ${row.owner.name}`]
           .filter(Boolean)
           .join(' · '),
+        sourceEntity: 'FollowUp',
+        sourceId: row.id,
       })),
     },
     {
@@ -322,6 +423,8 @@ export async function getSupervisionData(): Promise<{
         detail: null,
         href: `/libro/${row.id}`,
         meta: row.department?.name ?? null,
+        sourceEntity: 'OperationalEntry',
+        sourceId: row.id,
       })),
     },
     {
@@ -336,6 +439,8 @@ export async function getSupervisionData(): Promise<{
         detail: `${row._count.items} punto(s) pendientes de recepción.`,
         href: `/turno/entrega/${row.id}`,
         meta: row.issuedAt ? dueText(row.issuedAt, now) : null,
+        sourceEntity: 'ShiftHandover',
+        sourceId: row.id,
       })),
     },
     {
@@ -350,6 +455,8 @@ export async function getSupervisionData(): Promise<{
         detail: `Estado actual: ${row.status}`,
         href: '/turno',
         meta: formatCalendarDate(row.date),
+        sourceEntity: 'Shift',
+        sourceId: row.id,
       })),
     },
   ];

@@ -199,14 +199,22 @@ export async function updateFollowUp(
   if (input.ownerId) await assertAssignable(input.ownerId);
 
   if (input.status === FollowUpStatus.CUMPLIDO && !(input.result ?? current.result)) {
-    throw new RuleError('Para cerrar un seguimiento debes registrar el resultado.');
+    throw new RuleError('Para resolver un seguimiento debes registrar el resultado.');
   }
 
+  /*
+   * FollowUp.ownerId es obligatorio. Un select vacío llega como null por
+   * zOptionalCuid; eso significa "no cambiar responsable", nunca desconectarlo.
+   * Construimos además el update con la relación Prisma owner para no depender
+   * de un cast que oculte incompatibilidades del cliente generado.
+   */
   const after: Record<string, unknown> = {};
-  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'ownerId', 'description', 'priority', 'visibility', 'resolution'] as const) {
+  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'description', 'priority', 'visibility', 'resolution'] as const) {
     const value = input[key];
     if (value !== undefined) after[key] = value;
   }
+  if (input.ownerId) after.ownerId = input.ownerId;
+
   const changes = diffFields(
     current as unknown as Record<string, unknown>,
     after,
@@ -214,15 +222,26 @@ export async function updateFollowUp(
   );
   if (changes.changed.length === 0) return current;
 
+  const closing =
+    input.status === FollowUpStatus.CUMPLIDO || input.status === FollowUpStatus.CANCELADO;
+  const updateData: Prisma.FollowUpUpdateInput = {
+    ...(input.result !== undefined ? { result: input.result } : {}),
+    ...(input.nextAction !== undefined ? { nextAction: input.nextAction } : {}),
+    ...(input.scheduledAt !== undefined ? { scheduledAt: input.scheduledAt } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.ownerId ? { owner: { connect: { id: input.ownerId } } } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+    ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+    ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+    ...(input.status !== undefined ? { completedAt: closing ? new Date() : null } : {}),
+  };
+
   return prisma.$transaction(async (tx) => {
-    const closing =
-      input.status === FollowUpStatus.CUMPLIDO || input.status === FollowUpStatus.CANCELADO;
     const updated = await tx.followUp.update({
       where: { id: input.id },
-      data: {
-        ...after,
-        completedAt: closing ? new Date() : null,
-      } as Prisma.FollowUpUpdateInput,
+      data: updateData,
       include: followUpInclude,
     });
 

@@ -341,7 +341,7 @@ async function ensureFrontiPrivateConversation(
 
 export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap> {
   assertChatActor(user);
-  await ensureFrontiPrivateConversation(user);
+  const frontiConversationId = await ensureFrontiPrivateConversation(user);
   const now = new Date();
   const [rows, people, totalUnread, me] = await Promise.all([
     prisma.chatConversation.findMany({
@@ -367,6 +367,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
     profile: serializeProfile(me),
     totalUnread,
     storageEnabled: isR2Configured(),
+    frontiEnabled: Boolean(frontiConversationId),
     generatedAt: now.toISOString(),
   };
 }

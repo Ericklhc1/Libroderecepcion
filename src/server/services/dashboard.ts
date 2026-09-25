@@ -75,6 +75,7 @@ export async function getDashboardData(user: CurrentUser) {
   );
   const canValidateClosure =
     user.roleKey === ROLE_KEYS.SUPERVISOR || user.isSystemAdmin;
+  const receptionEntriesOnly = user.roleKey === ROLE_KEYS.RECEPTIONIST;
   const visibleAlertWhere: Prisma.AlertWhereInput = canValidateClosure
     ? LIVE_ALERT_WHERE(now)
     : {
@@ -97,6 +98,12 @@ export async function getDashboardData(user: CurrentUser) {
       where: {
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
+        ...(receptionEntriesOnly
+          ? {
+              type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
+              createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
+            }
+          : {}),
         OR: [
           { priority: { in: [Priority.CRITICA, Priority.ALTA] } },
           { dueAt: { lt: now } },
@@ -169,7 +176,16 @@ export async function getDashboardData(user: CurrentUser) {
     getCurrentShift(),
     myShift ? getShiftMetrics(myShift.id) : null,
     prisma.operationalEntry.count({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+      where: {
+        deletedAt: null,
+        status: { in: ENTRY_OPEN_STATUSES },
+        ...(receptionEntriesOnly
+          ? {
+              type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
+              createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
+            }
+          : {}),
+      },
     }),
     prisma.task.count({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
@@ -179,6 +195,9 @@ export async function getDashboardData(user: CurrentUser) {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
+        ...(receptionEntriesOnly
+          ? { createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } } }
+          : {}),
       },
     }),
     prisma.alert.count({ where: visibleAlertWhere }),

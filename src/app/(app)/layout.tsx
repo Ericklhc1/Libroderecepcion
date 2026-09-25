@@ -177,7 +177,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 
       {!tutorialDone && blocking.length === 0 ? (
-        <TutorialTour steps={guidedTourSteps(user.permissions)} userName={user.name} />
+        <TutorialTour
+          steps={guidedTourSteps(user.permissions)}
+          userName={user.name}
+          suspended={receptionGate.mode !== 'ACTIVE'}
+        />
       ) : null}
     </div>
   );

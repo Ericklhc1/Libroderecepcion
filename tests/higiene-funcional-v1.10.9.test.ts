@@ -16,6 +16,21 @@ describe('higiene funcional v1.10.9', () => {
     }
   });
 
+  it('retira la programación histórica de turnos de la interfaz y la ayuda', () => {
+    const adminForms = readFileSync('src/app/(app)/admin/admin-forms.tsx', 'utf8');
+    const help = readFileSync('src/domain/help.ts', 'utf8');
+    const install = readFileSync('src/app/instalacion/page.tsx', 'utf8');
+
+    expect(adminForms).not.toContain('ScheduleShiftForm');
+    expect(adminForms).not.toContain('scheduleShiftAction');
+    expect(adminForms).not.toContain("value: 'MANANA'");
+    expect(adminForms).not.toContain("value: 'TARDE'");
+    expect(help).not.toContain("id: 'turno-largo'");
+    expect(help).not.toContain('¿Cómo programo un turno');
+    expect(install).not.toContain('programarás los turnos');
+    expect(install).toContain('configurarás el sistema');
+  });
+
   it('separa Administración por intención y aísla la zona de riesgo', () => {
     const source = readFileSync('src/app/(app)/admin/page.tsx', 'utf8');
     for (const label of [

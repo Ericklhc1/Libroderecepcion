@@ -304,6 +304,29 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(activo.status).toBe(ShiftStatus.ACTIVO);
   });
 
+  it('Supervisión puede recibir la liana y otro recepcionista abrir el turno que continúa', async () => {
+    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Erick' });
+    const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
+
+    const { shift: primero } = await openShift(saliente, { type: ShiftType.DIA });
+    const handover = await prepareHandover(saliente, primero.id);
+    await sendHandover(saliente, { shiftId: primero.id });
+    await closeShift(saliente, { shiftId: primero.id });
+
+    const received = await receiveHandover(supervisor, { handoverId: handover.id });
+    expect(received.status).toBe(HandoverStatus.RECIBIDA);
+    expect(received.receivedById).toBe(supervisor.id);
+    expect(received.toShiftId).toBeNull();
+
+    const { shift: segundo } = await openShift(entrante, { type: ShiftType.NOCHE });
+    expect(segundo.status).toBe(ShiftStatus.ACTIVO);
+
+    const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(linked.receivedById).toBe(supervisor.id);
+    expect(linked.toShiftId).toBe(segundo.id);
+  });
+
   it('una entrega no se puede recibir dos veces', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });

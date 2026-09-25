@@ -33,9 +33,11 @@ function visibleTarget(selector?: string): HTMLElement | null {
 export function TutorialTour({
   steps,
   userName,
+  suspended = false,
 }: {
   steps: TutorialStep[];
   userName: string;
+  suspended?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -48,12 +50,17 @@ export function TutorialTour({
   const first = index === 0;
 
   useEffect(() => {
-    if (!step?.route || !shouldNavigateTutorial(dismissed, pathname, step.route)) return;
+    if (
+      !step?.route ||
+      !shouldNavigateTutorial(dismissed, pathname, step.route, suspended)
+    ) {
+      return;
+    }
     router.push(step.route);
-  }, [dismissed, pathname, router, step]);
+  }, [dismissed, pathname, router, step, suspended]);
 
   useEffect(() => {
-    if (dismissed || !step) {
+    if (dismissed || suspended || !step) {
       setTargetRect(null);
       return;
     }
@@ -80,7 +87,7 @@ export function TutorialTour({
       window.removeEventListener('resize', locate);
       window.removeEventListener('scroll', locate, true);
     };
-  }, [dismissed, pathname, step]);
+  }, [dismissed, pathname, step, suspended]);
 
   const pointer = useMemo(() => {
     if (!targetRect) return null;
@@ -89,7 +96,7 @@ export function TutorialTour({
     return { x: cx, y: cy };
   }, [targetRect]);
 
-  if (dismissed || steps.length === 0 || !step) return null;
+  if (dismissed || suspended || steps.length === 0 || !step) return null;
 
   return (
     <>

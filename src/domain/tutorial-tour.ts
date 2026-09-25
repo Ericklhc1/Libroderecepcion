@@ -22,8 +22,9 @@ export function shouldNavigateTutorial(
   dismissed: boolean,
   pathname: string,
   route?: string,
+  suspended = false,
 ): boolean {
-  if (dismissed || !route) return false;
+  if (dismissed || suspended || !route) return false;
 
   const routePath = route.split(/[?#]/, 1)[0] || '/';
   if (routePath === '/') return pathname !== '/';

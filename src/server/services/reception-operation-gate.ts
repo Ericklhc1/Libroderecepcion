@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { ShiftStatus } from '@prisma/client';
+import { HandoverStatus, ShiftStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { RuleError } from '@/server/errors';
@@ -8,6 +8,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
 
 export type ReceptionOperationMode =
   | 'NO_SHIFT'
+  | 'HANDOVER_PENDING'
   | 'RECEIVING'
   | 'ACTIVE'
   | 'CLOSING';
@@ -69,6 +70,23 @@ export async function getReceptionOperationGate(
   });
 
   if (!assignment) {
+    const pendingHandover = await prisma.shiftHandover.findFirst({
+      where: {
+        status: HandoverStatus.ENVIADA,
+        receivedAt: null,
+        toShiftId: null,
+        fromShift: {
+          status: ShiftStatus.CERRADO,
+          archivedAt: null,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (pendingHandover) {
+      return { mode: 'HANDOVER_PENDING', shiftId: null, shiftStatus: null };
+    }
+
     return { mode: 'NO_SHIFT', shiftId: null, shiftStatus: null };
   }
 
@@ -89,8 +107,11 @@ function gateMessage(mode: ReceptionOperationMode): string {
   if (mode === 'NO_SHIFT') {
     return 'Debes iniciar tu turno antes de interactuar con la operación.';
   }
+  if (mode === 'HANDOVER_PENDING') {
+    return 'Hay una entrega cerrada pendiente. Recibe la entrega y recuenta Caja antes de iniciar el turno siguiente.';
+  }
   if (mode === 'RECEIVING') {
-    return 'Tu turno está iniciado pero aún no está recibido. Recuenta Caja y confirma la recepción antes de operar.';
+    return 'Hay una recepción de turno pendiente. Completa la validación desde Mi turno antes de operar.';
   }
   return 'Tu turno está en cierre. Completa Caja, entrega y cierre antes de volver a operar.';
 }
@@ -109,7 +130,7 @@ export async function assertReceptionOperationPermission(
     throw new RuleError(gateMessage(gate.mode));
   }
 
-  if (gate.mode === 'RECEIVING') {
+  if (gate.mode === 'HANDOVER_PENDING' || gate.mode === 'RECEIVING') {
     if (RECEIVE_ONLY_PERMISSIONS.has(permission)) return;
     throw new RuleError(gateMessage(gate.mode));
   }

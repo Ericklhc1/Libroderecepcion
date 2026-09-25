@@ -39,6 +39,7 @@ import {
   type FrontiToolTrace,
 } from './fronti-v2/telemetry';
 import { serializeToolResultForModel } from './fronti-v2/context-budget';
+import { normalizeFrontiReply } from './fronti-v2/response-style';
 import {
   chatWithFrontiProviderChain,
   FrontiProviderError,
@@ -967,9 +968,11 @@ export async function runReceptionAssistant(
           outcome: toolTrace.some((item) => !item.ok) ? 'partial' : 'success',
         });
         return {
-          reply:
+          reply: normalizeFrontiReply(
             response.text ||
-            'No pude formular una respuesta. Intenta decirlo de otra forma.',
+              'No pude formular una respuesta. Intenta decirlo de otra forma.',
+            latestUserMessage,
+          ),
           confirmations,
         };
       }

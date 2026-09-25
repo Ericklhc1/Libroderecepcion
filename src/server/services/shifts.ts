@@ -605,7 +605,7 @@ export async function openShift(
           toShiftId: null,
           fromShift: { status: ShiftStatus.CERRADO },
         },
-        orderBy: { receivedAt: 'asc' },
+        orderBy: { receivedAt: 'desc' },
         select: { id: true },
       });
       if (receivedLink) {

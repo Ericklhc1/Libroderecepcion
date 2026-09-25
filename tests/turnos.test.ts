@@ -382,12 +382,3 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(shift.id).not.toBe(archivado.id);
   });
 });
-
-/** Envía la entrega del turno dado, para poder abrir otro después. */
-async function sendHandoverLater(
-  shiftId: string,
-  user: Awaited<ReturnType<typeof createUser>>,
-) {
-  await prepareHandover(user, shiftId);
-  await sendHandover(user, { shiftId });
-}

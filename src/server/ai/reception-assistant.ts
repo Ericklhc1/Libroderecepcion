@@ -933,12 +933,14 @@ export async function runReceptionAssistant(
 
         /*
          * Stickiness por conversación: cuando un proveedor/modelo ya logró
-         * responder un paso, el siguiente loop comienza por él. Así evitamos
-         * volver a golpear Sol en cada tool round después de un 429 y también
-         * evitamos reintentar 120B si el paso anterior ya cayó a 20B.
+         * responder un paso, el siguiente loop comienza por esa pareja exacta.
+         * La coincidencia incluye el modelo porque Groq aparece dos veces en
+         * la cadena de costo cero (120B y 20B).
          */
         const successful = activeProviders.find(
-          (provider) => provider.provider === response.providerUsed,
+          (provider) =>
+            provider.provider === response.providerUsed &&
+            provider.model === response.modelUsed,
         );
         if (successful) {
           activeProviders = [

@@ -156,9 +156,9 @@ export function FrontiSettingControl({ setting }: { setting: FrontiSettingRow })
           </select>
         ) : setting.key === 'fronti.provider' ? (
           <select name="value" defaultValue={value} className="input-base max-w-xs">
-            <option value="groq">Groq · Qwen hospedado</option>
+            <option value="groq">Groq · GPT-OSS 120B/20B</option>
+            <option value="cloudflare">Cloudflare · GLM-4.7-Flash</option>
             <option value="vllm">vLLM · autohospedado</option>
-            <option value="openai">OpenAI · fallback</option>
           </select>
         ) : setting.key === 'fronti.reasoningEffort' ? (
           <select name="value" defaultValue={value} className="input-base max-w-xs">
@@ -204,7 +204,7 @@ export function FrontiSettingControl({ setting }: { setting: FrontiSettingRow })
 
 
 export type FrontiProviderCredentialRow = {
-  provider: 'groq' | 'vllm' | 'openai';
+  provider: 'groq' | 'cloudflare' | 'vllm';
   hasStoredSecret: boolean;
   storedSecretUnreadable: boolean;
   envConfigured: boolean;
@@ -213,8 +213,8 @@ export type FrontiProviderCredentialRow = {
 
 function providerLabel(provider: FrontiProviderCredentialRow['provider']): string {
   if (provider === 'groq') return 'Groq';
-  if (provider === 'vllm') return 'vLLM';
-  return 'OpenAI';
+  if (provider === 'cloudflare') return 'Cloudflare Workers AI';
+  return 'vLLM';
 }
 
 export function FrontiProviderCredentials({

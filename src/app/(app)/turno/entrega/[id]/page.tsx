@@ -83,6 +83,7 @@ export default async function HandoverPage({
   const canReceive = Boolean(
     handover.status === HandoverStatus.ENVIADA &&
       handover.fromShift.status === ShiftStatus.CERRADO &&
+      handover.issuedBy.id !== user.id &&
       user.permissions.includes('shift.receive'),
   );
   const isReceiver =

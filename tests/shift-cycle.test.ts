@@ -41,7 +41,7 @@ describe('ciclo de turno de punta a punta', () => {
     });
   });
 
-  it('recorre programado → activo automático → entrega → recibido → cerrado', async () => {
+  it('recorre programado → activo → entrega → cerrado → recibido', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
 
@@ -211,17 +211,20 @@ describe('invariantes del turno', () => {
     expect(assignment.role).toBe('TITULAR');
   });
 
-  it('quien llega después abre un turno distinto; no se fusionan', async () => {
+  it('quien llega después queda bloqueado mientras el saliente siga abierto', async () => {
     const shift = await createShift({ userId: morning.id, type: ShiftType.DIA });
     const opened = await openShiftAs(morning, shift);
-    const next = await openShiftAs(evening, shift);
 
-    expect(next.id).not.toBe(opened.id);
+    await expect(openShiftAs(evening, shift)).rejects.toThrow(
+      /saliente todavía no está cerrado/i,
+    );
+
+    expect(opened.id).toBe(shift.id);
     expect(
       await prisma.shiftAssignment.count({
         where: { activatedAt: { not: null }, leftAt: null },
       }),
-    ).toBe(2);
+    ).toBe(1);
   });
 
   it('no permite recibir una entrega inexistente', async () => {
@@ -239,6 +242,8 @@ describe('invariantes del turno', () => {
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    await closeShift(morning, { shiftId: shiftA.id });
+
     await openShiftAs(evening, shiftB);
     await receiveHandover(evening, { shiftId: shiftB.id, handoverId: sent.id });
     await expect(

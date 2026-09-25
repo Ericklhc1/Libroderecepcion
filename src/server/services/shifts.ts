@@ -794,8 +794,17 @@ export async function receiveShiftCash(
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
-  if (handover.issuedById === user.id) {
-    throw new RuleError('La entrega debe ser recibida por otra persona.');
+  const outgoingMember = await prisma.shiftAssignment.findUnique({
+    where: {
+      shiftId_userId: {
+        shiftId: handover.fromShiftId,
+        userId: user.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (outgoingMember) {
+    throw new RuleError('La entrega debe ser recibida por alguien distinto del turno saliente.');
   }
   if (handover.fromShift.status !== ShiftStatus.CERRADO) {
     throw new RuleError(
@@ -977,8 +986,17 @@ export async function receiveHandover(
     },
   });
   if (!incoming) throw new NotFoundError('La entrega indicada no existe.');
-  if (incoming.issuedById === user.id) {
-    throw new RuleError('La entrega debe ser recibida por otra persona.');
+  const outgoingMember = await prisma.shiftAssignment.findUnique({
+    where: {
+      shiftId_userId: {
+        shiftId: incoming.fromShiftId,
+        userId: user.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (outgoingMember) {
+    throw new RuleError('La entrega debe ser recibida por alguien distinto del turno saliente.');
   }
   if (incoming.status === HandoverStatus.RECIBIDA || incoming.receivedAt) {
     throw new RuleError('Esa entrega ya fue recibida y confirmada.');

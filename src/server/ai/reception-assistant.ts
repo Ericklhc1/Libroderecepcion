@@ -31,7 +31,7 @@ import {
 } from './fronti-config';
 import {
   assertFrontiToolEnabled,
-  enabledFrontiToolDefinitions,
+  selectFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import {
@@ -861,8 +861,8 @@ function systemInstructions(config: FrontiConfig): string {
   );
 }
 
-function chatTools(config: FrontiConfig): FrontiToolDefinition[] {
-  return enabledFrontiToolDefinitions(config).map((definition) => ({
+function chatTools(config: FrontiConfig, userMessage: string): FrontiToolDefinition[] {
+  return selectFrontiToolDefinitions(config, userMessage).map((definition) => ({
     type: 'function',
     function: {
       name: definition.name,
@@ -910,16 +910,19 @@ export async function runReceptionAssistant(
     if (!providers.length) {
       throw new AssistantError('SIN_CLAVE');
     }
-    const tools = chatTools(config);
+    let activeProviders = [...providers];
+    const latestUserMessage =
+      [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+    const tools = chatTools(config, latestUserMessage);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
       loops = loop + 1;
-      let response;
+      let response: Awaited<ReturnType<typeof chatWithFrontiProviderChain>>;
       try {
         response = await chatWithFrontiProviderChain({
-          providers,
+          providers: activeProviders,
           messages: chat,
           tools,
         });
@@ -927,6 +930,22 @@ export async function runReceptionAssistant(
           provider: response.providerUsed,
           model: response.modelUsed,
         });
+
+        /*
+         * Stickiness por conversación: cuando un proveedor/modelo ya logró
+         * responder un paso, el siguiente loop comienza por él. Así evitamos
+         * volver a golpear Sol en cada tool round después de un 429 y también
+         * evitamos reintentar 120B si el paso anterior ya cayó a 20B.
+         */
+        const successful = activeProviders.find(
+          (provider) => provider.provider === response.providerUsed,
+        );
+        if (successful) {
+          activeProviders = [
+            { ...successful, model: response.modelUsed },
+            ...activeProviders.filter((provider) => provider !== successful),
+          ];
+        }
       } catch (error) {
         if (error instanceof FrontiProviderError) {
           throw new AssistantError(error.failure, error);

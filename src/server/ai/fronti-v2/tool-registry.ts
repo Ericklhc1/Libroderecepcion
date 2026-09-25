@@ -509,6 +509,98 @@ export function enabledFrontiToolDefinitions(
   });
 }
 
+function normalizedIntent(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function addMany(target: Set<string>, names: readonly string[]): void {
+  for (const name of names) target.add(name);
+}
+
+/**
+ * Reduce el catálogo enviado al modelo según la intención literal de la
+ * consulta. El registro completo sigue siendo la fuente de verdad; esto sólo
+ * evita reenviar ~20 schemas cuando la pregunta habla de dos o tres áreas.
+ *
+ * La selección es deliberadamente determinística: no usa otro LLM, no concede
+ * permisos y nunca habilita una herramienta desactivada.
+ */
+export function selectFrontiToolDefinitions(
+  config: FrontiConfig,
+  userMessage: string,
+): readonly FrontiToolRegistryEntry[] {
+  const enabled = enabledFrontiToolDefinitions(config);
+  const text = normalizedIntent(userMessage);
+  const wanted = new Set<string>();
+
+  const broad =
+    /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|que falta|cosas raras/.test(
+      text,
+    );
+
+  if (broad) {
+    addMany(wanted, [
+      'consultar_estado_operativo',
+      'consultar_turnos',
+      'consultar_novedades',
+      'consultar_garantias',
+      'consultar_tareas',
+      'consultar_seguimientos',
+      'consultar_supervision',
+      'consultar_alertas',
+    ]);
+  }
+
+  if (/caja|arqueo|fondo fijo|efectivo|tesorer/.test(text)) wanted.add('consultar_caja');
+  if (/garant/.test(text)) wanted.add('consultar_garantias');
+  if (/novedad|incidencia/.test(text)) wanted.add('consultar_novedades');
+  if (/llave/.test(text)) wanted.add('consultar_llaves');
+  if (/turno|relevo|entrega pendiente|quien esta/.test(text)) wanted.add('consultar_turnos');
+  if (/venc|proxim/.test(text)) wanted.add('consultar_vencimientos');
+  if (/seguimiento/.test(text)) wanted.add('consultar_seguimientos');
+  if (/supervisi/.test(text)) wanted.add('consultar_supervision');
+  if (/alerta/.test(text)) wanted.add('consultar_alertas');
+  if (/auditor/.test(text)) wanted.add('consultar_auditoria');
+  if (/usuario|usuarios|rol|roles/.test(text)) wanted.add('consultar_usuarios');
+  if (/configur|parametro/.test(text)) wanted.add('consultar_configuracion_operativa');
+  if (/habitacion|pieza|room|\b[4-6]\d{2}\b/.test(text)) wanted.add('consultar_habitacion');
+  if (/prioridad|revisar primero/.test(text)) wanted.add('consultar_prioridades');
+
+  if (/check.?out|confirmar salida|confirma la salida/.test(text)) wanted.add('proponer_checkouts');
+  if (/recuerdame|recordatorio/.test(text)) wanted.add('proponer_recordatorio');
+  if (/multa|cobro por dano|cobro por mancha/.test(text)) wanted.add('proponer_multa');
+  if (/crea|crear|registra|registrar|anota|anotar/.test(text) && /novedad|incidencia/.test(text)) {
+    wanted.add('proponer_registro');
+  }
+  if (/completa|completar|resuelve|resolver|marca como completada/.test(text) && /tarea|t#/.test(text)) {
+    wanted.add('proponer_resolver_tarea');
+  }
+  if (/reporta|reportar|informa al supervisor|avisa al administrador/.test(text)) {
+    wanted.add('reportar_hallazgo');
+  }
+
+  if (wanted.size === 0 && /incoherenc|contradic/.test(text)) {
+    addMany(wanted, [
+      'consultar_estado_operativo',
+      'consultar_turnos',
+      'consultar_novedades',
+      'consultar_caja',
+      'consultar_garantias',
+      'consultar_llaves',
+    ]);
+  }
+
+  // Conversación, memoria o preguntas de identidad pueden resolverse sin
+  // herramientas. Enviar un catálogo vacío reduce costo y TPM sin perder
+  // ninguna capacidad necesaria para ese turno.
+  if (wanted.size === 0) return [];
+
+  return enabled.filter((definition) => wanted.has(definition.name));
+}
+
 export function assertFrontiToolEnabled(
   config: FrontiConfig,
   functionName: string,

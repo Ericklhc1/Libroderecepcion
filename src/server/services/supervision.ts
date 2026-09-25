@@ -258,13 +258,19 @@ export async function getSupervisionData(): Promise<{
     }),
   ]);
 
-  const latestCashAudits = Array.from(
-    new Map([...cashAudits].reverse().map((audit) => [audit.currency, audit])).values(),
-  ).filter((audit) => Number(audit.difference) !== 0);
+  const latestCashByCurrency = new Map<string, (typeof cashAudits)[number]>();
+  for (const audit of cashAudits) {
+    if (!latestCashByCurrency.has(audit.currency)) latestCashByCurrency.set(audit.currency, audit);
+  }
+  const latestCashAudits = Array.from(latestCashByCurrency.values()).filter(
+    (audit) => Number(audit.difference) !== 0,
+  );
 
-  const latestKeyCounts = Array.from(
-    new Map([...keyCounts].reverse().map((count) => [count.floor, count])).values(),
-  )
+  const latestKeyByFloor = new Map<number, (typeof keyCounts)[number]>();
+  for (const count of keyCounts) {
+    if (!latestKeyByFloor.has(count.floor)) latestKeyByFloor.set(count.floor, count);
+  }
+  const latestKeyCounts = Array.from(latestKeyByFloor.values())
     .map((count) => ({
       ...count,
       missing: count.items.reduce(

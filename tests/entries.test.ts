@@ -296,6 +296,44 @@ describe('registros del libro operativo', () => {
       updateFollowUp(receptionist, { id: followUp.id, status: 'CUMPLIDO' }),
     ).rejects.toThrow(/debes registrar el resultado/);
   });
+
+  it('ignora ownerId nulo al actualizar y conserva el responsable obligatorio', async () => {
+    const entry = await createEntry(receptionist, novedad);
+    const followUp = await createFollowUp(receptionist, {
+      entryId: entry.id,
+      action: 'Confirmar reparación.',
+      ownerId: receptionist.id,
+    });
+
+    const updated = await updateFollowUp(receptionist, {
+      id: followUp.id,
+      ownerId: null,
+      nextAction: 'Revisar nuevamente en recepción.',
+    });
+
+    expect(updated.ownerId).toBe(receptionist.id);
+    expect(updated.nextAction).toContain('Revisar nuevamente');
+  });
+
+  it('editar un seguimiento ya resuelto no borra su fecha de cierre', async () => {
+    const entry = await createEntry(receptionist, novedad);
+    const followUp = await createFollowUp(receptionist, {
+      entryId: entry.id,
+      action: 'Confirmar reparación definitiva.',
+    });
+    const closed = await updateFollowUp(receptionist, {
+      id: followUp.id,
+      status: 'CUMPLIDO',
+      result: 'Reparación confirmada.',
+    });
+    expect(closed.completedAt).not.toBeNull();
+
+    const edited = await updateFollowUp(receptionist, {
+      id: followUp.id,
+      notes: 'Validado con el turno siguiente.',
+    });
+    expect(edited.completedAt?.getTime()).toBe(closed.completedAt?.getTime());
+  });
 });
 
 describe('eliminación lógica y recuperación', () => {

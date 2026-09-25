@@ -8,7 +8,6 @@ import { getHistory } from '@/server/services/history';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
-import { Dialog } from '@/components/ui/dialog';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
 import {

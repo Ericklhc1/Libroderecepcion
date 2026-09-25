@@ -52,10 +52,11 @@ describe('central de ayuda', () => {
     expect(visibles).toContain('incidencia');
   });
 
-  it('un supervisor sí ve el comunicado y el reseteo de habitación', () => {
+  it('un supervisor ve controles vigentes y no procedimientos PMS retirados', () => {
     const visibles = visibleTopics(SUPERVISOR).map((topic) => topic.id);
     expect(visibles).toContain('comunicado');
-    expect(visibles).toContain('habitacion-atascada');
+    expect(visibles).not.toContain('habitacion-atascada');
+    expect(visibles).not.toContain('cargar-informes');
   });
 
   it('encuentra por palabras del mesón, con o sin tilde', () => {
@@ -68,24 +69,18 @@ describe('central de ayuda', () => {
     expect(searchHelp('garantía', SUPERVISOR).map((t) => t.id)).toContain('garantia');
   });
 
-  it('encuentra por el problema, no sólo por el nombre de la función', () => {
-    // Alguien atascado no busca «resetear»: busca lo que le pasa.
-    const ids = searchHelp('no deja confirmar', SUPERVISOR).map((topic) => topic.id);
-    expect(ids.slice(0, 2)).toContain('habitacion-atascada');
+  it('encuentra el relevo por palabras del procedimiento actual', () => {
+    for (const consulta of ['relevo', 'recontar', 'firma']) {
+      const ids = searchHelp(consulta, RECEPCION).map((topic) => topic.id);
+      expect(ids).toContain('tomar-turno');
+    }
   });
 
-  it('quien está atascado y no puede resolverlo recibe a quién avisar', () => {
-    /*
-      Lo encontró una prueba en navegador: un recepcionista que buscaba «no
-      deja confirmar» recibía «¿Cómo tomo un turno?», porque el reseteo está
-      filtrado por un permiso que él no tiene. Quien está atascado necesita
-      saber qué hacer, aunque no sea él quien lo resuelva.
-    */
-    const ids = searchHelp('no deja confirmar', RECEPCION).map((topic) => topic.id);
-    expect(ids[0]).toBe('atascado-sin-permiso');
-
-    // Y sigue sin ver el procedimiento que no puede ejecutar.
+  it('no ofrece ayuda operativa de PMS retirado', () => {
+    const ids = visibleTopics(RECEPCION).map((topic) => topic.id);
+    expect(ids).not.toContain('cargar-informes');
     expect(ids).not.toContain('habitacion-atascada');
+    expect(ids).not.toContain('atascado-sin-permiso');
   });
 
   it('la pregunta pesa más que una mención de paso', () => {

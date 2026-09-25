@@ -238,7 +238,6 @@ describe('invariantes del turno', () => {
 
   it('no permite recibir dos veces la misma entrega', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
-    const shiftB = await createShift({ userId: evening.id, type: ShiftType.DIA });
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);

@@ -31,7 +31,9 @@ Actualizado: **2026-09-25** · Production **v1.10.8** · auditoría funcional gl
 
 ## Iteración actual
 
-**Production:** Libro **v1.10.8** · commit `dfc62015a338f938e9b4606a706c901dbc18abef`
+**Production actual:** Libro **v1.10.8** · commit `dfc62015a338f938e9b4606a706c901dbc18abef`
+
+**Iteración propuesta:** Libro **v1.10.9** · `chore/auditoria-funcional-global-20260925`
 
 La iteración v1.10.8 quedó completada y verificada:
 
@@ -50,11 +52,13 @@ Se revisaron 44 páginas autenticadas, 36 rutas API, 39 módulos de acciones,
 56 servicios, 55 componentes y 93 suites de pruebas. El informe vive en
 `docs/AUDITORIA_FUNCIONAL_GLOBAL_2026-09-25.md`.
 
-Próximo bloque propuesto: **v1.10.9 — Higiene P0**.
+v1.10.9 — **Higiene funcional**:
 
-- cerrar definitivamente rutas PMS profundas;
-- resolver Cloudflare Workers AI;
-- corregir terminología ambigua de bajo riesgo;
+- rutas PMS profundas cerradas en runtime;
+- Administración agrupada por intención y Zona de riesgo aislada;
+- terminología de Supervisión/Alertas/Auditorías desambiguada;
+- auditoría funcional global documentada;
+- Cloudflare Workers AI sigue pendiente porque requiere corregir la credencial rechazada;
 - no añadir módulos nuevos antes de completar la simplificación.
 
 ## Infraestructura vigente

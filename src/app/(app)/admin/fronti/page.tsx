@@ -130,16 +130,16 @@ export default async function FrontiAdminPage({
     config,
     counts,
     groqCredential,
+    cloudflareCredential,
     vllmCredential,
-    openaiCredential,
     accessUsers,
   ] = await Promise.all([
     getAllSettings(),
     getFrontiConfig(),
     diagnostics(),
     getFrontiProviderCredentialView('groq'),
+    getFrontiProviderCredentialView('cloudflare'),
     getFrontiProviderCredentialView('vllm'),
-    getFrontiProviderCredentialView('openai'),
     prisma.user.findMany({
       where: { deletedAt: null },
       select: {
@@ -168,8 +168,8 @@ export default async function FrontiAdminPage({
   const providerConfigured = providerIsConfigured(provider);
   const credentials = [
     { provider: 'groq', ...groqCredential, active: config.provider === 'groq' },
+    { provider: 'cloudflare', ...cloudflareCredential, active: config.provider === 'cloudflare' },
     { provider: 'vllm', ...vllmCredential, active: config.provider === 'vllm' },
-    { provider: 'openai', ...openaiCredential, active: config.provider === 'openai' },
   ] satisfies FrontiProviderCredentialRow[];
 
   const userAccess = accessUsers.map((user) => ({

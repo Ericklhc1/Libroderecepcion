@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS = {
   'fronti.provider': {
     value: 'groq',
     category: 'fronti',
-    description: 'Proveedor de inferencia: Groq, vLLM autohospedado u OpenAI como fallback explícito.',
+    description: 'Proveedor de inferencia permitido por la política costo cero: Groq, Cloudflare Workers AI o vLLM autohospedado.',
   },
   'fronti.model': {
     value: 'openai/gpt-oss-120b',

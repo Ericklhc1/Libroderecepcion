@@ -223,7 +223,7 @@ describe('registros del libro operativo', () => {
 
     await expect(
       changeEntryStatus(supervisor, { id: entry.id, status: EntryStatus.CERRADO }),
-    ).rejects.toThrow(/seguimiento\(s\) sin cerrar/);
+    ).rejects.toThrow(/seguimiento\(s\) operativo\(s\) sin resolver/);
 
     await updateFollowUp(receptionist, {
       id: followUp.id,

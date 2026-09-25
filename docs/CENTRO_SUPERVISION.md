@@ -1,107 +1,101 @@
 # Centro de Supervisión
 
-## Propósito
+## Principio rector
 
-El Centro de Supervisión complementa el Libro Operativo sin sustituir ni
-controlar el turno de Recepción. Reutiliza la bandeja de Supervisión, `Task`,
-`FollowUp`, las listas de control y `AuditLog`; no mantiene una segunda fuente
-de novedades operativas.
+Supervisión no es un módulo paralelo al Libro. Es una capa transversal de
+control: los procesos reales de Recepción producen información y sólo las
+excepciones que merecen atención desembocan en el Centro.
 
-Rutas principales:
+La fuente de verdad siempre permanece en su origen:
 
-- `/supervision`: turno, prioridades, pendientes, notas y resumen del equipo.
-- `/supervision/tablero`: asignación operativa existente.
-- `/supervision/auditorias`: plantillas, auditorías sorpresa, hallazgos y
-  medidas correctivas.
-- `/supervision/rendimiento`: indicadores separados, fórmulas, contexto y
-  registros de origen.
+- Novedades e incidencias siguen siendo `OperationalEntry`.
+- Caja conserva arqueos, garantías y movimientos.
+- Turnos conserva entregas, cierres y validaciones.
+- Llaves conserva sus conteos físicos por piso.
+- `Task` y `FollowUp` conservan acciones y continuidad.
 
-## Límites de rol
+Supervisión observa, decide, sigue, delega o valida; no crea una segunda copia
+de la realidad operativa.
 
-- Sólo el rol `SUPERVISOR` puede operar turnos de Supervisión, auditorías,
-  medidas correctivas y observaciones de rendimiento.
-- El Administrador de sistema conserva consulta técnica y auditoría, pero los
-  servicios impiden que figure como supervisor, auditor, asignado,
-  colaborador o destinatario operativo.
-- `listOperationalUsers()` y `assertAssignable()` son las barreras comunes de
-  todos los selectores y escrituras de asignación.
-- Recepción no tiene permisos del Centro ni acceso a indicadores del equipo.
+## Supervisor único y continuidad
 
-## Turno independiente
+En la operación actual existe un único Supervisor de Recepción. Por eso el
+turno de Supervisión no se entrega a otro supervisor.
 
-`SupervisionShift` mantiene el ciclo `ACTIVO → ENTREGADO → CERRADO`. Una
-restricción parcial en PostgreSQL impide dos turnos abiertos para el mismo
-Supervisor, pero permite turnos simultáneos de personas diferentes.
+`SupervisionShift` marca únicamente cuándo el Supervisor está ejerciendo su
+jornada administrativa. El flujo normal es `ACTIVO → CERRADO`.
 
-No existe relación de control con `Shift`: iniciar, entregar o cerrar
-Supervisión no modifica caja, huéspedes, llaves, habitaciones ni el turno de
-Recepción. La entrega crea un `SupervisionShiftHandover.snapshot` JSON
-inalterable con tareas, seguimientos, decisiones auditadas, auditorías y
-medidas existentes en ese momento. Otro Supervisor confirma la recepción sin
-alterar esa copia.
+Las tareas y seguimientos abiertos tienen vida propia y sobreviven al cierre
+del turno. Al iniciar una jornada nueva reaparecen en **Mi continuidad** sin
+recrearse, reasignarse ni duplicarse.
 
-## Tareas y seguimientos
+Los modelos y datos históricos de `SupervisionShiftHandover` se conservan por
+trazabilidad y compatibilidad, pero ya no forman parte del flujo normal de la
+interfaz.
 
-`Task` conserva compatibilidad con el estado histórico `COMPLETADA` e incorpora
-`ACEPTADA`, `REALIZADA`, `DEVUELTA` y `VALIDADA`. Marcar una tarea como
-realizada nunca la valida. La devolución exige motivo; la realización exige la
-evidencia declarada; toda transición se audita.
+## El río de información
 
-`TaskAssignment` representa responsable principal y colaboradores. Una tarea
-puede dirigirse a una persona, varias, un turno activo, el equipo operativo o
-el propio Supervisor. Las relaciones opcionales con habitación, reserva,
-huésped, estadía, registro, incidencia, seguimiento, alerta, área y turno usan
-las entidades existentes.
+`getSupervisionData()` proyecta señales desde distintos brazos del Libro:
 
-Los seguimientos autónomos sólo se crean durante un turno de Supervisión. Su
-visibilidad es privada, de Supervisión u operativa y se conserva en la entrega.
+- incidencias críticas y asuntos sin responsable;
+- alertas operativas;
+- garantías y diferencias vigentes del último arqueo por divisa;
+- tareas y seguimientos vencidos;
+- entregas/cierres de Turnos que requieren revisión;
+- último inventario de Llaves por piso cuando presenta faltantes.
 
-## Privacidad
+Cada señal incluye la referencia del objeto real que la produjo. El botón
+**Seguir** crea un `FollowUp` personal de Supervisión con
+`sourceEntity + sourceId`. La relación no copia el objeto y se deduplica:
+seguir dos veces la misma fuente devuelve el mismo seguimiento abierto.
 
-`SupervisionNote` separa notas del Libro y de los antecedentes formales. Una
-nota `PRIVADO` sólo aparece al autor. El Administrador únicamente puede abrirla
-mediante la función de acceso técnico excepcional, que crea un registro de
-auditoría específico. Las bajas son lógicas y restaurables.
+Cuando existe una FK específica, se conserva además: una Novedad usa
+`entryId` y una Tarea usa `taskId`.
 
-## Auditorías sorpresa
+## Inicio de turno
 
-El módulo amplía `ChecklistTemplate`, `ChecklistRun` y `ChecklistRunItem`.
-Al iniciar se copian los puntos de la plantilla, preservando el texto revisado
-aunque la plantilla cambie después. La auditoría empieza en preparación
-reservada y no crea notificaciones previas.
+El Centro muestra un brief **Desde tu último turno** calculado desde el último
+`SupervisionShift` cerrado. Resume actividad nueva en Novedades, cambios en
+tareas y seguimientos propios, arqueos, entregas de Recepción e inventarios de
+Llaves.
 
-Cada punto admite `CUMPLE`, `OBSERVACION`, `INCUMPLIMIENTO` o `NO_APLICA`, más
-evidencia. Los hallazgos se confirman al cerrar. El Supervisor decide la
-divulgación y puede convertir un hallazgo en `CorrectiveMeasure`; ésta crea una
-tarea relacionada que también necesita realización y validación separadas.
+El brief es informativo; no convierte automáticamente cada evento en una
+obligación del Supervisor.
 
-## Rendimiento explicable
+## Capas de la pantalla
 
-Los indicadores se calculan desde tareas, seguimientos, turnos, auditorías,
-hallazgos, medidas y colaboraciones. No se persiste una nota global ni se
-construye una clasificación. Cada dimensión devuelve periodo, numerador,
-denominador, fórmula, fuente y enlaces a los casos; además muestra turnos,
-carga y límites de comparabilidad.
+- **Ahora:** señales vivas que llegan desde los procesos del Libro.
+- **Siguiendo:** objetos que el Supervisor decidió vigilar.
+- **Mis pendientes:** acciones cuyo responsable es el Supervisor.
+- **Desde tu último turno:** cambios ocurridos desde el último cierre.
 
-No se usan tiempo conectado, pulsaciones, volumen bruto ni penalizaciones por
-una incidencia aislada. `PerformanceObservation` guarda por separado una
-observación manual, una explicación del trabajador o una corrección posterior.
+Los tableros de auditorías, asignación y rendimiento siguen siendo vistas
+especializadas de las mismas entidades, no bases de datos independientes.
 
-## Migración y recuperación
+## Cierre del turno
 
-La migración `20260921170000_centro_supervision` es aditiva: añade enums,
-tablas, columnas, índices y claves foráneas. Migra los responsables actuales a
-`TaskAssignment` sin modificar tareas existentes y conserva los estados
-históricos de tareas y listas de control.
+Cerrar Supervisión no exige resolver todos los pendientes. El cierre termina
+la jornada administrativa y queda auditado. Las tareas y seguimientos abiertos
+continúan exactamente con su estado real.
 
-Tareas, seguimientos, notas, plantillas, auditorías, hallazgos, medidas y
-observaciones incluyen o reutilizan eliminación lógica. La recuperación queda
-auditada y reservada al Administrador de sistema.
+## Auditoría y permisos
 
-## Verificación
+Sólo el rol `SUPERVISOR` opera el turno y las acciones de Supervisión. El
+Administrador de sistema conserva acceso técnico/auditado, pero no figura como
+responsable operativo.
 
-La prueba `tests/centro-supervision.test.ts` cubre roles, turnos simultáneos,
-independencia de Recepción, asignación múltiple, devolución y validación,
-privacidad, entrega inalterable, auditorías, medidas, recuperación e
-indicadores explicables. La Compuerta ejecuta migraciones sobre PostgreSQL
-efímero y después lint, tipos, todas las pruebas y el build de producción.
+Las decisiones y cambios relevantes continúan registrándose en `AuditLog`.
+Recepción no depende de que exista un turno de Supervisión abierto para
+realizar su propio trabajo.
+
+## Regla de evolución
+
+Cualquier nuevo brazo del Libro puede alimentar Supervisión si cumple tres
+condiciones:
+
+1. existe una fuente de verdad operativa;
+2. puede definirse objetivamente cuándo merece atención;
+3. la resolución vuelve a la fuente original.
+
+Nunca se debe crear una tabla paralela sólo para copiar Novedades, Caja,
+Turnos, Llaves u otro dominio.

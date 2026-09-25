@@ -1007,6 +1007,10 @@ model FollowUp {
   entry              OperationalEntry? @relation(fields: [entryId], references: [id])
   taskId             String?
   task               Task?             @relation("taskFollowUps", fields: [taskId], references: [id])
+  /// Referencia transversal al objeto real que Supervisión decidió seguir.
+  /// No sustituye la FK específica entryId/taskId cuando ésta existe.
+  sourceEntity       String?
+  sourceId           String?
   supervisionShiftId String?
   supervisionShift   SupervisionShift? @relation(fields: [supervisionShiftId], references: [id])
 
@@ -1027,6 +1031,7 @@ model FollowUp {
   @@index([createdAt])
   @@index([ownerId])
   @@index([entryId])
+  @@index([sourceEntity, sourceId])
   @@index([supervisionShiftId])
   @@index([visibility])
   @@index([deletedAt])

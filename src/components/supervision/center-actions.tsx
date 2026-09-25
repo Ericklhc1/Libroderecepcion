@@ -11,6 +11,7 @@ import {
   deleteSupervisionNoteAction,
   deliverSupervisionShiftAction,
   finishSupervisionShiftAction,
+  followSupervisionSourceAction,
   receiveSupervisionHandoverAction,
   startSupervisionShiftAction,
 } from '@/server/actions/supervision-center';
@@ -19,7 +20,7 @@ export function StartSupervisionShiftDialog() {
   return (
     <Dialog
       title="Iniciar turno de Supervisión"
-      description="Este turno es independiente de Recepción y no controla caja, llaves ni habitaciones."
+      description="Tu turno marca cuándo ejerces Supervisión. Tus seguimientos y pendientes continúan aunque cierres la jornada."
       trigger="Iniciar turno"
       triggerVariant="gold"
     >
@@ -79,6 +80,24 @@ export function ReceiveSupervisionHandoverForm({ handoverId }: { handoverId: str
       <input type="hidden" name="handoverId" value={handoverId} />
       <SubmitButton variant="secondary" size="sm" pendingLabel="Recibiendo…">
         Confirmar recepción
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function FollowSupervisionSourceForm({
+  sourceEntity,
+  sourceId,
+}: {
+  sourceEntity: string;
+  sourceId: string;
+}) {
+  return (
+    <ActionForm action={followSupervisionSourceAction} hideSuccess refreshOnSuccess className="space-y-0">
+      <input type="hidden" name="sourceEntity" value={sourceEntity} />
+      <input type="hidden" name="sourceId" value={sourceId} />
+      <SubmitButton variant="secondary" size="sm" pendingLabel="Siguiendo…">
+        Seguir
       </SubmitButton>
     </ActionForm>
   );

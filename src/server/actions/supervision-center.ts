@@ -21,6 +21,7 @@ import {
   createSupervisionNote,
   deliverSupervisionShift,
   finishSupervisionShift,
+  followSupervisionSource,
   receiveSupervisionHandover,
   restoreSupervisionNote,
   softDeleteSupervisionNote,
@@ -104,6 +105,34 @@ export async function receiveSupervisionHandoverAction(
     await receiveSupervisionHandover(user, input.handoverId);
     refresh();
     return { ok: true as const, message: 'Entrega de Supervisión recibida.' };
+  });
+}
+
+export async function followSupervisionSourceAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('supervision.followup.manage');
+    const input = parseOrThrow(
+      z.object({
+        sourceEntity: z.enum([
+          'OperationalEntry',
+          'Alert',
+          'Guarantee',
+          'CashAudit',
+          'Task',
+          'ShiftHandover',
+          'Shift',
+          'KeyInventoryCount',
+        ]),
+        sourceId: z.string().min(1),
+      }),
+      formDataToObject(formData),
+    );
+    const followUp = await followSupervisionSource(user, input);
+    refresh();
+    return { ok: true as const, message: 'Añadido a Mi continuidad.', id: followUp.id };
   });
 }
 

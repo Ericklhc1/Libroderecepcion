@@ -19,11 +19,10 @@ import { FollowUpForm } from '@/components/forms/followup-form';
 import { createTaskAction } from '@/server/actions/tasks';
 import { createFollowUpAction } from '@/server/actions/followups';
 import {
-  DeliverSupervisionShiftDialog,
   DeleteSupervisionNoteDialog,
   FinishSupervisionShiftForm,
+  FollowSupervisionSourceForm,
   NewSupervisionNoteDialog,
-  ReceiveSupervisionHandoverForm,
   StartSupervisionShiftDialog,
 } from '@/components/supervision/center-actions';
 import { CloseAnnouncementDialog, NewAnnouncementDialog } from './announcements';
@@ -36,13 +35,20 @@ import {
 } from '@/domain/labels';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
-import type { Prisma } from '@prisma/client';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-function ReviewBlock({ block }: { block: SupervisionBlock }) {
+function ReviewBlock({
+  block,
+  canFollow,
+  followedSourceKeys,
+}: {
+  block: SupervisionBlock;
+  canFollow: boolean;
+  followedSourceKeys: Set<string>;
+}) {
   const tone = TONE_STYLES[block.tone];
   return (
     <Card className="flex h-[26rem] flex-col overflow-hidden">
@@ -54,8 +60,8 @@ function ReviewBlock({ block }: { block: SupervisionBlock }) {
         <CardScroll className="flex-1" maxHeight="max-h-none">
           <ul className="divide-y divide-slate-100">
             {block.rows.map((row) => (
-              <li key={row.id}>
-                <Link href={row.href} className="flex gap-3 px-4 py-3 hover:bg-slate-50">
+              <li key={row.id} className="flex items-start gap-2 px-4 py-3 hover:bg-slate-50">
+                <Link href={row.href} className="flex min-w-0 flex-1 gap-3">
                   <span className={`mt-0.5 text-xs font-semibold ${tone.text}`} aria-hidden="true">
                     {tone.symbol}
                   </span>
@@ -68,65 +74,19 @@ function ReviewBlock({ block }: { block: SupervisionBlock }) {
                     {row.meta ? <span className="mt-0.5 block text-xs text-slate-500">{row.meta}</span> : null}
                   </span>
                 </Link>
+                {canFollow && row.sourceEntity && row.sourceId && row.sourceEntity !== 'FollowUp' ? (
+                  followedSourceKeys.has(`${row.sourceEntity}:${row.sourceId}`) ? (
+                    <Chip>Siguiendo</Chip>
+                  ) : (
+                    <FollowSupervisionSourceForm sourceEntity={row.sourceEntity} sourceId={row.sourceId} />
+                  )
+                ) : null}
               </li>
             ))}
           </ul>
         </CardScroll>
       )}
     </Card>
-  );
-}
-
-function PendingSupervisionHandover({
-  handover,
-  canReceive,
-}: {
-  handover: {
-    id: string;
-    issuedAt: Date;
-    note: string | null;
-    snapshot: Prisma.JsonValue;
-    issuedBy: { name: string };
-  };
-  canReceive: boolean;
-}) {
-  const snapshot = handover.snapshot as {
-    summary?: {
-      tasksPending?: number;
-      tasksBlocked?: number;
-      followUpsOpen?: number;
-      auditsOpen?: number;
-      correctiveMeasuresOpen?: number;
-    };
-    tasks?: Array<{ id: string; seq: number; title: string; status: string }>;
-    followUps?: Array<{ id: string; action: string; status: string }>;
-  };
-  return (
-    <li className="px-4 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-petrol-900">{handover.issuedBy.name} · {formatDateTime(handover.issuedAt)}</p>
-          <p className="text-sm text-slate-600">{handover.note ?? 'Sin nota adicional.'}</p>
-          <div className="mt-2 flex flex-wrap gap-1">
-            <Chip>{snapshot.summary?.tasksPending ?? 0} tarea(s) pendiente(s)</Chip>
-            <Chip>{snapshot.summary?.tasksBlocked ?? 0} bloqueada(s)</Chip>
-            <Chip>{snapshot.summary?.followUpsOpen ?? 0} seguimiento(s)</Chip>
-            <Chip>{snapshot.summary?.auditsOpen ?? 0} auditoría(s)</Chip>
-            <Chip>{snapshot.summary?.correctiveMeasuresOpen ?? 0} medida(s)</Chip>
-          </div>
-        </div>
-        {canReceive ? <ReceiveSupervisionHandoverForm handoverId={handover.id} /> : null}
-      </div>
-      {snapshot.tasks?.length || snapshot.followUps?.length ? (
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-petrol-600">Ver asuntos transferidos</summary>
-          <ul className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
-            {snapshot.tasks?.map((task) => <li key={task.id}><Link href={`/tareas/${task.id}`} className="text-xs text-petrol-700 hover:underline">T#{task.seq} · {task.title} · {task.status.toLocaleLowerCase('es-CL')}</Link></li>)}
-            {snapshot.followUps?.map((followUp) => <li key={followUp.id}><Link href="/seguimientos" className="text-xs text-petrol-700 hover:underline">{followUp.action} · {followUp.status.toLocaleLowerCase('es-CL')}</Link></li>)}
-          </ul>
-        </details>
-      ) : null}
-    </li>
   );
 }
 
@@ -171,7 +131,7 @@ export default async function SupervisionCenterPage({
   const matches = (...values: Array<string | number | null | undefined>) =>
     !q || values.filter(Boolean).join(' ').toLocaleLowerCase('es-CL').includes(q);
   const inPeriod = (value: Date) => value >= period.from && value <= period.to;
-  const tasks = center.tasks.filter((task) =>
+  const tasks = center.myTasks.filter((task) =>
     inPeriod(task.createdAt) &&
     (!responsible || task.assigneeId === responsible) &&
     (!status || task.status === status) &&
@@ -179,7 +139,7 @@ export default async function SupervisionCenterPage({
     (!origin || task.origin === origin) &&
     matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
   );
-  const followUps = center.followUps.filter((item) =>
+  const followUps = center.myFollowUps.filter((item) =>
     inPeriod(item.createdAt) &&
     (!responsible || item.ownerId === responsible) &&
     (!status || item.status === status) &&
@@ -210,8 +170,13 @@ export default async function SupervisionCenterPage({
   const critical = review.blocks
     .filter((block) => block.tone === 'critico')
     .reduce((sum, block) => sum + block.rows.length, 0);
-  const pendingHandovers = review.blocks.find((block) => block.key === 'entregas')?.rows.length ?? 0;
   const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
+  const continuityOpen = center.myTasks.length + center.myFollowUps.length;
+  const followedSourceKeys = new Set(
+    center.myFollowUps
+      .filter((item) => item.sourceEntity && item.sourceId)
+      .map((item) => `${item.sourceEntity}:${item.sourceId}`),
+  );
   const announcementPending = announcements.reduce(
     (sum, announcement) => sum + Math.max(0, announcement.expected - announcement.confirmed),
     0,
@@ -226,7 +191,7 @@ export default async function SupervisionCenterPage({
             Centro de Supervisión
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Turno privado, prioridades, asignaciones, controles e indicadores explicables del equipo.
+            Continuidad personal y señales transversales de Recepción, Caja, Turnos y Llaves.
           </p>
         </div>
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="Secciones del Centro de Supervisión">
@@ -284,13 +249,11 @@ export default async function SupervisionCenterPage({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Turno de Supervisión</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mi turno de Supervisión</p>
             {center.currentShift ? (
               <>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Badge tone={center.currentShift.status === 'ACTIVO' ? 'curso' : 'pendiente'}>
-                    {center.currentShift.status === 'ACTIVO' ? 'Gestionando' : 'Entregado, pendiente de finalizar'}
-                  </Badge>
+                  <Badge tone="curso">Gestionando</Badge>
                   <span className="text-sm text-slate-600">{user.name} · iniciado {formatDateTime(center.currentShift.startedAt)}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -305,17 +268,34 @@ export default async function SupervisionCenterPage({
           </div>
           <div className="flex flex-wrap gap-2 no-print">
             {isSupervisor && !center.currentShift ? <StartSupervisionShiftDialog /> : null}
-            {isSupervisor && center.currentShift?.status === 'ACTIVO' ? <DeliverSupervisionShiftDialog shiftId={center.currentShift.id} /> : null}
-            {isSupervisor && center.currentShift?.status === 'ENTREGADO' ? <FinishSupervisionShiftForm shiftId={center.currentShift.id} /> : null}
+            {isSupervisor && center.currentShift ? <FinishSupervisionShiftForm shiftId={center.currentShift.id} /> : null}
           </div>
         </div>
       </Card>
 
+      <Card>
+        <CardHeader
+          title={center.sinceLastShift ? 'Desde tu último turno' : 'Continuidad de Supervisión'}
+          action={center.sinceLastShift ? <span className="text-xs text-slate-500">Desde {formatDateTime(center.sinceLastShift)}</span> : null}
+        />
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+          <StatTile label="Novedades nuevas" value={center.changesSinceLastShift.entries} tone={center.changesSinceLastShift.entries ? 'neutral' : 'good'} />
+          <StatTile label="Cambios en mis tareas" value={center.changesSinceLastShift.myTaskUpdates} tone="neutral" />
+          <StatTile label="Cambios en seguimientos" value={center.changesSinceLastShift.myFollowUpUpdates} tone="neutral" />
+          <StatTile label="Arqueos registrados" value={center.changesSinceLastShift.cashAudits} tone="neutral" />
+          <StatTile label="Entregas de Recepción" value={center.changesSinceLastShift.handovers} tone="neutral" />
+          <StatTile label="Inventarios de llaves" value={center.changesSinceLastShift.keyInventories} tone="neutral" />
+        </div>
+        <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          Tus tareas y seguimientos no se reinician con el turno: esta franja sólo resume qué cambió mientras no estabas ejerciendo Supervisión.
+        </p>
+      </Card>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Alertas críticas" value={critical} tone={critical ? 'alert' : 'good'} />
-        <StatTile label="Entregas por recibir" value={pendingHandovers} tone={pendingHandovers ? 'alert' : 'good'} />
+        <StatTile label="Mi continuidad" value={continuityOpen} tone={continuityOpen ? 'neutral' : 'good'} />
         <StatTile label="Cierres por validar" value={pendingClosures} tone={pendingClosures ? 'alert' : 'good'} />
-        <StatTile label="Tareas abiertas" value={center.tasks.length} tone="neutral" />
+        <StatTile label="Señales del Libro" value={review.total} tone={review.total ? 'alert' : 'good'} />
         <StatTile label="Auditorías abiertas" value={center.audits.length} tone={center.audits.length ? 'alert' : 'good'} />
         <StatTile label="Confirmaciones pendientes" value={announcementPending} tone={announcementPending ? 'alert' : 'good'} />
       </div>
@@ -326,7 +306,7 @@ export default async function SupervisionCenterPage({
           {isSupervisor ? <Dialog title="Nueva tarea" trigger="Crear tarea" triggerVariant="gold" width="lg">
             <TaskForm action={createTaskAction} options={options} defaultAssigneeId={user.id} />
           </Dialog> : null}
-          {isSupervisor && center.currentShift?.status === 'ACTIVO' ? (
+          {isSupervisor ? (
             <Dialog title="Nuevo seguimiento" trigger="Crear seguimiento" triggerVariant="secondary" width="lg">
               <FollowUpForm action={createFollowUpAction} options={options} defaultOwnerId={user.id} />
             </Dialog>
@@ -338,7 +318,7 @@ export default async function SupervisionCenterPage({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="Tareas propias y del equipo" count={tasks.length} />
+          <CardHeader title="Mis pendientes" count={tasks.length} />
           {tasks.length === 0 ? <EmptyState message="No hay tareas abiertas con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
@@ -358,7 +338,7 @@ export default async function SupervisionCenterPage({
         </Card>
 
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="Seguimientos abiertos" count={followUps.length} />
+          <CardHeader title="Siguiendo" count={followUps.length} />
           {followUps.length === 0 ? <EmptyState message="No hay seguimientos abiertos con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
@@ -414,18 +394,19 @@ export default async function SupervisionCenterPage({
 
       {blocks.length > 0 ? (
         <section>
-          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Bandeja integrada de Supervisión</h2>
-          <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock key={block.key} block={block} />)}</div>
+          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Ahora · señales que desembocan en Supervisión</h2>
+          <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
+            key={block.key}
+            block={block}
+            canFollow={isSupervisor}
+            followedSourceKeys={followedSourceKeys}
+          />)}</div>
         </section>
-      ) : null}
-
-      {center.priorHandovers.length > 0 ? (
-        <Card><CardHeader title="Entregas de Supervisión pendientes de recibir" count={center.priorHandovers.length} /><CardScroll><ul className="divide-y divide-slate-100">{center.priorHandovers.map((handover) => <PendingSupervisionHandover key={handover.id} handover={handover} canReceive={isSupervisor} />)}</ul></CardScroll></Card>
       ) : null}
 
       <p className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
         <NotebookPen className="h-4 w-4" aria-hidden="true" />
-        Las notas privadas no se mezclan con novedades ni antecedentes formales. Los indicadores no generan una nota global ni comparaciones públicas.
+        Supervisión no duplica Novedades, Caja, Turnos ni Llaves: observa la fuente real, permite seguirla y conserva únicamente tu decisión y trazabilidad.
       </p>
     </div>
   );

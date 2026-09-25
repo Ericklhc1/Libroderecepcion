@@ -117,10 +117,15 @@ más.
 
 ## Centro de Supervisión
 
-El turno administrativo `SupervisionShift` es una raíz de agregado distinta de
-`Shift`. Ambos pueden estar abiertos a la vez y ninguna transición del primero
-escribe caja, habitaciones, llaves, huéspedes o estados del segundo. Un índice
-parcial garantiza un solo turno de Supervisión abierto por persona.
+`SupervisionShift` sigue siendo una raíz de agregado distinta de `Shift`, pero
+en la operación vigente existe un único Supervisor de Recepción. Su turno marca
+la jornada administrativa; no se entrega a otro supervisor y puede cerrarse sin
+resolver todos los pendientes.
+
+Supervisión funciona como capa transversal: Novedades, Caja, Turnos y Llaves
+proyectan excepciones hacia `getSupervisionData()`. La fuente de verdad nunca se
+copia. Cuando el Supervisor decide **Seguir**, se crea/reutiliza un `FollowUp`
+que conserva `sourceEntity + sourceId` y continúa vivo entre turnos.
 
 El Centro amplía entidades existentes en lugar de duplicarlas: `Task` mantiene
 la asignación y añade participantes/validación; `FollowUp` añade visibilidad;

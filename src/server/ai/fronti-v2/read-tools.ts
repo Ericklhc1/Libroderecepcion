@@ -313,12 +313,16 @@ async function supervisionTool(user: CurrentUser) {
     return {
       mode: 'center',
       currentShift: data.currentShift,
+      lastClosedShift: data.lastClosedShift,
+      sinceLastShift: data.sinceLastShift,
+      changesSinceLastShift: data.changesSinceLastShift,
+      myTasks: data.myTasks,
+      myFollowUps: data.myFollowUps,
       tasks: data.tasks,
       followUps: data.followUps,
       notes: data.notes,
       audits: data.audits,
       measures: data.measures,
-      priorHandovers: data.priorHandovers,
     };
   }
 

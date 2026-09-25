@@ -21,6 +21,7 @@ import {
   createSupervisionNote,
   deliverSupervisionShift,
   finishSupervisionShift,
+  followSupervisionSource,
   getSupervisionCenterSummary,
   listVisibleSupervisionNotes,
   readSupervisionNote,
@@ -82,6 +83,52 @@ describe('Centro de Supervisión', () => {
     expect(summary.followUps.find((item) => item.id === followUp.id)?.visibility).toBe(
       SupervisionVisibility.PRIVADO,
     );
+  });
+
+  it('mantiene la continuidad personal aunque el turno de Supervisión se cierre', async () => {
+    const shift = await startSupervisionShift(supervisor, { priorities: ['Resolver pendientes'] });
+    const followUp = await createFollowUp(supervisor, {
+      action: 'Confirmar respuesta pendiente',
+      ownerId: supervisor.id,
+      visibility: SupervisionVisibility.SUPERVISION,
+    });
+
+    await finishSupervisionShift(supervisor, shift.id);
+
+    const persisted = await prisma.followUp.findUniqueOrThrow({ where: { id: followUp.id } });
+    expect(persisted.status).toBe('PENDIENTE');
+    expect(persisted.completedAt).toBeNull();
+
+    await startSupervisionShift(supervisor, { priorities: [] });
+    const summary = await getSupervisionCenterSummary(supervisor);
+    expect(summary.lastClosedShift?.id).toBe(shift.id);
+    expect(summary.myFollowUps.map((item) => item.id)).toContain(followUp.id);
+  });
+
+  it('permite seguir una fuente real sin duplicarla y evita seguimientos repetidos', async () => {
+    const entry = await prisma.operationalEntry.create({
+      data: {
+        type: 'NOVEDAD',
+        title: 'Pendiente que merece vigilancia',
+        description: 'Recepción continúa siendo responsable del registro.',
+        createdById: receptionist.id,
+      },
+    });
+
+    const first = await followSupervisionSource(supervisor, {
+      sourceEntity: 'OperationalEntry',
+      sourceId: entry.id,
+    });
+    const second = await followSupervisionSource(supervisor, {
+      sourceEntity: 'OperationalEntry',
+      sourceId: entry.id,
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(first.entryId).toBe(entry.id);
+    expect(first.sourceEntity).toBe('OperationalEntry');
+    expect(first.sourceId).toBe(entry.id);
+    expect(await prisma.operationalEntry.count({ where: { id: entry.id } })).toBe(1);
   });
 
   it('reserva la operación al Supervisor y excluye al Administrador de asignaciones', async () => {
@@ -347,5 +394,10 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('lg:grid-cols-2');
     expect(page).toContain('flex flex-wrap');
     expect(page).toContain('CardScroll');
+    expect(page).toContain('Desde tu último turno');
+    expect(page).toContain('Mi continuidad');
+    expect(page).toContain('Ahora · señales que desembocan en Supervisión');
+    expect(page).toContain('FollowSupervisionSourceForm');
+    expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');
   });
 });

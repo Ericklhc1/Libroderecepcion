@@ -12,6 +12,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
+import { createFollowUp } from '@/server/services/followups';
 
 const OPEN_SUPERVISION_STATUSES = [
   SupervisionShiftStatus.ACTIVO,
@@ -29,6 +30,17 @@ export async function getMyOpenSupervisionShift(userId: string) {
     where: { supervisorId: userId, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
     include: { handover: true },
     orderBy: { startedAt: 'desc' },
+  });
+}
+
+export async function getLastClosedSupervisionShift(userId: string) {
+  return prisma.supervisionShift.findFirst({
+    where: {
+      supervisorId: userId,
+      status: SupervisionShiftStatus.CERRADO,
+      finishedAt: { not: null },
+    },
+    orderBy: { finishedAt: 'desc' },
   });
 }
 
@@ -216,14 +228,11 @@ export async function deliverSupervisionShift(
 export async function finishSupervisionShift(user: CurrentUser, shiftId: string) {
   assertSupervisor(user);
   return prisma.$transaction(async (tx) => {
-    const shift = await tx.supervisionShift.findUnique({
-      where: { id: shiftId },
-      include: { handover: { select: { id: true } } },
-    });
+    const shift = await tx.supervisionShift.findUnique({ where: { id: shiftId } });
     if (!shift) throw new NotFoundError('El turno de Supervisión no existe.');
     if (shift.supervisorId !== user.id) throw new RuleError('Ese turno pertenece a otro supervisor.');
-    if (shift.status !== SupervisionShiftStatus.ENTREGADO || !shift.handover) {
-      throw new RuleError('Entrega el turno de Supervisión antes de finalizarlo.');
+    if (!OPEN_SUPERVISION_STATUSES.includes(shift.status as (typeof OPEN_SUPERVISION_STATUSES)[number])) {
+      throw new RuleError('Ese turno de Supervisión ya está cerrado.');
     }
 
     const finished = await tx.supervisionShift.update({
@@ -237,7 +246,10 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
         action: AuditAction.TURNO_CERRAR,
         summary: `Turno de Supervisión finalizado por ${user.name}`,
         user,
-        after: { finishedAt: finished.finishedAt },
+        after: {
+          finishedAt: finished.finishedAt,
+          continuity: 'Los seguimientos y tareas abiertos permanecen vigentes fuera del turno.',
+        },
       },
       tx,
     );
@@ -274,6 +286,131 @@ export async function receiveSupervisionHandover(user: CurrentUser, handoverId: 
       tx,
     );
     return received;
+  });
+}
+
+type SupervisionSourceEntity =
+  | 'OperationalEntry'
+  | 'Alert'
+  | 'Guarantee'
+  | 'CashAudit'
+  | 'Task'
+  | 'ShiftHandover'
+  | 'Shift'
+  | 'KeyInventoryCount';
+
+async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, sourceId: string) {
+  switch (sourceEntity) {
+    case 'OperationalEntry': {
+      const row = await prisma.operationalEntry.findFirst({
+        where: { id: sourceId, deletedAt: null },
+        select: { id: true, seq: true, title: true },
+      });
+      if (!row) throw new NotFoundError('La novedad de origen ya no existe.');
+      return { label: `#${row.seq} · ${row.title}`, entryId: row.id, taskId: null };
+    }
+    case 'Alert': {
+      const row = await prisma.alert.findUnique({
+        where: { id: sourceId },
+        select: { id: true, title: true },
+      });
+      if (!row) throw new NotFoundError('La alerta de origen ya no existe.');
+      return { label: `Alerta · ${row.title}`, entryId: null, taskId: null };
+    }
+    case 'Guarantee': {
+      const row = await prisma.guarantee.findFirst({
+        where: { id: sourceId, deletedAt: null },
+        select: { id: true, reference: true, guestName: true, roomNumber: true },
+      });
+      if (!row) throw new NotFoundError('La garantía de origen ya no existe.');
+      const label = row.reference || row.guestName || (row.roomNumber ? `Hab. ${row.roomNumber}` : null);
+      return { label: `Garantía · ${label ?? row.id.slice(-6)}`, entryId: null, taskId: null };
+    }
+    case 'CashAudit': {
+      const row = await prisma.cashAudit.findUnique({
+        where: { id: sourceId },
+        select: { id: true, currency: true, difference: true },
+      });
+      if (!row) throw new NotFoundError('El arqueo de origen ya no existe.');
+      return {
+        label: `Caja ${row.currency} · diferencia ${Number(row.difference).toLocaleString('es-CL')}`,
+        entryId: null,
+        taskId: null,
+      };
+    }
+    case 'Task': {
+      const row = await prisma.task.findFirst({
+        where: { id: sourceId, deletedAt: null },
+        select: { id: true, seq: true, title: true },
+      });
+      if (!row) throw new NotFoundError('La tarea de origen ya no existe.');
+      return { label: `T#${row.seq} · ${row.title}`, entryId: null, taskId: row.id };
+    }
+    case 'ShiftHandover': {
+      const row = await prisma.shiftHandover.findUnique({
+        where: { id: sourceId },
+        select: { id: true, issuedBy: { select: { name: true } } },
+      });
+      if (!row) throw new NotFoundError('La entrega de turno de origen ya no existe.');
+      return { label: `Entrega de turno · ${row.issuedBy.name}`, entryId: null, taskId: null };
+    }
+    case 'Shift': {
+      const row = await prisma.shift.findUnique({
+        where: { id: sourceId },
+        select: { id: true, type: true, date: true },
+      });
+      if (!row) throw new NotFoundError('El turno de origen ya no existe.');
+      return {
+        label: `Turno ${row.type} · ${row.date.toLocaleDateString('es-CL')}`,
+        entryId: null,
+        taskId: null,
+      };
+    }
+    case 'KeyInventoryCount': {
+      const row = await prisma.keyInventoryCount.findUnique({
+        where: { id: sourceId },
+        select: { id: true, floor: true, countedAt: true },
+      });
+      if (!row) throw new NotFoundError('El inventario de llaves de origen ya no existe.');
+      return {
+        label: `Inventario de llaves · piso ${row.floor}`,
+        entryId: null,
+        taskId: null,
+      };
+    }
+    default:
+      throw new RuleError('Ese tipo de fuente no puede seguirse desde Supervisión.');
+  }
+}
+
+export async function followSupervisionSource(
+  user: CurrentUser,
+  input: { sourceEntity: SupervisionSourceEntity; sourceId: string },
+) {
+  assertSupervisor(user);
+  const source = await resolveSupervisionSource(input.sourceEntity, input.sourceId);
+  const existing = await prisma.followUp.findFirst({
+    where: {
+      deletedAt: null,
+      ownerId: user.id,
+      sourceEntity: input.sourceEntity,
+      sourceId: input.sourceId,
+      status: { in: ['PENDIENTE', 'VENCIDO'] },
+    },
+    include: { owner: { select: { id: true, name: true } } },
+  });
+  if (existing) return existing;
+
+  return createFollowUp(user, {
+    entryId: source.entryId,
+    taskId: source.taskId,
+    action: `Seguir: ${source.label}`,
+    description: 'Añadido a Mi continuidad desde la bandeja transversal de Supervisión.',
+    ownerId: user.id,
+    origin: `SUPERVISION_${input.sourceEntity.toUpperCase()}`,
+    visibility: SupervisionVisibility.SUPERVISION,
+    sourceEntity: input.sourceEntity,
+    sourceId: input.sourceId,
   });
 }
 
@@ -405,8 +542,12 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
   if (!user.permissions.includes('supervision.center.view')) {
     throw new RuleError('No tienes permiso para consultar el Centro de Supervisión.');
   }
-  const currentShift = await getMyOpenSupervisionShift(user.id);
+  const [currentShift, lastClosedShift] = await Promise.all([
+    getMyOpenSupervisionShift(user.id),
+    getLastClosedSupervisionShift(user.id),
+  ]);
   const now = new Date();
+  const sinceLastShift = lastClosedShift?.finishedAt ?? null;
   const noteWhere: Prisma.SupervisionNoteWhereInput = {
     deletedAt: null,
     OR: [
@@ -414,7 +555,16 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       { visibility: { in: [SupervisionVisibility.SUPERVISION, SupervisionVisibility.OPERATIVO] } },
     ],
   };
-  const [tasks, followUps, notes, audits, measures, priorHandovers] = await Promise.all([
+  const [
+    tasks,
+    followUps,
+    myTasks,
+    myFollowUps,
+    notes,
+    audits,
+    measures,
+    changesSinceLastShift,
+  ] = await Promise.all([
     prisma.task.findMany({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
       include: { assignee: { select: { name: true } } },
@@ -434,6 +584,26 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       include: { owner: { select: { name: true } } },
       orderBy: { scheduledAt: 'asc' },
       take: 20,
+    }),
+    prisma.task.findMany({
+      where: {
+        deletedAt: null,
+        assigneeId: user.id,
+        status: { in: TASK_OPEN_STATUSES },
+      },
+      include: { assignee: { select: { name: true } } },
+      orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
+      take: 30,
+    }),
+    prisma.followUp.findMany({
+      where: {
+        deletedAt: null,
+        ownerId: user.id,
+        status: { in: ['PENDIENTE', 'VENCIDO'] },
+      },
+      include: { owner: { select: { name: true } } },
+      orderBy: [{ scheduledAt: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
+      take: 30,
     }),
     prisma.supervisionNote.findMany({
       where: noteWhere,
@@ -464,21 +634,57 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       orderBy: { dueAt: 'asc' },
       take: 12,
     }),
-    prisma.supervisionShiftHandover.findMany({
-      where: { issuedById: { not: user.id }, receivedAt: null },
-      include: { issuedBy: { select: { name: true } } },
-      orderBy: { issuedAt: 'desc' },
-      take: 5,
-    }),
+    sinceLastShift
+      ? Promise.all([
+          prisma.operationalEntry.count({
+            where: { deletedAt: null, createdAt: { gt: sinceLastShift } },
+          }),
+          prisma.task.count({
+            where: {
+              deletedAt: null,
+              assigneeId: user.id,
+              updatedAt: { gt: sinceLastShift },
+            },
+          }),
+          prisma.followUp.count({
+            where: {
+              deletedAt: null,
+              ownerId: user.id,
+              updatedAt: { gt: sinceLastShift },
+            },
+          }),
+          prisma.cashAudit.count({ where: { createdAt: { gt: sinceLastShift } } }),
+          prisma.shiftHandover.count({ where: { issuedAt: { gt: sinceLastShift } } }),
+          prisma.keyInventoryCount.count({ where: { countedAt: { gt: sinceLastShift } } }),
+        ]).then(([entries, myTaskUpdates, myFollowUpUpdates, cashAudits, handovers, keyInventories]) => ({
+          entries,
+          myTaskUpdates,
+          myFollowUpUpdates,
+          cashAudits,
+          handovers,
+          keyInventories,
+        }))
+      : Promise.resolve({
+          entries: 0,
+          myTaskUpdates: 0,
+          myFollowUpUpdates: 0,
+          cashAudits: 0,
+          handovers: 0,
+          keyInventories: 0,
+        }),
   ]);
   return {
     now,
     currentShift,
+    lastClosedShift,
+    sinceLastShift,
+    changesSinceLastShift,
     tasks,
     followUps,
+    myTasks,
+    myFollowUps,
     notes,
     audits,
     measures,
-    priorHandovers,
   };
 }

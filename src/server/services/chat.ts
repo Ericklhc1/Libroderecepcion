@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   ChatConversationType,
+  ChatMessageAuthor,
   ChatMessageKind,
   ChatParticipantRole,
   NotificationType,
@@ -10,6 +11,8 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { canUseFronti } from '@/server/ai/fronti-access';
 import { NotFoundError, RuleError } from '@/server/errors';
 import {
   createR2PresignedPutUrl,
@@ -237,9 +240,11 @@ function serializeConversation(
     id: row.id,
     type: row.type,
     title:
-      row.type === ChatConversationType.DIRECTO
-        ? counterpart?.name ?? 'Conversación'
-        : row.title?.trim() || 'Grupo',
+      row.type === ChatConversationType.FRONTI
+        ? row.title?.trim() || 'Fronti'
+        : row.type === ChatConversationType.DIRECTO
+          ? counterpart?.name ?? 'Conversación'
+          : row.title?.trim() || 'Grupo',
     unreadCount: me?.unreadCount ?? 0,
     lastMessageAt: row.lastMessageAt.toISOString(),
     lastMessage: latest
@@ -249,7 +254,12 @@ function serializeConversation(
           body: latest.body,
           stickerKey: latest.stickerKey,
           mediaUrl: latest.mediaUrl,
-          senderName: latest.sender.name,
+          senderName:
+            latest.author === ChatMessageAuthor.FRONTI
+              ? 'Fronti'
+              : latest.author === ChatMessageAuthor.SYSTEM
+                ? 'Sistema'
+                : latest.sender?.name ?? 'Usuario',
           createdAt: latest.createdAt.toISOString(),
         }
       : null,
@@ -258,8 +268,80 @@ function serializeConversation(
   };
 }
 
+async function ensureFrontiPrivateConversation(
+  user: CurrentUser,
+): Promise<string | null> {
+  const config = await getFrontiConfig();
+  if (!canUseFronti(user, config.enabled)) return null;
+
+  const directKey = `fronti:${user.id}`;
+  const existing = await prisma.chatConversation.findUnique({
+    where: { directKey },
+    select: { id: true, title: true },
+  });
+  if (existing) {
+    if (existing.title !== config.displayName) {
+      await prisma.chatConversation.update({
+        where: { id: existing.id },
+        data: { title: config.displayName },
+      });
+    }
+    const participant = await prisma.chatParticipant.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId: existing.id,
+          userId: user.id,
+        },
+      },
+      select: { leftAt: true },
+    });
+    if (participant?.leftAt) {
+      await prisma.chatParticipant.update({
+        where: {
+          conversationId_userId: {
+            conversationId: existing.id,
+            userId: user.id,
+          },
+        },
+        data: { leftAt: null, unreadCount: 0, joinedAt: new Date() },
+      });
+    }
+    return existing.id;
+  }
+
+  try {
+    const created = await prisma.chatConversation.create({
+      data: {
+        type: ChatConversationType.FRONTI,
+        title: config.displayName,
+        directKey,
+        createdById: user.id,
+        participants: {
+          create: [{ userId: user.id, role: ChatParticipantRole.CREADOR }],
+        },
+      },
+      select: { id: true },
+    });
+    return created.id;
+  } catch (error) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code ?? '')
+        : '';
+    if (code === 'P2002') {
+      const raced = await prisma.chatConversation.findUnique({
+        where: { directKey },
+        select: { id: true },
+      });
+      if (raced) return raced.id;
+    }
+    throw error;
+  }
+}
+
 export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap> {
   assertChatActor(user);
+  await ensureFrontiPrivateConversation(user);
   const now = new Date();
   const [rows, people, totalUnread, me] = await Promise.all([
     prisma.chatConversation.findMany({
@@ -740,6 +822,7 @@ export async function getChatConversationSnapshot(
             id: true,
             body: true,
             kind: true,
+            author: true,
             sender: { select: { name: true } },
           },
         },
@@ -774,9 +857,11 @@ export async function getChatConversationSnapshot(
     id: conversation.id,
     type: conversation.type,
     title:
-      conversation.type === ChatConversationType.DIRECTO
-        ? other?.user.name ?? 'Conversación'
-        : conversation.title?.trim() || 'Grupo',
+      conversation.type === ChatConversationType.FRONTI
+        ? conversation.title?.trim() || 'Fronti'
+        : conversation.type === ChatConversationType.DIRECTO
+          ? other?.user.name ?? 'Conversación'
+          : conversation.title?.trim() || 'Grupo',
     participants: conversation.participants.map((item) => ({
       ...serializePerson(item.user, now),
       conversationRole: item.role,
@@ -829,7 +914,13 @@ export async function getChatConversationSnapshot(
         contextEntity: message.contextEntity,
         contextEntityId: message.contextEntityId,
         senderId: message.senderId,
-        senderName: message.sender.name,
+        senderName:
+          message.author === ChatMessageAuthor.FRONTI
+            ? 'Fronti'
+            : message.author === ChatMessageAuthor.SYSTEM
+              ? 'Sistema'
+              : message.sender?.name ?? 'Usuario',
+        author: message.author,
         createdAt: message.createdAt.toISOString(),
         editedAt: message.editedAt?.toISOString() ?? null,
         deletedAt: message.deletedAt?.toISOString() ?? null,
@@ -837,7 +928,12 @@ export async function getChatConversationSnapshot(
         replyTo: message.replyTo
           ? {
               id: message.replyTo.id,
-              senderName: message.replyTo.sender.name,
+              senderName:
+                message.replyTo.author === ChatMessageAuthor.FRONTI
+                  ? 'Fronti'
+                  : message.replyTo.author === ChatMessageAuthor.SYSTEM
+                    ? 'Sistema'
+                    : message.replyTo.sender?.name ?? 'Usuario',
               body: message.replyTo.body,
               kind: message.replyTo.kind,
             }
@@ -953,6 +1049,7 @@ export async function sendChatMessage(
       data: {
         conversationId: conversation.id,
         senderId: user.id,
+        author: ChatMessageAuthor.USER,
         kind,
         body,
         stickerKey,
@@ -1549,6 +1646,7 @@ export async function createChatAttachmentMessage(
         data: {
           conversationId: conversation.id,
           senderId: user.id,
+          author: ChatMessageAuthor.USER,
           kind: ChatMessageKind.ARCHIVO,
           body,
           replyToId,

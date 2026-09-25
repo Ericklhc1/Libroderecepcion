@@ -71,7 +71,7 @@ export async function createFollowUp(
     !hasGenericSource &&
     !user.permissions.includes('supervision.followup.manage')
   ) {
-    throw new RuleError('El seguimiento debe asociarse a un registro, una tarea o una fuente de Supervisión.');
+    throw new RuleError('El seguimiento debe asociarse a un registro o a una tarea.');
   }
   const visibility = input.visibility ?? SupervisionVisibility.OPERATIVO;
   if (

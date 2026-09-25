@@ -359,8 +359,10 @@ export function ChatWidget({
           `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
         );
         setSnapshot(data);
+        if (selectedIdRef.current !== conversationId) {
+          setFrontiConfirmations([]);
+        }
         setSelectedId(conversationId);
-        setFrontiConfirmations([]);
         setView('conversation');
         if (options.mark !== false) void markRead(conversationId);
         window.setTimeout(() => listEndRef.current?.scrollIntoView({ block: 'end' }), 10);

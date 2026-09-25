@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
-import { getBookItems } from '@/server/services/book';
+import { getBookItems, type BookFilters } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
 import { getShiftOptions } from '@/server/services/shift-options';
 import { Card, CardScroll, EmptyState } from '@/components/ui/card';
@@ -37,11 +37,11 @@ export default async function BookPage({
   const parsedFilters = parseBookFilters(params);
   const receptionist = user.roleKey === ROLE_KEYS.RECEPTIONIST;
 
-  const filters = {
+  const filters: BookFilters = {
     ...parsedFilters,
     ...(clase === 'entry'
       ? {
-          kinds: ['entry'] as const,
+          kinds: ['entry'],
           receptionEntriesOnly: true,
           onlyOpen: true,
         }

@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   Star,
+  Sparkles,
   Settings2,
   Trash2,
   Smile,
@@ -56,6 +57,23 @@ type SavedChatItem = {
   kind: string;
   createdAt: string;
   savedAt: string;
+};
+
+type FrontiConfirmation = {
+  token: string;
+  title: string;
+  detail: string;
+  risk: 'normal' | 'high';
+};
+
+type ChatPostResult = {
+  id: string;
+  fronti?: {
+    invoked: boolean;
+    reply: string;
+    messageId: string;
+    confirmations: FrontiConfirmation[];
+  };
 };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -121,6 +139,75 @@ function renderMessageBody(body: string) {
     }
     return <span key={`text-${index}`}>{part}</span>;
   });
+}
+
+function renderFrontiInline(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s]+|@[A-Za-z0-9._-]{2,40})/g);
+  return parts.map((part, index) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={`strong-${index}`} className="font-semibold text-petrol-950">{part.slice(2, -2)}</strong>;
+    }
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`fronti-link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-petrol-700 underline decoration-petrol-300 underline-offset-2"
+        >
+          {part}
+        </a>
+      );
+    }
+    if (/^@[A-Za-z0-9._-]{2,40}$/.test(part)) {
+      return <span key={`fronti-mention-${index}`} className="rounded bg-gold-100 px-0.5 font-semibold">{part}</span>;
+    }
+    return <span key={`fronti-text-${index}`}>{part}</span>;
+  });
+}
+
+function renderFrontiBody(body: string) {
+  const lines = body.split(/\r?\n/);
+  return (
+    <div className="space-y-1.5 break-words text-sm leading-relaxed">
+      {lines.map((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={`fronti-space-${index}`} className="h-1" />;
+
+        const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+        if (heading) {
+          return (
+            <p key={`fronti-heading-${index}`} className="pt-0.5 font-semibold text-petrol-950">
+              {renderFrontiInline(heading[1] ?? '')}
+            </p>
+          );
+        }
+
+        const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+        if (bullet) {
+          return (
+            <div key={`fronti-bullet-${index}`} className="flex items-start gap-2">
+              <span className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-petrol-500" />
+              <span className="min-w-0 flex-1">{renderFrontiInline(bullet[1] ?? '')}</span>
+            </div>
+          );
+        }
+
+        const numbered = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+        if (numbered) {
+          return (
+            <div key={`fronti-number-${index}`} className="flex items-start gap-2">
+              <span className="shrink-0 font-semibold text-petrol-700">{numbered[1]}.</span>
+              <span className="min-w-0 flex-1">{renderFrontiInline(numbered[2] ?? '')}</span>
+            </div>
+          );
+        }
+
+        return <p key={`fronti-p-${index}`}>{renderFrontiInline(trimmed)}</p>;
+      })}
+    </div>
+  );
 }
 
 function relativeActivity(value: string): string {

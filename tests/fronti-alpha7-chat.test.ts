@@ -69,6 +69,9 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
     expect(widget).toContain("item.type === 'FRONTI'");
     expect(widget).toContain("snapshot?.type === 'FRONTI'");
     expect(widget).toContain("insertMentionToken('Fronti')");
+    expect(widget).toContain('Fronti · asistente del chat');
+    expect(widget).toContain('Mencionar @Fronti');
+    expect(widget).toContain('aquí sólo aparecen cuentas humanas operativas');
     expect(widget).toContain('Fronti está pensando');
     expect(widget).toContain('renderFrontiBody');
     expect(layout).toContain('(!user.roleOperational || user.isSystemAdmin)');

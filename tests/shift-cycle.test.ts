@@ -251,15 +251,17 @@ describe('invariantes del turno', () => {
     ).rejects.toThrow(/ya fue recibida/);
   });
 
-  it('un turno no puede recibir su propia entrega', async () => {
+  it('nadie del turno saliente puede recibir su propia entrega', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
     const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    await closeShift(morning, { shiftId: shiftA.id });
+
     await expect(
-      receiveHandover(morning, { shiftId: shiftA.id, handoverId: sent.id }),
-    ).rejects.toThrow(RuleError);
+      receiveHandover(morning, { handoverId: sent.id }),
+    ).rejects.toThrow(/distinto del turno saliente/i);
   });
 
   it('un turno activo no puede saltarse la entrega para cerrar', async () => {

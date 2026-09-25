@@ -40,7 +40,15 @@ export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-function ReviewBlock({ block, canFollow }: { block: SupervisionBlock; canFollow: boolean }) {
+function ReviewBlock({
+  block,
+  canFollow,
+  followedSourceKeys,
+}: {
+  block: SupervisionBlock;
+  canFollow: boolean;
+  followedSourceKeys: Set<string>;
+}) {
   const tone = TONE_STYLES[block.tone];
   return (
     <Card className="flex h-[26rem] flex-col overflow-hidden">
@@ -67,7 +75,11 @@ function ReviewBlock({ block, canFollow }: { block: SupervisionBlock; canFollow:
                   </span>
                 </Link>
                 {canFollow && row.sourceEntity && row.sourceId && row.sourceEntity !== 'FollowUp' ? (
-                  <FollowSupervisionSourceForm sourceEntity={row.sourceEntity} sourceId={row.sourceId} />
+                  followedSourceKeys.has(`${row.sourceEntity}:${row.sourceId}`) ? (
+                    <Chip>Siguiendo</Chip>
+                  ) : (
+                    <FollowSupervisionSourceForm sourceEntity={row.sourceEntity} sourceId={row.sourceId} />
+                  )
                 ) : null}
               </li>
             ))}
@@ -160,6 +172,11 @@ export default async function SupervisionCenterPage({
     .reduce((sum, block) => sum + block.rows.length, 0);
   const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
   const continuityOpen = center.myTasks.length + center.myFollowUps.length;
+  const followedSourceKeys = new Set(
+    center.myFollowUps
+      .filter((item) => item.sourceEntity && item.sourceId)
+      .map((item) => `${item.sourceEntity}:${item.sourceId}`),
+  );
   const announcementPending = announcements.reduce(
     (sum, announcement) => sum + Math.max(0, announcement.expected - announcement.confirmed),
     0,
@@ -378,7 +395,12 @@ export default async function SupervisionCenterPage({
       {blocks.length > 0 ? (
         <section>
           <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Ahora · señales que desembocan en Supervisión</h2>
-          <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock key={block.key} block={block} canFollow={isSupervisor} />)}</div>
+          <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
+            key={block.key}
+            block={block}
+            canFollow={isSupervisor}
+            followedSourceKeys={followedSourceKeys}
+          />)}</div>
         </section>
       ) : null}
 

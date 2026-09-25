@@ -40,9 +40,10 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
 
   it('crea un chat privado por usuario y sólo guarda memoria desde ese chat', () => {
     const source = readFileSync('src/server/ai/fronti-chat.ts', 'utf8');
+    const chat = readFileSync('src/server/services/chat.ts', 'utf8');
 
     expect(source).toContain('conversation.type === ChatConversationType.FRONTI');
-    expect(source).toContain('const directKey = `fronti:${user.id}`');
+    expect(chat).toContain('const directKey = `fronti:${user.id}`');
     expect(source).toContain('if (privateFronti && memoryContext)');
     expect(source).toContain('extractAndStoreMemories');
     expect(source).toContain('El contexto de este chat NO es memoria personal');

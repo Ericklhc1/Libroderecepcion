@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { shouldAttemptMemoryExtraction } from '@/server/ai/memory';
 
-describe('FRONTI alpha.4 · router y memoria auxiliar', () => {
-  it('mantiene la cadena Sol -> Groq 120B -> Groq 20B', () => {
+describe('FRONTI alpha · router y memoria auxiliar', () => {
+  it('mantiene una cadena operativa exclusivamente de costo cero', () => {
     const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf8');
-    expect(source).toContain("OPENAI_PRIMARY_MODEL = 'gpt-5.6-sol'");
     expect(source).toContain("GROQ_PRIMARY_MODEL = 'openai/gpt-oss-120b'");
+    expect(source).toContain("CLOUDFLARE_FALLBACK_MODEL = '@cf/zai-org/glm-4.7-flash'");
     expect(source).toContain("GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b'");
-    expect(source).toContain('resolveFrontiProviderChainRuntime');
-    expect(source).toContain('/responses');
+
+    const chain = source.slice(
+      source.indexOf('export async function resolveFrontiProviderChainRuntime'),
+      source.indexOf('export async function resolveFrontiAuxiliaryProviderRuntime'),
+    );
+    expect(chain).toContain("provider: 'groq'");
+    expect(chain).toContain("provider: 'cloudflare'");
+    expect(chain).not.toContain("provider: 'openai'");
   });
 
   it('no dispara extracción de memoria para consultas operativas normales', () => {

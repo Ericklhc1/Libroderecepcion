@@ -14,7 +14,7 @@ import {
   parseBookFilters,
   type RawSearchParams,
 } from '@/lib/search-params';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { isReceptionDeskRole } from '@/lib/permissions';
 
 export const metadata = { title: 'Novedades' };
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export default async function BookPage({
   const clase = typeof params.clase === 'string' ? params.clase : 'entry';
   const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
   const parsedFilters = parseBookFilters(params);
-  const receptionist = user.roleKey === ROLE_KEYS.RECEPTIONIST;
+  const receptionDesk = isReceptionDeskRole(user.roleKey);
 
   const filters: BookFilters = {
     ...parsedFilters,
@@ -46,13 +46,13 @@ export default async function BookPage({
           onlyOpen: true,
         }
       : {}),
-    ...(receptionist && clase === 'task'
+    ...(receptionDesk && clase === 'task'
       ? { ownerId: user.id, onlyOpen: true }
       : {}),
-    ...(receptionist && clase === 'followup'
+    ...(receptionDesk && clase === 'followup'
       ? { ownerId: user.id, onlyOpen: true }
       : {}),
-    hideClosureValidation: receptionist,
+    hideClosureValidation: receptionDesk,
   };
 
   const [result, options, shifts] = await Promise.all([

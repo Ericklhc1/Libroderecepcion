@@ -93,22 +93,32 @@ export function TaskForm({
         </Field>
       </div>
 
-      <Field
-        label="Colaboradores"
-        name="collaboratorIds"
-        hint="Usa Ctrl/Cmd para seleccionar más de una persona. El Administrador de sistema queda excluido."
-      >
-        <select
-          name="collaboratorIds"
-          multiple
-          size={Math.min(Math.max(options.users.length, 3), 6)}
-          className="input-base w-full"
-        >
-          {options.users.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </Field>
+      <fieldset className="rounded-xl border border-slate-200 p-3">
+        <legend className="px-1 text-sm font-medium text-petrol-900">Colaboradores</legend>
+        <p className="mb-2 text-xs text-slate-500">
+          Opcional. Marca a quienes colaboran; funciona igual con ratón, teclado o pantalla táctil.
+        </p>
+        {options.users.length === 0 ? (
+          <p className="text-sm text-slate-500">No hay personal operativo disponible.</p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {options.users.map((option) => (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-petrol-900 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  name="collaboratorIds"
+                  value={option.value}
+                  className="h-4 w-4 rounded border-slate-300 text-petrol-700 focus:ring-gold-500"
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Fecha límite" name="dueAt">
@@ -128,23 +138,6 @@ export function TaskForm({
           <Select name="entryId" placeholder="Sin vínculo" options={options.openEntries} />
         </Field>
       ) : null}
-
-      <details className="rounded-lg border border-slate-200 p-3">
-        <summary className="cursor-pointer text-sm font-medium text-petrol-700">
-          Vínculos opcionales
-        </summary>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Field label="Habitación" name="roomId">
-            <Select name="roomId" placeholder="Sin habitación" options={options.rooms} />
-          </Field>
-          <Field label="Reserva" name="reservationId">
-            <Select name="reservationId" placeholder="Sin reserva" options={options.reservations} />
-          </Field>
-          <Field label="Huésped" name="guestId">
-            <Select name="guestId" placeholder="Sin huésped" options={options.guests} />
-          </Field>
-        </div>
-      </details>
 
       <Field
         label="Checklist"

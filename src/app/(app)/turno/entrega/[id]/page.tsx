@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CashCountKind, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
-import { ArrowLeft, CheckCircle2, Clock, Send, User } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getHistory } from '@/server/services/history';

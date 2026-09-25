@@ -9,6 +9,7 @@ import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/domain/labels';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { applyCashTransferToLiveCash } from '@/server/services/cash';
 import { insertCashMovement } from '@/server/services/live-cash';
+import { finishSupervisionTrackingForSource } from '@/server/services/followups';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -322,37 +323,43 @@ export async function resolveAlert(
   }
 
   const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;
-  const updated = await prisma.alert.update({
-    where: { id: input.id },
-    data: {
-      status: AlertStatus.RESUELTA,
-      resolvedById: user.id,
-      resolvedAt: new Date(),
-      resolutionNote: input.note ?? null,
-      snoozedUntil: null,
-      ...(checkoutDismissed ? { auto: false } : {}),
-    },
-    include: alertInclude,
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.alert.update({
+      where: { id: input.id },
+      data: {
+        status: AlertStatus.RESUELTA,
+        resolvedById: user.id,
+        resolvedAt: new Date(),
+        resolutionNote: input.note ?? null,
+        snoozedUntil: null,
+        ...(checkoutDismissed ? { auto: false } : {}),
+      },
+      include: alertInclude,
+    });
+    await finishSupervisionTrackingForSource(tx, user, 'Alert', alert.id, 'RESUELTO');
+    await recordAudit(
+      {
+        entity: 'Alert',
+        entityId: input.id,
+        action: AuditAction.CERRAR,
+        summary: cashTransfer
+          ? `Egreso a tesorería validado por ${user.name}: ${alert.title}`
+          : cashManual
+            ? `Movimiento manual de Caja autorizado por ${user.name}: ${alert.title}`
+            : noElements
+              ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
+              : shiftValidation
+                ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
+                : `Alerta resuelta: ${alert.title}`,
+        user,
+        before: { status: alert.status },
+        after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
+        reason: input.note ?? null,
+      },
+      tx,
+    );
+    return updated;
   });
-  await recordAudit({
-    entity: 'Alert',
-    entityId: input.id,
-    action: AuditAction.CERRAR,
-    summary: cashTransfer
-      ? `Egreso a tesorería validado por ${user.name}: ${alert.title}`
-      : cashManual
-        ? `Movimiento manual de Caja autorizado por ${user.name}: ${alert.title}`
-        : noElements
-          ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
-          : shiftValidation
-            ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-            : `Alerta resuelta: ${alert.title}`,
-    user,
-    before: { status: alert.status },
-    after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
-    reason: input.note ?? null,
-  });
-  return updated;
 }
 
 export async function softDeleteAlert(
@@ -360,20 +367,26 @@ export async function softDeleteAlert(
   input: { id: string; reason: string },
 ) {
   const alert = await loadAlert(input.id);
-  const deleted = await prisma.alert.update({
-    where: { id: input.id },
-    data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
+  return prisma.$transaction(async (tx) => {
+    const deleted = await tx.alert.update({
+      where: { id: input.id },
+      data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
+    });
+    await finishSupervisionTrackingForSource(tx, user, 'Alert', alert.id, 'CANCELADO');
+    await recordAudit(
+      {
+        entity: 'Alert',
+        entityId: input.id,
+        action: AuditAction.ELIMINAR,
+        summary: `Eliminación lógica de la alerta: ${alert.title}`,
+        user,
+        after: { deletedAt: deleted.deletedAt },
+        reason: input.reason,
+      },
+      tx,
+    );
+    return deleted;
   });
-  await recordAudit({
-    entity: 'Alert',
-    entityId: input.id,
-    action: AuditAction.ELIMINAR,
-    summary: `Eliminación lógica de la alerta: ${alert.title}`,
-    user,
-    after: { deletedAt: deleted.deletedAt },
-    reason: input.reason,
-  });
-  return deleted;
 }
 
 export async function restoreAlert(

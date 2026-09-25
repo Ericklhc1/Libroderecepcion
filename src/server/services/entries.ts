@@ -16,6 +16,7 @@ import { ENTRY_OPEN_STATUSES, ENTRY_STATUS_LABEL, ENTRY_TYPE_LABEL } from '@/dom
 import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
 import { assertAssignable, listSupervisorIds } from './users';
+import { finishSupervisionTrackingForSource } from './followups';
 
 export const entryInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -303,11 +304,23 @@ export async function changeEntryStatus(
       }
     }
     const openFollowUps = await prisma.followUp.count({
-      where: { entryId: current.id, deletedAt: null, status: { in: ['PENDIENTE', 'VENCIDO'] } },
+      where: {
+        entryId: current.id,
+        deletedAt: null,
+        status: { in: ['PENDIENTE', 'VENCIDO'] },
+        // «Seguir» en Supervisión es vigilancia, no otra obligación que haya
+        // que cerrar antes de resolver la fuente original. El OR explícito
+        // incluye origin=NULL: un NOT sobre un campo nulo se vuelve UNKNOWN en
+        // PostgreSQL y excluiría seguimientos operativos legítimos.
+        OR: [
+          { origin: null },
+          { origin: { not: { startsWith: 'SUPERVISION_' } } },
+        ],
+      },
     });
     if (openFollowUps > 0 && input.status === EntryStatus.CERRADO) {
       throw new RuleError(
-        `No puedes cerrar el registro: tiene ${openFollowUps} seguimiento(s) sin cerrar.`,
+        `No puedes cerrar el registro: tiene ${openFollowUps} seguimiento(s) operativo(s) sin resolver.`,
       );
     }
   }
@@ -349,6 +362,16 @@ export async function changeEntryStatus(
       },
       tx,
     );
+
+    if (closing) {
+      await finishSupervisionTrackingForSource(
+        tx,
+        user,
+        'OperationalEntry',
+        current.id,
+        'RESUELTO',
+      );
+    }
 
     const interested = new Set<string>([current.createdById]);
     if (current.ownerId) interested.add(current.ownerId);
@@ -400,6 +423,13 @@ export async function softDeleteEntry(
         reason: input.reason,
       },
       tx,
+    );
+    await finishSupervisionTrackingForSource(
+      tx,
+      user,
+      'OperationalEntry',
+      input.id,
+      'CANCELADO',
     );
     return deleted;
   });

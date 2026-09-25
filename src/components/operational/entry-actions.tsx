@@ -193,12 +193,12 @@ export function EditEntryDialog({
 export function CloseFollowUpDialog({ followUpId }: { followUpId: string }) {
   return (
     <Dialog
-      title="Cerrar seguimiento"
-      description="Registra el resultado: es obligatorio para poder cerrarlo."
+      title="Resolver seguimiento"
+      description="Registra el resultado. La fuente original sigue siendo la verdad operativa."
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
-      trigger="Cerrar seguimiento"
+      trigger="Resolver"
     >
       <ActionForm action={updateFollowUpAction} closeOnSuccess>
         <input type="hidden" name="id" value={followUpId} />
@@ -207,7 +207,7 @@ export function CloseFollowUpDialog({ followUpId }: { followUpId: string }) {
           <Textarea name="result" rows={3} required />
         </Field>
         <div className="flex justify-end">
-          <SubmitButton pendingLabel="Cerrando…">Cerrar seguimiento</SubmitButton>
+          <SubmitButton pendingLabel="Resolviendo…">Cerrar seguimiento</SubmitButton>
         </div>
       </ActionForm>
     </Dialog>

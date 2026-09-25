@@ -199,14 +199,22 @@ export async function updateFollowUp(
   if (input.ownerId) await assertAssignable(input.ownerId);
 
   if (input.status === FollowUpStatus.CUMPLIDO && !(input.result ?? current.result)) {
-    throw new RuleError('Para cerrar un seguimiento debes registrar el resultado.');
+    throw new RuleError('Para resolver un seguimiento debes registrar el resultado.');
   }
 
+  /*
+   * FollowUp.ownerId es obligatorio. Un select vacío llega como null por
+   * zOptionalCuid; eso significa "no cambiar responsable", nunca desconectarlo.
+   * Construimos además el update con la relación Prisma owner para no depender
+   * de un cast que oculte incompatibilidades del cliente generado.
+   */
   const after: Record<string, unknown> = {};
-  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'ownerId', 'description', 'priority', 'visibility', 'resolution'] as const) {
+  for (const key of ['result', 'nextAction', 'scheduledAt', 'notes', 'status', 'description', 'priority', 'visibility', 'resolution'] as const) {
     const value = input[key];
     if (value !== undefined) after[key] = value;
   }
+  if (input.ownerId) after.ownerId = input.ownerId;
+
   const changes = diffFields(
     current as unknown as Record<string, unknown>,
     after,
@@ -214,15 +222,26 @@ export async function updateFollowUp(
   );
   if (changes.changed.length === 0) return current;
 
+  const closing =
+    input.status === FollowUpStatus.CUMPLIDO || input.status === FollowUpStatus.CANCELADO;
+  const updateData: Prisma.FollowUpUpdateInput = {
+    ...(input.result !== undefined ? { result: input.result } : {}),
+    ...(input.nextAction !== undefined ? { nextAction: input.nextAction } : {}),
+    ...(input.scheduledAt !== undefined ? { scheduledAt: input.scheduledAt } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.ownerId ? { owner: { connect: { id: input.ownerId } } } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+    ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+    ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+    ...(input.status !== undefined ? { completedAt: closing ? new Date() : null } : {}),
+  };
+
   return prisma.$transaction(async (tx) => {
-    const closing =
-      input.status === FollowUpStatus.CUMPLIDO || input.status === FollowUpStatus.CANCELADO;
     const updated = await tx.followUp.update({
       where: { id: input.id },
-      data: {
-        ...after,
-        completedAt: closing ? new Date() : null,
-      } as Prisma.FollowUpUpdateInput,
+      data: updateData,
       include: followUpInclude,
     });
 
@@ -259,6 +278,73 @@ export async function updateFollowUp(
 
     return updated;
   });
+}
+
+/**
+ * Cierra únicamente los seguimientos técnicos creados por «Seguir» cuando su
+ * fuente deja de requerir atención. Así el Supervisor no tiene que resolver
+ * dos veces el mismo asunto: la fuente es la verdad y el FollowUp sólo mantiene
+ * la decisión personal de vigilarla.
+ */
+export async function finishSupervisionTrackingForSource(
+  tx: Prisma.TransactionClient,
+  user: CurrentUser,
+  sourceEntity: string,
+  sourceId: string,
+  outcome: 'RESUELTO' | 'CANCELADO' = 'RESUELTO',
+) {
+  const open = await tx.followUp.findMany({
+    where: {
+      deletedAt: null,
+      sourceEntity,
+      sourceId,
+      origin: { startsWith: 'SUPERVISION_' },
+      status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+    },
+    select: { id: true, action: true, result: true },
+  });
+  if (open.length === 0) return 0;
+
+  const now = new Date();
+  const status =
+    outcome === 'CANCELADO' ? FollowUpStatus.CANCELADO : FollowUpStatus.CUMPLIDO;
+  const result =
+    outcome === 'CANCELADO'
+      ? 'La fuente dejó de estar vigente.'
+      : 'Resuelto en la fuente de origen.';
+
+  for (const followUp of open) {
+    await tx.followUp.update({
+      where: { id: followUp.id },
+      data: {
+        status,
+        result: followUp.result ?? result,
+        completedAt: now,
+      },
+    });
+    await tx.alert.updateMany({
+      where: { followUpId: followUp.id, auto: true, status: { not: AlertStatus.RESUELTA } },
+      data: {
+        status: AlertStatus.RESUELTA,
+        resolvedAt: now,
+        resolvedById: user.id,
+        resolutionNote: result,
+      },
+    });
+    await recordAudit(
+      {
+        entity: 'FollowUp',
+        entityId: followUp.id,
+        action: outcome === 'CANCELADO' ? AuditAction.CAMBIO_ESTADO : AuditAction.CERRAR,
+        summary: `Seguimiento "${followUp.action}" cerrado automáticamente desde su fuente`,
+        user,
+        after: { status, result, sourceEntity, sourceId },
+      },
+      tx,
+    );
+  }
+
+  return open.length;
 }
 
 /**

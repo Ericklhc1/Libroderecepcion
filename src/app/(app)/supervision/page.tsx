@@ -14,16 +14,16 @@ import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { TONE_STYLES } from '@/components/ui/tone';
 import { Dialog } from '@/components/ui/dialog';
+import { CloseFollowUpDialog } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
-import { FollowUpForm } from '@/components/forms/followup-form';
 import { createTaskAction } from '@/server/actions/tasks';
-import { createFollowUpAction } from '@/server/actions/followups';
 import {
   DeleteSupervisionNoteDialog,
   FinishSupervisionShiftForm,
   FollowSupervisionSourceForm,
   NewSupervisionNoteDialog,
   StartSupervisionShiftDialog,
+  StopFollowingSupervisionForm,
 } from '@/components/supervision/center-actions';
 import { CloseAnnouncementDialog, NewAnnouncementDialog } from './announcements';
 import { formatDateTime } from '@/lib/format';
@@ -111,9 +111,7 @@ export default async function SupervisionCenterPage({
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const responsible = typeof params.responsable === 'string' ? params.responsable : '';
-  const status = typeof params.estado === 'string' ? params.estado : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';
-  const origin = typeof params.origen === 'string' ? params.origen : '';
   const period = parsePeriod(params);
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
   const canPerformance = hasPermission(user, 'supervision.performance.view');
@@ -134,17 +132,13 @@ export default async function SupervisionCenterPage({
   const tasks = center.myTasks.filter((task) =>
     inPeriod(task.createdAt) &&
     (!responsible || task.assigneeId === responsible) &&
-    (!status || task.status === status) &&
     (!priority || task.priority === priority) &&
-    (!origin || task.origin === origin) &&
     matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
   );
   const followUps = center.myFollowUps.filter((item) =>
     inPeriod(item.createdAt) &&
     (!responsible || item.ownerId === responsible) &&
-    (!status || item.status === status) &&
     (!priority || item.priority === priority) &&
-    (!origin || item.origin === origin) &&
     matches(item.action, item.owner.name, item.status, item.priority),
   );
   const notes = center.notes.filter((note) =>
@@ -152,13 +146,11 @@ export default async function SupervisionCenterPage({
   );
   const audits = center.audits.filter((audit) =>
     inPeriod(audit.startedAt) &&
-    (!status || audit.status === status) &&
     matches(audit.templateName, audit.runBy.name, audit.status, audit.scope),
   );
   const measures = center.measures.filter((measure) =>
     inPeriod(measure.createdAt) &&
     (!responsible || measure.assigneeId === responsible) &&
-    (!status || measure.status === status) &&
     matches(measure.title, measure.action, measure.assignee.name, measure.status),
   );
   const blocks = review.blocks
@@ -191,7 +183,7 @@ export default async function SupervisionCenterPage({
             Centro de Supervisión
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Continuidad personal y señales transversales de Recepción, Caja, Turnos y Llaves.
+            Qué requiere tu atención, qué delegaste y qué decidiste mantener en seguimiento.
           </p>
         </div>
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="Secciones del Centro de Supervisión">
@@ -202,13 +194,13 @@ export default async function SupervisionCenterPage({
       </header>
 
       <nav className="flex flex-wrap gap-2 no-print" aria-label="Atajos del Centro de Supervisión">
-        <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Continuidad</a>
-        <a href="#pendientes" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Mis pendientes</a>
-        <a href="#seguimientos" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Siguiendo</a>
-        <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Señales del Libro</a>
+        <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Desde mi último turno</a>
+        <a href="#pendientes" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Asignado a mí</a>
+        <a href="#seguimientos" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">En seguimiento</a>
+        <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Requiere atención</a>
       </nav>
 
-      <ListFilterBar searchValue={q} searchPlaceholder="Buscar persona, tarea, seguimiento, nota u origen…" clearHref="/supervision">
+      <ListFilterBar searchValue={q} searchPlaceholder="Buscar pendiente, señal, nota o persona…" clearHref="/supervision">
         <label className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Responsable</span>
           <select className="input-base w-full" name="responsable" defaultValue={responsible}>
@@ -216,31 +208,11 @@ export default async function SupervisionCenterPage({
             {options.users.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <label className="min-w-[11rem]">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
-          <select className="input-base w-full" name="estado" defaultValue={status}>
-            <option value="">Todos</option>
-            <option value="PENDIENTE">Pendiente</option><option value="ACEPTADA">Aceptada</option>
-            <option value="EN_CURSO">En curso</option><option value="BLOQUEADA">Bloqueada</option>
-            <option value="REALIZADA">Realizada</option><option value="DEVUELTA">Devuelta</option>
-            <option value="VALIDADA">Validada</option><option value="VENCIDO">Vencido</option>
-            <option value="PREPARACION">Preparación</option><option value="CERRADA">Cerrada</option>
-          </select>
-        </label>
         <label className="min-w-[10rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Prioridad</span>
           <select className="input-base w-full" name="prioridad" defaultValue={priority}>
             <option value="">Todas</option><option value="BAJA">Baja</option><option value="MEDIA">Media</option>
             <option value="ALTA">Alta</option><option value="CRITICA">Crítica</option>
-          </select>
-        </label>
-        <label className="min-w-[11rem]">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Origen</span>
-          <select className="input-base w-full" name="origen" defaultValue={origin}>
-            <option value="">Todos</option><option value="MANUAL">Manual</option><option value="REGISTRO">Registro</option>
-            <option value="INCIDENCIA">Incidencia</option><option value="SEGUIMIENTO">Seguimiento</option>
-            <option value="ALERTA">Alerta</option><option value="ENTREGA_TURNO">Entrega de turno</option>
-            <option value="CENTRO_SUPERVISION">Centro de Supervisión</option>
           </select>
         </label>
         <label>
@@ -302,7 +274,7 @@ export default async function SupervisionCenterPage({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Alertas críticas" value={critical} tone={critical ? 'alert' : 'good'} />
-        <StatTile label="Mi continuidad" value={continuityOpen} tone={continuityOpen ? 'neutral' : 'good'} />
+        <StatTile label="Mis pendientes" value={continuityOpen} tone={continuityOpen ? 'neutral' : 'good'} />
         <StatTile label="Cierres por validar" value={pendingClosures} tone={pendingClosures ? 'alert' : 'good'} />
         <StatTile label="Señales del Libro" value={review.total} tone={review.total ? 'alert' : 'good'} />
         <StatTile label="Auditorías abiertas" value={center.audits.length} tone={center.audits.length ? 'alert' : 'good'} />
@@ -312,14 +284,9 @@ export default async function SupervisionCenterPage({
       <Card>
         <CardHeader title="Accesos rápidos" />
         <div className="flex flex-wrap gap-2 px-4 py-3 no-print">
-          {isSupervisor ? <Dialog title="Nueva tarea" trigger="Crear tarea" triggerVariant="gold" width="lg">
+          {isSupervisor ? <Dialog title="Asignar tarea" trigger="Asignar tarea" triggerVariant="gold" width="lg">
             <TaskForm action={createTaskAction} options={options} defaultAssigneeId={user.id} />
           </Dialog> : null}
-          {isSupervisor ? (
-            <Dialog title="Nuevo seguimiento" trigger="Crear seguimiento" triggerVariant="secondary" width="lg">
-              <FollowUpForm action={createFollowUpAction} options={options} defaultOwnerId={user.id} />
-            </Dialog>
-          ) : null}
           {isSupervisor ? <NewSupervisionNoteDialog /> : null}
           {isSupervisor ? <Link href="/supervision/auditorias" className="inline-flex items-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50">Iniciar auditoría sorpresa</Link> : null}
         </div>
@@ -328,8 +295,8 @@ export default async function SupervisionCenterPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <section id="pendientes" className="scroll-mt-4">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="Mis pendientes" count={tasks.length} />
-          {tasks.length === 0 ? <EmptyState message="No hay tareas abiertas con estos filtros." /> : (
+          <CardHeader title="Asignado a mí" count={tasks.length} />
+          {tasks.length === 0 ? <EmptyState message="No tienes tareas asignadas con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
                 {tasks.map((task) => (
@@ -350,8 +317,8 @@ export default async function SupervisionCenterPage({
 
         <section id="seguimientos" className="scroll-mt-4">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="Siguiendo" count={followUps.length} />
-          {followUps.length === 0 ? <EmptyState message="No hay seguimientos abiertos con estos filtros." /> : (
+          <CardHeader title="En seguimiento" count={followUps.length} />
+          {followUps.length === 0 ? <EmptyState message="No estás siguiendo asuntos con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
                 {followUps.map((item) => (
@@ -359,6 +326,13 @@ export default async function SupervisionCenterPage({
                     <div className="flex flex-wrap gap-2"><Badge tone={item.status === 'VENCIDO' ? 'critico' : 'pendiente'}>{item.status === 'VENCIDO' ? 'Vencido' : 'Pendiente'}</Badge><Chip>{item.visibility.toLocaleLowerCase('es-CL')}</Chip></div>
                     <p className="mt-1 font-medium text-petrol-900">{item.action}</p>
                     <p className="text-xs text-slate-500">{item.owner.name}{item.scheduledAt ? ` · revisión ${formatDateTime(item.scheduledAt)}` : ''}</p>
+                    <div className="mt-2 no-print">
+                      {item.sourceEntity && item.sourceId && item.origin?.startsWith('SUPERVISION_') ? (
+                        <StopFollowingSupervisionForm followUpId={item.id} />
+                      ) : (
+                        <CloseFollowUpDialog followUpId={item.id} />
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -407,7 +381,7 @@ export default async function SupervisionCenterPage({
 
       {blocks.length > 0 ? (
         <section id="senales" className="scroll-mt-4">
-          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Ahora · señales que desembocan en Supervisión</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Requiere atención · señales del Libro</h2>
           <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}
             block={block}
@@ -419,7 +393,7 @@ export default async function SupervisionCenterPage({
 
       <p className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
         <NotebookPen className="h-4 w-4" aria-hidden="true" />
-        Supervisión no duplica Novedades, Caja, Turnos ni Llaves: observa la fuente real, permite seguirla y conserva únicamente tu decisión y trazabilidad.
+        Supervisión no duplica la operación: «Seguir» sólo mantiene un asunto en tu radar. Cuando la fuente se resuelve, ese seguimiento técnico se cierra con ella.
       </p>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   receiveSupervisionHandoverAction,
   startSupervisionShiftAction,
 } from '@/server/actions/supervision-center';
+import { updateFollowUpAction } from '@/server/actions/followups';
 
 export function StartSupervisionShiftDialog() {
   return (
@@ -98,6 +99,19 @@ export function FollowSupervisionSourceForm({
       <input type="hidden" name="sourceId" value={sourceId} />
       <SubmitButton variant="secondary" size="sm" pendingLabel="Siguiendo…">
         Seguir
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function StopFollowingSupervisionForm({ followUpId }: { followUpId: string }) {
+  return (
+    <ActionForm action={updateFollowUpAction} hideSuccess refreshOnSuccess className="space-y-0">
+      <input type="hidden" name="id" value={followUpId} />
+      <input type="hidden" name="status" value="CANCELADO" />
+      <input type="hidden" name="resolution" value="Supervisión decidió dejar de seguir esta fuente." />
+      <SubmitButton variant="secondary" size="sm" pendingLabel="Dejando de seguir…">
+        Dejar de seguir
       </SubmitButton>
     </ActionForm>
   );

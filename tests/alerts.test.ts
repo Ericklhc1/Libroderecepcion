@@ -22,6 +22,7 @@ import {
 import { changeEntryStatus, createEntry } from '@/server/services/entries';
 import { changeTaskStatus, createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
+import { followSupervisionSource } from '@/server/services/supervision-center';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000);
@@ -242,6 +243,7 @@ describe('motor de alertas', () => {
 
 describe('gestión de alertas', () => {
   let user: CurrentUser;
+  let supervisor: CurrentUser;
   let admin: CurrentUser;
 
   beforeAll(async () => {
@@ -251,6 +253,7 @@ describe('gestión de alertas', () => {
   beforeEach(async () => {
     await resetOperationalData();
     user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
   });
 
@@ -302,6 +305,20 @@ describe('gestión de alertas', () => {
       where: { entityId: alert.id, action: 'CERRAR' },
     });
     expect(log).not.toBeNull();
+  });
+
+  it('resolver una alerta cierra también su seguimiento técnico de Supervisión', async () => {
+    const alert = await createManualAlert(user, nueva);
+    const followUp = await followSupervisionSource(supervisor, {
+      sourceEntity: 'Alert',
+      sourceId: alert.id,
+    });
+
+    await resolveAlert(user, { id: alert.id, note: 'Fuente resuelta.' });
+
+    const stored = await prisma.followUp.findUniqueOrThrow({ where: { id: followUp.id } });
+    expect(stored.status).toBe('CUMPLIDO');
+    expect(stored.completedAt).not.toBeNull();
   });
 
   it('una alerta resuelta no admite marcarse como vista ni posponerse', async () => {

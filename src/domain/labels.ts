@@ -155,7 +155,7 @@ export const TASK_ORIGIN_LABEL: Record<TaskOrigin, string> = {
 
 export const FOLLOWUP_STATUS_LABEL: Record<FollowUpStatus, string> = {
   PENDIENTE: 'Pendiente',
-  CUMPLIDO: 'Cumplido',
+  CUMPLIDO: 'Resuelto',
   VENCIDO: 'Vencido',
   CANCELADO: 'Cancelado',
 };

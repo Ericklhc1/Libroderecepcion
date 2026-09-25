@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   AuditDisclosure,
   CorrectiveMeasureStatus,
+  EntryStatus,
   Priority,
   SupervisionVisibility,
   TaskStatus,
@@ -31,6 +32,7 @@ import {
   startSupervisionShift,
 } from '@/server/services/supervision-center';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
+import { changeEntryStatus } from '@/server/services/entries';
 import { createFollowUp } from '@/server/services/followups';
 import {
   finishRun,
@@ -129,6 +131,32 @@ describe('Centro de Supervisión', () => {
     expect(first.sourceEntity).toBe('OperationalEntry');
     expect(first.sourceId).toBe(entry.id);
     expect(await prisma.operationalEntry.count({ where: { id: entry.id } })).toBe(1);
+  });
+
+  it('resolver la fuente cierra automáticamente el seguimiento técnico de Supervisión', async () => {
+    const entry = await prisma.operationalEntry.create({
+      data: {
+        type: 'NOVEDAD',
+        title: 'Fuente que se resolverá una sola vez',
+        description: 'Seguir no debe crear una segunda obligación de cierre.',
+        createdById: receptionist.id,
+      },
+    });
+    const followUp = await followSupervisionSource(supervisor, {
+      sourceEntity: 'OperationalEntry',
+      sourceId: entry.id,
+    });
+
+    await changeEntryStatus(supervisor, {
+      id: entry.id,
+      status: EntryStatus.RESUELTO,
+      resolution: 'La novedad quedó resuelta en su fuente.',
+    });
+
+    const persisted = await prisma.followUp.findUniqueOrThrow({ where: { id: followUp.id } });
+    expect(persisted.status).toBe('CUMPLIDO');
+    expect(persisted.completedAt).not.toBeNull();
+    expect(persisted.result).toContain('fuente de origen');
   });
 
   it('reserva la operación al Supervisor y excluye al Administrador de asignaciones', async () => {
@@ -395,14 +423,15 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('flex flex-wrap');
     expect(page).toContain('CardScroll');
     expect(page).toContain('Desde tu último turno');
-    expect(page).toContain('Mi continuidad');
-    expect(page).toContain('Atajos del Centro de Supervisión');
+    expect(page).toContain('Asignado a mí');
+    expect(page).toContain('En seguimiento');
     expect(page).toContain('href="#continuidad"');
     expect(page).toContain('href="#pendientes"');
     expect(page).toContain('href="#seguimientos"');
     expect(page).toContain('href="#senales"');
-    expect(page).toContain('Ahora · señales que desembocan en Supervisión');
+    expect(page).toContain('Requiere atención · señales del Libro');
     expect(page).toContain('FollowSupervisionSourceForm');
+    expect(page).toContain('StopFollowingSupervisionForm');
     expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');
   });
 });

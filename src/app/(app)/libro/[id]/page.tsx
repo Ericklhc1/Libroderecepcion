@@ -20,9 +20,7 @@ import {
   RestoreEntryForm,
 } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
-import { FollowUpForm } from '@/components/forms/followup-form';
 import { createTaskAction } from '@/server/actions/tasks';
-import { createFollowUpAction } from '@/server/actions/followups';
 import {
   ENTRY_OPEN_STATUSES,
   ENTRY_STATUS_LABEL,
@@ -57,7 +55,14 @@ export default async function EntryDetailPage({
 
   const [followUps, tasks, history, options] = await Promise.all([
     prisma.followUp.findMany({
-      where: { entryId: entry.id, deletedAt: null },
+      where: {
+        entryId: entry.id,
+        deletedAt: null,
+        OR: [
+          { origin: null },
+          { origin: { not: { startsWith: 'SUPERVISION_' } } },
+        ],
+      },
       include: { owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     }),
@@ -204,33 +209,17 @@ export default async function EntryDetailPage({
 
             {user.permissions.includes('task.create') ? (
               <Dialog
-                title="Crear tarea desde este registro"
-                description="La tarea queda vinculada al registro y su origen se guarda automáticamente."
+                title="Asignar tarea desde este asunto"
+                description="Define qué debe hacerse y quién queda a cargo. La tarea conserva el vínculo con este asunto."
                 triggerVariant="secondary"
                 triggerSize="sm"
-                trigger="Crear tarea"
+                trigger="Asignar tarea"
               >
                 <TaskForm
                   action={createTaskAction}
                   options={options}
                   entryId={entry.id}
                   defaultAssigneeId={entry.ownerId ?? user.id}
-                />
-              </Dialog>
-            ) : null}
-
-            {user.permissions.includes('followup.create') ? (
-              <Dialog
-                title="Registrar seguimiento"
-                triggerVariant="secondary"
-                triggerSize="sm"
-                trigger="Registrar seguimiento"
-              >
-                <FollowUpForm
-                  action={createFollowUpAction}
-                  options={options}
-                  entryId={entry.id}
-                  defaultOwnerId={entry.ownerId ?? user.id}
                 />
               </Dialog>
             ) : null}
@@ -296,9 +285,9 @@ export default async function EntryDetailPage({
           </Card>
 
           <Card>
-            <CardHeader title="Seguimientos" count={followUps.length} />
+            <CardHeader title="Seguimientos operativos previos" count={followUps.length} />
             {followUps.length === 0 ? (
-              <EmptyState message="Sin seguimientos registrados." />
+              <EmptyState message="Este asunto no tiene seguimiento activo o histórico." />
             ) : (
               <ul className="divide-y divide-slate-100">
                 {followUps.map((followUp) => (
@@ -343,9 +332,9 @@ export default async function EntryDetailPage({
           </Card>
 
           <Card>
-            <CardHeader title="Tareas derivadas" count={tasks.length} />
+            <CardHeader title="Tareas asignadas" count={tasks.length} />
             {tasks.length === 0 ? (
-              <EmptyState message="Sin tareas derivadas de este registro." />
+              <EmptyState message="No se asignaron tareas desde este asunto." />
             ) : (
               <ul className="divide-y divide-slate-100">
                 {tasks.map((task) => (

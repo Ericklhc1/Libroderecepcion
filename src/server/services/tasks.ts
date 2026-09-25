@@ -18,6 +18,7 @@ import { TASK_OPEN_STATUSES, TASK_STATUS_LABEL } from '@/domain/labels';
 import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
 import { assertAssignable } from './users';
+import { finishSupervisionTrackingForSource } from './followups';
 
 export const taskInclude = {
   assignee: { select: { id: true, name: true } },
@@ -465,6 +466,16 @@ export async function changeTaskStatus(
       tx,
     );
 
+    if (closing) {
+      await finishSupervisionTrackingForSource(
+        tx,
+        user,
+        'Task',
+        current.id,
+        'RESUELTO',
+      );
+    }
+
     const targets = new Set<string>([current.createdById]);
     if (current.assigneeId) targets.add(current.assigneeId);
     targets.delete(user.id);
@@ -537,6 +548,13 @@ export async function softDeleteTask(
         reason: input.reason,
       },
       tx,
+    );
+    await finishSupervisionTrackingForSource(
+      tx,
+      user,
+      'Task',
+      input.id,
+      'CANCELADO',
     );
     return deleted;
   });

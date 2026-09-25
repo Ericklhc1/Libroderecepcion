@@ -9,10 +9,9 @@ import type { CurrentUser } from '@/server/auth/current-user';
 /**
  * Acciones rápidas del mesón.
  *
- * Una incidencia es el caso operativo: sus tareas y seguimientos se gestionan
- * desde la propia ficha para conservar contexto, responsable y trazabilidad.
- * Por eso tarea y seguimiento no aparecen como acciones globales paralelas.
- * Las tareas independientes siguen disponibles en su módulo específico.
+ * Una incidencia es el caso operativo. Desde su ficha se asigna lo que haya
+ * que hacer y se registra la resolución. El seguimiento personal de Supervisión
+ * nace desde «Seguir», no como una decisión adicional para Recepción.
  */
 export async function QuickActions({
   user,
@@ -46,7 +45,7 @@ export async function QuickActions({
       {can('incident.create') ? (
         <Dialog
           title="Nueva incidencia"
-          description="La incidencia concentra el caso. Desde su ficha se asignan las tareas y se registran todos sus seguimientos."
+          description="La incidencia concentra el caso. Desde su ficha se asigna lo que haya que hacer y se registra la resolución."
           triggerVariant="secondary"
           triggerSize={compact ? 'sm' : 'md'}
           trigger={

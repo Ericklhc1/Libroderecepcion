@@ -192,7 +192,7 @@ export default async function TasksPage({
                         <QuickStatusForm
                           taskId={task.id}
                           status={TaskStatus.REALIZADA}
-                          label="Realizada"
+                          label="Resolver"
                           variant="gold"
                         />
                       ) : null}

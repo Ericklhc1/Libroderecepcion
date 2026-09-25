@@ -23,6 +23,7 @@ import {
   FollowSupervisionSourceForm,
   NewSupervisionNoteDialog,
   StartSupervisionShiftDialog,
+  StopFollowingSupervisionForm,
 } from '@/components/supervision/center-actions';
 import { CloseAnnouncementDialog, NewAnnouncementDialog } from './announcements';
 import { formatDateTime } from '@/lib/format';
@@ -334,7 +335,11 @@ export default async function SupervisionCenterPage({
                     <p className="mt-1 font-medium text-petrol-900">{item.action}</p>
                     <p className="text-xs text-slate-500">{item.owner.name}{item.scheduledAt ? ` · revisión ${formatDateTime(item.scheduledAt)}` : ''}</p>
                     <div className="mt-2 no-print">
-                      <CloseFollowUpDialog followUpId={item.id} />
+                      {item.sourceEntity && item.sourceId && item.origin?.startsWith('SUPERVISION_') ? (
+                        <StopFollowingSupervisionForm followUpId={item.id} />
+                      ) : (
+                        <CloseFollowUpDialog followUpId={item.id} />
+                      )}
                     </div>
                   </li>
                 ))}

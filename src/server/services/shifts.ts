@@ -485,6 +485,40 @@ export async function openShift(
 
   const created = await prisma
     .$transaction(async (tx) => {
+      /*
+       * Serializa aperturas de turno en PostgreSQL. El precheck superior da una
+       * respuesta rápida, pero dos recepcionistas podrían pulsar «Abrir» en el
+       * mismo milisegundo. El advisory lock evita que ambos creen un turno.
+       */
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(1279873618)');
+
+      const concurrentOutgoing = await tx.shift.findFirst({
+        where: {
+          archivedAt: null,
+          status: {
+            in: [
+              ShiftStatus.INICIADO,
+              ShiftStatus.ACTIVO,
+              ShiftStatus.PREPARANDO_ENTREGA,
+              ShiftStatus.ENTREGA_ENVIADA,
+            ],
+          },
+          assignments: {
+            some: {
+              activatedAt: { not: null },
+              leftAt: null,
+              userId: { not: user.id },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (concurrentOutgoing) {
+        throw new RuleError(
+          'El turno saliente todavía no está cerrado. Debe completar Caja, entrega y cierre antes de que el turno entrante pueda iniciar.',
+        );
+      }
+
       const now = new Date();
       const programmed = await tx.shift.findFirst({
         where: {

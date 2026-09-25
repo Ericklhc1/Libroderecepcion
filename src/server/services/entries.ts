@@ -309,12 +309,13 @@ export async function changeEntryStatus(
         deletedAt: null,
         status: { in: ['PENDIENTE', 'VENCIDO'] },
         // «Seguir» en Supervisión es vigilancia, no otra obligación que haya
-        // que cerrar antes de resolver la fuente original.
-        NOT: {
-          sourceEntity: 'OperationalEntry',
-          sourceId: current.id,
-          origin: { startsWith: 'SUPERVISION_' },
-        },
+        // que cerrar antes de resolver la fuente original. El OR explícito
+        // incluye origin=NULL: un NOT sobre un campo nulo se vuelve UNKNOWN en
+        // PostgreSQL y excluiría seguimientos operativos legítimos.
+        OR: [
+          { origin: null },
+          { origin: { not: { startsWith: 'SUPERVISION_' } } },
+        ],
       },
     });
     if (openFollowUps > 0 && input.status === EntryStatus.CERRADO) {

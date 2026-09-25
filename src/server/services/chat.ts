@@ -2151,11 +2151,18 @@ export async function listSavedChatMessages(user: CurrentUser) {
     messageId: row.messageId,
     conversationId: row.message.conversation.id,
     conversationTitle:
-      row.message.conversation.type === ChatConversationType.GRUPO
-        ? row.message.conversation.title?.trim() || 'Grupo'
-        : row.message.conversation.participants.find((item) => item.userId !== user.id)?.user.name ??
-          'Conversación',
-    senderName: row.message.sender.name,
+      row.message.conversation.type === ChatConversationType.FRONTI
+        ? row.message.conversation.title?.trim() || 'Fronti'
+        : row.message.conversation.type === ChatConversationType.GRUPO
+          ? row.message.conversation.title?.trim() || 'Grupo'
+          : row.message.conversation.participants.find((item) => item.userId !== user.id)?.user.name ??
+            'Conversación',
+    senderName:
+      row.message.author === ChatMessageAuthor.FRONTI
+        ? 'Fronti'
+        : row.message.author === ChatMessageAuthor.SYSTEM
+          ? 'Sistema'
+          : row.message.sender?.name ?? 'Usuario',
     body: row.message.body,
     kind: row.message.kind,
     createdAt: row.message.createdAt.toISOString(),

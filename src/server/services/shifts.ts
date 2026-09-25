@@ -490,7 +490,9 @@ export async function openShift(
        * respuesta rápida, pero dos recepcionistas podrían pulsar «Abrir» en el
        * mismo milisegundo. El advisory lock evita que ambos creen un turno.
        */
-      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(1279873618)');
+      await tx.$queryRaw<Array<{ locked: boolean }>>`
+        SELECT pg_advisory_xact_lock(1279873618) IS NULL AS "locked"
+      `;
 
       const concurrentOutgoing = await tx.shift.findFirst({
         where: {

@@ -26,7 +26,6 @@ const SESSION_STATUSES: ShiftStatus[] = [
 ];
 
 const RECEIVE_ONLY_PERMISSIONS = new Set([
-  'shift.start',
   'shift.receive',
   'cash.count_receive',
 ]);

@@ -54,116 +54,61 @@ export type HelpTopic = {
 export const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'tomar-turno',
-    question: '¿Cómo tomo un turno?',
+    question: '¿Cómo inicio y recibo mi turno?',
     steps: [
-      'Entra a Turno.',
-      'Los turnos no se reparten de antemano: aparece la franja que corresponde al reloj.',
-      'Si el turno anterior dejó un cierre sin confirmar, aparece primero y destacado.',
-      'Pulsa «Tomar turno» o «Tomar y revisar cierre».',
+      'Entra a Mi turno.',
+      'Si el turno saliente todavía está activo o cerrando, espera: el sistema no permite abrir el entrante en paralelo.',
+      'Cuando el saliente quede cerrado, pulsa «Abrir mi turno». Si existe una entrega pendiente, tu turno queda iniciado pero todavía bloqueado.',
+      'Recuenta Caja, valida físicamente las garantías y confirma la recepción de la entrega.',
+      'Al confirmar la recepción, tu turno pasa a activo y se habilita la operación.',
     ],
     caveat:
-      'Si dos personas pulsan a la vez, la segunda recibe un aviso: el turno queda de quien ' +
-      'llegó primero, no se lo quita nadie.',
+      'Recepción sólo puede operar con un turno ACTIVO. Sin turno, durante la recepción y durante el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas.',
     route: '/turno',
     anyOf: ['shift.start'],
-    keywords: ['turno', 'iniciar', 'tomar', 'empezar', 'jornada', 'entrar'],
+    keywords: ['turno', 'iniciar', 'abrir', 'recibir', 'relevo', 'caja', 'bloqueado', 'entrar'],
     tutorial: true,
   },
-  {
-    id: 'cargar-informes',
-    question: '¿Dónde subo los tres informes del PMS?',
-    steps: [
-      'Entra a Turno: la primera tarjeta es la de los informes.',
-      'Para el cierre adjunta Actividad, Salidas e In house. Entradas sigue disponible para otros flujos del PMS.',
-      'Revisa la propuesta antes de aplicarla: nada se sobrescribe sin que alguien lo vea.',
-      'Aplica. De ahí sale el estado de las 89 habitaciones, la cola y las llaves.',
-    ],
-    caveat:
-      'La fecha del lote sale del propio informe, no del reloj: cargar los de ayer no da el ' +
-      'día por cubierto, y el sistema lo dice.',
-    route: '/turno',
-    anyOf: ['pms.import'],
-    keywords: ['informe', 'pms', 'pdf', 'subir', 'cargar', 'actividad', 'entradas', 'salidas', 'in house'],
-    tutorial: false,
-  },
+
   {
     id: 'recibir-caja',
-    question: '¿Cómo recibo la caja al entrar al turno?',
+    question: '¿Cómo recibo la Caja y valido el relevo?',
     steps: [
-      'Al tomar el turno, abre la entrega que dejó el turno anterior.',
-      'Cuenta el efectivo por denominación, billete por billete.',
-      'Confirma los elementos que recibes: llaves maestras, radio, objetos olvidados.',
-      'Recién entonces confirma la recepción del turno.',
+      'El recepcionista saliente debe haber cerrado formalmente su turno.',
+      'Abre tu turno: si hay una entrega pendiente, quedarás en estado de recepción y no podrás operar todavía.',
+      'Abre la entrega y recuenta el efectivo físicamente por denominación.',
+      'Valida las garantías bajo custodia como elementos separados del conteo del fondo.',
+      'Confirma la recepción del turno. Sólo entonces tu turno queda activo.',
+      'Cuando la recepción esté confirmada, imprime el acta de entrega/recepción para la firma del saliente y del entrante.',
     ],
     caveat:
-      'Si tu recuento no coincide con lo declarado, la diferencia queda registrada y visible. ' +
-      'No la escondas: es justamente para eso.',
+      'El acta deja además un espacio de validación/auditoría para Supervisión o el auditor designado. Si el recuento no coincide, la diferencia debe quedar documentada; no se corrige ocultándola.',
     route: '/turno',
     anyOf: ['shift.receive'],
-    keywords: ['caja', 'arqueo', 'fondo', 'efectivo', 'recibir', 'contar', 'dinero', 'divisa'],
+    keywords: ['caja', 'arqueo', 'fondo', 'efectivo', 'recibir', 'recontar', 'dinero', 'garantía', 'firma'],
     tutorial: true,
   },
   {
     id: 'entregar-turno',
-    question: '¿Cómo entrego mi turno?',
+    question: '¿Cómo cierro y entrego mi turno?',
     steps: [
-      'En Turno, pulsa preparar la entrega: el resumen se genera solo.',
-      'Agrega las notas que el sistema no puede saber, clasificadas por urgencia.',
-      'Cuenta la caja y declara los elementos.',
-      'Envía la entrega. Cuando el turno siguiente confirma la recepción, tu turno se cierra automáticamente.',
+      'En Mi turno, inicia la preparación de entrega. Desde ese momento tu cuenta queda bloqueada para la operación general.',
+      'Revisa los pendientes reales de Recepción y completa el cierre de Caja.',
+      'Prepara y revisa la entrega; agrega sólo las notas manuales que el sistema no pueda conocer.',
+      'Envía la entrega y cierra formalmente tu turno.',
+      'El recepcionista entrante recién entonces podrá abrir el suyo, recontar Caja y confirmar la recepción.',
+      'Tras la recepción, imprime el acta para las firmas de saliente y entrante; Supervisión o auditoría valida el cierre posteriormente.',
     ],
     caveat:
-      'El arqueo compara lo contado con el efectivo físico esperado: fondo fijo + garantías ' +
-      'bajo custodia + saldo operacional. Si hay diferencia, se explica y se conserva; nunca ' +
-      'se transforma automáticamente en recaudación.',
+      'Enviar la entrega no libera al saliente. La participación termina únicamente al cerrar formalmente el turno. El entrante no puede operar hasta validar la recepción.',
     route: '/turno',
     anyOf: ['shift.handover'],
-    keywords: ['entregar', 'entrega', 'cierre', 'turno', 'resumen', 'traspaso', 'recibir'],
+    keywords: ['entregar', 'entrega', 'cierre', 'turno', 'resumen', 'traspaso', 'caja', 'firma'],
     action: 'regenerar-entrega',
     tutorial: true,
   },
-  {
-    /*
-      Este procedimiento NO lleva `anyOf`: lo ve todo el mundo, y es a
-      propósito. Lo encontró una prueba en navegador: un recepcionista que
-      buscaba «no deja confirmar» recibía «¿Cómo tomo un turno?», porque el
-      reseteo está filtrado por un permiso que él no tiene. Quien está
-      atascado necesita saber qué hacer, aunque no sea él quien lo resuelva.
-    */
-    id: 'atascado-sin-permiso',
-    question: 'No me deja confirmar y no tengo el botón de resetear. ¿A quién aviso?',
-    steps: [
-      'Mira la ficha de la habitación: si el mismo huésped aparece como «Actual» y como «Entrante», es una duplicidad del informe.',
-      'Avisa a tu Supervisor o al Administrador de sistema: ellos tienen el botón «Resetear la habitación».',
-      'Mientras tanto, registra una incidencia con la habitación como contexto para que quede el rastro.',
-    ],
-    caveat:
-      'No fuerces nada por otro camino: la habitación queda peor y el rastro se pierde.',
-    route: '/habitaciones',
-    keywords: [
-      'no deja', 'no puedo', 'atascada', 'bloqueada', 'duplicada', 'duplicidad',
-      'confirmar', 'error', 'check-in', 'check-out', 'aviso', 'supervisor',
-    ],
-  },
-  {
-    id: 'habitacion-atascada',
-    question: 'No me deja confirmar un check-in o un check-out. ¿Qué hago?',
-    steps: [
-      'Abre la ficha de la habitación.',
-      'Mira si el mismo huésped aparece a la vez como «Actual» y como «Entrante».',
-      'Si es así, es una duplicidad del informe: pulsa «Resetear la habitación».',
-      'Escribe qué no te dejaba confirmar. Queda en la auditoría.',
-    ],
-    caveat:
-      'El reseteo conserva una estadía por reserva —la más avanzada— y devuelve las llaves ' +
-      'sueltas al inventario. Si no hay duplicidad, no toca nada y lo dice.',
-    route: '/habitaciones',
-    anyOf: ['room.reset'],
-    keywords: [
-      'atascada', 'duplicada', 'duplicidad', 'no deja', 'confirmar', 'resetear',
-      'bloqueada', 'error', 'check-in', 'check-out',
-    ],
-  },
+
+
   {
     id: 'inventario-llaves',
     question: '¿Cómo hago el inventario físico de llaves por piso?',

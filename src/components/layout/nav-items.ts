@@ -6,6 +6,8 @@ import {
 export type NavItem = {
   href: string;
   label: string;
+  /** Etiqueta corta explícita para la barra móvil; nunca se deriva cortando palabras. */
+  mobileLabel?: string;
   icon:
     | 'home'
     | 'book'
@@ -42,6 +44,7 @@ const PRIMARY: NavItem[] = [
   {
     href: '/turno',
     label: 'Mi turno',
+    mobileLabel: 'Turno',
     icon: 'shift',
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
     mobile: true,

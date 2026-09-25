@@ -178,7 +178,7 @@ export default async function HandoverPage({
           Volver al turno
         </Link>
         {handover.status === HandoverStatus.RECIBIDA ? (
-          <PrintButton label="Imprimir acta entrega/recepción" />
+          <PrintButton label="Imprimir informe Caja entrega/recepción" />
         ) : (
           <span className="text-xs font-medium text-slate-500">
             El acta final se imprime después de que el entrante recuente Caja y confirme la recepción.
@@ -417,10 +417,10 @@ export default async function HandoverPage({
       ) : null}
 
       <Card className="print:break-inside-avoid">
-        <CardHeader title="Acta de entrega y recepción" />
+        <CardHeader title="Informe de Caja · entrega/recepción" />
         <div className="px-4 py-5">
           <p className="text-sm text-slate-700">
-            Este documento acredita el cierre del turno saliente, el recuento de Caja por el
+            Este informe acredita el cierre del turno saliente, el recuento de Caja por el
             turno entrante y la recepción de la entrega. Debe imprimirse y firmarse por ambas
             personas. La validación posterior queda reservada a Supervisión o al auditor designado.
           </p>

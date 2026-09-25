@@ -94,11 +94,7 @@ export async function addShiftMemberAction(
 }
 
 const receiveSchema = z.object({
-  shiftId: z.string().min(1),
-  handoverId: z
-    .string()
-    .optional()
-    .transform((v) => (v === '' || v === undefined ? null : v)),
+  handoverId: z.string().min(1),
   observations: zOptionalString,
 });
 
@@ -110,10 +106,11 @@ export async function receiveHandoverAction(
     const user = await requirePermission('shift.receive');
     const input = parseOrThrow(receiveSchema, formDataToObject(formData));
     await receiveHandover(user, input);
-    refresh(input.shiftId);
+    refresh();
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
     return {
       ok: true as const,
-      message: 'Recepción confirmada. Tu turno está activo.',
+      message: 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
     };
   });
 }

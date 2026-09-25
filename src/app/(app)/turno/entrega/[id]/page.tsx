@@ -1,20 +1,18 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { HandoverLevel, HandoverStatus } from '@prisma/client';
-import { ArrowLeft, CheckCircle2, Clock, Send, User } from 'lucide-react';
+import { CashCountKind, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
+import { ArrowLeft, CheckCircle2, Clock, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getHistory } from '@/server/services/history';
-import { getMyActiveShift } from '@/server/services/shifts';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { CashBox } from '@/components/operational/cash-box';
 import { getHandoverCashState, listDenominations } from '@/server/services/cash';
 import { getShiftCashClosure } from '@/server/services/cash-closure';
-import { CashCountKind } from '@prisma/client';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
-import { SendHandoverForm } from '@/components/operational/shift-actions';
+import { ReceiveHandoverForm, SendHandoverForm } from '@/components/operational/shift-actions';
 import {
   AddHandoverNoteForm,
   PrintButton,
@@ -65,11 +63,10 @@ export default async function HandoverPage({
   });
   if (!handover) notFound();
 
-  const [history, cashState, denominations, myActiveShift, formalCashClosure, closureValidation] = await Promise.all([
+  const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
-    getMyActiveShift(user.id),
     getShiftCashClosure(handover.fromShiftId),
     prisma.alert.findUnique({
       where: { dedupeKey: `shift-validation:${handover.fromShiftId}` },
@@ -83,38 +80,28 @@ export default async function HandoverPage({
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
-  /*
-    Una entrega se envía a la bandeja con `toShiftId = null`: el turno entrante
-    todavía no existe en ese momento. Por eso el receptor no puede depender de
-    `toShift`; basta con que tenga un turno abierto distinto del saliente y que
-    la entrega siga ENVIADA. `receiveHandover` fijará el destino definitivo al
-    confirmar. Sin esta regla el receptor nunca podía contar la caja, y la
-    recepción exigía precisamente ese recuento: un bloqueo circular.
-  */
-  const inboxReceiver = Boolean(
+  const canReceive = Boolean(
     handover.status === HandoverStatus.ENVIADA &&
-      !handover.toShiftId &&
-      myActiveShift &&
-      myActiveShift.id !== handover.fromShiftId &&
-      myActiveShift.assignments.some((a) => a.userId === user.id),
+      handover.fromShift.status === ShiftStatus.CERRADO &&
+      !isIssuer &&
+      user.permissions.includes('shift.receive'),
   );
-  const isReceiver = linkedReceiver || inboxReceiver;
+  const isReceiver =
+    linkedReceiver ||
+    handover.receivedBy?.id === user.id ||
+    canReceive;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
 
   /*
-    El relevo es secuencial. El turno saliente debe haber enviado y cerrado
-    antes de que el entrante inicie el suyo; por eso la recepción de Caja sólo
-    ocurre sobre una entrega ENVIADA.
+    La entrega cerrada existe por sí sola en la bandeja. El receptor puede
+    recontar Caja y confirmar la recepción sin crear todavía su propio turno.
+    Ese turno se enlaza recién al abrirse después de completar el relevo.
   */
   const canReceiveCash = Boolean(
-    myActiveShift &&
-      myActiveShift.id !== handover.fromShiftId &&
+    canReceive &&
       cashState.declared &&
-      !cashState.confirmed &&
-      handover.status === HandoverStatus.ENVIADA &&
-      (!handover.toShiftId || handover.toShiftId === myActiveShift.id) &&
-      user.permissions.includes('shift.receive'),
+      !cashState.confirmed,
   );
   const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
     ? 'emisor'
@@ -199,6 +186,8 @@ export default async function HandoverPage({
                     → Turno {SHIFT_TYPE_LABEL[handover.toShift.type]} ·{' '}
                     {formatCalendarDate(handover.toShift.date)}
                   </Chip>
+                ) : handover.status === HandoverStatus.RECIBIDA ? (
+                  <Chip>Recibida · pendiente de enlazar al siguiente turno</Chip>
                 ) : (
                   <Chip>En bandeja · sin receptor confirmado</Chip>
                 )}
@@ -284,9 +273,9 @@ export default async function HandoverPage({
       </Card>
 
       {/*
-        Caja se declara en el cierre saliente y el entrante la recuenta al iniciar
-        su turno. Hasta confirmar este recuento y la recepción, el entrante no
-        queda habilitado para operar.
+        Caja se declara en el cierre saliente. Quien toma la entrega la recuenta
+        y confirma antes de abrir el turno siguiente. La recepción no crea ni
+        preasigna un turno: sólo transfiere la continuidad del relevo.
       */}
       <CashBox
         handoverId={handover.id}
@@ -399,19 +388,28 @@ export default async function HandoverPage({
         </>
       ) : null}
 
-      {handover.status === HandoverStatus.ENVIADA && isReceiver ? (
+      {canReceive ? (
         <Card className="no-print">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-            <p className="text-sm text-slate-700">
-              Esta entrega operativa está disponible para tu turno. La Caja se recibe por separado; los elementos físicos pendientes no bloquean.
-            </p>
-            <Link
-              href="/turno"
-              className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-              Ir a confirmar recepción
-            </Link>
+          <CardHeader title="Tomar la liana · confirmar recepción" />
+          <div className="px-4 py-4">
+            {cashState.declared && !cashState.confirmed ? (
+              <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+                Recuenta primero la Caja en el bloque superior y valida las garantías. Después podrás confirmar la recepción de esta entrega.
+              </div>
+            ) : (
+              <>
+                <p className="mb-3 text-sm text-slate-700">
+                  Esta entrega no está asignada a ningún turno entrante. Al confirmarla quedará registrada a tu nombre y el próximo turno podrá iniciarse después, sin preasignación.
+                </p>
+                <ReceiveHandoverForm handoverId={handover.id} />
+              </>
+            )}
+          </div>
+        </Card>
+      ) : handover.status === HandoverStatus.ENVIADA && isReceiver ? (
+        <Card className="no-print">
+          <div className="px-4 py-4 text-sm text-slate-600">
+            Esta entrega sigue pendiente de recepción por un usuario autorizado.
           </div>
         </Card>
       ) : null}
@@ -420,8 +418,8 @@ export default async function HandoverPage({
         <CardHeader title="Informe de Caja · entrega/recepción" />
         <div className="px-4 py-5">
           <p className="text-sm text-slate-700">
-            Este informe acredita el cierre del turno saliente, el recuento de Caja por el
-            turno entrante y la recepción de la entrega. Debe imprimirse y firmarse por ambas
+            Este informe acredita el cierre del turno saliente, el recuento de Caja por quien
+            recibe la entrega y la recepción del relevo. Debe imprimirse y firmarse por ambas
             personas. La validación posterior queda reservada a Supervisión o al auditor designado.
           </p>
 
@@ -436,7 +434,7 @@ export default async function HandoverPage({
 
             <div className="pt-8">
               <div className="border-t border-slate-500 pt-2">
-                <p className="text-xs font-semibold text-petrol-900">Recepcionista entrante</p>
+                <p className="text-xs font-semibold text-petrol-900">Receptor de la entrega</p>
                 <p className="mt-1 text-xs text-slate-600">
                   {handover.receivedBy?.name ?? 'Pendiente de recepción'}
                 </p>

@@ -60,7 +60,7 @@ export default async function ShiftPage({
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
 
-  const [desk, recentShifts, pendingClosure] = await Promise.all([
+  const [desk, recentShifts, pendingClosure, blockingOutgoing] = await Promise.all([
     getShiftDesk(user),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
@@ -72,6 +72,27 @@ export default async function ShiftPage({
       take: 8,
     }),
     getMyPendingClosureShift(user.id),
+    prisma.shift.findFirst({
+      where: {
+        archivedAt: null,
+        status: {
+          in: [
+            ShiftStatus.INICIADO,
+            ShiftStatus.ACTIVO,
+            ShiftStatus.PREPARANDO_ENTREGA,
+            ShiftStatus.ENTREGA_ENVIADA,
+          ],
+        },
+        assignments: {
+          some: {
+            activatedAt: { not: null },
+            leftAt: null,
+          },
+        },
+      },
+      select: { id: true, status: true },
+      orderBy: { actualStart: 'asc' },
+    }),
   ]);
 
   const cashEnabledForPendingClosure = pendingClosure ? await isCashEnabled() : false;
@@ -103,10 +124,7 @@ export default async function ShiftPage({
 
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
-  const outgoingStillClosing = Boolean(
-    (incoming && incoming.fromShift.status !== ShiftStatus.CERRADO) ||
-      (cashIncoming && cashIncoming.fromShift.status !== ShiftStatus.CERRADO),
-  );
+  const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
 
   /*
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
@@ -266,28 +284,34 @@ export default async function ShiftPage({
                       El turno saliente todavía está cerrando
                     </p>
                     <p className="mt-1 text-xs text-amber-900">
-                      No puedes iniciar tu turno todavía. El recepcionista saliente debe completar
-                      Caja, enviar la entrega y cerrar formalmente su turno.
+                      Todavía no hay una entrega disponible. El turno saliente debe completar Caja,
+                      enviar la entrega y cerrar formalmente su turno.
                     </p>
                   </div>
                 ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
                     <p className="font-medium text-petrol-900">
-                      Turno saliente cerrado · entrega pendiente de recepción
+                      Turno saliente cerrado · liana disponible
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Inicia tu turno. Quedará bloqueado en recepción hasta que recuentes Caja y
-                      confirmes la entrega del turno saliente.
+                      La entrega no está asignada a ningún turno entrante. Revísala, recuenta Caja
+                      si corresponde y confirma la recepción. Después podrás iniciar tu propio turno.
                     </p>
+                    <Link
+                      href={`/turno/entrega/${(cashIncoming ?? incoming)!.id}`}
+                      className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                    >
+                      Revisar y recibir entrega
+                    </Link>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-600">
-                    Inicia tu turno para habilitar la operación de Recepción.
-                  </p>
+                  <>
+                    <p className="text-sm text-slate-600">
+                      No hay una entrega pendiente. Puedes iniciar tu turno para habilitar la operación.
+                    </p>
+                    <OpenShiftForm suggestedType={desk.suggestedType} />
+                  </>
                 )}
-                {!outgoingStillClosing ? (
-                  <OpenShiftForm suggestedType={desk.suggestedType} />
-                ) : null}
               </>
             )}
           </div>

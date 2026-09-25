@@ -3,6 +3,7 @@ import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
   closeShift,
   getMyActiveShift,
+  getPendingHandover,
   openShift,
   prepareHandover,
   receiveHandover,
@@ -77,12 +78,12 @@ describe('relevo secuencial de Recepción', () => {
     ).rejects.toThrow(/saliente todavía no está cerrado/i);
   });
 
-  it('después del cierre saliente el entrante inicia bloqueado hasta recibir', async () => {
+  it('después del cierre la entrega queda libre, se recibe y recién entonces abre el siguiente turno', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
     const turno = await activate(saliente, ShiftType.DIA);
-    await prepareHandover(saliente, turno.id);
+    const handover = await prepareHandover(saliente, turno.id);
     await sendHandover(saliente, { shiftId: turno.id });
     await closeShift(saliente, { shiftId: turno.id });
 
@@ -91,12 +92,20 @@ describe('relevo secuencial de Recepción', () => {
     });
     expect(closedParticipation.leftAt).toBeInstanceOf(Date);
 
-    const { shift: incoming } = await openShift(entrante, { type: ShiftType.NOCHE });
-    expect(incoming.status).toBe(ShiftStatus.INICIADO);
+    await expect(
+      openShift(entrante, { type: ShiftType.NOCHE }),
+    ).rejects.toThrow(/entrega.*pendiente de recepción/i);
 
-    await receiveHandover(entrante, { shiftId: incoming.id });
-    expect(
-      (await prisma.shift.findUniqueOrThrow({ where: { id: incoming.id } })).status,
-    ).toBe(ShiftStatus.ACTIVO);
+    expect((await getPendingHandover())?.id).toBe(handover.id);
+    await receiveHandover(entrante, { handoverId: handover.id });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(received.status).toBe('RECIBIDA');
+    expect(received.toShiftId).toBeNull();
+
+    const { shift: incoming } = await openShift(entrante, { type: ShiftType.NOCHE });
+    expect(incoming.status).toBe(ShiftStatus.ACTIVO);
+
+    const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(linked.toShiftId).toBe(incoming.id);
   });
 });

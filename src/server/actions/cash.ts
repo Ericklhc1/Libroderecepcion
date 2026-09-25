@@ -20,7 +20,7 @@ import {
   recordCashTransfer,
   saveCashCount,
 } from '@/server/services/cash';
-import { getMyActiveShift, receiveShiftCash } from '@/server/services/shifts';
+import { receiveShiftCash } from '@/server/services/shifts';
 import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
 import { ROLE_KEYS } from '@/lib/permissions';
@@ -106,12 +106,7 @@ export async function confirmCashCountAction(
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
 
-    const shift = await getMyActiveShift(user.id);
-    if (!shift) {
-      throw new RuleError('Abre tu turno antes de recibir la Caja.');
-    }
     const result = await receiveShiftCash(user, {
-      shiftId: shift.id,
       handoverId,
       quantities: quantitiesFrom(formData),
       guaranteeIds: guaranteeIdsFrom(formData),

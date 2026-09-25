@@ -13,7 +13,7 @@ import {
 } from '@/server/actions/shifts';
 import { SHIFT_WINDOW_LABEL } from '@/domain/shift';
 
-/** Entrar al mesón abre el turno propio; otros turnos pueden seguir cerrando. */
+/** El turno propio sólo se abre cuando ya no queda una entrega cerrada por recibir. */
 export function OpenShiftForm({ suggestedType }: { suggestedType: 'DIA' | 'NOCHE' }) {
   return (
     <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess>
@@ -80,31 +80,26 @@ export function AddShiftMemberForm({
 }
 
 export function ReceiveHandoverForm({
-  shiftId,
   handoverId,
-  hasHandover,
 }: {
-  shiftId: string;
+  shiftId?: string;
   handoverId?: string | null;
-  hasHandover: boolean;
+  hasHandover?: boolean;
 }) {
+  if (!handoverId) return null;
+
   return (
-    <ActionForm action={receiveHandoverAction} hideSuccess>
-      <input type="hidden" name="shiftId" value={shiftId} />
-      {handoverId ? <input type="hidden" name="handoverId" value={handoverId} /> : null}
+    <ActionForm action={receiveHandoverAction} hideSuccess refreshOnSuccess>
+      <input type="hidden" name="handoverId" value={handoverId} />
       <Field
         label="Observaciones de recepción"
         name="observations"
-        hint={
-          hasHandover
-            ? 'Opcional: deja constancia de lo que revisaste o de cualquier discrepancia.'
-            : 'No hay entrega pendiente. Se registrará que activaste el turno sin entrega previa.'
-        }
+        hint="Opcional: deja constancia de lo que revisaste o de cualquier discrepancia."
       >
         <Textarea name="observations" rows={2} placeholder="Recibido conforme…" />
       </Field>
       <SubmitButton variant="gold" pendingLabel="Confirmando…">
-        {hasHandover ? 'Confirmar recepción operativa' : 'Activar turno sin entrega previa'}
+        Confirmar recepción operativa
       </SubmitButton>
     </ActionForm>
   );

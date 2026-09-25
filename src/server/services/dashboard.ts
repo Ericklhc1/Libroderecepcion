@@ -21,7 +21,7 @@ import {
   operationalDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_KEYS, isReceptionDeskRole } from '@/lib/permissions';
 import { getSettingNumber } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 
@@ -75,7 +75,7 @@ export async function getDashboardData(user: CurrentUser) {
   );
   const canValidateClosure =
     user.roleKey === ROLE_KEYS.SUPERVISOR || user.isSystemAdmin;
-  const receptionEntriesOnly = user.roleKey === ROLE_KEYS.RECEPTIONIST;
+  const receptionEntriesOnly = isReceptionDeskRole(user.roleKey);
   const visibleAlertWhere: Prisma.AlertWhereInput = canValidateClosure
     ? LIVE_ALERT_WHERE(now)
     : {
@@ -101,7 +101,7 @@ export async function getDashboardData(user: CurrentUser) {
         ...(receptionEntriesOnly
           ? {
               type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
-              createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
+              createdBy: { role: { key: { in: [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR] } } },
             }
           : {}),
         OR: [
@@ -196,7 +196,7 @@ export async function getDashboardData(user: CurrentUser) {
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
         ...(receptionEntriesOnly
-          ? { createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } } }
+          ? { createdBy: { role: { key: { in: [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR] } } } }
           : {}),
       },
     }),

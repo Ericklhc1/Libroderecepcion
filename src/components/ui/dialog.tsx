@@ -60,24 +60,59 @@ export function Dialog({
   );
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
 
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     const onKey = (event: KeyboardEvent) => {
-      if (dismissible && event.key === 'Escape') setOpen(false);
+      if (dismissible && event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('hidden'));
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus({ preventScroll: true });
+        return;
+      }
+
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.focus({ preventScroll: true });
+    requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
 
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
+      const previous = previousFocusRef.current;
+      if (previous?.isConnected) requestAnimationFrame(() => previous.focus());
     };
   }, [open, dismissible, setOpen]);
 

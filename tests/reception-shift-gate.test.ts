@@ -16,6 +16,7 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(source).toContain("'shift.receive'");
     expect(source).toContain("'cash.count_receive'");
     expect(source).toContain("'shift.close'");
+    expect(source).toContain('isReceptionDeskRole(user.roleKey)');
     expect(source).not.toContain("'shift.start',\n  'shift.receive'");
   });
 
@@ -41,6 +42,7 @@ describe('Recepción · gate obligatorio de turno', () => {
   it('Fronti no puede saltarse el gate operativo', () => {
     const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf8');
     expect(source).toContain('getReceptionOperationGate(user)');
+    expect(source).toContain('isReceptionDeskRole(user.roleKey)');
     expect(source).toContain('await assertReceptionOperationPermission(user, pendingPermission)');
     expect(source).toContain('Completa Caja, entrega y cierre');
   });
@@ -80,7 +82,8 @@ describe('Novedades · vista operativa limpia', () => {
 
     expect(service).toContain('receptionEntriesOnly');
     expect(service).toContain('EntryType.NOVEDAD, EntryType.INCIDENCIA');
-    expect(service).toContain('createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } }');
+    expect(service).toContain('RECEPTION_DESK_ROLE_KEYS');
+    expect(service).toContain('key: { in: [...RECEPTION_DESK_ROLE_KEYS] }');
     expect(service).toContain("startsWith: 'shift-validation:'");
     expect(page).toContain('Sólo aparecen novedades e incidencias creadas por Recepción');
     expect(page).toContain('Ver historial');

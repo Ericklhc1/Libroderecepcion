@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-25** · Relevo secuencial de Recepción + Novedades operativas · versión propuesta **v1.10.8**nto PMS + Llaves físicas · versión propuesta **v1.5.0**
+Actualizado: **2026-09-25** · Auditoría integral de lógica + UX · versión propuesta **v1.10.10**
 
 ## Estados canónicos
 
@@ -20,41 +20,38 @@ Actualizado: **2026-09-25** · Relevo secuencial de Recepción + Novedades opera
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
-| Turnos + transferencia de Caja | `PR_ABIERTO` | #125 · v1.10.8 | Relevo secuencial: saliente cierra; entrante inicia, recuenta Caja y confirma recepción antes de operar |
+| Turnos + transferencia de Caja | `PRODUCTION` | #125 · #128 · v1.10.9 | Relevo secuencial + gate transversal; saliente cierra, entrante recuenta y confirma antes de operar |
 | ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
 | Caja unificada | `PRODUCTION` | v1.3.1 | Semántica financiera correcta desplegada | Arqueo contra efectivo esperado; fondo, garantías y saldo operacional separados; Tesorería como transferencia interna |
 | PMS / Habitaciones / Reservas | `RETIRADO_RUNTIME` | v1.4.0 | Legado histórico conservado; fuera de navegación, formularios y flujos operativos | Núcleo por habitación e ID FNS desplegado |
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
-| Núcleo operativo sin PMS | `EN_DESARROLLO` | v1.5.0 · `refactor/deuda-tecnica-llaves-autonomas-20260923` | Turnos + Novedades + Caja + Llaves + Supervisión | Llaves físicas autónomas; PMS aislado de permisos y flujos operativos |
+| Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado del runtime operativo |
 | Centro de Supervisión | `PRODUCTION` | #91 · v1.2.0 | Turno independiente, tareas, auditorías, medidas e indicadores explicables; desplegado en Vercel Production |
 
 ## Iteración actual
 
-**Libro 1.10.8** · PR **#125** · rama **`fix/turno-gate-novedades-operativas`**
+**Libro 1.10.10** · rama **`fix/ux-operational-audit-1-10-10`**
 
-Objetivo: convertir el turno en la puerta obligatoria de Recepción y limpiar la
-vista Novedades para que muestre sólo gestión humana vigente del equipo.
+Objetivo: cerrar incoherencias detectadas en la auditoría transversal de
+procedimientos, botones, lógica, usabilidad e intuitividad.
 
-HECHO en la rama:
-- gate de servidor + interfaz: Recepción sólo opera con turno `ACTIVO`;
-- relevo secuencial: el saliente conserva responsabilidad hasta cerrar;
-- el entrante no puede abrir mientras el saliente siga en curso;
-- el entrante abre `INICIADO`, recuenta Caja/garantías y permanece bloqueado
-  hasta confirmar la recepción;
-- informe imprimible de Caja/entrega-recepción con firmas de saliente, entrante
-  y espacio de validación por Erick Herrera o auditor designado;
-- Fronti respeta el mismo gate operativo;
-- Novedades limita la vista de Recepción a NOVEDAD/INCIDENCIA abiertas creadas
-  por recepcionistas; lo resuelto permanece en Historial;
-- alertas internas de validación de cierre dejan de contaminar Novedades;
-- ayuda y documentación canónica alineadas.
+Incluye:
+- gate obligatorio también para Auditor nocturno y coherencia de sus Novedades;
+- textos del relevo alineados con el cierre secuencial vigente;
+- comunicados obligatorios reactivos en tiempo real y por encima del Chat;
+- navegación móvil sin etiquetas truncadas semánticamente;
+- formulario de tareas sin vínculos PMS retirados ni multiselección Ctrl/Cmd;
+- botones de envío protegidos contra doble envío incluso con `disabled` propio;
+- foco de diálogos atrapado y restaurado para teclado/accesibilidad;
+- eliminación del refresco duplicado de Chat;
+- regresiones y documentación canónica actualizadas.
 
 PENDIENTE antes de Production:
-- Compuerta completa verde (tipos, regresiones y build);
-- merge de #125 a `main`;
-- despliegue Vercel del SHA fusionado y smoke de Production;
-- validación manual de relevo saliente → entrante en dos cuentas.
+- compuerta completa verde;
+- merge a `main`;
+- despliegue Vercel del SHA fusionado;
+- smoke y revisión de errores de runtime.
 
 ## Infraestructura vigente
 

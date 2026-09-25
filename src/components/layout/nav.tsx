@@ -109,8 +109,8 @@ export function SidebarNav({
  *
  * Muestra los destinos principales y, al final, «Más», que abre el resto.
  * Ese botón NO es un adorno: el menú lateral está oculto por debajo de `lg`,
- * así que sin él Llaves, Contexto PMS, Auditoría y Administración
- * quedaban **inalcanzables desde el teléfono**. La barra sólo pintaba cinco
+ * así que sin él Llaves, Auditoría y Administración quedaban
+ * **inalcanzables desde el teléfono**. La barra sólo pintaba cinco
  * elementos y los demás no tenían ninguna otra puerta.
  *
  * El panel cierra con **mi perfil y cerrar sesión**, por el mismo motivo y
@@ -244,7 +244,7 @@ export function MobileNav({
             )}
           >
             <Icon className="h-5 w-5" aria-hidden="true" />
-            <span className="truncate">{item.label.split(' ')[0]}</span>
+            <span className="max-w-full truncate">{item.mobileLabel ?? item.label}</span>
             {badge && badge > 0 ? (
               <span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-red-600" aria-hidden="true" />
             ) : null}

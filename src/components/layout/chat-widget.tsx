@@ -397,16 +397,6 @@ export function ChatWidget({
   }, [mounted, loadConversation]);
 
   useEffect(() => {
-    const onFeed = (event: Event) => {
-      const detail = (event as CustomEvent<{ items?: Array<{ type: string; readAt: string | null }> }>).detail;
-      if (!detail?.items?.some((item) => item.type === 'CHAT_MENSAJE' && !item.readAt)) return;
-      void loadBootstrap();
-    };
-    window.addEventListener('libro:notification-feed', onFeed);
-    return () => window.removeEventListener('libro:notification-feed', onFeed);
-  }, [loadBootstrap]);
-
-  useEffect(() => {
     if (!mounted) return;
     const source = new EventSource('/api/chat/stream');
     const refresh = () => {

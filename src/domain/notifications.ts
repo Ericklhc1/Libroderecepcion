@@ -13,6 +13,12 @@ export type NotificationFeedItem = {
 export type NotificationFeedSnapshot = {
   unread: number;
   items: NotificationFeedItem[];
+  /**
+   * Comunicados obligatorios que esta persona aún no confirmó.
+   * Sólo viajan los IDs: si cambian, el layout se refresca y el gate obtiene
+   * el contenido completo desde servidor.
+   */
+  blockingAnnouncementIds: string[];
   generatedAt: string;
 };
 

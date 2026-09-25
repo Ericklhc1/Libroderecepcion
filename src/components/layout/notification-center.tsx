@@ -76,6 +76,9 @@ export function NotificationCenter({
   const profileSoundEnabledRef = useRef(true);
   const notificationToneRef = useRef<ChatNotificationTone>('chime');
   const knownIds = useRef(new Set(initialSnapshot.items.map((item) => item.id)));
+  const blockingAnnouncementSignature = useRef(
+    initialSnapshot.blockingAnnouncementIds.join('|'),
+  );
   const lastActivityAt = useRef(Date.now());
   const lastKeepAliveAt = useRef(0);
 
@@ -125,6 +128,15 @@ export function NotificationCenter({
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);
+
+      const nextBlockingSignature = snapshot.blockingAnnouncementIds.join('|');
+      if (nextBlockingSignature !== blockingAnnouncementSignature.current) {
+        blockingAnnouncementSignature.current = nextBlockingSignature;
+        // Un comunicado obligatorio nuevo, retirado o confirmado cambia el
+        // layout completo: el gate debe aparecer/desaparecer sin navegar.
+        router.refresh();
+      }
+
       window.dispatchEvent(
         new CustomEvent('libro:notification-feed', { detail: snapshot }),
       );
@@ -139,7 +151,7 @@ export function NotificationCenter({
         }
       }
     },
-    [],
+    [router],
   );
 
   useEffect(() => {

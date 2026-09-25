@@ -44,7 +44,7 @@ import {
   assertReceptionOperationPermission,
   getReceptionOperationGate,
 } from '@/server/services/reception-operation-gate';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { isReceptionDeskRole } from '@/lib/permissions';
 import {
   chatWithFrontiProviderChain,
   FrontiProviderError,
@@ -782,7 +782,7 @@ async function executeTool(
 ) {
   assertFrontiToolEnabled(config, name);
 
-  if (user.roleKey === ROLE_KEYS.RECEPTIONIST && name !== 'reportar_hallazgo') {
+  if (isReceptionDeskRole(user.roleKey) && name !== 'reportar_hallazgo') {
     const gate = await getReceptionOperationGate(user);
     if (gate.mode !== 'ACTIVE') {
       throw new Error(

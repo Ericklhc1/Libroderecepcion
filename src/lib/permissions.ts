@@ -141,6 +141,22 @@ export const ROLE_KEYS = {
 
 export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS];
 
+/**
+ * Perfiles que trabajan físicamente en el mesón de Recepción.
+ *
+ * Comparten el mismo ciclo obligatorio de turno y la misma vista operativa de
+ * Novedades. El Auditor nocturno tiene capacidades adicionales, pero sigue
+ * siendo un perfil de Recepción: no puede operar fuera de un turno ACTIVO.
+ */
+export const RECEPTION_DESK_ROLE_KEYS = [
+  ROLE_KEYS.RECEPTIONIST,
+  ROLE_KEYS.NIGHT_AUDITOR,
+] as const;
+
+export function isReceptionDeskRole(roleKey: string | null | undefined): boolean {
+  return RECEPTION_DESK_ROLE_KEYS.some((key) => key === roleKey);
+}
+
 export const TECHNICAL_ADMIN_PERMISSIONS = [
   'user.manage',
   'role.manage',

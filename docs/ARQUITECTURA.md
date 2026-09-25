@@ -68,14 +68,20 @@ combinación ausente del mapa es un estado contradictorio y se rechaza con un
 mensaje en lenguaje operativo. Se valida siempre en el servidor.
 
 ```
-PROGRAMADO → INICIADO → ACTIVO → PREPARANDO_ENTREGA → ENTREGA_ENVIADA
-           → RECIBIDO → CERRADO
+PROGRAMADO → INICIADO → ACTIVO → PREPARANDO_ENTREGA → ENTREGA_ENVIADA → CERRADO
+
+RECIBIDO se conserva únicamente como estado histórico de datos anteriores.
 ```
 
 Reglas adicionales, verificadas con pruebas:
 
-- No se puede cerrar un turno sin enviar la entrega si existe turno siguiente.
-- No se puede cerrar mientras la entrega enviada no sea confirmada.
+- El saliente no puede cerrar sin enviar la entrega y, cuando Caja está activa,
+  sin completar antes el cierre formal de Caja.
+- Enviar la entrega no libera al saliente: queda limitado al flujo de cierre
+  hasta cerrar formalmente su turno.
+- El entrante no puede abrir mientras el turno saliente siga abierto.
+- Si hay entrega pendiente, el entrante abre en `INICIADO` y queda bloqueado
+  hasta recontar Caja, validar garantías y confirmar la recepción.
 - Una entrega no puede recibirse dos veces (guarda de concurrencia por
   `updateMany` sobre el estado esperado, dentro de la transacción).
 - No se puede recibir una entrega inexistente ni una que no corresponda al
@@ -83,15 +89,18 @@ Reglas adicionales, verificadas con pruebas:
 - Un usuario no puede tener dos turnos abiertos a la vez.
 - Sólo el personal del turno prepara o envía su entrega.
 
-### Decisión: cierre automático al recibir
+### Decisión: relevo secuencial
 
-Cuando el turno siguiente confirma la recepción, el turno saliente pasa a
-`CERRADO` en la misma transacción. En una recepción real el turno saliente ya
-se fue a casa; obligarlo a volver a cerrar dejaría turnos colgados. El estado `RECIBIDO` se conserva únicamente por compatibilidad con datos históricos.
-En el flujo operativo actual, confirmar la recepción cierra el turno saliente en la
-misma transacción y registra su hora real de término. No existe un cierre manual
-posterior para Recepción; cualquier estado histórico incoherente se corrige mediante
-un mecanismo administrativo auditado.
+El saliente completa Caja, envía la entrega y **cierra su turno por su cuenta**.
+Sólo después el entrante puede abrir el suyo. Si existe una entrega pendiente,
+el turno entrante queda `INICIADO`: puede recontar la Caja y confirmar la
+recepción, pero no operar Novedades, Caja general ni Llaves hasta pasar a
+`ACTIVO`.
+
+Este orden evita que dos recepcionistas queden operando simultáneamente sobre
+la misma responsabilidad y permite que el acta final tenga tres espacios
+independientes: firma del saliente, firma del entrante y validación posterior de
+Supervisión o auditor designado.
 
 ## Motor de alertas
 

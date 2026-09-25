@@ -67,12 +67,12 @@ export function SubmitButton({
   const { pending } = useFormStatus();
   return (
     <Button
+      {...props}
       type="submit"
       variant={variant}
       size={size}
       disabled={pending || props.disabled}
       className={className}
-      {...props}
     >
       {pending ? (pendingLabel ?? 'Guardando…') : children}
     </Button>

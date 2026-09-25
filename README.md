@@ -89,9 +89,11 @@ parámetros) se conserva.
 
 ## Qué incluye
 
-- **Turnos** con máquina de estados explícita: Programado → Iniciado → Turno
-  activo → Preparando entrega → Entrega enviada → Recibido → Cerrado. Las
-  reglas se validan en servidor y los estados contradictorios se bloquean.
+- **Turnos** con relevo secuencial y máquina de estados explícita: Programado →
+  Iniciado → Turno activo → Preparando entrega → Entrega enviada → Cerrado.
+  El saliente cierra formalmente antes de que el entrante pueda abrir; el
+  estado «Recibido» se conserva sólo para compatibilidad histórica. Las reglas
+  se validan en servidor y los estados contradictorios se bloquean.
 - **Entrega de turno guiada**: resumen automático de todo lo que el turno
   siguiente necesita saber (novedades, incidencias, tareas, alertas,
   seguimientos, reservas, cobros, garantías, solicitudes y mantenimiento),

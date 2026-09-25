@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { AnnouncementScope } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { NotificationFeedSnapshot } from '@/domain/notifications';
 
@@ -17,7 +18,8 @@ export async function getNotificationFeedForUser(
 ): Promise<NotificationFeedSnapshot> {
   const safeLimit = Math.max(1, Math.min(limit, NOTIFICATION_FEED_LIMIT));
 
-  const [rows, unread] = await Promise.all([
+  const now = new Date();
+  const [rows, unread, blockingAnnouncements] = await Promise.all([
     prisma.notification.findMany({
       where: { userId },
       orderBy: [{ createdAt: 'desc' }],
@@ -35,10 +37,30 @@ export async function getNotificationFeedForUser(
       },
     }),
     prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.announcement.findMany({
+      where: {
+        active: true,
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [
+          {
+            OR: [
+              { scope: AnnouncementScope.TODOS },
+              { scope: AnnouncementScope.USUARIO, targetUserId: userId },
+            ],
+          },
+          { reads: { none: { userId } } },
+        ],
+      },
+      select: { id: true },
+      orderBy: [{ scope: 'desc' }, { createdAt: 'asc' }],
+      take: 20,
+    }),
   ]);
 
   return {
     unread,
+    blockingAnnouncementIds: blockingAnnouncements.map((row) => row.id),
     items: rows.map((row) => ({
       id: row.id,
       type: row.type,

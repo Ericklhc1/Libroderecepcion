@@ -27,7 +27,7 @@ import {
   type Tone,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { RECEPTION_DESK_ROLE_KEYS } from '@/lib/permissions';
 
 /**
  * Libro Operativo v1.4.0.
@@ -150,7 +150,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       and.push({
         type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
         status: { in: ENTRY_OPEN_STATUSES },
-        createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
+        createdBy: { role: { key: { in: [...RECEPTION_DESK_ROLE_KEYS] } } },
       });
     }
 

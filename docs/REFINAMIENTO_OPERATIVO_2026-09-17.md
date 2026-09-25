@@ -12,8 +12,8 @@ Esta iteración parte de la versión de Producción posterior a la auditoría in
 
 ## Caja y cierre
 
-1. Caja se cierra antes de enviar/recibir el relevo. Al confirmar la recepción, el turno saliente se cierra automáticamente; no existe un segundo cierre manual operativo.
-2. Conteos CLP/USD, diferencias, egresos, ingresos, garantías en efectivo y elementos físicos pertenecen a Caja. La entrega de turno consume el resultado del cierre de Caja; no vuelve a pedir el mismo conteo.
+1. El relevo es secuencial: el saliente prepara la entrega, arquea, valida garantías, cierra Caja si corresponde, envía la entrega y cierra formalmente su turno. Sólo entonces el entrante abre el suyo; queda INICIADO hasta recontar Caja y confirmar la recepción.
+2. Conteos CLP/USD, diferencias, egresos, ingresos, garantías en efectivo y elementos físicos pertenecen a Caja. Hay dos conteos deliberados: declaración del saliente y recuento independiente del entrante. Ambos quedan trazados en el acta de entrega/recepción.
 3. Ingreso/egreso es vocabulario reservado a movimientos que cambian el efectivo esperado de Caja. Otros montos del Libro son informativos.
 4. Los permisos de Caja son atómicos por rol y operación. Tener permiso para una operación no implica autorización previa. En las operaciones que soportan aprobación, `requiere autorización` es un segundo interruptor configurable y apagado por defecto; cuando está activo, la solicitud se envía a los usuarios cuyo rol tenga `cash.approve` y Caja no cambia hasta aprobarse.
 5. Si una auditoría difiere del esperado, un Supervisor decide si sólo registra la diferencia o si acepta el contado como nuevo disponible. La decisión queda auditada.

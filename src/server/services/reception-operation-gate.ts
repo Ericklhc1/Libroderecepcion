@@ -2,7 +2,7 @@ import 'server-only';
 
 import { ShiftStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { isReceptionDeskRole } from '@/lib/permissions';
 import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -40,13 +40,14 @@ const CLOSING_PERMISSIONS = new Set([
 ]);
 
 /**
- * La puerta operativa sólo aplica al rol Recepcionista.
- * Supervisor y Administrador conservan sus propios flujos de control.
+ * La puerta operativa aplica a todos los perfiles que trabajan en el mesón:
+ * Recepcionista y Auditor nocturno. Supervisor y Administrador conservan sus
+ * propios flujos de control.
  */
 export async function getReceptionOperationGate(
   user: Pick<CurrentUser, 'id' | 'roleKey'>,
 ): Promise<ReceptionOperationGate> {
-  if (user.roleKey !== ROLE_KEYS.RECEPTIONIST) {
+  if (!isReceptionDeskRole(user.roleKey)) {
     return { mode: 'ACTIVE', shiftId: null, shiftStatus: null };
   }
 
@@ -98,7 +99,7 @@ export async function assertReceptionOperationPermission(
   user: CurrentUser,
   permission: string,
 ): Promise<void> {
-  if (user.roleKey !== ROLE_KEYS.RECEPTIONIST) return;
+  if (!isReceptionDeskRole(user.roleKey)) return;
 
   const gate = await getReceptionOperationGate(user);
   if (gate.mode === 'ACTIVE') return;

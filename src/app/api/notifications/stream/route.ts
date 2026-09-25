@@ -24,6 +24,7 @@ const STREAM_LIFETIME_MS = 4 * 60_000;
 function signature(snapshot: NotificationFeedSnapshot): string {
   return [
     snapshot.unread,
+    ...snapshot.blockingAnnouncementIds.map((id) => `announcement:${id}`),
     ...snapshot.items.map(
       (item) => `${item.id}:${item.readAt ?? 'unread'}:${item.createdAt}`,
     ),

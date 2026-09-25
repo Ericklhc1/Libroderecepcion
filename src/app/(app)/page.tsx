@@ -126,7 +126,7 @@ export default async function DashboardPage() {
 
             {shift && shift.status === ShiftStatus.ENTREGA_ENVIADA ? (
               <p className="max-w-xs rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200">
-                Entrega enviada. Tu turno se cierra cuando el turno siguiente confirme la recepción.
+                Entrega enviada. Completa Caja si corresponde y cierra formalmente tu turno antes de salir.
               </p>
             ) : null}
 

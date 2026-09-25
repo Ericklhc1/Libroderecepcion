@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-25** · Relevo secuencial de Recepción + Novedades operativas · versión propuesta **v1.10.8**nto PMS + Llaves físicas · versión propuesta **v1.5.0**
+Actualizado: **2026-09-25** · Production **v1.10.8** · auditoría funcional global en curso
 
 ## Estados canónicos
 
@@ -20,41 +20,42 @@ Actualizado: **2026-09-25** · Relevo secuencial de Recepción + Novedades opera
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
-| Turnos + transferencia de Caja | `PR_ABIERTO` | #125 · v1.10.8 | Relevo secuencial: saliente cierra; entrante inicia, recuenta Caja y confirma recepción antes de operar |
+| Turnos + transferencia de Caja | `PRODUCTION` | #125 · v1.10.8 | Relevo secuencial: saliente cierra; entrante inicia, recuenta Caja y confirma recepción antes de operar |
 | ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
 | Caja unificada | `PRODUCTION` | v1.3.1 | Semántica financiera correcta desplegada | Arqueo contra efectivo esperado; fondo, garantías y saldo operacional separados; Tesorería como transferencia interna |
 | PMS / Habitaciones / Reservas | `RETIRADO_RUNTIME` | v1.4.0 | Legado histórico conservado; fuera de navegación, formularios y flujos operativos | Núcleo por habitación e ID FNS desplegado |
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
-| Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
-| Núcleo operativo sin PMS | `EN_DESARROLLO` | v1.5.0 · `refactor/deuda-tecnica-llaves-autonomas-20260923` | Turnos + Novedades + Caja + Llaves + Supervisión | Llaves físicas autónomas; PMS aislado de permisos y flujos operativos |
+| Fronti proveedor/credenciales | `PRODUCTION_PARCIAL` | v1.10.7 · FRONTI alpha.7 | Groq 120B/20B operativos; Cloudflare Workers AI configurado pero health devuelve `CLAVE_RECHAZADA` |
+| Núcleo operativo sin PMS | `PRODUCTION` | v1.10.8 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado de navegación, con rutas profundas históricas aún pendientes de cierre definitivo |
 | Centro de Supervisión | `PRODUCTION` | #91 · v1.2.0 | Turno independiente, tareas, auditorías, medidas e indicadores explicables; desplegado en Vercel Production |
 
 ## Iteración actual
 
-**Libro 1.10.8** · PR **#125** · rama **`fix/turno-gate-novedades-operativas`**
+**Production:** Libro **v1.10.8** · commit `dfc62015a338f938e9b4606a706c901dbc18abef`
 
-Objetivo: convertir el turno en la puerta obligatoria de Recepción y limpiar la
-vista Novedades para que muestre sólo gestión humana vigente del equipo.
+La iteración v1.10.8 quedó completada y verificada:
 
-HECHO en la rama:
-- gate de servidor + interfaz: Recepción sólo opera con turno `ACTIVO`;
-- relevo secuencial: el saliente conserva responsabilidad hasta cerrar;
-- el entrante no puede abrir mientras el saliente siga en curso;
-- el entrante abre `INICIADO`, recuenta Caja/garantías y permanece bloqueado
-  hasta confirmar la recepción;
-- informe imprimible de Caja/entrega-recepción con firmas de saliente, entrante
-  y espacio de validación por Erick Herrera o auditor designado;
-- Fronti respeta el mismo gate operativo;
-- Novedades limita la vista de Recepción a NOVEDAD/INCIDENCIA abiertas creadas
-  por recepcionistas; lo resuelto permanece en Historial;
-- alertas internas de validación de cierre dejan de contaminar Novedades;
-- ayuda y documentación canónica alineadas.
+- Compuerta verde;
+- PR #125 fusionado a `main`;
+- Vercel Production `READY`;
+- health de versión en v1.10.8 con SHA correcto;
+- relevo secuencial y gate operativo de Recepción desplegados;
+- Novedades operativas limpias desplegadas;
+- informe de Caja entrega/recepción desplegado;
+- tag `v1.10.8` creado por el workflow de release.
 
-PENDIENTE antes de Production:
-- Compuerta completa verde (tipos, regresiones y build);
-- merge de #125 a `main`;
-- despliegue Vercel del SHA fusionado y smoke de Production;
-- validación manual de relevo saliente → entrante en dos cuentas.
+**Auditoría funcional global 25-09-2026**
+
+Se revisaron 44 páginas autenticadas, 36 rutas API, 39 módulos de acciones,
+56 servicios, 55 componentes y 93 suites de pruebas. El informe vive en
+`docs/AUDITORIA_FUNCIONAL_GLOBAL_2026-09-25.md`.
+
+Próximo bloque propuesto: **v1.10.9 — Higiene P0**.
+
+- cerrar definitivamente rutas PMS profundas;
+- resolver Cloudflare Workers AI;
+- corregir terminología ambigua de bajo riesgo;
+- no añadir módulos nuevos antes de completar la simplificación.
 
 ## Infraestructura vigente
 

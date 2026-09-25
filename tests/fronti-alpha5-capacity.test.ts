@@ -5,11 +5,11 @@ import { selectFrontiToolDefinitions } from '@/server/ai/fronti-v2/tool-registry
 
 const config: FrontiConfig = {
   enabled: true,
-  provider: 'openai',
+  provider: 'groq',
   displayName: 'Fronti',
   welcomeMessage: 'Hola',
   extraInstructions: '',
-  model: 'gpt-5.6-sol',
+  model: 'openai/gpt-oss-120b',
   reasoningEffort: 'low',
   memoryRetentionDays: 30,
   shiftMemoryHours: 36,
@@ -52,13 +52,12 @@ describe('FRONTI alpha.5 · capacidad y presupuesto', () => {
     expect(names).not.toContain('proponer_checkouts');
   });
 
-  it('usa Sol -> Terra -> Luna antes de Groq y limita salida', () => {
+  it('usa Groq -> Cloudflare -> Groq y limita salida', () => {
     const source = readFileSync('src/server/ai/fronti-provider.ts', 'utf8');
-    expect(source).toContain("OPENAI_PRIMARY_MODEL = 'gpt-5.6-sol'");
-    expect(source).toContain("OPENAI_SECONDARY_MODEL = 'gpt-5.6-terra'");
-    expect(source).toContain("OPENAI_TERTIARY_MODEL = 'gpt-5.6-luna'");
+    expect(source).toContain("GROQ_PRIMARY_MODEL = 'openai/gpt-oss-120b'");
+    expect(source).toContain("CLOUDFLARE_FALLBACK_MODEL = '@cf/zai-org/glm-4.7-flash'");
+    expect(source).toContain("GROQ_FALLBACK_MODEL = 'openai/gpt-oss-20b'");
     expect(source).toContain('MAX_MODEL_OUTPUT_TOKENS = 1_800');
-    expect(source).toContain('max_output_tokens: MAX_MODEL_OUTPUT_TOKENS');
     expect(source).toContain('max_completion_tokens: MAX_MODEL_OUTPUT_TOKENS');
   });
 });

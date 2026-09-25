@@ -27,6 +27,7 @@ import {
   type Tone,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
+import { ROLE_KEYS } from '@/lib/permissions';
 
 /**
  * Libro Operativo v1.4.0.
@@ -78,6 +79,10 @@ export type BookFilters = {
   kinds?: BookKind[];
   onlyOpen?: boolean;
   includeDeleted?: boolean;
+  /** Vista operativa de Novedades: sólo registros humanos de Recepción en gestión. */
+  receptionEntriesOnly?: boolean;
+  /** Oculta alertas internas de validación de cierre a vistas no supervisoras. */
+  hideClosureValidation?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -139,6 +144,14 @@ export async function getBookItems(filters: BookFilters): Promise<{
 
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });
+    }
+
+    if (filters.receptionEntriesOnly) {
+      and.push({
+        type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
+        status: { in: ENTRY_OPEN_STATUSES },
+        createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
+      });
     }
 
     if (q) {
@@ -378,6 +391,11 @@ export async function getBookItems(filters: BookFilters): Promise<{
     const and: Prisma.AlertWhereInput[] = [];
 
     if (filters.onlyOpen) and.push(LIVE_ALERT_WHERE());
+    if (filters.hideClosureValidation) {
+      and.push({
+        NOT: { dedupeKey: { startsWith: 'shift-validation:' } },
+      });
+    }
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { acknowledgedById: filters.userId }] });
     }

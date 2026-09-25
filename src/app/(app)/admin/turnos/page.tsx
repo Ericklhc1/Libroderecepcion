@@ -93,9 +93,9 @@ export default async function ShiftAdminPage({
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Historial y archivo de turnos</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Los turnos no se programan desde aquí. Se abren al comenzar la operación y los relevos
-          pueden solaparse; cada persona sólo puede participar en uno activo. Esta pantalla
-          conserva la trazabilidad y permite retirar turnos sin borrar su información.
+          Los turnos no se programan desde aquí. Recepción trabaja con relevo secuencial: el
+          saliente debe cerrar antes de que el entrante inicie, recuente Caja y valide la
+          recepción. Esta pantalla conserva la trazabilidad y permite retirar turnos sin borrar su información.
           {user.isSystemAdmin
             ? ' Como Administrador de sistema, puedes retirar también un turno que aún no esté cerrado.'
             : ''}

@@ -216,7 +216,9 @@ export function resolveFrontiProvider(input: {
         ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`
         : '',
       apiKey: runtime.CLOUDFLARE_AI_API_TOKEN ?? null,
-      model: input.model.trim() || CLOUDFLARE_FALLBACK_MODEL,
+      model: input.model.trim().startsWith('@cf/')
+        ? input.model.trim()
+        : CLOUDFLARE_FALLBACK_MODEL,
       reasoningEffort: input.reasoningEffort,
     };
   }

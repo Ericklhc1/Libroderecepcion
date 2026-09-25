@@ -100,12 +100,13 @@
 ## Centro de Supervisión v1.2.0
 
 - Rama de trabajo: `feat/centro-supervision-v1-2-0`.
-- El Centro integra la bandeja existente con turno propio, asignaciones
-  múltiples, seguimientos, notas por visibilidad, auditorías sorpresa, medidas
-  correctivas e indicadores explicables.
+- El Centro es una capa transversal: Novedades, Caja, Turnos y Llaves
+  desembocan como señales sin duplicar la fuente operativa.
 - `SupervisionShift` es independiente de `Shift`; Recepción nunca depende de
   que exista o cierre un turno de Supervisión.
-- Las entregas conservan snapshot inalterable y recepción explícita.
+- Hay un único Supervisor de Recepción: sus tareas y seguimientos sobreviven al
+  turno y el flujo normal ya no contempla entrega a otro supervisor.
+- **Seguir** crea/reutiliza un `FollowUp` enlazado por `sourceEntity + sourceId`.
 - El Administrador conserva acceso técnico pero los servicios le impiden
   operar como Supervisor o entrar en asignaciones.
 - Migración aditiva: `20260921170000_centro_supervision`.

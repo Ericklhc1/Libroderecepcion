@@ -1294,13 +1294,14 @@ export function ChatWidget({
     <button
       type="button"
       onClick={() => setOpen((value) => !value)}
-      aria-label={unread > 0 ? `Chat, ${unread} mensajes sin leer` : 'Abrir chat'}
+      aria-label={unread > 0 ? `Chat y Fronti, ${unread} mensajes sin leer` : 'Abrir Chat y Fronti'}
       aria-expanded={open}
-      className="relative rounded-lg p-2 text-petrol-700 hover:bg-petrol-50"
+      className="fixed bottom-20 right-3 z-[110] flex h-13 w-13 items-center justify-center rounded-full bg-petrol-900 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:bottom-4 lg:right-4"
     >
       <MessageCircle className="h-5 w-5" aria-hidden="true" />
+      <Sparkles className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded-full bg-gold-400 p-0.5 text-petrol-950 ring-2 ring-white" aria-hidden="true" />
       {unread > 0 ? (
-        <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[0.6rem] font-bold text-white">
+        <span className="absolute -left-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[0.6rem] font-bold text-white ring-2 ring-white">
           {unread > 99 ? '99+' : unread}
         </span>
       ) : null}

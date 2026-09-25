@@ -423,14 +423,15 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('flex flex-wrap');
     expect(page).toContain('CardScroll');
     expect(page).toContain('Desde tu último turno');
-    expect(page).toContain('Mi continuidad');
-    expect(page).toContain('Atajos del Centro de Supervisión');
+    expect(page).toContain('Asignado a mí');
+    expect(page).toContain('En seguimiento');
     expect(page).toContain('href="#continuidad"');
     expect(page).toContain('href="#pendientes"');
     expect(page).toContain('href="#seguimientos"');
     expect(page).toContain('href="#senales"');
-    expect(page).toContain('Ahora · señales que desembocan en Supervisión');
+    expect(page).toContain('Requiere atención · señales del Libro');
     expect(page).toContain('FollowSupervisionSourceForm');
+    expect(page).toContain('StopFollowingSupervisionForm');
     expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');
   });
 });

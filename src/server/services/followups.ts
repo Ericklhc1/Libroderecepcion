@@ -32,9 +32,9 @@ export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
 }>;
 
 /**
- * Crea un seguimiento operativo vinculado a un registro/tarea o, durante un
- * turno de Supervisión, un seguimiento autónomo que se transfiere en el
- * relevo. Fuera de esos contextos no se permiten seguimientos huérfanos.
+ * Crea un seguimiento operativo vinculado al objeto real que lo motivó.
+ * Para Supervisión, la continuidad sobrevive al turno: un seguimiento puede
+ * existir entre jornadas sin convertirse en una copia del registro de origen.
  */
 export async function createFollowUp(
   user: CurrentUser,
@@ -51,14 +51,27 @@ export async function createFollowUp(
     priority?: Priority;
     origin?: string | null;
     visibility?: SupervisionVisibility;
+    sourceEntity?: string | null;
+    sourceId?: string | null;
   },
 ) {
   const supervisionShift = await prisma.supervisionShift.findFirst({
     where: { supervisorId: user.id, status: 'ACTIVO' },
     select: { id: true },
   });
-  if (!input.entryId && !input.taskId && !supervisionShift) {
-    throw new RuleError('El seguimiento debe asociarse a un registro o a una tarea.');
+  const hasSourceEntity = Boolean(input.sourceEntity);
+  const hasSourceId = Boolean(input.sourceId);
+  if (hasSourceEntity !== hasSourceId) {
+    throw new RuleError('La fuente transversal del seguimiento está incompleta.');
+  }
+  const hasGenericSource = hasSourceEntity && hasSourceId;
+  if (
+    !input.entryId &&
+    !input.taskId &&
+    !hasGenericSource &&
+    !user.permissions.includes('supervision.followup.manage')
+  ) {
+    throw new RuleError('El seguimiento debe asociarse a un registro, una tarea o una fuente de Supervisión.');
   }
   const visibility = input.visibility ?? SupervisionVisibility.OPERATIVO;
   if (
@@ -95,6 +108,8 @@ export async function createFollowUp(
         priority: input.priority ?? Priority.MEDIA,
         origin: input.origin ?? (supervisionShift ? 'CENTRO_SUPERVISION' : null),
         visibility,
+        sourceEntity: input.sourceEntity ?? null,
+        sourceId: input.sourceId ?? null,
         supervisionShiftId: supervisionShift?.id ?? null,
         ownerId,
         createdById: user.id,
@@ -128,6 +143,8 @@ export async function createFollowUp(
           ownerId: created.ownerId,
           entryId: created.entryId,
           taskId: created.taskId,
+          sourceEntity: created.sourceEntity,
+          sourceId: created.sourceId,
         },
       },
       tx,

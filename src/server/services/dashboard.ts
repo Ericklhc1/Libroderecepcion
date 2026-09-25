@@ -92,6 +92,7 @@ export async function getDashboardData(user: CurrentUser) {
     myTasks,
     alerts,
     followUps,
+    blockingOutgoing,
   ] = await Promise.all([
     getPendingHandover(myShift?.id ?? null),
     prisma.operationalEntry.findMany({
@@ -154,6 +155,27 @@ export async function getDashboardData(user: CurrentUser) {
       },
       orderBy: [{ scheduledAt: 'asc' }],
       take: 6,
+    }),
+    prisma.shift.findFirst({
+      where: {
+        archivedAt: null,
+        status: {
+          in: [
+            ShiftStatus.INICIADO,
+            ShiftStatus.ACTIVO,
+            ShiftStatus.PREPARANDO_ENTREGA,
+            ShiftStatus.ENTREGA_ENVIADA,
+          ],
+        },
+        assignments: {
+          some: {
+            activatedAt: { not: null },
+            leftAt: null,
+          },
+        },
+      },
+      select: { id: true, status: true },
+      orderBy: { actualStart: 'asc' },
     }),
   ]);
 
@@ -253,6 +275,7 @@ export async function getDashboardData(user: CurrentUser) {
     myTasks,
     alerts,
     followUps,
+    blockingOutgoing,
     roomsNeedingAction,
     attention,
     counters,

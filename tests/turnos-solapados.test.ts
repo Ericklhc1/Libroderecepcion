@@ -97,7 +97,8 @@ describe('relevo secuencial de Recepción', () => {
     ).rejects.toThrow(/entrega.*pendiente de recepción/i);
 
     expect((await getPendingHandover())?.id).toBe(handover.id);
-    const received = await receiveHandover(entrante, { handoverId: handover.id });
+    await receiveHandover(entrante, { handoverId: handover.id });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe('RECIBIDA');
     expect(received.toShiftId).toBeNull();
 

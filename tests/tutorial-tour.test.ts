@@ -8,6 +8,11 @@ describe('recorrido guiado', () => {
     expect(shouldNavigateTutorial(true, '/libro', '/libro?clase=entry')).toBe(false);
   });
 
+  it('se suspende por completo cuando un bloqueo operativo tiene prioridad', () => {
+    expect(shouldNavigateTutorial(false, '/turno', '/caja', true)).toBe(false);
+    expect(shouldNavigateTutorial(false, '/caja', '/turno', true)).toBe(false);
+  });
+
   it('compara pathname sin confundir query string', () => {
     expect(shouldNavigateTutorial(false, '/libro', '/libro?clase=entry')).toBe(false);
     expect(shouldNavigateTutorial(false, '/libro/abc', '/libro?clase=entry')).toBe(false);
@@ -47,6 +52,16 @@ describe('recorrido guiado', () => {
     const descriptions = TUTORIAL_STEPS.map((step) => step.description).join(' ').toLowerCase();
     expect(descriptions).not.toContain('id fns');
     expect(descriptions).not.toContain('importación pms');
+  });
+
+  it('el layout subordina el tutorial al gate operativo', async () => {
+    const { readFileSync } = await import('node:fs');
+    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
+    const component = readFileSync('src/components/layout/tutorial.tsx', 'utf8');
+
+    expect(layout).toContain("suspended={receptionGate.mode !== 'ACTIVE'}");
+    expect(component).toContain('dismissed || suspended || !step');
+    expect(component).toContain('dismissed || suspended || steps.length === 0 || !step');
   });
 
   it('cada paso de una ruta señala una sección de la pantalla', () => {

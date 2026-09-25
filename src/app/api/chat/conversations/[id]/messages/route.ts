@@ -6,6 +6,7 @@ import {
   sendCustomStickerMessage,
 } from '@/server/services/chat';
 import { chatApiError, chatJson } from '@/server/api/chat';
+import { maybeInvokeFrontiInChat } from '@/server/ai/fronti-chat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,7 +57,16 @@ export async function POST(
           conversationId: id,
           ...payload,
         });
-    return chatJson(message, 201);
+
+    const fronti = payload.stickerId
+      ? null
+      : await maybeInvokeFrontiInChat(user, {
+          conversationId: id,
+          messageId: message.id,
+          body: typeof payload.body === 'string' ? payload.body : null,
+        });
+
+    return chatJson(fronti ? { ...message, fronti } : message, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return chatJson({ error: 'El mensaje no es válido.' }, 400);

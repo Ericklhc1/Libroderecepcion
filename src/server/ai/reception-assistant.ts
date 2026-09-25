@@ -39,6 +39,7 @@ import {
   type FrontiToolTrace,
 } from './fronti-v2/telemetry';
 import { serializeToolResultForModel } from './fronti-v2/context-budget';
+import { normalizeFrontiReply } from './fronti-v2/response-style';
 import {
   chatWithFrontiProviderChain,
   FrontiProviderError,
@@ -847,8 +848,9 @@ export class AssistantError extends Error {
 function systemInstructions(config: FrontiConfig): string {
   return (
     `Eres ${config.displayName}, el asistente operativo del Libro de Recepción del Hotel HW Libertad. ` +
-    'Responde siempre en español claro, breve y operativo. Usa exclusivamente las herramientas disponibles para consultar o preparar acciones del Libro. ' +
+    'Responde siempre en español claro, breve y operativo. Para datos del Libro usa las herramientas disponibles; para preguntas de conocimiento general puedes responder con conocimiento del modelo sin fingir que el dato debería existir en el Libro. Si una pregunta externa depende de información reciente que no puedes verificar, dilo brevemente. ' +
     'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
+    'La respuesta vive en una burbuja estrecha: prefiere párrafos cortos, negritas y viñetas. No uses tablas Markdown salvo que el usuario pida explícitamente una tabla, columnas o un cuadro comparativo. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
     'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
     'Sigue las instrucciones operativas del usuario usando herramientas: puedes consultar transversalmente Turnos, Novedades, Caja, Garantías, Llaves, Tareas, Seguimientos, Supervisión, Alertas, Auditoría, Usuarios y configuración cuando sus permisos lo permitan; también puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs. ' +
@@ -967,9 +969,11 @@ export async function runReceptionAssistant(
           outcome: toolTrace.some((item) => !item.ok) ? 'partial' : 'success',
         });
         return {
-          reply:
+          reply: normalizeFrontiReply(
             response.text ||
-            'No pude formular una respuesta. Intenta decirlo de otra forma.',
+              'No pude formular una respuesta. Intenta decirlo de otra forma.',
+            latestUserMessage,
+          ),
           confirmations,
         };
       }

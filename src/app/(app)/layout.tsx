@@ -163,7 +163,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <MobileNav items={items} badges={badges} />
-      {canUseFronti(user, frontiConfig.enabled) ? <ReceptionAssistant /> : null}
+      {canUseFronti(user, frontiConfig.enabled) &&
+      (!user.roleOperational || user.isSystemAdmin) ? (
+        <ReceptionAssistant />
+      ) : null}
 
       {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 

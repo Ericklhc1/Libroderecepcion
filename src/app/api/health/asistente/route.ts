@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   assistantHealthFromFailure,
+  type AssistantFailure,
   type AssistantHealth,
 } from '@/domain/assistant-status';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
@@ -20,6 +21,7 @@ let cached:
       provider: string;
       model: string;
       chain: Array<{ provider: string; model: string }>;
+      checks: Array<{ provider: string; model: string; ok: boolean; failure?: AssistantFailure }>;
       health: AssistantHealth;
     }
   | null = null;
@@ -28,6 +30,7 @@ async function probeAssistant(): Promise<{
   provider: string;
   model: string;
   chain: Array<{ provider: string; model: string }>;
+  checks: Array<{ provider: string; model: string; ok: boolean; failure?: AssistantFailure }>;
   health: AssistantHealth;
 }> {
   const config = await getFrontiConfig();
@@ -40,27 +43,39 @@ async function probeAssistant(): Promise<{
       provider: 'none',
       model: 'none',
       chain: [],
+      checks: [],
       health: assistantHealthFromFailure('SIN_CLAVE'),
     };
   }
 
-  let lastFailure: import('@/domain/assistant-status').AssistantFailure = 'CAIDO';
-  for (const provider of chain) {
-    const result = await probeFrontiProvider(provider);
-    if (result.ok) {
-      return {
-        provider: provider.provider,
-        model: provider.model,
-        chain: chain.map((item) => ({
-          provider: item.provider,
-          model: item.model,
-        })),
-        health: { estado: 'OK' },
-      };
-    }
-    lastFailure = result.failure;
+  const results = await Promise.all(
+    chain.map(async (provider) => ({
+      provider,
+      result: await probeFrontiProvider(provider),
+    })),
+  );
+  const checks = results.map(({ provider, result }) => ({
+    provider: provider.provider,
+    model: provider.model,
+    ok: result.ok,
+    ...(!result.ok ? { failure: result.failure } : {}),
+  }));
+  const firstHealthy = results.find(({ result }) => result.ok);
+  if (firstHealthy) {
+    return {
+      provider: firstHealthy.provider.provider,
+      model: firstHealthy.provider.model,
+      chain: chain.map((item) => ({
+        provider: item.provider,
+        model: item.model,
+      })),
+      checks,
+      health: { estado: 'OK' },
+    };
   }
 
+  const lastFailure =
+    [...results].reverse().find(({ result }) => !result.ok)?.result;
   return {
     provider: chain[0]?.provider ?? 'none',
     model: chain[0]?.model ?? 'none',
@@ -68,7 +83,10 @@ async function probeAssistant(): Promise<{
       provider: item.provider,
       model: item.model,
     })),
-    health: assistantHealthFromFailure(lastFailure),
+    checks,
+    health: assistantHealthFromFailure(
+      lastFailure && !lastFailure.ok ? lastFailure.failure : 'CAIDO',
+    ),
   };
 }
 
@@ -85,6 +103,7 @@ export async function GET() {
       provider: cached.provider,
       model: cached.model,
       providerChain: cached.chain,
+      providerChecks: cached.checks,
       agentVersion: FRONTI_AGENT_VERSION,
       ...cached.health,
     },

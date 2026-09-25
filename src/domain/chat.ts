@@ -143,7 +143,7 @@ export type ChatPerson = {
 
 export type ChatConversationListItem = {
   id: string;
-  type: 'DIRECTO' | 'GRUPO';
+  type: 'DIRECTO' | 'GRUPO' | 'FRONTI';
   title: string;
   unreadCount: number;
   lastMessageAt: string;
@@ -202,8 +202,9 @@ export type ChatMessageItem = {
   contextHref: string | null;
   contextEntity: string | null;
   contextEntityId: string | null;
-  senderId: string;
+  senderId: string | null;
   senderName: string;
+  author: 'USER' | 'FRONTI' | 'SYSTEM';
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
@@ -221,7 +222,7 @@ export type ChatConversationParticipant = ChatPerson & {
 
 export type ChatConversationSnapshot = {
   id: string;
-  type: 'DIRECTO' | 'GRUPO';
+  type: 'DIRECTO' | 'GRUPO' | 'FRONTI';
   title: string;
   participants: ChatConversationParticipant[];
   myRole: 'CREADOR' | 'ADMIN' | 'MIEMBRO';
@@ -237,6 +238,7 @@ export type ChatBootstrap = {
   profile: ChatProfile;
   totalUnread: number;
   storageEnabled: boolean;
+  frontiEnabled: boolean;
   generatedAt: string;
 };
 

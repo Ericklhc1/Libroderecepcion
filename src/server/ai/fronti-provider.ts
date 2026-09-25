@@ -23,6 +23,18 @@ function secretPurpose(provider: FrontiProviderName): string {
   return `${SECRET_PURPOSE_PREFIX}${provider}`;
 }
 
+function normalizeProviderSecret(value: string): string {
+  let clean = value.trim();
+  if (
+    (clean.startsWith('"') && clean.endsWith('"')) ||
+    (clean.startsWith("'") && clean.endsWith("'"))
+  ) {
+    clean = clean.slice(1, -1).trim();
+  }
+  clean = clean.replace(/^Bearer\s+/i, '').trim();
+  return clean;
+}
+
 async function readStoredProviderSecret(
   provider: FrontiProviderName,
 ): Promise<{ present: boolean; value: string | null }> {
@@ -44,7 +56,7 @@ export async function saveFrontiProviderSecret(
   apiKey: string,
   updatedById: string,
 ): Promise<void> {
-  const clean = apiKey.trim();
+  const clean = normalizeProviderSecret(apiKey);
   if (clean.length < 8) throw new Error('La credencial parece incompleta.');
   if (clean.length > 2000) throw new Error('La credencial supera el largo permitido.');
 
@@ -310,7 +322,8 @@ export function providerIsConfigured(config: FrontiProviderConfig): boolean {
 }
 
 function authHeaders(apiKey: string | null): Record<string, string> {
-  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  const clean = apiKey ? normalizeProviderSecret(apiKey) : '';
+  return clean ? { Authorization: `Bearer ${clean}` } : {};
 }
 
 const MAX_RATE_LIMIT_RETRY_MS = 12_500;

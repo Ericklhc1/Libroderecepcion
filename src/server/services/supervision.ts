@@ -259,11 +259,11 @@ export async function getSupervisionData(): Promise<{
   ]);
 
   const latestCashAudits = Array.from(
-    new Map(cashAudits.map((audit) => [audit.currency, audit])).values(),
+    new Map([...cashAudits].reverse().map((audit) => [audit.currency, audit])).values(),
   ).filter((audit) => Number(audit.difference) !== 0);
 
   const latestKeyCounts = Array.from(
-    new Map(keyCounts.map((count) => [count.floor, count])).values(),
+    new Map([...keyCounts].reverse().map((count) => [count.floor, count])).values(),
   )
     .map((count) => ({
       ...count,

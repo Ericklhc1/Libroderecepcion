@@ -262,6 +262,8 @@ export function ChatWidget({
   const [unread, setUnread] = useState(initialUnread);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [frontiBusy, setFrontiBusy] = useState(false);
+  const [frontiConfirmations, setFrontiConfirmations] = useState<FrontiConfirmation[]>([]);
   const [query, setQuery] = useState('');
   const [conversationQuery, setConversationQuery] = useState('');
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
@@ -358,6 +360,7 @@ export function ChatWidget({
         );
         setSnapshot(data);
         setSelectedId(conversationId);
+        setFrontiConfirmations([]);
         setView('conversation');
         if (options.mark !== false) void markRead(conversationId);
         window.setTimeout(() => listEndRef.current?.scrollIntoView({ block: 'end' }), 10);
@@ -573,7 +576,7 @@ export function ChatWidget({
         person.name.toLocaleLowerCase('es-CL').includes(fragment),
       )
       .slice(0, 6);
-    return { start, candidates };
+    return { start, fragment, candidates };
   }, [body, currentUserId, snapshot?.participants]);
 
 
@@ -1030,19 +1033,56 @@ export function ChatWidget({
     replyToId?: string;
   }) {
     if (!selectedId) return;
+    const expectsFronti =
+      snapshot?.type === 'FRONTI' ||
+      Boolean(payload.body && /(^|\s)@fronti\b/i.test(payload.body));
     setError(null);
+    if (expectsFronti) setFrontiBusy(true);
     try {
-      await requestJson(
+      const result = await requestJson<ChatPostResult>(
         `/api/chat/conversations/${encodeURIComponent(selectedId)}/messages`,
         {
           method: 'POST',
           body: JSON.stringify(payload),
         },
       );
+      if (result.fronti?.confirmations?.length) {
+        setFrontiConfirmations((current) => {
+          const byToken = new Map(current.map((item) => [item.token, item]));
+          for (const item of result.fronti?.confirmations ?? []) byToken.set(item.token, item);
+          return Array.from(byToken.values()).slice(-6);
+        });
+      }
       await loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo enviar el mensaje.');
+    } finally {
+      if (expectsFronti) setFrontiBusy(false);
+    }
+  }
+
+  async function confirmFronti(item: FrontiConfirmation) {
+    if (!selectedId || frontiBusy) return;
+    setFrontiBusy(true);
+    setError(null);
+    try {
+      await requestJson(
+        `/api/chat/conversations/${encodeURIComponent(selectedId)}/fronti/confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ token: item.token }),
+        },
+      );
+      setFrontiConfirmations((current) =>
+        current.filter((candidate) => candidate.token !== item.token),
+      );
+      await loadConversation(selectedId, { mark: true, busy: false });
+      void loadBootstrap();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo confirmar la acción de Fronti.');
+    } finally {
+      setFrontiBusy(false);
     }
   }
 
@@ -1241,6 +1281,8 @@ export function ChatWidget({
     setReactionMessageId(null);
     setConversationQuery('');
     setConversationSearchOpen(false);
+    setFrontiConfirmations([]);
+    setFrontiBusy(false);
     void stopTyping();
     closeComposerPickers();
     setView('list');
@@ -1306,7 +1348,9 @@ export function ChatWidget({
           </p>
           <p className="truncate text-[0.7rem] text-slate-500">
             {view === 'conversation' && snapshot
-              ? `${snapshot.participants.length} participante${snapshot.participants.length === 1 ? '' : 's'}`
+              ? snapshot.type === 'FRONTI'
+                ? 'Asistente individual · memoria personal'
+                : `${snapshot.participants.length} participante${snapshot.participants.length === 1 ? '' : 's'}`
               : view === 'settings' && snapshot
                 ? snapshot.title
                 : 'Mensajería interna del Libro'}
@@ -1595,7 +1639,9 @@ export function ChatWidget({
                   className="flex w-full gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50"
                 >
                   <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-2xl text-petrol-800">
-                    {item.type === 'GRUPO' ? (
+                    {item.type === 'FRONTI' ? (
+                      <Sparkles className="h-5 w-5 text-gold-600" aria-hidden="true" />
+                    ) : item.type === 'GRUPO' ? (
                       <Users className="h-5 w-5" aria-hidden="true" />
                     ) : (
                       avatarGlyph(item.counterpart?.avatarKey)
@@ -1622,7 +1668,11 @@ export function ChatWidget({
                     <span className="mt-0.5 block truncate text-xs text-slate-500">
                       {previewText(item)}
                     </span>
-                    {item.counterpart ? (
+                    {item.type === 'FRONTI' ? (
+                      <span className="mt-1 block text-[0.68rem] font-medium text-petrol-600">
+                        Asistente individual · memoria personal
+                      </span>
+                    ) : item.counterpart ? (
                       <span className="mt-1 block">
                         <PersonPresence person={item.counterpart} />
                       </span>
@@ -2026,6 +2076,7 @@ export function ChatWidget({
               ) : null}
               {visibleMessages.map((message) => {
                 const mine = message.senderId === currentUserId;
+                const fromFronti = message.author === 'FRONTI';
                 const stickerGlyph = chatStickerGlyph(message.stickerKey);
                 const customStickerUrl = message.stickerId ? `/api/chat/stickers/${message.stickerId}` : null;
                 const sticker = Boolean(stickerGlyph || customStickerUrl);
@@ -2034,7 +2085,9 @@ export function ChatWidget({
                   ? 'px-2 py-1'
                   : mine
                     ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
-                    : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
+                    : fromFronti
+                      ? 'rounded-2xl rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-gold-100'
+                      : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
 
                 return (
                   <div
@@ -2045,8 +2098,14 @@ export function ChatWidget({
                     <div className="max-w-[88%] sm:max-w-[84%]">
                       <div className={bubbleClass}>
                         {!mine && !sticker && !gif ? (
-                          <p className="mb-0.5 text-[0.67rem] font-semibold text-petrol-700">
+                          <p className="mb-1 flex items-center gap-1 text-[0.67rem] font-semibold text-petrol-700">
+                            {fromFronti ? <Sparkles className="h-3 w-3 text-gold-600" aria-hidden="true" /> : null}
                             {message.senderName}
+                            {fromFronti ? (
+                              <span className="rounded bg-gold-50 px-1 py-0.5 text-[0.55rem] font-bold uppercase tracking-wide text-gold-800">
+                                IA
+                              </span>
+                            ) : null}
                           </p>
                         ) : null}
 
@@ -2112,7 +2171,9 @@ export function ChatWidget({
                         ) : (
                           <>
                             {message.body ? (
-                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderMessageBody(message.body)}</p>
+                              fromFronti
+                                ? renderFrontiBody(message.body)
+                                : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderMessageBody(message.body)}</p>
                             ) : null}
                             {message.contextHref ? (
                               <a
@@ -2301,6 +2362,15 @@ export function ChatWidget({
                 );
               })}
 
+              {frontiBusy ? (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm">
+                    <Sparkles className="h-3.5 w-3.5 animate-pulse text-gold-600" aria-hidden="true" />
+                    Fronti está pensando…
+                  </div>
+                </div>
+              ) : null}
+
               {snapshot.typing.length > 0 ? (
                 <div className="flex justify-start">
                   <div className="rounded-2xl rounded-bl-md bg-white px-3 py-2 text-xs italic text-slate-500 shadow-sm ring-1 ring-slate-100">
@@ -2315,6 +2385,45 @@ export function ChatWidget({
           </div>
 
           <div className="shrink-0 border-t border-slate-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+            {frontiConfirmations.map((item) => (
+              <div
+                key={item.token}
+                className={`mb-2 rounded-xl border bg-white p-3 shadow-sm ${
+                  item.risk === 'high' ? 'border-amber-300' : 'border-gold-200'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-petrol-950">{item.title}</p>
+                    <p className="mt-1 text-xs leading-4 text-slate-600">{item.detail}</p>
+                  </div>
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={frontiBusy}
+                    onClick={() =>
+                      setFrontiConfirmations((current) =>
+                        current.filter((candidate) => candidate.token !== item.token),
+                      )
+                    }
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={frontiBusy}
+                    onClick={() => void confirmFronti(item)}
+                    className="rounded-lg bg-petrol-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-petrol-700 disabled:opacity-40"
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </div>
+            ))}
+
             {recording ? (
               <div className="mb-2 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-600" aria-hidden="true" />
@@ -2417,12 +2526,33 @@ export function ChatWidget({
               </div>
             ) : null}
 
-            {mentionState && (mentionState.candidates.length > 0 || snapshot?.type === 'GRUPO') ? (
+            {mentionState && (
+              mentionState.candidates.length > 0 ||
+              snapshot?.type === 'GRUPO' ||
+              (bootstrap?.frontiEnabled && snapshot?.type !== 'FRONTI')
+            ) ? (
               <div className="mb-2 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200">
                 <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
                   <AtSign className="h-3.5 w-3.5" aria-hidden="true" />
                   Mencionar
                 </div>
+                {bootstrap?.frontiEnabled &&
+                snapshot?.type !== 'FRONTI' &&
+                (!mentionState.fragment || 'fronti'.startsWith(mentionState.fragment)) ? (
+                  <button
+                    type="button"
+                    onClick={() => insertMentionToken('Fronti')}
+                    className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left hover:bg-gold-50"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-petrol-900 text-gold-300">
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-petrol-950">@Fronti</span>
+                      <span className="block text-xs text-slate-500">Invocar al asistente en este chat</span>
+                    </span>
+                  </button>
+                ) : null}
                 {snapshot?.type === 'GRUPO' &&
                 (!body.slice(mentionState.start + 1).trim() ||
                   'todos'.startsWith(body.slice(mentionState.start + 1).trim().toLocaleLowerCase('es-CL'))) ? (
@@ -2841,13 +2971,19 @@ export function ChatWidget({
                   }
                 }}
                 rows={1}
-                placeholder={editingMessage ? "Editar mensaje…" : "Mensaje…"}
+                placeholder={
+                  editingMessage
+                    ? 'Editar mensaje…'
+                    : snapshot?.type === 'FRONTI'
+                      ? 'Mensaje para Fronti…'
+                      : 'Mensaje…'
+                }
                 className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
               />
               <button
                 type="button"
                 onClick={() => void sendMessage()}
-                disabled={uploading || (!body.trim() && !context && !pendingFile)}
+                disabled={frontiBusy || uploading || (!body.trim() && !context && !pendingFile)}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-petrol-800 text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Enviar"
               >

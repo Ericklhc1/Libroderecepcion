@@ -9,15 +9,33 @@ describe('Recepción · gate obligatorio de turno', () => {
     );
 
     expect(source).toContain("mode: 'NO_SHIFT'");
+    expect(source).toContain("mode: 'HANDOVER_PENDING'");
     expect(source).toContain("mode: 'RECEIVING'");
     expect(source).toContain("mode: 'CLOSING'");
     expect(source).toContain("mode: 'ACTIVE'");
     expect(source).toContain("permission === 'shift.start'");
     expect(source).toContain("'shift.receive'");
     expect(source).toContain("'cash.count_receive'");
+    expect(source).toContain('HandoverStatus.ENVIADA');
+    expect(source).toContain("gate.mode === 'HANDOVER_PENDING' || gate.mode === 'RECEIVING'");
     expect(source).toContain("'shift.close'");
     expect(source).toContain('isReceptionDeskRole(user.roleKey)');
     expect(source).not.toContain("'shift.start',\n  'shift.receive'");
+  });
+
+  it('permite tomar la liana antes de abrir el turno siguiente', () => {
+    const source = readFileSync(
+      'src/server/services/reception-operation-gate.ts',
+      'utf8',
+    );
+
+    const pendingBranch = source.slice(
+      source.indexOf("if (gate.mode === 'HANDOVER_PENDING'"),
+      source.indexOf("if (CLOSING_PERMISSIONS.has(permission))"),
+    );
+
+    expect(pendingBranch).toContain('RECEIVE_ONLY_PERMISSIONS.has(permission)');
+    expect(pendingBranch).not.toContain("permission === 'shift.start'");
   });
 
   it('el guard de permisos aplica el gate también en acciones por propiedad', () => {

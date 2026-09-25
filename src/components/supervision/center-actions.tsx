@@ -20,7 +20,7 @@ export function StartSupervisionShiftDialog() {
     <Dialog
       title="Iniciar turno de Supervisión"
       description="Este turno es independiente de Recepción y no controla caja, llaves ni habitaciones."
-      trigger="Iniciar turno"
+      trigger="Iniciar turno de Supervisión"
       triggerVariant="gold"
     >
       <ActionForm action={startSupervisionShiftAction} closeOnSuccess refreshOnSuccess>
@@ -36,7 +36,7 @@ export function StartSupervisionShiftDialog() {
           />
         </Field>
         <div className="flex justify-end">
-          <SubmitButton pendingLabel="Iniciando…">Iniciar turno</SubmitButton>
+          <SubmitButton pendingLabel="Iniciando…">Iniciar turno de Supervisión</SubmitButton>
         </div>
       </ActionForm>
     </Dialog>
@@ -48,7 +48,7 @@ export function DeliverSupervisionShiftDialog({ shiftId }: { shiftId: string }) 
     <Dialog
       title="Entregar turno de Supervisión"
       description="Se guardará una copia inalterable de tareas, seguimientos, decisiones, auditorías y medidas."
-      trigger="Entregar"
+      trigger="Entregar turno de Supervisión"
       triggerVariant="gold"
     >
       <ActionForm action={deliverSupervisionShiftAction} closeOnSuccess refreshOnSuccess>
@@ -57,7 +57,7 @@ export function DeliverSupervisionShiftDialog({ shiftId }: { shiftId: string }) 
           <Textarea name="note" rows={4} placeholder="Contexto que necesita el siguiente supervisor." />
         </Field>
         <div className="flex justify-end">
-          <SubmitButton pendingLabel="Generando entrega…">Generar entrega</SubmitButton>
+          <SubmitButton pendingLabel="Generando entrega…">Generar entrega de Supervisión</SubmitButton>
         </div>
       </ActionForm>
     </Dialog>
@@ -68,7 +68,7 @@ export function FinishSupervisionShiftForm({ shiftId }: { shiftId: string }) {
   return (
     <ActionForm action={finishSupervisionShiftAction} hideSuccess refreshOnSuccess className="space-y-0">
       <input type="hidden" name="shiftId" value={shiftId} />
-      <SubmitButton pendingLabel="Finalizando…">Finalizar turno</SubmitButton>
+      <SubmitButton pendingLabel="Finalizando…">Finalizar turno de Supervisión</SubmitButton>
     </ActionForm>
   );
 }

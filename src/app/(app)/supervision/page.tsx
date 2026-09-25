@@ -111,9 +111,7 @@ export default async function SupervisionCenterPage({
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const responsible = typeof params.responsable === 'string' ? params.responsable : '';
-  const status = typeof params.estado === 'string' ? params.estado : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';
-  const origin = typeof params.origen === 'string' ? params.origen : '';
   const period = parsePeriod(params);
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
   const canPerformance = hasPermission(user, 'supervision.performance.view');
@@ -134,17 +132,13 @@ export default async function SupervisionCenterPage({
   const tasks = center.myTasks.filter((task) =>
     inPeriod(task.createdAt) &&
     (!responsible || task.assigneeId === responsible) &&
-    (!status || task.status === status) &&
     (!priority || task.priority === priority) &&
-    (!origin || task.origin === origin) &&
     matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
   );
   const followUps = center.myFollowUps.filter((item) =>
     inPeriod(item.createdAt) &&
     (!responsible || item.ownerId === responsible) &&
-    (!status || item.status === status) &&
     (!priority || item.priority === priority) &&
-    (!origin || item.origin === origin) &&
     matches(item.action, item.owner.name, item.status, item.priority),
   );
   const notes = center.notes.filter((note) =>
@@ -152,13 +146,11 @@ export default async function SupervisionCenterPage({
   );
   const audits = center.audits.filter((audit) =>
     inPeriod(audit.startedAt) &&
-    (!status || audit.status === status) &&
     matches(audit.templateName, audit.runBy.name, audit.status, audit.scope),
   );
   const measures = center.measures.filter((measure) =>
     inPeriod(measure.createdAt) &&
     (!responsible || measure.assigneeId === responsible) &&
-    (!status || measure.status === status) &&
     matches(measure.title, measure.action, measure.assignee.name, measure.status),
   );
   const blocks = review.blocks

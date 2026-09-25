@@ -58,7 +58,10 @@ export default async function EntryDetailPage({
       where: {
         entryId: entry.id,
         deletedAt: null,
-        NOT: { origin: { startsWith: 'SUPERVISION_' } },
+        OR: [
+          { origin: null },
+          { origin: { not: { startsWith: 'SUPERVISION_' } } },
+        ],
       },
       include: { owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },

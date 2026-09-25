@@ -573,7 +573,10 @@ export async function chatWithFrontiProvider(args: {
   let modelUsed = args.provider.model;
   let response = await performRequest(modelUsed);
 
-  if (response.status === 429) {
+  if (
+    response.status === 429 &&
+    !(args.provider.provider === 'groq' && modelUsed === GROQ_PRIMARY_MODEL)
+  ) {
     const delay = retryAfterMs(response);
     if (delay !== null && delay <= MAX_RATE_LIMIT_RETRY_MS) {
       console.info(

@@ -13,6 +13,7 @@ import { countLiveAlerts } from '@/server/services/alert-engine';
 import { visibleNavGroups } from '@/components/layout/nav-items';
 import { MobileNav, SidebarNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
+import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
 import { TutorialTour } from '@/components/layout/tutorial';
 import { guidedTourSteps } from '@/domain/tutorial-tour';
@@ -27,6 +28,7 @@ import { getChatUnreadCount } from '@/server/services/chat';
 import { AiAttribution } from '@/components/ai/ai-attribution';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import { canUseFronti } from '@/server/ai/fronti-access';
+import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -46,6 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     tutorialRow,
     chatUnread,
     frontiConfig,
+    receptionGate,
   ] = await Promise.all([
       getSettingString('hotel.name', 'Hotel'),
       countLiveAlerts(),
@@ -62,6 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ? getChatUnreadCount(user.id)
         : Promise.resolve(0),
       getFrontiConfig(),
+      getReceptionOperationGate(user),
     ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
@@ -167,6 +171,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       (!user.roleOperational || user.isSystemAdmin) ? (
         <ReceptionAssistant />
       ) : null}
+
+      <ReceptionOperationGate mode={receptionGate.mode} />
 
       {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 

@@ -794,6 +794,9 @@ export async function receiveShiftCash(
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
+  if (handover.issuedById === user.id) {
+    throw new RuleError('La entrega debe ser recibida por otra persona.');
+  }
   if (handover.fromShift.status !== ShiftStatus.CERRADO) {
     throw new RuleError(
       'El turno saliente debe estar cerrado formalmente antes de recibir su Caja.',
@@ -974,6 +977,9 @@ export async function receiveHandover(
     },
   });
   if (!incoming) throw new NotFoundError('La entrega indicada no existe.');
+  if (incoming.issuedById === user.id) {
+    throw new RuleError('La entrega debe ser recibida por otra persona.');
+  }
   if (incoming.status === HandoverStatus.RECIBIDA || incoming.receivedAt) {
     throw new RuleError('Esa entrega ya fue recibida y confirmada.');
   }
@@ -1098,9 +1104,9 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
   /*
     El destino queda NULO a propósito: cuando alguien entrega, el turno que va
     a recibir todavía no existe —se crea cuando el relevo llega al mesón—. La
-    entrega va a la bandeja y `receiveHandover` escribe el destino real. Antes
-    se intentaba adivinar el turno siguiente por adyacencia de franjas, y de
-    ahí venía que no se pudiera recibir.
+    entrega va a la bandeja; la recepción identifica a la persona que la toma
+    y el destino `toShiftId` se enlaza recién cuando se abre el turno siguiente.
+    Antes se intentaba adivinar ese turno por adyacencia de franjas.
   */
 
   return prisma.$transaction(async (tx) => {
@@ -1222,7 +1228,7 @@ export async function sendHandover(
         issuedById: user.id,
         issuerSessionId: user.sessionId,
         notes: params.notes ?? handover.notes,
-        // Si la Caja ya fue recibida, toShiftId ya identifica al entrante y se conserva.
+        // El destino sigue nulo al enviar; se enlaza sólo después de recibir.
         // Fotografía inmutable de lo entregado.
         snapshot: {
           generatedAt: now.toISOString(),

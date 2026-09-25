@@ -643,10 +643,15 @@ export async function openShift(
             entity: 'Shift',
             entityId: shift.id,
             action: AuditAction.TURNO_RECIBIR,
-            summary: 'Turno activado automáticamente: no había entrega ni Caja pendiente',
+            summary: receivedLink
+              ? 'Turno activado después de recibir la entrega anterior'
+              : 'Turno activado automáticamente: no había entrega pendiente',
             user,
             before: { status: ShiftStatus.INICIADO },
-            after: { status: ShiftStatus.ACTIVO },
+            after: {
+              status: ShiftStatus.ACTIVO,
+              receivedHandoverId: receivedLink?.id ?? null,
+            },
           },
           tx,
         );

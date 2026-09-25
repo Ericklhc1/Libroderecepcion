@@ -119,6 +119,24 @@ Health Production actual:
 
 ---
 
+## P0.5 · Programación de turnos retirada, pero con UI y ayuda muertas — RESUELTO EN v1.10.9
+
+Aunque el flujo vigente crea los turnos al abrirlos, todavía existían:
+
+- un `ScheduleShiftForm` no utilizado en Administración;
+- opciones históricas `MANANA/TARDE/NOCHE` con horarios 07–15 / 15–23 / 23–07;
+- una ayuda que explicaba “programar un turno”;
+- texto de instalación que prometía programar turnos.
+
+**Problema:** no era alcanzable desde la interfaz vigente, pero mantenía una segunda
+verdad conceptual en el código y podía volver a aparecer accidentalmente.
+
+**Aplicado en v1.10.9:** se retiró el formulario muerto, la ayuda obsoleta y el
+texto de instalación. La acción de servidor heredada se conserva temporalmente
+para compatibilidad histórica, sin superficie de usuario.
+
+---
+
 # Hallazgos P1 — simplificación operativa
 
 ## P1.1 · Turno todavía expone demasiado la máquina de estados

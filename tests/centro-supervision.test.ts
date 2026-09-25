@@ -396,6 +396,11 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('CardScroll');
     expect(page).toContain('Desde tu último turno');
     expect(page).toContain('Mi continuidad');
+    expect(page).toContain('Atajos del Centro de Supervisión');
+    expect(page).toContain('href="#continuidad"');
+    expect(page).toContain('href="#pendientes"');
+    expect(page).toContain('href="#seguimientos"');
+    expect(page).toContain('href="#senales"');
     expect(page).toContain('Ahora · señales que desembocan en Supervisión');
     expect(page).toContain('FollowSupervisionSourceForm');
     expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');

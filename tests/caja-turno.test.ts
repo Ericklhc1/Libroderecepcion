@@ -216,7 +216,8 @@ describe('caja en la entrega de turno', () => {
     const outgoing = await prisma.shift.findUniqueOrThrow({ where: { id: manana.id } });
     expect(outgoing.status).toBe('CERRADO');
 
-    const received = await receiveHandover(entrante, { handoverId: handover.id });
+    await receiveHandover(entrante, { handoverId: handover.id });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
     expect(received.toShiftId).toBeNull();
 
@@ -266,10 +267,11 @@ describe('caja en la entrega de turno', () => {
     });
     expect(alert?.status).toBe('NUEVA');
 
-    const received = await receiveHandover(entrante, {
+    await receiveHandover(entrante, {
       handoverId: handover.id,
       observations: 'Diferencia recibida y escalada.',
     });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
     expect(received.toShiftId).toBeNull();
 
@@ -500,9 +502,10 @@ describe('elementos que viajan con la caja', () => {
 
     expect(await cashBlockersForReceiving(handover.id)).toEqual([]);
 
-    const received = await receiveHandover(entrante, {
+    await receiveHandover(entrante, {
       handoverId: sent.id,
     });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: sent.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
     expect(received.toShiftId).toBeNull();
 

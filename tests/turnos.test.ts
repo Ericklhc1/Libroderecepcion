@@ -314,7 +314,8 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 
-    const received = await receiveHandover(supervisor, { handoverId: handover.id });
+    await receiveHandover(supervisor, { handoverId: handover.id });
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
     expect(received.receivedById).toBe(supervisor.id);
     expect(received.toShiftId).toBeNull();

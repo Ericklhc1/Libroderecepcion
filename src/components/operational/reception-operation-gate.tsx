@@ -28,17 +28,23 @@ export function ReceptionOperationGate({
           body: 'Debes iniciar tu turno antes de trabajar con Novedades, Caja, Llaves o cualquier otra operación de Recepción.',
           action: 'Ir a iniciar turno',
         }
-      : mode === 'RECEIVING'
+      : mode === 'HANDOVER_PENDING'
         ? {
-            title: 'Recepción de turno pendiente',
-            body: 'Tu turno ya está iniciado, pero aún no puedes operar. Recuenta Caja y confirma la recepción del turno saliente.',
-            action: 'Ir a recibir turno',
+            title: 'Entrega de turno pendiente',
+            body: 'El turno saliente ya cerró. Recibe la entrega y recuenta Caja antes de iniciar el turno siguiente.',
+            action: 'Revisar y recibir entrega',
           }
-        : {
-            title: 'Cierre de turno en curso',
-            body: 'Mientras preparas o cierras tu turno, la operación general queda bloqueada. Completa Caja, entrega y cierre antes de continuar.',
-            action: 'Continuar cierre',
-          };
+        : mode === 'RECEIVING'
+          ? {
+              title: 'Recepción de turno pendiente',
+              body: 'Hay una recepción anterior todavía incompleta. Complétala desde Mi turno antes de operar.',
+              action: 'Completar recepción',
+            }
+          : {
+              title: 'Cierre de turno en curso',
+              body: 'Mientras preparas o cierras tu turno, la operación general queda bloqueada. Completa Caja, entrega y cierre antes de continuar.',
+              action: 'Continuar cierre',
+            };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-petrol-950/55 p-4 backdrop-blur-sm no-print">

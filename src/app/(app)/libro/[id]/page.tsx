@@ -55,7 +55,11 @@ export default async function EntryDetailPage({
 
   const [followUps, tasks, history, options] = await Promise.all([
     prisma.followUp.findMany({
-      where: { entryId: entry.id, deletedAt: null },
+      where: {
+        entryId: entry.id,
+        deletedAt: null,
+        NOT: { origin: { startsWith: 'SUPERVISION_' } },
+      },
       include: { owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     }),
@@ -202,8 +206,8 @@ export default async function EntryDetailPage({
 
             {user.permissions.includes('task.create') ? (
               <Dialog
-                title="Asignar tarea desde esta novedad"
-                description="Define qué debe hacerse y quién queda a cargo. La tarea conserva el vínculo con esta novedad."
+                title="Asignar tarea desde este asunto"
+                description="Define qué debe hacerse y quién queda a cargo. La tarea conserva el vínculo con este asunto."
                 triggerVariant="secondary"
                 triggerSize="sm"
                 trigger="Asignar tarea"
@@ -278,7 +282,7 @@ export default async function EntryDetailPage({
           </Card>
 
           <Card>
-            <CardHeader title="En seguimiento" count={followUps.length} />
+            <CardHeader title="Seguimientos operativos previos" count={followUps.length} />
             {followUps.length === 0 ? (
               <EmptyState message="Este asunto no tiene seguimiento activo o histórico." />
             ) : (
@@ -327,7 +331,7 @@ export default async function EntryDetailPage({
           <Card>
             <CardHeader title="Tareas asignadas" count={tasks.length} />
             {tasks.length === 0 ? (
-              <EmptyState message="No se asignaron tareas desde esta novedad." />
+              <EmptyState message="No se asignaron tareas desde este asunto." />
             ) : (
               <ul className="divide-y divide-slate-100">
                 {tasks.map((task) => (

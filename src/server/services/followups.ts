@@ -281,6 +281,73 @@ export async function updateFollowUp(
 }
 
 /**
+ * Cierra únicamente los seguimientos técnicos creados por «Seguir» cuando su
+ * fuente deja de requerir atención. Así el Supervisor no tiene que resolver
+ * dos veces el mismo asunto: la fuente es la verdad y el FollowUp sólo mantiene
+ * la decisión personal de vigilarla.
+ */
+export async function finishSupervisionTrackingForSource(
+  tx: Prisma.TransactionClient,
+  user: CurrentUser,
+  sourceEntity: string,
+  sourceId: string,
+  outcome: 'RESUELTO' | 'CANCELADO' = 'RESUELTO',
+) {
+  const open = await tx.followUp.findMany({
+    where: {
+      deletedAt: null,
+      sourceEntity,
+      sourceId,
+      origin: { startsWith: 'SUPERVISION_' },
+      status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+    },
+    select: { id: true, action: true, result: true },
+  });
+  if (open.length === 0) return 0;
+
+  const now = new Date();
+  const status =
+    outcome === 'CANCELADO' ? FollowUpStatus.CANCELADO : FollowUpStatus.CUMPLIDO;
+  const result =
+    outcome === 'CANCELADO'
+      ? 'La fuente dejó de estar vigente.'
+      : 'Resuelto en la fuente de origen.';
+
+  for (const followUp of open) {
+    await tx.followUp.update({
+      where: { id: followUp.id },
+      data: {
+        status,
+        result: followUp.result ?? result,
+        completedAt: now,
+      },
+    });
+    await tx.alert.updateMany({
+      where: { followUpId: followUp.id, auto: true, status: { not: AlertStatus.RESUELTA } },
+      data: {
+        status: AlertStatus.RESUELTA,
+        resolvedAt: now,
+        resolvedById: user.id,
+        resolutionNote: result,
+      },
+    });
+    await recordAudit(
+      {
+        entity: 'FollowUp',
+        entityId: followUp.id,
+        action: outcome === 'CANCELADO' ? AuditAction.CAMBIO_ESTADO : AuditAction.CERRAR,
+        summary: `Seguimiento "${followUp.action}" cerrado automáticamente desde su fuente`,
+        user,
+        after: { status, result, sourceEntity, sourceId },
+      },
+      tx,
+    );
+  }
+
+  return open.length;
+}
+
+/**
  * Genera la alerta de seguimiento vencido. El motor de alertas hace lo mismo de
  * forma masiva; esta función permite forzarlo al vuelo para un seguimiento.
  */

@@ -1,4 +1,4 @@
-export type FrontiProviderNameLike = 'groq' | 'vllm' | 'openai';
+export type FrontiProviderNameLike = 'groq' | 'cloudflare' | 'vllm' | 'openai';
 
 export type FrontiToolDefinitionLike = {
   type: 'function';

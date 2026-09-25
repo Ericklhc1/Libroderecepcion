@@ -770,6 +770,8 @@ export async function addShiftMember(
 export async function receiveShiftCash(
   user: CurrentUser,
   params: {
+    /** Compatibilidad con llamadas antiguas; ya no se usa para reclamar la Caja. */
+    shiftId?: string | null;
     handoverId: string;
     quantities: Record<string, number>;
     guaranteeIds?: string[];
@@ -948,8 +950,20 @@ export async function activateShift(
  */
 export async function receiveHandover(
   user: CurrentUser,
-  params: { handoverId: string; observations?: string | null },
+  params: {
+    /** Compatibilidad de recuperación para turnos INICIADO de versiones anteriores. */
+    shiftId?: string | null;
+    handoverId?: string | null;
+    observations?: string | null;
+  },
 ) {
+  if (!params.handoverId) {
+    if (!params.shiftId) {
+      throw new RuleError('Falta indicar la entrega que se quiere recibir.');
+    }
+    return activateShift(user, { shiftId: params.shiftId });
+  }
+
   const incoming = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
     include: {

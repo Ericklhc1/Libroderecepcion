@@ -44,7 +44,7 @@ La mayor deuda actual no está en la base ni en los servicios principales: está
 
 # Hallazgos P0 — corregir antes de seguir ampliando
 
-## P0.1 · PMS retirado en navegación, pero todavía mutable por URL profunda
+## P0.1 · PMS retirado en navegación, pero todavía mutable por URL profunda — RESUELTO EN v1.10.9
 
 Las rutas principales `/habitaciones`, `/huespedes`, `/reservas` y sus importadores redirigen correctamente a Novedades.
 
@@ -58,7 +58,7 @@ Sin embargo siguen funcionales:
 
 **Simplificación:** mantener los datos históricos y servicios sólo donde sigan siendo dependencias internas, pero hacer que esas tres rutas profundas también redirijan a la superficie vigente. Ningún recepcionista debe poder reactivar el PMS con una URL vieja.
 
-**Riesgo:** medio. Antes de retirar hay que confirmar que ningún enlace histórico/documental necesite esas vistas como sólo lectura.
+**Aplicado en v1.10.9:** las tres rutas profundas redirigen a Novedades. Los datos y servicios históricos no se borran.
 
 ---
 
@@ -111,11 +111,11 @@ Health Production actual:
 
 ---
 
-## P0.4 · Documento de situación desactualizado
+## P0.4 · Documento de situación desactualizado — RESUELTO EN v1.10.9
 
 `PROJECT_PROGRESS.md` todavía declara #125 como PR abierto y contiene restos concatenados de una versión antigua.
 
-**Acción:** corregirlo inmediatamente. Es documentación canónica de desarrollo y no debe contradecir Production.
+**Aplicado en v1.10.9:** tablero sincronizado con Production v1.10.8 y con esta auditoría.
 
 ---
 

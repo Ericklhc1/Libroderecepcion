@@ -211,16 +211,6 @@ export async function confirmCashCountAction(
         hasDifference: result.discrepancies.length > 0,
       };
       recordOperationalEvent({
-        eventType: 'HANDOVER_RECEIVE_STARTED',
-        userId: user.id,
-        shiftId: result.shiftId,
-        entityType: 'ShiftHandover',
-        entityId: handoverId,
-        correlationId,
-        startedAt,
-        status: 'STARTED',
-      });
-      recordOperationalEvent({
         eventType: 'CASH_COUNT_STARTED',
         userId: user.id,
         shiftId: result.shiftId,
@@ -261,20 +251,11 @@ export async function confirmCashCountAction(
     } catch (error) {
       const completedAt = new Date();
       recordOperationalEvent({
-        eventType: 'HANDOVER_RECEIVE_STARTED',
-        userId: user.id,
-        entityType: 'ShiftHandover',
-        entityId: handoverId,
-        correlationId: receiveCorrelationId,
-        startedAt,
-        status: 'STARTED',
-      });
-      recordOperationalEvent({
         eventType: 'CASH_COUNT_STARTED',
         userId: user.id,
         entityType: 'ShiftHandover',
         entityId: handoverId,
-        correlationId: `handover-receive:${handoverId}`,
+        correlationId: receiveCorrelationId,
         startedAt,
         status: 'STARTED',
         metadata: { countKind: 'CONFIRMADO' },
@@ -284,7 +265,7 @@ export async function confirmCashCountAction(
         userId: user.id,
         entityType: 'ShiftHandover',
         entityId: handoverId,
-        correlationId: `handover-receive:${handoverId}`,
+        correlationId: receiveCorrelationId,
         startedAt,
         completedAt,
         durationMs: operationalDurationMs(startedAt, completedAt),

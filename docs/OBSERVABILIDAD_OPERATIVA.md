@@ -1,7 +1,8 @@
-# Observabilidad operativa P0 + P1
+# Observabilidad operativa P0 + P1 + P2
 
 Fecha de introducción: 26/09/2026  
-Alcance: **medir procesos críticos sin modificar su lógica**.
+Versión P2: **v1.14.0**  
+Alcance: **medir procesos críticos y estabilidad técnica sin modificar su lógica**.
 
 ## Propósito
 
@@ -9,26 +10,27 @@ La observabilidad operativa responde cuánto tardan los flujos, dónde fallan y
 qué procesos quedan iniciados sin cierre. No es un sistema de vigilancia de
 personas, no puntúa recepcionistas y no sustituye a Auditoría.
 
-La fuente nueva es `OperationalMetricEvent`. Los datos canónicos siguen
-viviendo en Turnos, Entregas, Caja, Novedades y demás modelos existentes.
+La fuente es `OperationalMetricEvent`. Los datos canónicos siguen viviendo en
+Turnos, Entregas, Caja, Libro, Llaves, Fronti y demás modelos existentes.
 
 ## Arquitectura
 
 - Escritura central: `src/server/observability/operational.ts`.
 - Persistencia: PostgreSQL/Neon mediante Prisma.
-- Escritura diferida con `after()`: la respuesta de la acción principal no
+- Escritura diferida con `after()`: la respuesta de la operación principal no
   espera el INSERT de telemetría.
 - Todo error al programar o persistir una métrica se captura y no se propaga.
-- `metadata` sólo admite claves pequeñas de una lista cerrada:
-  `shiftType`, `mode`, `countKind`, `hasDifference`, `failureType`, `entryType` y `floor`.
-- No se guardan nombres, correos, contraseñas, preguntas, notas, mensajes,
+- P0, P1 y P2 reutilizan la misma tabla; **P2 no añade migraciones**.
+- `metadata` usa una lista cerrada de claves pequeñas y estructuradas.
+- No se guardan nombres, correos, contraseñas, preguntas, prompts, respuestas,
+  mensajes, notas, campos de formulario, argumentos/resultados de tools,
   importes, denominaciones ni snapshots operativos.
-- `userId` existe sólo para diagnóstico técnico autorizado; el panel general
-  no presenta comparaciones entre personas.
+- `userId` puede existir en eventos técnicos que ya nacen asociados a un
+  usuario, pero `/supervision/salud` no agrupa, compara ni ordena personas.
 
 ## Correlación
 
-El cierre saliente usa un identificador estable:
+El cierre saliente usa:
 
 `shift-close:<shiftId>`
 
@@ -36,13 +38,13 @@ La recepción entrante usa:
 
 `handover-receive:<handoverId>`
 
-El arqueo declarado pertenece al cierre saliente; el recuento confirmado
-pertenece a la recepción. Para procesos que cruzan varias peticiones, la
-duración final se calcula desde el primer inicio correlacionado hasta su éxito.
+Fronti usa un identificador aleatorio por ejecución:
 
-El arqueo toma como inicio la primera interacción con el formulario y no sólo
-el tiempo de procesamiento del servidor. El valor se valida al recibirlo y se
-descarta si está en el futuro o tiene más de cuatro horas de antigüedad.
+`fronti:<uuid>`
+
+Los procesos que cruzan varias operaciones reutilizan el mismo
+`correlationId` para relacionar inicio y resultado sin duplicar contenido
+operativo.
 
 ## Eventos P0
 
@@ -56,89 +58,132 @@ descarta si está en el futuro o tiene más de cuatro horas de antigüedad.
 | Cierre formal de Caja | `CASH_CLOSE_STARTED` | `CASH_CLOSED` | `CASH_CLOSE_FAILED` |
 | Envío de entrega | `HANDOVER_SEND_STARTED` | `HANDOVER_SENT` | `HANDOVER_SEND_FAILED` |
 
-`CASH_COUNT_COMPLETED` guarda sólo `countKind` y `hasDifference`. No
-duplica importes ni líneas de Caja.
+`CASH_COUNT_COMPLETED` guarda únicamente metadata estructurada como
+`countKind` y `hasDifference`; no duplica importes ni líneas de Caja.
 
 ## Eventos P1
 
-P1 reutiliza exactamente la misma tabla y el mismo servicio central; **no crea
-una migración nueva**.
+P1 reutiliza exactamente la misma tabla y el mismo servicio central.
 
 | Flujo | Eventos | Qué permite medir |
 |---|---|---|
-| Novedades | `ENTRY_CREATED`, `ENTRY_TAKEN`, `ENTRY_RESOLVED` | tiempo hasta tomar y resolver sin copiar contenido |
+| Libro | `ENTRY_CREATED`, `ENTRY_TAKEN`, `ENTRY_RESOLVED` | tiempo hasta tomar y resolver sin copiar contenido |
 | Inventario de llaves | `KEY_INVENTORY_STARTED`, `KEY_INVENTORY_COMPLETED`, `KEY_INVENTORY_WITH_DIFFERENCES` | duración real desde la primera interacción y frecuencia de diferencias |
 | Tutorial | `TUTORIAL_STARTED`, `TUTORIAL_STEP_REACHED`, `TUTORIAL_CLOSED_THIS_SESSION`, `TUTORIAL_DISABLED`, `TUTORIAL_COMPLETED` | avance, abandono explícito y finalización |
 
-El inventario usa un `correlationId` por intento. El inicio se emite al primer
-foco/toque del formulario; si el usuario abandona la pantalla, queda un inicio
-sin final correlacionado. Si la telemetría cliente falla, el guardado del
-inventario sigue funcionando y el evento final conserva su duración.
+El inventario usa un `correlationId` por intento. El tutorial registra sólo el
+ID estructurado del paso alcanzado; nunca copia contenido escrito o visible.
 
-El tutorial usa un único `correlationId` por recorrido visible. Sólo registra
-el ID estructurado del paso alcanzado; no registra clics, texto de ayuda,
-contenido escrito ni elementos de la página.
+## Eventos P2
+
+P2 cierra la observabilidad técnica prevista para esta iniciativa.
+
+| Área | Evento | Semántica |
+|---|---|---|
+| Fronti | `FRONTI_REQUEST` | una ejecución del agente fue iniciada |
+| Fronti | `FRONTI_SUCCESS` | la ejecución terminó con outcome `success` o `partial` |
+| Fronti | `FRONTI_FAILURE` | la ejecución terminó en `error` o límite de loops |
+| Fronti | `FRONTI_TOOL_CALLED` | una tool fue ejecutada; sólo nombre y éxito/fallo |
+| Server Actions | `ACTION_FAILED` | error inesperado atrapado por `runAction`; excluye validaciones y errores de dominio esperados |
+| Server Actions | `ACTION_TIMEOUT` | la acción terminó después del umbral técnico de 20 s |
+
+### Fronti
+
+El colector central vive en `src/server/ai/fronti-v2/telemetry.ts`. Conserva
+el log técnico existente y ahora persiste únicamente:
+
+- proveedor/modelo final;
+- proveedor/modelo configurado;
+- duración;
+- número de loops;
+- cantidad de tools;
+- éxito/fallo de cada tool;
+- outcome;
+- tipo de fallo técnico;
+- indicador de fallback.
+
+`fallbackUsed` significa que el proveedor o modelo final difirió de la
+configuración primaria. Es una señal operacional, no una valoración de calidad.
+
+No se persisten prompts, mensajes, respuestas, memoria, argumentos de tools ni
+resultados de tools.
+
+### Fallos técnicos transversales
+
+`runAction` registra `ACTION_FAILED` únicamente en el camino de error
+inesperado que ya alimentaba el diagnóstico técnico. Por diseño **no cuenta**
+como fallo una validación de Zod, `ValidationError`, `AppError`, conflicto
+de unicidad manejado o redirect de Next.js.
+
+`ACTION_TIMEOUT` se emite cuando una acción completa supera 20.000 ms. Ese
+valor es un **umbral técnico de observación**, no un objetivo, SLA ni criterio
+de productividad. La acción mantiene su resultado normal aunque haya cruzado
+el umbral.
 
 ## Datos derivados
 
-No se persisten promedios ni objetivos. El servicio
-`src/server/services/operational-health.ts` calcula sobre eventos reales:
+No se persisten promedios, percentiles ni objetivos. El servicio
+`src/server/services/operational-health.ts` calcula al consultar:
 
 - cantidad por evento;
 - duración promedio;
 - mediana;
 - P90;
-- fallos;
-- cierres iniciados que aún no tienen final correlacionado;
-- arqueos con/sin diferencia.
-
-P1 mantiene el conteo de Novedades creadas sobre `OperationalEntry.createdAt`,
-pero añade eventos puntuales para medir el tiempo hasta `EN_CURSO` y la primera
-llegada a `RESUELTO/CERRADO`. Nunca copia título, descripción ni resolución.
+- cierres iniciados sin final correlacionado;
+- arqueos con diferencias;
+- éxito observado de Fronti;
+- latencia media/mediana/P90 de Fronti;
+- ejecuciones Fronti con fallback;
+- tools ejecutadas y tools con fallo;
+- errores inesperados de Server Actions;
+- acciones que cruzaron el umbral técnico.
 
 ## Panel
 
 Ruta: `/supervision/salud`.
 
-Permiso: `supervision.center.view`, ya existente. No se crea ni modifica
-ningún permiso.
+Permiso: `supervision.center.view`, ya existente.
 
 Rangos: Hoy, 7 días y 30 días.
 
 La pantalla identifica los valores como **datos observados**. No contiene
 objetivos, puntuaciones individuales ni rankings.
 
-## Deliberadamente fuera de P1
+## Deliberadamente fuera
 
-No se instrumentan todavía:
+No se instrumentan:
 
-- Fronti persistente: hoy conserva telemetría técnica en logs;
-- `ACTION_FAILED` / `ACTION_TIMEOUT` genéricos de interfaz;
 - navegación general;
-- reapertura de Caja;
-- heatmaps, clics o movimiento de usuario.
+- clicks generales;
+- heatmaps;
+- movimiento del usuario;
+- contenido de formularios;
+- contenido de Fronti;
+- reapertura de Caja como flujo específico;
+- rankings o comparaciones por persona.
 
-Estos puntos pertenecen a P2 o a ciclos posteriores.
+Cualquier ampliación futura debe justificar qué decisión operacional habilita y
+mantener el principio de mínima captura.
 
 ## Retención
 
-No se implementa borrado automático en esta etapa. La tabla sólo recibe
-eventos P0/P1 pequeños.
+No se implementa borrado automático en esta etapa. La tabla sólo recibe eventos
+estructurados pequeños.
 
-Política propuesta para decidir después de la línea base de 30 días:
+Política a decidir después de una línea base suficiente:
 
 1. medir volumen real y crecimiento;
-2. conservar inicialmente hasta 12 meses en línea si el volumen sigue siendo
-   bajo;
+2. definir retención acorde al volumen;
 3. antes de cualquier purga, definir exportación/archivo y aprobación
    administrativa;
 4. nunca ejecutar purgas junto con una operación hotelera.
 
 ## Migración e índices
 
-Migración: `20260926160000_operational_observability_p0`.
+Única migración de esta iniciativa:
+`20260926160000_operational_observability_p0`.
 
-Índices mínimos:
+Índices:
 
 - `(eventType, createdAt)`;
 - `createdAt`;
@@ -146,10 +191,9 @@ Migración: `20260926160000_operational_observability_p0`.
 - `(shiftId, createdAt)`;
 - `(correlationId, createdAt)`.
 
-La migración P0 sólo crea tabla e índices. P1 no necesita migración: reutiliza
-la tabla y los índices existentes.
+P1 y P2 reutilizan tabla e índices; no necesitan migración.
 
 ## Regla de operación
 
 Si falla la observabilidad, falla **sólo la observabilidad**. Turnos, Caja,
-entregas y recepción continúan por sus reglas actuales.
+entregas, Libro, Llaves, Fronti y recepción continúan por sus reglas actuales.

@@ -5,7 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Compass, MousePointer2, RotateCcw } from 'lucide-react';
 import { Button, SubmitButton } from '@/components/ui/button';
 import { ActionForm } from '@/components/ui/form';
-import { finishTutorialAction } from '@/server/actions/tutorial';
+import {
+  finishTutorialAction,
+  recordTutorialClientEventAction,
+} from '@/server/actions/tutorial';
 import { shouldNavigateTutorial, type TutorialStep } from '@/domain/tutorial-tour';
 
 type Rect = { top: number; left: number; width: number; height: number };
@@ -66,6 +69,11 @@ export function TutorialTour({
   const [targetOffscreen, setTargetOffscreen] = useState(false);
   const [interactionPrompt, setInteractionPrompt] = useState(false);
   const [neverAgainConfirmed, setNeverAgainConfirmed] = useState(false);
+  const [metricSession, setMetricSession] = useState<{
+    correlationId: string;
+    startedAtMs: number;
+  } | null>(null);
+  const reachedSteps = useRef<Set<string>>(new Set());
   const scrollRaf = useRef<number | null>(null);
 
   const step = steps[index];
@@ -77,7 +85,15 @@ export function TutorialTour({
     setSessionReady(true);
   }, [dismissKey]);
 
-  function dismissThisSession() {
+  function dismissThisSession(recordClose = true) {
+    if (recordClose && metricSession) {
+      void recordTutorialClientEventAction({
+        eventType: 'TUTORIAL_CLOSED_THIS_SESSION',
+        correlationId: metricSession.correlationId,
+        startedAtMs: metricSession.startedAtMs,
+        stepId: step?.id ?? null,
+      }).catch(() => undefined);
+    }
     window.sessionStorage.setItem(dismissKey, '1');
     setDismissed(true);
   }
@@ -92,6 +108,34 @@ export function TutorialTour({
     }
     router.push(step.route);
   }, [dismissed, pathname, router, sessionReady, step, suspended]);
+
+  useEffect(() => {
+    if (!sessionReady || dismissed || suspended || !step) return;
+
+    if (!metricSession) {
+      const created = {
+        correlationId: `tutorial:${crypto.randomUUID()}`,
+        startedAtMs: Date.now(),
+      };
+      setMetricSession(created);
+      void recordTutorialClientEventAction({
+        eventType: 'TUTORIAL_STARTED',
+        correlationId: created.correlationId,
+        startedAtMs: created.startedAtMs,
+        stepId: step.id,
+      }).catch(() => undefined);
+      return;
+    }
+
+    if (reachedSteps.current.has(step.id)) return;
+    reachedSteps.current.add(step.id);
+    void recordTutorialClientEventAction({
+      eventType: 'TUTORIAL_STEP_REACHED',
+      correlationId: metricSession.correlationId,
+      startedAtMs: metricSession.startedAtMs,
+      stepId: step.id,
+    }).catch(() => undefined);
+  }, [dismissed, metricSession, sessionReady, step, suspended]);
 
   useEffect(() => {
     if (!sessionReady || dismissed || suspended || !step) {
@@ -272,9 +316,22 @@ export function TutorialTour({
                   className="space-y-0"
                   onSuccess={() => {
                     setNeverAgainConfirmed(true);
-                    window.setTimeout(() => dismissThisSession(), 1200);
+                    window.setTimeout(() => dismissThisSession(false), 1200);
                   }}
                 >
+                  <input type="hidden" name="tutorialOutcome" value="COMPLETED" />
+                  <input
+                    type="hidden"
+                    name="metricCorrelationId"
+                    value={metricSession?.correlationId ?? ''}
+                    readOnly
+                  />
+                  <input
+                    type="hidden"
+                    name="metricStartedAt"
+                    value={metricSession ? String(metricSession.startedAtMs) : ''}
+                    readOnly
+                  />
                   <SubmitButton variant="gold" size="sm" pendingLabel="Guardando…">
                     Finalizar recorrido
                   </SubmitButton>
@@ -294,9 +351,22 @@ export function TutorialTour({
               className="mt-2 space-y-0 text-center"
               onSuccess={() => {
                 setNeverAgainConfirmed(true);
-                window.setTimeout(() => dismissThisSession(), 1500);
+                window.setTimeout(() => dismissThisSession(false), 1500);
               }}
             >
+              <input type="hidden" name="tutorialOutcome" value="DISABLED" />
+              <input
+                type="hidden"
+                name="metricCorrelationId"
+                value={metricSession?.correlationId ?? ''}
+                readOnly
+              />
+              <input
+                type="hidden"
+                name="metricStartedAt"
+                value={metricSession ? String(metricSession.startedAtMs) : ''}
+                readOnly
+              />
               <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
                 No volver a mostrar el tutorial
               </SubmitButton>
@@ -355,10 +425,23 @@ export function TutorialTour({
                     setNeverAgainConfirmed(true);
                     window.setTimeout(() => {
                       setInteractionPrompt(false);
-                      dismissThisSession();
+                      dismissThisSession(false);
                     }, 1500);
                   }}
                 >
+                  <input type="hidden" name="tutorialOutcome" value="DISABLED" />
+                  <input
+                    type="hidden"
+                    name="metricCorrelationId"
+                    value={metricSession?.correlationId ?? ''}
+                    readOnly
+                  />
+                  <input
+                    type="hidden"
+                    name="metricStartedAt"
+                    value={metricSession ? String(metricSession.startedAtMs) : ''}
+                    readOnly
+                  />
                   <SubmitButton variant="gold" pendingLabel="Guardando…">
                     No volver a mostrar
                   </SubmitButton>

@@ -138,10 +138,12 @@ describe('jornada operativa transversal de punta a punta', () => {
     await sendHandover(outgoing, { shiftId: dayShift.id });
     await closeShift(outgoing, { shiftId: dayShift.id });
 
-    expect((await getReceptionOperationGate(outgoing)).mode).toBe('HANDOVER_PENDING');
+    // El saliente ya terminó: no puede recibir su propia entrega ni debe ver
+    // una instrucción imposible. Queda fuera de turno.
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('NO_SHIFT');
 
-    // 5. Mientras la liana está libre, todo perfil de mesón queda bloqueado
-    // para operar: sólo se permite recibir/recontar el relevo pendiente.
+    // 5. Para quien sí puede tomar la liana, la entrega pendiente bloquea la
+    // operación general hasta recibir/recontar el relevo.
     expect((await getReceptionOperationGate(incoming)).mode).toBe('HANDOVER_PENDING');
 
     // El entrante no puede saltarse el recuento/recepción.

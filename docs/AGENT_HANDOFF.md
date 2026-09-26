@@ -164,3 +164,20 @@ Production.
 - Migración no destructiva:
   `20260926160000_operational_observability_p0`.
 - Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.
+
+
+## Observabilidad operativa P1 · v1.13.0
+
+- Rama: `feature/observabilidad-operativa-p1`.
+- P1 reutiliza `OperationalMetricEvent`; no añade tablas, índices ni
+  migraciones.
+- Novedades registra creación, primera entrada a `EN_CURSO` y primera llegada
+  a `RESUELTO/CERRADO`, referenciando sólo IDs y tipo de registro.
+- Inventario de llaves mide desde la primera interacción con el formulario
+  hasta el guardado y marca diferencias sin copiar cantidades ni notas.
+- Tutorial registra inicio, pasos alcanzados, cierre sólo de sesión,
+  desactivación y finalización; no registra clics generales ni contenido.
+- `/supervision/salud` añade tiempos de Novedades, inventarios y estado del
+  Tutorial para Hoy/7/30 días.
+- Fronti persistente y `ACTION_FAILED/ACTION_TIMEOUT` quedan fuera hasta P2.
+- Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.

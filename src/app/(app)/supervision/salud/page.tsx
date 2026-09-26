@@ -139,14 +139,80 @@ export default async function OperationalHealthPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Libro y estabilidad P0</h2>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Libro · Registros</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <StatTile label="Registros creados" value={health.entries.created} />
+          <StatTile
+            label="Tomadas observadas"
+            value={health.entries.takenObserved}
+            hint={
+              health.entries.medianTakeMs === null
+                ? 'P1 aún sin duración suficiente'
+                : `Mediana ${formatDuration(health.entries.medianTakeMs)}`
+            }
+          />
+          <StatTile
+            label="Resueltas observadas"
+            value={health.entries.resolvedObserved}
+            hint="Primera llegada a RESUELTO o CERRADO"
+          />
+          <StatTile
+            label="Tiempo mediano hasta tomar"
+            value={formatDuration(health.entries.medianTakeMs)}
+            hint={
+              health.entries.p90TakeMs === null
+                ? 'Desde telemetría P1'
+                : `P90 ${formatDuration(health.entries.p90TakeMs)}`
+            }
+          />
+          <StatTile
+            label="Tiempo mediano hasta resolver"
+            value={formatDuration(health.entries.medianResolveMs)}
+            hint={
+              health.entries.p90ResolveMs === null
+                ? 'Desde telemetría P1'
+                : `P90 ${formatDuration(health.entries.p90ResolveMs)}`
+            }
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Llaves · Inventario físico</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <StatTile label="Novedades creadas" value={health.entries.created} />
-          <StatTile label="Novedades resueltas" value={health.entries.resolved} />
+          <StatTile label="Inventarios completados" value={health.keyInventory.completed} />
+          <StatTile
+            label="Inventarios con diferencias"
+            value={health.keyInventory.withDifferences}
+            tone={health.keyInventory.withDifferences > 0 ? 'alert' : 'good'}
+          />
+          <StatTile
+            label="Tiempo mediano de inventario"
+            value={formatDuration(health.keyInventory.medianDurationMs)}
+            hint={
+              health.keyInventory.p90DurationMs === null
+                ? 'Desde la primera interacción'
+                : `P90 ${formatDuration(health.keyInventory.p90DurationMs)}`
+            }
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Tutorial guiado</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <StatTile
+            label="Tutoriales iniciados"
+            value={health.tutorial.started}
+            hint={`${health.tutorial.stepsReached} paso(s) alcanzado(s)`}
+          />
+          <StatTile label="Completados" value={health.tutorial.completed} />
+          <StatTile label="Cerrados esta sesión" value={health.tutorial.closedThisSession} />
+          <StatTile label="Desactivados" value={health.tutorial.disabled} />
           <StatTile
             label="Fallos operativos P0"
             value={health.failures}
-            hint="Sólo fallos de los procesos instrumentados en esta etapa"
+            hint="Fallos de los procesos críticos instrumentados en P0"
             tone={health.failures > 0 ? 'alert' : 'good'}
           />
         </div>
@@ -162,12 +228,11 @@ export default async function OperationalHealthPage({
           <p>
             {health.observedSince
               ? `Telemetría disponible desde ${formatDate(health.observedSince)}.`
-              : 'Todavía no hay eventos P0 registrados en este entorno.'}
+              : 'Todavía no hay eventos operativos registrados en este entorno.'}
           </p>
           <p className="text-xs text-slate-500">
-            Fronti, tutorial, inventario de llaves y errores genéricos de interfaz permanecen fuera
-            de esta etapa P0. No se muestra un porcentaje de Fronti hasta contar con una fuente
-            persistente comparable.
+            P1 añade Novedades, inventario de llaves y Tutorial sobre la misma infraestructura.
+            Fronti persistente y los errores genéricos de interfaz permanecen fuera hasta P2.
           </p>
         </div>
       </Card>

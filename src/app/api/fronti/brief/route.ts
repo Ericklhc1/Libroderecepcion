@@ -51,8 +51,15 @@ export async function POST() {
       { headers },
     );
   } catch (error) {
-    console.error('[fronti-brief]', error);
     if (error instanceof OperationalBriefError) {
+      if (error.failure === 'DESACTIVADO') {
+        console.info('[fronti-brief]', { failure: error.failure });
+      } else if (ASSISTANT_FAILURE_IS_TEMPORARY[error.failure]) {
+        console.warn('[fronti-brief]', { failure: error.failure });
+      } else {
+        console.error('[fronti-brief]', error);
+      }
+
       return NextResponse.json(
         {
           error: error.message,
@@ -63,6 +70,7 @@ export async function POST() {
       );
     }
 
+    console.error('[fronti-brief]', error);
     return NextResponse.json(
       { error: 'No pude generar el briefing operativo.' },
       { status: 500, headers },

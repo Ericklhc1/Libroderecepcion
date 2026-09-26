@@ -186,6 +186,25 @@ describe('los tres estados de la salud', () => {
     });
   });
 
+  it('la salud distingue disponibilidad de degradación parcial de la cadena', () => {
+    const source = readFileSync('src/app/api/health/asistente/route.ts', 'utf-8');
+    expect(source).toContain('degradedProviders');
+    expect(source).toContain('healthyProviders');
+    expect(source).toContain("cached.health.estado === 'OK' && degradedProviders.length > 0");
+  });
+
+  it('los fallos esperados no contaminan el canal error de Vercel', () => {
+    const route = readFileSync('src/app/api/fronti/route.ts', 'utf-8');
+    const brief = readFileSync('src/app/api/fronti/brief/route.ts', 'utf-8');
+
+    for (const source of [route, brief]) {
+      expect(source).toContain("error.failure === 'DESACTIVADO'");
+      expect(source).toContain("console.info('[fronti");
+      expect(source).toContain('ASSISTANT_FAILURE_IS_TEMPORARY[error.failure]');
+      expect(source).toContain('console.warn');
+    }
+  });
+
   it('el endpoint delega los estados al dominio y sondea el proveedor real', () => {
     /*
       El endpoint ya no repite los literales NO_CONFIGURADO/CON_FALLO:

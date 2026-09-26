@@ -78,6 +78,13 @@ export async function getReceptionOperationGate(
         fromShift: {
           status: ShiftStatus.CERRADO,
           archivedAt: null,
+          // La entrega sólo debe bloquear a alguien que realmente pueda
+          // recibirla. Cualquier participante del turno saliente está
+          // excluido por la regla de recepción y, si lo incluyéramos acá,
+          // vería una instrucción imposible: «recibe tu propia entrega».
+          assignments: {
+            none: { userId: user.id },
+          },
         },
       },
       select: { id: true },

@@ -23,6 +23,16 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(source).not.toContain("'shift.start',\n  'shift.receive'");
   });
 
+  it('no ofrece al turno saliente recibir su propia entrega', () => {
+    const source = readFileSync(
+      'src/server/services/reception-operation-gate.ts',
+      'utf8',
+    );
+
+    expect(source).toContain('assignments: {');
+    expect(source).toContain('none: { userId: user.id }');
+  });
+
   it('permite tomar la liana antes de abrir el turno siguiente', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',

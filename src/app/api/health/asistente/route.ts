@@ -97,6 +97,15 @@ export async function GET() {
     cached = { at: now, ...probed };
   }
 
+  const degradedProviders = cached.checks
+    .filter((check) => !check.ok)
+    .map((check) => ({
+      provider: check.provider,
+      model: check.model,
+      failure: check.failure ?? 'CAIDO',
+    }));
+  const healthyProviders = cached.checks.filter((check) => check.ok).length;
+
   return NextResponse.json(
     {
       ok: true,
@@ -104,6 +113,9 @@ export async function GET() {
       model: cached.model,
       providerChain: cached.chain,
       providerChecks: cached.checks,
+      healthyProviders,
+      degradedProviders,
+      degraded: cached.health.estado === 'OK' && degradedProviders.length > 0,
       agentVersion: FRONTI_AGENT_VERSION,
       ...cached.health,
     },

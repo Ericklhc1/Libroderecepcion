@@ -223,8 +223,6 @@ export async function prepareHandoverAction(
   });
 }
 
-const sendSchema =
-
 const sendSchema = z.object({
   shiftId: z.string().min(1),
   notes: zOptionalString,
@@ -334,8 +332,6 @@ export async function closeShiftAction(
     }
   });
 }
-
-const handoverNoteSchema =
 
 const handoverNoteSchema = z.object({
   handoverId: z.string().min(1),

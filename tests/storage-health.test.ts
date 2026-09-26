@@ -37,8 +37,10 @@ describe('salud real de almacenamiento R2', () => {
   });
 
   it('diagnostica la forma esperada del Account ID sin devolver su valor', () => {
-    const before = process.env.R2_ACCOUNT_ID;
+    const beforeAccount = process.env.R2_ACCOUNT_ID;
+    const beforeAccess = process.env.R2_ACCESS_KEY_ID;
     process.env.R2_ACCOUNT_ID = 'a'.repeat(32);
+    process.env.R2_ACCESS_KEY_ID = 'test-access-distinto';
     try {
       expect(getR2AccountIdDiagnostics()).toEqual({
         present: true,
@@ -47,8 +49,10 @@ describe('salud real de almacenamiento R2', () => {
         matchesAccessKeyId: false,
       });
     } finally {
-      if (before === undefined) delete process.env.R2_ACCOUNT_ID;
-      else process.env.R2_ACCOUNT_ID = before;
+      if (beforeAccount === undefined) delete process.env.R2_ACCOUNT_ID;
+      else process.env.R2_ACCOUNT_ID = beforeAccount;
+      if (beforeAccess === undefined) delete process.env.R2_ACCESS_KEY_ID;
+      else process.env.R2_ACCESS_KEY_ID = beforeAccess;
     }
   });
 

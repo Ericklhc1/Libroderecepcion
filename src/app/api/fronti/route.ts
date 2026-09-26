@@ -273,7 +273,30 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders() },
     );
   } catch (error) {
-    console.error('[fronti]', error);
+    /*
+      Los fallos conocidos del asistente ya forman parte del contrato operativo.
+      No todos son errores de aplicación: DESACTIVADO es una decisión y
+      SATURADO/CAIDO/SIN_RESPUESTA son condiciones temporales. Sólo los fallos
+      definitivos o desconocidos deben contaminar el canal error de Vercel.
+    */
+    if (error instanceof AssistantError) {
+      if (error.failure === 'DESACTIVADO') {
+        console.info('[fronti]', { failure: error.failure });
+      } else if (ASSISTANT_FAILURE_IS_TEMPORARY[error.failure]) {
+        console.warn('[fronti]', { failure: error.failure });
+      } else {
+        console.error('[fronti]', error);
+      }
+
+      return NextResponse.json(
+        {
+          error: error.message,
+          causa: error.failure,
+          reintentable: ASSISTANT_FAILURE_IS_TEMPORARY[error.failure],
+        },
+        { status: ASSISTANT_FAILURE_STATUS[error.failure], headers: noStoreHeaders() },
+      );
+    }
 
     /*
       Un fallo del asistente ya sabe qué es, así que se responde con SU estado
@@ -285,15 +308,8 @@ export async function POST(request: Request) {
       técnico en inglés que no le decía a quién avisar, y la monitorización no
       podía distinguir «lo pediste mal» de «el proveedor está caído».
     */
-    if (error instanceof AssistantError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          causa: error.failure,
-          reintentable: ASSISTANT_FAILURE_IS_TEMPORARY[error.failure],
-        },
-        { status: ASSISTANT_FAILURE_STATUS[error.failure], headers: noStoreHeaders() },
-      );
+    if (!(error instanceof z.ZodError)) {
+      console.error('[fronti]', error);
     }
 
     const message =

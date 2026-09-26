@@ -14,6 +14,7 @@ import {
   closeShift,
   getPendingHandover,
   getMyOpenShift,
+  openShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
@@ -221,6 +222,39 @@ describe('invariantes del turno', () => {
     );
 
     expect(opened.id).toBe(shift.id);
+    expect(
+      await prisma.shiftAssignment.count({
+        where: { activatedAt: { not: null }, leftAt: null },
+      }),
+    ).toBe(1);
+  });
+
+  it('permite continuidad controlada si el saliente quedó incompleto', async () => {
+    const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
+    await openShiftAs(morning, shiftA);
+
+    const result = await openShift(evening, {
+      type: ShiftType.NOCHE,
+      continuity: true,
+      continuityReason: 'El relevo llegó y el turno anterior no completó el cierre.',
+    });
+
+    expect(result.shift.status).toBe(ShiftStatus.ACTIVO);
+    expect(result.shift.id).not.toBe(shiftA.id);
+
+    const parked = await prisma.shift.findUniqueOrThrow({
+      where: { id: shiftA.id },
+      include: { handoverOut: true, assignments: true },
+    });
+    expect(parked.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
+    expect(parked.handoverOut?.status).toBe(HandoverStatus.ENVIADA);
+    expect(parked.assignments.every((assignment) => assignment.leftAt !== null)).toBe(true);
+
+    const alert = await prisma.alert.findUnique({
+      where: { dedupeKey: `shift-continuity:${shiftA.id}` },
+    });
+    expect(alert?.level).toBe('CRITICA');
+
     expect(
       await prisma.shiftAssignment.count({
         where: { activatedAt: { not: null }, leftAt: null },

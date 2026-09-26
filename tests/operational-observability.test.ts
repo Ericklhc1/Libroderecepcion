@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma, resetOperationalData } from './helpers';
 import {
   P0_OPERATIONAL_EVENT_TYPES,
+  P1_OPERATIONAL_EVENT_TYPES,
   operationalDurationMs,
+  operationalStartedAtFromEpoch,
   persistOperationalEvent,
   shiftCloseCorrelationId,
 } from '@/server/observability/operational';
@@ -14,7 +16,7 @@ import {
   percentile,
 } from '@/server/services/operational-health';
 
-describe('observabilidad operativa P0', () => {
+describe('observabilidad operativa P0/P1', () => {
   beforeEach(async () => {
     await resetOperationalData();
   });
@@ -89,6 +91,9 @@ describe('observabilidad operativa P0', () => {
     expect(health.shifts.started).toBe(0);
     expect(health.shifts.medianCloseMs).toBeNull();
     expect(health.cash.counts).toBe(0);
+    expect(health.keyInventory.completed).toBe(0);
+    expect(health.tutorial.started).toBe(0);
+    expect(health.entries.medianTakeMs).toBeNull();
     expect(health.failures).toBe(0);
     expect(health.observedSince).toBeNull();
   });
@@ -157,6 +162,64 @@ describe('observabilidad operativa P0', () => {
           createdAt: inside,
         },
         {
+          id: 'm-entry-taken',
+          eventType: 'ENTRY_TAKEN',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          durationMs: 60_000,
+          createdAt: inside,
+        },
+        {
+          id: 'm-entry-resolved',
+          eventType: 'ENTRY_RESOLVED',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          durationMs: 240_000,
+          createdAt: inside,
+        },
+        {
+          id: 'm-key-completed',
+          eventType: 'KEY_INVENTORY_COMPLETED',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          durationMs: 180_000,
+          metadata: { floor: 4, hasDifference: true },
+          createdAt: inside,
+        },
+        {
+          id: 'm-key-diff',
+          eventType: 'KEY_INVENTORY_WITH_DIFFERENCES',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          metadata: { floor: 4, hasDifference: true },
+          createdAt: inside,
+        },
+        {
+          id: 'm-tutorial-start',
+          eventType: 'TUTORIAL_STARTED',
+          status: 'STARTED',
+          source: 'CLIENT_UI',
+          correlationId: 'tutorial:test',
+          createdAt: inside,
+        },
+        {
+          id: 'm-tutorial-step',
+          eventType: 'TUTORIAL_STEP_REACHED',
+          status: 'SUCCESS',
+          source: 'CLIENT_UI',
+          correlationId: 'tutorial:test',
+          createdAt: inside,
+        },
+        {
+          id: 'm-tutorial-completed',
+          eventType: 'TUTORIAL_COMPLETED',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          correlationId: 'tutorial:test',
+          durationMs: 90_000,
+          createdAt: inside,
+        },
+        {
           id: 'm-old',
           eventType: 'SHIFT_STARTED',
           status: 'SUCCESS',
@@ -177,6 +240,16 @@ describe('observabilidad operativa P0', () => {
     expect(health.handovers.sent).toBe(1);
     expect(health.handovers.received).toBe(1);
     expect(health.handovers.medianReceiveMs).toBe(180_000);
+    expect(health.entries.takenObserved).toBe(1);
+    expect(health.entries.resolvedObserved).toBe(1);
+    expect(health.entries.medianTakeMs).toBe(60_000);
+    expect(health.entries.medianResolveMs).toBe(240_000);
+    expect(health.keyInventory.completed).toBe(1);
+    expect(health.keyInventory.withDifferences).toBe(1);
+    expect(health.keyInventory.medianDurationMs).toBe(180_000);
+    expect(health.tutorial.started).toBe(1);
+    expect(health.tutorial.stepsReached).toBe(1);
+    expect(health.tutorial.completed).toBe(1);
     expect(health.failures).toBe(1);
   });
 
@@ -185,21 +258,45 @@ describe('observabilidad operativa P0', () => {
     expect(percentile([10, 20, 30, 40, 50], 0.9)).toBe(50);
   });
 
+  it('rechaza timestamps manipulados para duraciones de interfaz', () => {
+    const now = new Date('2026-09-26T18:00:00.000Z');
+    expect(
+      operationalStartedAtFromEpoch(new Date('2026-09-26T17:55:00.000Z').getTime(), 3600_000, now),
+    ).toEqual(new Date('2026-09-26T17:55:00.000Z'));
+    expect(
+      operationalStartedAtFromEpoch(new Date('2026-09-26T20:00:00.000Z').getTime(), 3600_000, now),
+    ).toEqual(now);
+    expect(
+      operationalStartedAtFromEpoch(new Date('2026-09-26T10:00:00.000Z').getTime(), 3600_000, now),
+    ).toEqual(now);
+  });
+
   it('mantiene el panel limitado al Centro de Supervisión y sin desglose individual', () => {
     const page = readFileSync('src/app/(app)/supervision/salud/page.tsx', 'utf8');
     const service = readFileSync('src/server/services/operational-health.ts', 'utf8');
     const cashUi = readFileSync('src/components/operational/cash-box.tsx', 'utf8');
+    const tutorial = readFileSync('src/components/layout/tutorial.tsx', 'utf8');
+    const keyMetric = readFileSync(
+      'src/components/observability/key-inventory-metric-boundary.tsx',
+      'utf8',
+    );
     expect(page).toContain("requirePagePermission('supervision.center.view')");
     expect(page).not.toContain('user.name');
     expect(service).not.toContain("by: ['userId']");
     expect(cashUi).toContain('name="metricStartedAt"');
+    expect(keyMetric).toContain('KEY_INVENTORY_STARTED');
+    expect(keyMetric).not.toContain('notes');
+    expect(tutorial).toContain('TUTORIAL_STEP_REACHED');
+    expect(tutorial).not.toContain('question:');
   });
 
-  it('el catálogo de esta etapa se detiene en P0', () => {
+  it('separa P0 de P1 y todavía no adelanta P2', () => {
     expect(P0_OPERATIONAL_EVENT_TYPES).toContain('SHIFT_CLOSE_COMPLETED');
-    expect(P0_OPERATIONAL_EVENT_TYPES).toContain('HANDOVER_SENT');
-    expect(P0_OPERATIONAL_EVENT_TYPES).not.toContain('FRONTI_REQUEST' as never);
     expect(P0_OPERATIONAL_EVENT_TYPES).not.toContain('TUTORIAL_STARTED' as never);
-    expect(P0_OPERATIONAL_EVENT_TYPES).not.toContain('ENTRY_CREATED' as never);
+    expect(P1_OPERATIONAL_EVENT_TYPES).toContain('ENTRY_CREATED');
+    expect(P1_OPERATIONAL_EVENT_TYPES).toContain('KEY_INVENTORY_COMPLETED');
+    expect(P1_OPERATIONAL_EVENT_TYPES).toContain('TUTORIAL_COMPLETED');
+    expect(P1_OPERATIONAL_EVENT_TYPES).not.toContain('FRONTI_REQUEST' as never);
+    expect(P1_OPERATIONAL_EVENT_TYPES).not.toContain('ACTION_FAILED' as never);
   });
 });

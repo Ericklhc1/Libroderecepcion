@@ -5,6 +5,12 @@ import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { closeShiftCash, reopenShiftCash } from '@/server/services/cash-closure';
+import {
+  failOperationalMetric,
+  finishOperationalMetric,
+  shiftCloseCorrelationId,
+  startOperationalMetric,
+} from '@/server/observability/operational';
 
 const closeSchema = z.object({
   shiftId: z.string().min(1),
@@ -26,13 +32,36 @@ export async function closeShiftCashAction(
   return runAction(async () => {
     const user = await requirePermission('cash.close');
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
-    const closure = await closeShiftCash(user, input);
-    refresh(input.shiftId);
-    return {
-      ok: true as const,
-      message: `Caja cerrada por ${closure.closedByName}. El turno ya puede continuar a su entrega.`,
-      id: closure.id,
-    };
+    const metric = startOperationalMetric({
+      startedEventType: 'CASH_CLOSE_STARTED',
+      completedEventType: 'CASH_CLOSED',
+      failedEventType: 'CASH_CLOSE_FAILED',
+      userId: user.id,
+      shiftId: input.shiftId,
+      entityType: 'Shift',
+      entityId: input.shiftId,
+      correlationId: shiftCloseCorrelationId(input.shiftId),
+    });
+
+    try {
+      const closure = await closeShiftCash(user, input);
+      finishOperationalMetric(metric, {
+        metadata: {
+          hasDifference: closure.snapshot.currencies.some(
+            (currency) => currency.difference !== 0,
+          ),
+        },
+      });
+      refresh(input.shiftId);
+      return {
+        ok: true as const,
+        message: `Caja cerrada por ${closure.closedByName}. El turno ya puede continuar a su entrega.`,
+        id: closure.id,
+      };
+    } catch (error) {
+      failOperationalMetric(metric, error);
+      throw error;
+    }
   });
 }
 

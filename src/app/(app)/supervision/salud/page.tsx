@@ -139,9 +139,9 @@ export default async function OperationalHealthPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Libro · Novedades</h2>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Libro · Registros</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <StatTile label="Novedades creadas" value={health.entries.created} />
+          <StatTile label="Registros creados" value={health.entries.created} />
           <StatTile
             label="Tomadas observadas"
             value={health.entries.takenObserved}

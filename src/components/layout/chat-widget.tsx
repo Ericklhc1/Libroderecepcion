@@ -312,6 +312,7 @@ export function ChatWidget({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const storageAvailable = attachmentsEnabled || bootstrap?.storageEnabled === true;
+  const storageChecked = attachmentsEnabled || bootstrap !== null;
 
   useEffect(() => setMounted(true), []);
 
@@ -639,7 +640,7 @@ export function ChatWidget({
 
   function selectIncomingFile(file: File) {
     if (!storageAvailable) {
-      setError('Activa Cloudflare R2 para enviar imágenes y archivos.');
+      setError('El almacenamiento de archivos está temporalmente no disponible. Puedes seguir usando mensajes, GIF y Compartir Libro.');
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
@@ -838,7 +839,7 @@ export function ChatWidget({
 
   async function startVoiceRecording() {
     if (!storageAvailable) {
-      setError('Activa Cloudflare R2 para enviar notas de voz.');
+      setError('Las notas de voz están temporalmente no disponibles mientras se restablece el almacenamiento.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -2738,9 +2739,13 @@ export function ChatWidget({
                   <Mic className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   Nota de voz
                 </button>
-                {!storageAvailable ? (
+                {!storageChecked ? (
                   <p className="col-span-2 text-center text-[0.68rem] text-slate-500">
-                    Fotos, archivos y stickers propios se activarán al conectar Cloudflare R2.
+                    Comprobando almacenamiento de archivos…
+                  </p>
+                ) : !storageAvailable ? (
+                  <p className="col-span-2 text-center text-[0.68rem] text-slate-500">
+                    Archivos, notas de voz y stickers propios están temporalmente no disponibles. El resto del Chat sigue operativo.
                   </p>
                 ) : null}
               </div>
@@ -2807,7 +2812,7 @@ export function ChatWidget({
                 <div className="max-h-52 overflow-y-auto">
                   {!storageAvailable ? (
                     <p className="py-5 text-center text-xs text-slate-500">
-                      Activa R2 para crear stickers desde fotos o imágenes.
+                      Crear stickers desde imágenes está temporalmente no disponible.
                     </p>
                   ) : visibleCustomStickers.length === 0 ? (
                     <div className="py-5 text-center">

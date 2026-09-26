@@ -147,19 +147,30 @@ export async function receiveHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.receive');
     const input = parseOrThrow(receiveSchema, formDataToObject(formData));
-    const metric = startOperationalMetric({
-      startedEventType: 'HANDOVER_RECEIVE_STARTED',
-      completedEventType: 'HANDOVER_RECEIVED',
-      failedEventType: 'HANDOVER_RECEIVE_FAILED',
+    const startedAt = new Date();
+    const correlationId = `handover-receive:${input.handoverId}`;
+
+    recordOperationalEvent({
+      eventType: 'HANDOVER_RECEIVE_STARTED',
       userId: user.id,
       entityType: 'ShiftHandover',
       entityId: input.handoverId,
-      correlationId: `handover-receive:${input.handoverId}`,
+      correlationId,
+      startedAt,
+      status: 'STARTED',
     });
 
     try {
       const handover = await receiveHandover(user, input);
-      finishOperationalMetric(metric, { shiftId: handover.fromShiftId });
+      finishCorrelatedOperationalMetric({
+        startEventType: 'HANDOVER_RECEIVE_STARTED',
+        completedEventType: 'HANDOVER_RECEIVED',
+        correlationId,
+        userId: user.id,
+        shiftId: handover.fromShiftId,
+        entityType: 'ShiftHandover',
+        entityId: input.handoverId,
+      });
       refresh();
       revalidatePath(`/turno/entrega/${input.handoverId}`);
       return {
@@ -167,7 +178,19 @@ export async function receiveHandoverAction(
         message: 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
       };
     } catch (error) {
-      failOperationalMetric(metric, error);
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'HANDOVER_RECEIVE_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: input.handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: { failureType: operationalFailureType(error) },
+      });
       throw error;
     }
   });

@@ -74,8 +74,9 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
     expect(widget).toContain('aquí sólo aparecen cuentas humanas operativas');
     expect(widget).toContain('Fronti está pensando');
     expect(widget).toContain('renderFrontiBody');
-    expect(widget).toContain('bottom-20 left-3');
-    expect(widget).toContain('lg:left-[17rem]');
+    expect(widget).toContain('bottom-20 left-0');
+    expect(widget).toContain('lg:left-64');
+    expect(widget).toContain('createPortal(trigger, document.body)');
     expect(widget).toContain('Fronti✨');
     expect(widget).toContain('conectado');
     expect(widget).toContain("item.type === 'FRONTI' ? 'Fronti✨' : item.title");

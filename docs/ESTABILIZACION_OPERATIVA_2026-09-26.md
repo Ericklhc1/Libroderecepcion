@@ -68,6 +68,24 @@ Señales que permanecen relevantes:
 
 Se ejecuta contra PostgreSQL efímero de CI. No toca datos de Production.
 
+### Calle sin salida descubierta por el E2E
+
+La primera ejecución de la jornada transversal falló deliberadamente antes de
+Production y descubrió una incoherencia real del gate:
+
+- el saliente cerraba correctamente su turno;
+- al quedar sin asignación activa, el gate detectaba la entrega global pendiente;
+- le mostraba `HANDOVER_PENDING` y le indicaba recibir/recontar;
+- el servicio de turnos, correctamente, prohíbe a cualquier participante del
+  turno saliente recibir esa misma entrega.
+
+La corrección hace que el gate descarte entregas cuyo turno de origen tenga al
+usuario entre sus `ShiftAssignment`. Para el saliente el estado pasa a
+`NO_SHIFT`; para un tercero autorizado sigue siendo `HANDOVER_PENDING`.
+
+La regresión transversal conserva la expectativa para impedir que vuelva esta
+calle sin salida.
+
 ### Higiene de logs Fronti
 
 Los fallos conocidos ya no se registran todos como `console.error`:

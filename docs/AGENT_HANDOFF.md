@@ -208,6 +208,10 @@ Production.
 - Rama: `fix/estabilizacion-operativa-v1-14-1`.
 - Se añade una jornada E2E transversal en PostgreSQL efímero de CI que encadena
   Recepción, Libro, Llaves, Caja, relevo y Supervisión.
+- Esa jornada detectó una calle sin salida real: tras cerrar, un participante
+  saliente veía su propia entrega como `HANDOVER_PENDING` aunque el servicio
+  le prohíbe recibirla. El gate ahora excluye cualquier entrega cuyo turno de
+  origen incluya al usuario entre sus asignaciones.
 - Los fallos conocidos de Fronti dejan de contaminar todos el canal
   `console.error`: desactivación es informativa y fallos temporales son warning.
 - `/api/health/asistente` distingue disponibilidad de degradación parcial de

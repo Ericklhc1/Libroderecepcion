@@ -21,6 +21,7 @@ import {
   AddShiftMemberForm,
   CancelPreparationForm,
   CloseShiftForm,
+  ContinuityOpenShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -280,13 +281,16 @@ export default async function ShiftPage({
               <>
                 {outgoingStillClosing ? (
                   <div className="rounded-lg bg-amber-50 px-3 py-3 ring-1 ring-amber-300">
-                    <p className="font-medium text-amber-950">
-                      El turno saliente todavía está cerrando
+                    <p className="font-semibold text-amber-950">
+                      El turno anterior quedó incompleto
                     </p>
-                    <p className="mt-1 text-xs text-amber-900">
-                      Todavía no hay una entrega disponible. El turno saliente debe completar Caja,
-                      enviar la entrega y cerrar formalmente su turno.
+                    <p className="mt-1 text-sm text-amber-900">
+                      Esto no debe impedirte trabajar. Inicia tu turno por contingencia; el cierre
+                      anterior quedará pendiente, trazado y enviado a Supervisión.
                     </p>
+                    <div className="mt-3 max-w-md">
+                      <ContinuityOpenShiftForm suggestedType={desk.suggestedType} />
+                    </div>
                   </div>
                 ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
@@ -379,7 +383,7 @@ export default async function ShiftPage({
                         className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
                       >
                         <Send className="h-4 w-4" aria-hidden="true" />
-                        Revisar y enviar la entrega
+                        Continuar cierre · Caja y entrega
                       </Link>
                       <CancelPreparationForm shiftId={shift.id} />
                     </>

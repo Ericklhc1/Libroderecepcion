@@ -61,6 +61,7 @@ export function TutorialTour({
   const [index, setIndex] = useState(0);
   const dismissKey = `libro:tutorial:dismissed:${userId}`;
   const [dismissed, setDismissed] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
   const [targetOffscreen, setTargetOffscreen] = useState(false);
   const [interactionPrompt, setInteractionPrompt] = useState(false);
@@ -73,6 +74,7 @@ export function TutorialTour({
 
   useEffect(() => {
     setDismissed(window.sessionStorage.getItem(dismissKey) === '1');
+    setSessionReady(true);
   }, [dismissKey]);
 
   function dismissThisSession() {
@@ -82,16 +84,17 @@ export function TutorialTour({
 
   useEffect(() => {
     if (
+      !sessionReady ||
       !step?.route ||
       !shouldNavigateTutorial(dismissed, pathname, step.route, suspended)
     ) {
       return;
     }
     router.push(step.route);
-  }, [dismissed, pathname, router, step, suspended]);
+  }, [dismissed, pathname, router, sessionReady, step, suspended]);
 
   useEffect(() => {
-    if (dismissed || suspended || !step) {
+    if (!sessionReady || dismissed || suspended || !step) {
       setTargetRect(null);
       setTargetOffscreen(false);
       return;
@@ -149,10 +152,10 @@ export function TutorialTour({
       window.removeEventListener('resize', passiveMeasure);
       window.removeEventListener('scroll', passiveMeasure, true);
     };
-  }, [dismissed, pathname, step, suspended]);
+  }, [dismissed, pathname, sessionReady, step, suspended]);
 
   useEffect(() => {
-    if (dismissed || suspended || !step) return;
+    if (!sessionReady || dismissed || suspended || !step) return;
 
     const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -168,7 +171,7 @@ export function TutorialTour({
 
     document.addEventListener('click', onClickCapture, true);
     return () => document.removeEventListener('click', onClickCapture, true);
-  }, [dismissed, step, suspended]);
+  }, [dismissed, sessionReady, step, suspended]);
 
   const pointer = useMemo(() => {
     if (!targetRect) return null;
@@ -183,7 +186,7 @@ export function TutorialTour({
     target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
   }
 
-  if (dismissed || suspended || steps.length === 0 || !step) return null;
+  if (!sessionReady || dismissed || suspended || steps.length === 0 || !step) return null;
 
   return (
     <>

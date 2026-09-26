@@ -1,14 +1,30 @@
 import { NextResponse } from 'next/server';
-import { getR2ConfigStatus, probeR2Connectivity } from '@/server/storage/r2';
+import {
+  getR2AccountIdDiagnostics,
+  getR2ConfigStatus,
+  probeR2Connectivity,
+  probeR2EndpointCandidates,
+} from '@/server/storage/r2';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const status = getR2ConfigStatus();
-  const connectivity = status.configured
-    ? await probeR2Connectivity()
-    : { reachable: false, httpStatus: null, failureType: 'NOT_CONFIGURED' };
+  const accountIdDiagnostics = getR2AccountIdDiagnostics();
+  const [connectivity, endpointDiagnostics] = status.configured
+    ? await Promise.all([
+        probeR2Connectivity(),
+        probeR2EndpointCandidates(),
+      ])
+    : [
+        { reachable: false, httpStatus: null, failureType: 'NOT_CONFIGURED' },
+        [],
+      ];
+
+  const authenticatedJurisdictions = endpointDiagnostics
+    .filter((item) => item.authenticated)
+    .map((item) => item.jurisdiction);
 
   return NextResponse.json(
     {
@@ -20,6 +36,9 @@ export async function GET() {
       resolvedFrom: status.resolvedFrom,
       detectedKeys: status.detectedKeys,
       connectivity,
+      accountIdDiagnostics,
+      endpointDiagnostics,
+      authenticatedJurisdictions,
       configurationWarnings:
         status.resolvedFrom.R2_ACCOUNT_ID &&
         status.resolvedFrom.R2_ACCOUNT_ID !== 'R2_ACCOUNT_ID'

@@ -80,7 +80,7 @@ export default async function OperationalHealthPage({
 
       <section>
         <h2 className="mb-2 text-xs font-semibold text-slate-500">Turnos y cierre</h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatTile label="Turnos iniciados" value={health.shifts.started} />
           <StatTile label="Turnos cerrados" value={health.shifts.closed} />
           <StatTile
@@ -108,7 +108,7 @@ export default async function OperationalHealthPage({
 
       <section>
         <h2 className="mb-2 text-xs font-semibold text-slate-500">Caja y relevo</h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatTile
             label="Arqueos realizados"
             value={health.cash.counts}
@@ -126,6 +126,15 @@ export default async function OperationalHealthPage({
           <StatTile label="Cierres de Caja" value={health.cash.closed} />
           <StatTile label="Entregas enviadas" value={health.handovers.sent} />
           <StatTile label="Entregas recibidas" value={health.handovers.received} />
+          <StatTile
+            label="Tiempo mediano de recepción"
+            value={formatDuration(health.handovers.medianReceiveMs)}
+            hint={
+              health.handovers.p90ReceiveMs === null
+                ? 'Sin base suficiente todavía'
+                : `P90 ${formatDuration(health.handovers.p90ReceiveMs)}`
+            }
+          />
         </div>
       </section>
 

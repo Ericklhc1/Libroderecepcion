@@ -6,6 +6,12 @@ import { AppError, ValidationError } from '@/server/errors';
 import { normalizeTags } from '@/domain/tags';
 import { recordAudit } from '@/server/audit';
 import { getSettingBool } from '@/server/services/settings';
+import {
+  operationalFailureType,
+  recordOperationalEvent,
+} from '@/server/observability/operational';
+
+export const ACTION_TIMEOUT_THRESHOLD_MS = 20_000;
 
 /**
  * Credenciales que sólo se pueden leer una vez.
@@ -77,6 +83,8 @@ export function parseOrThrow<S extends z.ZodTypeAny>(
 export async function runAction(
   fn: () => Promise<ActionState>,
 ): Promise<ActionState> {
+  const startedAt = new Date();
+
   try {
     return await fn();
   } catch (error) {
@@ -116,6 +124,18 @@ export async function runAction(
     ) {
       throw error;
     }
+    const failedAt = new Date();
+    recordOperationalEvent({
+      eventType: 'ACTION_FAILED',
+      startedAt,
+      completedAt: failedAt,
+      durationMs: failedAt.getTime() - startedAt.getTime(),
+      status: 'FAILED',
+      source: 'SERVER_ACTION',
+      entityType: 'ServerAction',
+      metadata: { failureType: operationalFailureType(error) },
+    });
+
     console.error('[acción] error inesperado', error);
     try {
       if (await getSettingBool('diagnostics.runtimeCaptureEnabled', true)) {
@@ -149,6 +169,21 @@ export async function runAction(
       ok: false,
       error: 'Ocurrió un error inesperado. El incidente quedó registrado para diagnóstico.',
     };
+  } finally {
+    const completedAt = new Date();
+    const durationMs = completedAt.getTime() - startedAt.getTime();
+    if (durationMs >= ACTION_TIMEOUT_THRESHOLD_MS) {
+      recordOperationalEvent({
+        eventType: 'ACTION_TIMEOUT',
+        startedAt,
+        completedAt,
+        durationMs,
+        status: 'FAILED',
+        source: 'SERVER_ACTION',
+        entityType: 'ServerAction',
+        metadata: { timeoutThresholdMs: ACTION_TIMEOUT_THRESHOLD_MS },
+      });
+    }
   }
 }
 

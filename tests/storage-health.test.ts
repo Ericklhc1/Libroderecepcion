@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   getR2AccountIdDiagnostics,
+  getR2CredentialRelationshipDiagnostics,
+  isR2Operational,
   probeR2Connectivity,
   probeR2EndpointCandidates,
 } from '@/server/storage/r2';
@@ -123,11 +125,77 @@ describe('salud real de almacenamiento R2', () => {
     }
   });
 
+  it('detecta de forma segura si Account ID y Access Key quedaron cruzados', () => {
+    const previous = {
+      account: process.env.R2_ACCOUNT_ID,
+      access: process.env.R2_ACCESS_KEY_ID,
+      secret: process.env.R2_SECRET_ACCESS_KEY,
+    };
+    const same = 'c'.repeat(32);
+    process.env.R2_ACCOUNT_ID = same;
+    process.env.R2_ACCESS_KEY_ID = same;
+    process.env.R2_SECRET_ACCESS_KEY = 'secret-diferente';
+
+    try {
+      expect(getR2CredentialRelationshipDiagnostics()).toEqual({
+        accountIdMatchesAccessKeyId: true,
+        accountIdMatchesSecretAccessKey: false,
+        accountIdUsesLegacyTypo: false,
+      });
+    } finally {
+      const restore = (key: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      };
+      restore('R2_ACCOUNT_ID', previous.account);
+      restore('R2_ACCESS_KEY_ID', previous.access);
+      restore('R2_SECRET_ACCESS_KEY', previous.secret);
+    }
+  });
+
+  it('cachea la salud operativa y distingue 404 válido de rechazo HTTP', async () => {
+    const previous = {
+      account: process.env.R2_ACCOUNT_ID,
+      access: process.env.R2_ACCESS_KEY_ID,
+      secret: process.env.R2_SECRET_ACCESS_KEY,
+      bucket: process.env.R2_BUCKET,
+    };
+    process.env.R2_ACCOUNT_ID = 'd'.repeat(32);
+    process.env.R2_ACCESS_KEY_ID = 'test-access';
+    process.env.R2_SECRET_ACCESS_KEY = 'test-secret';
+    process.env.R2_BUCKET = 'test-bucket';
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      expect(await isR2Operational({ force: true })).toBe(true);
+      expect(await isR2Operational()).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      expect(await isR2Operational({ force: true })).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      const restore = (key: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      };
+      restore('R2_ACCOUNT_ID', previous.account);
+      restore('R2_ACCESS_KEY_ID', previous.access);
+      restore('R2_SECRET_ACCESS_KEY', previous.secret);
+      restore('R2_BUCKET', previous.bucket);
+    }
+  });
+
   it('el endpoint combina configuración y conectividad sin mostrar credenciales', () => {
     const source = readFileSync('src/app/api/health/storage/route.ts', 'utf8');
     expect(source).toContain('probeR2Connectivity');
     expect(source).toContain('probeR2EndpointCandidates');
     expect(source).toContain('getR2AccountIdDiagnostics');
+    expect(source).toContain('getR2CredentialRelationshipDiagnostics');
     expect(source).toContain('status.configured && connectivity.reachable');
     expect(source).toContain('configurationWarnings');
     expect(source).not.toContain('secretAccessKey');

@@ -315,7 +315,7 @@ export function TutorialTour({
             role="dialog"
             aria-modal="true"
             aria-labelledby="tutorial-interaction-title"
-            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+            className="max-h-[min(90vh,38rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
           >
             <div className="flex items-start gap-3">
               <span className="rounded-xl bg-petrol-50 p-2 text-petrol-800">

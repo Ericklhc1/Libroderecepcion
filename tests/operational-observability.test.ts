@@ -390,6 +390,7 @@ describe('observabilidad operativa P0/P1/P2', () => {
     expect(telemetry).not.toContain('reply:');
     expect(action).toContain("eventType: 'ACTION_FAILED'");
     expect(action).toContain("eventType: 'ACTION_TIMEOUT'");
-    expect(action).not.toContain('formData');
+    expect(action).toContain('metadata: { failureType: operationalFailureType(error) }');
+    expect(action).toContain('metadata: { timeoutThresholdMs: ACTION_TIMEOUT_THRESHOLD_MS }');
   });
 });

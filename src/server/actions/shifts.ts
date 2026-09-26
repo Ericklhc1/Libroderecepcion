@@ -51,6 +51,11 @@ const openShiftSchema = z.object({
     .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
     .optional()
     .transform((value) => (value === '' || value === undefined ? null : value)),
+  continuity: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true'),
+  continuityReason: zOptionalString,
 });
 
 export async function openShiftAction(
@@ -61,13 +66,18 @@ export async function openShiftAction(
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
 
-    const { shift } = await openShift(user, { type: input.type });
+    const { shift } = await openShift(user, {
+      type: input.type,
+      continuity: input.continuity,
+      continuityReason: input.continuityReason,
+    });
     refresh(shift.id);
 
     return {
       ok: true as const,
-      message:
-        shift.status === ShiftStatus.ACTIVO
+      message: input.continuity
+        ? `Continuidad operativa activada. Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} ya está activo; el cierre anterior quedó alertado para Supervisión.`
+        : shift.status === ShiftStatus.ACTIVO
           ? `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo (${SHIFT_WINDOW_LABEL[shift.type]}).`
           : `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[shift.type]}).`,
     };

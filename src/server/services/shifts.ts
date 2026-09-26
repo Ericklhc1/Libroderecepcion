@@ -1013,6 +1013,7 @@ export async function receiveShiftCash(
 ): Promise<{
   statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'];
   discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'];
+  shiftId: string;
 }> {
   const handover = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
@@ -1145,7 +1146,7 @@ export async function receiveShiftCash(
       throw error;
     });
 
-  return { statuses, discrepancies };
+  return { statuses, discrepancies, shiftId: handover.fromShiftId };
 }
 
 /** Activa el turno cuando no existe una Caja previa que recibir. */

@@ -145,6 +145,16 @@ export async function declareCashCountAction(
     } catch (error) {
       const completedAt = new Date();
       recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `cash-count:${handoverId}:DECLARADO`,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'DECLARADO' },
+      });
+      recordOperationalEvent({
         eventType: 'CASH_COUNT_FAILED',
         userId: user.id,
         entityType: 'ShiftHandover',
@@ -188,6 +198,16 @@ export async function confirmCashCountAction(
         hasDifference: result.discrepancies.length > 0,
       };
       recordOperationalEvent({
+        eventType: 'HANDOVER_RECEIVE_STARTED',
+        userId: user.id,
+        shiftId: result.shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+      });
+      recordOperationalEvent({
         eventType: 'CASH_COUNT_STARTED',
         userId: user.id,
         shiftId: result.shiftId,
@@ -227,6 +247,25 @@ export async function confirmCashCountAction(
       };
     } catch (error) {
       const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'HANDOVER_RECEIVE_STARTED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `handover-receive:${handoverId}`,
+        startedAt,
+        status: 'STARTED',
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `handover-receive:${handoverId}`,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'CONFIRMADO' },
+      });
       recordOperationalEvent({
         eventType: 'CASH_COUNT_FAILED',
         userId: user.id,

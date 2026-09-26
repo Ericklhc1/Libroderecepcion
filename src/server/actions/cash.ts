@@ -29,6 +29,12 @@ import {
   cashApprovalRequired,
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
+import {
+  failOperationalMetric,
+  finishOperationalMetric,
+  shiftCloseCorrelationId,
+  startOperationalMetric,
+} from '@/server/observability/operational';
 
 /**
  * Acciones de caja.
@@ -81,19 +87,40 @@ export async function declareCashCountAction(
     const user = await requirePermission('cash.count_declare');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-
-    const { statuses } = await saveCashCount(user, {
-      handoverId,
-      kind: 'DECLARADO',
-      quantities: quantitiesFrom(formData),
-      guaranteeIds: guaranteeIdsFrom(formData),
-      notes: typeof notes === 'string' ? notes : null,
+    const metric = startOperationalMetric({
+      startedEventType: 'CASH_COUNT_STARTED',
+      completedEventType: 'CASH_COUNT_COMPLETED',
+      failedEventType: 'CASH_COUNT_FAILED',
+      userId: user.id,
+      entityType: 'ShiftHandover',
+      entityId: handoverId,
+      correlationId: `cash-count:${handoverId}:DECLARADO`,
+      metadata: { countKind: 'DECLARADO' },
     });
 
-    revalidatePath('/turno');
-    revalidatePath('/caja');
-    revalidatePath(`/turno/entrega/${handoverId}`);
-    return { ok: true as const, message: summarise(statuses) };
+    try {
+      const { statuses, shiftId } = await saveCashCount(user, {
+        handoverId,
+        kind: 'DECLARADO',
+        quantities: quantitiesFrom(formData),
+        guaranteeIds: guaranteeIdsFrom(formData),
+        notes: typeof notes === 'string' ? notes : null,
+      });
+      finishOperationalMetric(metric, {
+        shiftId,
+        metadata: {
+          hasDifference: statuses.some((status) => !status.balanced),
+        },
+      });
+
+      revalidatePath('/turno');
+      revalidatePath('/caja');
+      revalidatePath(`/turno/entrega/${handoverId}`);
+      return { ok: true as const, message: summarise(statuses) };
+    } catch (error) {
+      failOperationalMetric(metric, error);
+      throw error;
+    }
   });
 }
 
@@ -105,27 +132,46 @@ export async function confirmCashCountAction(
     const user = await requirePermission('cash.count_receive');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-
-    const result = await receiveShiftCash(user, {
-      handoverId,
-      quantities: quantitiesFrom(formData),
-      guaranteeIds: guaranteeIdsFrom(formData),
-      notes: typeof notes === 'string' ? notes : null,
+    const metric = startOperationalMetric({
+      startedEventType: 'CASH_COUNT_STARTED',
+      completedEventType: 'CASH_COUNT_COMPLETED',
+      failedEventType: 'CASH_COUNT_FAILED',
+      userId: user.id,
+      entityType: 'ShiftHandover',
+      entityId: handoverId,
+      correlationId: `cash-count:${handoverId}:CONFIRMADO`,
+      metadata: { countKind: 'CONFIRMADO' },
     });
 
-    revalidatePath('/turno');
-    revalidatePath('/caja');
-    revalidatePath('/supervision');
-    revalidatePath('/notificaciones');
-    revalidatePath(`/turno/entrega/${handoverId}`);
-    return {
-      ok: true as const,
-      message:
-        summarise(result.statuses) +
-        (result.discrepancies.length
-          ? ' Hay una diferencia registrada para revisión de Supervisión.'
-          : ' Caja recibida sin diferencias.'),
-    };
+    try {
+      const result = await receiveShiftCash(user, {
+        handoverId,
+        quantities: quantitiesFrom(formData),
+        guaranteeIds: guaranteeIdsFrom(formData),
+        notes: typeof notes === 'string' ? notes : null,
+      });
+      finishOperationalMetric(metric, {
+        shiftId: result.shiftId,
+        metadata: { hasDifference: result.discrepancies.length > 0 },
+      });
+
+      revalidatePath('/turno');
+      revalidatePath('/caja');
+      revalidatePath('/supervision');
+      revalidatePath('/notificaciones');
+      revalidatePath(`/turno/entrega/${handoverId}`);
+      return {
+        ok: true as const,
+        message:
+          summarise(result.statuses) +
+          (result.discrepancies.length
+            ? ' Hay una diferencia registrada para revisión de Supervisión.'
+            : ' Caja recibida sin diferencias.'),
+      };
+    } catch (error) {
+      failOperationalMetric(metric, error);
+      throw error;
+    }
   });
 }
 

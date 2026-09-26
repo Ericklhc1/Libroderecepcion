@@ -64,6 +64,37 @@ describe('recorrido guiado', () => {
     expect(component).toContain('dismissed || suspended || steps.length === 0 || !step');
   });
 
+  it('no pelea contra el scroll y ofrece salida explícita al interactuar', async () => {
+    const { readFileSync } = await import('node:fs');
+    const component = readFileSync('src/components/layout/tutorial.tsx', 'utf8');
+
+    expect(component).toContain("window.addEventListener('scroll', passiveMeasure, true)");
+    expect(component).toContain('ÚNICO desplazamiento automático del paso');
+    expect(component.match(/scrollIntoView/g)?.length).toBe(2);
+    expect(component).toContain('Te alejaste del punto señalado');
+    expect(component).toContain('Volver al punto');
+    expect(component).toContain('¿Quieres interactuar con el Libro?');
+    expect(component).toContain('Cerrar esta vez');
+    expect(component).toContain('No volver a mostrar');
+    expect(component).toContain('Puedes activarlo cuando quieras desde Mi perfil');
+    expect(component).toContain("document.addEventListener('pointerdown', onPointerDown, true)");
+  });
+
+  it('mantiene una guía ampliada sólo durante los primeros cinco turnos', async () => {
+    const { readFileSync } = await import('node:fs');
+    const page = readFileSync('src/app/(app)/turno/page.tsx', 'utf8');
+    const actions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
+
+    expect(page).toContain('startedShiftCount');
+    expect(page).toContain('startedShiftCount <= 5');
+    expect(page).toContain('startedShiftCount < 5');
+    expect(page).toContain('Guía ampliada de turno');
+    expect(actions).toContain('Guía ampliada · turno {session} de 5');
+    expect(actions).toContain('Vas a iniciar tu turno');
+    expect(actions).toContain('Vas a iniciar el cierre');
+    expect(actions).toContain('Último paso: cerrar el turno');
+  });
+
   it('cada paso de una ruta señala una sección de la pantalla', () => {
     for (const step of TUTORIAL_STEPS.filter((candidate) => candidate.route)) {
       expect(step.target, step.id).toBeTruthy();

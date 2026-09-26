@@ -146,6 +146,7 @@ describe('observabilidad operativa P0', () => {
           eventType: 'HANDOVER_RECEIVED',
           status: 'SUCCESS',
           source: 'SERVER_ACTION',
+          durationMs: 180_000,
           createdAt: inside,
         },
         {
@@ -175,6 +176,7 @@ describe('observabilidad operativa P0', () => {
     expect(health.cash.withDifferences).toBe(1);
     expect(health.handovers.sent).toBe(1);
     expect(health.handovers.received).toBe(1);
+    expect(health.handovers.medianReceiveMs).toBe(180_000);
     expect(health.failures).toBe(1);
   });
 
@@ -186,9 +188,11 @@ describe('observabilidad operativa P0', () => {
   it('mantiene el panel limitado al Centro de Supervisión y sin desglose individual', () => {
     const page = readFileSync('src/app/(app)/supervision/salud/page.tsx', 'utf8');
     const service = readFileSync('src/server/services/operational-health.ts', 'utf8');
+    const cashUi = readFileSync('src/components/operational/cash-box.tsx', 'utf8');
     expect(page).toContain("requirePagePermission('supervision.center.view')");
     expect(page).not.toContain('user.name');
     expect(service).not.toContain("by: ['userId']");
+    expect(cashUi).toContain('name="metricStartedAt"');
   });
 
   it('el catálogo de esta etapa se detiene en P0', () => {

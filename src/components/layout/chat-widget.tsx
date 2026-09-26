@@ -639,7 +639,7 @@ export function ChatWidget({
 
   function selectIncomingFile(file: File) {
     if (!storageAvailable) {
-      setError('Activa Cloudflare R2 para enviar imágenes y archivos.');
+      setError('Los archivos están temporalmente no disponibles porque el almacenamiento no está respondiendo.');
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
@@ -838,7 +838,7 @@ export function ChatWidget({
 
   async function startVoiceRecording() {
     if (!storageAvailable) {
-      setError('Activa Cloudflare R2 para enviar notas de voz.');
+      setError('Las notas de voz están temporalmente no disponibles porque el almacenamiento no está respondiendo.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -2807,7 +2807,7 @@ export function ChatWidget({
                 <div className="max-h-52 overflow-y-auto">
                   {!storageAvailable ? (
                     <p className="py-5 text-center text-xs text-slate-500">
-                      Activa R2 para crear stickers desde fotos o imágenes.
+                      Los stickers personalizados están temporalmente no disponibles porque el almacenamiento no está respondiendo.
                     </p>
                   ) : visibleCustomStickers.length === 0 ? (
                     <div className="py-5 text-center">

@@ -138,9 +138,13 @@ describe('jornada operativa transversal de punta a punta', () => {
     await sendHandover(outgoing, { shiftId: dayShift.id });
     await closeShift(outgoing, { shiftId: dayShift.id });
 
-    expect((await getReceptionOperationGate(outgoing)).mode).toBe('NO_SHIFT');
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('HANDOVER_PENDING');
 
-    // 5. El entrante no puede saltarse el recuento/recepción.
+    // 5. Mientras la liana está libre, todo perfil de mesón queda bloqueado
+    // para operar: sólo se permite recibir/recontar el relevo pendiente.
+    expect((await getReceptionOperationGate(incoming)).mode).toBe('HANDOVER_PENDING');
+
+    // El entrante no puede saltarse el recuento/recepción.
     await expect(
       openShiftAs(incoming, { type: ShiftType.NOCHE }),
     ).rejects.toThrow(/pendiente de recepción/i);

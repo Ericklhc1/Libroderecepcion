@@ -37,17 +37,22 @@ describe('salud real de almacenamiento R2', () => {
   });
 
   it('diagnostica la forma esperada del Account ID sin devolver su valor', () => {
-    const before = process.env.R2_ACCOUNT_ID;
+    const beforeAccount = process.env.R2_ACCOUNT_ID;
+    const beforeAccess = process.env.R2_ACCESS_KEY_ID;
     process.env.R2_ACCOUNT_ID = 'a'.repeat(32);
+    process.env.R2_ACCESS_KEY_ID = 'test-access-distinto';
     try {
       expect(getR2AccountIdDiagnostics()).toEqual({
         present: true,
         length: 32,
         expectedShape: true,
+        matchesAccessKeyId: false,
       });
     } finally {
-      if (before === undefined) delete process.env.R2_ACCOUNT_ID;
-      else process.env.R2_ACCOUNT_ID = before;
+      if (beforeAccount === undefined) delete process.env.R2_ACCOUNT_ID;
+      else process.env.R2_ACCOUNT_ID = beforeAccount;
+      if (beforeAccess === undefined) delete process.env.R2_ACCESS_KEY_ID;
+      else process.env.R2_ACCESS_KEY_ID = beforeAccess;
     }
   });
 
@@ -121,6 +126,32 @@ describe('salud real de almacenamiento R2', () => {
       restore('R2_SECRET_ACCESS_KEY', previous.secret);
       restore('R2_BUCKET', previous.bucket);
     }
+  });
+
+  it('detecta si el Account ID fue confundido con el Access Key ID sin revelar valores', () => {
+    const beforeAccount = process.env.R2_ACCOUNT_ID;
+    const beforeAccess = process.env.R2_ACCESS_KEY_ID;
+    process.env.R2_ACCOUNT_ID = 'c'.repeat(32);
+    process.env.R2_ACCESS_KEY_ID = 'c'.repeat(32);
+    try {
+      expect(getR2AccountIdDiagnostics().matchesAccessKeyId).toBe(true);
+    } finally {
+      if (beforeAccount === undefined) delete process.env.R2_ACCOUNT_ID;
+      else process.env.R2_ACCOUNT_ID = beforeAccount;
+      if (beforeAccess === undefined) delete process.env.R2_ACCESS_KEY_ID;
+      else process.env.R2_ACCESS_KEY_ID = beforeAccess;
+    }
+  });
+
+  it('el Chat sólo anuncia multimedia cuando R2 está realmente operativo', () => {
+    const service = readFileSync('src/server/services/chat.ts', 'utf8');
+    const widget = readFileSync('src/components/layout/chat-widget.tsx', 'utf8');
+
+    expect(service).toContain('isR2Operational');
+    expect(service).toContain('storageEnabled,');
+    expect(service).not.toContain('storageEnabled: isR2Configured()');
+    expect(widget).toContain('temporalmente no disponibles');
+    expect(widget).not.toContain('Activa Cloudflare R2 para enviar imágenes y archivos.');
   });
 
   it('el endpoint combina configuración y conectividad sin mostrar credenciales', () => {

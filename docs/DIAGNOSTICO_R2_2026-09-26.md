@@ -57,3 +57,28 @@ tipo/código técnico seguro cuando la red falla.
 
 v1.14.2 es diagnóstica. No introduce fallback en base de datos, no migra
 archivos y no cambia reglas de Chat.
+
+
+## Resultado de Production v1.14.2
+
+- Account ID presente, longitud 32 y forma hexadecimal esperada.
+- `default`, `us` y `eu`: fallo TLS antes de recibir HTTP
+  (`ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`).
+- `fedramp`: transporte disponible, pero HTTP 403.
+- Ninguna jurisdicción autenticó con las credenciales actuales.
+- Por tanto, no se cambia automáticamente de jurisdicción.
+
+## Resiliencia v1.14.3
+
+Mientras la infraestructura se corrige:
+
+- el Chat deja de equiparar «variables presentes» con «R2 disponible»;
+- un probe autenticado con cache corta determina si multimedia está operativa;
+- si R2 no responde, adjuntos, stickers personalizados y notas de voz se
+  muestran temporalmente no disponibles en lugar de conducir a una subida que
+  va a fallar;
+- Salud añade `matchesAccessKeyId` para detectar una posible confusión entre
+  Account ID y Access Key ID sin revelar ninguno.
+
+Esto no sustituye la reparación de Cloudflare/Vercel. Sólo elimina la calle sin
+salida para Recepción mientras se identifica/corrige la configuración raíz.

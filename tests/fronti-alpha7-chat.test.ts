@@ -62,7 +62,7 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
     expect(route).toContain('maybeInvokeFrontiInChat');
   });
 
-  it('integra Fronti en la única burbuja del chat para cuentas operativas', () => {
+  it('integra Fronti en la pestaña inferior del chat para cuentas operativas', () => {
     const widget = readFileSync('src/components/layout/chat-widget.tsx', 'utf8');
     const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
 
@@ -74,6 +74,11 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
     expect(widget).toContain('aquí sólo aparecen cuentas humanas operativas');
     expect(widget).toContain('Fronti está pensando');
     expect(widget).toContain('renderFrontiBody');
+    expect(widget).toContain('bottom-20 left-3');
+    expect(widget).toContain('lg:left-[17rem]');
+    expect(widget).toContain('Fronti✨');
+    expect(widget).toContain('conectado');
+    expect(widget).toContain("item.type === 'FRONTI' ? 'Fronti✨' : item.title");
     expect(layout).toContain('(!user.roleOperational || user.isSystemAdmin)');
   });
 

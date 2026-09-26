@@ -61,7 +61,7 @@ export default async function ShiftPage({
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
 
-  const [desk, recentShifts, pendingClosure, blockingOutgoing] = await Promise.all([
+  const [desk, recentShifts, pendingClosure, blockingOutgoing, shiftExperienceCount] = await Promise.all([
     getShiftDesk(user),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
@@ -93,6 +93,17 @@ export default async function ShiftPage({
       },
       select: { id: true, status: true },
       orderBy: { actualStart: 'asc' },
+    }),
+    prisma.shift.count({
+      where: {
+        isDemo: false,
+        assignments: {
+          some: {
+            userId: user.id,
+            activatedAt: { not: null },
+          },
+        },
+      },
     }),
   ]);
 
@@ -126,6 +137,13 @@ export default async function ShiftPage({
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
   const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
+  const hasCurrentOrPendingClosure = Boolean(shift || pendingClosure);
+  const guidedShiftExperience =
+    user.roleOperational &&
+    (hasCurrentOrPendingClosure ? shiftExperienceCount <= 5 : shiftExperienceCount < 5);
+  const guidanceSession = hasCurrentOrPendingClosure
+    ? Math.max(1, Math.min(5, shiftExperienceCount))
+    : Math.max(1, Math.min(5, shiftExperienceCount + 1));
 
   /*
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
@@ -224,6 +242,18 @@ export default async function ShiftPage({
         ) : null}
       </header>
 
+      {guidedShiftExperience ? (
+        <div className="rounded-xl bg-petrol-50 px-4 py-3 ring-1 ring-petrol-100">
+          <p className="text-sm font-semibold text-petrol-900">
+            Guía ampliada de turno · {guidanceSession} de 5
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Durante tus primeros cinco turnos, el Libro explica con más detalle qué ocurre al
+            iniciar y cerrar. Después conservarás exactamente el mismo flujo, pero con menos texto.
+          </p>
+        </div>
+      ) : null}
+
       {pendingClosure && pendingClosure.id !== shift?.id ? (
         <Card>
           <CardHeader title="Turno anterior pendiente de cierre" />
@@ -261,7 +291,11 @@ export default async function ShiftPage({
                   </span>
                 )
               ) : (
-                <CloseShiftForm shiftId={pendingClosure.id} />
+                <CloseShiftForm
+                  shiftId={pendingClosure.id}
+                  guided={guidedShiftExperience}
+                  guidanceSession={guidanceSession}
+                />
               )}
             </div>
           </div>
@@ -313,7 +347,11 @@ export default async function ShiftPage({
                     <p className="text-sm text-slate-600">
                       No hay una entrega pendiente. Puedes iniciar tu turno para habilitar la operación.
                     </p>
-                    <OpenShiftForm suggestedType={desk.suggestedType} />
+                    <OpenShiftForm
+                      suggestedType={desk.suggestedType}
+                      guided={guidedShiftExperience}
+                      guidanceSession={guidanceSession}
+                    />
                   </>
                 )}
               </>
@@ -369,7 +407,11 @@ export default async function ShiftPage({
                 <div className="flex flex-col gap-2">
                   {shift.status === ShiftStatus.ACTIVO ? (
                     <>
-                      <PrepareHandoverForm shiftId={shift.id} />
+                      <PrepareHandoverForm
+                        shiftId={shift.id}
+                        guided={guidedShiftExperience}
+                        guidanceSession={guidanceSession}
+                      />
                       <p className="max-w-sm text-xs text-slate-500">
                         Al iniciar el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas
                         para tu cuenta. Completa Caja, envía la entrega y cierra formalmente el turno.
@@ -416,7 +458,11 @@ export default async function ShiftPage({
                         Cerrar Caja primero
                       </Link>
                     ) : (
-                      <CloseShiftForm shiftId={shift.id} />
+                      <CloseShiftForm
+                        shiftId={shift.id}
+                        guided={guidedShiftExperience}
+                        guidanceSession={guidanceSession}
+                      />
                     )}
                     {shift.handoverOut ? (
                       <Link

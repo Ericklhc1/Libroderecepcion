@@ -182,11 +182,12 @@ async function signedRequest(
   key: string,
   body?: Buffer,
   contentType?: string,
+  options?: { host?: string; signal?: AbortSignal },
 ): Promise<Response> {
   const current = config();
   if (!current) throw new Error('R2 no está configurado.');
 
-  const host = `${current.accountId}.r2.cloudflarestorage.com`;
+  const host = options?.host ?? `${current.accountId}.r2.cloudflarestorage.com`;
   const path = canonicalPath(current.bucket, key);
   const url = `https://${host}${path}`;
   const { full, day } = amzDate();
@@ -237,6 +238,7 @@ async function signedRequest(
     headers,
     body: method === 'PUT' && body ? new Uint8Array(body) : undefined,
     cache: 'no-store',
+    signal: options?.signal,
   });
 }
 
@@ -339,6 +341,109 @@ export async function probeR2Connectivity(
       failureType: error instanceof Error ? error.name : typeof error,
     };
   }
+}
+
+export type R2Jurisdiction = 'default' | 'us' | 'eu' | 'fedramp';
+
+export type R2EndpointDiagnostic = {
+  jurisdiction: R2Jurisdiction;
+  reachable: boolean;
+  authenticated: boolean;
+  httpStatus: number | null;
+  failureType: string | null;
+  failureCode: string | null;
+};
+
+function r2Host(accountId: string, jurisdiction: R2Jurisdiction): string {
+  const suffix = jurisdiction === 'default' ? '' : `.${jurisdiction}`;
+  return `${accountId}${suffix}.r2.cloudflarestorage.com`;
+}
+
+function safeFailureCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('cause' in error)) return null;
+  const cause = (error as { cause?: unknown }).cause;
+  if (typeof cause !== 'object' || cause === null || !('code' in cause)) return null;
+  const code = (cause as { code?: unknown }).code;
+  return typeof code === 'string' ? code.slice(0, 120) : null;
+}
+
+/**
+ * Diagnóstico de la forma del Account ID sin devolver su valor.
+ *
+ * Cloudflare muestra normalmente Account IDs de 32 caracteres hexadecimales.
+ * Esto es una comprobación de forma esperada para detectar copias accidentales;
+ * no sustituye una validación contra la API del proveedor.
+ */
+export function getR2AccountIdDiagnostics() {
+  const accountId = resolveAccountId().value;
+  return {
+    present: Boolean(accountId),
+    length: accountId.length,
+    expectedShape: /^[a-f0-9]{32}$/i.test(accountId),
+  };
+}
+
+/**
+ * Prueba no destructiva de los cuatro hosts S3 que Cloudflare documenta para
+ * R2. Se firma el mismo HEAD contra una clave inexistente y se ejecutan los
+ * candidatos en paralelo con plazo corto.
+ *
+ * - reachable: hubo respuesta HTTP (DNS/TLS funcionaron).
+ * - authenticated: 2xx o 404; la firma llegó a un endpoint que aceptó la
+ *   identidad y sólo indicó que la clave de salud no existe.
+ * - 4xx/5xx siguen siendo útiles: prueban transporte aunque no autentiquen.
+ *
+ * Nunca devuelve host, Account ID, firma, credencial ni cuerpo de respuesta.
+ */
+export async function probeR2EndpointCandidates(
+  requester?: (
+    jurisdiction: R2Jurisdiction,
+    host: string,
+  ) => Promise<Response>,
+): Promise<R2EndpointDiagnostic[]> {
+  const current = config();
+  if (!current) return [];
+
+  const jurisdictions: R2Jurisdiction[] = ['default', 'us', 'eu', 'fedramp'];
+  const request =
+    requester ??
+    ((jurisdiction: R2Jurisdiction, host: string) =>
+      signedRequest(
+        'HEAD',
+        '__health__/jurisdiction-probe',
+        undefined,
+        undefined,
+        {
+          host,
+          signal: AbortSignal.timeout(6_000),
+        },
+      ));
+
+  return Promise.all(
+    jurisdictions.map(async (jurisdiction) => {
+      const host = r2Host(current.accountId, jurisdiction);
+      try {
+        const response = await request(jurisdiction, host);
+        return {
+          jurisdiction,
+          reachable: true,
+          authenticated: response.ok || response.status === 404,
+          httpStatus: response.status,
+          failureType: null,
+          failureCode: null,
+        };
+      } catch (error) {
+        return {
+          jurisdiction,
+          reachable: false,
+          authenticated: false,
+          httpStatus: null,
+          failureType: error instanceof Error ? error.name : typeof error,
+          failureCode: safeFailureCode(error),
+        };
+      }
+    }),
+  );
 }
 
 export async function getR2Object(key: string): Promise<Response> {

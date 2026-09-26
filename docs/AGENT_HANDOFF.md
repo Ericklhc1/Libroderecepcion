@@ -153,7 +153,10 @@ Production.
   telemetría forma parte de la transacción ni de la respuesta crítica.
 - P0 instrumenta apertura normal/contingencia, recepción, inicio/cierre de
   turno, arqueos, cierre formal de Caja y envío de entrega.
-- El cierre completo se correlaciona por `shift-close:<shiftId>`.
+- El cierre completo se correlaciona por `shift-close:<shiftId>`; la recepción
+  entrante usa `handover-receive:<handoverId>`.
+- El arqueo mide desde la primera interacción con el formulario hasta su
+  confirmación, no sólo el tiempo de servidor.
 - `/supervision/salud` muestra datos observados para Hoy/7/30 días usando
   `supervision.center.view`, sin rankings individuales.
 - Novedades reutilizan timestamps existentes. Fronti, tutorial, llaves y

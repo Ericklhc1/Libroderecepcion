@@ -70,7 +70,7 @@ describe('recorrido guiado', () => {
 
     expect(component).toContain("window.addEventListener('scroll', passiveMeasure, true)");
     expect(component).toContain('ÚNICO desplazamiento automático del paso');
-    expect(component.match(/scrollIntoView/g)?.length).toBe(2);
+    expect(component.match(/\.scrollIntoView\(/g)?.length).toBe(2);
     expect(component).toContain('Te alejaste del punto señalado');
     expect(component).toContain('Volver al punto');
     expect(component).toContain('¿Quieres interactuar con el Libro?');

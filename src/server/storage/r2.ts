@@ -308,6 +308,39 @@ export async function headR2Object(key: string): Promise<Response> {
   return signedRequest('HEAD', key);
 }
 
+export type R2ConnectivityProbe = {
+  reachable: boolean;
+  httpStatus: number | null;
+  failureType: string | null;
+};
+
+/**
+ * Sondeo no destructivo del endpoint S3 de R2.
+ *
+ * Un HEAD a una clave reservada de salud valida DNS/TLS, firma y permiso de
+ * lectura sin crear objetos. 200 (si alguien creó la clave) y 404 (caso
+ * normal) prueban conectividad válida. Cualquier otro estado queda visible sin
+ * copiar cuerpo de respuesta, credenciales ni detalles del proveedor.
+ */
+export async function probeR2Connectivity(
+  requester: (key: string) => Promise<Response> = headR2Object,
+): Promise<R2ConnectivityProbe> {
+  try {
+    const response = await requester('__health__/connectivity-probe');
+    return {
+      reachable: response.ok || response.status === 404,
+      httpStatus: response.status,
+      failureType: null,
+    };
+  } catch (error) {
+    return {
+      reachable: false,
+      httpStatus: null,
+      failureType: error instanceof Error ? error.name : typeof error,
+    };
+  }
+}
+
 export async function getR2Object(key: string): Promise<Response> {
   return signedRequest('GET', key);
 }

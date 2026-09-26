@@ -9,7 +9,7 @@ export function RestartTutorialButton() {
   return (
     <ActionForm action={restartTutorialAction} className="space-y-0" refreshOnSuccess>
       <SubmitButton variant="secondary" size="sm" pendingLabel="Preparando…">
-        Ver el recorrido guiado otra vez
+        Activar tutorial guiado
       </SubmitButton>
     </ActionForm>
   );

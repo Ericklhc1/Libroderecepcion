@@ -4,6 +4,7 @@ import { prisma, resetOperationalData } from './helpers';
 import {
   P0_OPERATIONAL_EVENT_TYPES,
   P1_OPERATIONAL_EVENT_TYPES,
+  P2_OPERATIONAL_EVENT_TYPES,
   operationalDurationMs,
   operationalStartedAtFromEpoch,
   persistOperationalEvent,
@@ -16,7 +17,7 @@ import {
   percentile,
 } from '@/server/services/operational-health';
 
-describe('observabilidad operativa P0/P1', () => {
+describe('observabilidad operativa P0/P1/P2', () => {
   beforeEach(async () => {
     await resetOperationalData();
   });
@@ -94,6 +95,10 @@ describe('observabilidad operativa P0/P1', () => {
     expect(health.keyInventory.completed).toBe(0);
     expect(health.tutorial.started).toBe(0);
     expect(health.entries.medianTakeMs).toBeNull();
+    expect(health.fronti.requested).toBe(0);
+    expect(health.fronti.successRate).toBeNull();
+    expect(health.actions.failed).toBe(0);
+    expect(health.actions.timeouts).toBe(0);
     expect(health.failures).toBe(0);
     expect(health.observedSince).toBeNull();
   });
@@ -220,6 +225,67 @@ describe('observabilidad operativa P0/P1', () => {
           createdAt: inside,
         },
         {
+          id: 'm-fronti-request',
+          eventType: 'FRONTI_REQUEST',
+          status: 'STARTED',
+          source: 'SERVER_ACTION',
+          correlationId: 'fronti:test',
+          createdAt: inside,
+        },
+        {
+          id: 'm-fronti-success',
+          eventType: 'FRONTI_SUCCESS',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          correlationId: 'fronti:test',
+          durationMs: 2_400,
+          metadata: {
+            provider: 'cloudflare',
+            model: 'model-b',
+            configuredProvider: 'groq',
+            configuredModel: 'model-a',
+            outcome: 'partial',
+            fallbackUsed: true,
+          },
+          createdAt: inside,
+        },
+        {
+          id: 'm-fronti-tool-ok',
+          eventType: 'FRONTI_TOOL_CALLED',
+          status: 'SUCCESS',
+          source: 'SERVER_ACTION',
+          correlationId: 'fronti:test',
+          metadata: { tool: 'consultar_turnos', toolOk: true },
+          createdAt: inside,
+        },
+        {
+          id: 'm-fronti-tool-fail',
+          eventType: 'FRONTI_TOOL_CALLED',
+          status: 'FAILED',
+          source: 'SERVER_ACTION',
+          correlationId: 'fronti:test',
+          metadata: { tool: 'consultar_caja', toolOk: false },
+          createdAt: inside,
+        },
+        {
+          id: 'm-action-failed',
+          eventType: 'ACTION_FAILED',
+          status: 'FAILED',
+          source: 'SERVER_ACTION',
+          durationMs: 300,
+          metadata: { failureType: 'Error' },
+          createdAt: inside,
+        },
+        {
+          id: 'm-action-timeout',
+          eventType: 'ACTION_TIMEOUT',
+          status: 'FAILED',
+          source: 'SERVER_ACTION',
+          durationMs: 22_000,
+          metadata: { timeoutThresholdMs: 20_000 },
+          createdAt: inside,
+        },
+        {
           id: 'm-old',
           eventType: 'SHIFT_STARTED',
           status: 'SUCCESS',
@@ -250,6 +316,17 @@ describe('observabilidad operativa P0/P1', () => {
     expect(health.tutorial.started).toBe(1);
     expect(health.tutorial.stepsReached).toBe(1);
     expect(health.tutorial.completed).toBe(1);
+    expect(health.fronti.requested).toBe(1);
+    expect(health.fronti.succeeded).toBe(1);
+    expect(health.fronti.failed).toBe(0);
+    expect(health.fronti.successRate).toBe(1);
+    expect(health.fronti.medianDurationMs).toBe(2_400);
+    expect(health.fronti.fallbackRuns).toBe(1);
+    expect(health.fronti.toolCalls).toBe(2);
+    expect(health.fronti.toolFailures).toBe(1);
+    expect(health.actions.failed).toBe(1);
+    expect(health.actions.timeouts).toBe(1);
+    expect(health.actions.medianTimeoutMs).toBe(22_000);
     expect(health.failures).toBe(1);
   });
 
@@ -290,13 +367,29 @@ describe('observabilidad operativa P0/P1', () => {
     expect(tutorial).not.toContain('question:');
   });
 
-  it('separa P0 de P1 y todavía no adelanta P2', () => {
+  it('separa P0, P1 y P2 sin mezclar responsabilidades', () => {
     expect(P0_OPERATIONAL_EVENT_TYPES).toContain('SHIFT_CLOSE_COMPLETED');
     expect(P0_OPERATIONAL_EVENT_TYPES).not.toContain('TUTORIAL_STARTED' as never);
     expect(P1_OPERATIONAL_EVENT_TYPES).toContain('ENTRY_CREATED');
     expect(P1_OPERATIONAL_EVENT_TYPES).toContain('KEY_INVENTORY_COMPLETED');
     expect(P1_OPERATIONAL_EVENT_TYPES).toContain('TUTORIAL_COMPLETED');
     expect(P1_OPERATIONAL_EVENT_TYPES).not.toContain('FRONTI_REQUEST' as never);
-    expect(P1_OPERATIONAL_EVENT_TYPES).not.toContain('ACTION_FAILED' as never);
+    expect(P2_OPERATIONAL_EVENT_TYPES).toContain('FRONTI_REQUEST');
+    expect(P2_OPERATIONAL_EVENT_TYPES).toContain('FRONTI_TOOL_CALLED');
+    expect(P2_OPERATIONAL_EVENT_TYPES).toContain('ACTION_FAILED');
+    expect(P2_OPERATIONAL_EVENT_TYPES).toContain('ACTION_TIMEOUT');
+  });
+
+  it('P2 no persiste contenido de Fronti ni campos de formulario', () => {
+    const telemetry = readFileSync('src/server/ai/fronti-v2/telemetry.ts', 'utf8');
+    const action = readFileSync('src/server/action.ts', 'utf8');
+    expect(telemetry).toContain("eventType: 'FRONTI_REQUEST'");
+    expect(telemetry).toContain("eventType: 'FRONTI_TOOL_CALLED'");
+    expect(telemetry).not.toContain('messages:');
+    expect(telemetry).not.toContain('prompt:');
+    expect(telemetry).not.toContain('reply:');
+    expect(action).toContain("eventType: 'ACTION_FAILED'");
+    expect(action).toContain("eventType: 'ACTION_TIMEOUT'");
+    expect(action).not.toContain('formData');
   });
 });

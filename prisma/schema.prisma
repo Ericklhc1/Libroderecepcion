@@ -2544,3 +2544,35 @@ model ai_memory {
   @@index([shift_id, updated_at(sort: Desc)], map: "ai_memory_shift")
   @@index([user_id, scope, updated_at(sort: Desc)], map: "ai_memory_user_scope_updated")
 }
+
+
+/**
+ * Telemetría operativa mínima.
+ *
+ * Mide procesos, no personas: referencia IDs ya existentes, guarda metadata
+ * pequeña y estructurada y nunca reemplaza a Auditoría ni a los modelos
+ * operativos. No hay FK deliberadamente: la observabilidad no puede impedir
+ * reparaciones o ciclos de vida del dato principal.
+ */
+model OperationalMetricEvent {
+  id            String   @id @default(cuid())
+  eventType     String   @db.VarChar(64)
+  userId        String?
+  shiftId       String?
+  entityType    String?  @db.VarChar(64)
+  entityId      String?
+  correlationId String?  @db.VarChar(128)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  durationMs    Int?
+  status        String   @db.VarChar(24)
+  source        String   @db.VarChar(32)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([shiftId, createdAt])
+  @@index([correlationId, createdAt])
+}

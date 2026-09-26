@@ -233,25 +233,9 @@ export function TutorialTour({
           ) : null}
 
           <div className="mt-4 flex items-center justify-between gap-2 border-t border-petrol-800 pt-3">
-            {isLast ? (
-              <ActionForm
-                action={finishTutorialAction}
-                hideSuccess
-                className="space-y-0"
-                onSuccess={() => {
-                  setNeverAgainConfirmed(true);
-                  window.setTimeout(() => setDismissed(true), 1200);
-                }}
-              >
-                <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
-                  Finalizar recorrido
-                </SubmitButton>
-              </ActionForm>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => setDismissed(true)}>
-                Cerrar esta vez
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" onClick={() => setDismissed(true)}>
+              Cerrar esta vez
+            </Button>
 
             <div className="flex items-center gap-1">
               {!first ? (
@@ -265,7 +249,21 @@ export function TutorialTour({
                   Siguiente
                   <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
-              ) : null}
+              ) : (
+                <ActionForm
+                  action={finishTutorialAction}
+                  hideSuccess
+                  className="space-y-0"
+                  onSuccess={() => {
+                    setNeverAgainConfirmed(true);
+                    window.setTimeout(() => setDismissed(true), 1200);
+                  }}
+                >
+                  <SubmitButton variant="gold" size="sm" pendingLabel="Guardando…">
+                    Finalizar recorrido
+                  </SubmitButton>
+                </ActionForm>
+              )}
             </div>
           </div>
 
@@ -273,7 +271,21 @@ export function TutorialTour({
             <p className="mt-2 rounded-lg bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 ring-1 ring-emerald-300/20">
               Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.
             </p>
-          ) : null}
+          ) : (
+            <ActionForm
+              action={finishTutorialAction}
+              hideSuccess
+              className="mt-2 space-y-0 text-center"
+              onSuccess={() => {
+                setNeverAgainConfirmed(true);
+                window.setTimeout(() => setDismissed(true), 1500);
+              }}
+            >
+              <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
+                No volver a mostrar el tutorial
+              </SubmitButton>
+            </ActionForm>
+          )}
         </div>
       </div>
 

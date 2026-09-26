@@ -183,6 +183,19 @@ export async function confirmCashCountAction(
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
     const startedAt = metricStartedAtFrom(formData);
+    const receiveCorrelationId = `handover-receive:${handoverId}`;
+
+    // El recuento es el primer paso real de recepción cuando existe Caja.
+    // Se registra aquí para que la duración final abarque el proceso completo.
+    recordOperationalEvent({
+      eventType: 'HANDOVER_RECEIVE_STARTED',
+      userId: user.id,
+      entityType: 'ShiftHandover',
+      entityId: handoverId,
+      correlationId: receiveCorrelationId,
+      startedAt,
+      status: 'STARTED',
+    });
 
     try {
       const result = await receiveShiftCash(user, {
@@ -192,7 +205,7 @@ export async function confirmCashCountAction(
         notes: typeof notes === 'string' ? notes : null,
       });
       const completedAt = new Date();
-      const correlationId = `handover-receive:${handoverId}`;
+      const correlationId = receiveCorrelationId;
       const metadata = {
         countKind: 'CONFIRMADO',
         hasDifference: result.discrepancies.length > 0,
@@ -252,7 +265,7 @@ export async function confirmCashCountAction(
         userId: user.id,
         entityType: 'ShiftHandover',
         entityId: handoverId,
-        correlationId: `handover-receive:${handoverId}`,
+        correlationId: receiveCorrelationId,
         startedAt,
         status: 'STARTED',
       });

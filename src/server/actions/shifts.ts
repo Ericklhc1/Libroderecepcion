@@ -170,6 +170,7 @@ export async function receiveHandoverAction(
         shiftId: handover.fromShiftId,
         entityType: 'ShiftHandover',
         entityId: input.handoverId,
+        fallbackStartedAt: startedAt,
       });
       refresh();
       revalidatePath(`/turno/entrega/${input.handoverId}`);
@@ -333,6 +334,7 @@ export async function closeShiftAction(
         shiftId: input.shiftId,
         entityType: 'Shift',
         entityId: input.shiftId,
+        fallbackStartedAt: startedAt,
       });
       refresh(input.shiftId);
       return { ok: true as const, message: 'Turno cerrado y enviado a revisión posterior.' };

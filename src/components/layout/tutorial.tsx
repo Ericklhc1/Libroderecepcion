@@ -77,7 +77,7 @@ export function TutorialTour({
 
   function dismissThisSession() {
     window.sessionStorage.setItem(dismissKey, '1');
-    dismissThisSession();
+    setDismissed(true);
   }
 
   useEffect(() => {

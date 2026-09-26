@@ -183,11 +183,12 @@ describe('observabilidad operativa P0', () => {
     expect(percentile([10, 20, 30, 40, 50], 0.9)).toBe(50);
   });
 
-  it('mantiene el panel limitado al Centro de Supervisión', () => {
-    const source = readFileSync('src/app/(app)/supervision/salud/page.tsx', 'utf8');
-    expect(source).toContain("requirePagePermission('supervision.center.view')");
-    expect(source).not.toContain('user.name');
-    expect(source).not.toContain('ranking');
+  it('mantiene el panel limitado al Centro de Supervisión y sin desglose individual', () => {
+    const page = readFileSync('src/app/(app)/supervision/salud/page.tsx', 'utf8');
+    const service = readFileSync('src/server/services/operational-health.ts', 'utf8');
+    expect(page).toContain("requirePagePermission('supervision.center.view')");
+    expect(page).not.toContain('user.name');
+    expect(service).not.toContain("by: ['userId']");
   });
 
   it('el catálogo de esta etapa se detiene en P0', () => {

@@ -298,6 +298,7 @@ export function finishCorrelatedOperationalMetric(input: {
   entityType?: string | null;
   entityId?: string | null;
   metadata?: Record<string, unknown> | null;
+  fallbackStartedAt?: Date | null;
 }): void {
   schedule(async () => {
     const completedAt = new Date();
@@ -320,6 +321,8 @@ export function finishCorrelatedOperationalMetric(input: {
         failureType: operationalFailureType(error),
       });
     }
+
+    startedAt = startedAt ?? input.fallbackStartedAt ?? null;
 
     await persistOperationalEvent({
       eventType: input.completedEventType,

@@ -132,9 +132,11 @@ export default async function ShiftPage({
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
   const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
+  const hasCurrentOrPendingClosure = Boolean(shift || pendingClosure);
   const guidedShiftExperience =
-    user.roleOperational && (shift ? shiftExperienceCount <= 5 : shiftExperienceCount < 5);
-  const guidanceSession = shift
+    user.roleOperational &&
+    (hasCurrentOrPendingClosure ? shiftExperienceCount <= 5 : shiftExperienceCount < 5);
+  const guidanceSession = hasCurrentOrPendingClosure
     ? Math.max(1, Math.min(5, shiftExperienceCount))
     : Math.max(1, Math.min(5, shiftExperienceCount + 1));
 

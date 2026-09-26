@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   getR2AccountIdDiagnostics,
   getR2ConfigStatus,
+  getR2CredentialRelationshipDiagnostics,
   probeR2Connectivity,
   probeR2EndpointCandidates,
 } from '@/server/storage/r2';
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const status = getR2ConfigStatus();
   const accountIdDiagnostics = getR2AccountIdDiagnostics();
+  const credentialDiagnostics = getR2CredentialRelationshipDiagnostics();
   const [connectivity, endpointDiagnostics] = status.configured
     ? await Promise.all([
         probeR2Connectivity(),
@@ -37,6 +39,7 @@ export async function GET() {
       detectedKeys: status.detectedKeys,
       connectivity,
       accountIdDiagnostics,
+      credentialDiagnostics,
       endpointDiagnostics,
       authenticatedJurisdictions,
       configurationWarnings:

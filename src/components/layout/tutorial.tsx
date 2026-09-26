@@ -47,16 +47,19 @@ function isInViewport(rect: DOMRect): boolean {
  */
 export function TutorialTour({
   steps,
+  userId,
   userName,
   suspended = false,
 }: {
   steps: TutorialStep[];
+  userId: string;
   userName: string;
   suspended?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [index, setIndex] = useState(0);
+  const dismissKey = `libro:tutorial:dismissed:${userId}`;
   const [dismissed, setDismissed] = useState(false);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
   const [targetOffscreen, setTargetOffscreen] = useState(false);
@@ -67,6 +70,15 @@ export function TutorialTour({
   const step = steps[index];
   const isLast = index === steps.length - 1;
   const first = index === 0;
+
+  useEffect(() => {
+    setDismissed(window.sessionStorage.getItem(dismissKey) === '1');
+  }, [dismissKey]);
+
+  function dismissThisSession() {
+    window.sessionStorage.setItem(dismissKey, '1');
+    dismissThisSession();
+  }
 
   useEffect(() => {
     if (
@@ -142,19 +154,20 @@ export function TutorialTour({
   useEffect(() => {
     if (dismissed || suspended || !step) return;
 
-    const onPointerDown = (event: PointerEvent) => {
+    const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
       if (target.closest('[data-tutorial-ui="true"]')) return;
 
-      // La acción del Libro NO llega a ejecutarse hasta que la persona decide.
+      // Se intercepta el click, no pointerdown: tocar/arrastrar para hacer scroll
+      // sigue funcionando en móvil y trackpad sin abrir este diálogo.
       event.preventDefault();
       event.stopPropagation();
       setInteractionPrompt(true);
     };
 
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('click', onClickCapture, true);
+    return () => document.removeEventListener('click', onClickCapture, true);
   }, [dismissed, step, suspended]);
 
   const pointer = useMemo(() => {
@@ -233,7 +246,7 @@ export function TutorialTour({
           ) : null}
 
           <div className="mt-4 flex items-center justify-between gap-2 border-t border-petrol-800 pt-3">
-            <Button variant="ghost" size="sm" onClick={() => setDismissed(true)}>
+            <Button variant="ghost" size="sm" onClick={() => dismissThisSession()}>
               Cerrar esta vez
             </Button>
 
@@ -256,7 +269,7 @@ export function TutorialTour({
                   className="space-y-0"
                   onSuccess={() => {
                     setNeverAgainConfirmed(true);
-                    window.setTimeout(() => setDismissed(true), 1200);
+                    window.setTimeout(() => dismissThisSession(), 1200);
                   }}
                 >
                   <SubmitButton variant="gold" size="sm" pendingLabel="Guardando…">
@@ -278,7 +291,7 @@ export function TutorialTour({
               className="mt-2 space-y-0 text-center"
               onSuccess={() => {
                 setNeverAgainConfirmed(true);
-                window.setTimeout(() => setDismissed(true), 1500);
+                window.setTimeout(() => dismissThisSession(), 1500);
               }}
             >
               <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
@@ -326,7 +339,7 @@ export function TutorialTour({
                   variant="secondary"
                   onClick={() => {
                     setInteractionPrompt(false);
-                    setDismissed(true);
+                    dismissThisSession();
                   }}
                 >
                   Cerrar esta vez
@@ -339,7 +352,7 @@ export function TutorialTour({
                     setNeverAgainConfirmed(true);
                     window.setTimeout(() => {
                       setInteractionPrompt(false);
-                      setDismissed(true);
+                      dismissThisSession();
                     }, 1500);
                   }}
                 >

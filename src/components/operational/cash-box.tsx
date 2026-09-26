@@ -16,7 +16,7 @@ import {
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
 import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
-import { closeShiftCashAction } from '@/server/actions/cash-closure';
+import { closeShiftCashAction, reopenShiftCashAction } from '@/server/actions/cash-closure';
 import { DenominationVisual } from '@/components/cash/denomination-visual';
 
 export type DenominationOption = {
@@ -307,6 +307,7 @@ export function CashBox({
   previous,
   role,
   formalClosure,
+  canReopen = false,
 }: {
   handoverId: string;
   shiftId: string;
@@ -319,13 +320,14 @@ export function CashBox({
     closedByName: string;
     reopenedAt: string | null;
   } | null;
+  canReopen?: boolean;
 }) {
   if (!state.enabled) return null;
 
   return (
     <Card>
       <CardHeader
-        title="Cierre formal de Caja"
+        title="Caja del turno"
         action={state.discrepancies.length > 0 ? <Badge tone="atencion">Diferencia entre conteos</Badge> : null}
       />
       <div className="space-y-4 px-4 py-4">
@@ -489,24 +491,41 @@ export function CashBox({
           <section className="rounded-xl bg-gold-50 p-3 ring-1 ring-gold-200 no-print">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-petrol-900">Confirmación del cierre formal</h3>
+                <h3 className="text-sm font-semibold text-petrol-900">
+                  {formalClosure && !formalClosure.reopenedAt ? 'Caja cerrada' : 'Cerrar Caja'}
+                </h3>
                 {formalClosure && !formalClosure.reopenedAt ? (
                   <p className="mt-1 text-xs text-emerald-800">
-                    Confirmado por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
+                    Cerrada por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-600">
-                    Congela este arqueo como cierre formal del turno. Una diferencia declarada no requiere autorización de Supervisión.
+                    El arqueo y las garantías quedarán congelados para la entrega de turno.
                   </p>
                 )}
               </div>
               {formalClosure && !formalClosure.reopenedAt ? (
-                <Badge tone="resuelto">Cierre formal confirmado</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="resuelto">CAJA CERRADA</Badge>
+                  {canReopen ? (
+                    <ActionForm action={reopenShiftCashAction} className="space-y-0" refreshOnSuccess>
+                      <input type="hidden" name="shiftId" value={shiftId} />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value="Reapertura manual de Caja desde el cierre de turno."
+                      />
+                      <SubmitButton variant="secondary" pendingLabel="Abriendo Caja…">
+                        ABRIR CAJA
+                      </SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
               ) : (
                 <ActionForm action={closeShiftCashAction} className="space-y-0" refreshOnSuccess>
                   <input type="hidden" name="shiftId" value={shiftId} />
-                  <SubmitButton variant="gold" pendingLabel="Confirmando…">
-                    Confirmar cierre formal
+                  <SubmitButton variant="gold" pendingLabel="Cerrando Caja…">
+                    CERRAR CAJA
                   </SubmitButton>
                 </ActionForm>
               )}

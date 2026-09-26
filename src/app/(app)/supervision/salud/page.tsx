@@ -30,6 +30,11 @@ function formatDuration(value: number | null): string {
   return minutes < 10 ? `${minutes.toFixed(1)} min` : `${Math.round(minutes)} min`;
 }
 
+function formatPercent(value: number | null): string {
+  if (value === null) return '—';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export default async function OperationalHealthPage({
   searchParams,
 }: {
@@ -218,6 +223,67 @@ export default async function OperationalHealthPage({
         </div>
       </section>
 
+      <section>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Fronti · Estabilidad real</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile label="Solicitudes" value={health.fronti.requested} />
+          <StatTile
+            label="Éxito observado"
+            value={formatPercent(health.fronti.successRate)}
+            hint={`${health.fronti.succeeded} éxito(s) · ${health.fronti.failed} fallo(s)`}
+            tone={health.fronti.failed > 0 ? 'neutral' : 'good'}
+          />
+          <StatTile
+            label="Latencia mediana"
+            value={formatDuration(health.fronti.medianDurationMs)}
+            hint={
+              health.fronti.p90DurationMs === null
+                ? 'Sin base suficiente todavía'
+                : `P90 ${formatDuration(health.fronti.p90DurationMs)} · Prom. ${formatDuration(health.fronti.averageDurationMs)}`
+            }
+          />
+          <StatTile
+            label="Fallbacks observados"
+            value={health.fronti.fallbackRuns}
+            hint="Proveedor o modelo final distinto de la configuración primaria"
+            tone={health.fronti.fallbackRuns > 0 ? 'neutral' : 'good'}
+          />
+          <StatTile label="Tools ejecutadas" value={health.fronti.toolCalls} />
+          <StatTile
+            label="Tools con fallo"
+            value={health.fronti.toolFailures}
+            tone={health.fronti.toolFailures > 0 ? 'alert' : 'good'}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-xs font-semibold text-slate-500">Interfaz · Fallos técnicos</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile
+            label="Acciones con error inesperado"
+            value={health.actions.failed}
+            hint="No incluye validaciones ni errores de dominio esperados"
+            tone={health.actions.failed > 0 ? 'alert' : 'good'}
+          />
+          <StatTile
+            label="Acciones ≥ 20 s"
+            value={health.actions.timeouts}
+            hint="Umbral técnico de observación, no objetivo de productividad"
+            tone={health.actions.timeouts > 0 ? 'neutral' : 'good'}
+          />
+          <StatTile
+            label="Mediana sobre umbral"
+            value={formatDuration(health.actions.medianTimeoutMs)}
+            hint={
+              health.actions.p90TimeoutMs === null
+                ? 'Sin casos suficientes todavía'
+                : `P90 ${formatDuration(health.actions.p90TimeoutMs)}`
+            }
+          />
+        </div>
+      </section>
+
       <Card>
         <CardHeader title="Línea base" />
         <div className="space-y-2 px-4 py-4 text-sm text-slate-600">
@@ -231,8 +297,9 @@ export default async function OperationalHealthPage({
               : 'Todavía no hay eventos operativos registrados en este entorno.'}
           </p>
           <p className="text-xs text-slate-500">
-            P1 añade Novedades, inventario de llaves y Tutorial sobre la misma infraestructura.
-            Fronti persistente y los errores genéricos de interfaz permanecen fuera hasta P2.
+            P2 añade Fronti persistente y fallos técnicos transversales sobre la misma
+            infraestructura. No se guardan prompts, respuestas, campos de formulario ni ranking por
+            usuario.
           </p>
         </div>
       </Card>

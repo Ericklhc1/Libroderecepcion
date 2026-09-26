@@ -43,9 +43,19 @@ export const P1_OPERATIONAL_EVENT_TYPES = [
   'TUTORIAL_COMPLETED',
 ] as const;
 
+export const P2_OPERATIONAL_EVENT_TYPES = [
+  'FRONTI_REQUEST',
+  'FRONTI_SUCCESS',
+  'FRONTI_FAILURE',
+  'FRONTI_TOOL_CALLED',
+  'ACTION_FAILED',
+  'ACTION_TIMEOUT',
+] as const;
+
 export const OPERATIONAL_EVENT_TYPES = [
   ...P0_OPERATIONAL_EVENT_TYPES,
   ...P1_OPERATIONAL_EVENT_TYPES,
+  ...P2_OPERATIONAL_EVENT_TYPES,
 ] as const;
 
 export type OperationalEventType = (typeof OPERATIONAL_EVENT_TYPES)[number];
@@ -60,6 +70,18 @@ const ALLOWED_METADATA_KEYS = new Set([
   'failureType',
   'entryType',
   'floor',
+  'provider',
+  'model',
+  'configuredProvider',
+  'configuredModel',
+  'outcome',
+  'tool',
+  'toolOk',
+  'toolCount',
+  'modelCount',
+  'loopCount',
+  'fallbackUsed',
+  'timeoutThresholdMs',
 ]);
 
 type MetadataPrimitive = string | number | boolean;

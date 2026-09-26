@@ -36,6 +36,7 @@ import {
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import {
   recordFrontiAgentRun,
+  startFrontiAgentRun,
   type FrontiToolTrace,
 } from './fronti-v2/telemetry';
 import { serializeToolResultForModel } from './fronti-v2/context-budget';
@@ -912,7 +913,8 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
 ): Promise<AssistantResult> {
-  const startedAt = Date.now();
+  const telemetry = startFrontiAgentRun(user.id);
+  const startedAt = telemetry.startedAt.getTime();
   const toolTrace: FrontiToolTrace[] = [];
   let loops = 0;
   let config: FrontiConfig | null = null;
@@ -976,10 +978,11 @@ export async function runReceptionAssistant(
       }
 
       if (!response.toolCalls.length) {
-        recordFrontiAgentRun({
-          userId: user.id,
+        recordFrontiAgentRun(telemetry, {
           provider: modelTrace.at(-1)?.provider ?? config.provider,
           model: modelTrace.at(-1)?.model ?? config.model,
+          configuredProvider: config.provider,
+          configuredModel: config.model,
           models: modelTrace,
           durationMs: Date.now() - startedAt,
           loops,
@@ -1060,10 +1063,11 @@ export async function runReceptionAssistant(
       chat = [...chat, response.assistantMessage, ...toolMessages];
     }
 
-    recordFrontiAgentRun({
-      userId: user.id,
+    recordFrontiAgentRun(telemetry, {
       provider: modelTrace.at(-1)?.provider ?? config.provider,
       model: modelTrace.at(-1)?.model ?? config.model,
+      configuredProvider: config.provider,
+      configuredModel: config.model,
       models: modelTrace,
       durationMs: Date.now() - startedAt,
       loops,
@@ -1077,10 +1081,11 @@ export async function runReceptionAssistant(
       confirmations,
     };
   } catch (error) {
-    recordFrontiAgentRun({
-      userId: user.id,
+    recordFrontiAgentRun(telemetry, {
       provider: modelTrace.at(-1)?.provider ?? config?.provider ?? 'unknown',
       model: modelTrace.at(-1)?.model ?? config?.model ?? 'unknown',
+      configuredProvider: config?.provider ?? 'unknown',
+      configuredModel: config?.model ?? 'unknown',
       models: modelTrace,
       durationMs: Date.now() - startedAt,
       loops,

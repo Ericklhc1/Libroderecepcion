@@ -181,3 +181,23 @@ Production.
   Tutorial para Hoy/7/30 días.
 - Fronti persistente y `ACTION_FAILED/ACTION_TIMEOUT` quedan fuera hasta P2.
 - Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.
+
+
+## Observabilidad operativa P2 · v1.14.0
+
+- Rama: `feature/observabilidad-operativa-p2`.
+- P2 reutiliza `OperationalMetricEvent`; no añade tablas, índices ni
+  migraciones.
+- Fronti persiste `FRONTI_REQUEST`, `FRONTI_SUCCESS`,
+  `FRONTI_FAILURE` y `FRONTI_TOOL_CALLED` desde su colector central.
+- Cada ejecución Fronti usa `fronti:<uuid>` como correlación y conserva sólo
+  proveedor/modelo, duración, outcome, loops, tools y fallback; nunca prompts,
+  respuestas, argumentos ni resultados de tools.
+- `runAction` registra `ACTION_FAILED` sólo para errores inesperados; no
+  convierte validaciones ni errores de dominio esperados en fallos técnicos.
+- `ACTION_TIMEOUT` marca acciones que completaron en 20 s o más. Es un
+  umbral técnico de observación, no un KPI ni una meta humana.
+- `/supervision/salud` añade éxito observado, latencia media/mediana/P90,
+  fallback y tools de Fronti, además de fallos/demoras técnicas transversales.
+- El panel sigue sin desglose individual ni ranking.
+- Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.

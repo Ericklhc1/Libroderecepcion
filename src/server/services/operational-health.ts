@@ -105,6 +105,18 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
         typeof event.durationMs === 'number',
     )
     .map((event) => event.durationMs as number);
+  const frontiOutcomeEvents = events.filter(
+    (event) =>
+      event.eventType === 'FRONTI_SUCCESS' || event.eventType === 'FRONTI_FAILURE',
+  );
+  const frontiDurations = frontiOutcomeEvents
+    .filter((event) => typeof event.durationMs === 'number')
+    .map((event) => event.durationMs as number);
+  const actionTimeoutDurations = events
+    .filter(
+      (event) => event.eventType === 'ACTION_TIMEOUT' && typeof event.durationMs === 'number',
+    )
+    .map((event) => event.durationMs as number);
 
   const closureStarts = events.filter(
     (event) => event.eventType === 'SHIFT_CLOSE_STARTED' && event.correlationId,
@@ -209,6 +221,36 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
       closedThisSession: count('TUTORIAL_CLOSED_THIS_SESSION'),
       disabled: count('TUTORIAL_DISABLED'),
       completed: count('TUTORIAL_COMPLETED'),
+    },
+    fronti: {
+      requested: count('FRONTI_REQUEST'),
+      succeeded: count('FRONTI_SUCCESS'),
+      failed: count('FRONTI_FAILURE'),
+      successRate:
+        count('FRONTI_REQUEST') > 0
+          ? count('FRONTI_SUCCESS') / count('FRONTI_REQUEST')
+          : null,
+      averageDurationMs:
+        frontiDurations.length > 0
+          ? frontiDurations.reduce((sum, value) => sum + value, 0) / frontiDurations.length
+          : null,
+      medianDurationMs: median(frontiDurations),
+      p90DurationMs: percentile(frontiDurations, 0.9),
+      fallbackRuns: frontiOutcomeEvents.filter((event) =>
+        metadataBoolean(event.metadata, 'fallbackUsed'),
+      ).length,
+      toolCalls: count('FRONTI_TOOL_CALLED'),
+      toolFailures: events.filter(
+        (event) =>
+          event.eventType === 'FRONTI_TOOL_CALLED' &&
+          !metadataBoolean(event.metadata, 'toolOk'),
+      ).length,
+    },
+    actions: {
+      failed: count('ACTION_FAILED'),
+      timeouts: count('ACTION_TIMEOUT'),
+      medianTimeoutMs: median(actionTimeoutDurations),
+      p90TimeoutMs: percentile(actionTimeoutDurations, 0.9),
     },
     failures,
   };

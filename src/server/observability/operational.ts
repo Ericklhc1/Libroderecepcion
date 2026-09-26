@@ -314,7 +314,7 @@ export function finishCorrelatedOperationalMetric(input: {
           correlationId: input.correlationId,
           status: 'STARTED',
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'asc' },
         select: { startedAt: true, createdAt: true },
       });
       startedAt = start?.startedAt ?? start?.createdAt ?? null;

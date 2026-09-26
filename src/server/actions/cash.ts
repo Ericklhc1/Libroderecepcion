@@ -54,6 +54,16 @@ function guaranteeIdsFrom(formData: FormData): string[] {
     .map(([key]) => key.slice(2));
 }
 
+function metricStartedAtFrom(formData: FormData): Date {
+  const raw = formData.get('metricStartedAt');
+  const epoch = typeof raw === 'string' ? Number(raw) : Number.NaN;
+  const now = Date.now();
+  if (!Number.isFinite(epoch) || epoch > now || now - epoch > 4 * 3600_000) {
+    return new Date(now);
+  }
+  return new Date(epoch);
+}
+
 function quantitiesFrom(formData: FormData): Record<string, number> {
   const quantities: Record<string, number> = {};
   for (const [key, value] of formData.entries()) {
@@ -87,7 +97,7 @@ export async function declareCashCountAction(
     const user = await requirePermission('cash.count_declare');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-    const startedAt = new Date();
+    const startedAt = metricStartedAtFrom(formData);
 
     try {
       const { statuses, shiftId } = await saveCashCount(user, {
@@ -162,7 +172,7 @@ export async function confirmCashCountAction(
     const user = await requirePermission('cash.count_receive');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-    const startedAt = new Date();
+    const startedAt = metricStartedAtFrom(formData);
 
     try {
       const result = await receiveShiftCash(user, {
@@ -172,7 +182,7 @@ export async function confirmCashCountAction(
         notes: typeof notes === 'string' ? notes : null,
       });
       const completedAt = new Date();
-      const correlationId = shiftCloseCorrelationId(result.shiftId);
+      const correlationId = `handover-receive:${handoverId}`;
       const metadata = {
         countKind: 'CONFIRMADO',
         hasDifference: result.discrepancies.length > 0,
@@ -222,7 +232,7 @@ export async function confirmCashCountAction(
         userId: user.id,
         entityType: 'ShiftHandover',
         entityId: handoverId,
-        correlationId: `cash-count:${handoverId}:CONFIRMADO`,
+        correlationId: `handover-receive:${handoverId}`,
         startedAt,
         completedAt,
         durationMs: operationalDurationMs(startedAt, completedAt),

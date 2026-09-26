@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +73,7 @@ function CountForm({
   kind: 'declarar' | 'confirmar';
   previous: Record<string, number>;
 }) {
+  const metricStartedAtRef = useRef<HTMLInputElement>(null);
   const currencies = useMemo(() => {
     const map = new Map<string, DenominationOption[]>();
     for (const denomination of denominations) {
@@ -84,8 +85,16 @@ function CountForm({
   }, [denominations]);
 
   return (
-    <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}>
+    <div
+      onFocusCapture={() => {
+        if (metricStartedAtRef.current && !metricStartedAtRef.current.value) {
+          metricStartedAtRef.current.value = String(Date.now());
+        }
+      }}
+    >
+      <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}>
       <input type="hidden" name="handoverId" value={handoverId} />
+      <input ref={metricStartedAtRef} type="hidden" name="metricStartedAt" defaultValue="" />
       <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
         Cuenta por denominación exclusivamente el fondo fijo. No incluyas las garantías en este conteo.
       </p>
@@ -190,6 +199,7 @@ function CountForm({
         {kind === 'declarar' ? 'Guardar arqueo declarado' : 'Confirmar arqueo recibido'}
       </SubmitButton>
     </ActionForm>
+    </div>
   );
 }
 

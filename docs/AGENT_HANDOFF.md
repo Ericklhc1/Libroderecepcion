@@ -241,3 +241,18 @@ Production.
 - No se cambia todavía el host operativo, no se añaden blobs a Neon y no se
   modifica el contrato de adjuntos.
 - Documento: `docs/DIAGNOSTICO_R2_2026-09-26.md`.
+
+
+## Gate operativo R2 · v1.14.3
+
+- Base: v1.14.2 / diagnóstico R2 en Production.
+- El Chat deja de inferir disponibilidad por presencia de variables: usa salud real
+  de R2 con probe HEAD cacheado 60 s y timeout de 2,5 s.
+- Si R2 está caído, `storageEnabled=false` y la interfaz deshabilita archivos,
+  notas de voz y creación de stickers propios sin bloquear mensajes, GIF ni
+  Compartir Libro.
+- Las APIs de adjuntos/stickers aplican el mismo gate y responden con error
+  operativo claro en vez de intentar una subida/lectura condenada a fallar.
+- El healthcheck añade diagnóstico booleano seguro para detectar si Account ID
+  coincide accidentalmente con Access Key o Secret, sin devolver valores.
+- Sin migraciones, sin cambio de permisos, sin almacenamiento de blobs en Neon.

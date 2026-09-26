@@ -284,7 +284,7 @@ describe('observabilidad operativa P0/P1', () => {
     expect(page).not.toContain('user.name');
     expect(service).not.toContain("by: ['userId']");
     expect(cashUi).toContain('name="metricStartedAt"');
-    expect(keyMetric).toContain('KEY_INVENTORY_STARTED');
+    expect(keyMetric).toContain('startKeyInventoryMetricAction');
     expect(keyMetric).not.toContain('notes');
     expect(tutorial).toContain('TUTORIAL_STEP_REACHED');
     expect(tutorial).not.toContain('question:');

@@ -97,7 +97,12 @@ export default async function ShiftPage({
     prisma.shift.count({
       where: {
         isDemo: false,
-        OR: [{ startedById: user.id }, { closedById: user.id }],
+        assignments: {
+          some: {
+            userId: user.id,
+            activatedAt: { not: null },
+          },
+        },
       },
     }),
   ]);

@@ -1312,7 +1312,7 @@ export function ChatWidget({
       onClick={() => setOpen((value) => !value)}
       aria-label={unread > 0 ? `Chat y Fronti, ${unread} mensajes sin leer` : 'Abrir Chat y Fronti'}
       aria-expanded={open}
-      className="fixed bottom-20 left-3 z-[110] flex h-12 min-w-[13.5rem] items-center gap-2 rounded-xl bg-petrol-900 px-3 text-left text-white shadow-xl ring-1 ring-petrol-800 transition-colors hover:bg-petrol-800 lg:bottom-0 lg:left-[17rem] lg:rounded-b-none"
+      className="fixed bottom-20 left-0 z-[110] flex h-12 min-w-[13.5rem] items-center gap-2 rounded-r-xl bg-petrol-900 px-3 text-left text-white shadow-xl ring-1 ring-petrol-800 transition-colors hover:bg-petrol-800 lg:bottom-0 lg:left-64"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-gold-300">
         <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -1334,10 +1334,10 @@ export function ChatWidget({
     </button>
   );
 
-  if (!mounted) return trigger;
+  if (!mounted) return null;
 
   const panel = open ? (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-white shadow-2xl sm:inset-auto sm:bottom-20 sm:left-3 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-2xl sm:ring-1 sm:ring-slate-200 lg:bottom-14 lg:left-[17rem]">
+    <div className="fixed inset-0 z-[120] flex flex-col bg-white shadow-2xl sm:inset-auto sm:bottom-20 sm:left-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-r-2xl sm:ring-1 sm:ring-slate-200 lg:bottom-12 lg:left-64">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
         {view !== 'list' ? (
           <button
@@ -3075,7 +3075,7 @@ export function ChatWidget({
 
   return (
     <>
-      {trigger}
+      {createPortal(trigger, document.body)}
       {panel ? createPortal(panel, document.body) : null}
     </>
   );

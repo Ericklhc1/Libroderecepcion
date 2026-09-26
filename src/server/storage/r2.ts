@@ -324,8 +324,25 @@ export type R2ConnectivityProbe = {
  * normal) prueban conectividad válida. Cualquier otro estado queda visible sin
  * copiar cuerpo de respuesta, credenciales ni detalles del proveedor.
  */
+const R2_OPERATIONAL_CACHE_MS = 60_000;
+const R2_OPERATIONAL_PROBE_TIMEOUT_MS = 2_500;
+
+let r2OperationalCache:
+  | { expiresAt: number; promise: Promise<boolean> }
+  | null = null;
+
+async function headR2ObjectForHealth(key: string): Promise<Response> {
+  return signedRequest(
+    'HEAD',
+    key,
+    undefined,
+    undefined,
+    { signal: AbortSignal.timeout(R2_OPERATIONAL_PROBE_TIMEOUT_MS) },
+  );
+}
+
 export async function probeR2Connectivity(
-  requester: (key: string) => Promise<Response> = headR2Object,
+  requester: (key: string) => Promise<Response> = headR2ObjectForHealth,
 ): Promise<R2ConnectivityProbe> {
   try {
     const response = await requester('__health__/connectivity-probe');
@@ -341,6 +358,41 @@ export async function probeR2Connectivity(
       failureType: error instanceof Error ? error.name : typeof error,
     };
   }
+}
+
+export async function isR2Operational(options: { force?: boolean } = {}): Promise<boolean> {
+  if (!isR2Configured()) return false;
+
+  const now = Date.now();
+  if (!options.force && r2OperationalCache && r2OperationalCache.expiresAt > now) {
+    return r2OperationalCache.promise;
+  }
+
+  const promise = probeR2Connectivity()
+    .then((result) => result.reachable)
+    .catch(() => false);
+
+  r2OperationalCache = {
+    expiresAt: now + R2_OPERATIONAL_CACHE_MS,
+    promise,
+  };
+  return promise;
+}
+
+export function getR2CredentialRelationshipDiagnostics() {
+  const parts = resolvedConfigParts();
+  const accountId = parts.accountId.value;
+  const accessKeyId = parts.accessKeyId.value;
+  const secretAccessKey = parts.secretAccessKey.value;
+
+  return {
+    accountIdMatchesAccessKeyId:
+      Boolean(accountId) && Boolean(accessKeyId) && accountId === accessKeyId,
+    accountIdMatchesSecretAccessKey:
+      Boolean(accountId) && Boolean(secretAccessKey) && accountId === secretAccessKey,
+    accountIdUsesLegacyTypo:
+      parts.accountId.source === 'R2_ACCOUND_ID',
+  };
 }
 
 export type R2Jurisdiction = 'default' | 'us' | 'eu' | 'fedramp';

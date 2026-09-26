@@ -77,7 +77,9 @@ describe('recorrido guiado', () => {
     expect(component).toContain('Cerrar esta vez');
     expect(component).toContain('No volver a mostrar');
     expect(component).toContain('Puedes activarlo cuando quieras desde Mi perfil');
-    expect(component).toContain("document.addEventListener('pointerdown', onPointerDown, true)");
+    expect(component).toContain('libro:tutorial:dismissed:');
+    expect(component).toContain('sessionStorage.setItem');
+    expect(component).toContain("document.addEventListener('click', onClickCapture, true)");
   });
 
   it('mantiene una guía ampliada sólo durante los primeros cinco turnos', async () => {

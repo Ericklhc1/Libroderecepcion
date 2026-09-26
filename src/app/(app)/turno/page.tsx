@@ -61,7 +61,7 @@ export default async function ShiftPage({
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
 
-  const [desk, recentShifts, pendingClosure, blockingOutgoing, startedShiftCount] = await Promise.all([
+  const [desk, recentShifts, pendingClosure, blockingOutgoing, shiftExperienceCount] = await Promise.all([
     getShiftDesk(user),
     prisma.shift.findMany({
       where: { assignments: { some: { userId: user.id } } },
@@ -96,8 +96,8 @@ export default async function ShiftPage({
     }),
     prisma.shift.count({
       where: {
-        startedById: user.id,
         isDemo: false,
+        OR: [{ startedById: user.id }, { closedById: user.id }],
       },
     }),
   ]);
@@ -133,10 +133,10 @@ export default async function ShiftPage({
   const cashIncoming = desk.cashPending;
   const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
   const guidedShiftExperience =
-    user.roleOperational && (shift ? startedShiftCount <= 5 : startedShiftCount < 5);
+    user.roleOperational && (shift ? shiftExperienceCount <= 5 : shiftExperienceCount < 5);
   const guidanceSession = shift
-    ? Math.max(1, Math.min(5, startedShiftCount))
-    : Math.max(1, Math.min(5, startedShiftCount + 1));
+    ? Math.max(1, Math.min(5, shiftExperienceCount))
+    : Math.max(1, Math.min(5, shiftExperienceCount + 1));
 
   /*
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén

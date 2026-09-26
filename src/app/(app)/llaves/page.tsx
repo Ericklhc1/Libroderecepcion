@@ -26,6 +26,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
+import { KeyInventoryMetricBoundary } from '@/components/observability/key-inventory-metric-boundary';
 import type { Tone } from '@/domain/labels';
 
 export const metadata = { title: 'Llaves' };
@@ -238,7 +239,8 @@ export default async function KeysPage({
             </div>
           ) : (
             <ActionForm action={savePhysicalKeyCountAction} refreshOnSuccess>
-              <input type="hidden" name="floor" value={floor} />
+              <KeyInventoryMetricBoundary floor={floor}>
+                <input type="hidden" name="floor" value={floor} />
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[52rem] text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -313,6 +315,7 @@ export default async function KeysPage({
                   <SubmitButton pendingLabel="Guardando inventario…">Guardar inventario del piso {floor}</SubmitButton>
                 </div>
               </div>
+              </KeyInventoryMetricBoundary>
             </ActionForm>
           )}
         </Card>

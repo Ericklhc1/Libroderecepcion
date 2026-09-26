@@ -20,6 +20,7 @@ import {
   getR2Object,
   headR2Object,
   isR2Configured,
+  isR2Operational,
   makeChatStorageKey,
   putR2Object,
 } from '@/server/storage/r2';
@@ -343,7 +344,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
   assertChatActor(user);
   const frontiConversationId = await ensureFrontiPrivateConversation(user);
   const now = new Date();
-  const [rows, people, totalUnread, me] = await Promise.all([
+  const [rows, people, totalUnread, me, storageOperational] = await Promise.all([
     prisma.chatConversation.findMany({
       where: {
         deletedAt: null,
@@ -359,6 +360,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
       where: { id: user.id },
       select: presenceSelect(now),
     }),
+    isR2Operational(),
   ]);
 
   return {
@@ -366,7 +368,7 @@ export async function getChatBootstrap(user: CurrentUser): Promise<ChatBootstrap
     people,
     profile: serializeProfile(me),
     totalUnread,
-    storageEnabled: isR2Configured(),
+    storageEnabled: storageOperational,
     frontiEnabled: Boolean(frontiConversationId),
     generatedAt: now.toISOString(),
   };

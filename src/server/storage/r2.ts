@@ -407,7 +407,7 @@ export async function probeR2EndpointCandidates(
   const jurisdictions: R2Jurisdiction[] = ['default', 'us', 'eu', 'fedramp'];
   const request =
     requester ??
-    ((jurisdiction: R2Jurisdiction, host: string) =>
+    ((_jurisdiction: R2Jurisdiction, host: string) =>
       signedRequest(
         'HEAD',
         '__health__/jurisdiction-probe',

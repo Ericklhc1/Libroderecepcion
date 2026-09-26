@@ -167,7 +167,7 @@ export async function receiveHandoverAction(
         completedEventType: 'HANDOVER_RECEIVED',
         correlationId,
         userId: user.id,
-        shiftId: handover.fromShiftId,
+        shiftId: 'fromShiftId' in handover ? handover.fromShiftId : null,
         entityType: 'ShiftHandover',
         entityId: input.handoverId,
         fallbackStartedAt: startedAt,

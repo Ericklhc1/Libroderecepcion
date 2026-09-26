@@ -241,3 +241,16 @@ Production.
 - No se cambia todavía el host operativo, no se añaden blobs a Neon y no se
   modifica el contrato de adjuntos.
 - Documento: `docs/DIAGNOSTICO_R2_2026-09-26.md`.
+
+
+## Resiliencia R2 · v1.14.3
+
+- v1.14.2 confirmó que ninguna jurisdicción R2 autentica en Production:
+  default/us/eu fallan en TLS y fedramp llega a HTTP 403.
+- El Chat pasa a habilitar multimedia sólo cuando un probe autenticado de R2
+  está realmente sano; el resultado se cachea 30 s.
+- Si R2 está caído, la interfaz deshabilita adjuntos, stickers personalizados y
+  notas de voz con mensaje temporal, evitando una calle sin salida.
+- Salud añade comparación booleana Account ID vs Access Key ID sin exponer
+  valores para detectar una copia errónea de credenciales.
+- No se guardan blobs en Neon y no se cambia el host R2 automáticamente.

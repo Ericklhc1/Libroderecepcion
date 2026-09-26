@@ -135,8 +135,8 @@ export default async function ProfilePage() {
         <CardHeader title="Ayuda" />
         <div className="space-y-2 px-4 py-4">
           <p className="text-sm text-slate-600">
-            La central de ayuda está siempre en la cabecera, con los procedimientos que
-            puedes ejecutar. Si saltaste el recorrido del primer día, acá vuelve.
+            La central de ayuda está siempre en la cabecera. Si elegiste no volver a mostrar
+            el tutorial, puedes activarlo nuevamente desde aquí cuando quieras.
           </p>
           <RestartTutorialButton />
         </div>

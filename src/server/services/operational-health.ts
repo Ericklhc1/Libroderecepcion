@@ -88,6 +88,23 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
         typeof event.durationMs === 'number',
     )
     .map((event) => event.durationMs as number);
+  const entryTakeDurations = events
+    .filter(
+      (event) => event.eventType === 'ENTRY_TAKEN' && typeof event.durationMs === 'number',
+    )
+    .map((event) => event.durationMs as number);
+  const entryResolveDurations = events
+    .filter(
+      (event) => event.eventType === 'ENTRY_RESOLVED' && typeof event.durationMs === 'number',
+    )
+    .map((event) => event.durationMs as number);
+  const keyInventoryDurations = events
+    .filter(
+      (event) =>
+        event.eventType === 'KEY_INVENTORY_COMPLETED' &&
+        typeof event.durationMs === 'number',
+    )
+    .map((event) => event.durationMs as number);
 
   const closureStarts = events.filter(
     (event) => event.eventType === 'SHIFT_CLOSE_STARTED' && event.correlationId,
@@ -173,6 +190,25 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
     entries: {
       created: entriesCreated,
       resolved: entriesResolved,
+      takenObserved: count('ENTRY_TAKEN'),
+      resolvedObserved: count('ENTRY_RESOLVED'),
+      medianTakeMs: median(entryTakeDurations),
+      p90TakeMs: percentile(entryTakeDurations, 0.9),
+      medianResolveMs: median(entryResolveDurations),
+      p90ResolveMs: percentile(entryResolveDurations, 0.9),
+    },
+    keyInventory: {
+      completed: count('KEY_INVENTORY_COMPLETED'),
+      withDifferences: count('KEY_INVENTORY_WITH_DIFFERENCES'),
+      medianDurationMs: median(keyInventoryDurations),
+      p90DurationMs: percentile(keyInventoryDurations, 0.9),
+    },
+    tutorial: {
+      started: count('TUTORIAL_STARTED'),
+      stepsReached: count('TUTORIAL_STEP_REACHED'),
+      closedThisSession: count('TUTORIAL_CLOSED_THIS_SESSION'),
+      disabled: count('TUTORIAL_DISABLED'),
+      completed: count('TUTORIAL_COMPLETED'),
     },
     failures,
   };

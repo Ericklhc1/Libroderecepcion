@@ -29,6 +29,12 @@ import {
   cashApprovalRequired,
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
+import {
+  operationalDurationMs,
+  operationalFailureType,
+  recordOperationalEvent,
+  shiftCloseCorrelationId,
+} from '@/server/observability/operational';
 
 /**
  * Acciones de caja.
@@ -46,6 +52,16 @@ function guaranteeIdsFrom(formData: FormData): string[] {
   return [...formData.entries()]
     .filter(([key, value]) => key.startsWith('g_') && value === '1')
     .map(([key]) => key.slice(2));
+}
+
+function metricStartedAtFrom(formData: FormData): Date {
+  const raw = formData.get('metricStartedAt');
+  const epoch = typeof raw === 'string' ? Number(raw) : Number.NaN;
+  const now = Date.now();
+  if (!Number.isFinite(epoch) || epoch > now || now - epoch > 4 * 3600_000) {
+    return new Date(now);
+  }
+  return new Date(epoch);
 }
 
 function quantitiesFrom(formData: FormData): Record<string, number> {
@@ -81,19 +97,80 @@ export async function declareCashCountAction(
     const user = await requirePermission('cash.count_declare');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
+    const startedAt = metricStartedAtFrom(formData);
 
-    const { statuses } = await saveCashCount(user, {
-      handoverId,
-      kind: 'DECLARADO',
-      quantities: quantitiesFrom(formData),
-      guaranteeIds: guaranteeIdsFrom(formData),
-      notes: typeof notes === 'string' ? notes : null,
-    });
+    try {
+      const { statuses, shiftId } = await saveCashCount(user, {
+        handoverId,
+        kind: 'DECLARADO',
+        quantities: quantitiesFrom(formData),
+        guaranteeIds: guaranteeIdsFrom(formData),
+        notes: typeof notes === 'string' ? notes : null,
+      });
+      const completedAt = new Date();
+      const correlationId = shiftCloseCorrelationId(shiftId);
+      const metadata = {
+        countKind: 'DECLARADO',
+        hasDifference: statuses.some((status) => !status.balanced),
+      };
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'DECLARADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_COMPLETED',
+        userId: user.id,
+        shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'SUCCESS',
+        metadata,
+      });
 
-    revalidatePath('/turno');
-    revalidatePath('/caja');
-    revalidatePath(`/turno/entrega/${handoverId}`);
-    return { ok: true as const, message: summarise(statuses) };
+      revalidatePath('/turno');
+      revalidatePath('/caja');
+      revalidatePath(`/turno/entrega/${handoverId}`);
+      return { ok: true as const, message: summarise(statuses) };
+    } catch (error) {
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `cash-count:${handoverId}:DECLARADO`,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'DECLARADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `cash-count:${handoverId}:DECLARADO`,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: {
+          countKind: 'DECLARADO',
+          failureType: operationalFailureType(error),
+        },
+      });
+      throw error;
+    }
   });
 }
 
@@ -105,27 +182,101 @@ export async function confirmCashCountAction(
     const user = await requirePermission('cash.count_receive');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
+    const startedAt = metricStartedAtFrom(formData);
+    const receiveCorrelationId = `handover-receive:${handoverId}`;
 
-    const result = await receiveShiftCash(user, {
-      handoverId,
-      quantities: quantitiesFrom(formData),
-      guaranteeIds: guaranteeIdsFrom(formData),
-      notes: typeof notes === 'string' ? notes : null,
+    // El recuento es el primer paso real de recepción cuando existe Caja.
+    // Se registra aquí para que la duración final abarque el proceso completo.
+    recordOperationalEvent({
+      eventType: 'HANDOVER_RECEIVE_STARTED',
+      userId: user.id,
+      entityType: 'ShiftHandover',
+      entityId: handoverId,
+      correlationId: receiveCorrelationId,
+      startedAt,
+      status: 'STARTED',
     });
 
-    revalidatePath('/turno');
-    revalidatePath('/caja');
-    revalidatePath('/supervision');
-    revalidatePath('/notificaciones');
-    revalidatePath(`/turno/entrega/${handoverId}`);
-    return {
-      ok: true as const,
-      message:
-        summarise(result.statuses) +
-        (result.discrepancies.length
-          ? ' Hay una diferencia registrada para revisión de Supervisión.'
-          : ' Caja recibida sin diferencias.'),
-    };
+    try {
+      const result = await receiveShiftCash(user, {
+        handoverId,
+        quantities: quantitiesFrom(formData),
+        guaranteeIds: guaranteeIdsFrom(formData),
+        notes: typeof notes === 'string' ? notes : null,
+      });
+      const completedAt = new Date();
+      const correlationId = receiveCorrelationId;
+      const metadata = {
+        countKind: 'CONFIRMADO',
+        hasDifference: result.discrepancies.length > 0,
+      };
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        shiftId: result.shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'CONFIRMADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_COMPLETED',
+        userId: user.id,
+        shiftId: result.shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'SUCCESS',
+        metadata,
+      });
+
+      revalidatePath('/turno');
+      revalidatePath('/caja');
+      revalidatePath('/supervision');
+      revalidatePath('/notificaciones');
+      revalidatePath(`/turno/entrega/${handoverId}`);
+      return {
+        ok: true as const,
+        message:
+          summarise(result.statuses) +
+          (result.discrepancies.length
+            ? ' Hay una diferencia registrada para revisión de Supervisión.'
+            : ' Caja recibida sin diferencias.'),
+      };
+    } catch (error) {
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: receiveCorrelationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'CONFIRMADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: receiveCorrelationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: {
+          countKind: 'CONFIRMADO',
+          failureType: operationalFailureType(error),
+        },
+      });
+      throw error;
+    }
   });
 }
 

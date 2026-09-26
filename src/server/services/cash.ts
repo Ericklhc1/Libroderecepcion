@@ -521,10 +521,10 @@ export async function saveCashCount(
     guaranteeIds?: string[];
     notes?: string | null;
   },
-): Promise<{ statuses: FundStatus[] }> {
+): Promise<{ statuses: FundStatus[]; shiftId: string }> {
   const handover = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, fromShiftId: true },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
 
@@ -591,7 +591,7 @@ export async function saveCashCount(
     );
   });
 
-  return { statuses };
+  return { statuses, shiftId: handover.fromShiftId };
 }
 
 /**

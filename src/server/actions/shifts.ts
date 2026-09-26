@@ -35,6 +35,16 @@ import {
   plannedWindow,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
+import {
+  failOperationalMetric,
+  finishCorrelatedOperationalMetric,
+  finishOperationalMetric,
+  operationalDurationMs,
+  operationalFailureType,
+  recordOperationalEvent,
+  shiftCloseCorrelationId,
+  startOperationalMetric,
+} from '@/server/observability/operational';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -65,22 +75,44 @@ export async function openShiftAction(
   return runAction(async () => {
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
-
-    const { shift } = await openShift(user, {
-      type: input.type,
-      continuity: input.continuity,
-      continuityReason: input.continuityReason,
+    const contingency = input.continuity === true;
+    const metric = startOperationalMetric({
+      startedEventType: contingency ? 'SHIFT_CONTINGENCY_STARTED' : 'SHIFT_START_REQUESTED',
+      completedEventType: contingency ? 'SHIFT_CONTINGENCY_COMPLETED' : 'SHIFT_STARTED',
+      failedEventType: contingency ? 'SHIFT_CONTINGENCY_FAILED' : 'SHIFT_START_FAILED',
+      userId: user.id,
+      entityType: 'Shift',
+      metadata: {
+        shiftType: input.type ?? 'AUTO',
+        mode: contingency ? 'CONTINGENCIA' : 'NORMAL',
+      },
     });
-    refresh(shift.id);
 
-    return {
-      ok: true as const,
-      message: input.continuity
-        ? `Continuidad operativa activada. Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} ya está activo; el cierre anterior quedó alertado para Supervisión.`
-        : shift.status === ShiftStatus.ACTIVO
-          ? `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo (${SHIFT_WINDOW_LABEL[shift.type]}).`
-          : `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[shift.type]}).`,
-    };
+    try {
+      const { shift } = await openShift(user, {
+        type: input.type,
+        continuity: input.continuity,
+        continuityReason: input.continuityReason,
+      });
+      finishOperationalMetric(metric, {
+        shiftId: shift.id,
+        entityId: shift.id,
+        metadata: { shiftType: shift.type },
+      });
+      refresh(shift.id);
+
+      return {
+        ok: true as const,
+        message: input.continuity
+          ? `Continuidad operativa activada. Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} ya está activo; el cierre anterior quedó alertado para Supervisión.`
+          : shift.status === ShiftStatus.ACTIVO
+            ? `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo (${SHIFT_WINDOW_LABEL[shift.type]}).`
+            : `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[shift.type]}).`,
+      };
+    } catch (error) {
+      failOperationalMetric(metric, error);
+      throw error;
+    }
   });
 }
 
@@ -115,13 +147,53 @@ export async function receiveHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.receive');
     const input = parseOrThrow(receiveSchema, formDataToObject(formData));
-    await receiveHandover(user, input);
-    refresh();
-    revalidatePath(`/turno/entrega/${input.handoverId}`);
-    return {
-      ok: true as const,
-      message: 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
-    };
+    const startedAt = new Date();
+    const correlationId = `handover-receive:${input.handoverId}`;
+
+    recordOperationalEvent({
+      eventType: 'HANDOVER_RECEIVE_STARTED',
+      userId: user.id,
+      entityType: 'ShiftHandover',
+      entityId: input.handoverId,
+      correlationId,
+      startedAt,
+      status: 'STARTED',
+    });
+
+    try {
+      const handover = await receiveHandover(user, input);
+      finishCorrelatedOperationalMetric({
+        startEventType: 'HANDOVER_RECEIVE_STARTED',
+        completedEventType: 'HANDOVER_RECEIVED',
+        correlationId,
+        userId: user.id,
+        shiftId: 'fromShiftId' in handover ? handover.fromShiftId : null,
+        entityType: 'ShiftHandover',
+        entityId: input.handoverId,
+        fallbackStartedAt: startedAt,
+      });
+      refresh();
+      revalidatePath(`/turno/entrega/${input.handoverId}`);
+      return {
+        ok: true as const,
+        message: 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
+      };
+    } catch (error) {
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'HANDOVER_RECEIVE_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: input.handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: { failureType: operationalFailureType(error) },
+      });
+      throw error;
+    }
   });
 }
 
@@ -132,15 +204,46 @@ export async function prepareHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = parseOrThrow(shiftIdSchema, formDataToObject(formData));
-    const handover = await prepareHandover(user, input.shiftId);
-    refresh(input.shiftId);
-    revalidatePath(`/turno/entrega/${handover.id}`);
-    return {
-      ok: true as const,
-      message:
-        'Entrega iniciada. Revisa Novedades, Caja y pendientes antes de enviarla al turno siguiente.',
-      id: handover.id,
-    };
+    const startedAt = new Date();
+    const correlationId = shiftCloseCorrelationId(input.shiftId);
+
+    try {
+      const handover = await prepareHandover(user, input.shiftId);
+      recordOperationalEvent({
+        eventType: 'SHIFT_CLOSE_STARTED',
+        userId: user.id,
+        shiftId: input.shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handover.id,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+      });
+      refresh(input.shiftId);
+      revalidatePath(`/turno/entrega/${handover.id}`);
+      return {
+        ok: true as const,
+        message:
+          'Entrega iniciada. Revisa Novedades, Caja y pendientes antes de enviarla al turno siguiente.',
+        id: handover.id,
+      };
+    } catch (error) {
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'SHIFT_CLOSE_FAILED',
+        userId: user.id,
+        shiftId: input.shiftId,
+        entityType: 'Shift',
+        entityId: input.shiftId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: { failureType: operationalFailureType(error) },
+      });
+      throw error;
+    }
   });
 }
 
@@ -156,14 +259,34 @@ export async function sendHandoverAction(
   return runAction(async () => {
     const user = await requirePermission('shift.handover');
     const input = parseOrThrow(sendSchema, formDataToObject(formData));
-    const handover = await sendHandover(user, input);
-    refresh(input.shiftId);
-    revalidatePath(`/turno/entrega/${handover.id}`);
-    return {
-      ok: true as const,
-      message: 'Entrega enviada. Queda en la bandeja para recepción y validación de Supervisión.',
-      id: handover.id,
-    };
+    const metric = startOperationalMetric({
+      startedEventType: 'HANDOVER_SEND_STARTED',
+      completedEventType: 'HANDOVER_SENT',
+      failedEventType: 'HANDOVER_SEND_FAILED',
+      userId: user.id,
+      shiftId: input.shiftId,
+      entityType: 'Shift',
+      entityId: input.shiftId,
+      correlationId: shiftCloseCorrelationId(input.shiftId),
+    });
+
+    try {
+      const handover = await sendHandover(user, input);
+      finishOperationalMetric(metric, {
+        entityType: 'ShiftHandover',
+        entityId: handover.id,
+      });
+      refresh(input.shiftId);
+      revalidatePath(`/turno/entrega/${handover.id}`);
+      return {
+        ok: true as const,
+        message: 'Entrega enviada. Queda en la bandeja para recepción y validación de Supervisión.',
+        id: handover.id,
+      };
+    } catch (error) {
+      failOperationalMetric(metric, error);
+      throw error;
+    }
   });
 }
 
@@ -198,9 +321,40 @@ export async function closeShiftAction(
       });
       return shift?.assignments.map((assignment) => assignment.userId) ?? [];
     });
-    await closeShift(user, input);
-    refresh(input.shiftId);
-    return { ok: true as const, message: 'Turno cerrado y enviado a revisión posterior.' };
+    const startedAt = new Date();
+    const correlationId = shiftCloseCorrelationId(input.shiftId);
+
+    try {
+      await closeShift(user, input);
+      finishCorrelatedOperationalMetric({
+        startEventType: 'SHIFT_CLOSE_STARTED',
+        completedEventType: 'SHIFT_CLOSE_COMPLETED',
+        correlationId,
+        userId: user.id,
+        shiftId: input.shiftId,
+        entityType: 'Shift',
+        entityId: input.shiftId,
+        fallbackStartedAt: startedAt,
+      });
+      refresh(input.shiftId);
+      return { ok: true as const, message: 'Turno cerrado y enviado a revisión posterior.' };
+    } catch (error) {
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'SHIFT_CLOSE_FAILED',
+        userId: user.id,
+        shiftId: input.shiftId,
+        entityType: 'Shift',
+        entityId: input.shiftId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: { failureType: operationalFailureType(error) },
+      });
+      throw error;
+    }
   });
 }
 

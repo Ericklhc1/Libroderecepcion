@@ -227,3 +227,17 @@ Production.
   Neon. No se forzaron usuarios/datos de prueba en Production ni se intentó
   extraer secretos.
 - Informe: `docs/ESTABILIZACION_OPERATIVA_2026-09-26.md`.
+
+
+## Diagnóstico R2 · v1.14.2
+
+- Base verificada: v1.14.1 / `8c99b05b5e0fdda3e07c6322868cd617f153623d`.
+- v1.14.1 confirmó en Production que R2 está configurado pero no alcanza
+  respuesta HTTP desde Vercel; el probe firmado devuelve `TypeError`.
+- `/api/health/storage` se amplía de forma no destructiva para probar
+  `default/us/eu/fedramp` y distinguir transporte de autenticación.
+- La forma del Account ID se diagnostica sólo por presencia, longitud y patrón
+  esperado; nunca se devuelve su valor.
+- No se cambia todavía el host operativo, no se añaden blobs a Neon y no se
+  modifica el contrato de adjuntos.
+- Documento: `docs/DIAGNOSTICO_R2_2026-09-26.md`.

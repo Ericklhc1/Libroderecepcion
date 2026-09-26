@@ -79,6 +79,7 @@ describe('recorrido guiado', () => {
     expect(component).toContain('Puedes activarlo cuando quieras desde Mi perfil');
     expect(component).toContain('libro:tutorial:dismissed:');
     expect(component).toContain('sessionStorage.setItem');
+    expect(component).toContain('sessionReady');
     expect(component).toContain("document.addEventListener('click', onClickCapture, true)");
   });
 
@@ -90,6 +91,8 @@ describe('recorrido guiado', () => {
     expect(page).toContain('shiftExperienceCount');
     expect(page).toContain('shiftExperienceCount <= 5');
     expect(page).toContain('shiftExperienceCount < 5');
+    expect(page).toContain('assignments:');
+    expect(page).toContain('activatedAt: { not: null }');
     expect(page).toContain('Guía ampliada de turno');
     expect(actions).toContain('Guía ampliada · turno {session} de 5');
     expect(actions).toContain('Vas a iniciar tu turno');

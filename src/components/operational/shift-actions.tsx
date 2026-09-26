@@ -38,6 +38,38 @@ export function OpenShiftForm({ suggestedType }: { suggestedType: 'DIA' | 'NOCHE
   );
 }
 
+/**
+ * Vía de escape controlada cuando el turno anterior quedó atascado.
+ *
+ * No exige que la persona diagnostique el problema: inicia su turno, conserva
+ * el cierre anterior pendiente y genera trazabilidad crítica para Supervisión.
+ */
+export function ContinuityOpenShiftForm({
+  suggestedType,
+}: {
+  suggestedType: 'DIA' | 'NOCHE';
+}) {
+  return (
+    <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess className="space-y-2">
+      <input type="hidden" name="type" value={suggestedType} />
+      <input type="hidden" name="continuity" value="1" />
+      <input
+        type="hidden"
+        name="continuityReason"
+        value="El turno saliente no completó el cierre antes del relevo."
+      />
+      <p className="text-xs text-amber-900">
+        Se iniciará el turno {suggestedType === 'DIA' ? 'DÍA' : 'NOCHE'} ·{' '}
+        {SHIFT_WINDOW_LABEL[suggestedType]}. El cierre anterior quedará pendiente y alertado para
+        Supervisión.
+      </p>
+      <SubmitButton variant="gold" pendingLabel="Iniciando continuidad…">
+        INICIAR TURNO POR CONTINGENCIA
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
 /** Suma a otra persona al turno vigente. */
 export function AddShiftMemberForm({
   shiftId,
@@ -109,8 +141,8 @@ export function PrepareHandoverForm({ shiftId }: { shiftId: string }) {
   return (
     <ActionForm action={prepareHandoverAction} hideSuccess className="space-y-0">
       <input type="hidden" name="shiftId" value={shiftId} />
-      <SubmitButton variant="gold" pendingLabel="Generando resumen…">
-        Preparar entrega de turno
+      <SubmitButton variant="gold" pendingLabel="Iniciando cierre…">
+        INICIAR CIERRE DE TURNO
       </SubmitButton>
     </ActionForm>
   );

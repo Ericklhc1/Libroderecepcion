@@ -436,7 +436,16 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
  */
 export async function openShift(
   user: CurrentUser,
-  input: { type?: ShiftType | null; date?: Date | null } = {},
+  input: {
+    type?: ShiftType | null;
+    date?: Date | null;
+    /**
+     * Vía de continuidad operativa. Sólo se usa cuando el relevo quedó
+     * bloqueado porque el turno anterior no terminó su cierre.
+     */
+    continuity?: boolean;
+    continuityReason?: string | null;
+  } = {},
 ): Promise<{ shift: ShiftWithDetail; joined: boolean }> {
   if (!user.roleOperational) {
     throw new RuleError(
@@ -468,11 +477,24 @@ export async function openShift(
     select: { id: true, type: true, status: true },
     orderBy: { actualStart: 'asc' },
   });
-  if (outgoing) {
+  const continuityRequested = input.continuity === true;
+  const continuityReason =
+    input.continuityReason?.trim() ||
+    'El turno saliente no completó el cierre y fue necesario mantener la continuidad operativa.';
+
+  if (outgoing && !continuityRequested) {
     throw new RuleError(
-      'El turno saliente todavía no está cerrado. Debe completar Caja, entrega y cierre antes de que el turno entrante pueda iniciar.',
+      'El turno saliente todavía no está cerrado. Usa «Iniciar turno por contingencia» si necesitas mantener la continuidad operativa.',
     );
   }
+
+  const continuitySnapshot =
+    outgoing && continuityRequested
+      ? await buildHandoverSnapshot(new Date(), {
+          shiftId: outgoing.id,
+          includeMetrics: true,
+        })
+      : null;
 
   const pendingOperational = await getPendingHandover();
   if (pendingOperational) {
@@ -518,11 +540,217 @@ export async function openShift(
             },
           },
         },
-        select: { id: true },
+        select: {
+          id: true,
+          type: true,
+          date: true,
+          status: true,
+          startedById: true,
+          createdById: true,
+          isDemo: true,
+          assignments: {
+            where: { activatedAt: { not: null }, leftAt: null },
+            select: { userId: true },
+          },
+          handoverOut: {
+            select: {
+              id: true,
+              status: true,
+              issuedById: true,
+              notes: true,
+            },
+          },
+        },
+        orderBy: { actualStart: 'asc' },
       });
-      if (concurrentOutgoing) {
+      if (concurrentOutgoing && !continuityRequested) {
         throw new RuleError(
-          'El turno saliente todavía no está cerrado. Debe completar Caja, entrega y cierre antes de que el turno entrante pueda iniciar.',
+          'El turno saliente todavía no está cerrado. Usa «Iniciar turno por contingencia» si necesitas mantener la continuidad operativa.',
+        );
+      }
+
+      if (concurrentOutgoing && continuityRequested) {
+        const now = new Date();
+        const issuerId =
+          concurrentOutgoing.handoverOut?.issuedById ??
+          concurrentOutgoing.assignments[0]?.userId ??
+          concurrentOutgoing.startedById ??
+          concurrentOutgoing.createdById ??
+          user.id;
+        const contingencyNote =
+          'CONTINUIDAD OPERATIVA: el turno siguiente se inició antes de completar este cierre. ' +
+          continuityReason;
+
+        let handoverId = concurrentOutgoing.handoverOut?.id ?? null;
+
+        if (!concurrentOutgoing.handoverOut) {
+          const handover = await tx.shiftHandover.create({
+            data: {
+              fromShiftId: concurrentOutgoing.id,
+              toShiftId: null,
+              issuedById: issuerId,
+              issuedAt: now,
+              status: HandoverStatus.ENVIADA,
+              notes: contingencyNote,
+              snapshot: {
+                generatedAt: now.toISOString(),
+                contingency: true,
+                reason: continuityReason,
+                fromShift: {
+                  id: concurrentOutgoing.id,
+                  type: concurrentOutgoing.type,
+                  date: concurrentOutgoing.date.toISOString(),
+                },
+                items: (continuitySnapshot ?? []).map((item) => ({
+                  level: item.level,
+                  section: item.section,
+                  title: item.title,
+                  detail: item.detail,
+                  refType: item.refType,
+                  refId: item.refId,
+                  manual: false,
+                })),
+              } satisfies Prisma.InputJsonValue,
+              isDemo: concurrentOutgoing.isDemo,
+            },
+          });
+          handoverId = handover.id;
+
+          if ((continuitySnapshot ?? []).length > 0) {
+            await tx.handoverItem.createMany({
+              data: (continuitySnapshot ?? []).map((item, index) => ({
+                handoverId: handover.id,
+                level: item.level,
+                section: item.section,
+                title: item.title,
+                detail: item.detail,
+                refType: item.refType,
+                refId: item.refId,
+                manual: false,
+                order: SNAPSHOT_SECTION_ORDER.indexOf(item.section) * 1000 + index,
+              })),
+            });
+          }
+          await ensureHandoverElements(handover.id, tx);
+        } else if (
+          concurrentOutgoing.handoverOut.status === HandoverStatus.BORRADOR ||
+          concurrentOutgoing.handoverOut.status === HandoverStatus.ANULADA
+        ) {
+          await tx.shiftHandover.update({
+            where: { id: concurrentOutgoing.handoverOut.id },
+            data: {
+              status: HandoverStatus.ENVIADA,
+              issuedAt: now,
+              issuedById: issuerId,
+              notes: contingencyNote,
+              receiverObservations: null,
+              receivedById: null,
+              receivedAt: null,
+              receiverSessionId: null,
+              toShiftId: null,
+              snapshot: {
+                generatedAt: now.toISOString(),
+                contingency: true,
+                reason: continuityReason,
+                fromShift: {
+                  id: concurrentOutgoing.id,
+                  type: concurrentOutgoing.type,
+                  date: concurrentOutgoing.date.toISOString(),
+                },
+              } satisfies Prisma.InputJsonValue,
+            },
+          });
+        }
+
+        await tx.shift.update({
+          where: { id: concurrentOutgoing.id },
+          data: { status: ShiftStatus.ENTREGA_ENVIADA },
+        });
+        await endShiftParticipation(tx, concurrentOutgoing.id, now);
+
+        const alert = await tx.alert.upsert({
+          where: { dedupeKey: `shift-continuity:${concurrentOutgoing.id}` },
+          create: {
+            type: AlertType.OTRO,
+            level: AlertLevel.CRITICA,
+            status: AlertStatus.NUEVA,
+            title: 'Cierre de turno incompleto · continuidad operativa',
+            message:
+              `${user.name} inició el turno siguiente porque el turno anterior no había terminado Caja/entrega/cierre. ${continuityReason}`,
+            handoverId,
+            dedupeKey: `shift-continuity:${concurrentOutgoing.id}`,
+            auto: false,
+            createdById: user.id,
+            isDemo: concurrentOutgoing.isDemo,
+          },
+          update: {
+            status: AlertStatus.NUEVA,
+            message:
+              `${user.name} inició el turno siguiente porque el turno anterior no había terminado Caja/entrega/cierre. ${continuityReason}`,
+            handoverId,
+            resolvedAt: null,
+            resolvedById: null,
+            resolutionNote: null,
+            deletedAt: null,
+          },
+        });
+
+        const supervisors = await tx.user.findMany({
+          where: {
+            active: true,
+            deletedAt: null,
+            role: {
+              permissions: { some: { permission: { key: 'supervision.view' } } },
+            },
+          },
+          select: { id: true },
+        });
+        await notify(
+          supervisors.map((person) => ({
+            userId: person.id,
+            type: NotificationType.ACCION_REQUERIDA,
+            title: 'Revisar cierre incompleto de turno',
+            body: `${user.name} mantuvo la continuidad operativa. El turno saliente quedó pendiente de Caja/cierre.`,
+            link: handoverId ? `/turno/entrega/${handoverId}` : '/turno',
+            entity: 'Alert',
+            entityId: alert.id,
+            isDemo: concurrentOutgoing.isDemo,
+          })),
+          tx,
+        );
+
+        await notify(
+          concurrentOutgoing.assignments
+            .filter((assignment) => assignment.userId !== user.id)
+            .map((assignment) => ({
+              userId: assignment.userId,
+              type: NotificationType.ACCION_REQUERIDA,
+              title: 'Tu turno quedó pendiente de cierre',
+              body: 'Se inició continuidad operativa. Completa el cierre de Caja y del turno cuando vuelvas al sistema.',
+              link: '/turno',
+              entity: 'Shift',
+              entityId: concurrentOutgoing.id,
+              isDemo: concurrentOutgoing.isDemo,
+            })),
+          tx,
+        );
+
+        await recordAudit(
+          {
+            entity: 'Shift',
+            entityId: concurrentOutgoing.id,
+            action: AuditAction.CAMBIO_ESTADO,
+            summary: `Continuidad operativa iniciada por ${user.name}; el turno saliente queda pendiente de cierre formal`,
+            user,
+            before: { status: concurrentOutgoing.status },
+            after: {
+              status: ShiftStatus.ENTREGA_ENVIADA,
+              continuity: true,
+              handoverId,
+            },
+            reason: continuityReason,
+          },
+          tx,
         );
       }
 

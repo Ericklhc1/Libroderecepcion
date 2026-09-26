@@ -294,6 +294,7 @@ export default async function HandoverPage({
         }))}
         previous={previousQuantities}
         role={cashRole}
+        canReopen={user.permissions.includes('cash.reopen')}
       />
 
       {grouped.length === 0 ? (

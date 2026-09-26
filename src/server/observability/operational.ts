@@ -29,9 +29,28 @@ export const P0_OPERATIONAL_EVENT_TYPES = [
   'HANDOVER_SEND_FAILED',
 ] as const;
 
-export type OperationalEventType = (typeof P0_OPERATIONAL_EVENT_TYPES)[number];
+export const P1_OPERATIONAL_EVENT_TYPES = [
+  'ENTRY_CREATED',
+  'ENTRY_TAKEN',
+  'ENTRY_RESOLVED',
+  'KEY_INVENTORY_STARTED',
+  'KEY_INVENTORY_COMPLETED',
+  'KEY_INVENTORY_WITH_DIFFERENCES',
+  'TUTORIAL_STARTED',
+  'TUTORIAL_STEP_REACHED',
+  'TUTORIAL_CLOSED_THIS_SESSION',
+  'TUTORIAL_DISABLED',
+  'TUTORIAL_COMPLETED',
+] as const;
+
+export const OPERATIONAL_EVENT_TYPES = [
+  ...P0_OPERATIONAL_EVENT_TYPES,
+  ...P1_OPERATIONAL_EVENT_TYPES,
+] as const;
+
+export type OperationalEventType = (typeof OPERATIONAL_EVENT_TYPES)[number];
 export type OperationalEventStatus = 'STARTED' | 'SUCCESS' | 'FAILED';
-export type OperationalEventSource = 'SERVER_ACTION';
+export type OperationalEventSource = 'SERVER_ACTION' | 'CLIENT_UI';
 
 const ALLOWED_METADATA_KEYS = new Set([
   'shiftType',
@@ -39,6 +58,8 @@ const ALLOWED_METADATA_KEYS = new Set([
   'countKind',
   'hasDifference',
   'failureType',
+  'entryType',
+  'floor',
 ]);
 
 type MetadataPrimitive = string | number | boolean;
@@ -216,6 +237,19 @@ export function startOperationalMetric(input: {
 export function operationalDurationMs(startedAt: Date, completedAt: Date): number {
   return Math.max(0, completedAt.getTime() - startedAt.getTime());
 }
+
+export function operationalStartedAtFromEpoch(
+  value: unknown,
+  maxAgeMs = 4 * 3600_000,
+  now = new Date(),
+): Date {
+  const epoch =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  const nowMs = now.getTime();
+  if (!Number.isFinite(epoch) || epoch > nowMs || nowMs - epoch > maxAgeMs) return now;
+  return new Date(epoch);
+}
+
 
 export function finishOperationalMetric(
   handle: OperationalMetricHandle,

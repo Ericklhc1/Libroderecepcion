@@ -17,8 +17,8 @@ export async function seedCatalog() {
 /**
  * Borra los datos que genera la operación y deja el catálogo intacto.
  * Las tablas creadas deliberadamente por SQL (sin modelos Prisma) se limpian
- * primero: ambas tienen FK hacia User/Shift y, si quedaran vivas, contaminarían
- * archivos de pruebas posteriores.
+ * primero porque tienen FK hacia User/Shift. Después se limpia la telemetría y
+ * el resto de datos operativos para aislar cada archivo de pruebas.
  */
 export async function resetOperationalData() {
   await prisma.$executeRawUnsafe('DELETE FROM "ReservationPdfDraft"');

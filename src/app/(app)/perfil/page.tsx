@@ -138,7 +138,7 @@ export default async function ProfilePage() {
             La central de ayuda está siempre en la cabecera. Si elegiste no volver a mostrar
             el tutorial, puedes activarlo nuevamente desde aquí cuando quieras.
           </p>
-          <RestartTutorialButton />
+          <RestartTutorialButton userId={user.id} />
         </div>
       </Card>
 

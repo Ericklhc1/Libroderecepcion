@@ -85,9 +85,9 @@ describe('recorrido guiado', () => {
     const page = readFileSync('src/app/(app)/turno/page.tsx', 'utf8');
     const actions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
 
-    expect(page).toContain('startedShiftCount');
-    expect(page).toContain('startedShiftCount <= 5');
-    expect(page).toContain('startedShiftCount < 5');
+    expect(page).toContain('shiftExperienceCount');
+    expect(page).toContain('shiftExperienceCount <= 5');
+    expect(page).toContain('shiftExperienceCount < 5');
     expect(page).toContain('Guía ampliada de turno');
     expect(actions).toContain('Guía ampliada · turno {session} de 5');
     expect(actions).toContain('Vas a iniciar tu turno');

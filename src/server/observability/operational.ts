@@ -41,7 +41,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   'failureType',
 ]);
 
-type MetadataPrimitive = string | number | boolean | null;
+type MetadataPrimitive = string | number | boolean;
 export type OperationalMetadata = Record<string, MetadataPrimitive | undefined>;
 
 export type OperationalEventInput = {
@@ -71,11 +71,7 @@ function sanitizeMetadata(
   const clean: Record<string, MetadataPrimitive> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!ALLOWED_METADATA_KEYS.has(key)) continue;
-    if (
-      value === null ||
-      typeof value === 'boolean' ||
-      typeof value === 'number'
-    ) {
+    if (typeof value === 'boolean' || typeof value === 'number') {
       clean[key] = value;
       continue;
     }

@@ -488,16 +488,28 @@ export function ChatWidget({
     );
   }, [bootstrap?.people, query]);
 
+  const frontiConversation =
+    bootstrap?.conversations.find((item) => item.type === 'FRONTI') ?? null;
+
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('es-CL');
     const conversations = bootstrap?.conversations ?? [];
     const scoped = homeTab === 'groups'
       ? conversations.filter((item) => item.type === 'GRUPO')
       : conversations;
-    if (!needle) return scoped;
-    return scoped.filter((item) =>
-      item.title.toLocaleLowerCase('es-CL').includes(needle),
-    );
+    const filtered = needle
+      ? scoped.filter((item) =>
+          item.type === 'FRONTI'
+            ? 'fronti conectado asistente'.includes(needle)
+            : item.title.toLocaleLowerCase('es-CL').includes(needle),
+        )
+      : scoped;
+
+    return [...filtered].sort((a, b) => {
+      if (a.type === 'FRONTI' && b.type !== 'FRONTI') return -1;
+      if (b.type === 'FRONTI' && a.type !== 'FRONTI') return 1;
+      return b.lastMessageAt.localeCompare(a.lastMessageAt);
+    });
   }, [bootstrap?.conversations, homeTab, query]);
 
   const onlinePeople = useMemo(() => {
@@ -1299,12 +1311,22 @@ export function ChatWidget({
       onClick={() => setOpen((value) => !value)}
       aria-label={unread > 0 ? `Chat y Fronti, ${unread} mensajes sin leer` : 'Abrir Chat y Fronti'}
       aria-expanded={open}
-      className="fixed bottom-20 right-3 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-petrol-900 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:bottom-4 lg:right-4"
+      className="fixed bottom-20 left-3 z-[110] flex h-12 min-w-[13.5rem] items-center gap-2 rounded-xl bg-petrol-900 px-3 text-left text-white shadow-xl ring-1 ring-petrol-800 transition-colors hover:bg-petrol-800 lg:bottom-0 lg:left-[17rem] lg:rounded-b-none"
     >
-      <MessageCircle className="h-5 w-5" aria-hidden="true" />
-      <Sparkles className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded-full bg-gold-400 p-0.5 text-petrol-950 ring-2 ring-white" aria-hidden="true" />
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-gold-300">
+        <MessageCircle className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold">Chat operativo</span>
+        <span className="mt-0.5 flex items-center gap-1 text-[0.66rem] text-petrol-100">
+          <Sparkles className="h-3 w-3 text-gold-300" aria-hidden="true" />
+          Fronti✨
+          <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+          conectado
+        </span>
+      </span>
       {unread > 0 ? (
-        <span className="absolute -left-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[0.6rem] font-bold text-white ring-2 ring-white">
+        <span className="flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[0.62rem] font-bold text-white">
           {unread > 99 ? '99+' : unread}
         </span>
       ) : null}
@@ -1314,7 +1336,7 @@ export function ChatWidget({
   if (!mounted) return trigger;
 
   const panel = open ? (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-white shadow-2xl sm:inset-auto sm:right-4 sm:top-16 sm:h-[min(720px,calc(100vh-5rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-2xl sm:ring-1 sm:ring-slate-200">
+    <div className="fixed inset-0 z-[120] flex flex-col bg-white shadow-2xl sm:inset-auto sm:bottom-20 sm:left-3 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-2xl sm:ring-1 sm:ring-slate-200 lg:bottom-14 lg:left-[17rem]">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
         {view !== 'list' ? (
           <button
@@ -1339,7 +1361,9 @@ export function ChatWidget({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-petrol-950">
             {view === 'conversation' && snapshot
-              ? snapshot.title
+              ? snapshot.type === 'FRONTI'
+                ? 'Fronti✨'
+                : snapshot.title
               : view === 'direct'
                 ? 'Nuevo mensaje'
                 : view === 'group'
@@ -1353,7 +1377,7 @@ export function ChatWidget({
           <p className="truncate text-[0.7rem] text-slate-500">
             {view === 'conversation' && snapshot
               ? snapshot.type === 'FRONTI'
-                ? 'Asistente individual · memoria personal'
+                ? 'Conectado · asistente individual · memoria personal'
                 : `${snapshot.participants.length} participante${snapshot.participants.length === 1 ? '' : 's'}`
               : view === 'settings' && snapshot
                 ? snapshot.title
@@ -1405,6 +1429,22 @@ export function ChatWidget({
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </header>
+
+      <button
+        type="button"
+        disabled={!frontiConversation}
+        onClick={() => {
+          if (frontiConversation) void loadConversation(frontiConversation.id);
+        }}
+        className="flex shrink-0 items-center gap-2 border-b border-petrol-100 bg-petrol-50 px-3 py-1.5 text-left text-[0.7rem] text-petrol-800 hover:bg-petrol-100 disabled:cursor-default"
+        aria-label="Abrir Fronti"
+      >
+        <Sparkles className="h-3.5 w-3.5 text-gold-600" aria-hidden="true" />
+        <span className="font-semibold">Fronti✨</span>
+        <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+        <span className="font-medium text-emerald-700">conectado</span>
+        <span className="ml-auto text-slate-500">Asistente del Libro</span>
+      </button>
 
       {view === 'conversation' && conversationSearchOpen ? (
         <div className="shrink-0 border-b border-slate-100 bg-white px-3 py-2">
@@ -1658,7 +1698,7 @@ export function ChatWidget({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
-                        {item.title}
+                        {item.type === 'FRONTI' ? 'Fronti✨' : item.title}
                       </span>
                       <span className="shrink-0 text-[0.66rem] text-slate-400">
                         {relativeActivity(item.lastMessageAt)}
@@ -1674,7 +1714,10 @@ export function ChatWidget({
                     </span>
                     {item.type === 'FRONTI' ? (
                       <span className="mt-1 block text-[0.68rem] font-medium text-petrol-600">
-                        Asistente individual · memoria personal
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          conectado · asistente individual
+                        </span>
                       </span>
                     ) : item.counterpart ? (
                       <span className="mt-1 block">

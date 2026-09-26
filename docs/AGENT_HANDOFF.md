@@ -201,3 +201,25 @@ Production.
   fallback y tools de Fronti, además de fallos/demoras técnicas transversales.
 - El panel sigue sin desglose individual ni ranking.
 - Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.
+
+
+## Estabilización operativa · v1.14.1
+
+- Rama: `fix/estabilizacion-operativa-v1-14-1`.
+- Se añade una jornada E2E transversal en PostgreSQL efímero de CI que encadena
+  Recepción, Libro, Llaves, Caja, relevo y Supervisión.
+- Los fallos conocidos de Fronti dejan de contaminar todos el canal
+  `console.error`: desactivación es informativa y fallos temporales son warning.
+- `/api/health/asistente` distingue disponibilidad de degradación parcial de
+  la cadena de proveedores.
+- `/api/health/storage` añade un HEAD firmado no destructivo para validar
+  conectividad/TLS real de R2, no sólo presencia de variables.
+- Production actual presenta una capa Cloudflare de Fronti degradada por
+  `CLAVE_RECHAZADA`; Groq 120B y Groq 20B siguen sanos. No retirar el fallback:
+  corregir credencial cuando exista acceso seguro a configuración.
+- R2 Production resuelve el account ID desde el alias heredado
+  `R2_ACCOUND_ID`; el código lo tolera y el healthcheck ahora lo advierte.
+- La sesión de esta campaña no expuso navegador autenticado ni project_id de
+  Neon. No se forzaron usuarios/datos de prueba en Production ni se intentó
+  extraer secretos.
+- Informe: `docs/ESTABILIZACION_OPERATIVA_2026-09-26.md`.

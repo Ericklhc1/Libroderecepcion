@@ -24,7 +24,7 @@ export async function finishTutorialAction(): Promise<ActionState> {
     });
     // El recorrido se decide en el layout, igual que el comunicado.
     revalidatePath('/', 'layout');
-    return { ok: true as const, message: 'Listo. Puedes volver a verlo desde tu perfil.' };
+    return { ok: true as const, message: 'Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.' };
   });
 }
 

@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Compass } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Compass, MousePointer2, RotateCcw } from 'lucide-react';
 import { Button, SubmitButton } from '@/components/ui/button';
 import { ActionForm } from '@/components/ui/form';
 import { finishTutorialAction } from '@/server/actions/tutorial';
@@ -17,18 +17,33 @@ function visibleTarget(selector?: string): HTMLElement | null {
     nodes.find((node) => {
       const rect = node.getBoundingClientRect();
       const style = window.getComputedStyle(node);
-      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== 'hidden' &&
+        style.display !== 'none'
+      );
     }) ?? null
   );
 }
 
+function isInViewport(rect: DOMRect): boolean {
+  const topSafe = 72;
+  const bottomSafe = window.innerHeight - 96;
+  return rect.bottom > topSafe && rect.top < bottomSafe;
+}
+
 /**
- * Recorrido guiado con foco real sobre la interfaz.
+ * Recorrido guiado sin secuestrar el scroll.
  *
- * Cada paso puede navegar a su pantalla y señalar un elemento visible. El
- * recuadro y la flecha se calculan en el navegador, por lo que siguen al
- * elemento incluso si cambia el tamaño de la ventana. Si una sección no está
- * disponible en esa resolución, el recorrido conserva el texto y no bloquea.
+ * El paso puede hacer un único desplazamiento inicial para mostrar el objetivo.
+ * Después, cualquier scroll del usuario sólo recalcula la posición del foco:
+ * nunca vuelve a llamar scrollIntoView. Así se evita el bucle que antes hacía
+ * "pelear" la página contra el dedo/rueda.
+ *
+ * Si la persona intenta interactuar con el Libro durante el recorrido, la
+ * interacción se intercepta antes de llegar a la interfaz y se pregunta si
+ * quiere cerrar el tutorial sólo por esta vez o no volver a mostrarlo.
  */
 export function TutorialTour({
   steps,
@@ -44,6 +59,10 @@ export function TutorialTour({
   const [index, setIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
+  const [targetOffscreen, setTargetOffscreen] = useState(false);
+  const [interactionPrompt, setInteractionPrompt] = useState(false);
+  const [neverAgainConfirmed, setNeverAgainConfirmed] = useState(false);
+  const scrollRaf = useRef<number | null>(null);
 
   const step = steps[index];
   const isLast = index === steps.length - 1;
@@ -62,39 +81,94 @@ export function TutorialTour({
   useEffect(() => {
     if (dismissed || suspended || !step) {
       setTargetRect(null);
+      setTargetOffscreen(false);
       return;
     }
-    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const locate = () => {
+    let initialTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const measure = () => {
       const target = visibleTarget(step.target);
       if (!target) {
         setTargetRect(null);
+        setTargetOffscreen(false);
         return;
       }
-      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-      timer = setTimeout(() => {
-        const rect = target.getBoundingClientRect();
-        setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-      }, 220);
+      const rect = target.getBoundingClientRect();
+      const onScreen = isInViewport(rect);
+      setTargetOffscreen(!onScreen);
+      setTargetRect(
+        onScreen
+          ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+          : null,
+      );
     };
 
-    timer = setTimeout(locate, 180);
-    window.addEventListener('resize', locate);
-    window.addEventListener('scroll', locate, true);
+    const initialLocate = () => {
+      const target = visibleTarget(step.target);
+      if (!target) {
+        measure();
+        return;
+      }
+
+      // ÚNICO desplazamiento automático del paso.
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      settleTimer = setTimeout(measure, 260);
+    };
+
+    const passiveMeasure = () => {
+      if (scrollRaf.current !== null) cancelAnimationFrame(scrollRaf.current);
+      scrollRaf.current = requestAnimationFrame(() => {
+        scrollRaf.current = null;
+        measure();
+      });
+    };
+
+    initialTimer = setTimeout(initialLocate, 180);
+    window.addEventListener('resize', passiveMeasure);
+    window.addEventListener('scroll', passiveMeasure, true);
+
     return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener('resize', locate);
-      window.removeEventListener('scroll', locate, true);
+      if (initialTimer) clearTimeout(initialTimer);
+      if (settleTimer) clearTimeout(settleTimer);
+      if (scrollRaf.current !== null) cancelAnimationFrame(scrollRaf.current);
+      scrollRaf.current = null;
+      window.removeEventListener('resize', passiveMeasure);
+      window.removeEventListener('scroll', passiveMeasure, true);
     };
   }, [dismissed, pathname, step, suspended]);
 
+  useEffect(() => {
+    if (dismissed || suspended || !step) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-tutorial-ui="true"]')) return;
+
+      // La acción del Libro NO llega a ejecutarse hasta que la persona decide.
+      event.preventDefault();
+      event.stopPropagation();
+      setInteractionPrompt(true);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [dismissed, step, suspended]);
+
   const pointer = useMemo(() => {
     if (!targetRect) return null;
-    const cx = targetRect.left + targetRect.width / 2;
-    const cy = targetRect.top + targetRect.height / 2;
-    return { x: cx, y: cy };
+    return {
+      x: targetRect.left + targetRect.width / 2,
+      y: Math.max(24, targetRect.top - 28),
+    };
   }, [targetRect]);
+
+  function goBackToTarget() {
+    const target = visibleTarget(step?.target);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  }
 
   if (dismissed || suspended || steps.length === 0 || !step) return null;
 
@@ -103,7 +177,7 @@ export function TutorialTour({
       {targetRect ? (
         <div className="pointer-events-none fixed inset-0 z-[60] no-print" aria-hidden="true">
           <div
-            className="absolute rounded-xl ring-4 ring-gold-400 shadow-[0_0_0_9999px_rgba(6,31,41,0.64)] transition-all duration-200"
+            className="absolute rounded-xl ring-4 ring-gold-400 shadow-[0_0_0_9999px_rgba(6,31,41,0.64)] transition-all duration-150"
             style={{
               top: Math.max(6, targetRect.top - 6),
               left: Math.max(6, targetRect.left - 6),
@@ -114,10 +188,7 @@ export function TutorialTour({
           {pointer ? (
             <div
               className="absolute -translate-x-1/2 -translate-y-1/2 text-3xl text-gold-400 drop-shadow-lg"
-              style={{
-                left: Math.min(window.innerWidth - 24, Math.max(24, pointer.x)),
-                top: Math.min(window.innerHeight - 90, Math.max(24, targetRect.top - 28)),
-              }}
+              style={{ left: pointer.x, top: pointer.y }}
             >
               ↓
             </div>
@@ -125,7 +196,10 @@ export function TutorialTour({
         </div>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-0 z-[70] px-3 pb-20 lg:bottom-4 lg:left-auto lg:right-4 lg:w-[26rem] lg:px-0 lg:pb-0 no-print">
+      <div
+        data-tutorial-ui="true"
+        className="fixed inset-x-0 bottom-0 z-[70] px-3 pb-20 lg:bottom-4 lg:left-auto lg:right-4 lg:w-[26rem] lg:px-0 lg:pb-0 no-print"
+      >
         <div className="rounded-xl bg-petrol-900 p-4 text-petrol-50 shadow-2xl ring-1 ring-white/10">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 rounded-lg bg-petrol-800 p-1.5 text-gold-400">
@@ -140,6 +214,18 @@ export function TutorialTour({
             </div>
           </div>
 
+          {targetOffscreen ? (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-amber-100/10 px-3 py-2 ring-1 ring-amber-300/30">
+              <p className="text-xs text-amber-100">
+                Te alejaste del punto señalado. Puedes seguir leyendo sin que la página te arrastre.
+              </p>
+              <Button variant="ghost" size="sm" onClick={goBackToTarget}>
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Volver al punto
+              </Button>
+            </div>
+          ) : null}
+
           {step.route ? (
             <p className="mt-2 text-xs text-petrol-300">
               Pantalla: <span className="font-medium text-gold-300">{step.route}</span>
@@ -147,11 +233,25 @@ export function TutorialTour({
           ) : null}
 
           <div className="mt-4 flex items-center justify-between gap-2 border-t border-petrol-800 pt-3">
-            <ActionForm action={finishTutorialAction} hideSuccess className="space-y-0" refreshOnSuccess>
-              <SubmitButton variant="ghost" size="sm" pendingLabel="…">
-                {isLast ? 'Terminar' : 'Saltar'}
-              </SubmitButton>
-            </ActionForm>
+            {isLast ? (
+              <ActionForm
+                action={finishTutorialAction}
+                hideSuccess
+                className="space-y-0"
+                onSuccess={() => {
+                  setNeverAgainConfirmed(true);
+                  window.setTimeout(() => setDismissed(true), 1200);
+                }}
+              >
+                <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
+                  Finalizar recorrido
+                </SubmitButton>
+              </ActionForm>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setDismissed(true)}>
+                Cerrar esta vez
+              </Button>
+            )}
 
             <div className="flex items-center gap-1">
               {!first ? (
@@ -169,15 +269,87 @@ export function TutorialTour({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className="mt-2 w-full text-center text-xs text-petrol-300 hover:text-petrol-100"
-          >
-            Ahora no, recuérdamelo la próxima vez
-          </button>
+          {neverAgainConfirmed ? (
+            <p className="mt-2 rounded-lg bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 ring-1 ring-emerald-300/20">
+              Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.
+            </p>
+          ) : null}
         </div>
       </div>
+
+      {interactionPrompt ? (
+        <div
+          data-tutorial-ui="true"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-petrol-950/45 p-4 no-print"
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tutorial-interaction-title"
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+          >
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-petrol-50 p-2 text-petrol-800">
+                <MousePointer2 className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 id="tutorial-interaction-title" className="font-semibold text-petrol-950">
+                  ¿Quieres interactuar con el Libro?
+                </h2>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  Hemos detectado que quieres usar la interfaz mientras el tutorial está activo.
+                  Puedes cerrarlo sólo por esta vez o dejar de mostrarlo automáticamente.
+                </p>
+              </div>
+            </div>
+
+            {neverAgainConfirmed ? (
+              <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+                Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.
+              </p>
+            ) : (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setInteractionPrompt(false);
+                    setDismissed(true);
+                  }}
+                >
+                  Cerrar esta vez
+                </Button>
+                <ActionForm
+                  action={finishTutorialAction}
+                  hideSuccess
+                  className="space-y-0"
+                  onSuccess={() => {
+                    setNeverAgainConfirmed(true);
+                    window.setTimeout(() => {
+                      setInteractionPrompt(false);
+                      setDismissed(true);
+                    }, 1500);
+                  }}
+                >
+                  <SubmitButton variant="gold" pendingLabel="Guardando…">
+                    No volver a mostrar
+                  </SubmitButton>
+                </ActionForm>
+              </div>
+            )}
+
+            {!neverAgainConfirmed ? (
+              <button
+                type="button"
+                onClick={() => setInteractionPrompt(false)}
+                className="mt-3 w-full text-center text-xs font-medium text-slate-500 hover:text-petrol-700"
+              >
+                Seguir con el tutorial
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

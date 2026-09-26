@@ -1,5 +1,6 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { KeyType } from '@prisma/client';
 import { hasAnyPermission } from '@/server/auth/current-user';
@@ -17,6 +18,11 @@ import {
   returnPhysicalKey,
   savePhysicalKeyInventoryCount,
 } from '@/server/services/key-inventory';
+import {
+  operationalDurationMs,
+  operationalStartedAtFromEpoch,
+  recordOperationalEvent,
+} from '@/server/observability/operational';
 
 function refreshKeys() {
   revalidatePath('/llaves');
@@ -57,6 +63,34 @@ function nonNegativeInteger(value: FormDataEntryValue | null, label: string) {
   return parsed;
 }
 
+function metricCorrelationId(value: FormDataEntryValue | null, floor: number): string {
+  if (typeof value === 'string' && value.length >= 10 && value.length <= 128) return value;
+  return `key-inventory:${floor}:${randomUUID()}`;
+}
+
+export async function startKeyInventoryMetricAction(input: {
+  floor: number;
+  correlationId: string;
+  startedAtMs: number;
+}): Promise<void> {
+  const user = await requireKeyInventoryAccess();
+  if (!isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
+  if (input.correlationId.length < 10 || input.correlationId.length > 128) return;
+
+  const startedAt = operationalStartedAtFromEpoch(input.startedAtMs);
+  recordOperationalEvent({
+    eventType: 'KEY_INVENTORY_STARTED',
+    userId: user.id,
+    entityType: 'KeyInventoryFloor',
+    entityId: String(input.floor),
+    correlationId: input.correlationId,
+    startedAt,
+    status: 'STARTED',
+    source: 'CLIENT_UI',
+    metadata: { floor: input.floor },
+  });
+}
+
 export async function savePhysicalKeyCountAction(
   _state: ActionState | null,
   formData: FormData,
@@ -72,6 +106,27 @@ export async function savePhysicalKeyCountAction(
 
     if (!roomIds.length) throw new RuleError('No hay habitaciones para contar en este piso.');
 
+    const correlationId = metricCorrelationId(formData.get('metricCorrelationId'), floor);
+    const startedAt = operationalStartedAtFromEpoch(formData.get('metricStartedAt'));
+    const hasClientStart =
+      typeof formData.get('metricCorrelationId') === 'string' &&
+      typeof formData.get('metricStartedAt') === 'string' &&
+      Boolean(String(formData.get('metricCorrelationId')).trim()) &&
+      Boolean(String(formData.get('metricStartedAt')).trim());
+
+    if (!hasClientStart) {
+      recordOperationalEvent({
+        eventType: 'KEY_INVENTORY_STARTED',
+        userId: user.id,
+        entityType: 'KeyInventoryFloor',
+        entityId: String(floor),
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { floor },
+      });
+    }
+
     const result = await savePhysicalKeyInventoryCount(user, {
       floor,
       notes: optionalString(formData, 'notes'),
@@ -85,6 +140,33 @@ export async function savePhysicalKeyCountAction(
         notes: optionalString(formData, `notes:${roomId}`),
       })),
     });
+
+    const completedAt = new Date();
+    const hasDifference = result.totals.missing > 0 || result.totals.surplus > 0;
+    recordOperationalEvent({
+      eventType: 'KEY_INVENTORY_COMPLETED',
+      userId: user.id,
+      entityType: 'KeyInventoryCount',
+      entityId: result.id,
+      correlationId,
+      startedAt,
+      completedAt,
+      durationMs: operationalDurationMs(startedAt, completedAt),
+      status: 'SUCCESS',
+      metadata: { floor, hasDifference },
+    });
+    if (hasDifference) {
+      recordOperationalEvent({
+        eventType: 'KEY_INVENTORY_WITH_DIFFERENCES',
+        userId: user.id,
+        entityType: 'KeyInventoryCount',
+        entityId: result.id,
+        correlationId,
+        completedAt,
+        status: 'SUCCESS',
+        metadata: { floor, hasDifference: true },
+      });
+    }
 
     refreshKeys();
     return {

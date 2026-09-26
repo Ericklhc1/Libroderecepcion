@@ -28,16 +28,21 @@ viviendo en Turnos, Entregas, Caja, Novedades y demás modelos existentes.
 
 ## Correlación
 
-El cierre usa un identificador estable:
+El cierre saliente usa un identificador estable:
 
 `shift-close:<shiftId>`
 
-Bajo esa correlación se observan inicio del cierre, arqueo, cierre formal de
-Caja, envío de entrega y cierre final. La duración total se calcula al cerrar
-el turno contra el último `SHIFT_CLOSE_STARTED` de esa correlación.
+La recepción entrante usa:
 
-Las operaciones que duran una sola petición conservan además su propia
-duración `durationMs`.
+`handover-receive:<handoverId>`
+
+El arqueo declarado pertenece al cierre saliente; el recuento confirmado
+pertenece a la recepción. Para procesos que cruzan varias peticiones, la
+duración final se calcula desde el primer inicio correlacionado hasta su éxito.
+
+El arqueo toma como inicio la primera interacción con el formulario y no sólo
+el tiempo de procesamiento del servidor. El valor se valida al recibirlo y se
+descarta si está en el futuro o tiene más de cuatro horas de antigüedad.
 
 ## Eventos P0
 

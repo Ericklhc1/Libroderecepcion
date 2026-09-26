@@ -30,10 +30,10 @@ import {
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
 import {
-  failOperationalMetric,
-  finishOperationalMetric,
+  operationalDurationMs,
+  operationalFailureType,
+  recordOperationalEvent,
   shiftCloseCorrelationId,
-  startOperationalMetric,
 } from '@/server/observability/operational';
 
 /**
@@ -87,16 +87,7 @@ export async function declareCashCountAction(
     const user = await requirePermission('cash.count_declare');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-    const metric = startOperationalMetric({
-      startedEventType: 'CASH_COUNT_STARTED',
-      completedEventType: 'CASH_COUNT_COMPLETED',
-      failedEventType: 'CASH_COUNT_FAILED',
-      userId: user.id,
-      entityType: 'ShiftHandover',
-      entityId: handoverId,
-      correlationId: `cash-count:${handoverId}:DECLARADO`,
-      metadata: { countKind: 'DECLARADO' },
-    });
+    const startedAt = new Date();
 
     try {
       const { statuses, shiftId } = await saveCashCount(user, {
@@ -106,11 +97,35 @@ export async function declareCashCountAction(
         guaranteeIds: guaranteeIdsFrom(formData),
         notes: typeof notes === 'string' ? notes : null,
       });
-      finishOperationalMetric(metric, {
+      const completedAt = new Date();
+      const correlationId = shiftCloseCorrelationId(shiftId);
+      const metadata = {
+        countKind: 'DECLARADO',
+        hasDifference: statuses.some((status) => !status.balanced),
+      };
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
         shiftId,
-        metadata: {
-          hasDifference: statuses.some((status) => !status.balanced),
-        },
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'DECLARADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_COMPLETED',
+        userId: user.id,
+        shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'SUCCESS',
+        metadata,
       });
 
       revalidatePath('/turno');
@@ -118,7 +133,22 @@ export async function declareCashCountAction(
       revalidatePath(`/turno/entrega/${handoverId}`);
       return { ok: true as const, message: summarise(statuses) };
     } catch (error) {
-      failOperationalMetric(metric, error);
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `cash-count:${handoverId}:DECLARADO`,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: {
+          countKind: 'DECLARADO',
+          failureType: operationalFailureType(error),
+        },
+      });
       throw error;
     }
   });
@@ -132,16 +162,7 @@ export async function confirmCashCountAction(
     const user = await requirePermission('cash.count_receive');
     const { handoverId } = handoverIdSchema.parse(formDataToObject(formData));
     const notes = formData.get('notes');
-    const metric = startOperationalMetric({
-      startedEventType: 'CASH_COUNT_STARTED',
-      completedEventType: 'CASH_COUNT_COMPLETED',
-      failedEventType: 'CASH_COUNT_FAILED',
-      userId: user.id,
-      entityType: 'ShiftHandover',
-      entityId: handoverId,
-      correlationId: `cash-count:${handoverId}:CONFIRMADO`,
-      metadata: { countKind: 'CONFIRMADO' },
-    });
+    const startedAt = new Date();
 
     try {
       const result = await receiveShiftCash(user, {
@@ -150,9 +171,35 @@ export async function confirmCashCountAction(
         guaranteeIds: guaranteeIdsFrom(formData),
         notes: typeof notes === 'string' ? notes : null,
       });
-      finishOperationalMetric(metric, {
+      const completedAt = new Date();
+      const correlationId = shiftCloseCorrelationId(result.shiftId);
+      const metadata = {
+        countKind: 'CONFIRMADO',
+        hasDifference: result.discrepancies.length > 0,
+      };
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_STARTED',
+        userId: user.id,
         shiftId: result.shiftId,
-        metadata: { hasDifference: result.discrepancies.length > 0 },
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        status: 'STARTED',
+        metadata: { countKind: 'CONFIRMADO' },
+      });
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_COMPLETED',
+        userId: user.id,
+        shiftId: result.shiftId,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'SUCCESS',
+        metadata,
       });
 
       revalidatePath('/turno');
@@ -169,7 +216,22 @@ export async function confirmCashCountAction(
             : ' Caja recibida sin diferencias.'),
       };
     } catch (error) {
-      failOperationalMetric(metric, error);
+      const completedAt = new Date();
+      recordOperationalEvent({
+        eventType: 'CASH_COUNT_FAILED',
+        userId: user.id,
+        entityType: 'ShiftHandover',
+        entityId: handoverId,
+        correlationId: `cash-count:${handoverId}:CONFIRMADO`,
+        startedAt,
+        completedAt,
+        durationMs: operationalDurationMs(startedAt, completedAt),
+        status: 'FAILED',
+        metadata: {
+          countKind: 'CONFIRMADO',
+          failureType: operationalFailureType(error),
+        },
+      });
       throw error;
     }
   });

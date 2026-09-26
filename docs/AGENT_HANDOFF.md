@@ -142,3 +142,22 @@ No reintroducir hosting alternativo, ramas intermedias de release, previews
 alojados ni bases persistentes de desarrollo como parte del flujo. Para pruebas
 usa el PostgreSQL efímero de CI o una base local desechable que nunca sea
 Production.
+
+
+## Observabilidad operativa P0 · v1.12.0
+
+- Rama: `feature/observabilidad-operativa-p0`.
+- Se añade una sola entidad aditiva, `OperationalMetricEvent`, sin FK ni
+  snapshots operativos.
+- La escritura usa `after()` y manejo tolerante a fallos: ningún INSERT de
+  telemetría forma parte de la transacción ni de la respuesta crítica.
+- P0 instrumenta apertura normal/contingencia, recepción, inicio/cierre de
+  turno, arqueos, cierre formal de Caja y envío de entrega.
+- El cierre completo se correlaciona por `shift-close:<shiftId>`.
+- `/supervision/salud` muestra datos observados para Hoy/7/30 días usando
+  `supervision.center.view`, sin rankings individuales.
+- Novedades reutilizan timestamps existentes. Fronti, tutorial, llaves y
+  errores UI genéricos quedan deliberadamente fuera de esta etapa.
+- Migración no destructiva:
+  `20260926160000_operational_observability_p0`.
+- Documento: `docs/OBSERVABILIDAD_OPERATIVA.md`.

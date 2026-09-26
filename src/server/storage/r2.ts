@@ -324,8 +324,18 @@ export type R2ConnectivityProbe = {
  * normal) prueban conectividad válida. Cualquier otro estado queda visible sin
  * copiar cuerpo de respuesta, credenciales ni detalles del proveedor.
  */
+async function defaultConnectivityRequester(key: string): Promise<Response> {
+  return signedRequest(
+    'HEAD',
+    key,
+    undefined,
+    undefined,
+    { signal: AbortSignal.timeout(4_000) },
+  );
+}
+
 export async function probeR2Connectivity(
-  requester: (key: string) => Promise<Response> = headR2Object,
+  requester: (key: string) => Promise<Response> = defaultConnectivityRequester,
 ): Promise<R2ConnectivityProbe> {
   try {
     const response = await requester('__health__/connectivity-probe');
@@ -375,11 +385,17 @@ function safeFailureCode(error: unknown): string | null {
  * no sustituye una validación contra la API del proveedor.
  */
 export function getR2AccountIdDiagnostics() {
-  const accountId = resolveAccountId().value;
+  const parts = resolvedConfigParts();
+  const accountId = parts.accountId.value;
   return {
     present: Boolean(accountId),
     length: accountId.length,
     expectedShape: /^[a-f0-9]{32}$/i.test(accountId),
+    matchesAccessKeyId: Boolean(
+      accountId &&
+      parts.accessKeyId.value &&
+      accountId === parts.accessKeyId.value
+    ),
   };
 }
 
@@ -444,6 +460,31 @@ export async function probeR2EndpointCandidates(
       }
     }),
   );
+}
+
+const R2_OPERATIONAL_CACHE_MS = 30_000;
+let operationalCache: { at: number; operational: boolean } | null = null;
+
+/**
+ * Estado operativo ligero para la interfaz de Chat.
+ *
+ * No basta con que existan variables: un almacenamiento configurado pero
+ * inaccesible convierte adjuntos/stickers/voz en una calle sin salida. El
+ * resultado se cachea brevemente para no añadir una sonda remota a cada
+ * bootstrap del chat.
+ */
+export async function isR2Operational(): Promise<boolean> {
+  if (!isR2Configured()) return false;
+
+  const now = Date.now();
+  if (operationalCache && now - operationalCache.at < R2_OPERATIONAL_CACHE_MS) {
+    return operationalCache.operational;
+  }
+
+  const probe = await probeR2Connectivity();
+  const operational = probe.reachable;
+  operationalCache = { at: now, operational };
+  return operational;
 }
 
 export async function getR2Object(key: string): Promise<Response> {

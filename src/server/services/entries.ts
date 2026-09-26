@@ -17,6 +17,10 @@ import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
 import { assertAssignable, listSupervisorIds } from './users';
 import { finishSupervisionTrackingForSource } from './followups';
+import {
+  operationalDurationMs,
+  recordOperationalEvent,
+} from '@/server/observability/operational';
 
 export const entryInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -153,6 +157,18 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
     }
 
     return created;
+  });
+
+  recordOperationalEvent({
+    eventType: 'ENTRY_CREATED',
+    userId: user.id,
+    shiftId: entry.shiftId,
+    entityType: 'OperationalEntry',
+    entityId: entry.id,
+    correlationId: `entry:${entry.id}`,
+    completedAt: entry.createdAt,
+    status: 'SUCCESS',
+    metadata: { entryType: entry.type },
   });
 
   return entry;
@@ -329,7 +345,7 @@ export async function changeEntryStatus(
     throw new RuleError('No tienes permiso para reabrir registros.');
   }
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalEntry.update({
       where: { id: input.id },
@@ -391,6 +407,44 @@ export async function changeEntryStatus(
 
     return updated;
   });
+
+  const completedAt = new Date();
+  const correlationId = `entry:${current.id}`;
+  if (input.status === EntryStatus.EN_CURSO && current.status !== EntryStatus.EN_CURSO) {
+    recordOperationalEvent({
+      eventType: 'ENTRY_TAKEN',
+      userId: user.id,
+      shiftId: updated.shiftId,
+      entityType: 'OperationalEntry',
+      entityId: updated.id,
+      correlationId,
+      startedAt: current.createdAt,
+      completedAt,
+      durationMs: operationalDurationMs(current.createdAt, completedAt),
+      status: 'SUCCESS',
+      metadata: { entryType: updated.type },
+    });
+  }
+
+  const currentWasTerminal =
+    current.status === EntryStatus.CERRADO || current.status === EntryStatus.RESUELTO;
+  if (closing && !currentWasTerminal) {
+    recordOperationalEvent({
+      eventType: 'ENTRY_RESOLVED',
+      userId: user.id,
+      shiftId: updated.shiftId,
+      entityType: 'OperationalEntry',
+      entityId: updated.id,
+      correlationId,
+      startedAt: current.createdAt,
+      completedAt,
+      durationMs: operationalDurationMs(current.createdAt, completedAt),
+      status: 'SUCCESS',
+      metadata: { entryType: updated.type },
+    });
+  }
+
+  return updated;
 }
 
 export async function softDeleteEntry(

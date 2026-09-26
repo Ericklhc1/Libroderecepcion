@@ -81,6 +81,13 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
         typeof event.durationMs === 'number',
     )
     .map((event) => event.durationMs as number);
+  const receiveDurations = events
+    .filter(
+      (event) =>
+        event.eventType === 'HANDOVER_RECEIVED' &&
+        typeof event.durationMs === 'number',
+    )
+    .map((event) => event.durationMs as number);
 
   const closureStarts = events.filter(
     (event) => event.eventType === 'SHIFT_CLOSE_STARTED' && event.correlationId,
@@ -160,6 +167,8 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
     handovers: {
       sent: count('HANDOVER_SENT'),
       received: count('HANDOVER_RECEIVED'),
+      medianReceiveMs: median(receiveDurations),
+      p90ReceiveMs: percentile(receiveDurations, 0.9),
     },
     entries: {
       created: entriesCreated,

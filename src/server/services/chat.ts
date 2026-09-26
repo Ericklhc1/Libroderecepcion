@@ -142,6 +142,17 @@ async function assertParticipant(user: CurrentUser, conversationId: string) {
   if (!participant) throw new NotFoundError('La conversación no existe o no tienes acceso.');
 }
 
+async function assertChatStorageOperational(kind: 'archivos' | 'stickers'): Promise<void> {
+  if (!isR2Configured()) {
+    throw new RuleError(`El almacenamiento de ${kind} todavía no está configurado.`);
+  }
+  if (!(await isR2Operational())) {
+    throw new RuleError(
+      `El almacenamiento de ${kind} está temporalmente no disponible. Intenta nuevamente más tarde.`,
+    );
+  }
+}
+
 export async function touchChatPresence(user: CurrentUser): Promise<void> {
   assertChatActor(user);
   const now = new Date();
@@ -1343,9 +1354,7 @@ export async function beginChatAttachmentUpload(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) {
-    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
-  }
+  await assertChatStorageOperational('archivos');
   const descriptor = validateChatUploadDescriptor(input);
   const storageKey = makeChatStorageKey(
     input.conversationId,
@@ -1374,9 +1383,7 @@ export async function finalizeChatAttachmentUpload(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) {
-    throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
-  }
+  await assertChatStorageOperational('archivos');
 
   const descriptor = validateChatUploadDescriptor(input);
   const expectedPrefix = `chat/${input.conversationId}/attachment/`;
@@ -1543,9 +1550,7 @@ export async function beginChatStickerUpload(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) {
-    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
-  }
+  await assertChatStorageOperational('stickers');
   const descriptor = validateStickerUploadDescriptor(input);
   const storageKey = makeChatStorageKey(
     input.conversationId,
@@ -1573,9 +1578,7 @@ export async function finalizeChatStickerUpload(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) {
-    throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
-  }
+  await assertChatStorageOperational('stickers');
 
   const descriptor = validateStickerUploadDescriptor(input);
   const expectedPrefix = `chat/${input.conversationId}/sticker/`;
@@ -1610,7 +1613,7 @@ export async function createChatAttachmentMessage(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) throw new RuleError('El almacenamiento de archivos todavía no está configurado.');
+  await assertChatStorageOperational('archivos');
   if (!CHAT_ALLOWED_UPLOAD_TYPES.has(input.mimeType)) {
     throw new RuleError('Este tipo de archivo no está permitido en el chat.');
   }
@@ -1733,6 +1736,7 @@ export async function getChatAttachmentObject(user: CurrentUser, attachmentId: s
   });
   if (!attachment) throw new NotFoundError('El archivo no existe o no tienes acceso.');
 
+  await assertChatStorageOperational('archivos');
   const response = await getR2Object(attachment.storageKey);
   if (!response.ok) throw new NotFoundError('El archivo ya no está disponible.');
 
@@ -1750,7 +1754,7 @@ export async function createChatSticker(
   },
 ) {
   await assertParticipant(user, input.conversationId);
-  if (!isR2Configured()) throw new RuleError('El almacenamiento de stickers todavía no está configurado.');
+  await assertChatStorageOperational('stickers');
   if (!['image/png', 'image/webp', 'image/jpeg'].includes(input.mimeType)) {
     throw new RuleError('Los stickers deben ser PNG, WEBP o JPEG.');
   }

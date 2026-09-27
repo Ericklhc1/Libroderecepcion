@@ -140,7 +140,7 @@ SELECT
   a."humanId", 'Alert', a."id", 'Alerta', a."title", a."message",
   a."status"::text, NULL::text, g."fullName", COALESCE(r."name", c."name"),
   a."type"::text, a."createdAt", '/alertas?q=%23' || a."humanId"::text,
-  NULL::text, NULL::text, NULL::text
+  NULL::text, a."dedupeKey", a."createdById"
 FROM "Alert" a
 LEFT JOIN "GuestReference" g ON g."id" = a."guestId"
 LEFT JOIN "User" r ON r."id" = a."resolvedById"

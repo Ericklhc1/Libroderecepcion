@@ -9,6 +9,7 @@ import {
   openShiftAs,
 } from './helpers';
 import {
+  cancelHandoverPreparation,
   closeShift,
   prepareHandover,
   receiveHandover,
@@ -25,7 +26,7 @@ import {
   saveCashCount,
 } from '@/server/services/cash';
 import { RuleError } from '@/server/errors';
-import { closeShiftCash } from '@/server/services/cash-closure';
+import { closeShiftCash, getShiftCashClosure } from '@/server/services/cash-closure';
 import { insertCashMovement } from '@/server/services/live-cash';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -341,6 +342,50 @@ describe('caja en la entrega de turno', () => {
         reference: 'NO-DEBE-SALIR',
       }),
     ).rejects.toThrow(/saldo operacional disponible/i);
+  });
+
+  it('cancelar el cierre conserva transferencias reales y reabre la Caja formal', async () => {
+    await seedFunds();
+    const shift = await openShift(saliente, ShiftType.DIA);
+    const handover = await prepareHandover(saliente, shift.id);
+
+    await insertCashMovement(prisma, {
+      userId: saliente.id,
+      kind: 'AJUSTE_ENTRADA',
+      direction: 'ENTRADA',
+      currency: 'CLP',
+      amount: 10_000,
+      shiftId: shift.id,
+      reference: 'Recaudación antes de cancelar cierre',
+    });
+    const transfer = await recordCashTransfer(saliente, {
+      handoverId: handover.id,
+      currency: 'CLP',
+      amount: 10_000,
+      reference: 'SOBRE-CANCELACION',
+    });
+
+    await saveCashCount(saliente, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities: await exactFundQuantities(),
+    });
+    await closeShiftCash(saliente, { shiftId: shift.id });
+    expect((await getShiftCashClosure(shift.id))?.reopenedAt).toBeNull();
+
+    await cancelHandoverPreparation(saliente, shift.id);
+
+    expect(await prisma.cashTransfer.findUnique({ where: { id: transfer.id } })).not.toBeNull();
+    expect(
+      await prisma.cashMovement.findUnique({ where: { cashTransferId: transfer.id } }),
+    ).not.toBeNull();
+    expect(await prisma.cashCount.count({ where: { handoverId: handover.id } })).toBe(0);
+    expect((await getShiftCashClosure(shift.id))?.reopenedAt).not.toBeNull();
+
+    const preparedAgain = await prepareHandover(saliente, shift.id);
+    expect(preparedAgain.id).toBe(handover.id);
+    const state = await getHandoverCashState(handover.id);
+    expect(state.transfers.map((row) => row.id)).toContain(transfer.id);
   });
 
   it('una transferencia revisable por Supervisión no bloquea el envío si el arqueo es posterior', async () => {

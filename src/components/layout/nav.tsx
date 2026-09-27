@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  AlarmClock,
   Banknote,
   BarChart3,
   BedDouble,
@@ -35,6 +36,7 @@ const ICONS = {
   room: DoorClosed,
   key: KeyRound,
   cash: Banknote,
+  alarm: AlarmClock,
   admin: Settings,
 } as const;
 

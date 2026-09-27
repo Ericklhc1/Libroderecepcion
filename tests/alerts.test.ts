@@ -267,6 +267,19 @@ describe('motor de alertas', () => {
     expect(alert.level).toBe(AlertLevel.CRITICA);
     expect(alert.auto).toBe(true);
 
+    await prisma.shift.update({
+      where: { id: emergency.id },
+      data: {
+        emergencyReleasedAt: now,
+        emergencyReleaseReason: 'Condición regularizada en prueba',
+      },
+    });
+    await runAlertEngine(new Date(now.getTime() + 60_000));
+    const resolvedAfterRelease = await prisma.alert.findUniqueOrThrow({
+      where: { dedupeKey: `shift-emergency-source:${source.id}` },
+    });
+    expect(resolvedAfterRelease.status).toBe(AlertStatus.RESUELTA);
+
     await resolveAlert(user, { id: alert.id, note: 'Revisado, pero el saliente sigue abierto.' });
     const rerun = await runAlertEngine(new Date(now.getTime() + 60_000));
     expect(rerun.reopened).toBeGreaterThanOrEqual(1);

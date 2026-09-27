@@ -67,6 +67,21 @@ describe('garantías', () => {
     expect(guarantee.createdById).toBe(user.id);
   });
 
+  it('registrar una garantía no crea una Novedad duplicada', async () => {
+    await createGuarantee(user, {
+      guestName: 'Huésped garantía',
+      roomNumber: '529',
+      reference: 'Depósito efectivo',
+      kind: 'EFECTIVO',
+      amount: 50_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    expect(await prisma.operationalEntry.count()).toBe(0);
+    expect(await prisma.guarantee.count()).toBe(1);
+  });
+
   it('acepta otra moneda además de CLP', async () => {
     const r = await reserva();
     const { id } = await createGuarantee(user, {

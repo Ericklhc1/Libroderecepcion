@@ -115,16 +115,23 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
         'Revisar si hay mesas sin cerrar en Restaurante. Gastro Informes Cuentas Pendientes No',
         'Revisar si hay cuentas que exceden los 7 días y que la garantía podría haber expirado. Informes Financieros Cuentas sobre días Si Se observa que la Reserva con ID 7484708 tiene un pendiente de 20 CLP (probablemente por error de facturación o tipo de cambio), No se puede cambiar el elemento porque el día está cerrado.',
         'Revisar si hay facturas rechazadas Si No existen facturas rechazadas.',
+        'Revisar e imprimir los informes de Previsión de Servicios y Servicios por habitación, Revisar en Informes Actividad Si Ent 1, Sal 15, Des 52, Occ 13.48%',
       ].join(' '),
     );
 
     expect(parsed.kind).toBe('AUDITORIA_FORMULARIO');
     expect(parsed.metrics).toMatchObject({
       audit: {
-        controls: 8,
-        completed: 6,
+        controls: 9,
+        completed: 7,
         notCompleted: 2,
         withoutAnswer: 0,
+      },
+      auditActivity: {
+        entries: 1,
+        departures: 15,
+        breakfasts: 52,
+        occupancyPct: 13.48,
       },
     });
     expect(parsed.checks.filter((check) => check.done === false).map((check) => check.key)).toEqual(

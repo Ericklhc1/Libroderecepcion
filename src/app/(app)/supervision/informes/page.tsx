@@ -46,7 +46,7 @@ export default async function SupervisorReportsPage({ searchParams }: { searchPa
 
       <header>
         <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900"><ShieldCheck className="h-5 w-5 text-petrol-600" />Informes de Supervisión</h1>
-        <p className="mt-1 text-sm text-slate-600">Estado operativo, pases de gimnasio y multas. El mismo PDF que descargas es el que se adjunta al correo.</p>
+        <p className="mt-1 text-sm text-slate-600">Actividad del período + estado vigente, pases de gimnasio y multas. El mismo PDF que descargas es el que se adjunta al correo.</p>
       </header>
 
       <form method="get" className="card flex flex-wrap items-end gap-3 p-3">
@@ -66,7 +66,7 @@ export default async function SupervisorReportsPage({ searchParams }: { searchPa
           <span className="mb-1 block text-xs font-medium text-slate-500">Informe</span>
           <select name="reporte" defaultValue={tipo} className="input-base w-full">
             <option value="">Todos</option>
-            <option value="estado">Estado operativo</option>
+            <option value="estado">Actividad + estado vigente</option>
             <option value="gimnasio">Gimnasio</option>
             <option value="multas">Multas</option>
           </select>

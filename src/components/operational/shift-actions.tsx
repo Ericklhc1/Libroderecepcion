@@ -650,7 +650,7 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
               ¿Estás seguro/a de que quieres cancelar el cierre?
             </h2>
             <p className="mt-2 text-sm leading-5 text-slate-600">
-              Tu turno volverá a ACTIVO. Los arqueos de preparación se invalidarán y deberán hacerse otra vez. Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.
+              Tu turno volverá a ACTIVO. Los arqueos y las confirmaciones de revisión se invalidarán y deberán hacerse otra vez. Las notas del borrador de esta entrega pueden requerir volver a registrarse. Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.
             </p>
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button

@@ -137,9 +137,9 @@ export default async function AssignmentBoardPage({
       <div className="grid gap-3 sm:grid-cols-3">
         <StatTile
           label="Sin responsable"
-          value={board.unassigned.length}
-          tone={board.unassigned.length > 0 ? 'alert' : 'good'}
-          hint={board.unassigned.length === 0 ? 'Todo tiene dueño' : undefined}
+          value={board.unassignedTotal}
+          tone={board.unassignedTotal > 0 ? 'alert' : 'good'}
+          hint={board.unassignedTotal === 0 ? 'Todo tiene dueño' : board.unassignedTotal > board.unassigned.length ? `Mostrando los ${board.unassigned.length} más antiguos/prioritarios` : undefined}
         />
         <StatTile
           label="Vencidas asignadas"
@@ -168,7 +168,17 @@ export default async function AssignmentBoardPage({
 
       {/* Lo que no tiene dueño va primero: es lo único que nadie está mirando. */}
       {show('sin-responsable') ? <Card>
-        <CardHeader title="Sin responsable" count={visibleUnassigned.length} />
+        <CardHeader
+          title="Sin responsable"
+          count={q ? visibleUnassigned.length : board.unassignedTotal}
+          action={
+            board.unassignedTotal > board.unassigned.length ? (
+              <span className="text-xs text-slate-500">
+                Muestra visible: {board.unassigned.length} de {board.unassignedTotal}
+              </span>
+            ) : null
+          }
+        />
         {visibleUnassigned.length === 0 ? (
           <EmptyState
             message="Todo tiene responsable."

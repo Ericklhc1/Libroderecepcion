@@ -112,7 +112,15 @@ export async function buildSupervisorReport(
     };
   }
 
-  const [entries, tasks, alerts, shifts] = await Promise.all([
+  const [
+    entries,
+    tasks,
+    alerts,
+    shifts,
+    currentOpenEntries,
+    currentOpenTasks,
+    currentOpenAlerts,
+  ] = await Promise.all([
     prisma.operationalEntry.groupBy({
       by: ['status'],
       where: { deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
@@ -134,45 +142,50 @@ export async function buildSupervisorReport(
       orderBy: { actualStart: 'asc' },
       take: 500,
     }),
+    prisma.operationalEntry.count({
+      where: { deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
+    }),
+    prisma.task.count({
+      where: { deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
+    }),
+    prisma.alert.count({
+      where: { deletedAt: null, status: { not: AlertStatus.RESUELTA } },
+    }),
   ]);
 
   const entryTotal = entries.reduce((sum, row) => sum + row._count._all, 0);
   const taskTotal = tasks.reduce((sum, row) => sum + row._count._all, 0);
   const alertTotal = alerts.reduce((sum, row) => sum + row._count._all, 0);
-  const openEntries = entries
-    .filter((row) => OPEN_ENTRY_STATUSES.has(row.status))
-    .reduce((sum, row) => sum + row._count._all, 0);
-  const openTasks = tasks
-    .filter((row) => OPEN_TASK_STATUSES.has(row.status))
-    .reduce((sum, row) => sum + row._count._all, 0);
-  const openAlerts = alerts
-    .filter((row) => row.status !== AlertStatus.RESUELTA)
-    .reduce((sum, row) => sum + row._count._all, 0);
-
   return {
     type,
-    title: 'Informe de estado operativo',
+    title: 'Informe de actividad y estado operativo',
     filename: `informe-estado-operativo-${suffix}.pdf`,
     from: range.from,
     to: range.to,
     total: entryTotal + taskTotal + alertTotal,
     summary: [
-      `Registros operativos: ${entryTotal} · abiertos ${openEntries}`,
-      `Tareas: ${taskTotal} · abiertas ${openTasks}`,
-      `Alertas: ${alertTotal} · activas ${openAlerts}`,
+      `Actividad del período · registros ocurridos: ${entryTotal}`,
+      `Actividad del período · tareas creadas: ${taskTotal}`,
+      `Actividad del período · alertas creadas: ${alertTotal}`,
+      `Estado vigente ahora · registros abiertos ${currentOpenEntries} · tareas abiertas ${currentOpenTasks} · alertas activas ${currentOpenAlerts}`,
       `Turnos iniciados en el período: ${shifts.length}`,
     ],
     lines: [
-      'REGISTROS POR ESTADO',
+      'ACTIVIDAD DEL PERÍODO · REGISTROS POR ESTADO ACTUAL',
       ...entries.map((row) => `${row.status.replaceAll('_', ' ')}: ${row._count._all}`),
       '',
-      'TAREAS POR ESTADO',
+      'ACTIVIDAD DEL PERÍODO · TAREAS CREADAS POR ESTADO ACTUAL',
       ...tasks.map((row) => `${row.status.replaceAll('_', ' ')}: ${row._count._all}`),
       '',
-      'ALERTAS POR ESTADO',
+      'ACTIVIDAD DEL PERÍODO · ALERTAS CREADAS POR ESTADO ACTUAL',
       ...alerts.map((row) => `${row.status.replaceAll('_', ' ')}: ${row._count._all}`),
       '',
-      'TURNOS',
+      'ESTADO VIGENTE AHORA',
+      `Registros abiertos: ${currentOpenEntries}`,
+      `Tareas abiertas: ${currentOpenTasks}`,
+      `Alertas activas: ${currentOpenAlerts}`,
+      '',
+      'TURNOS INICIADOS EN EL PERÍODO',
       ...shifts.map((shift) => `${formatCalendarDate(shift.date)} | ${shift.type} | ${shift.status} | ${shift.assignments.map((assignment) => assignment.user.name).join(', ') || 'sin asignación'}`),
     ],
   };

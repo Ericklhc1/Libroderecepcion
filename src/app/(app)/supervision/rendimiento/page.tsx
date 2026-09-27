@@ -11,18 +11,24 @@ import { PerformanceObservationDialog } from '@/components/supervision/center-ac
 import { formatDateTime } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 
 export const metadata = { title: 'Rendimiento operativo' };
 export const dynamic = 'force-dynamic';
 
 function periodFrom(params: RawSearchParams) {
   const now = new Date();
-  const fallback = new Date(now.getTime() - 30 * 86_400_000);
-  const from = typeof params.desde === 'string' ? new Date(`${params.desde}T00:00:00`) : fallback;
-  const to = typeof params.hasta === 'string' ? new Date(`${params.hasta}T23:59:59.999`) : now;
+  const fallback = hotelWallDateTime(hotelDateKey(addHotelCalendarDays(now, -30)), 0);
+  const parseKey = (value: unknown, endOfDay = false) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const start = hotelWallDateTime(value, 0);
+    return endOfDay
+      ? new Date(addHotelCalendarDays(start, 1).getTime() - 1)
+      : start;
+  };
   return {
-    from: Number.isNaN(from.getTime()) ? fallback : from,
-    to: Number.isNaN(to.getTime()) ? now : to,
+    from: parseKey(params.desde) ?? fallback,
+    to: parseKey(params.hasta, true) ?? now,
   };
 }
 
@@ -52,8 +58,8 @@ export default async function PerformancePage({
     (!selected || row.user.id === selected) &&
     (!q || [row.user.name, row.user.role.name, ...row.indicators.map((item) => item.label)].join(' ').toLocaleLowerCase('es-CL').includes(q)),
   );
-  const start = period.from.toISOString().slice(0, 10);
-  const end = period.to.toISOString().slice(0, 10);
+  const start = hotelDateKey(period.from);
+  const end = hotelDateKey(period.to);
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">

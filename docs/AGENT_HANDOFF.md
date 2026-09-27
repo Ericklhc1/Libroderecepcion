@@ -1,5 +1,15 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.17.1 · coherencia de Supervisión
+
+- Continuidad activa: tareas, seguimientos y medidas abiertas no se ocultan por fecha de creación.
+- Fechas del Centro y Rendimiento se interpretan en `America/Santiago`.
+- Conteos de Auditorías/continuidad/asuntos sin responsable se separan de las muestras limitadas.
+- «No aplica» queda fuera del denominador de cumplimiento de procedimientos.
+- Salud: lenguaje de emergencia y cierres incompletos en estado de atención.
+- Informe de estado pasa a «actividad + estado vigente», evitando que un pendiente antiguo desaparezca del informe.
+- Sin migración. Versión 1.17.1.
+
 ## Actualización 27/09/2026 · Libro 1.17.0 · blindaje de flujos
 
 - Cierre de Recepción: las revisiones de pendientes/final quedan persistidas y

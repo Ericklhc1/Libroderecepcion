@@ -50,12 +50,14 @@ export type AssignmentBoard = {
   /** Quién puede recibir asignaciones, para los selectores. */
   assignees: Array<{ value: string; label: string }>;
   overdueTotal: number;
+  /** Conteo exacto; la lista visible es una muestra priorizada. */
+  unassignedTotal: number;
 };
 
 export async function getAssignmentBoard(): Promise<AssignmentBoard> {
   const now = new Date();
 
-  const [unassignedTasks, unassignedEntries, people] = await Promise.all([
+  const [unassignedTasks, unassignedEntries, unassignedTaskCount, unassignedEntryCount, people] = await Promise.all([
     prisma.task.findMany({
       where: { deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
       select: {
@@ -88,7 +90,13 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       resuelve PostgreSQL. La versión ingenua —una consulta por persona— son
       diez viajes a otra región por cada carga de la pantalla.
     */
-    prisma.user.findMany({
+    prisma.task.count({
+      where: { deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
+    }),
+    prisma.operationalEntry.count({
+      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
+    }),
+        prisma.user.findMany({
       where: { deletedAt: null, active: true, role: { operational: true } },
       select: {
         id: true,
@@ -173,6 +181,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       label: `${person.name} · ${person.role.name}`,
     })),
     overdueTotal: workload.reduce((sum, row) => sum + row.overdueTasks, 0),
+    unassignedTotal: unassignedTaskCount + unassignedEntryCount,
   };
 }
 

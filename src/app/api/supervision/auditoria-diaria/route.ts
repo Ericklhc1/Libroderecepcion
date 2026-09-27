@@ -75,7 +75,10 @@ export async function POST(request: Request) {
         label: parsed.label,
         findings: parsed.findings.length,
         warnings: parsed.warnings,
+        completeness: parsed.completeness,
+        reportedBusinessDate: parsed.reportedBusinessDate,
         sourceFilePersisted: false,
+        sourceFingerprintPersisted: true,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

@@ -14,6 +14,7 @@ import {
 } from '@/server/services/operational-alarms';
 import {
   closeShift,
+  confirmHandoverReviewStep,
   prepareHandover,
   sendHandover,
 } from '@/server/services/shifts';
@@ -25,6 +26,11 @@ import {
   resetOperationalData,
   seedCatalog,
 } from './helpers';
+
+async function confirmReview(user: Awaited<ReturnType<typeof createUser>>, handoverId: string) {
+  await confirmHandoverReviewStep(user, { handoverId, step: 'PENDINGS' });
+  await confirmHandoverReviewStep(user, { handoverId, step: 'FINAL' });
+}
 
 describe('timers y recordatorios operativos', () => {
   beforeAll(async () => {
@@ -55,7 +61,8 @@ describe('timers y recordatorios operativos', () => {
     expect(timer.originShiftId).toBe(shift.id);
     expect(timer.recipients).toHaveLength(1);
 
-    await prepareHandover(receptionist, shift.id);
+    const handover = await prepareHandover(receptionist, shift.id);
+    await confirmReview(receptionist, handover.id);
     await sendHandover(receptionist, { shiftId: shift.id });
     await closeShift(receptionist, { shiftId: shift.id });
 
@@ -83,7 +90,8 @@ describe('timers y recordatorios operativos', () => {
 
     expect(reminder.originShiftId).toBeNull();
 
-    await prepareHandover(receptionist, shift.id);
+    const handover = await prepareHandover(receptionist, shift.id);
+    await confirmReview(receptionist, handover.id);
     await sendHandover(receptionist, { shiftId: shift.id });
     await closeShift(receptionist, { shiftId: shift.id });
 

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 export function ListFilterBar({
@@ -8,12 +8,14 @@ export function ListFilterBar({
   searchPlaceholder = 'Buscar…',
   clearHref,
   className,
+  collapseChildren = false,
 }: {
   children?: React.ReactNode;
   searchValue?: string;
   searchPlaceholder?: string;
   clearHref: string;
   className?: string;
+  collapseChildren?: boolean;
 }) {
   return (
     <form
@@ -38,7 +40,15 @@ export function ListFilterBar({
           />
         </span>
       </label>
-      {children}
+{children && collapseChildren ? (
+        <details className="w-full border-t border-slate-100 pt-2">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-medium text-petrol-700">
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            Más filtros
+          </summary>
+          <div className="mt-3 flex flex-wrap items-end gap-2">{children}</div>
+        </details>
+      ) : children}
       <button
         type="submit"
         className="rounded-lg bg-petrol-700 px-3 py-2 text-sm font-medium text-white hover:bg-petrol-800"

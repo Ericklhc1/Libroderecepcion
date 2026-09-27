@@ -106,6 +106,7 @@ describe('Centro de Supervisión', () => {
     const summary = await getSupervisionCenterSummary(supervisor);
     expect(summary.lastClosedShift?.id).toBe(shift.id);
     expect(summary.myFollowUps.map((item) => item.id)).toContain(followUp.id);
+    expect(summary.counts.myFollowUps).toBe(1);
   });
 
   it('permite seguir una fuente real sin duplicarla y evita seguimientos repetidos', async () => {

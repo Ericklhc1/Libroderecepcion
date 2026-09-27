@@ -638,6 +638,7 @@ model Department {
 
 model Shift {
   id           String      @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   date         DateTime    @db.Date
   type         ShiftType
   status       ShiftStatus @default(PROGRAMADO)
@@ -721,6 +722,7 @@ model ShiftAssignment {
 
 model ShiftHandover {
   id                   String         @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   /// Un turno sólo puede emitir una entrega: evita entregas duplicadas.
   fromShiftId          String         @unique
   fromShift            Shift          @relation("handoverFromShift", fields: [fromShiftId], references: [id])
@@ -785,6 +787,7 @@ model HandoverItem {
 /// del turno operativo: no participa en caja, llaves, habitaciones ni PMS.
 model SupervisionShift {
   id           String                 @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   supervisorId String
   supervisor   User                   @relation("supervisionShiftSupervisor", fields: [supervisorId], references: [id])
   status       SupervisionShiftStatus @default(ACTIVO)
@@ -809,6 +812,7 @@ model SupervisionShift {
 /// Copia inalterable de lo existente al entregar el turno de Supervisión.
 model SupervisionShiftHandover {
   id                 String           @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   supervisionShiftId String           @unique
   supervisionShift   SupervisionShift @relation(fields: [supervisionShiftId], references: [id])
   issuedById         String
@@ -872,6 +876,7 @@ model SupervisionNote {
 
 model OperationalEntry {
   id               String      @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   seq              Int         @unique @default(autoincrement())
   type             EntryType
   title            String
@@ -948,6 +953,7 @@ model OperationalEntry {
 
 model Task {
   id                  String         @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   seq                 Int            @unique @default(autoincrement())
   title               String
   description         String?
@@ -1060,6 +1066,7 @@ model TaskChecklistItem {
 
 model FollowUp {
   id          String                @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   action      String
   result      String?
   nextAction  String?
@@ -1113,6 +1120,7 @@ model FollowUp {
 
 model Alert {
   id           String      @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   type         AlertType
   level        AlertLevel  @default(ATENCION)
   title        String
@@ -1820,6 +1828,7 @@ model RoomKey {
 /// Historial de movimientos de llaves. Nunca se borra ni se edita.
 model KeyMovement {
   id     String    @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   keyId  String
   key    RoomKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
   action KeyAction
@@ -1849,6 +1858,7 @@ model KeyMovement {
  */
 model KeyInventoryCount {
   id          String   @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   floor       Int
   countedById String
   countedBy   User     @relation("keyInventoryCountedBy", fields: [countedById], references: [id])
@@ -1915,6 +1925,7 @@ model PmsImportBatch {
 /// antes y su después, igual que el resto del sistema.
 model Guarantee {
   id                     String                @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   /// Vínculos PMS heredados. Desde v1.4.0 son opcionales y nunca se exigen
   /// para crear u operar una garantía nueva.
   reservationReferenceId String?
@@ -2026,6 +2037,7 @@ enum CashCountKind {
 
 model CashCount {
   id          String          @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   handoverId  String
   handover    ShiftHandover   @relation(fields: [handoverId], references: [id], onDelete: Cascade)
   kind        CashCountKind
@@ -2058,6 +2070,7 @@ model CashCountLine {
 /// Transferencia interna a Tesorería: efectivo que cambia de custodia/ubicación; no es un gasto.
 model CashTransfer {
   id           String        @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   handoverId   String
   handover     ShiftHandover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
   currency     String        @db.VarChar(3)
@@ -2124,6 +2137,7 @@ enum AnnouncementScope {
 
 model Announcement {
   id             String            @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   title          String
   body           String
   scope          AnnouncementScope @default(TODOS)
@@ -2219,6 +2233,7 @@ enum FineStatus {
 
 model Fine {
   id                     String                @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   roomId                 String
   room                   Room                  @relation(fields: [roomId], references: [id])
   /// Número de reserva tal como lo entrega el PMS. Texto, no número: el PMS
@@ -2337,6 +2352,7 @@ model ChecklistTemplateItem {
 
 model ChecklistRun {
   id                    String                 @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   templateId            String
   template              ChecklistTemplate      @relation(fields: [templateId], references: [id])
   /// Nombre de la plantilla al ejecutarse. Se copia para que la historia no
@@ -2417,6 +2433,7 @@ model AuditParticipant {
 
 model AuditFinding {
   id             String            @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   auditId        String
   audit          ChecklistRun      @relation(fields: [auditId], references: [id])
   itemId         String?           @unique
@@ -2440,6 +2457,7 @@ model AuditFinding {
 
 model CorrectiveMeasure {
   id             String                  @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   findingId      String?
   finding        AuditFinding?           @relation(fields: [findingId], references: [id])
   taskId         String?                 @unique
@@ -2513,6 +2531,7 @@ model PerformanceObservation {
 /// Todo movimiento de efectivo del turno: garantías, folios, egresos.
 model CashMovement {
   id                     String                @id
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   kind                   String
   direction              String
   currency               String                @db.VarChar(3)
@@ -2561,6 +2580,7 @@ model CashMovement {
 /// Arqueo: denominaciones del fondo fijo + validación separada de garantías vigentes.
 model CashAudit {
   id             String   @id
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   currency       String   @db.VarChar(3)
   expectedAmount Decimal  @db.Decimal(12, 2)
   countedAmount  Decimal  @db.Decimal(12, 2)
@@ -2583,6 +2603,7 @@ model CashAudit {
 /// para conservar compatibilidad histórica.
 model GymPass {
   id                     String                @id
+  humanId      Int         @unique @default(dbgenerated("nextval('\"OperationalHumanIdSeq\"'::regclass)"))
   folio                  Int                   @unique @default(autoincrement())
   /// Fecha del servicio que selecciona Recepción; distinta del timestamp técnico de emisión.
   serviceDate            DateTime              @db.Date

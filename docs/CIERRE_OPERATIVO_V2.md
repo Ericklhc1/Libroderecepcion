@@ -1,6 +1,6 @@
 # Cierre Operativo — contrato vigente de Recepción
 
-Estado: **vigente para Libro 1.10.8 / PR #125**.  
+Estado: **vigente para Libro 1.14.8**.  
 Fuente de verdad superior: `PROJECT_CONTEXT.md` + código y esquema vigentes.
 
 > Este documento reemplaza el contrato V2 anterior. En particular, quedan
@@ -36,6 +36,23 @@ del sistema es secuencial.
 
 Enviar la entrega **no** libera al saliente. Su participación termina sólo
 cuando el turno queda formalmente `CERRADO`.
+
+### Excepción: turno de emergencia
+
+El turno de emergencia no es una segunda forma normal de iniciar turno. Antes
+de abrirlo, la interfaz muestra una advertencia bloqueante, obliga a seleccionar
+una causa válida de una lista cerrada y exige aceptación expresa.
+
+Causas válidas:
+- el recepcionista saliente no está disponible y no puede cerrar;
+- una falla técnica impide completar el cierre normal;
+- una situación operacional excepcional obliga a mantener Recepción activa.
+
+El atraso, descuido u olvido del saliente no es por sí solo causa de emergencia.
+La apertura queda marcada en el turno entrante, vinculada al turno saliente y
+auditada. Mientras el turno saliente siga sin cierre formal, el motor mantiene
+una alerta crítica automática para Supervisión y la reabre si alguien intenta
+resolverla antes de regularizar la condición.
 
 ## Caja y garantías
 

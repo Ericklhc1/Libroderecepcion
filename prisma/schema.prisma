@@ -617,6 +617,14 @@ model Shift {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   isDemo       Boolean     @default(false)
+  /// Apertura excepcional mientras el turno saliente seguía sin cierre formal.
+  emergency                  Boolean   @default(false)
+  /// Texto canónico de la causa seleccionada al abrir la emergencia.
+  emergencyReason            String?
+  /// Turno saliente que originó la excepción. Se conserva como referencia auditada.
+  emergencySourceShiftId     String?
+  /// Momento en que quien abrió aceptó expresamente las condiciones de emergencia.
+  emergencyAcknowledgedAt    DateTime?
   /// Turno retirado de las listas operativas sin borrarlo.
   ///
   /// Distinto de ANULADO: anular es «este turno no se va a usar»; archivar es
@@ -652,6 +660,8 @@ model Shift {
   @@index([status])
   @@index([date])
   @@index([archivedAt])
+  @@index([emergency, archivedAt])
+  @@index([emergencySourceShiftId])
 }
 
 model ShiftAssignment {

@@ -229,18 +229,39 @@ describe('invariantes del turno', () => {
     ).toBe(1);
   });
 
-  it('permite continuidad controlada si el saliente quedó incompleto', async () => {
+  it('sólo permite emergencia con causa válida y aceptación expresa', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     await openShiftAs(morning, shiftA);
+
+    await expect(
+      openShift(evening, {
+        type: ShiftType.NOCHE,
+        continuity: true,
+        emergencyReason: 'SALIENTE_NO_DISPONIBLE',
+      }),
+    ).rejects.toThrow(/aceptar expresamente/i);
+
+    await expect(
+      openShift(evening, {
+        type: ShiftType.NOCHE,
+        continuity: true,
+        emergencyAccepted: true,
+      }),
+    ).rejects.toThrow(/razón válida/i);
 
     const result = await openShift(evening, {
       type: ShiftType.NOCHE,
       continuity: true,
-      continuityReason: 'El relevo llegó y el turno anterior no completó el cierre.',
+      emergencyReason: 'SALIENTE_NO_DISPONIBLE',
+      emergencyAccepted: true,
     });
 
     expect(result.shift.status).toBe(ShiftStatus.ACTIVO);
     expect(result.shift.id).not.toBe(shiftA.id);
+    expect(result.shift.emergency).toBe(true);
+    expect(result.shift.emergencySourceShiftId).toBe(shiftA.id);
+    expect(result.shift.emergencyAcknowledgedAt).not.toBeNull();
+    expect(result.shift.emergencyReason).toMatch(/no está disponible/i);
 
     const parked = await prisma.shift.findUniqueOrThrow({
       where: { id: shiftA.id },
@@ -251,9 +272,10 @@ describe('invariantes del turno', () => {
     expect(parked.assignments.every((assignment) => assignment.leftAt !== null)).toBe(true);
 
     const alert = await prisma.alert.findUnique({
-      where: { dedupeKey: `shift-continuity:${shiftA.id}` },
+      where: { dedupeKey: `shift-emergency-source:${shiftA.id}` },
     });
     expect(alert?.level).toBe('CRITICA');
+    expect(alert?.auto).toBe(true);
 
     expect(
       await prisma.shiftAssignment.count({

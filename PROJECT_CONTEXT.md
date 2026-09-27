@@ -242,9 +242,15 @@ conserva su modelo y sus reglas.
     puede interactuar con la operación cuando su turno está **ACTIVO**.
     El saliente inicia el cierre y queda limitado al flujo de Caja/entrega/cierre;
     enviar la entrega NO libera su participación. Debe cerrar formalmente el turno.
-    Sólo entonces el entrante puede abrir el suyo. Si existe una entrega pendiente,
-    el entrante queda **INICIADO** y bloqueado hasta recontar Caja, validar las
-    garantías y confirmar la recepción; recién ahí pasa a **ACTIVO**.
+    Sólo entonces el entrante puede abrir el suyo. **Única excepción: turno de
+    emergencia.** Si el saliente no puede cerrar y la continuidad real del mesón
+    no puede esperar, el entrante debe abrir una advertencia previa, seleccionar
+    una causa cerrada válida y aceptar expresamente las condiciones. Un atraso,
+    descuido u olvido no es por sí solo una causa válida. La emergencia queda
+    marcada en `Shift`, conserva el turno de origen y genera una alerta crítica
+    automática que se reabre mientras el saliente siga sin cierre formal.
+    Si existe una entrega pendiente de un turno ya cerrado, el entrante queda
+    bloqueado hasta recontar Caja, validar las garantías y confirmar la recepción.
     La entrega/recepción genera un acta imprimible con firma del recepcionista
     saliente, del entrante y espacio para validación de Supervisión/auditor designado.
     `ShiftAssignment` conserva la trazabilidad de quién estuvo en cada turno.

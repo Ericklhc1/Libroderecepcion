@@ -193,24 +193,94 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
     });
   }
 
-  const unhandedShifts = await prisma.shift.findMany({
+  const unclosedShifts = await prisma.shift.findMany({
     where: {
-      status: { in: [ShiftStatus.ACTIVO, ShiftStatus.INICIADO] },
+      archivedAt: null,
+      status: {
+        in: [
+          ShiftStatus.INICIADO,
+          ShiftStatus.ACTIVO,
+          ShiftStatus.PREPARANDO_ENTREGA,
+          ShiftStatus.ENTREGA_ENVIADA,
+        ],
+      },
       plannedEnd: { lt: now },
-      handoverOut: null,
     },
-    select: { id: true, type: true, date: true, plannedEnd: true },
+    select: { id: true, type: true, date: true, plannedEnd: true, status: true },
     take: 50,
   });
 
-  for (const shift of unhandedShifts) {
+  for (const shift of unclosedShifts) {
     candidates.push({
-      dedupeKey: `shift-handover-missing:${shift.id}`,
+      dedupeKey: `shift-unclosed:${shift.id}`,
       type: AlertType.ENTREGA_TURNO_PENDIENTE,
       level: AlertLevel.CRITICA,
-      title: 'Turno vencido sin preparar la entrega',
-      message: `El turno ${shift.type} del ${formatCalendarDate(shift.date)} terminó su horario y aún no envía la entrega.`,
+      title: 'Turno vencido sin cierre formal',
+      message:
+        `El turno ${shift.type} del ${formatCalendarDate(shift.date)} terminó su horario y continúa en «${shift.status}». ` +
+        'Debe regularizarse y quedar formalmente cerrado.',
       dueAt: shift.plannedEnd,
+    });
+  }
+
+  /*
+   * Una emergencia no resuelve el turno saliente: sólo permite que Recepción
+   * siga operando. Mientras el turno de origen no esté cerrado/anulado, esta
+   * alerta crítica vuelve a abrirse aunque alguien intente resolverla.
+   */
+  const emergencyShifts = await prisma.shift.findMany({
+    where: {
+      emergency: true,
+      archivedAt: null,
+      emergencySourceShiftId: { not: null },
+    },
+    select: {
+      id: true,
+      emergencyReason: true,
+      emergencySourceShiftId: true,
+      actualStart: true,
+    },
+    take: 50,
+  });
+  const emergencySourceIds = Array.from(
+    new Set(
+      emergencyShifts
+        .map((shift) => shift.emergencySourceShiftId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const emergencySources =
+    emergencySourceIds.length > 0
+      ? await prisma.shift.findMany({
+          where: { id: { in: emergencySourceIds } },
+          select: {
+            id: true,
+            type: true,
+            date: true,
+            status: true,
+            handoverOut: { select: { id: true } },
+          },
+        })
+      : [];
+  const emergencySourceById = new Map(emergencySources.map((shift) => [shift.id, shift]));
+
+  for (const emergency of emergencyShifts) {
+    if (!emergency.emergencySourceShiftId) continue;
+    const source = emergencySourceById.get(emergency.emergencySourceShiftId);
+    if (!source || source.status === ShiftStatus.CERRADO || source.status === ShiftStatus.ANULADO) {
+      continue;
+    }
+    candidates.push({
+      dedupeKey: `shift-emergency-source:${source.id}`,
+      type: AlertType.OTRO,
+      level: AlertLevel.CRITICA,
+      title: 'Turno de emergencia · cierre saliente pendiente',
+      message:
+        `Existe un turno de emergencia porque el turno ${source.type} del ${formatCalendarDate(source.date)} sigue sin cierre formal. ` +
+        `Motivo: ${emergency.emergencyReason ?? 'Regularización pendiente'}. ` +
+        'La emergencia no cierra ni sustituye el turno saliente.',
+      dueAt: emergency.actualStart,
+      handoverId: source.handoverOut?.id ?? null,
     });
   }
 

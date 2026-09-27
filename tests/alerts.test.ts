@@ -7,6 +7,8 @@ import {
   EntryType,
   Priority,
   Severity,
+  ShiftStatus,
+  ShiftType,
   TaskStatus,
 } from '@prisma/client';
 import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
@@ -224,6 +226,62 @@ describe('motor de alertas', () => {
     expect(types).not.toContain(AlertType.HUESPED_VIP);
     expect(types).not.toContain(AlertType.TRASLADO_PENDIENTE);
     expect(types).not.toContain(AlertType.TARJETA_INVALIDA);
+  });
+
+  it('mantiene recurrente la alerta de emergencia hasta cerrar el turno saliente', async () => {
+    const now = new Date();
+    const source = await prisma.shift.create({
+      data: {
+        date: new Date('2026-09-27T00:00:00.000Z'),
+        type: ShiftType.NOCHE,
+        status: ShiftStatus.ENTREGA_ENVIADA,
+        plannedStart: new Date(now.getTime() - 13 * 3600_000),
+        plannedEnd: new Date(now.getTime() - 60 * 60_000),
+        actualStart: new Date(now.getTime() - 12 * 3600_000),
+        createdById: user.id,
+        startedById: user.id,
+      },
+    });
+    await prisma.shift.create({
+      data: {
+        date: new Date('2026-09-27T00:00:00.000Z'),
+        type: ShiftType.DIA,
+        status: ShiftStatus.ACTIVO,
+        plannedStart: new Date(now.getTime() - 2 * 3600_000),
+        plannedEnd: new Date(now.getTime() + 10 * 3600_000),
+        actualStart: new Date(now.getTime() - 2 * 3600_000),
+        createdById: user.id,
+        startedById: user.id,
+        emergency: true,
+        emergencyReason:
+          'El recepcionista saliente no está disponible y no puede completar el cierre.',
+        emergencySourceShiftId: source.id,
+        emergencyAcknowledgedAt: new Date(now.getTime() - 2 * 3600_000),
+      },
+    });
+
+    await runAlertEngine(now);
+    const alert = await prisma.alert.findUniqueOrThrow({
+      where: { dedupeKey: `shift-emergency-source:${source.id}` },
+    });
+    expect(alert.level).toBe(AlertLevel.CRITICA);
+    expect(alert.auto).toBe(true);
+
+    await resolveAlert(user, { id: alert.id, note: 'Revisado, pero el saliente sigue abierto.' });
+    const rerun = await runAlertEngine(new Date(now.getTime() + 60_000));
+    expect(rerun.reopened).toBeGreaterThanOrEqual(1);
+    expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
+      AlertStatus.NUEVA,
+    );
+
+    await prisma.shift.update({
+      where: { id: source.id },
+      data: { status: ShiftStatus.CERRADO, actualEnd: new Date(now.getTime() + 2 * 60_000) },
+    });
+    await runAlertEngine(new Date(now.getTime() + 3 * 60_000));
+    expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
+      AlertStatus.RESUELTA,
+    );
   });
 
   it('no toca las alertas manuales', async () => {

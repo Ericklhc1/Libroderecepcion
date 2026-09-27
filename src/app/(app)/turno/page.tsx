@@ -202,10 +202,10 @@ export default async function ShiftPage({
     ? {
         ...briefing,
         openEntries: briefing.openEntries.filter((entry) =>
-          textMatches([entry.seq, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name]),
+          textMatches([entry.humanId, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name]),
         ),
         overdueTasks: briefing.overdueTasks.filter((task) =>
-          textMatches([task.seq, task.status, task.title, task.assignee?.name]),
+          textMatches([task.humanId, task.status, task.title, task.assignee?.name]),
         ),
         alerts: briefing.alerts.filter((alert) =>
           textMatches([alert.type, alert.level, alert.title]),

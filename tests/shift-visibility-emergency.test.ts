@@ -10,10 +10,13 @@ import {
 import {
   addShiftMember,
   closeShift,
+  confirmHandoverReviewStep,
   getMyActiveShift,
   getShiftDesk,
   openShift,
+  prepareHandover,
   receiveHandover,
+  sendHandover,
 } from '@/server/services/shifts';
 
 describe('visibilidad, incorporación y emergencia única de turnos', () => {
@@ -174,6 +177,53 @@ describe('visibilidad, incorporación y emergencia única de turnos', () => {
         },
       }),
     ).toBe(1);
+  });
+
+  it('cerrar el propio turno de emergencia libera la excepción aunque el origen siga pendiente', async () => {
+    const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Origen aún pendiente' });
+    const emergenciaUser = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Emergencia que cierra' });
+
+    const source = await openShift(saliente, { type: ShiftType.DIA });
+    const emergency = await openShift(emergenciaUser, {
+      type: ShiftType.NOCHE,
+      continuity: true,
+      emergencyReason: 'CONTINUIDAD_CRITICA',
+      emergencyAccepted: true,
+    });
+
+    const draft = await prepareHandover(emergenciaUser, emergency.shift.id);
+    await confirmHandoverReviewStep(emergenciaUser, {
+      handoverId: draft.id,
+      step: 'PENDINGS',
+    });
+    const urgentCount = await prisma.handoverItem.count({
+      where: { handoverId: draft.id, level: 'URGENTE' },
+    });
+    await confirmHandoverReviewStep(emergenciaUser, {
+      handoverId: draft.id,
+      step: 'FINAL',
+      urgentAcknowledged: urgentCount > 0,
+    });
+    await sendHandover(emergenciaUser, { shiftId: emergency.shift.id });
+    await closeShift(emergenciaUser, { shiftId: emergency.shift.id });
+
+    const closedEmergency = await prisma.shift.findUniqueOrThrow({
+      where: { id: emergency.shift.id },
+    });
+    expect(closedEmergency.status).toBe('CERRADO');
+    expect(closedEmergency.emergency).toBe(true);
+    expect(closedEmergency.emergencyReleasedAt).toBeInstanceOf(Date);
+    expect(closedEmergency.emergencyReleaseReason).toMatch(/propio turno de emergencia/i);
+
+    const sourceStillPending = await prisma.shift.findUniqueOrThrow({
+      where: { id: source.shift.id },
+    });
+    expect(sourceStillPending.status).toBe('ENTREGA_ENVIADA');
+
+    const emergencyAlert = await prisma.alert.findUnique({
+      where: { dedupeKey: `shift-emergency-source:${source.shift.id}` },
+    });
+    expect(emergencyAlert?.status).toBe('RESUELTA');
   });
 
   it('la base impide físicamente dos emergencias activas aunque se intente saltar el servicio', async () => {

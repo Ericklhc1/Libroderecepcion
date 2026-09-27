@@ -12,7 +12,12 @@ import { getHandoverCashState, listDenominations } from '@/server/services/cash'
 import { getShiftCashClosure } from '@/server/services/cash-closure';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
-import { ReceiveHandoverForm, SendHandoverForm } from '@/components/operational/shift-actions';
+import {
+  CancelPreparationForm,
+  CloseShiftForm,
+  ReceiveHandoverForm,
+  SendHandoverForm,
+} from '@/components/operational/shift-actions';
 import {
   AddHandoverNoteForm,
   PrintButton,
@@ -41,11 +46,14 @@ const LEVEL_ORDER: HandoverLevel[] = [
 
 export default async function HandoverPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
   const { id } = await params;
+  const query = await searchParams;
 
   const handover = await prisma.shiftHandover.findUnique({
     where: { id },
@@ -93,6 +101,12 @@ export default async function HandoverPage({
     canReceive;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
+  const canFinalizeClose = Boolean(
+    isIssuer &&
+      handover.status === HandoverStatus.ENVIADA &&
+      handover.fromShift.status === ShiftStatus.ENTREGA_ENVIADA,
+  );
+  const requestedCloseStep = Number(query.paso ?? '1');
 
   /*
     La entrega cerrada existe por sí sola en la bandeja. El receptor puede
@@ -160,6 +174,25 @@ export default async function HandoverPage({
     importante: handover.items.filter((i) => i.level === HandoverLevel.IMPORTANTE).length,
     informativo: handover.items.filter((i) => i.level === HandoverLevel.INFORMATIVO).length,
   };
+
+  const cashClosed = Boolean(formalCashClosure && !formalCashClosure.reopenedAt);
+  const requiredElementsMissing = cashState.elements.filter(
+    (element) => element.required && !element.declared && !element.notes?.trim(),
+  );
+  const closeStepOneReady =
+    !cashState.enabled || (cashClosed && requiredElementsMissing.length === 0);
+  const requestedValidStep =
+    Number.isInteger(requestedCloseStep) && requestedCloseStep >= 1 && requestedCloseStep <= 4
+      ? requestedCloseStep
+      : 1;
+  const closeStep = closeStepOneReady ? requestedValidStep : 1;
+  const closeSteps = [
+    { number: 1, label: 'Caja y custodia' },
+    { number: 2, label: 'Pendientes' },
+    { number: 3, label: 'Revisión final' },
+    { number: 4, label: 'Enviar entrega' },
+  ] as const;
+
 
   /*
     `Shift.date` es una fecha calendario (`@db.Date`). No se debe formatear
@@ -296,6 +329,112 @@ export default async function HandoverPage({
         ) : null}
       </Card>
 
+      {canEdit ? (
+        <Card className="no-print">
+          <CardHeader
+            title={`Cierre guiado · paso ${closeStep} de 4`}
+            action={<CancelPreparationForm shiftId={handover.fromShiftId} />}
+          />
+          <div className="space-y-4 px-4 py-4">
+            <div className="grid gap-2 sm:grid-cols-4">
+              {closeSteps.map((step) => {
+                const done = step.number < closeStep;
+                const current = step.number === closeStep;
+                return (
+                  <Link
+                    key={step.number}
+                    href={`/turno/entrega/${handover.id}?paso=${step.number}`}
+                    className={`rounded-lg px-3 py-2 text-xs ring-1 transition-colors ${
+                      current
+                        ? 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
+                        : done
+                          ? 'bg-emerald-50 text-emerald-800 ring-emerald-200 hover:bg-emerald-100'
+                          : 'bg-slate-50 text-slate-600 ring-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {done ? '✓' : step.number} · {step.label}
+                  </Link>
+                );
+              })}
+            </div>
+            <div>
+              <p className="font-semibold text-petrol-950">
+                {closeStep === 1
+                  ? 'Caja, garantías y elementos bajo custodia'
+                  : closeStep === 2
+                    ? 'Novedades y pendientes que continúan'
+                    : closeStep === 3
+                      ? 'Revisa exactamente qué vas a entregar'
+                      : 'Confirma el envío de la entrega'}
+              </p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">
+                {closeStep === 1
+                  ? 'Arquea el fondo fijo, valida físicamente las garantías y declara los elementos que viajan con la Caja. Cierra Caja antes de continuar.'
+                  : closeStep === 2
+                    ? 'El Libro ya reunió los asuntos vigentes. Revisa, abre el registro original si hace falta y agrega sólo una nota manual que realmente deba viajar.'
+                    : closeStep === 3
+                      ? 'Comprueba Caja, custodia y el resumen operativo. Todavía puedes volver a cualquier paso o cancelar el cierre.'
+                      : 'Éste es el punto de no retorno del cierre normal. El sistema volverá a pedir una confirmación explícita antes de enviar.'}
+              </p>
+            </div>
+            {closeStep === 1 && !closeStepOneReady ? (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+                Completa el arqueo, valida las garantías, resuelve los elementos obligatorios y deja Caja formalmente cerrada para continuar.
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                {closeStep > 1 ? (
+                  <Link
+                    href={`/turno/entrega/${handover.id}?paso=${closeStep - 1}`}
+                    className="inline-flex min-h-10 items-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50"
+                  >
+                    ← ANTERIOR
+                  </Link>
+                ) : null}
+              </div>
+              {closeStep < 4 ? (
+                closeStep === 1 && !closeStepOneReady ? (
+                  <span className="inline-flex min-h-10 items-center rounded-lg bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-400">
+                    SIGUIENTE →
+                  </span>
+                ) : (
+                  <Link
+                    href={`/turno/entrega/${handover.id}?paso=${closeStep + 1}`}
+                    className="inline-flex min-h-10 items-center rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                  >
+                    SIGUIENTE →
+                  </Link>
+                )
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      ) : canFinalizeClose ? (
+        <Card className="no-print">
+          <CardHeader title="Cierre guiado · paso 5 de 5" />
+          <div className="space-y-3 px-4 py-4">
+            <div className="grid gap-2 sm:grid-cols-5">
+              {['Caja y custodia', 'Pendientes', 'Revisión final', 'Entrega enviada'].map((label, index) => (
+                <div key={label} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
+                  ✓ {index + 1} · {label}
+                </div>
+              ))}
+              <div className="rounded-lg bg-gold-50 px-3 py-2 text-xs font-semibold text-petrol-950 ring-1 ring-gold-300">
+                5 · Cerrar turno
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-petrol-950">La entrega ya fue enviada</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Ya no puedes cancelar el cierre. Sólo falta cerrar formalmente tu turno para terminar tu responsabilidad operativa.
+              </p>
+            </div>
+            <CloseShiftForm shiftId={handover.fromShiftId} />
+          </div>
+        </Card>
+      ) : null}
+
       {receptionStep && receptionStepTitle && receptionStepBody ? (
         <Card className="no-print">
           <CardHeader title={`Recepción de turno · paso ${receptionStep} de 3`} />
@@ -360,116 +499,159 @@ export default async function HandoverPage({
         y confirma antes de abrir el turno siguiente. La recepción no crea ni
         preasigna un turno: sólo transfiere la continuidad del relevo.
       */}
-      <CashBox
-        handoverId={handover.id}
-        shiftId={handover.fromShiftId}
-        state={cashState}
-        formalClosure={formalCashClosure ? {
-          closedAt: formalCashClosure.closedAt.toISOString(),
-          closedByName: formalCashClosure.closedByName,
-          reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
-        } : null}
-        denominations={denominations.map((denomination) => ({
-          id: denomination.id,
-          currency: denomination.currency,
-          value: Number(denomination.value),
-          medium: denomination.medium,
-        }))}
-        previous={previousQuantities}
-        role={cashRole}
-        canReopen={user.permissions.includes('cash.reopen')}
-      />
+      {(!canEdit || closeStep === 1) ? (
+        <CashBox
+          handoverId={handover.id}
+          shiftId={handover.fromShiftId}
+          state={cashState}
+          formalClosure={formalCashClosure ? {
+            closedAt: formalCashClosure.closedAt.toISOString(),
+            closedByName: formalCashClosure.closedByName,
+            reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
+          } : null}
+          denominations={denominations.map((denomination) => ({
+            id: denomination.id,
+            currency: denomination.currency,
+            value: Number(denomination.value),
+            medium: denomination.medium,
+          }))}
+          previous={previousQuantities}
+          role={cashRole}
+          canReopen={user.permissions.includes('cash.reopen')}
+        />
+      ) : null}
 
-      {grouped.length === 0 ? (
-        <Card>
-          <EmptyState
-            message="La entrega no tiene puntos registrados."
-            hint="Genera el resumen automático o agrega notas manuales."
-          />
-        </Card>
-      ) : (
-        grouped.map((group) => (
-          <Card key={group.level}>
-            <CardHeader
-              title={`${HANDOVER_LEVEL_LABEL[group.level]} · ${group.items.length}`}
-            />
-            <ul className="divide-y divide-slate-100">
-              {group.items.map((item) => (
-                <li key={item.id} className="flex gap-3 px-4 py-3">
-                  <span
-                    className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                      group.level === HandoverLevel.URGENTE
-                        ? 'bg-red-600'
-                        : group.level === HandoverLevel.IMPORTANTE
-                          ? 'bg-orange-500'
-                          : 'bg-slate-400'
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Chip>{item.section}</Chip>
-                      <Badge tone={HANDOVER_LEVEL_TONE[item.level]}>
-                        {HANDOVER_LEVEL_LABEL[item.level]}
-                      </Badge>
-                      {item.manual ? <Chip>Nota manual</Chip> : null}
-                    </div>
-                    <p className="mt-1 text-sm font-medium text-petrol-900">{item.title}</p>
-                    {item.detail ? (
-                      <p className="mt-0.5 text-sm text-slate-600">{item.detail}</p>
-                    ) : null}
-                    {item.refType === 'entry' && item.refId ? (
-                      <Link
-                        href={`/libro/${item.refId}`}
-                        className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline no-print"
-                      >
-                        Abrir registro
-                      </Link>
-                    ) : null}
-                    {item.refType === 'task' && item.refId ? (
-                      <Link
-                        href={`/tareas/${item.refId}`}
-                        className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline no-print"
-                      >
-                        Abrir tarea
-                      </Link>
-                    ) : null}
-                  </div>
-                  {canEdit && item.manual ? (
-                    <div className="no-print">
-                      <RemoveHandoverNoteForm itemId={item.id} />
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        ))
-      )}
-
-      {canEdit ? (
+      {(!canEdit || closeStep === 2 || closeStep === 3) ? (
         <>
-          <Card className="no-print">
-            <CardHeader title="Agregar nota manual" />
-            <div className="px-4 py-4">
-              <AddHandoverNoteForm handoverId={handover.id} />
-            </div>
+        {grouped.length === 0 ? (
+          <Card>
+            <EmptyState
+              message="La entrega no tiene puntos registrados."
+              hint="Genera el resumen automático o agrega notas manuales."
+            />
           </Card>
-
-          <Card className="no-print">
-            <CardHeader title="Enviar la entrega" />
-            <div className="px-4 py-4">
-              <p className="mb-3 text-sm text-slate-600">
-                Al enviarla queda registrada de forma permanente y el turno siguiente debe
-                confirmarla.
-                {handover.toShift
-                  ? ` Destinatario: turno ${SHIFT_TYPE_LABEL[handover.toShift.type]} (${handover.toShift.assignments.map((a) => a.user.name).join(', ') || 'sin personal asignado'}).`
-                  : ' Quedará en la bandeja para que el próximo turno la revise y la reciba.'}
-              </p>
-              <SendHandoverForm shiftId={handover.fromShiftId} />
-            </div>
-          </Card>
+        ) : (
+          grouped.map((group) => (
+            <Card key={group.level}>
+              <CardHeader
+                title={`${HANDOVER_LEVEL_LABEL[group.level]} · ${group.items.length}`}
+              />
+              <ul className="divide-y divide-slate-100">
+                {group.items.map((item) => (
+                  <li key={item.id} className="flex gap-3 px-4 py-3">
+                    <span
+                      className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                        group.level === HandoverLevel.URGENTE
+                          ? 'bg-red-600'
+                          : group.level === HandoverLevel.IMPORTANTE
+                            ? 'bg-orange-500'
+                            : 'bg-slate-400'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Chip>{item.section}</Chip>
+                        <Badge tone={HANDOVER_LEVEL_TONE[item.level]}>
+                          {HANDOVER_LEVEL_LABEL[item.level]}
+                        </Badge>
+                        {item.manual ? <Chip>Nota manual</Chip> : null}
+                      </div>
+                      <p className="mt-1 text-sm font-medium text-petrol-900">{item.title}</p>
+                      {item.detail ? (
+                        <p className="mt-0.5 text-sm text-slate-600">{item.detail}</p>
+                      ) : null}
+                      {item.refType === 'entry' && item.refId ? (
+                        <Link
+                          href={`/libro/${item.refId}`}
+                          className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline no-print"
+                        >
+                          Abrir registro
+                        </Link>
+                      ) : null}
+                      {item.refType === 'task' && item.refId ? (
+                        <Link
+                          href={`/tareas/${item.refId}`}
+                          className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline no-print"
+                        >
+                          Abrir tarea
+                        </Link>
+                      ) : null}
+                    </div>
+                    {canEdit && item.manual ? (
+                      <div className="no-print">
+                        <RemoveHandoverNoteForm itemId={item.id} />
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ))
+        )}
         </>
+      ) : null}
+
+      {canEdit && closeStep === 2 ? (
+        <Card className="no-print">
+          <CardHeader title="Agregar nota manual" />
+          <div className="px-4 py-4">
+            <AddHandoverNoteForm handoverId={handover.id} />
+          </div>
+        </Card>
+      ) : null}
+
+      {canEdit && closeStep === 3 ? (
+        <Card className="no-print">
+          <CardHeader title="Resumen final antes del envío" />
+          <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Caja</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {!cashState.enabled ? 'No configurada' : cashClosed ? 'Cerrada' : 'Pendiente'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Garantías en efectivo</p>
+              <p className="mt-1 font-semibold text-petrol-900">{cashState.cashGuarantees.length}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Elementos declarados</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {cashState.elements.filter((element) => element.declared).length} / {cashState.elements.length}
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Puntos de entrega</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {counts.urgente + counts.importante + counts.informativo}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {counts.urgente} urgente · {counts.importante} importante · {counts.informativo} informativo
+              </p>
+            </div>
+          </div>
+          {requiredElementsMissing.length > 0 ? (
+            <p className="border-t border-slate-100 px-4 py-3 text-sm text-amber-800">
+              Faltan elementos obligatorios por declarar o justificar: {requiredElementsMissing.map((element) => element.name).join(', ')}.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {canEdit && closeStep === 4 ? (
+        <Card className="no-print">
+          <CardHeader title="Enviar la entrega" />
+          <div className="px-4 py-4">
+            <p className="mb-3 text-sm text-slate-600">
+              Al enviarla queda registrada de forma permanente y disponible para quien reciba el relevo.
+              {handover.toShift
+                ? ` Destinatario: turno ${SHIFT_TYPE_LABEL[handover.toShift.type]} (${handover.toShift.assignments.map((a) => a.user.name).join(', ') || 'sin personal asignado'}).`
+                : ' Quedará en la bandeja para que el próximo turno la revise y la reciba.'}
+            </p>
+            <SendHandoverForm shiftId={handover.fromShiftId} />
+          </div>
+        </Card>
       ) : null}
 
       {canReceive ? (
@@ -500,6 +682,7 @@ export default async function HandoverPage({
         </Card>
       ) : null}
 
+      {(!canEdit || closeStep === 3) ? (
       <Card className="print:break-inside-avoid">
         <CardHeader title="Informe de Caja · entrega/recepción" />
         <div className="px-4 py-5">
@@ -549,7 +732,9 @@ export default async function HandoverPage({
           </div>
         </div>
       </Card>
+      ) : null}
 
+      {(!canEdit || closeStep === 3) ? (
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Comentarios" count={handover._count.comments} />
@@ -563,6 +748,7 @@ export default async function HandoverPage({
           <HistoryTimeline events={history} />
         </Card>
       </div>
+      ) : null}
     </div>
   );
 }

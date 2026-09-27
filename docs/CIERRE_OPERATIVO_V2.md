@@ -1,6 +1,6 @@
 # Cierre Operativo — contrato vigente de Recepción
 
-Estado: **vigente para Libro 1.14.8**.  
+Estado: **vigente para Libro 1.14.9**.  
 Fuente de verdad superior: `PROJECT_CONTEXT.md` + código y esquema vigentes.
 
 > Este documento reemplaza el contrato V2 anterior. En particular, quedan
@@ -53,6 +53,29 @@ La apertura queda marcada en el turno entrante, vinculada al turno saliente y
 auditada. Mientras el turno saliente siga sin cierre formal, el motor mantiene
 una alerta crítica automática para Supervisión y la reabre si alguien intenta
 resolverla antes de regularizar la condición.
+
+## Cierre guiado v3
+
+La máquina de estados del turno sigue siendo la misma, pero la experiencia del
+saliente se presenta como un recorrido secuencial y reversible hasta el envío:
+
+1. **Caja y custodia:** arqueo, garantías y elementos físicos; Caja debe quedar
+   formalmente cerrada.
+2. **Pendientes:** Novedades, incidencias, tareas y demás asuntos que siguen
+   vigentes. El sistema los reúne; el recepcionista no inventa una lista.
+3. **Revisión final:** fotografía legible de Caja, custodia y puntos de entrega.
+4. **Enviar entrega:** requiere confirmación explícita y constituye el punto de
+   no retorno del cierre normal.
+5. **Cerrar turno:** termina la responsabilidad operativa del saliente.
+
+Antes del envío se puede navegar hacia atrás o cancelar el cierre. Cancelar
+devuelve el turno a `ACTIVO`, invalida los arqueos/preparativos que deben
+repetirse y, si Caja ya estaba cerrada, la reabre automáticamente. **Nunca
+borra un hecho financiero ya ocurrido**: ingresos, egresos, garantías,
+devoluciones y transferencias sobreviven y mantienen su trazabilidad.
+
+El inventario de llaves no forma parte del cierre guiado. Conserva su propia
+frecuencia operativa y sólo sus diferencias alimentan Supervisión.
 
 ## Caja y garantías
 

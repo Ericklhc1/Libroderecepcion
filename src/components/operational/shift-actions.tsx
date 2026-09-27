@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Compass, X } from 'lucide-react';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -376,21 +377,30 @@ export function PrepareHandoverForm({
   guided?: boolean;
   guidanceSession?: number;
 }) {
+  const router = useRouter();
+
   return (
-    <ActionForm action={prepareHandoverAction} hideSuccess className="space-y-0">
+    <ActionForm
+      action={prepareHandoverAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={(state) => {
+        if (state.id) router.push(`/turno/entrega/${state.id}?paso=1`);
+      }}
+    >
       <input type="hidden" name="shiftId" value={shiftId} />
       <GuidedShiftSubmit
         guided={guided}
         session={guidanceSession}
         buttonLabel="INICIAR CIERRE DE TURNO"
         title="Vas a iniciar el cierre"
-        description="Desde este punto el sistema cambia de operación a cierre. No necesitas inventar qué revisar: el flujo te lo irá pidiendo."
+        description="Desde este punto el sistema cambia de operación a cierre. El Libro te llevará por una pantalla a la vez."
         steps={[
-          'La operación normal de tu cuenta queda bloqueada para evitar cambios mientras cierras.',
-          'Cuenta y valida Caja: fondo fijo por denominación y garantías por separado.',
-          'Revisa el resumen de Novedades y pendientes que el Libro preparó automáticamente.',
-          'Envía la entrega para dejar la liana disponible al siguiente turno.',
-          'Cierra formalmente tu turno. Supervisión valida después; no tienes que esperar esa revisión.',
+          'Caja, garantías y elementos: cuenta, valida y deja Caja formalmente cerrada.',
+          'Novedades y pendientes: revisa lo que seguirá vigente después de tu turno.',
+          'Revisión final: comprueba exactamente qué información vas a entregar.',
+          'Envío: confirma la entrega. Hasta ese momento puedes volver atrás o cancelar el cierre.',
+          'Cierre formal: una vez enviada la entrega, termina tu responsabilidad sobre el turno.',
         ]}
         confirmLabel="SÍ, INICIAR CIERRE"
         pendingLabel="Iniciando cierre…"
@@ -400,15 +410,66 @@ export function PrepareHandoverForm({
 }
 
 export function SendHandoverForm({ shiftId }: { shiftId: string }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <ActionForm action={sendHandoverAction} hideSuccess className="space-y-2">
+    <ActionForm action={sendHandoverAction} hideSuccess refreshOnSuccess className="space-y-2">
       <input type="hidden" name="shiftId" value={shiftId} />
       <p className="text-xs text-slate-500">
-        Revisa Novedades, Caja y pendientes antes de enviar la entrega.
+        Éste es el punto de no retorno del cierre normal. Antes de enviarla todavía puedes volver a cualquier paso o cancelar el cierre.
       </p>
-      <SubmitButton variant="gold" pendingLabel="Enviando…">
-        Enviar entrega al turno siguiente
-      </SubmitButton>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+      >
+        REVISAR Y ENVIAR ENTREGA
+      </button>
+
+      {open ? (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-petrol-950/60 p-4 no-print">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="send-handover-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+          >
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">
+                  Confirmación de envío
+                </p>
+                <h2 id="send-handover-title" className="mt-1 text-lg font-semibold text-petrol-950">
+                  ¿Estás seguro/a de que quieres enviar la entrega?
+                </h2>
+                <p className="mt-2 text-sm leading-5 text-slate-600">
+                  Después de enviarla quedará registrada de forma permanente. Ya no podrás cancelar el cierre ni editarla desde el flujo normal.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                aria-label="Cerrar confirmación"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
+              >
+                VOLVER A REVISAR
+              </button>
+              <SubmitButton variant="gold" pendingLabel="Enviando…">
+                SÍ, ENVIAR ENTREGA
+              </SubmitButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </ActionForm>
   );
 }
@@ -422,8 +483,15 @@ export function CloseShiftForm({
   guided?: boolean;
   guidanceSession?: number;
 }) {
+  const router = useRouter();
+
   return (
-    <ActionForm action={closeShiftAction} hideSuccess refreshOnSuccess className="space-y-0">
+    <ActionForm
+      action={closeShiftAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={() => router.push('/turno')}
+    >
       <input type="hidden" name="shiftId" value={shiftId} />
       <GuidedShiftSubmit
         guided={guided}
@@ -445,12 +513,57 @@ export function CloseShiftForm({
 }
 
 export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+
   return (
-    <ActionForm action={cancelHandoverPreparationAction} hideSuccess className="space-y-0">
+    <ActionForm
+      action={cancelHandoverPreparationAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={() => router.push('/turno')}
+    >
       <input type="hidden" name="shiftId" value={shiftId} />
-      <SubmitButton variant="ghost" size="sm" pendingLabel="Cancelando…">
-        Cancelar preparación
-      </SubmitButton>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-9 items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-red-700"
+      >
+        Cancelar cierre
+      </button>
+
+      {open ? (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-petrol-950/60 p-4 no-print">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-close-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-red-200"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+              Volver a operación
+            </p>
+            <h2 id="cancel-close-title" className="mt-1 text-lg font-semibold text-petrol-950">
+              ¿Estás seguro/a de que quieres cancelar el cierre?
+            </h2>
+            <p className="mt-2 text-sm leading-5 text-slate-600">
+              Tu turno volverá a ACTIVO. Los arqueos de preparación se invalidarán y deberán hacerse otra vez. Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
+              >
+                CONTINUAR CON EL CIERRE
+              </button>
+              <SubmitButton variant="danger" pendingLabel="Cancelando…">
+                SÍ, CANCELAR CIERRE
+              </SubmitButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </ActionForm>
   );
 }

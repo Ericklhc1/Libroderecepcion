@@ -80,6 +80,18 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · cierre guiado v3
+
+- El cierre de Recepción se conduce paso a paso: Caja/custodia → pendientes →
+  revisión final → envío → cierre formal.
+- Hasta enviar, el saliente puede volver a pasos anteriores o cancelar. El
+  envío exige confirmación explícita y es el punto de no retorno normal.
+- Cancelar un cierre **no borra hechos financieros**. Las transferencias a
+  Tesorería sobreviven; los arqueos de preparación se invalidan y una Caja
+  formalmente cerrada se reabre al volver el turno a `ACTIVO`.
+- Inventario de llaves permanece fuera del cierre; es un proceso operativo
+  independiente cuyas diferencias desembocan en Supervisión.
+
 ## Decisiones que no se revierten
 
 0. **Una cuenta es nombre, usuario y contraseña. Nada más.**

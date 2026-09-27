@@ -358,6 +358,9 @@ describe('observabilidad operativa P0/P1/P2', () => {
       'utf8',
     );
     expect(page).toContain("requirePagePermission('supervision.center.view')");
+    expect(page).toContain('Turnos de emergencia');
+    expect(page).toContain('Fallos en procesos críticos');
+    expect(page).not.toContain('Cierres por contingencia');
     expect(page).not.toContain('user.name');
     expect(service).not.toContain("by: ['userId']");
     expect(cashUi).toContain('name="metricStartedAt"');

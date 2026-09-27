@@ -1,5 +1,17 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.15.0 · timers y recordatorios
+
+- Nueva ruta `/avisos` para crear timers y recordatorios.
+- Timers: cuenta regresiva; si nacen dentro de un turno de Recepción, se cancelan al cerrarlo.
+- Recordatorios: sobreviven a los cambios de turno.
+- Destinatarios: individual, grupo o global; global sólo Supervisión/Administrador.
+- Las alarmas vencidas reutilizan el stream SSE existente, aparecen en un modal persistente y pueden detenerse o posponerse 5/10/15 min por destinatario.
+- No hay plataforma adicional ni push del sistema operativo en esta etapa; una sesión cerrada recibe la alarma al reconectar.
+- Nueva migración `20260927124500_avisos_operativos`.
+- Cobertura principal: `tests/operational-alarms.test.ts`.
+
+
 ## Actualización 27/09/2026 · cierre guiado v3
 
 - Release objetivo: **v1.14.9**.

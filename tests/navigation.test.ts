@@ -37,6 +37,7 @@ describe('menú principal', () => {
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
+      '/avisos', // timers y recordatorios internos
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
@@ -76,7 +77,7 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/avisos']);
   });
 
   it('el Supervisor ve el Centro como módulo raíz privado', () => {

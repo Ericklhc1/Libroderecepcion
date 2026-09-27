@@ -35,7 +35,7 @@ export function shouldNavigateTutorial(
 /**
  * Recorrido de producto v1.5.0.
  *
- * El Libro gira alrededor de Turnos + Novedades + Caja + Llaves + Supervisión.
+ * El Libro gira alrededor de Turnos + Novedades + Caja + Llaves + Avisos + Supervisión.
  * PMS, estadías y reservas quedan como contexto legado opcional.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
@@ -95,6 +95,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     route: '/llaves',
     target: ROUTE_TARGET,
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
+  },
+  {
+    id: 'avisos',
+    title: 'Timers y recordatorios',
+    description:
+      'Programa alarmas individuales o grupales. Los timers nacidos dentro de un turno terminan con ese turno; los recordatorios continúan hasta que los atiendas.',
+    route: '/avisos',
+    target: ROUTE_TARGET,
   },
   {
     id: 'supervision',

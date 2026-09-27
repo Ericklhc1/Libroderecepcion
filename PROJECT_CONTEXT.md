@@ -92,6 +92,23 @@ conserva su modelo y sus reglas.
 - Inventario de llaves permanece fuera del cierre; es un proceso operativo
   independiente cuyas diferencias desembocan en Supervisión.
 
+## Actualización 27/09/2026 · timers y recordatorios
+
+- El Libro incorpora alarmas operativas internas sin plataforma adicional.
+- **Timer**: cuenta regresiva; si nace dentro de un turno de Recepción queda
+  ligado a ese turno y se cancela al cerrarlo.
+- **Recordatorio**: fecha/hora absoluta de Santiago y continúa entre turnos
+  hasta que cada destinatario lo atienda.
+- Alcances: individual, grupo y global. El alcance global queda reservado a
+  Supervisión/Administrador de sistema y sólo incluye cuentas operativas activas.
+- Cada destinatario confirma o pospone su propia alarma. Posponer admite
+  5, 10 o 15 minutos; una alarma grupal no se cierra hasta que todos confirmen.
+- El disparo reutiliza el stream SSE de notificaciones: aparece sin recargar
+  la página, con aviso modal persistente y sonido mientras la sesión esté abierta.
+- No se implementa push del sistema operativo en esta etapa; si el Libro está
+  cerrado, la alarma se presenta al reconectar.
+- Lo vigila `tests/operational-alarms.test.ts`.
+
 ## Decisiones que no se revierten
 
 0. **Una cuenta es nombre, usuario y contraseña. Nada más.**

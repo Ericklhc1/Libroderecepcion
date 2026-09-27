@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import type { NotificationFeedSnapshot } from '@/domain/notifications';
+import { dispatchDueAlarmsForUser } from '@/server/services/operational-alarms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,6 +87,7 @@ export async function GET(request: Request) {
         if (closed || checking) return;
         checking = true;
         try {
+          await dispatchDueAlarmsForUser(user.id, new Date());
           const snapshot = await getNotificationFeedForUser(user.id);
           const nextSignature = signature(snapshot);
           if (nextSignature !== lastSignature) {

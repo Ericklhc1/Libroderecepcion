@@ -42,10 +42,11 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
   const today = dateKey(new Date());
   const fromKey = /^\d{4}-\d{2}-\d{2}$/.test(fromRaw ?? '') ? fromRaw! : today;
   const toKey = /^\d{4}-\d{2}-\d{2}$/.test(toRaw ?? '') ? toRaw! : fromKey;
-  const from = hotelWallDateTime(fromKey, 0);
-  const toStart = hotelWallDateTime(toKey, 0);
-  const to = new Date(addHotelCalendarDays(toStart, 1).getTime() - 1);
-  if (to < from) return { from: toStart, to: new Date(addHotelCalendarDays(from, 1).getTime() - 1) };
+  const startKey = fromKey <= toKey ? fromKey : toKey;
+  const endKey = fromKey <= toKey ? toKey : fromKey;
+  const from = hotelWallDateTime(startKey, 0);
+  const endStart = hotelWallDateTime(endKey, 0);
+  const to = new Date(addHotelCalendarDays(endStart, 1).getTime() - 1);
   return { from, to };
 }
 

@@ -1,5 +1,13 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.17.2 · Chat anclado al borde derecho
+
+- La pestaña cerrada de **Chat operativo** queda pegada al borde inferior derecho del viewport, también en escritorio.
+- Al abrirse en tablet/escritorio, el panel nace desde el mismo borde derecho y conserva la lógica de pestaña + ventana del chat clásico.
+- Se elimina la dependencia visual del ancho de la barra lateral (`lg:left-64`), por lo que el Chat no cambia de posición al variar la navegación.
+- En móvil pequeño se conserva el panel a pantalla completa; la pestaña cerrada queda sobre la navegación inferior, alineada a la derecha.
+- Release sin migración: **v1.17.2**.
+
 ## Actualización 27/09/2026 · Libro 1.17.1 · coherencia de Supervisión
 
 - Continuidad activa: tareas, seguimientos y medidas abiertas no se ocultan por fecha de creación.

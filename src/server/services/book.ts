@@ -92,7 +92,7 @@ const DEFAULT_PAGE_SIZE = 40;
 function textSearch(q: string | undefined): string | null {
   if (!q || q.trim().length === 0) return null;
   const raw = q.trim();
-  const normalized = raw.replace(/^T#/i, '').replace(/^#/, '').trim();
+  const normalized = raw.replace(/^#/, '').trim();
   return normalized || raw;
 }
 
@@ -157,7 +157,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
-          ...(seq !== null ? [{ seq }] : []),
+          ...(seq !== null ? [{ humanId: seq }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { category: { contains: q, mode: 'insensitive' } },
@@ -204,7 +204,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       return {
         kind: 'entry' as const,
         id: row.id,
-        ref: `#${row.seq}`,
+        ref: `#${row.humanId}`,
         kindLabel: row.type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad',
         typeLabel: ENTRY_TYPE_LABEL[row.type],
         title: row.title,
@@ -285,7 +285,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       return {
         kind: 'task' as const,
         id: row.id,
-        ref: `T#${row.seq}`,
+        ref: `#${row.humanId}`,
         kindLabel: 'Tarea',
         typeLabel: 'Tarea',
         title: row.title,
@@ -322,6 +322,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(seq !== null ? [{ humanId: seq }] : []),
           { action: { contains: q, mode: 'insensitive' } },
           { nextAction: { contains: q, mode: 'insensitive' } },
           { result: { contains: q, mode: 'insensitive' } },
@@ -363,7 +364,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     return rows.map((row) => ({
       kind: 'followup' as const,
       id: row.id,
-      ref: 'Seg.',
+      ref: `#${row.humanId}`,
       kindLabel: 'Seguimiento',
       typeLabel: 'Seguimiento',
       title: row.action,

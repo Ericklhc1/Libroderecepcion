@@ -21,6 +21,7 @@ import {
 } from '@/domain/time';
 import { plannedWindow, shiftTypeAt } from '@/domain/shift';
 import { operationalDate } from '@/server/services/shifts';
+import { reportDateRange } from '@/server/services/supervisor-reports';
 import { ShiftType } from '@prisma/client';
 
 /**
@@ -191,5 +192,21 @@ describe('el reloj operativo del sistema usa Santiago aunque el proceso use UTC'
     const dateOnly = new Date('2026-09-18T00:00:00.000Z');
     expect(calendarDateKey(dateOnly)).toBe('2026-09-18');
     expect(formatCalendarDate(dateOnly)).toBe('18-09-2026');
+  });
+
+  it('los rangos de informes respetan el cambio estacional de Santiago', () => {
+    const invierno = reportDateRange('2026-06-15', '2026-06-15');
+    expect(invierno.from.toISOString()).toBe('2026-06-15T04:00:00.000Z');
+    expect(invierno.to.toISOString()).toBe('2026-06-16T03:59:59.999Z');
+
+    const verano = reportDateRange('2026-09-16', '2026-09-16');
+    expect(verano.from.toISOString()).toBe('2026-09-16T03:00:00.000Z');
+    expect(verano.to.toISOString()).toBe('2026-09-17T02:59:59.999Z');
+  });
+
+  it('normaliza un rango ingresado al revés sin perder días completos', () => {
+    const range = reportDateRange('2026-09-18', '2026-09-16');
+    expect(formatDate(range.from)).toBe('16-09-2026');
+    expect(formatDate(range.to)).toBe('18-09-2026');
   });
 });

@@ -662,6 +662,10 @@ model Shift {
   emergencySourceShiftId     String?
   /// Momento en que quien abrió aceptó expresamente las condiciones de emergencia.
   emergencyAcknowledgedAt    DateTime?
+  /// Momento en que dejó de existir la condición excepcional. La marca emergency se conserva como hecho histórico.
+  emergencyReleasedAt        DateTime?
+  /// Explica qué regularizó/liberó la emergencia sin borrar su origen.
+  emergencyReleaseReason     String?
   /// Turno retirado de las listas operativas sin borrarlo.
   ///
   /// Distinto de ANULADO: anular es «este turno no se va a usar»; archivar es
@@ -698,7 +702,7 @@ model Shift {
   @@index([status])
   @@index([date])
   @@index([archivedAt])
-  @@index([emergency, archivedAt])
+  @@index([emergency, emergencyReleasedAt, archivedAt])
   @@index([emergencySourceShiftId])
 }
 
@@ -842,6 +846,8 @@ model SupervisionAuditImport {
   warnings           String[]         @default([])
   /// Huellas técnicas de los PDF procesados. No contiene el archivo ni texto extraído.
   sourceFiles        Json             @default("[]")
+  /// Última versión normalizada por tipo de informe. Permite reemplazar un PDF actualizado sin arrastrar hallazgos obsoletos.
+  reportPayloads     Json             @default("{}")
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 

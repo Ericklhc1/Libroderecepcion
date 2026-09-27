@@ -51,7 +51,7 @@ export default async function LiveCashPage({
 }) {
   const user = await requirePagePermission('cash.view');
   const params = await searchParams;
-  const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
+  const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '').toLowerCase() : '';
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const todayKey = hotelDateKey(new Date());
@@ -94,6 +94,7 @@ export default async function LiveCashPage({
     (item) =>
       (!moneda || item.currency === moneda) &&
       matches([
+        item.humanId,
         item.guestName,
         item.roomNumber,
         item.reference,
@@ -109,6 +110,7 @@ export default async function LiveCashPage({
   const visibleMovements = state.movements;
   const visibleGymPasses = gymSummary.rows.filter((item) =>
     matches([
+      item.humanId,
       item.formattedFolio,
       item.roomNumber,
       item.guestName,
@@ -362,7 +364,7 @@ export default async function LiveCashPage({
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="font-medium text-petrol-900">
-                            {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
+                            #{guarantee.humanId} · {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
                             {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                           </p>
                           <p className="text-xs tabular text-slate-500">
@@ -419,7 +421,7 @@ export default async function LiveCashPage({
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="font-medium text-petrol-900">
-                            {audit.currency} · {audit.countedByName}
+                            #{audit.humanId} · {audit.currency} · {audit.countedByName}
                           </p>
                           <p className="text-xs text-slate-500">
                             {formatDateTime(audit.createdAt)}
@@ -574,7 +576,7 @@ export default async function LiveCashPage({
                         </td>
                         <td className="px-4 py-2">
                           <span className="font-medium text-petrol-900">
-                            {movement.affectsExpected
+                            #{movement.humanId} · {movement.affectsExpected
                               ? MOVEMENT_LABEL[movement.kind] ?? human(movement.kind)
                               : 'Regularización de diferencia'}
                           </span>

@@ -1540,6 +1540,9 @@ export async function sendHandover(
   */
   const cashProblems = await cashBlockersForSending(handover.id);
   if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
+  if (await isCashEnabled()) {
+    await assertShiftCashClosed(shift.id);
+  }
 
   const items = await prisma.handoverItem.findMany({
     where: { handoverId: handover.id },

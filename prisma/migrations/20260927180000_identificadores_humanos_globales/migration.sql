@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Identificador humano global para registros operativos.
 --
 -- La secuencia es deliberadamente compartida por todas las entidades visibles.
@@ -95,6 +97,7 @@ LEFT JOIN "GuestReference" g ON g."id" = e."guestId"
 LEFT JOIN "User" o ON o."id" = e."ownerId"
 LEFT JOIN "User" c ON c."id" = e."createdById"
 LEFT JOIN "Department" d ON d."id" = e."departmentId"
+WHERE e."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -108,6 +111,7 @@ LEFT JOIN "GuestReference" g ON g."id" = t."guestId"
 LEFT JOIN "User" a ON a."id" = t."assigneeId"
 LEFT JOIN "User" c ON c."id" = t."createdById"
 LEFT JOIN "Department" d ON d."id" = t."departmentId"
+WHERE t."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -122,6 +126,7 @@ LEFT JOIN "OperationalEntry" e ON e."id" = f."entryId"
 LEFT JOIN "Task" t ON t."id" = f."taskId"
 LEFT JOIN "Room" r ON r."id" = COALESCE(e."roomId", t."roomId")
 LEFT JOIN "GuestReference" g ON g."id" = COALESCE(e."guestId", t."guestId")
+WHERE f."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -160,6 +165,7 @@ SELECT
   '/caja?q=%23' || gu."humanId"::text || '&seccion=garantias', NULL::text, NULL::text
 FROM "Guarantee" gu
 LEFT JOIN "User" u ON u."id" = gu."createdById"
+WHERE gu."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -234,6 +240,7 @@ SELECT
 FROM "Fine" fi
 LEFT JOIN "Room" r ON r."id" = fi."roomId"
 LEFT JOIN "User" u ON u."id" = fi."createdById"
+WHERE fi."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -244,6 +251,7 @@ SELECT
   an."createdAt", '/supervision', an."targetUserId", an."scope"::text
 FROM "Announcement" an
 LEFT JOIN "User" u ON u."id" = an."createdById"
+WHERE an."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -254,6 +262,7 @@ SELECT
   cr."startedAt", '/supervision/auditorias', NULL::text, NULL::text
 FROM "ChecklistRun" cr
 LEFT JOIN "User" u ON u."id" = cr."runById"
+WHERE cr."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -263,6 +272,7 @@ SELECT
   NULL::text, NULL::text, NULL::text, af."severity"::text,
   af."createdAt", '/supervision/auditorias', NULL::text, NULL::text
 FROM "AuditFinding" af
+WHERE af."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -272,6 +282,7 @@ SELECT
   co."createdAt", '/supervision/auditorias', NULL::text, NULL::text
 FROM "CorrectiveMeasure" co
 LEFT JOIN "User" u ON u."id" = co."assigneeId"
+WHERE co."deletedAt" IS NULL
 
 UNION ALL
 SELECT
@@ -298,7 +309,7 @@ VALUES (
   jsonb_build_object(
     'sequence', 'human_operational_id_seq',
     'start', 1000,
-    'lastAssigned', currval('human_operational_id_seq'::regclass),
+    'lastAssigned', (SELECT last_value FROM human_operational_id_seq),
     'strategy', 'shared-postgresql-sequence',
     'migration', '20260927180000_identificadores_humanos_globales'
   ),
@@ -307,3 +318,5 @@ VALUES (
   FALSE
 )
 ON CONFLICT ("id") DO NOTHING;
+
+COMMIT;

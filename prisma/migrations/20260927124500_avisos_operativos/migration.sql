@@ -3,8 +3,6 @@ ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ALARMA';
 CREATE TYPE "OperationalAlarmKind" AS ENUM ('TIMER', 'RECORDATORIO');
 CREATE TYPE "OperationalAlarmScope" AS ENUM ('INDIVIDUAL', 'GRUPO', 'GLOBAL');
 CREATE TYPE "OperationalAlarmStatus" AS ENUM ('ACTIVA', 'CANCELADA', 'CERRADA');
-CREATE TYPE "OperationalMailStatus" AS ENUM ('PENDIENTE', 'ENVIADO', 'ERROR');
-
 CREATE TABLE "OperationalAlarm" (
   "id" TEXT NOT NULL,
   "kind" "OperationalAlarmKind" NOT NULL,
@@ -33,22 +31,6 @@ CREATE TABLE "OperationalAlarmRecipient" (
   CONSTRAINT "OperationalAlarmRecipient_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "OperationalMailOutbox" (
-  "id" TEXT NOT NULL,
-  "eventKey" TEXT NOT NULL,
-  "recipients" TEXT[] NOT NULL,
-  "subject" TEXT NOT NULL,
-  "text" TEXT NOT NULL,
-  "status" "OperationalMailStatus" NOT NULL DEFAULT 'PENDIENTE',
-  "attempts" INTEGER NOT NULL DEFAULT 0,
-  "lastError" TEXT,
-  "sentAt" TIMESTAMP(3),
-  "nextAttemptAt" TIMESTAMP(3),
-  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL,
-  CONSTRAINT "OperationalMailOutbox_pkey" PRIMARY KEY ("id")
-);
-
 CREATE UNIQUE INDEX "OperationalAlarmRecipient_alarmId_userId_key"
   ON "OperationalAlarmRecipient"("alarmId", "userId");
 CREATE INDEX "OperationalAlarm_status_dueAt_idx"
@@ -59,13 +41,6 @@ CREATE INDEX "OperationalAlarm_createdById_createdAt_idx"
   ON "OperationalAlarm"("createdById", "createdAt");
 CREATE INDEX "OperationalAlarmRecipient_userId_acknowledgedAt_snoozedUntil_idx"
   ON "OperationalAlarmRecipient"("userId", "acknowledgedAt", "snoozedUntil");
-CREATE UNIQUE INDEX "OperationalMailOutbox_eventKey_key"
-  ON "OperationalMailOutbox"("eventKey");
-CREATE INDEX "OperationalMailOutbox_status_nextAttemptAt_idx"
-  ON "OperationalMailOutbox"("status", "nextAttemptAt");
-CREATE INDEX "OperationalMailOutbox_createdAt_idx"
-  ON "OperationalMailOutbox"("createdAt");
-
 ALTER TABLE "OperationalAlarm"
   ADD CONSTRAINT "OperationalAlarm_createdById_fkey"
   FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -58,7 +58,6 @@ export async function POST(request: Request) {
       businessDate,
       parsed,
       sourceFile: {
-        name: file.name,
         sha256,
         size: file.size,
         parserVersion: SUPERVISION_AUDIT_PARSER_VERSION,

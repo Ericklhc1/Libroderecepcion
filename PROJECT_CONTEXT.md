@@ -80,6 +80,18 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.17.1 · coherencia de Supervisión
+
+- Centro de Supervisión: tareas, seguimientos y medidas abiertas ya no desaparecen por antigüedad.
+- Los filtros de fecha se interpretan en `America/Santiago` y se presentan como filtros históricos.
+- Los contadores críticos usan `count()` exacto; las listas limitadas se presentan como muestras.
+- Tablero de asignación muestra el total real de asuntos sin responsable aunque renderice sólo los prioritarios.
+- Rendimiento usa calendario del hotel y excluye `NO_APLICA` del denominador de cumplimiento.
+- Salud operativa usa «turnos de emergencia» y trata cierres incompletos como atención.
+- Informes de Supervisión separan «actividad del período» de «estado vigente ahora».
+- Cancelar cierre explica también qué preparación/revisión debe repetirse.
+- Release sin migración: **v1.17.1**.
+
 ## Actualización 27/09/2026 · Libro 1.17.0 · blindaje de flujos operativos
 
 - El cierre de Recepción deja de depender de `?paso=`: pendientes y revisión final

@@ -183,5 +183,19 @@ export async function searchOperationalRecords(
       }
       return true;
     })
-    .map(({ targetUserId: _targetUserId, scope: _scope, createdByUserId: _createdByUserId, ...row }) => row);
+    .map((row) => ({
+      humanId: row.humanId,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      kind: row.kind,
+      title: row.title,
+      summary: row.summary,
+      status: row.status,
+      roomNumber: row.roomNumber,
+      guestName: row.guestName,
+      responsible: row.responsible,
+      category: row.category,
+      createdAt: row.createdAt,
+      href: row.href,
+    }));
 }

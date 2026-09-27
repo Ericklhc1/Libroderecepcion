@@ -46,6 +46,7 @@ import {
   isCashEnabled,
 } from './cash';
 import { assertShiftCashClosed } from './cash-closure';
+import { cancelTimersForShift } from './alarms';
 
 /** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
@@ -1688,6 +1689,7 @@ export async function closeShift(
     }
 
     await endShiftParticipation(tx, shift.id, now);
+    await cancelTimersForShift(tx, { shiftId: shift.id, at: now });
 
     await recordAudit(
       {

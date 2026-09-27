@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AlarmKind, AlarmScope, AlarmStatus, ShiftType } from '@prisma/client';
+import { AlarmKind, AlarmScope, AlarmStatus, CashCountKind, ShiftType } from '@prisma/client';
 import {
   createAlarm,
   materializeDueAlarmsForUser,
@@ -120,7 +120,7 @@ describe('Timers y reminders', () => {
     if (!twenty) throw new Error('Falta denominación de 20.000');
     await saveCashCount(user, {
       handoverId: handover.id,
-      kind: 'DECLARADO',
+      kind: CashCountKind.DECLARADO,
       quantities: { [twenty.id]: 5 },
     });
     await closeShiftCash(user, { shiftId: shift.id });

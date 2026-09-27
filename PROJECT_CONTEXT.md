@@ -80,6 +80,21 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.18.0 · identificadores humanos globales
+
+- Todo registro operativo citable usa un correlativo humano único `#NNNN`, independiente del módulo.
+- Los IDs técnicos (CUID/UUID/PK existentes) se conservan sin cambios para relaciones, auditoría y soporte.
+- PostgreSQL usa una única secuencia `human_operational_id_seq`; `nextval()` evita colisiones bajo concurrencia y no reutiliza números tras rollback.
+- La migración asigna `humanId` a históricos sin eliminar ni reescribir relaciones y deja una marca de auditoría.
+- Reciben ID humano: turnos y entregas de Recepción/Supervisión, novedades/incidencias, tareas, seguimientos, alertas, garantías, arqueos, movimientos/transferencias/cierres de Caja, folios de gimnasio, multas, comunicados, rondas/auditorías, hallazgos, medidas correctivas e inventarios de llaves.
+- No reciben ID visible: comentarios, lecturas, notificaciones, clics, aperturas de pantalla, líneas internas de arqueo y otras microacciones; conservan sus IDs técnicos cuando corresponde.
+- El buscador superior apunta a `/buscar` y prioriza ID exacto → habitación → huésped → responsable → título → descripción → categoría → estado/contenido relacionado.
+- La búsqueda global respeta permisos, comunicados dirigidos, seguimientos privados/de Supervisión y alertas de aprobación/validación restringida.
+- Los filtros cotidianos dejan búsqueda/estado/responsable visibles y agrupan el resto bajo **Más filtros**.
+- Los correlativos locales antiguos (`OperationalEntry.seq`, `Task.seq`, `GymPass.folio`) siguen en base por compatibilidad, pero dejan de ser la referencia operativa principal.
+- Nueva migración: `20260927180000_identificadores_humanos_globales`.
+- Release con migración: **v1.18.0**.
+
 ## Actualización 27/09/2026 · Libro 1.17.2 · Chat anclado al borde derecho
 
 - La pestaña cerrada de **Chat operativo** queda pegada al borde inferior derecho del viewport, también en escritorio.

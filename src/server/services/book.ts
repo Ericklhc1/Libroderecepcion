@@ -92,7 +92,7 @@ const DEFAULT_PAGE_SIZE = 40;
 function textSearch(q: string | undefined): string | null {
   if (!q || q.trim().length === 0) return null;
   const raw = q.trim();
-  const normalized = raw.replace(/^T#/i, '').replace(/^#/, '').trim();
+  const normalized = raw.replace(/^#/, '').trim();
   return normalized || raw;
 }
 
@@ -129,7 +129,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       : ['entry', 'task', 'followup', 'alert'];
 
   const q = textSearch(filters.q);
-  const seq = numericRef(q);
+  const humanId = numericRef(q);
   const deletedFilter = filters.includeDeleted ? {} : { deletedAt: null };
   const dateRange =
     filters.from || filters.to
@@ -157,7 +157,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
-          ...(seq !== null ? [{ seq }] : []),
+          ...(humanId !== null ? [{ humanId }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { category: { contains: q, mode: 'insensitive' } },
@@ -167,6 +167,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { owner: { name: { contains: q, mode: 'insensitive' } } },
           { owner: { username: { contains: q, mode: 'insensitive' } } },
           { department: { name: { contains: q, mode: 'insensitive' } } },
+          { room: { number: { contains: q, mode: 'insensitive' } } },
+          { guest: { fullName: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -204,7 +206,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       return {
         kind: 'entry' as const,
         id: row.id,
-        ref: `#${row.seq}`,
+        ref: `#${row.humanId}`,
         kindLabel: row.type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad',
         typeLabel: ENTRY_TYPE_LABEL[row.type],
         title: row.title,
@@ -239,7 +241,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
-          ...(seq !== null ? [{ seq }] : []),
+          ...(humanId !== null ? [{ humanId }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
@@ -249,6 +251,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { createdBy: { username: { contains: q, mode: 'insensitive' } } },
           { assignee: { name: { contains: q, mode: 'insensitive' } } },
           { assignee: { username: { contains: q, mode: 'insensitive' } } },
+          { room: { number: { contains: q, mode: 'insensitive' } } },
+          { guest: { fullName: { contains: q, mode: 'insensitive' } } },
         ],
       });
     }
@@ -285,7 +289,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       return {
         kind: 'task' as const,
         id: row.id,
-        ref: `T#${row.seq}`,
+        ref: `#${row.humanId}`,
         kindLabel: 'Tarea',
         typeLabel: 'Tarea',
         title: row.title,
@@ -322,6 +326,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(humanId !== null ? [{ humanId }] : []),
           { action: { contains: q, mode: 'insensitive' } },
           { nextAction: { contains: q, mode: 'insensitive' } },
           { result: { contains: q, mode: 'insensitive' } },
@@ -331,6 +336,8 @@ export async function getBookItems(filters: BookFilters): Promise<{
           { createdBy: { username: { contains: q, mode: 'insensitive' } } },
           { owner: { name: { contains: q, mode: 'insensitive' } } },
           { owner: { username: { contains: q, mode: 'insensitive' } } },
+          { entry: { room: { number: { contains: q, mode: 'insensitive' } } } },
+          { entry: { guest: { fullName: { contains: q, mode: 'insensitive' } } } },
         ],
       });
     }
@@ -363,7 +370,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     return rows.map((row) => ({
       kind: 'followup' as const,
       id: row.id,
-      ref: 'Seg.',
+      ref: `#${row.humanId}`,
       kindLabel: 'Seguimiento',
       typeLabel: 'Seguimiento',
       title: row.action,
@@ -405,11 +412,14 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(humanId !== null ? [{ humanId }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { message: { contains: q, mode: 'insensitive' } },
           { entry: { title: { contains: q, mode: 'insensitive' } } },
           { createdBy: { name: { contains: q, mode: 'insensitive' } } },
           { createdBy: { username: { contains: q, mode: 'insensitive' } } },
+          { guest: { fullName: { contains: q, mode: 'insensitive' } } },
+          { entry: { room: { number: { contains: q, mode: 'insensitive' } } } },
         ],
       });
     }
@@ -438,7 +448,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     return rows.map((row) => ({
       kind: 'alert' as const,
       id: row.id,
-      ref: 'Alerta',
+      ref: `#${row.humanId}`,
       kindLabel: 'Alerta',
       typeLabel: ALERT_TYPE_LABEL[row.type],
       title: row.title,

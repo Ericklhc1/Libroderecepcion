@@ -89,7 +89,7 @@ export default async function OperationalHealthPage({
           <StatTile label="Turnos iniciados" value={health.shifts.started} />
           <StatTile label="Turnos cerrados" value={health.shifts.closed} />
           <StatTile
-            label="Cierres por contingencia"
+            label="Turnos de emergencia"
             value={health.shifts.contingencies}
             tone={health.shifts.contingencies > 0 ? 'alert' : 'good'}
           />
@@ -106,7 +106,7 @@ export default async function OperationalHealthPage({
             label="Cierres aún sin completar"
             value={health.shifts.closeIncomplete}
             hint="Inicio registrado sin cierre correlacionado"
-            tone={health.shifts.closeIncomplete > 0 ? 'neutral' : 'good'}
+            tone={health.shifts.closeIncomplete > 0 ? 'alert' : 'good'}
           />
         </div>
       </section>
@@ -152,7 +152,7 @@ export default async function OperationalHealthPage({
             value={health.entries.takenObserved}
             hint={
               health.entries.medianTakeMs === null
-                ? 'P1 aún sin duración suficiente'
+                ? 'Aún sin duración suficiente'
                 : `Mediana ${formatDuration(health.entries.medianTakeMs)}`
             }
           />
@@ -166,7 +166,7 @@ export default async function OperationalHealthPage({
             value={formatDuration(health.entries.medianTakeMs)}
             hint={
               health.entries.p90TakeMs === null
-                ? 'Desde telemetría P1'
+                ? 'Observación operativa'
                 : `P90 ${formatDuration(health.entries.p90TakeMs)}`
             }
           />
@@ -175,7 +175,7 @@ export default async function OperationalHealthPage({
             value={formatDuration(health.entries.medianResolveMs)}
             hint={
               health.entries.p90ResolveMs === null
-                ? 'Desde telemetría P1'
+                ? 'Observación operativa'
                 : `P90 ${formatDuration(health.entries.p90ResolveMs)}`
             }
           />
@@ -215,9 +215,9 @@ export default async function OperationalHealthPage({
           <StatTile label="Cerrados esta sesión" value={health.tutorial.closedThisSession} />
           <StatTile label="Desactivados" value={health.tutorial.disabled} />
           <StatTile
-            label="Fallos operativos P0"
+            label="Fallos en procesos críticos"
             value={health.failures}
-            hint="Fallos de los procesos críticos instrumentados en P0"
+            hint="Errores técnicos observados en los procesos críticos instrumentados"
             tone={health.failures > 0 ? 'alert' : 'good'}
           />
         </div>
@@ -297,9 +297,9 @@ export default async function OperationalHealthPage({
               : 'Todavía no hay eventos operativos registrados en este entorno.'}
           </p>
           <p className="text-xs text-slate-500">
-            P2 añade Fronti persistente y fallos técnicos transversales sobre la misma
-            infraestructura. No se guardan prompts, respuestas, campos de formulario ni ranking por
-            usuario.
+            La observabilidad incluye estabilidad de Fronti y fallos técnicos transversales sobre
+            la misma infraestructura. No se guardan prompts, respuestas, campos de formulario ni
+            ranking por usuario.
           </p>
         </div>
       </Card>

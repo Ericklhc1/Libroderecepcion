@@ -272,18 +272,11 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
   }
 }
 
-export async function parseSupervisionReport(fileName: string, data: Uint8Array): Promise<ParsedSupervisionReport> {
-  let fragments: Awaited<ReturnType<typeof readPdfFragments>> = [];
-  try {
-    fragments = await readPdfFragments(data);
-  } catch (error) {
-    throw new RuleError(
-      `No se pudo leer ${fileName}: ${error instanceof Error ? error.message : 'PDF inválido'}`,
-    );
-  }
-
-  const lines = linesFromFragments(fragments);
-  const text = compactText(lines);
+export function parseSupervisionReportText(
+  fileName: string,
+  rawText: string,
+): ParsedSupervisionReport {
+  const text = rawText.replace(/\s+/g, ' ').trim();
   const kind = kindOf(fileName, text);
   const warnings: string[] = [];
 
@@ -309,6 +302,23 @@ export async function parseSupervisionReport(fileName: string, data: Uint8Array)
     findings,
     warnings,
   };
+}
+
+export async function parseSupervisionReport(
+  fileName: string,
+  data: Uint8Array,
+): Promise<ParsedSupervisionReport> {
+  let fragments: Awaited<ReturnType<typeof readPdfFragments>> = [];
+  try {
+    fragments = await readPdfFragments(data);
+  } catch (error) {
+    throw new RuleError(
+      `No se pudo leer ${fileName}: ${error instanceof Error ? error.message : 'PDF inválido'}`,
+    );
+  }
+
+  const text = compactText(linesFromFragments(fragments));
+  return parseSupervisionReportText(fileName, text);
 }
 
 function jsonObject(value: Prisma.JsonValue | null | undefined): Record<string, unknown> {

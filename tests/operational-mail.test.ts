@@ -3,6 +3,7 @@ import {
   EntryType,
   GuaranteeKind,
   GuaranteeState,
+  Impact,
   OperationalMailStatus,
   Priority,
   Severity,
@@ -71,7 +72,7 @@ describe('respaldo operativo por correo', () => {
       description: 'La cerradura no responde.',
       priority: Priority.ALTA,
       severity: Severity.ALTA,
-      impact: 'Huésped sin acceso normal.',
+      impact: Impact.HUESPED,
       immediateAction: 'Se entregó llave de respaldo.',
       tags: ['cerradura'],
       requiresFollowUp: true,
@@ -82,7 +83,7 @@ describe('respaldo operativo por correo', () => {
     });
     expect(row.subject).toContain('INCIDENCIA');
     expect(row.text).toContain('Gravedad: ALTA');
-    expect(row.text).toContain('Huésped sin acceso normal.');
+    expect(row.text).toContain('Impacto: HUESPED');
     expect(row.text).toContain('Se entregó llave de respaldo.');
   });
 

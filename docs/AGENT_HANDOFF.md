@@ -1,5 +1,20 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · turno de emergencia controlado
+
+- Release objetivo: **v1.14.8**.
+- El antiguo botón de «contingencia» se sustituye por una apertura de
+  **emergencia** con advertencia previa, causa cerrada y aceptación expresa.
+- `Shift` conserva `emergency`, motivo, turno de origen y momento de
+  aceptación. La emergencia no cierra ni regulariza el turno saliente.
+- El motor genera/reabre una alerta crítica automática
+  `shift-emergency-source:<shiftId>` mientras el saliente siga sin cierre.
+- Los turnos vencidos se alertan por falta de cierre formal incluso si ya
+  enviaron la entrega.
+- Tras publicar, regularizar en Production el turno vigente abierto el
+  27/09/2026 bajo el flujo anterior y emitir comunicado obligatorio a TODOS.
+
+
 > Canal persistente de continuidad entre ChatGPT, GitHub Copilot, Cursor/Codex y otros agentes.
 > No guardar secretos, connection strings, passwords, tokens, cookies ni PII.
 

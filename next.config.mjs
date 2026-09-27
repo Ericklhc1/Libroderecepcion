@@ -22,6 +22,7 @@ const nextConfig = {
   */
   outputFileTracingIncludes: {
     '/huespedes/importar': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
+    '/api/supervision/auditoria-diaria': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
   },
   experimental: {
     // Los informes del PMS viajan juntos en una sola acción de servidor.

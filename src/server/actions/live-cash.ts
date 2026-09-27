@@ -35,6 +35,11 @@ import {
   cashApprovalRequired,
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
+import {
+  queueAndFlushOperationalMail,
+  SUPERVISOR_BACKUP_MAIL,
+} from '@/server/services/operational-mail';
+import { formatDateTime } from '@/lib/format';
 
 const gymPassSchema = z.object({
   serviceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Indica una fecha válida.'),
@@ -226,6 +231,22 @@ export async function createManualCashMovementAction(
 
     if (!needsApproval) {
       const movementId = await applyAuthorizedManualMovement(user, input, shift?.id ?? null, effectiveAt);
+      await queueAndFlushOperationalMail({
+        eventKey: `cash-movement:${movementId}`,
+        to: SUPERVISOR_BACKUP_MAIL,
+        subject: `[Libro Operativo] ${verb} de Caja · ${input.currency} ${input.amount.toLocaleString('es-CL')}`,
+        body: [
+          `Operación: ${verb} de Caja`,
+          `Divisa: ${input.currency}`,
+          `Monto: ${input.amount.toLocaleString('es-CL')}`,
+          `Concepto: ${input.reference}`,
+          `Observaciones: ${input.notes ?? 'Sin observaciones'}`,
+          `Realizado por: ${user.name}`,
+          `Fecha/hora efectiva: ${formatDateTime(effectiveAt)}`,
+          `Turno: ${shift?.id ?? 'Sin turno asociado'}`,
+          `ID movimiento: ${movementId}`,
+        ].join('\n'),
+      });
       revalidatePath('/caja');
       revalidatePath('/libro');
       revalidatePath('/turno');
@@ -357,6 +378,24 @@ export async function createCashDifferenceRegularizationAction(
       effectiveAt,
       { affectsExpected: false },
     );
+
+    await queueAndFlushOperationalMail({
+      eventKey: `cash-movement:${movementId}`,
+      to: SUPERVISOR_BACKUP_MAIL,
+      subject: `[Libro Operativo] Regularización de Caja · ${input.currency} ${input.amount.toLocaleString('es-CL')}`,
+      body: [
+        `Operación: Regularización de diferencia · ${input.direction}`,
+        `Divisa: ${input.currency}`,
+        `Monto: ${input.amount.toLocaleString('es-CL')}`,
+        `Concepto: ${input.reference}`,
+        `Observaciones: ${input.notes ?? 'Sin observaciones'}`,
+        `Realizado por: ${user.name}`,
+        `Fecha/hora efectiva: ${formatDateTime(effectiveAt)}`,
+        `Turno: ${shift?.id ?? 'Sin turno asociado'}`,
+        `ID movimiento: ${movementId}`,
+        'Este movimiento regulariza una diferencia y no modifica el efectivo esperado.',
+      ].join('\n'),
+    });
 
     revalidatePath('/caja');
     revalidatePath('/libro');

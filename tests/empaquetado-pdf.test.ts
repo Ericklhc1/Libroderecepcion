@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest';
  * Error real de producción: al subir los informes, fallaban con
  * «Setting up fake worker failed: Cannot find module .../pdf.worker.mjs».
  *
- * La importación PMS tiene una sola ruta canónica: /huespedes/importar.
+ * Hoy leen PDF dos rutas servidoras: la importación PMS canónica y la carga
+ * transitoria de informes del dashboard de Supervisión.
  */
 const RUTAS_QUE_LEEN_PDF = [
   '.next/server/app/(app)/huespedes/importar/page.js.nft.json',
+  '.next/server/app/api/supervision/auditoria-diaria/route.js.nft.json',
 ];
 
 describe('empaquetado del lector de PDF', () => {
@@ -28,11 +30,12 @@ describe('empaquetado del lector de PDF', () => {
     }
   });
 
-  it('la configuración declara el worker para la ruta canónica', () => {
+  it('la configuración declara el worker para cada ruta canónica', () => {
     const config = readFileSync('next.config.mjs', 'utf-8');
     expect(config).toContain('outputFileTracingIncludes');
     const bloque = config.slice(config.indexOf('outputFileTracingIncludes'));
     expect(bloque).toContain("'/huespedes/importar'");
+    expect(bloque).toContain("'/api/supervision/auditoria-diaria'");
     expect(bloque).not.toContain("'/habitaciones/importar'");
     expect(bloque).not.toContain("'/turno'");
     expect(config).toContain('pdfjs-dist/legacy/build/pdf.worker.mjs');

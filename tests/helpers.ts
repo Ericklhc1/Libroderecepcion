@@ -78,6 +78,7 @@ export async function resetOperationalData() {
     prisma.announcementRead.deleteMany(),
     prisma.announcement.deleteMany(),
     prisma.supervisionNote.deleteMany(),
+    prisma.supervisionAuditImport.deleteMany(),
     prisma.mailSettings.deleteMany(),
     prisma.handoverItem.deleteMany(),
     prisma.cashCountLine.deleteMany(),

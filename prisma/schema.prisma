@@ -511,6 +511,7 @@ model User {
   supervisionShiftHandovers       SupervisionShiftHandover[] @relation("supervisionHandoverIssuedBy")
   supervisionHandoversReceived    SupervisionShiftHandover[] @relation("supervisionHandoverReceivedBy")
   supervisionNotes                SupervisionNote[]          @relation("supervisionNoteAuthor")
+  supervisionAuditImports         SupervisionAuditImport[]   @relation("supervisionAuditImportUploadedBy")
   taskParticipations              TaskAssignment[]           @relation("taskParticipant")
   taskAssignmentsCreated          TaskAssignment[]           @relation("taskAssignmentCreatedBy")
   tasksValidated                  Task[]                     @relation("taskValidatedBy")
@@ -786,8 +787,9 @@ model SupervisionShift {
   tasks     Task[]
   followUps FollowUp[]
   notes     SupervisionNote[]
-  audits    ChecklistRun[]
-  handover  SupervisionShiftHandover?
+  audits       ChecklistRun[]
+  auditImports SupervisionAuditImport[]
+  handover     SupervisionShiftHandover?
 
   @@index([supervisorId, status])
   @@index([startedAt])
@@ -809,6 +811,26 @@ model SupervisionShiftHandover {
 
   @@index([issuedAt])
   @@index([receivedAt])
+}
+
+model SupervisionAuditImport {
+  id                 String           @id @default(cuid())
+  supervisionShiftId String
+  supervisionShift   SupervisionShift @relation(fields: [supervisionShiftId], references: [id], onDelete: Cascade)
+  businessDate       DateTime         @db.Date
+  uploadedById       String
+  uploadedBy         User             @relation("supervisionAuditImportUploadedBy", fields: [uploadedById], references: [id])
+  reportKinds        String[]         @default([])
+  metrics            Json
+  checks             Json
+  findings           Json
+  warnings           String[]         @default([])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([supervisionShiftId, businessDate])
+  @@index([businessDate])
+  @@index([uploadedById, createdAt])
 }
 
 model SupervisionNote {

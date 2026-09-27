@@ -17,11 +17,13 @@ const nextConfig = {
     estático, así que el trazador de Next no lo veía y no lo copiaba a la
     función desplegada.
 
-    La lectura PMS tiene una sola ruta canónica: /huespedes/importar. La ruta
-    histórica /habitaciones/importar sólo redirige y /turno ya no procesa PDF.
+    La lectura PMS canónica vive en /huespedes/importar. Supervisión reutiliza
+    el mismo lector para /api/supervision/auditoria-diaria. La ruta histórica
+    /habitaciones/importar sólo redirige y /turno ya no procesa PDF.
   */
   outputFileTracingIncludes: {
     '/huespedes/importar': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
+    '/api/supervision/auditoria-diaria': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
   },
   experimental: {
     // Los informes del PMS viajan juntos en una sola acción de servidor.

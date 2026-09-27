@@ -87,7 +87,7 @@ async function buildSupervisionSnapshot(
   });
   if (!shift) throw new NotFoundError('El turno de Supervisión no existe.');
 
-  const [tasks, followUps, audits, correctiveMeasures, decisions] = await Promise.all([
+  const [tasks, followUps, audits, auditImports, correctiveMeasures, decisions] = await Promise.all([
     client.task.findMany({
       where: { supervisionShiftId: shift.id, deletedAt: null },
       select: {
@@ -125,6 +125,21 @@ async function buildSupervisionSnapshot(
       },
       orderBy: { startedAt: 'asc' },
     }),
+    client.supervisionAuditImport.findMany({
+      where: { supervisionShiftId: shift.id },
+      select: {
+        id: true,
+        businessDate: true,
+        reportKinds: true,
+        metrics: true,
+        checks: true,
+        findings: true,
+        warnings: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { businessDate: 'asc' },
+    }),
     client.correctiveMeasure.findMany({
       where: {
         deletedAt: null,
@@ -160,6 +175,7 @@ async function buildSupervisionSnapshot(
       tasks,
       followUps,
       audits,
+      auditImports,
       correctiveMeasures,
       decisions,
       summary: {
@@ -177,6 +193,11 @@ async function buildSupervisionSnapshot(
           ['PENDIENTE', 'VENCIDO'].includes(followUp.status),
         ).length,
         auditsOpen: audits.filter((audit) => audit.status !== 'CERRADA').length,
+        dailyAuditImports: auditImports.length,
+        dailyAuditFindings: auditImports.reduce((sum, item) => {
+          const findings = Array.isArray(item.findings) ? item.findings : [];
+          return sum + findings.length;
+        }, 0),
         correctiveMeasuresOpen: correctiveMeasures.filter(
           (measure) => !['VALIDADA', 'CANCELADA'].includes(measure.status),
         ).length,
@@ -236,9 +257,30 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
       throw new RuleError('Ese turno de Supervisión ya está cerrado.');
     }
 
+    let handover = await tx.supervisionShiftHandover.findUnique({
+      where: { supervisionShiftId: shift.id },
+      select: { id: true, issuedAt: true },
+    });
+    if (!handover) {
+      const snapshot = await buildSupervisionSnapshot(shift.id, tx);
+      handover = await tx.supervisionShiftHandover.create({
+        data: {
+          supervisionShiftId: shift.id,
+          issuedById: user.id,
+          snapshot,
+        },
+        select: { id: true, issuedAt: true },
+      });
+    }
+
+    const finishedAt = new Date();
     const finished = await tx.supervisionShift.update({
       where: { id: shift.id },
-      data: { status: SupervisionShiftStatus.CERRADO, finishedAt: new Date() },
+      data: {
+        status: SupervisionShiftStatus.CERRADO,
+        finishedAt,
+        deliveredAt: shift.deliveredAt ?? handover.issuedAt,
+      },
     });
     await recordAudit(
       {
@@ -249,6 +291,8 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
         user,
         after: {
           finishedAt: finished.finishedAt,
+          handoverId: handover.id,
+          snapshotEnsured: true,
           continuity: 'Los seguimientos y tareas abiertos permanecen vigentes fuera del turno.',
         },
       },
@@ -563,6 +607,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     myFollowUps,
     notes,
     audits,
+    auditImports,
     measures,
     changesSinceLastShift,
   ] = await Promise.all([
@@ -629,6 +674,14 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       orderBy: { startedAt: 'asc' },
       take: 12,
     }),
+    currentShift
+      ? prisma.supervisionAuditImport.findMany({
+          where: { supervisionShiftId: currentShift.id },
+          include: { uploadedBy: { select: { id: true, name: true } } },
+          orderBy: { businessDate: 'desc' },
+          take: 7,
+        })
+      : Promise.resolve([]),
     prisma.correctiveMeasure.findMany({
       where: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } },
       include: { assignee: { select: { name: true } } },
@@ -686,6 +739,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     myFollowUps,
     notes,
     audits,
+    auditImports,
     measures,
   };
 }

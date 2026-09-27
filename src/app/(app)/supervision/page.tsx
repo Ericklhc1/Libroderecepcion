@@ -16,6 +16,7 @@ import { TONE_STYLES } from '@/components/ui/tone';
 import { Dialog } from '@/components/ui/dialog';
 import { CloseFollowUpDialog } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
+import { SupervisionAuditDashboard } from '@/components/supervision/audit-dashboard';
 import { createTaskAction } from '@/server/actions/tasks';
 import {
   DeleteSupervisionNoteDialog,
@@ -35,6 +36,7 @@ import {
 } from '@/domain/labels';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -116,6 +118,7 @@ export default async function SupervisionCenterPage({
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
   const canPerformance = hasPermission(user, 'supervision.performance.view');
   const canAnnounce = isSupervisor && hasPermission(user, 'announcement.manage');
+  const defaultAuditBusinessDate = calendarDateKey(addCalendarDateDays(hotelCalendarDate(), -1));
 
   const [center, review, options, announcements, operationalUsers, performance] = await Promise.all([
     getSupervisionCenterSummary(user),
@@ -199,6 +202,7 @@ export default async function SupervisionCenterPage({
         <a href="#pendientes" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Asignado a mí</a>
         <a href="#seguimientos" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">En seguimiento</a>
         <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Requiere atención</a>
+        <a href="#auditoria-diaria" className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100">Auditoría diaria</a>
       </nav>
 
       <ListFilterBar searchValue={q} searchPlaceholder="Buscar pendiente, señal, nota o persona…" clearHref="/supervision">
@@ -292,6 +296,12 @@ export default async function SupervisionCenterPage({
           {isSupervisor ? <Link href="/supervision/auditorias" className="inline-flex items-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50">Iniciar auditoría sorpresa</Link> : null}
         </div>
       </Card>
+
+      <SupervisionAuditDashboard
+        rows={center.auditImports}
+        defaultBusinessDate={defaultAuditBusinessDate}
+        canUpload={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section id="pendientes" className="scroll-mt-4">

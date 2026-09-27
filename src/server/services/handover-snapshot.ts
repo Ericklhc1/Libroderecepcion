@@ -117,7 +117,7 @@ export async function buildHandoverSnapshot(
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         type: true,
         title: true,
         description: true,
@@ -134,13 +134,13 @@ export async function buildHandoverSnapshot(
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         status: true,
         priority: true,
         dueAt: true,
         entryId: true,
-        entry: { select: { seq: true, title: true } },
+        entry: { select: { humanId: true, title: true } },
         assignee: { select: { name: true } },
       },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
@@ -175,7 +175,7 @@ export async function buildHandoverSnapshot(
         scheduledAt: true,
         status: true,
         entryId: true,
-        entry: { select: { seq: true, title: true } },
+        entry: { select: { humanId: true, title: true } },
         owner: { select: { name: true } },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -190,7 +190,7 @@ export async function buildHandoverSnapshot(
           },
           select: {
             id: true,
-            seq: true,
+            humanId: true,
             type: true,
             title: true,
             resolution: true,
@@ -209,7 +209,7 @@ export async function buildHandoverSnapshot(
             entryId: null,
             status: TaskStatus.COMPLETADA,
           },
-          select: { id: true, seq: true, title: true, completedAt: true },
+          select: { id: true, humanId: true, title: true, completedAt: true },
           orderBy: { completedAt: 'asc' },
           take: 100,
         })
@@ -220,7 +220,7 @@ export async function buildHandoverSnapshot(
     items.push({
       section: SECTIONS.resueltos,
       level: HandoverLevel.INFORMATIVO,
-      title: `#${resolved.seq} ${resolved.title}`,
+      title: `#${resolved.humanId} ${resolved.title}`,
       detail: [
         ENTRY_TYPE_LABEL[resolved.type],
         resolved.resolution?.trim() || 'Resuelto durante el turno.',
@@ -241,7 +241,7 @@ export async function buildHandoverSnapshot(
     items.push({
       section: SECTIONS.resueltos,
       level: HandoverLevel.INFORMATIVO,
-      title: `Tarea #${task.seq} · ${task.title}`,
+      title: `Tarea #${task.humanId} · ${task.title}`,
       detail: task.completedAt
         ? `Completada ${fmt(task.completedAt)}`
         : 'Completada durante el turno.',
@@ -269,7 +269,7 @@ export async function buildHandoverSnapshot(
         entry.type === EntryType.INCIDENCIA && entry.severity
           ? SEVERITY_TO_LEVEL[entry.severity]
           : PRIORITY_TO_LEVEL[entry.priority],
-      title: `#${entry.seq} ${entry.title}`,
+      title: `#${entry.humanId} ${entry.title}`,
       detail:
         entry.type === EntryType.NOVEDAD || entry.type === EntryType.INCIDENCIA
           ? detail
@@ -284,9 +284,9 @@ export async function buildHandoverSnapshot(
     items.push({
       section: SECTIONS.tareas,
       level: overdue ? HandoverLevel.URGENTE : PRIORITY_TO_LEVEL[task.priority],
-      title: `#${task.seq} ${task.title}`,
+      title: `#${task.humanId} ${task.title}`,
       detail: [
-        task.entry ? `Caso #${task.entry.seq}: ${task.entry.title}` : null,
+        task.entry ? `Caso #${task.entry.humanId}: ${task.entry.title}` : null,
         `Prioridad ${PRIORITY_LABEL[task.priority]}`,
         task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar',
         task.dueAt
@@ -307,7 +307,7 @@ export async function buildHandoverSnapshot(
       level: overdue ? HandoverLevel.URGENTE : HandoverLevel.IMPORTANTE,
       title: followUp.action,
       detail: [
-        followUp.entry ? `Caso #${followUp.entry.seq}: ${followUp.entry.title}` : null,
+        followUp.entry ? `Caso #${followUp.entry.humanId}: ${followUp.entry.title}` : null,
         followUp.nextAction ? `Próxima acción: ${followUp.nextAction}` : null,
         `Responsable: ${followUp.owner.name}`,
         followUp.scheduledAt

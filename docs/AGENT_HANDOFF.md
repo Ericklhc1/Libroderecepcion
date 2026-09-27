@@ -1,5 +1,25 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.16.0 · dashboard de auditoría
+
+- Nueva carga dentro de `/supervision` para los informes diarios del PMS.
+- Ruta de proceso: `POST /api/supervision/auditoria-diaria`; cada PDF se
+  procesa por separado y se descarta después de extraer los datos.
+- Persistencia nueva: `SupervisionAuditImport`, vinculada al turno de
+  Supervisión activo y a una fecha de negocio.
+- No se conserva archivo, nombre original ni texto crudo. Sólo se guardan
+  métricas, controles, hallazgos y advertencias estructuradas.
+- Formatos reconocidos: Formulario auditoría, Cobros, Ventas por canal,
+  Producción por habitación, Salidas, Revenue, In house y Cargos diarios.
+- Los escaneos sin capa de texto no usan OCR; se reportan como advertencia.
+- El resumen se incorpora a `SupervisionShiftHandover.snapshot` al cerrar/
+  entregar Supervisión.
+- Fecha predeterminada de carga: ayer según America/Santiago.
+- El inventario de llaves continúa fuera del cierre de Recepción.
+- Nueva migración `20260927143000_supervision_auditoria_dashboard`.
+- Cobertura principal: `tests/supervision-audit-import.test.ts`.
+
+
 ## Actualización 27/09/2026 · Libro 1.15.2 · hotfix cron Hobby
 
 - El deploy de 1.15.1 fue rechazado por Vercel porque `*/5 * * * *` no es

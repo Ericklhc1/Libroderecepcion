@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { AuditAction, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { formatCalendarDate } from '@/lib/format';
+import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import {
   formDataToObject,
   parseOrThrow,
@@ -36,6 +36,11 @@ import {
   plannedWindow,
 } from '@/domain/shift';
 import { assertAssignable } from '@/server/services/users';
+import {
+  queueAndFlushOperationalMail,
+  RECEPTION_BACKUP_MAIL,
+  SUPERVISOR_BACKUP_MAIL,
+} from '@/server/services/operational-mail';
 import {
   failOperationalMetric,
   finishCorrelatedOperationalMetric,
@@ -297,6 +302,41 @@ export async function sendHandoverAction(
 
     try {
       const handover = await sendHandover(user, input);
+      const backup = await prisma.shiftHandover.findUnique({
+        where: { id: handover.id },
+        include: {
+          fromShift: {
+            include: {
+              assignments: { include: { user: { select: { name: true } } } },
+            },
+          },
+          items: { orderBy: [{ level: 'asc' }, { order: 'asc' }] },
+        },
+      });
+      if (backup) {
+        const participants = backup.fromShift.assignments.map((row) => row.user.name).join(', ');
+        const detail = backup.items.length
+          ? backup.items.map((item) => `[${item.level}] ${item.section}: ${item.title}${item.detail ? ` — ${item.detail}` : ''}`).join('\n')
+          : 'Sin puntos de entrega.';
+        await queueAndFlushOperationalMail({
+          eventKey: `handover-sent:${backup.id}`,
+          to: [SUPERVISOR_BACKUP_MAIL, RECEPTION_BACKUP_MAIL],
+          subject: `[Libro Operativo] Entrega de turno ${backup.fromShift.type} · ${formatCalendarDate(backup.fromShift.date)}`,
+          body: [
+            `Turno: ${backup.fromShift.type}`,
+            `Fecha operacional: ${formatCalendarDate(backup.fromShift.date)}`,
+            `Participantes: ${participants || user.name}`,
+            `Enviado por: ${user.name}`,
+            `Fecha/hora de envío: ${formatDateTime(backup.issuedAt)}`,
+            `Estado del turno: ${backup.fromShift.status}`,
+            `ID turno: ${backup.fromShift.id}`,
+            `ID entrega: ${backup.id}`,
+            '',
+            'Puntos de entrega:',
+            detail,
+          ].join('\n'),
+        });
+      }
       finishOperationalMetric(metric, {
         entityType: 'ShiftHandover',
         entityId: handover.id,

@@ -38,13 +38,13 @@ export async function getFormOptions(): Promise<FormOptions> {
     prisma.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
       orderBy: { occurredAt: 'desc' },
-      select: { id: true, seq: true, title: true, type: true },
+      select: { id: true, humanId: true, title: true, type: true },
       take: 100,
     }),
     prisma.task.findMany({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, seq: true, title: true },
+      select: { id: true, humanId: true, title: true },
       take: 100,
     }),
     prisma.shift.findMany({
@@ -68,11 +68,11 @@ export async function getFormOptions(): Promise<FormOptions> {
     reservations: [],
     openEntries: entries.map((entry) => ({
       value: entry.id,
-      label: `${ENTRY_TYPE_LABEL[entry.type]} #${entry.seq} · ${entry.title}`,
+      label: `${ENTRY_TYPE_LABEL[entry.type]} #${entry.humanId} · ${entry.title}`,
     })),
     openTasks: tasks.map((task) => ({
       value: task.id,
-      label: `Tarea #${task.seq} · ${task.title}`,
+      label: `Tarea #${task.humanId} · ${task.title}`,
     })),
     rooms: [],
     activeShifts: activeShifts.map((shift) => ({

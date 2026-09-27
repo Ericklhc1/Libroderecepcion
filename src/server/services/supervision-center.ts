@@ -728,6 +728,41 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
           keyInventories: 0,
         }),
   ]);
+
+  const [myTaskCount, myFollowUpCount, auditOpenCount, measureOpenCount] = await Promise.all([
+    prisma.task.count({
+      where: {
+        deletedAt: null,
+        assigneeId: user.id,
+        status: { in: TASK_OPEN_STATUSES },
+      },
+    }),
+    prisma.followUp.count({
+      where: {
+        deletedAt: null,
+        ownerId: user.id,
+        status: { in: ['PENDIENTE', 'VENCIDO'] },
+      },
+    }),
+    prisma.checklistRun.count({
+      where: {
+        deletedAt: null,
+        status: { not: 'CERRADA' },
+        ...(user.isSystemAdmin
+          ? {}
+          : {
+              OR: [
+                { status: { not: 'PREPARACION' } },
+                { status: 'PREPARACION', runById: user.id },
+              ],
+            }),
+      },
+    }),
+    prisma.correctiveMeasure.count({
+      where: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } },
+    }),
+  ]);
+
   return {
     now,
     currentShift,
@@ -742,5 +777,11 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     audits,
     auditImports,
     measures,
+    counts: {
+      myTasks: myTaskCount,
+      myFollowUps: myFollowUpCount,
+      auditsOpen: auditOpenCount,
+      measuresOpen: measureOpenCount,
+    },
   };
 }

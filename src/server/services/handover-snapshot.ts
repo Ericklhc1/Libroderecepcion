@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import type { Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatDateTime } from '@/lib/format';
 import {
   ALERT_TYPE_LABEL,
   ENTRY_OPEN_STATUSES,
@@ -55,12 +56,7 @@ const SEVERITY_TO_LEVEL: Record<Severity, HandoverLevel> = {
 
 function fmt(date: Date | null | undefined): string {
   if (!date) return 'sin fecha';
-  return date.toLocaleString('es-CL', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTime(date);
 }
 
 type SnapshotOptions = {

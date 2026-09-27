@@ -88,8 +88,11 @@ async function deliverRow(id: string): Promise<boolean> {
 }
 
 /**
- * Intento inmediato y silencioso. Nunca hace fallar la operación de hotel:
- * si SMTP no responde, la fila queda pendiente para el cron de reintentos.
+ * Intento inmediato y silencioso. Nunca hace fallar la operación del hotel.
+ *
+ * Vercel Hobby sólo permite cron diario. Para no esperar al cron ante un fallo
+ * transitorio, cada nuevo hecho operativo intenta además rescatar unas pocas
+ * filas vencidas de la outbox. El cron diario queda como red de seguridad.
  */
 export async function tryDeliverOperationalMail(eventKey: string): Promise<void> {
   try {
@@ -98,6 +101,7 @@ export async function tryDeliverOperationalMail(eventKey: string): Promise<void>
       select: { id: true },
     });
     if (row) await deliverRow(row.id);
+    await flushOperationalMailOutbox(3);
   } catch (error) {
     console.error('[mail-outbox] fallo en intento inmediato', {
       eventKey,

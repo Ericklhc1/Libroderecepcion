@@ -178,6 +178,22 @@ describe('timers y recordatorios operativos', () => {
     expect(storedAlarm.closedAt).not.toBeNull();
   });
 
+  it('una cuenta de Recepción no puede emitir una alarma global', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción sin broadcast',
+    });
+
+    await expect(
+      createOperationalAlarm(receptionist, {
+        kind: OperationalAlarmKind.RECORDATORIO,
+        scope: OperationalAlarmScope.GLOBAL,
+        title: 'Aviso para todos',
+        dueAt: new Date(Date.now() + 10 * 60_000),
+      }),
+    ).rejects.toThrow(/Sólo Supervisión puede emitir una alarma global/i);
+  });
+
   it('un recordatorio grupal se cierra sólo cuando todos sus destinatarios confirman', async () => {
     const creator = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,

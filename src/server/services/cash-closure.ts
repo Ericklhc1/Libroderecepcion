@@ -16,6 +16,11 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { hasPermission } from '@/server/auth/current-user';
 import { fromMinor } from '@/domain/cash';
 import { getHandoverCashState } from './cash';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from './operational-mail';
 
 type CashSnapshot = {
   shiftId: string;
@@ -320,5 +325,21 @@ export async function reopenShiftCash(
       },
       tx,
     );
+
+    await queueOperationalMail(tx, {
+      eventKey: `cash-closure-reopened:${closure.id}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject: `[Libro Operativo] REAPERTURA DE CAJA · turno ${params.shiftId}`,
+      text: [
+        'CIERRE FORMAL DE CAJA REABIERTO',
+        `ID cierre: ${closure.id}`,
+        `ID turno: ${params.shiftId}`,
+        `Caja cerrada originalmente: ${operationalMailTimestamp(closure.closedAt)}`,
+        `Caja reabierta: ${operationalMailTimestamp(now)}`,
+        `Reabierta por: ${user.name} (ID ${user.id})`,
+        `Motivo: ${reason}`,
+        'Efecto: el cierre anterior se conserva en auditoría y Caja debe volver a arquearse/cerrarse antes de enviar la entrega.',
+      ].join('\n'),
+    });
   });
 }

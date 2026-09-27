@@ -78,6 +78,9 @@ export async function reopenShiftCashAction(
     const user = await requirePermission('cash.reopen');
     const input = parseOrThrow(reopenSchema, formDataToObject(formData));
     await reopenShiftCash(user, input);
+    // El correo es transparente para Recepción; el intento no condiciona la reapertura.
+    const { flushOperationalMailOutbox } = await import('@/server/services/operational-mail');
+    await flushOperationalMailOutbox(3).catch(() => undefined);
     refresh(input.shiftId);
     return { ok: true as const, message: 'Caja reabierta. Debe auditarse y cerrarse nuevamente antes de entregar el turno.' };
   });

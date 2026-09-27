@@ -11,6 +11,11 @@ import { recordAudit } from '@/server/audit';
 import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { outstandingAmount } from '@/domain/guarantees';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from '@/server/services/operational-mail';
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
@@ -576,6 +581,10 @@ export async function markCashMovementAsRegularization(
       currency: true,
       amount: true,
       reference: true,
+      notes: true,
+      shiftId: true,
+      effectiveAt: true,
+      createdAt: true,
       affectsExpected: true,
       voidedAt: true,
     },
@@ -612,5 +621,27 @@ export async function markCashMovementAsRegularization(
       },
       tx,
     );
+
+    await queueOperationalMail(tx, {
+      eventKey: `cash-movement-regularized:${movement.id}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject:
+        `[Libro Operativo] CORRECCIÓN CAJA · ${movement.currency} ${Number(movement.amount)} · ` +
+        `${movement.reference ?? movement.id}`,
+      text: [
+        'MOVIMIENTO DE CAJA RECLASIFICADO COMO REGULARIZACIÓN',
+        `ID movimiento: ${movement.id}`,
+        `Fecha/hora del movimiento: ${operationalMailTimestamp(movement.effectiveAt)}`,
+        `Fecha/hora de corrección: ${operationalMailTimestamp(new Date())}`,
+        `Corregido por: ${user.name} (ID ${user.id})`,
+        `Dirección original: ${movement.direction}`,
+        `Monto: ${movement.currency} ${Number(movement.amount)}`,
+        `Concepto: ${movement.reference ?? 'sin referencia'}`,
+        `Turno: ${movement.shiftId ?? 'sin turno asociado'}`,
+        `Observaciones originales: ${movement.notes ?? 'sin observaciones'}`,
+        `Motivo de corrección: ${reason}`,
+        'Efecto: el movimiento se conserva, pero deja de modificar el efectivo esperado.',
+      ].join('\n'),
+    });
   });
 }

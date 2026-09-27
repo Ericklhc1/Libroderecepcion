@@ -21,6 +21,11 @@ import {
   operationalDurationMs,
   recordOperationalEvent,
 } from '@/server/observability/operational';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from '@/server/services/operational-mail';
 
 export const entryInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -154,6 +159,37 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           })),
         tx,
       );
+    }
+
+    if (created.type === EntryType.NOVEDAD || created.type === EntryType.INCIDENCIA) {
+      const label = created.type === EntryType.INCIDENCIA ? 'INCIDENCIA' : 'NOVEDAD';
+      await queueOperationalMail(tx, {
+        eventKey: `entry-created:${created.id}`,
+        recipients: [SUPERVISION_BACKUP_EMAIL],
+        subject: `[Libro Operativo] ${label} #${created.seq} · ${created.title}`,
+        text: [
+          `${label} REGISTRADA`,
+          `Referencia: #${created.seq}`,
+          `ID: ${created.id}`,
+          `Título: ${created.title}`,
+          `Fecha/hora: ${operationalMailTimestamp(created.occurredAt)}`,
+          `Registrado por: ${user.name} (ID ${user.id})`,
+          `Turno: ${created.shift ? `${created.shift.type} · ${created.shift.id}` : 'sin turno asociado'}`,
+          `Estado: ${created.status}`,
+          `Prioridad: ${created.priority}`,
+          `Gravedad: ${created.severity ?? 'no aplica'}`,
+          `Departamento: ${created.department?.name ?? 'sin departamento'}`,
+          `Responsable: ${created.owner?.name ?? 'sin responsable'}`,
+          `Categoría: ${created.category ?? 'sin categoría'}`,
+          `Requiere seguimiento: ${created.requiresFollowUp ? 'sí' : 'no'}`,
+          '',
+          'Descripción:',
+          created.description,
+          ...(created.impact ? ['', `Impacto: ${created.impact}`] : []),
+          ...(created.immediateAction ? ['', `Acción inmediata: ${created.immediateAction}`] : []),
+          ...(created.tags.length > 0 ? ['', `Etiquetas: ${created.tags.join(', ')}`] : []),
+        ].join('\n'),
+      });
     }
 
     return created;

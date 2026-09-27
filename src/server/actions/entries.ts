@@ -20,6 +20,7 @@ import {
   updateEntry,
 } from '@/server/services/entries';
 import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
+import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 
 function refreshOperationalViews(entryId?: string) {
   revalidatePath('/');
@@ -44,6 +45,7 @@ export async function createEntryAction(
 
     const entry = await createEntry(user, input);
     if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
+    await tryDeliverOperationalMail(`entry-created:${entry.id}`);
     refreshOperationalViews(entry.id);
     return {
       ok: true as const,

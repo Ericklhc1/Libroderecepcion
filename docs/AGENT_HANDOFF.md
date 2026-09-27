@@ -1,5 +1,18 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.15.1 · respaldo operativo por correo
+
+- Entrega de turno: copia automática a eherrera@hoteleshw.com + recepcion@hoteleshw.com.
+- Caja (ingreso/egreso/regularización), garantías/devoluciones, Novedades e
+  Incidencias: copia automática a eherrera@hoteleshw.com.
+- Reaperturas/correcciones generan nuevos eventos/correos; no se sobrescribe la historia.
+- Outbox persistente `OperationalMailOutbox` con eventKey idempotente, intento
+  inmediato y reintentos; SMTP nunca bloquea la operación.
+- Nueva migración `20260927131500_respaldo_operativo_email`.
+- Nuevo cron `/api/cron/operational-mail`.
+- Cobertura: `tests/operational-mail.test.ts`.
+
+
 ## Actualización 27/09/2026 · Libro 1.15.0 · timers y recordatorios
 
 - Nueva ruta `/avisos` para crear timers y recordatorios.

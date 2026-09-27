@@ -19,6 +19,7 @@ import {
   softDeleteAlert,
 } from '@/server/services/alerts';
 import { runAlertEngine } from '@/server/services/alert-engine';
+import { flushOperationalMailOutbox } from '@/server/services/operational-mail';
 
 function refresh() {
   revalidatePath('/');
@@ -82,6 +83,9 @@ export async function resolveAlertAction(
       alert?.dedupeKey?.startsWith('cash-manual:') === true;
     const user = await requirePermission(cashApproval ? 'cash.approve' : 'alert.manage');
     await resolveAlert(user, input);
+    if (cashApproval) {
+      await flushOperationalMailOutbox(5).catch(() => undefined);
+    }
     refresh();
     return { ok: true as const, message: 'Alerta resuelta.' };
   });

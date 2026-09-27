@@ -19,6 +19,7 @@ import {
   createGuarantee,
   softDeleteGuarantee,
 } from '@/server/services/guarantees';
+import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 import { GUARANTEE_STATE_LABELS } from '@/domain/guarantees';
 import { hotelDateKey } from '@/domain/time';
 
@@ -227,6 +228,7 @@ export async function createGuaranteeAction(
     const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
     const user = await requirePermission('cash.guarantee_in');
     const guarantee = await createGuarantee(user, input);
+    await tryDeliverOperationalMail(`guarantee-created:${guarantee.id}`);
     refreshGuarantees();
     return {
       ok: true as const,
@@ -244,6 +246,7 @@ export async function changeGuaranteeStateAction(
     const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeStateSchema, formDataToObject(formData));
     await changeGuaranteeState(user, input);
+    await tryDeliverOperationalMail(`guarantee-return:${input.id}:${input.state}`);
     refreshGuarantees();
     return {
       ok: true as const,

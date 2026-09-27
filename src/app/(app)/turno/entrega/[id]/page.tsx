@@ -528,6 +528,7 @@ export default async function HandoverPage({
           shiftId={handover.fromShiftId}
           state={cashState}
           formalClosure={formalCashClosure ? {
+            humanId: formalCashClosure.humanId,
             closedAt: formalCashClosure.closedAt.toISOString(),
             closedByName: formalCashClosure.closedByName,
             reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,

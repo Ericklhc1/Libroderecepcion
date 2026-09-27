@@ -105,7 +105,7 @@ export default async function EntryDetailPage({
       <Card>
         <div className="px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold tabular text-slate-400">#{entry.seq}</span>
+            <span className="text-sm font-semibold tabular text-slate-400">#{entry.humanId}</span>
             <Chip>{ENTRY_TYPE_LABEL[entry.type]}</Chip>
             <Badge tone={ENTRY_STATUS_TONE[entry.status]}>
               {ENTRY_STATUS_LABEL[entry.status]}
@@ -341,7 +341,7 @@ export default async function EntryDetailPage({
                   <li key={task.id}>
                     <Link href={`/tareas/${task.id}`} className="block px-4 py-3 hover:bg-slate-50">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs tabular text-slate-400">T#{task.seq}</span>
+                        <span className="text-xs tabular text-slate-400">#{task.humanId}</span>
                         <Badge tone={TASK_STATUS_TONE[task.status]}>
                           {TASK_STATUS_LABEL[task.status]}
                         </Badge>

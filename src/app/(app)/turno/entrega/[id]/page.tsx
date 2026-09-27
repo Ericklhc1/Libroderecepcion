@@ -107,11 +107,6 @@ export default async function HandoverPage({
       handover.fromShift.status === ShiftStatus.ENTREGA_ENVIADA,
   );
   const requestedCloseStep = Number(query.paso ?? '1');
-  const closeStep =
-    Number.isInteger(requestedCloseStep) && requestedCloseStep >= 1 && requestedCloseStep <= 4
-      ? requestedCloseStep
-      : 1;
-
 
   /*
     La entrega cerrada existe por sí sola en la bandeja. El receptor puede
@@ -186,6 +181,11 @@ export default async function HandoverPage({
   );
   const closeStepOneReady =
     !cashState.enabled || (cashClosed && requiredElementsMissing.length === 0);
+  const requestedValidStep =
+    Number.isInteger(requestedCloseStep) && requestedCloseStep >= 1 && requestedCloseStep <= 4
+      ? requestedCloseStep
+      : 1;
+  const closeStep = closeStepOneReady ? requestedValidStep : 1;
   const closeSteps = [
     { number: 1, label: 'Caja y custodia' },
     { number: 2, label: 'Pendientes' },

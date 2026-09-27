@@ -15,6 +15,7 @@ import { HistoryTimeline } from '@/components/operational/history-timeline';
 import {
   CancelPreparationForm,
   CloseShiftForm,
+  ConfirmHandoverReviewStepForm,
   ReceiveHandoverForm,
   SendHandoverForm,
 } from '@/components/operational/shift-actions';
@@ -185,13 +186,29 @@ export default async function HandoverPage({
     Number.isInteger(requestedCloseStep) && requestedCloseStep >= 1 && requestedCloseStep <= 4
       ? requestedCloseStep
       : 1;
-  const closeStep = closeStepOneReady ? requestedValidStep : 1;
+  const maxAllowedCloseStep = !closeStepOneReady
+    ? 1
+    : !handover.pendingsReviewedAt
+      ? 2
+      : !handover.finalReviewAt
+        ? 3
+        : 4;
+  // La URL sólo permite volver a pasos ya alcanzados; nunca adelantar el cierre.
+  const closeStep = Math.min(requestedValidStep, maxAllowedCloseStep);
   const closeSteps = [
     { number: 1, label: 'Caja y custodia' },
     { number: 2, label: 'Pendientes' },
     { number: 3, label: 'Revisión final' },
     { number: 4, label: 'Enviar entrega' },
   ] as const;
+  const closeStepDone = (step: number) =>
+    step === 1
+      ? closeStepOneReady
+      : step === 2
+        ? Boolean(handover.pendingsReviewedAt)
+        : step === 3
+          ? Boolean(handover.finalReviewAt)
+          : handover.status !== HandoverStatus.BORRADOR;
 
 
   /*
@@ -338,22 +355,28 @@ export default async function HandoverPage({
           <div className="space-y-4 px-4 py-4">
             <div className="grid gap-2 sm:grid-cols-4">
               {closeSteps.map((step) => {
-                const done = step.number < closeStep;
+                const done = closeStepDone(step.number);
                 const current = step.number === closeStep;
-                return (
+                const reachable = step.number <= maxAllowedCloseStep;
+                const className = `rounded-lg px-3 py-2 text-xs ring-1 transition-colors ${
+                  current
+                    ? 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
+                    : done
+                      ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                      : 'bg-slate-50 text-slate-500 ring-slate-200'
+                }`;
+                return reachable ? (
                   <Link
                     key={step.number}
                     href={`/turno/entrega/${handover.id}?paso=${step.number}`}
-                    className={`rounded-lg px-3 py-2 text-xs ring-1 transition-colors ${
-                      current
-                        ? 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
-                        : done
-                          ? 'bg-emerald-50 text-emerald-800 ring-emerald-200 hover:bg-emerald-100'
-                          : 'bg-slate-50 text-slate-600 ring-slate-200 hover:bg-slate-100'
-                    }`}
+                    className={`${className} hover:bg-slate-100`}
                   >
                     {done ? '✓' : step.number} · {step.label}
                   </Link>
+                ) : (
+                  <div key={step.number} className={className} aria-disabled="true">
+                    {step.number} · {step.label}
+                  </div>
                 );
               })}
             </div>
@@ -393,14 +416,14 @@ export default async function HandoverPage({
                   </Link>
                 ) : null}
               </div>
-              {closeStep < 4 ? (
-                closeStep === 1 && !closeStepOneReady ? (
+              {closeStep === 1 ? (
+                !closeStepOneReady ? (
                   <span className="inline-flex min-h-10 items-center rounded-lg bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-400">
                     SIGUIENTE →
                   </span>
                 ) : (
                   <Link
-                    href={`/turno/entrega/${handover.id}?paso=${closeStep + 1}`}
+                    href={`/turno/entrega/${handover.id}?paso=2`}
                     className="inline-flex min-h-10 items-center rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
                   >
                     SIGUIENTE →
@@ -593,12 +616,25 @@ export default async function HandoverPage({
       ) : null}
 
       {canEdit && closeStep === 2 ? (
-        <Card className="no-print">
-          <CardHeader title="Agregar nota manual" />
-          <div className="px-4 py-4">
-            <AddHandoverNoteForm handoverId={handover.id} />
-          </div>
-        </Card>
+        <>
+          <Card className="no-print">
+            <CardHeader title="Agregar nota manual" />
+            <div className="px-4 py-4">
+              <AddHandoverNoteForm handoverId={handover.id} />
+            </div>
+          </Card>
+          <Card className="no-print">
+            <CardHeader title="Confirmar revisión de pendientes" />
+            <div className="space-y-3 px-4 py-4">
+              <p className="text-sm text-slate-600">
+                Confirma sólo después de revisar los asuntos que continuarán al siguiente turno.
+                Esta confirmación queda registrada y se invalida si actualizas el resumen o cambias
+                la nota de entrega.
+              </p>
+              <ConfirmHandoverReviewStepForm handoverId={handover.id} step="PENDINGS" />
+            </div>
+          </Card>
+        </>
       ) : null}
 
       {canEdit && closeStep === 3 ? (
@@ -636,6 +672,13 @@ export default async function HandoverPage({
               Faltan elementos obligatorios por declarar o justificar: {requiredElementsMissing.map((element) => element.name).join(', ')}.
             </p>
           ) : null}
+          <div className="border-t border-slate-100 px-4 py-4">
+            <ConfirmHandoverReviewStepForm
+              handoverId={handover.id}
+              step="FINAL"
+              urgentCount={counts.urgente}
+            />
+          </div>
         </Card>
       ) : null}
 

@@ -430,6 +430,8 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('href="#seguimientos"');
     expect(page).toContain('href="#senales"');
     expect(page).toContain('Requiere atención · señales del Libro');
+    expect(page).toContain('SupervisionAuditDashboard');
+    expect(page).toContain('href="#auditoria-diaria"');
     expect(page).toContain('FollowSupervisionSourceForm');
     expect(page).toContain('StopFollowingSupervisionForm');
     expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');

@@ -46,6 +46,7 @@ import {
   shiftCloseCorrelationId,
   startOperationalMetric,
 } from '@/server/observability/operational';
+import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -297,6 +298,7 @@ export async function sendHandoverAction(
 
     try {
       const handover = await sendHandover(user, input);
+      await tryDeliverOperationalMail(`handover-sent:${handover.id}`);
       finishOperationalMetric(metric, {
         entityType: 'ShiftHandover',
         entityId: handover.id,

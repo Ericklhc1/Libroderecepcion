@@ -21,7 +21,7 @@ import {
   AddShiftMemberForm,
   CancelPreparationForm,
   CloseShiftForm,
-  ContinuityOpenShiftForm,
+  EmergencyOpenShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -324,16 +324,16 @@ export default async function ShiftPage({
             ) : (
               <>
                 {outgoingStillClosing ? (
-                  <div className="rounded-lg bg-amber-50 px-3 py-3 ring-1 ring-amber-300">
-                    <p className="font-semibold text-amber-950">
-                      El turno anterior quedó incompleto
+                  <div className="rounded-lg bg-red-50 px-3 py-3 ring-1 ring-red-300">
+                    <p className="font-semibold text-red-950">
+                      El turno anterior sigue sin cierre formal
                     </p>
-                    <p className="mt-1 text-sm text-amber-900">
-                      Esto no debe impedirte trabajar. Inicia tu turno por contingencia; el cierre
-                      anterior quedará pendiente, trazado y enviado a Supervisión.
+                    <p className="mt-1 text-sm text-red-900">
+                      La regla normal es esperar a que el recepcionista saliente complete su cierre.
+                      Sólo una causa operacional válida permite abrir un turno de emergencia.
                     </p>
                     <div className="mt-3 max-w-md">
-                      <ContinuityOpenShiftForm suggestedType={desk.suggestedType} />
+                      <EmergencyOpenShiftForm suggestedType={desk.suggestedType} />
                     </div>
                   </div>
                 ) : cashIncoming || incoming ? (
@@ -403,6 +403,15 @@ export default async function ShiftPage({
                       .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
                       .join(' · ')}
                   </p>
+                  {shift.emergency ? (
+                    <div className="mt-3 max-w-xl rounded-lg bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
+                      <p className="font-semibold">Turno de emergencia activo</p>
+                      <p className="mt-1">
+                        {shift.emergencyReason ?? 'Motivo de emergencia regularizado.'} El turno
+                        saliente continúa bajo seguimiento hasta su cierre formal.
+                      </p>
+                    </div>
+                  ) : null}
                   {/*
                     Reforzar el mesón no pasa por Administración: lo hace quien
                     está en el turno, desde el turno.

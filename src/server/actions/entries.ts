@@ -20,6 +20,11 @@ import {
   updateEntry,
 } from '@/server/services/entries';
 import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
+import {
+  queueAndFlushOperationalMail,
+  SUPERVISOR_BACKUP_MAIL,
+} from '@/server/services/operational-mail';
+import { formatDateTime } from '@/lib/format';
 
 function refreshOperationalViews(entryId?: string) {
   revalidatePath('/');
@@ -44,6 +49,28 @@ export async function createEntryAction(
 
     const entry = await createEntry(user, input);
     if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
+
+    if (entry.type === EntryType.NOVEDAD || entry.type === EntryType.INCIDENCIA) {
+      await queueAndFlushOperationalMail({
+        eventKey: `entry-created:${entry.id}`,
+        to: SUPERVISOR_BACKUP_MAIL,
+        subject: `[Libro Operativo] ${entry.type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.seq} · ${entry.title}`,
+        body: [
+          `Tipo: ${entry.type}`,
+          `Registro: #${entry.seq}`,
+          `Título: ${entry.title}`,
+          `Descripción: ${entry.description}`,
+          `Prioridad: ${entry.priority}`,
+          `Gravedad: ${entry.severity ?? 'No aplica'}`,
+          `Categoría: ${entry.category ?? 'Sin categoría'}`,
+          `Responsable: ${entry.owner?.name ?? 'Sin responsable'}`,
+          `Registrado por: ${entry.createdBy.name}`,
+          `Fecha/hora: ${formatDateTime(entry.occurredAt)}`,
+          `Turno: ${entry.shift ? `${entry.shift.type} · ${entry.shift.date.toISOString().slice(0, 10)}` : 'Sin turno asociado'}`,
+        ].join('\n'),
+      });
+    }
+
     refreshOperationalViews(entry.id);
     return {
       ok: true as const,

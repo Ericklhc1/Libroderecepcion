@@ -338,7 +338,10 @@ VALUES (
   jsonb_build_object(
     'sequence', 'human_operational_id_seq',
     'start', 1000,
-    'lastAssigned', (SELECT last_value FROM human_operational_id_seq),
+    'lastAssigned', (
+      SELECT CASE WHEN is_called THEN last_value ELSE NULL END
+      FROM human_operational_id_seq
+    ),
     'strategy', 'shared-postgresql-sequence',
     'migration', '20260927180000_identificadores_humanos_globales'
   ),

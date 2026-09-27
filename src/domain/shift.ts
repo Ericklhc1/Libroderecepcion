@@ -91,6 +91,37 @@ export const SHIFT_WINDOW_LABEL: Record<ShiftType, string> = {
   NOCHE: '20:00 a 08:00',
 };
 
+/**
+ * Motivos cerrados que justifican romper excepcionalmente el relevo secuencial.
+ *
+ * «El saliente olvidó cerrar» no es un motivo válido por sí solo: sólo puede
+ * desembocar en una emergencia si la persona ya no está disponible o existe
+ * otra condición operacional que impida esperar.
+ */
+export const SHIFT_EMERGENCY_REASON_KEYS = [
+  'SALIENTE_NO_DISPONIBLE',
+  'FALLA_TECNICA_CIERRE',
+  'CONTINUIDAD_CRITICA',
+] as const;
+
+export type ShiftEmergencyReason = (typeof SHIFT_EMERGENCY_REASON_KEYS)[number];
+
+export const SHIFT_EMERGENCY_REASON_LABEL: Record<ShiftEmergencyReason, string> = {
+  SALIENTE_NO_DISPONIBLE:
+    'El recepcionista saliente no está disponible y no puede completar el cierre.',
+  FALLA_TECNICA_CIERRE:
+    'Una falla técnica impide completar el cierre normal del turno saliente.',
+  CONTINUIDAD_CRITICA:
+    'Una situación operacional excepcional obliga a mantener Recepción operativa sin esperar.',
+};
+
+export function isShiftEmergencyReason(value: unknown): value is ShiftEmergencyReason {
+  return (
+    typeof value === 'string' &&
+    (SHIFT_EMERGENCY_REASON_KEYS as readonly string[]).includes(value)
+  );
+}
+
 export function shiftTypeAt(now = new Date()): ShiftType {
   const hour = hotelHour(now);
   return hour >= 7 && hour < 20 ? ShiftType.DIA : ShiftType.NOCHE;

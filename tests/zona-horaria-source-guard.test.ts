@@ -38,7 +38,7 @@ describe('guardas de zona horaria en superficies operativas', () => {
   it('un cierre de Caja antiguo no invita a reconstruirlo con la Caja actual', () => {
     const shiftPage = source('src/app/(app)/turno/page.tsx');
     expect(shiftPage).toContain('pendingClosureIsStale');
-    expect(shiftPage).toContain('Regularizar administrativamente');
+    expect(shiftPage).toContain('Requiere Administrador de sistema');
     expect(shiftPage).toContain('No reconstruyas ese turno con la Caja actual');
   });
 });

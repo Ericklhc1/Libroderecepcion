@@ -394,15 +394,22 @@ export async function saveLiveCashAudit(
 }
 
 export async function getLiveCashState(
-  options: {
-    query?: string;
-    currency?: string;
-    from?: Date;
-    to?: Date;
-    movementLimit?: number;
-    auditLimit?: number;
-  } = {},
+  input:
+    | number
+    | {
+        query?: string;
+        currency?: string;
+        from?: Date;
+        to?: Date;
+        movementLimit?: number;
+        auditLimit?: number;
+      } = {},
 ): Promise<LiveCashState> {
+  // Compatibilidad con Fronti y llamadas internas antiguas que pasaban sólo un límite.
+  const options =
+    typeof input === 'number'
+      ? { movementLimit: input, auditLimit: input }
+      : input;
   const query = options.query?.trim() ?? '';
   const currency = options.currency?.trim().toUpperCase() || undefined;
   const movementLimit = Math.min(Math.max(options.movementLimit ?? 50, 1), 200);

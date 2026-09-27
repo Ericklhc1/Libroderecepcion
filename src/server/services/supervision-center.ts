@@ -92,7 +92,7 @@ async function buildSupervisionSnapshot(
       where: { supervisionShiftId: shift.id, deletedAt: null },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         status: true,
         priority: true,
@@ -350,10 +350,10 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'OperationalEntry': {
       const row = await prisma.operationalEntry.findFirst({
         where: { id: sourceId, deletedAt: null },
-        select: { id: true, seq: true, title: true },
+        select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La novedad de origen ya no existe.');
-      return { label: `#${row.seq} · ${row.title}`, entryId: row.id, taskId: null };
+      return { label: `#${row.humanId} · ${row.title}`, entryId: row.id, taskId: null };
     }
     case 'Alert': {
       const row = await prisma.alert.findUnique({
@@ -387,10 +387,10 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'Task': {
       const row = await prisma.task.findFirst({
         where: { id: sourceId, deletedAt: null },
-        select: { id: true, seq: true, title: true },
+        select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La tarea de origen ya no existe.');
-      return { label: `T#${row.seq} · ${row.title}`, entryId: null, taskId: row.id };
+      return { label: `#${row.humanId} · ${row.title}`, entryId: null, taskId: row.id };
     }
     case 'ShiftHandover': {
       const row = await prisma.shiftHandover.findUnique({

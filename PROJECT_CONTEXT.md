@@ -19,6 +19,25 @@ variables ni dependencias de Netlify. La compuerta CI lo impide.
 
 No cambiar de stack. No reconstruir. No crear otro proyecto.
 
+## Actualización 27/09/2026 · Libro 1.19.0 · continuidad de turnos y Supervisión
+
+- `/turno` distingue el turno global vigente de la participación personal:
+  quien aún no está dentro ve el turno activo y puede sumarse como apoyo sin
+  abrir otro ni recurrir a una emergencia.
+- Sólo puede existir **una emergencia activa**. `Shift.emergency` conserva el
+  antecedente histórico; `emergencyReleasedAt` indica que la excepción ya fue
+  regularizada. Al cerrar el turno origen, el turno vigente continúa normal y
+  el cupo queda libre.
+- Una entrega tardía posterior a una emergencia se recibe y enlaza al turno que
+  ya está activo, evitando que termine asociada por error al turno siguiente.
+- Supervisión consolida por fecha: tipos distintos se combinan; una versión
+  nueva del mismo tipo **reemplaza** esa porción y recalcula hallazgos; el mismo
+  PDF exacto es idempotente.
+- El build de Production ejecuta una auditoría **sólo lectura** de las 52 rutas
+  de página. Una ruta sólo obtiene `PASS` con 3 muestras del entorno; 1–2 se
+  reportan `LIMITED` y 0 como `EMPTY`.
+- Migración: `20260927220000_emergencia_unica_y_reportes_versionados`.
+
 ## Arquitectura
 
 ```
@@ -211,8 +230,11 @@ conserva su modelo y sus reglas.
 - Un PDF escaneado/sin texto, como un cierre de caja físico, produce una
   advertencia y **no activa OCR ni inventa datos**. Caja se valida contra el
   propio Libro.
-- Los informes de un mismo día se fusionan en un único
-  `SupervisionAuditImport` del turno de Supervisión activo.
+- Los informes de un mismo día se consolidan en un único
+  `SupervisionAuditImport` del turno de Supervisión activo. Tipos distintos se
+  combinan; si se vuelve a cargar el mismo tipo con datos actualizados, esa
+  versión reemplaza la anterior y el consolidado se recalcula. Una huella
+  SHA-256 ya procesada no vuelve a modificar el resumen.
 - Ese resumen forma parte de la copia inalterable del cierre/entrega del turno
   de Supervisión, aun cuando los archivos fuente ya no existan. Si el Supervisor
   pulsa «Finalizar turno» sin haber usado «Entregar», el cierre crea el snapshot
@@ -386,13 +408,19 @@ conserva su modelo y sus reglas.
     puede interactuar con la operación cuando su turno está **ACTIVO**.
     El saliente inicia el cierre y queda limitado al flujo de Caja/entrega/cierre;
     enviar la entrega NO libera su participación. Debe cerrar formalmente el turno.
-    Sólo entonces el entrante puede abrir el suyo. **Única excepción: turno de
-    emergencia.** Si el saliente no puede cerrar y la continuidad real del mesón
-    no puede esperar, el entrante debe abrir una advertencia previa, seleccionar
-    una causa cerrada válida y aceptar expresamente las condiciones. Un atraso,
-    descuido u olvido no es por sí solo una causa válida. La emergencia queda
-    marcada en `Shift`, conserva el turno de origen y genera una alerta crítica
-    automática que se reabre mientras el saliente siga sin cierre formal.
+    Sólo entonces el entrante puede abrir el suyo. Si, en cambio, ya existe un
+    turno operativo vigente al que la persona todavía no pertenece, `/turno`
+    debe mostrarlo y permitir **sumarse al mismo turno** como apoyo; nunca
+    ofrecer otro turno ni una emergencia sólo por estar fuera de la asignación.
+    **Única excepción al relevo secuencial: turno de emergencia.** Si el saliente
+    no puede cerrar y la continuidad real del mesón no puede esperar, el
+    entrante debe abrir una advertencia previa, seleccionar una causa cerrada
+    válida y aceptar expresamente las condiciones. Un atraso, descuido u olvido
+    no es por sí solo una causa válida. Sólo puede existir una emergencia activa.
+    `Shift.emergency` conserva el antecedente; `emergencyReleasedAt` libera la
+    excepción cuando el turno origen queda cerrado, sin recrear el turno actual.
+    Si después se recibe la entrega tardía del saliente, queda enlazada al turno
+    ya vigente. La alerta crítica sólo se reabre mientras la excepción siga activa.
     Si existe una entrega pendiente de un turno ya cerrado, el entrante queda
     bloqueado hasta recontar Caja, validar las garantías y confirmar la recepción.
     La entrega/recepción genera un acta imprimible con firma del recepcionista

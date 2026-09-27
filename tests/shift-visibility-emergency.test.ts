@@ -13,6 +13,7 @@ import {
   getMyActiveShift,
   getShiftDesk,
   openShift,
+  receiveHandover,
 } from '@/server/services/shifts';
 
 describe('visibilidad, incorporación y emergencia única de turnos', () => {
@@ -140,6 +141,18 @@ describe('visibilidad, incorporación y emergencia única de turnos', () => {
         },
       }),
     ).toBe(0);
+
+    // La entrega tardía del saliente se recibe DENTRO del turno que nació por
+    // emergencia. Debe quedar enlazada a ese turno, nunca al turno posterior.
+    const delayed = await prisma.shiftHandover.findUniqueOrThrow({
+      where: { fromShiftId: source.shift.id },
+    });
+    await receiveHandover(entrante, { handoverId: delayed.id });
+    const delayedReceived = await prisma.shiftHandover.findUniqueOrThrow({
+      where: { id: delayed.id },
+    });
+    expect(delayedReceived.status).toBe('RECIBIDA');
+    expect(delayedReceived.toShiftId).toBe(emergency.shift.id);
 
     // El "cupo" de emergencia quedó libre: si más tarde el turno vigente sufre
     // otra contingencia real, puede abrirse una nueva excepción independiente.

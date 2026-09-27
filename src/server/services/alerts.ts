@@ -223,7 +223,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         `Solicitud: ${entry.id}`,
         `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
         `Solicitado por: ${entry.createdBy.name} (@${entry.createdBy.username})`,
-        `Autorizado por: ${user.name} (@${user.username})`,
+        `Autorizado por: ${user.name} (ID ${user.id})`,
         `Dirección: ${direction}`,
         `Monto: ${currency} ${amount}`,
         `Concepto: ${reference}`,

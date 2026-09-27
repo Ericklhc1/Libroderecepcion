@@ -24,6 +24,11 @@ import {
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from './operational-mail';
 
 type Tx = Prisma.TransactionClient;
 
@@ -151,6 +156,7 @@ export async function createGuarantee(
       select: {
         id: true,
         state: true,
+        kind: true,
         amount: true,
         currency: true,
         reservationReferenceId: true,
@@ -159,6 +165,8 @@ export async function createGuarantee(
         roomNumber: true,
         reference: true,
         dueAt: true,
+        notes: true,
+        createdAt: true,
       },
     });
 
@@ -177,6 +185,28 @@ export async function createGuarantee(
     }
 
     await syncReservationSummary(tx, created.reservationReferenceId);
+
+    await queueOperationalMail(tx, {
+      eventKey: `guarantee-created:${created.id}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject: `[Libro Operativo] GARANTÍA · ${guaranteeLabel(created)} · ${created.currency} ${money(created.amount)}`,
+      text: [
+        'GARANTÍA REGISTRADA',
+        `ID: ${created.id}`,
+        `Fecha/hora: ${operationalMailTimestamp(created.createdAt)}`,
+        `Registrado por: ${user.name} (@${user.username})`,
+        `Turno: ${shift?.id ?? 'sin turno asociado'}`,
+        `Tipo: ${created.kind}`,
+        `Estado inicial: ${GUARANTEE_STATE_LABELS[created.state as GuaranteeStateValue]}`,
+        `Monto: ${created.currency} ${money(created.amount)}`,
+        `Referencia: ${created.reference ?? 'sin referencia'}`,
+        `Huésped: ${created.guestName ?? 'sin huésped'}`,
+        `Habitación: ${created.roomNumber ?? 'sin habitación'}`,
+        `Fecha objetivo: ${created.dueAt ? operationalMailTimestamp(created.dueAt) : 'sin fecha objetivo'}`,
+        `Notas: ${created.notes ?? 'sin observaciones'}`,
+      ].join('\n'),
+    });
+
     return created;
   });
 
@@ -231,6 +261,7 @@ export async function changeGuaranteeState(
         guestName: true,
         roomNumber: true,
         reference: true,
+        notes: true,
         reservationReference: { select: { code: true } },
       },
     });
@@ -351,6 +382,34 @@ export async function changeGuaranteeState(
     }
 
     await syncReservationSummary(tx, guarantee.reservationReferenceId);
+
+    if (returnsRemainder && refundable > 0) {
+      await queueOperationalMail(tx, {
+        eventKey: `guarantee-return:${guarantee.id}:${to}`,
+        recipients: [SUPERVISION_BACKUP_EMAIL],
+        subject: `[Libro Operativo] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
+        text: [
+          'DEVOLUCIÓN / CIERRE DE GARANTÍA',
+          `ID: ${guarantee.id}`,
+          `Fecha/hora: ${operationalMailTimestamp(new Date())}`,
+          `Procesado por: ${user.name} (@${user.username})`,
+          `Turno: ${shift?.id ?? 'sin turno asociado'}`,
+          `Tipo: ${guarantee.kind}`,
+          `Estado anterior: ${GUARANTEE_STATE_LABELS[from]}`,
+          `Estado nuevo: ${GUARANTEE_STATE_LABELS[to]}`,
+          `Monto original: ${guarantee.currency} ${total}`,
+          `Monto aplicado: ${guarantee.currency} ${aplicado}`,
+          `Multa: ${guarantee.currency} ${multa}`,
+          `Monto devuelto: ${guarantee.currency} ${refundable}`,
+          `Referencia: ${guarantee.reference ?? guarantee.reservationReference?.code ?? 'sin referencia'}`,
+          `Huésped: ${guarantee.guestName ?? 'sin huésped'}`,
+          `Habitación: ${guarantee.roomNumber ?? 'sin habitación'}`,
+          `Motivo de aplicación: ${input.applicationReason ?? 'no aplica'}`,
+          `Notas: ${input.notes ?? guarantee.notes ?? 'sin observaciones'}`,
+        ].join('\n'),
+      });
+    }
+
     return { guarantee, from, to };
   });
 

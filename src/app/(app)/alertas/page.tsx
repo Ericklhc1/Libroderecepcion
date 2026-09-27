@@ -42,7 +42,8 @@ export default async function AlertsPage({
   const params = await searchParams;
   refreshAlertsInBackground();
 
-  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '') : '';
+  const humanId = /^\d+$/.test(q) ? Number(q) : null;
   const estado = typeof params.estado === 'string' ? params.estado : 'activas';
   const now = new Date();
 
@@ -66,6 +67,7 @@ export default async function AlertsPage({
     where.AND = [
       {
         OR: [
+          ...(humanId !== null ? [{ humanId }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { message: { contains: q, mode: 'insensitive' } },
           { resolutionNote: { contains: q, mode: 'insensitive' } },
@@ -154,7 +156,7 @@ export default async function AlertsPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar título, mensaje, reserva o concepto…"
+        searchPlaceholder="#ID, título, mensaje o concepto…"
         clearHref="/alertas"
       >
         <label className="min-w-[12rem]">
@@ -180,6 +182,7 @@ export default async function AlertsPage({
               <Card className={selected === alert.id ? 'ring-2 ring-gold-400' : undefined}>
                 <div className="px-4 py-4">
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold tabular text-petrol-700">#{alert.humanId}</span>
                     <Badge tone={ALERT_LEVEL_TONE[alert.level]}>
                       {ALERT_LEVEL_LABEL[alert.level]}
                     </Badge>

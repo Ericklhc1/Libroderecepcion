@@ -4,6 +4,7 @@ import {
   AuditCategory,
   AuditDisclosure,
   ChecklistItemResult,
+  ChecklistRunMode,
   Severity,
   SupervisionAuditStatus,
 } from '@prisma/client';
@@ -186,6 +187,7 @@ export async function startRun(
     participantIds?: string[];
     reviewedShiftIds?: string[];
     reviewedDepartmentIds?: string[];
+    mode?: ChecklistRunMode;
   },
 ): Promise<RunWithItems> {
   assertOperationalSupervisor(user);
@@ -196,6 +198,24 @@ export async function startRun(
   if (!template) throw new NotFoundError('Esa lista de control no existe o está inactiva.');
   if (template.items.length === 0) {
     throw new RuleError('Esa lista no tiene puntos: no hay nada que recorrer.');
+  }
+
+  const existingOpen = await prisma.checklistRun.findFirst({
+    where: { runById: user.id, finishedAt: null, deletedAt: null },
+    select: { id: true, templateName: true, mode: true },
+  });
+  if (existingOpen) {
+    throw new RuleError(
+      `Ya tienes una ${existingOpen.mode === ChecklistRunMode.AUDITORIA_SORPRESA ? 'auditoría sorpresa' : 'ronda'} abierta: «${existingOpen.templateName}». Ciérrala antes de iniciar otra.`,
+    );
+  }
+
+  const mode = input.mode ?? ChecklistRunMode.RONDA;
+  if (
+    mode === ChecklistRunMode.AUDITORIA_SORPRESA &&
+    (!input.scope?.trim() || !input.sample?.trim())
+  ) {
+    throw new RuleError('Una auditoría sorpresa formal exige alcance y muestra seleccionada.');
   }
 
   const supervisionShift = await prisma.supervisionShift.findFirst({
@@ -210,8 +230,12 @@ export async function startRun(
       templateName: template.name,
       runById: user.id,
       supervisionShiftId: supervisionShift?.id ?? null,
-      status: SupervisionAuditStatus.PREPARACION,
-      surprise: true,
+      status:
+        mode === ChecklistRunMode.AUDITORIA_SORPRESA
+          ? SupervisionAuditStatus.PREPARACION
+          : SupervisionAuditStatus.EN_CURSO,
+      surprise: mode === ChecklistRunMode.AUDITORIA_SORPRESA,
+      mode,
       scope: input.scope?.trim() || null,
       sample: input.sample?.trim() || null,
       reviewedShiftIds: input.reviewedShiftIds ?? [],
@@ -252,6 +276,7 @@ export async function startRun(
       reviewedShiftIds: run.reviewedShiftIds,
       reviewedDepartmentIds: run.reviewedDepartmentIds,
       surprise: run.surprise,
+      mode: run.mode,
     },
   });
 
@@ -389,6 +414,9 @@ export async function finishRun(
     ChecklistItemResult.INCUMPLIMIENTO,
   ]);
   const failures = run.items.filter((item) => failureResults.has(item.result));
+  const observations = run.items.filter(
+    (item) => item.result === ChecklistItemResult.OBSERVACION,
+  );
   const criticalFailures = failures.filter((item) => item.critical);
 
   const closed = await prisma.$transaction(async (tx) => {
@@ -424,7 +452,7 @@ export async function finishRun(
         action: AuditAction.CERRAR,
         user,
         summary:
-          `Auditoría «${run.templateName}» cerrada: ${failures.length} incumplimiento(s)` +
+          `${run.mode === ChecklistRunMode.AUDITORIA_SORPRESA ? 'Auditoría' : 'Ronda'} «${run.templateName}» cerrada: ${failures.length} incumplimiento(s), ${observations.length} observación(es)` +
           (criticalFailures.length > 0 ? `, ${criticalFailures.length} crítico(s)` : '') +
           `${input.notes ? `. ${input.notes}` : ''}`,
         after: { disclosure: input.disclosure ?? AuditDisclosure.RESERVADO },
@@ -434,17 +462,27 @@ export async function finishRun(
     return result;
   });
 
-  return { run: closed, failures: failures.length, criticalFailures: criticalFailures.length };
+  return {
+    run: closed,
+    failures: failures.length,
+    observations: observations.length,
+    criticalFailures: criticalFailures.length,
+  };
 }
 
-/** Rondas recientes, para el tablero del Supervisor. */
-export async function listRuns(user: CurrentUser, limit = 20): Promise<RunWithItems[]> {
+/** Ejecuciones recientes, filtrables por su semántica real. */
+export async function listRuns(
+  user: CurrentUser,
+  limit = 20,
+  mode?: ChecklistRunMode,
+): Promise<RunWithItems[]> {
   if (!user.isSystemAdmin && !user.permissions.includes('supervision.audit.reserved')) {
     throw new RuleError('No tienes permiso para consultar auditorías de Supervisión.');
   }
   return prisma.checklistRun.findMany({
     where: {
       deletedAt: null,
+      ...(mode ? { mode } : {}),
       ...(user.isSystemAdmin
         ? {}
         : {

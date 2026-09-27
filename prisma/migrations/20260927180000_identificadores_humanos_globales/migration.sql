@@ -145,6 +145,7 @@ FROM "Alert" a
 LEFT JOIN "GuestReference" g ON g."id" = a."guestId"
 LEFT JOIN "User" r ON r."id" = a."resolvedById"
 LEFT JOIN "User" c ON c."id" = a."createdById"
+WHERE a."deletedAt" IS NULL
 
 UNION ALL
 SELECT

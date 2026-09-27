@@ -140,6 +140,32 @@ conserva su modelo y sus reglas.
 - Esta decisión evita contratar infraestructura adicional sólo para reintentos
   y mantiene SMTP fuera del camino crítico de Recepción.
 
+## Actualización 27/09/2026 · dashboard de auditoría en Supervisión
+
+- El Centro de Supervisión puede recibir los informes PDF diarios del PMS y
+  transformarlos en un resumen estructurado del día auditado.
+- La fecha sugerida al abrir la carga es **ayer según America/Santiago**; puede
+  cambiarse antes de procesar los informes.
+- La carga reconoce de forma determinística Formulario de auditoría, Cobros,
+  Ventas por canal, Producción por habitación, Salidas, Revenue, In house y
+  Cargos diarios.
+- Los PDF se procesan **uno por uno en memoria**. No se guarda el archivo, el
+  nombre original ni el texto extraído; sólo métricas, controles, hallazgos y
+  advertencias normalizadas.
+- Un PDF escaneado/sin texto, como un cierre de caja físico, produce una
+  advertencia y **no activa OCR ni inventa datos**. Caja se valida contra el
+  propio Libro.
+- Los informes de un mismo día se fusionan en un único
+  `SupervisionAuditImport` del turno de Supervisión activo.
+- Ese resumen forma parte de la copia inalterable del cierre/entrega del turno
+  de Supervisión, aun cuando los archivos fuente ya no existan.
+- El inventario de llaves sigue fuera del cierre de Recepción y no se incorpora
+  a esta carga documental.
+- Nueva migración:
+  `20260927143000_supervision_auditoria_dashboard`.
+- Cobertura: `tests/supervision-audit-import.test.ts` y
+  `tests/empaquetado-pdf.test.ts`.
+
 ## Decisiones que no se revierten
 
 0. **Una cuenta es nombre, usuario y contraseña. Nada más.**

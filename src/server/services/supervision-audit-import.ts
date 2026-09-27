@@ -426,6 +426,86 @@ function mergeByKey<T extends { key: string }>(a: T[], b: T[]): T[] {
   return [...map.values()];
 }
 
+type StoredReportPayload = ParsedSupervisionReport;
+
+const METRIC_KEYS_BY_KIND: Partial<Record<SupervisionReportKind, string[]>> = {
+  AUDITORIA_FORMULARIO: ['audit', 'auditActivity'],
+  COBROS: ['payments'],
+  VENTAS_CANAL: ['salesChannels'],
+  PRODUCCION_HABITACION: ['roomProduction'],
+  SALIDAS: ['departures'],
+  REVENUE: ['revenue'],
+  IN_HOUSE: ['inHouse'],
+  CARGOS_DIARIOS: ['dailyCharges'],
+};
+
+function reportPayloadMap(
+  value: Prisma.JsonValue | null | undefined,
+): Record<string, StoredReportPayload> {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return {};
+  const source = value as Record<string, unknown>;
+  const result: Record<string, StoredReportPayload> = {};
+  for (const [kind, payload] of Object.entries(source)) {
+    if (!payload || Array.isArray(payload) || typeof payload !== 'object') continue;
+    const row = payload as Partial<StoredReportPayload>;
+    if (typeof row.kind !== 'string' || typeof row.label !== 'string') continue;
+    result[kind] = row as StoredReportPayload;
+  }
+  return result;
+}
+
+function bootstrapLegacyPayloads(existing: {
+  reportKinds: string[];
+  metrics: Prisma.JsonValue;
+  checks: Prisma.JsonValue;
+  findings: Prisma.JsonValue;
+}): Record<string, StoredReportPayload> {
+  const metrics = jsonObject(existing.metrics);
+  const checks = jsonArray<SupervisionAuditCheck>(existing.checks);
+  const findings = jsonArray<SupervisionAuditFinding>(existing.findings);
+  const payloads: Record<string, StoredReportPayload> = {};
+
+  for (const rawKind of existing.reportKinds) {
+    if (!(rawKind in REPORT_LABELS)) continue;
+    const kind = rawKind as SupervisionReportKind;
+    const kindMetrics: Record<string, unknown> = {};
+    for (const key of METRIC_KEYS_BY_KIND[kind] ?? []) {
+      if (key in metrics) kindMetrics[key] = metrics[key];
+    }
+    payloads[kind] = {
+      kind,
+      label: REPORT_LABELS[kind],
+      metrics: kindMetrics,
+      checks: kind === 'AUDITORIA_FORMULARIO' ? checks : [],
+      findings: kind === 'AUDITORIA_FORMULARIO' ? findings : [],
+      warnings: [],
+      reportedBusinessDate: null,
+      completeness: null,
+    };
+  }
+  return payloads;
+}
+
+function consolidatePayloads(payloads: Record<string, StoredReportPayload>) {
+  const values = Object.values(payloads);
+  const metrics = values.reduce<Record<string, unknown>>(
+    (acc, payload) => ({ ...acc, ...payload.metrics }),
+    {},
+  );
+  const checks = values.reduce<SupervisionAuditCheck[]>(
+    (acc, payload) => mergeByKey(acc, payload.checks),
+    [],
+  );
+  const findings = values.reduce<SupervisionAuditFinding[]>(
+    (acc, payload) => mergeByKey(acc, payload.findings),
+    [],
+  );
+  const warnings = Array.from(new Set(values.flatMap((payload) => payload.warnings)));
+  const reportKinds = values.map((payload) => payload.kind);
+
+  return { metrics, checks, findings, warnings, reportKinds };
+}
+
 export async function mergeSupervisionAuditReport(
   user: CurrentUser,
   input: {
@@ -466,31 +546,48 @@ export async function mergeSupervisionAuditReport(
       },
     });
 
-    const metrics = {
-      ...jsonObject(existing?.metrics),
-      ...input.parsed.metrics,
-    } as Prisma.InputJsonObject;
-    const checks = mergeByKey(
-      jsonArray<SupervisionAuditCheck>(existing?.checks),
-      input.parsed.checks,
-    );
-    const findings = mergeByKey(
-      jsonArray<SupervisionAuditFinding>(existing?.findings),
-      input.parsed.findings,
-    );
-    const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
-    const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
     const existingSourceFiles = jsonArray<{
       sha256: string;
       size: number;
       parserVersion: string;
+      kind?: string;
       reportedBusinessDate: string | null;
       completeness: { found: number; expected: number } | null;
+      processedAt?: string;
     }>(existing?.sourceFiles);
+
+    if (
+      existing &&
+      input.sourceFile &&
+      existingSourceFiles.some((item) => item.sha256 === input.sourceFile?.sha256)
+    ) {
+      return {
+        saved: existing,
+        disposition: 'DUPLICATE' as const,
+        replaced: false,
+      };
+    }
+
+    const storedPayloads = reportPayloadMap(existing?.reportPayloads);
+    const payloads =
+      Object.keys(storedPayloads).length > 0
+        ? storedPayloads
+        : existing
+          ? bootstrapLegacyPayloads(existing)
+          : {};
+
+    const replaced = Boolean(payloads[input.parsed.kind]);
+    payloads[input.parsed.kind] = input.parsed;
+    const consolidated = consolidatePayloads(payloads);
+
     const sourceFiles = input.sourceFile
       ? [
-          ...existingSourceFiles.filter((item) => item.sha256 !== input.sourceFile?.sha256),
-          input.sourceFile,
+          ...existingSourceFiles,
+          {
+            ...input.sourceFile,
+            kind: input.parsed.kind,
+            processedAt: new Date().toISOString(),
+          },
         ]
       : existingSourceFiles;
 
@@ -503,39 +600,53 @@ export async function mergeSupervisionAuditReport(
       },
       update: {
         uploadedById: user.id,
-        reportKinds,
-        metrics,
-        checks: checks as unknown as Prisma.InputJsonArray,
-        findings: findings as unknown as Prisma.InputJsonArray,
-        warnings,
+        reportKinds: consolidated.reportKinds,
+        metrics: consolidated.metrics as Prisma.InputJsonObject,
+        checks: consolidated.checks as unknown as Prisma.InputJsonArray,
+        findings: consolidated.findings as unknown as Prisma.InputJsonArray,
+        warnings: consolidated.warnings,
         sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
+        reportPayloads: payloads as unknown as Prisma.InputJsonObject,
       },
       create: {
         supervisionShiftId: shift.id,
         businessDate: input.businessDate,
         uploadedById: user.id,
-        reportKinds,
-        metrics,
-        checks: checks as unknown as Prisma.InputJsonArray,
-        findings: findings as unknown as Prisma.InputJsonArray,
-        warnings,
+        reportKinds: consolidated.reportKinds,
+        metrics: consolidated.metrics as Prisma.InputJsonObject,
+        checks: consolidated.checks as unknown as Prisma.InputJsonArray,
+        findings: consolidated.findings as unknown as Prisma.InputJsonArray,
+        warnings: consolidated.warnings,
         sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
+        reportPayloads: payloads as unknown as Prisma.InputJsonObject,
       },
     });
+
+    const disposition = !existing
+      ? ('CREATED' as const)
+      : replaced
+        ? ('REPLACED' as const)
+        : ('CONSOLIDATED' as const);
 
     await recordAudit(
       {
         entity: 'SupervisionAuditImport',
         entityId: saved.id,
         action: existing ? AuditAction.EDITAR : AuditAction.CREAR,
-        summary: `Auditoría diaria actualizada con ${input.parsed.label}`,
+        summary:
+          disposition === 'REPLACED'
+            ? `Auditoría diaria: se reemplazó la versión de ${input.parsed.label} y se recalculó el consolidado`
+            : disposition === 'CONSOLIDATED'
+              ? `Auditoría diaria: se agregó ${input.parsed.label} al consolidado del día`
+              : `Auditoría diaria creada con ${input.parsed.label}`,
         user,
         after: {
           businessDate: input.businessDate,
           reportKind: input.parsed.kind,
-          reportKinds,
-          findings: findings.length,
-          warnings: warnings.length,
+          reportKinds: consolidated.reportKinds,
+          disposition,
+          findings: consolidated.findings.length,
+          warnings: consolidated.warnings.length,
           sourceFilePersisted: false,
           sourceFileHashesPersisted: sourceFiles.length,
           parserVersion: SUPERVISION_AUDIT_PARSER_VERSION,
@@ -543,7 +654,8 @@ export async function mergeSupervisionAuditReport(
       },
       tx,
     );
-    return saved;
+
+    return { saved, disposition, replaced };
   });
 }
 

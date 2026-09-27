@@ -6,13 +6,13 @@ import {
   OperationalAlarmKind,
   OperationalAlarmScope,
   OperationalAlarmStatus,
+  ShiftStatus,
   type Prisma,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { getMyOpenShift } from './shifts';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -99,7 +99,23 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
   const originShift =
-    input.kind === OperationalAlarmKind.TIMER ? await getMyOpenShift(user.id) : null;
+    input.kind === OperationalAlarmKind.TIMER
+      ? await prisma.shift.findFirst({
+          where: {
+            status: {
+              in: [
+                ShiftStatus.INICIADO,
+                ShiftStatus.ACTIVO,
+                ShiftStatus.PREPARANDO_ENTREGA,
+                ShiftStatus.ENTREGA_ENVIADA,
+              ],
+            },
+            assignments: { some: { userId: user.id } },
+          },
+          select: { id: true },
+          orderBy: [{ actualStart: 'desc' }, { createdAt: 'desc' }],
+        })
+      : null;
 
   const alarm = await prisma.$transaction(async (tx) => {
     const created = await tx.operationalAlarm.create({

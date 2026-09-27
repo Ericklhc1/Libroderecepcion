@@ -499,9 +499,12 @@ export async function listRuns(
 }
 
 /** La ronda que esta persona tiene abierta, si alguna. */
-export async function getMyOpenRun(userId: string): Promise<RunWithItems | null> {
+export async function getMyOpenRun(
+  userId: string,
+  mode?: ChecklistRunMode,
+): Promise<RunWithItems | null> {
   return prisma.checklistRun.findFirst({
-    where: { runById: userId, finishedAt: null },
+    where: { runById: userId, finishedAt: null, ...(mode ? { mode } : {}) },
     include: runInclude,
     orderBy: { startedAt: 'desc' },
   });

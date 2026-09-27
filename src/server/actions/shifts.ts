@@ -492,6 +492,14 @@ export async function removeHandoverNoteAction(
     }
 
     await prisma.handoverItem.delete({ where: { id: input.itemId } });
+    await prisma.shiftHandover.update({
+      where: { id: item.handoverId },
+      data: {
+        pendingsReviewedAt: null,
+        finalReviewAt: null,
+        urgentAcknowledgedAt: null,
+      },
+    });
     revalidatePath(`/turno/entrega/${item.handoverId}`);
     return { ok: true as const, message: 'Nota eliminada.' };
   });

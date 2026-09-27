@@ -10,6 +10,7 @@ import {
 } from './helpers';
 import {
   cancelHandoverPreparation,
+  cancelHandoverPreparation,
   closeShift,
   prepareHandover,
   receiveHandover,
@@ -127,7 +128,7 @@ describe('caja en la entrega de turno', () => {
     );
   });
 
-  it('un arqueo que cuadra con el fondo permite entregar', async () => {
+  it('un arqueo que cuadra requiere además cierre formal de Caja antes de entregar', async () => {
     await seedFunds();
     const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
@@ -139,6 +140,10 @@ describe('caja en la entrega de turno', () => {
     });
 
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
+    await expect(sendHandover(saliente, { shiftId: shift.id })).rejects.toThrow(
+      /cierre formal de Caja/i,
+    );
+    await closeShiftCash(saliente, { shiftId: shift.id });
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -327,6 +332,56 @@ describe('caja en la entrega de turno', () => {
     const clp = after.currentExpectations.find((row) => row.currency === 'CLP');
     expect(clp?.operationalMinor).toBe(0);
     expect(clp?.expectedMinor).toBe(100_000);
+  });
+
+  it('cancelar el cierre conserva transferencias reales y reabre Caja sin borrar la historia', async () => {
+    await seedFunds();
+    const shift = await openShift(saliente, ShiftType.DIA);
+    const handover = await prepareHandover(saliente, shift.id);
+
+    await insertCashMovement(prisma, {
+      userId: saliente.id,
+      kind: 'AJUSTE_ENTRADA',
+      direction: 'ENTRADA',
+      currency: 'CLP',
+      amount: 25_000,
+      shiftId: shift.id,
+      reference: 'Recaudación previa al cierre',
+    });
+    const transfer = await recordCashTransfer(saliente, {
+      handoverId: handover.id,
+      currency: 'CLP',
+      amount: 25_000,
+      reference: 'SOBRE-CANCEL',
+    });
+    await saveCashCount(saliente, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities: await exactFundQuantities(),
+    });
+    await closeShiftCash(saliente, { shiftId: shift.id });
+
+    expect((await getShiftCashClosure(shift.id))?.reopenedAt).toBeNull();
+
+    const reverted = await cancelHandoverPreparation(saliente, shift.id);
+    expect(reverted.status).toBe('ACTIVO');
+
+    const preservedTransfer = await prisma.cashTransfer.findUnique({
+      where: { id: transfer.id },
+    });
+    const preservedMovement = await prisma.cashMovement.findUnique({
+      where: { cashTransferId: transfer.id },
+    });
+    expect(preservedTransfer).not.toBeNull();
+    expect(preservedMovement?.direction).toBe('SALIDA');
+
+    const closure = await getShiftCashClosure(shift.id);
+    expect(closure?.reopenedAt).not.toBeNull();
+    expect(await prisma.cashCount.count({ where: { handoverId: handover.id } })).toBe(0);
+
+    const preparedAgain = await prepareHandover(saliente, shift.id);
+    const state = await getHandoverCashState(preparedAgain.id);
+    expect(state.transfers.map((row) => row.id)).toContain(transfer.id);
   });
 
   it('Tesorería no puede retirar fondo fijo si no hay saldo operacional', async () => {

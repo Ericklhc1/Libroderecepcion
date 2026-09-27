@@ -362,6 +362,12 @@ enum OperationalAlarmStatus {
   CERRADA
 }
 
+enum OperationalMailStatus {
+  PENDIENTE
+  ENVIADO
+  ERROR
+}
+
 
 // =============================== IDENTIDAD ================================
 
@@ -1480,6 +1486,24 @@ model OperationalAlarmRecipient {
 
   @@unique([alarmId, userId])
   @@index([userId, acknowledgedAt, snoozedUntil])
+}
+
+model OperationalMailOutbox {
+  id            String                @id @default(cuid())
+  eventKey      String                @unique
+  recipients    String[]
+  subject       String
+  text          String
+  status        OperationalMailStatus @default(PENDIENTE)
+  attempts      Int                   @default(0)
+  lastError     String?
+  sentAt        DateTime?
+  nextAttemptAt DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([createdAt])
 }
 
 model SystemSetting {

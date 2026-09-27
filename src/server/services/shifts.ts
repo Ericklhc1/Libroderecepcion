@@ -1658,7 +1658,7 @@ export async function sendHandover(
         `Turno: ${SHIFT_TYPE_LABEL[shift.type]}`,
         `Fecha operativa: ${formatCalendarDate(shift.date)}`,
         `Enviado: ${operationalMailTimestamp(now)}`,
-        `Enviado por: ${user.name} (@${user.username})`,
+        `Enviado por: ${user.name} (ID ${user.id})`,
         `Caja: cierre formal confirmado antes del envío`,
         `Turno de emergencia: ${shift.emergency ? 'sí' : 'no'}`,
         ...(shift.emergencyReason ? [`Motivo de emergencia: ${shift.emergencyReason}`] : []),

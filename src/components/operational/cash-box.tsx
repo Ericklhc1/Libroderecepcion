@@ -171,7 +171,7 @@ function CountForm({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-petrol-900">
-                    {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
+                    #{guarantee.humanId} · {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
                     {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                   </span>
                   <span className="mt-0.5 block text-xs text-slate-500">
@@ -325,6 +325,7 @@ export function CashBox({
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
   formalClosure: {
+    humanId: number;
     closedAt: string;
     closedByName: string;
     reopenedAt: string | null;
@@ -352,7 +353,7 @@ export function CashBox({
             {state.declared ? (
               <>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {state.declared.countedByName} · {state.declared.countedAt.toLocaleString('es-CL')}
+                  #{state.declared.humanId} · {state.declared.countedByName} · {state.declared.countedAt.toLocaleString('es-CL')}
                 </p>
                 <ul className="mt-1 divide-y divide-slate-100">
                   {state.declared.statuses.map((status) => <FundRow key={status.currency} status={status} />)}
@@ -369,7 +370,7 @@ export function CashBox({
             {state.confirmed ? (
               <>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {state.confirmed.countedByName} · {state.confirmed.countedAt.toLocaleString('es-CL')}
+                  #{state.confirmed.humanId} · {state.confirmed.countedByName} · {state.confirmed.countedAt.toLocaleString('es-CL')}
                 </p>
                 <ul className="mt-1 divide-y divide-slate-100">
                   {state.confirmed.statuses.map((status) => <FundRow key={status.currency} status={status} />)}
@@ -466,7 +467,7 @@ export function CashBox({
               {state.transfers.map((transfer) => (
                 <li key={transfer.id} className="flex flex-wrap items-center gap-2 tabular">
                   <span>
-                    {transfer.currency} {transfer.amount.toLocaleString('es-CL')}
+                    #{transfer.humanId} · {transfer.currency} {transfer.amount.toLocaleString('es-CL')}
                     {transfer.reference ? ` · comprobante ${transfer.reference}` : ''} · {transfer.createdByName}
                   </span>
                   <Badge tone={transfer.approved ? 'resuelto' : 'pendiente'}>
@@ -505,7 +506,7 @@ export function CashBox({
                 </h3>
                 {formalClosure && !formalClosure.reopenedAt ? (
                   <p className="mt-1 text-xs text-emerald-800">
-                    Cerrada por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
+                    #{formalClosure.humanId} · Cerrada por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-600">

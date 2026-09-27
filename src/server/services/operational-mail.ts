@@ -115,3 +115,19 @@ export async function flushQueuedMail(ids: string[]): Promise<void> {
     console.error('[correo-operativo] el envío inmediato falló; queda en outbox', error);
   }
 }
+
+
+export async function queueAndFlushOperationalMail(input: {
+  eventKey: string;
+  to: string | string[];
+  subject: string;
+  body: string;
+}): Promise<void> {
+  try {
+    const id = await queueOperationalMail(prisma, input);
+    await flushQueuedMail([id]);
+  } catch (error) {
+    // Nunca hacemos fallar el hecho operativo porque el canal de respaldo falle.
+    console.error('[correo-operativo] no se pudo encolar el respaldo', error);
+  }
+}

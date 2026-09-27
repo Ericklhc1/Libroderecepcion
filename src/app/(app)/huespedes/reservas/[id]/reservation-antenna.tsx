@@ -113,7 +113,7 @@ export function ReservationAntenna({ reservation }: { reservation: ReservationOp
               <div key={entry.id} className="p-4 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="font-semibold text-petrol-900">#{entry.seq} · {entry.title}</p>
+                    <p className="font-semibold text-petrol-900">#{entry.humanId} · {entry.title}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {entry.type} · {entry.status} · {entry.room ? `Hab. ${entry.room.number} · ` : ''}{formatDateTime(entry.occurredAt)}
                     </p>
@@ -125,7 +125,7 @@ export function ReservationAntenna({ reservation }: { reservation: ReservationOp
                 {entry.tasks.length || entry.followUps.length ? (
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {entry.tasks.map((task) => (
-                      <Chip key={task.id}>Tarea #{task.seq} · {task.status}{task.assignee ? ` · ${task.assignee.name}` : ''}</Chip>
+                      <Chip key={task.id}>Tarea #{task.humanId} · {task.status}{task.assignee ? ` · ${task.assignee.name}` : ''}</Chip>
                     ))}
                     {entry.followUps.map((followUp) => (
                       <Chip key={followUp.id}>Seguimiento · {followUp.status} · {followUp.owner.name}</Chip>

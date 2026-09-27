@@ -15,7 +15,6 @@ import {
 } from '@/server/actions/cash';
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
-import { ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
 import { closeShiftCashAction, reopenShiftCashAction } from '@/server/actions/cash-closure';
 import { DenominationVisual } from '@/components/cash/denomination-visual';
 
@@ -423,12 +422,9 @@ export function CashBox({
                     <span className="font-semibold tabular text-petrol-900">
                       {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
                     </span>
-                    {role !== 'lector' ? (
-                      <ReturnCashGuaranteeForm
-                        guaranteeId={guarantee.id}
-                        reference={guarantee.reference ?? guarantee.guestName}
-                      />
-                    ) : null}
+                    <span className="text-[0.68rem] text-slate-500">
+                      La devolución se gestiona en Caja operativa, fuera del relevo.
+                    </span>
                   </div>
                 </li>
               ))}
@@ -483,7 +479,10 @@ export function CashBox({
         ) : null}
 
         {role !== 'lector' ? (
-          <div className="border-t border-slate-100 pt-3 no-print">
+          <div
+            id={role === 'receptor' ? 'recuento-caja' : undefined}
+            className="scroll-mt-32 border-t border-slate-100 pt-3 no-print"
+          >
             <h3 className="mb-2 text-sm font-semibold text-petrol-900">
               {role === 'emisor' ? 'Contar y declarar la caja' : 'Recontar la caja'}
             </h3>

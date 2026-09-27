@@ -47,6 +47,12 @@ import {
 } from './cash';
 import { assertShiftCashClosed } from './cash-closure';
 import { cancelShiftTimers } from './operational-alarms';
+import {
+  RECEPTION_BACKUP_EMAIL,
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from './operational-mail';
 
 /** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
@@ -1638,6 +1644,41 @@ export async function sendHandover(
       })),
       tx,
     );
+
+    await queueOperationalMail(tx, {
+      eventKey: `handover-sent:${sent.id}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL, RECEPTION_BACKUP_EMAIL],
+      subject:
+        `[Libro Operativo] ENTREGA TURNO ${SHIFT_TYPE_LABEL[shift.type]} · ` +
+        `${formatCalendarDate(shift.date)} · ${user.name}`,
+      text: [
+        'ENTREGA DE TURNO ENVIADA',
+        `ID entrega: ${sent.id}`,
+        `ID turno: ${shift.id}`,
+        `Turno: ${SHIFT_TYPE_LABEL[shift.type]}`,
+        `Fecha operativa: ${formatCalendarDate(shift.date)}`,
+        `Enviado: ${operationalMailTimestamp(now)}`,
+        `Enviado por: ${user.name} (@${user.username})`,
+        `Caja: cierre formal confirmado antes del envío`,
+        `Turno de emergencia: ${shift.emergency ? 'sí' : 'no'}`,
+        ...(shift.emergencyReason ? [`Motivo de emergencia: ${shift.emergencyReason}`] : []),
+        `Urgentes: ${items.filter((item) => item.level === HandoverLevel.URGENTE).length}`,
+        `Importantes: ${items.filter((item) => item.level === HandoverLevel.IMPORTANTE).length}`,
+        `Informativos: ${items.filter((item) => item.level === HandoverLevel.INFORMATIVO).length}`,
+        `Nota general: ${params.notes ?? handover.notes ?? 'sin nota adicional'}`,
+        '',
+        'PUNTOS DE ENTREGA',
+        ...(items.length === 0
+          ? ['Sin puntos pendientes.']
+          : items.flatMap((item, index) => [
+              `${index + 1}. [${item.level}] ${item.section} · ${item.title}`,
+              item.detail ? `   ${item.detail}` : '   Sin detalle adicional.',
+              item.refType || item.refId
+                ? `   Referencia: ${item.refType ?? '-'} · ${item.refId ?? '-'}`
+                : '   Referencia: sin referencia',
+            ])),
+      ].join('\n'),
+    });
 
     return sent;
   });

@@ -28,6 +28,7 @@ import {
 import { SHIFT_TYPE_LABEL } from '@/domain/shift';
 import { addCalendarDateDays } from '@/domain/time';
 import { formatCalendarDate, formatDateTime, relativeTime } from '@/lib/format';
+import { isReceptionDeskRole } from '@/lib/permissions';
 
 export const metadata = { title: 'Entrega de turno' };
 export const dynamic = 'force-dynamic';
@@ -108,6 +109,29 @@ export default async function HandoverPage({
     : canReceiveCash
       ? 'receptor'
       : 'lector';
+
+  const receivedByMeWithoutNextShift = Boolean(
+    handover.status === HandoverStatus.RECIBIDA &&
+      handover.receivedBy?.id === user.id &&
+      !handover.toShift,
+  );
+  const receptionStep = receivedByMeWithoutNextShift ? 3 : canReceiveCash ? 1 : canReceive ? 2 : null;
+  const receptionStepTitle =
+    receptionStep === 1
+      ? 'Recontar Caja y validar garantías'
+      : receptionStep === 2
+        ? 'Confirmar la recepción'
+        : receptionStep === 3
+          ? 'Iniciar mi turno'
+          : null;
+  const receptionStepBody =
+    receptionStep === 1
+      ? 'Este recuento se hace aquí, dentro de la entrega. La Caja general seguirá bloqueada hasta que inicies tu turno.'
+      : receptionStep === 2
+        ? 'El recuento ya quedó registrado. Confirma ahora que recibes esta entrega para tomar formalmente la liana.'
+        : receptionStep === 3
+          ? 'La entrega ya quedó recibida a tu nombre. Vuelve a Mi turno e inicia el turno que continuará la operación.'
+          : null;
 
   // Rellena el formulario con lo que ya contó este rol, para no empezar de cero.
   const ownCount =
@@ -272,6 +296,65 @@ export default async function HandoverPage({
         ) : null}
       </Card>
 
+      {receptionStep && receptionStepTitle && receptionStepBody ? (
+        <Card className="no-print">
+          <CardHeader title={`Recepción de turno · paso ${receptionStep} de 3`} />
+          <div className="space-y-3 px-4 py-4">
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[
+                ['1', 'Recontar Caja'],
+                ['2', 'Confirmar recepción'],
+                ['3', 'Iniciar turno'],
+              ].map(([step, label]) => {
+                const numericStep = Number(step);
+                const done = numericStep < receptionStep;
+                const current = numericStep === receptionStep;
+                return (
+                  <div
+                    key={step}
+                    className={`rounded-lg px-3 py-2 text-xs ring-1 ${
+                      current
+                        ? 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
+                        : done
+                          ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                          : 'bg-slate-50 text-slate-500 ring-slate-200'
+                    }`}
+                  >
+                    {done ? '✓' : step} · {label}
+                  </div>
+                );
+              })}
+            </div>
+            <div>
+              <p className="font-semibold text-petrol-950">{receptionStepTitle}</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">{receptionStepBody}</p>
+            </div>
+            {receptionStep === 1 ? (
+              <Link
+                href="#recuento-caja"
+                className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+              >
+                IR AL RECUENTO DE CAJA
+              </Link>
+            ) : receptionStep === 2 ? (
+              <Link
+                href="#confirmar-recepcion"
+                className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+              >
+                CONFIRMAR RECEPCIÓN
+              </Link>
+            ) : (
+              <Link
+                href="/turno#abrir-turno"
+                className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+              >
+                INICIAR MI TURNO
+              </Link>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
       {/*
         Caja se declara en el cierre saliente. Quien toma la entrega la recuenta
         y confirma antes de abrir el turno siguiente. La recepción no crea ni
@@ -390,23 +473,25 @@ export default async function HandoverPage({
       ) : null}
 
       {canReceive ? (
-        <Card className="no-print">
-          <CardHeader title="Tomar la liana · confirmar recepción" />
-          <div className="px-4 py-4">
-            {cashState.declared && !cashState.confirmed ? (
-              <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
-                Recuenta primero la Caja en el bloque superior y valida las garantías. Después podrás confirmar la recepción de esta entrega.
-              </div>
-            ) : (
-              <>
-                <p className="mb-3 text-sm text-slate-700">
-                  Esta entrega no está asignada a ningún turno entrante. Al confirmarla quedará registrada a tu nombre y el próximo turno podrá iniciarse después, sin preasignación.
-                </p>
-                <ReceiveHandoverForm handoverId={handover.id} />
-              </>
-            )}
-          </div>
-        </Card>
+        <div id="confirmar-recepcion" className="scroll-mt-32">
+          <Card className="no-print">
+            <CardHeader title="Tomar la liana · confirmar recepción" />
+            <div className="px-4 py-4">
+              {cashState.declared && !cashState.confirmed ? (
+                <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+                  Recuenta primero la Caja en esta misma entrega y valida las garantías. La pestaña Caja general permanece bloqueada hasta que inicies tu turno.
+                </div>
+              ) : (
+                <>
+                  <p className="mb-3 text-sm text-slate-700">
+                    El recuento ya está listo. Confirma la recepción para registrar la entrega a tu nombre; después podrás iniciar tu propio turno.
+                  </p>
+                  <ReceiveHandoverForm handoverId={handover.id} />
+                </>
+              )}
+            </div>
+          </Card>
+        </div>
       ) : handover.status === HandoverStatus.ENVIADA && isReceiver ? (
         <Card className="no-print">
           <div className="px-4 py-4 text-sm text-slate-600">
@@ -468,7 +553,10 @@ export default async function HandoverPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Comentarios" count={handover._count.comments} />
-          <Comments target={{ handoverId: handover.id }} />
+          <Comments
+            target={{ handoverId: handover.id }}
+            readOnly={isReceptionDeskRole(user.roleKey)}
+          />
         </Card>
         <Card>
           <CardHeader title="Historial" count={history.length} />

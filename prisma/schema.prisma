@@ -364,6 +364,7 @@ enum OperationalAlarmStatus {
 
 enum OperationalMailStatus {
   PENDIENTE
+  ENVIANDO
   ENVIADO
   ERROR
 }

@@ -35,7 +35,12 @@ import {
   cashApprovalRequired,
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
-import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+  tryDeliverOperationalMail,
+} from '@/server/services/operational-mail';
 
 const gymPassSchema = z.object({
   serviceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Indica una fecha válida.'),
@@ -203,6 +208,28 @@ async function applyAuthorizedManualMovement(
       tx,
     );
 
+    await queueOperationalMail(tx, {
+      eventKey: `cash-movement:${movementId}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject:
+        `[Libro Operativo] ${regularization ? 'REGULARIZACIÓN' : verb.toUpperCase()} CAJA · ` +
+        `${input.currency} ${input.amount} · ${input.reference}`,
+      text: [
+        regularization ? 'REGULARIZACIÓN DE CAJA' : `${verb.toUpperCase()} DE CAJA`,
+        `ID movimiento: ${movementId}`,
+        `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
+        `Registrado por: ${user.name} (@${user.username})`,
+        `Dirección: ${input.direction}`,
+        `Monto: ${input.currency} ${input.amount}`,
+        `Concepto: ${input.reference}`,
+        `Turno: ${shiftId ?? 'sin turno asociado'}`,
+        `Afecta efectivo esperado: ${affectsExpected ? 'sí' : 'no'}`,
+        `Regularización: ${regularization ? 'sí' : 'no'}`,
+        `Observaciones: ${input.notes ?? 'sin observaciones'}`,
+        ...(noSessionAlertId ? [`Alerta de excepción: ${noSessionAlertId}`] : []),
+      ].join('\n'),
+    });
+
     return movementId;
   });
 }
@@ -227,6 +254,7 @@ export async function createManualCashMovementAction(
 
     if (!needsApproval) {
       const movementId = await applyAuthorizedManualMovement(user, input, shift?.id ?? null, effectiveAt);
+      await tryDeliverOperationalMail(`cash-movement:${movementId}`);
       revalidatePath('/caja');
       revalidatePath('/libro');
       revalidatePath('/turno');
@@ -358,6 +386,7 @@ export async function createCashDifferenceRegularizationAction(
       effectiveAt,
       { affectsExpected: false },
     );
+    await tryDeliverOperationalMail(`cash-movement:${movementId}`);
 
     revalidatePath('/caja');
     revalidatePath('/libro');

@@ -187,6 +187,7 @@ export async function endShiftParticipation(
     },
     data: { leftAt: at },
   });
+  await cancelTimersForShift(tx, { shiftId, at });
 }
 
 /**
@@ -1689,7 +1690,6 @@ export async function closeShift(
     }
 
     await endShiftParticipation(tx, shift.id, now);
-    await cancelTimersForShift(tx, { shiftId: shift.id, at: now });
 
     await recordAudit(
       {

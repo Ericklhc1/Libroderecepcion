@@ -4,11 +4,17 @@ import { cn } from '@/lib/cn';
 export function Card({
   children,
   className,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
+  id?: string;
 }) {
-  return <section className={cn('card', className)}>{children}</section>;
+  return (
+    <section id={id} className={cn('card scroll-mt-32', className)}>
+      {children}
+    </section>
+  );
 }
 
 export function CardHeader({

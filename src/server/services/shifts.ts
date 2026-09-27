@@ -1968,6 +1968,13 @@ export async function closeShift(
         actualEnd: now,
         closedById: user.id,
         notes: params.notes ?? shift.notes,
+        ...(shift.emergency && !shift.emergencyReleasedAt
+          ? {
+              emergencyReleasedAt: now,
+              emergencyReleaseReason:
+                'El propio turno de emergencia quedó cerrado formalmente.',
+            }
+          : {}),
       },
     });
     if (claim.count === 0) {
@@ -1976,6 +1983,22 @@ export async function closeShift(
 
     await endShiftParticipation(tx, shift.id, now);
     await cancelShiftTimers(tx, shift.id, now);
+
+    if (shift.emergency && !shift.emergencyReleasedAt && shift.emergencySourceShiftId) {
+      await tx.alert.updateMany({
+        where: {
+          dedupeKey: `shift-emergency-source:${shift.emergencySourceShiftId}`,
+          status: { not: AlertStatus.RESUELTA },
+        },
+        data: {
+          status: AlertStatus.RESUELTA,
+          resolvedAt: now,
+          resolvedById: user.id,
+          resolutionNote: 'El turno de emergencia terminó formalmente.',
+        },
+      });
+    }
+
     await releaseEmergencyForResolvedSource(tx, shift.id, user, now);
 
     await recordAudit(
@@ -1986,7 +2009,16 @@ export async function closeShift(
         summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} del ${formatCalendarDate(shift.date)} cerrado por ${user.name}`,
         user,
         before: { status: shift.status },
-        after: { status: ShiftStatus.CERRADO },
+        after: {
+          status: ShiftStatus.CERRADO,
+          ...(shift.emergency && !shift.emergencyReleasedAt
+            ? {
+                emergencyReleasedAt: now,
+                emergencyReleaseReason:
+                  'El propio turno de emergencia quedó cerrado formalmente.',
+              }
+            : {}),
+        },
         reason: params.notes ?? null,
       },
       tx,

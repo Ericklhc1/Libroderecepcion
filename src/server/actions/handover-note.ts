@@ -53,6 +53,14 @@ export async function saveSingleHandoverNoteAction(
           order: (last._max.order ?? 0) + 1,
         },
       });
+      await tx.shiftHandover.update({
+        where: { id: input.handoverId },
+        data: {
+          pendingsReviewedAt: null,
+          finalReviewAt: null,
+          urgentAcknowledgedAt: null,
+        },
+      });
     });
 
     revalidatePath(`/turno/entrega/${input.handoverId}`);

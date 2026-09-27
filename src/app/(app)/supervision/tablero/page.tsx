@@ -89,7 +89,7 @@ export default async function AssignmentBoardPage({
       .toLowerCase()
       .includes(q);
   const visibleUnassigned = board.unassigned.filter((item) =>
-    textMatches([item.seq, item.kind, item.priority, item.roomNumber, item.title]),
+    textMatches([item.humanId, item.kind, item.priority, item.roomNumber, item.title]),
   );
   const visibleWorkload = board.workload.filter((row) =>
     textMatches([row.name, row.roleName, row.openTasks, row.overdueTasks, row.openEntries, row.urgent]),
@@ -196,7 +196,7 @@ export default async function AssignmentBoardPage({
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="tabular text-xs text-slate-400">#{item.seq}</span>
+                      <span className="tabular text-xs text-slate-400">#{item.humanId}</span>
                       <Chip>{item.kind === 'task' ? 'Tarea' : 'Registro'}</Chip>
                       <Badge tone={PRIORITY_TONE[item.priority]}>
                         {PRIORITY_LABEL[item.priority]}

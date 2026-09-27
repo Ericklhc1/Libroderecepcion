@@ -245,8 +245,8 @@ export default async function SupervisionCenterPage({
       </ListFilterBar>
       <p className="-mt-2 text-xs text-slate-500">
         La búsqueda recorre las secciones visibles. Prioridad filtra tus pendientes y seguimientos;
-        el período sólo acota historial, auditorías, medidas y rendimiento. Un pendiente abierto
-        nunca desaparece por ser antiguo.
+        el período sólo acota notas, auditorías y rendimiento. Tareas, seguimientos y medidas abiertas
+        nunca desaparecen por ser antiguos.
       </p>
 
       <Card>

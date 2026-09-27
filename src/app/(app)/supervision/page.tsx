@@ -238,11 +238,11 @@ export default async function SupervisionCenterPage({
         </label>
         <label>
           <span className="mb-1 block text-xs font-medium text-slate-500">Historial desde</span>
-          <input className="input-base" type="date" name="desde" defaultValue={period.from.toISOString().slice(0, 10)} />
+          <input className="input-base" type="date" name="desde" defaultValue={hotelDateKey(period.from)} />
         </label>
         <label>
           <span className="mb-1 block text-xs font-medium text-slate-500">Historial hasta</span>
-          <input className="input-base" type="date" name="hasta" defaultValue={period.to.toISOString().slice(0, 10)} />
+          <input className="input-base" type="date" name="hasta" defaultValue={hotelDateKey(period.to)} />
         </label>
       </ListFilterBar>
       <p className="-mt-2 text-xs text-slate-500">

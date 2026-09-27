@@ -155,10 +155,14 @@ export async function addShiftMemberAction(
   return runAction(async () => {
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(addMemberSchema, formDataToObject(formData));
+    const targetUserId = input.userId === '__SELF__' ? user.id : input.userId;
 
-    await addShiftMember(user, input);
+    await addShiftMember(user, { shiftId: input.shiftId, userId: targetUserId });
     refresh(input.shiftId);
-    return { ok: true as const, message: 'Persona sumada al turno.' };
+    return {
+      ok: true as const,
+      message: targetUserId === user.id ? 'Te sumaste al turno en curso.' : 'Persona sumada al turno.',
+    };
   });
 }
 

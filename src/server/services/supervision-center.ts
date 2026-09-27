@@ -14,6 +14,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
+import { cancelTimersForShift } from '@/server/services/alarms';
 
 const OPEN_SUPERVISION_STATUSES = [
   SupervisionShiftStatus.ACTIVO,
@@ -236,10 +237,12 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
       throw new RuleError('Ese turno de Supervisión ya está cerrado.');
     }
 
+    const finishedAt = new Date();
     const finished = await tx.supervisionShift.update({
       where: { id: shift.id },
-      data: { status: SupervisionShiftStatus.CERRADO, finishedAt: new Date() },
+      data: { status: SupervisionShiftStatus.CERRADO, finishedAt },
     });
+    await cancelTimersForShift(tx, { supervisionShiftId: shift.id, at: finishedAt });
     await recordAudit(
       {
         entity: 'SupervisionShift',

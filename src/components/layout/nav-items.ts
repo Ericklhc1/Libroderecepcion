@@ -19,6 +19,7 @@ export type NavItem = {
     | 'room'
     | 'key'
     | 'cash'
+    | 'alarm'
     | 'admin';
   anyOf?: PermissionKey[];
   mobile?: boolean;
@@ -55,6 +56,12 @@ const PRIMARY: NavItem[] = [
     icon: 'key',
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
     mobile: true,
+  },
+  {
+    href: '/alarmas',
+    label: 'Timers y reminders',
+    mobileLabel: 'Alarmas',
+    icon: 'alarm',
   },
   {
     href: '/supervision',

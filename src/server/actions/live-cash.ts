@@ -30,7 +30,7 @@ import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { notify } from '@/server/notifications';
-import { parseHotelDateTimeLocal } from '@/domain/time';
+import { hotelDateKey, parseHotelDateTimeLocal } from '@/domain/time';
 import {
   cashApprovalRequired,
   listCashApproverIds,
@@ -95,9 +95,25 @@ const movementSchema = z.object({
     z.string().trim().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Indica una fecha/hora efectiva válida.').optional(),
   ),
   notes: z.string().trim().max(1000).optional().transform((v) => v || null),
+  effectiveDateConfirmed: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true' || value === 'on'),
 });
 
 type ManualMovementInput = z.infer<typeof movementSchema>;
+
+function assertEffectiveDateConfirmed(input: ManualMovementInput, effectiveAt: Date) {
+  if (
+    input.effectiveAt &&
+    hotelDateKey(effectiveAt) !== hotelDateKey(new Date()) &&
+    !input.effectiveDateConfirmed
+  ) {
+    throw new RuleError(
+      'La fecha efectiva no corresponde al día operativo actual. Confirma expresamente el registro retroactivo o futuro.',
+    );
+  }
+}
 
 async function applyAuthorizedManualMovement(
   user: Awaited<ReturnType<typeof requireUser>>,
@@ -248,6 +264,7 @@ export async function createManualCashMovementAction(
     await assertReceptionOperationPermission(user, permission);
     const shift = await getMyOpenShift(user.id) ?? await getCurrentShift();
     const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
+    assertEffectiveDateConfirmed(input, effectiveAt);
 
     const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
     const needsApproval = await cashApprovalRequired(user, permission);
@@ -378,6 +395,7 @@ export async function createCashDifferenceRegularizationAction(
     const input = parseOrThrow(movementSchema, formDataToObject(formData));
     const shift = (await getMyOpenShift(user.id)) ?? (await getCurrentShift());
     const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
+    assertEffectiveDateConfirmed(input, effectiveAt);
 
     const movementId = await applyAuthorizedManualMovement(
       user,
@@ -433,6 +451,11 @@ export async function markCashMovementAsRegularizationAction(
 
 const returnGuaranteeSchema = z.object({
   guaranteeId: z.string().min(1),
+  confirmed: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true' || value === 'on')
+    .refine(Boolean, 'Confirma que el efectivo fue entregado físicamente.'),
 });
 
 export async function returnCashGuaranteeAction(

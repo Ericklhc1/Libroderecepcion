@@ -1,6 +1,6 @@
 {
   "name": "libro-operativo-recepcion",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,6 +17,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "demo:purge": "tsx scripts/purge-demo.ts",
+    "audit:routes": "tsx scripts/functional-route-audit.ts",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "vercel-build": "tsx scripts/vercel-build.ts",
     "postinstall": "prisma generate"

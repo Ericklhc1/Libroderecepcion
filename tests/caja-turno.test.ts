@@ -10,7 +10,6 @@ import {
 } from './helpers';
 import {
   cancelHandoverPreparation,
-  cancelHandoverPreparation,
   closeShift,
   prepareHandover,
   receiveHandover,

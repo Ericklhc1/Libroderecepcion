@@ -23,12 +23,15 @@ import { notify } from '@/server/notifications';
 import type { CurrentUser } from '@/server/auth/current-user';
 import {
   OCCUPYING_SHIFT_STATUSES,
+  SHIFT_EMERGENCY_REASON_LABEL,
   SHIFT_TYPE_LABEL,
   SHIFT_WINDOW_LABEL,
+  isShiftEmergencyReason,
   assertCanClose,
   assertTransition,
   plannedWindow,
   shiftTypeAt,
+  type ShiftEmergencyReason,
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
@@ -440,11 +443,12 @@ export async function openShift(
     type?: ShiftType | null;
     date?: Date | null;
     /**
-     * Vía de continuidad operativa. Sólo se usa cuando el relevo quedó
-     * bloqueado porque el turno anterior no terminó su cierre.
+     * Excepción de emergencia. Sólo se usa cuando el relevo quedó bloqueado
+     * porque el turno anterior no terminó su cierre y no es viable esperar.
      */
     continuity?: boolean;
-    continuityReason?: string | null;
+    emergencyReason?: ShiftEmergencyReason | null;
+    emergencyAccepted?: boolean;
   } = {},
 ): Promise<{ shift: ShiftWithDetail; joined: boolean }> {
   if (!user.roleOperational) {
@@ -478,14 +482,31 @@ export async function openShift(
     orderBy: { actualStart: 'asc' },
   });
   const continuityRequested = input.continuity === true;
-  const continuityReason =
-    input.continuityReason?.trim() ||
-    'El turno saliente no completó el cierre y fue necesario mantener la continuidad operativa.';
+  const emergencyReasonCode = input.emergencyReason ?? null;
+  const emergencyReason =
+    emergencyReasonCode && isShiftEmergencyReason(emergencyReasonCode)
+      ? SHIFT_EMERGENCY_REASON_LABEL[emergencyReasonCode]
+      : null;
 
   if (outgoing && !continuityRequested) {
     throw new RuleError(
-      'El turno saliente todavía no está cerrado. Usa «Iniciar turno por contingencia» si necesitas mantener la continuidad operativa.',
+      'El turno saliente todavía no está cerrado. Espera su cierre formal o, sólo si existe una causa válida, usa la apertura de emergencia.',
     );
+  }
+  if (continuityRequested && !outgoing) {
+    throw new RuleError(
+      'No existe un turno saliente abierto que justifique una apertura de emergencia. Inicia un turno normal.',
+    );
+  }
+  if (outgoing && continuityRequested) {
+    if (!input.emergencyAccepted) {
+      throw new RuleError(
+        'Debes aceptar expresamente las condiciones antes de abrir un turno de emergencia.',
+      );
+    }
+    if (!emergencyReasonCode || !isShiftEmergencyReason(emergencyReasonCode) || !emergencyReason) {
+      throw new RuleError('Selecciona una razón válida para abrir un turno de emergencia.');
+    }
   }
 
   const continuitySnapshot =
@@ -558,6 +579,7 @@ export async function openShift(
               status: true,
               issuedById: true,
               notes: true,
+              snapshot: true,
             },
           },
         },
@@ -565,7 +587,7 @@ export async function openShift(
       });
       if (concurrentOutgoing && !continuityRequested) {
         throw new RuleError(
-          'El turno saliente todavía no está cerrado. Usa «Iniciar turno por contingencia» si necesitas mantener la continuidad operativa.',
+          'El turno saliente todavía no está cerrado. Espera su cierre formal o, sólo si existe una causa válida, usa la apertura de emergencia.',
         );
       }
 
@@ -577,9 +599,12 @@ export async function openShift(
           concurrentOutgoing.startedById ??
           concurrentOutgoing.createdById ??
           user.id;
-        const contingencyNote =
-          'CONTINUIDAD OPERATIVA: el turno siguiente se inició antes de completar este cierre. ' +
-          continuityReason;
+        if (!emergencyReason) {
+          throw new RuleError('La apertura de emergencia requiere una razón válida.');
+        }
+        const emergencyNote =
+          'EMERGENCIA OPERATIVA: el turno siguiente se inició antes de completar este cierre. ' +
+          emergencyReason;
 
         let handoverId = concurrentOutgoing.handoverOut?.id ?? null;
 
@@ -591,11 +616,12 @@ export async function openShift(
               issuedById: issuerId,
               issuedAt: now,
               status: HandoverStatus.ENVIADA,
-              notes: contingencyNote,
+              notes: emergencyNote,
               snapshot: {
                 generatedAt: now.toISOString(),
+                emergency: true,
                 contingency: true,
-                reason: continuityReason,
+                reason: emergencyReason,
                 fromShift: {
                   id: concurrentOutgoing.id,
                   type: concurrentOutgoing.type,
@@ -642,7 +668,7 @@ export async function openShift(
               status: HandoverStatus.ENVIADA,
               issuedAt: now,
               issuedById: issuerId,
-              notes: contingencyNote,
+              notes: emergencyNote,
               receiverObservations: null,
               receivedById: null,
               receivedAt: null,
@@ -650,13 +676,37 @@ export async function openShift(
               toShiftId: null,
               snapshot: {
                 generatedAt: now.toISOString(),
+                emergency: true,
                 contingency: true,
-                reason: continuityReason,
+                reason: emergencyReason,
                 fromShift: {
                   id: concurrentOutgoing.id,
                   type: concurrentOutgoing.type,
                   date: concurrentOutgoing.date.toISOString(),
                 },
+              } satisfies Prisma.InputJsonValue,
+            },
+          });
+        } else {
+          const currentSnapshot =
+            concurrentOutgoing.handoverOut.snapshot &&
+            typeof concurrentOutgoing.handoverOut.snapshot === 'object' &&
+            !Array.isArray(concurrentOutgoing.handoverOut.snapshot)
+              ? (concurrentOutgoing.handoverOut.snapshot as Prisma.JsonObject)
+              : {};
+          await tx.shiftHandover.update({
+            where: { id: concurrentOutgoing.handoverOut.id },
+            data: {
+              notes: [concurrentOutgoing.handoverOut.notes, emergencyNote]
+                .filter(Boolean)
+                .join('\n'),
+              snapshot: {
+                ...currentSnapshot,
+                emergency: true,
+                contingency: true,
+                reason: emergencyReason,
+                emergencyOpenedAt: now.toISOString(),
+                emergencyOpenedBy: { id: user.id, name: user.name },
               } satisfies Prisma.InputJsonValue,
             },
           });
@@ -669,24 +719,26 @@ export async function openShift(
         await endShiftParticipation(tx, concurrentOutgoing.id, now);
 
         const alert = await tx.alert.upsert({
-          where: { dedupeKey: `shift-continuity:${concurrentOutgoing.id}` },
+          where: { dedupeKey: `shift-emergency-source:${concurrentOutgoing.id}` },
           create: {
             type: AlertType.OTRO,
             level: AlertLevel.CRITICA,
             status: AlertStatus.NUEVA,
-            title: 'Cierre de turno incompleto · continuidad operativa',
+            title: 'Turno de emergencia · cierre saliente pendiente',
             message:
-              `${user.name} inició el turno siguiente porque el turno anterior no había terminado Caja/entrega/cierre. ${continuityReason}`,
+              `${user.name} abrió un turno de emergencia mientras el turno anterior seguía sin cierre formal. Motivo: ${emergencyReason}`,
             handoverId,
-            dedupeKey: `shift-continuity:${concurrentOutgoing.id}`,
-            auto: false,
+            dedupeKey: `shift-emergency-source:${concurrentOutgoing.id}`,
+            auto: true,
             createdById: user.id,
             isDemo: concurrentOutgoing.isDemo,
           },
           update: {
             status: AlertStatus.NUEVA,
+            title: 'Turno de emergencia · cierre saliente pendiente',
             message:
-              `${user.name} inició el turno siguiente porque el turno anterior no había terminado Caja/entrega/cierre. ${continuityReason}`,
+              `${user.name} abrió un turno de emergencia mientras el turno anterior seguía sin cierre formal. Motivo: ${emergencyReason}`,
+            auto: true,
             handoverId,
             resolvedAt: null,
             resolvedById: null,
@@ -709,8 +761,8 @@ export async function openShift(
           supervisors.map((person) => ({
             userId: person.id,
             type: NotificationType.ACCION_REQUERIDA,
-            title: 'Revisar cierre incompleto de turno',
-            body: `${user.name} mantuvo la continuidad operativa. El turno saliente quedó pendiente de Caja/cierre.`,
+            title: 'Turno de emergencia abierto',
+            body: `${user.name} abrió una emergencia. El turno saliente continúa pendiente de cierre formal y requiere seguimiento.`,
             link: handoverId ? `/turno/entrega/${handoverId}` : '/turno',
             entity: 'Alert',
             entityId: alert.id,
@@ -726,7 +778,7 @@ export async function openShift(
               userId: assignment.userId,
               type: NotificationType.ACCION_REQUERIDA,
               title: 'Tu turno quedó pendiente de cierre',
-              body: 'Se inició continuidad operativa. Completa el cierre de Caja y del turno cuando vuelvas al sistema.',
+              body: 'Se abrió un turno de emergencia. Completa el cierre de Caja y el cierre formal de tu turno en cuanto sea posible.',
               link: '/turno',
               entity: 'Shift',
               entityId: concurrentOutgoing.id,
@@ -740,15 +792,16 @@ export async function openShift(
             entity: 'Shift',
             entityId: concurrentOutgoing.id,
             action: AuditAction.CAMBIO_ESTADO,
-            summary: `Continuidad operativa iniciada por ${user.name}; el turno saliente queda pendiente de cierre formal`,
+            summary: `Turno de emergencia abierto por ${user.name}; el turno saliente queda pendiente de cierre formal`,
             user,
             before: { status: concurrentOutgoing.status },
             after: {
               status: ShiftStatus.ENTREGA_ENVIADA,
-              continuity: true,
+              emergency: true,
+              emergencyReason: emergencyReasonCode,
               handoverId,
             },
-            reason: continuityReason,
+            reason: emergencyReason,
           },
           tx,
         );
@@ -793,6 +846,13 @@ export async function openShift(
               startedById: user.id,
               plannedStart: window.start,
               plannedEnd: window.end,
+              emergency: Boolean(concurrentOutgoing && continuityRequested),
+              emergencyReason:
+                concurrentOutgoing && continuityRequested ? emergencyReason : null,
+              emergencySourceShiftId:
+                concurrentOutgoing && continuityRequested ? concurrentOutgoing.id : null,
+              emergencyAcknowledgedAt:
+                concurrentOutgoing && continuityRequested ? now : null,
             },
           })
         : await tx.shift.create({
@@ -805,6 +865,13 @@ export async function openShift(
               actualStart: now,
               createdById: user.id,
               startedById: user.id,
+              emergency: Boolean(concurrentOutgoing && continuityRequested),
+              emergencyReason:
+                concurrentOutgoing && continuityRequested ? emergencyReason : null,
+              emergencySourceShiftId:
+                concurrentOutgoing && continuityRequested ? concurrentOutgoing.id : null,
+              emergencyAcknowledgedAt:
+                concurrentOutgoing && continuityRequested ? now : null,
             },
           });
 
@@ -853,10 +920,19 @@ export async function openShift(
           entityId: shift.id,
           action: AuditAction.TURNO_INICIAR,
           summary:
+            (concurrentOutgoing && continuityRequested ? 'EMERGENCIA · ' : '') +
             `Turno de ${SHIFT_TYPE_LABEL[type]} abierto (${SHIFT_WINDOW_LABEL[type]}) ` +
             `el ${formatCalendarDate(day)}`,
           user,
-          after: { status: ShiftStatus.INICIADO, type, date: day },
+          after: {
+            status: ShiftStatus.INICIADO,
+            type,
+            date: day,
+            emergency: Boolean(concurrentOutgoing && continuityRequested),
+            emergencyReason: emergencyReasonCode,
+            emergencySourceShiftId:
+              concurrentOutgoing && continuityRequested ? concurrentOutgoing.id : null,
+          },
         },
         tx,
       );

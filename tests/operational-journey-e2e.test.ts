@@ -11,6 +11,7 @@ import {
 } from './helpers';
 import {
   closeShift,
+  confirmHandoverReviewStep,
   prepareHandover,
   receiveHandover,
   receiveShiftCash,
@@ -28,6 +29,14 @@ import {
   startSupervisionShift,
 } from '@/server/services/supervision-center';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
+
+async function confirmReview(
+  user: Awaited<ReturnType<typeof createUser>>,
+  handoverId: string,
+) {
+  await confirmHandoverReviewStep(user, { handoverId, step: 'PENDINGS' });
+  await confirmHandoverReviewStep(user, { handoverId, step: 'FINAL' });
+}
 
 async function seedFunds() {
   await prisma.cashFund.createMany({
@@ -135,6 +144,7 @@ describe('jornada operativa transversal de punta a punta', () => {
       quantities,
     });
     await closeShiftCash(outgoing, { shiftId: dayShift.id });
+    await confirmReview(outgoing, handover.id);
     await sendHandover(outgoing, { shiftId: dayShift.id });
     await closeShift(outgoing, { shiftId: dayShift.id });
 

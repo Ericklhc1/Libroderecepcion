@@ -10,6 +10,11 @@ import { ROLE_KEYS } from '@/lib/permissions';
 import { applyCashTransferToLiveCash } from '@/server/services/cash';
 import { insertCashMovement } from '@/server/services/live-cash';
 import { finishSupervisionTrackingForSource } from '@/server/services/followups';
+import {
+  SUPERVISION_BACKUP_EMAIL,
+  operationalMailTimestamp,
+  queueOperationalMail,
+} from '@/server/services/operational-mail';
 
 export const alertInclude = {
   entry: { select: { id: true, seq: true, title: true, type: true } },
@@ -105,6 +110,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
         tags: true,
         title: true,
         createdById: true,
+        createdBy: { select: { name: true, username: true } },
       },
     });
     if (!entry) throw new RuleError('La solicitud de Caja vinculada ya no existe.');
@@ -206,6 +212,25 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       },
       tx,
     );
+
+    await queueOperationalMail(tx, {
+      eventKey: `cash-movement:${movementId}`,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject: `[Libro Operativo] ${direction === 'ENTRADA' ? 'INGRESO' : 'EGRESO'} CAJA AUTORIZADO · ${currency} ${amount} · ${reference}`,
+      text: [
+        `${direction === 'ENTRADA' ? 'INGRESO' : 'EGRESO'} DE CAJA AUTORIZADO`,
+        `ID movimiento: ${movementId}`,
+        `Solicitud: ${entry.id}`,
+        `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
+        `Solicitado por: ${entry.createdBy.name} (@${entry.createdBy.username})`,
+        `Autorizado por: ${user.name} (@${user.username})`,
+        `Dirección: ${direction}`,
+        `Monto: ${currency} ${amount}`,
+        `Concepto: ${reference}`,
+        `Turno: ${entry.shiftId ?? 'sin turno asociado'}`,
+        `Observaciones: ${notes ?? 'sin observaciones'}`,
+      ].join('\n'),
+    });
   });
 }
 

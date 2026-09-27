@@ -56,6 +56,7 @@ describe('tablero de asignación', () => {
 
     expect(ids).toContain(huerfana.id);
     expect(board.unassigned).toHaveLength(1);
+    expect(board.unassignedTotal).toBe(1);
   });
 
   it('la carga de cada persona se cuenta, y es lo que el listado no muestra', async () => {

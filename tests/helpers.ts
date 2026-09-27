@@ -41,7 +41,6 @@ export async function resetOperationalData() {
     prisma.notification.deleteMany(),
     prisma.operationalAlarmRecipient.deleteMany(),
     prisma.operationalAlarm.deleteMany(),
-    prisma.operationalMailOutbox.deleteMany(),
     prisma.auditLog.deleteMany(),
     prisma.performanceObservation.deleteMany(),
     prisma.attachment.deleteMany(),

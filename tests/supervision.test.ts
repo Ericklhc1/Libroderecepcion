@@ -61,7 +61,7 @@ describe('mesa de supervisión', () => {
 
     const rows = rowsOf((await getSupervisionData()).blocks, 'incidencias');
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.ref).toBe(`#${entry.seq}`);
+    expect(rows[0]!.ref).toBe(`#${entry.humanId}`);
     // Enlaza al registro del libro, no a un módulo aparte.
     expect(rows[0]!.href).toBe(`/libro/${entry.id}`);
     expect(rows[0]!.detail).toContain('Sin responsable');
@@ -85,7 +85,7 @@ describe('mesa de supervisión', () => {
 
     const rows = rowsOf((await getSupervisionData()).blocks, 'tareas');
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.ref).toBe(`T#${vencida.seq}`);
+    expect(rows[0]!.ref).toBe(`#${vencida.humanId}`);
     expect(rows[0]!.meta).toContain('vencida hace 3 h');
   });
 

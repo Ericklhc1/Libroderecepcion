@@ -127,7 +127,8 @@ const AUDIT_PROMPTS: Array<{ key: string; label: string; needle: string }> = [
   { key: 'checkin-realizados', label: 'Check-in del día realizados', needle: 'todos los check in del día realizados' },
   { key: 'checkout-realizados', label: 'Check-out del día realizados', needle: 'todos los check out del día realizados' },
   { key: 'checkout-cobrados', label: 'Check-out del día cobrados', needle: 'todos los check out del día estén marcados como cobrados' },
-  { key: 'tarifas-habitaciones', label: 'Tarifas y valores de habitaciones', needle: 'tarifas y valores estén correctas' },
+  { key: 'tarifas-habitaciones', label: 'Tarifas y valores de habitaciones', needle: 'producción / habitaciones, que las tarifas y valores estén correctas' },
+  { key: 'tarifas-salones', label: 'Tarifas y valores de salones', needle: 'producción / salones, que las tarifas y valores estén correctas' },
   { key: 'cobros-documentos', label: 'Forma de pago, moneda y documento', needle: 'correcta relación entre forma de pago' },
   { key: 'cargos-centro-costo', label: 'Cargos diarios y centro de costo', needle: 'todos los cargos están bien asociados' },
   { key: 'tickets-restaurante', label: 'Tíquets de restaurante cotejados', needle: 'cotejamos todos los tiquet de restaurante' },
@@ -140,6 +141,9 @@ const AUDIT_PROMPTS: Array<{ key: string; label: string; needle: string }> = [
   { key: 'reservas-grupales', label: 'Reservas grupales revisadas', needle: 'informe de reservas grupales' },
   { key: 'facturas-rechazadas', label: 'Facturas rechazadas revisadas', needle: 'facturas rechazadas' },
   { key: 'habitaciones-sucias', label: 'Habitaciones pendientes marcadas sucias', needle: 'habitaciones ocupadas y pendientes de check-out' },
+  { key: 'eventos-iniciados', label: 'Eventos iniciados del día realizados', needle: 'eventos iniciados del día realizados' },
+  { key: 'eventos-finalizados', label: 'Eventos finalizados del día realizados', needle: 'eventos finalizados del día realizados' },
+  { key: 'eventos-cobrados', label: 'Eventos finalizados del día cobrados', needle: 'eventos finalizados del día estén marcados como cobrados' },
 ];
 
 function auditChecks(text: string): SupervisionAuditCheck[] {
@@ -258,7 +262,10 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
           noData: /Ning[uú]n dato disponible/i.test(text),
         },
       };
-    case 'AUDITORIA_FORMULARIO':
+    case 'AUDITORIA_FORMULARIO': {
+      const activity = text.match(
+        /Ent\s+(\d+)\s*,?\s*Sal\s+(\d+)\s*,?\s*Des\s+(\d+)\s*,?\s*Occ\s+([\d.,]+)%/i,
+      );
       return {
         audit: {
           controls: checks.length,
@@ -266,7 +273,14 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
           notCompleted: checks.filter((check) => check.done === false).length,
           withoutAnswer: checks.filter((check) => check.done === null).length,
         },
+        auditActivity: {
+          entries: numberUs(activity?.[1]),
+          departures: numberUs(activity?.[2]),
+          breakfasts: numberUs(activity?.[3]),
+          occupancyPct: numberUs(activity?.[4]),
+        },
       };
+    }
     default:
       return {};
   }

@@ -6,6 +6,11 @@ function source(path: string) {
 }
 
 describe('guardas de zona horaria en superficies operativas', () => {
+  it('la configuración de servidor no puede desviarse de America/Santiago', () => {
+    const env = source('src/lib/env.ts');
+    expect(env).toContain("HOTEL_TIMEZONE: z.literal('America/Santiago').default('America/Santiago')");
+  });
+
   it('las fechas calendario de turnos no se formatean como instantes de Santiago', () => {
     const shiftPage = source('src/app/(app)/turno/page.tsx');
     const adminPage = source('src/app/(app)/admin/turnos/page.tsx');

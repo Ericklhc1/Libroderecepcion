@@ -3,6 +3,7 @@ import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
 import { BookOpen, LogOut, Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
+import { AlarmOverlay } from '@/components/layout/alarm-overlay';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
 import { prisma } from '@/lib/prisma';
@@ -167,6 +168,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       <MobileNav items={items} badges={badges} />
+      <AlarmOverlay initialSnapshot={notificationFeed} />
       {canUseFronti(user, frontiConfig.enabled) &&
       (!user.roleOperational || user.isSystemAdmin) ? (
         <ReceptionAssistant />

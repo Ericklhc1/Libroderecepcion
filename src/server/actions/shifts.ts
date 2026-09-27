@@ -20,6 +20,7 @@ import {
   addShiftMember,
   cancelHandoverPreparation,
   closeShift,
+  confirmHandoverReviewStep,
   endShiftParticipation,
   getShiftById,
   openShift,
@@ -270,6 +271,36 @@ export async function prepareHandoverAction(
       });
       throw error;
     }
+  });
+}
+
+const handoverReviewSchema = z.object({
+  handoverId: z.string().min(1),
+  step: z.enum(['PENDINGS', 'FINAL']),
+  urgentAcknowledged: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true' || value === 'on'),
+});
+
+export async function confirmHandoverReviewStepAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.handover');
+    const input = parseOrThrow(handoverReviewSchema, formDataToObject(formData));
+    const updated = await confirmHandoverReviewStep(user, input);
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
+    revalidatePath('/turno');
+    return {
+      ok: true as const,
+      message:
+        input.step === 'PENDINGS'
+          ? 'Pendientes revisados. Continúa con la revisión final.'
+          : 'Revisión final confirmada. La entrega ya puede enviarse.',
+      id: updated.id,
+    };
   });
 }
 

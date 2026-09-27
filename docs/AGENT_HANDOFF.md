@@ -1,5 +1,16 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.15.2 · hotfix cron Hobby
+
+- El deploy de 1.15.1 fue rechazado por Vercel porque `*/5 * * * *` no es
+  válido en Hobby.
+- El cron de outbox pasa a una ejecución diaria (`5 10 * * *` UTC).
+- Cada envío operativo intenta además rescatar hasta 3 correos vencidos de la
+  outbox, por lo que los fallos transitorios pueden recuperarse durante la
+  actividad normal sin esperar al cron.
+- La operación nunca queda bloqueada por SMTP.
+
+
 ## Actualización 27/09/2026 · Libro 1.15.1 · respaldo operativo por correo
 
 - Entrega de turno: copia automática a eherrera@hoteleshw.com + recepcion@hoteleshw.com.

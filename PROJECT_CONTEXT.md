@@ -27,7 +27,8 @@ No cambiar de stack. No reconstruir. No crear otro proyecto.
 - Sólo puede existir **una emergencia activa**. `Shift.emergency` conserva el
   antecedente histórico; `emergencyReleasedAt` indica que la excepción ya fue
   regularizada. Al cerrar el turno origen, el turno vigente continúa normal y
-  el cupo queda libre.
+  el cupo queda libre. Si el propio turno de emergencia cierra antes, también
+  libera la excepción sin borrar su antecedente.
 - Una entrega tardía posterior a una emergencia se recibe y enlaza al turno que
   ya está activo, evitando que termine asociada por error al turno siguiente.
 - Supervisión consolida por fecha: tipos distintos se combinan; una versión

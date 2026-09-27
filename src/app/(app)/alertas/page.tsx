@@ -220,7 +220,7 @@ export default async function AlertsPage({
                         href={`/libro/${alert.entry.id}`}
                         className="font-medium text-petrol-600 hover:underline"
                       >
-                        Registro #{alert.entry.seq}
+                        Registro #{alert.entry.humanId}
                       </Link>
                     ) : null}
                     {alert.task ? (
@@ -228,7 +228,7 @@ export default async function AlertsPage({
                         href={`/tareas/${alert.task.id}`}
                         className="font-medium text-petrol-600 hover:underline"
                       >
-                        Tarea T#{alert.task.seq}
+                        Tarea #{alert.task.humanId}
                       </Link>
                     ) : null}
                     {alert.handover ? (

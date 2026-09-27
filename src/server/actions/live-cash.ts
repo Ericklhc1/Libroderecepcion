@@ -416,6 +416,7 @@ export async function markCashMovementAsRegularizationAction(
     const input = parseOrThrow(regularizeExistingSchema, formDataToObject(formData));
 
     await markCashMovementAsRegularization(user, input);
+    await tryDeliverOperationalMail(`cash-movement-regularized:${input.movementId}`);
 
     revalidatePath('/caja');
     revalidatePath('/libro');

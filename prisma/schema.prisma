@@ -812,6 +812,7 @@ model SupervisionShift {
 /// Copia inalterable de lo existente al entregar el turno de Supervisión.
 model SupervisionShiftHandover {
   id                 String           @id @default(cuid())
+  humanId            Int              @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   supervisionShiftId String           @unique
   supervisionShift   SupervisionShift @relation(fields: [supervisionShiftId], references: [id])
   issuedById         String
@@ -1119,6 +1120,7 @@ model FollowUp {
 
 model Alert {
   id           String      @id @default(cuid())
+  humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   type         AlertType
   level        AlertLevel  @default(ATENCION)
   title        String

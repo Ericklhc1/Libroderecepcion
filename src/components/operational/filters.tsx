@@ -47,7 +47,6 @@ export function Filters({
   options: { departments: Option[]; users: Option[]; shifts?: Option[] };
   extraHidden?: Record<string, string>;
 }) {
-  const has = (field: FilterField) => fields.includes(field);
   const activeCount = fields.filter((field) => values[field]).length;
   const secondary = fields.filter((field) => !PRIMARY_FIELDS.has(field));
 

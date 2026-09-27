@@ -100,6 +100,7 @@ describe('visibilidad, incorporación y emergencia única de turnos', () => {
   it('al cerrarse el turno origen la emergencia se regulariza sin borrar su historia', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente regulariza' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante regulariza' });
+    const relevoPosterior = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Relevo posterior' });
 
     const source = await openShift(saliente, { type: ShiftType.DIA });
     const emergency = await openShift(entrante, {
@@ -139,6 +140,27 @@ describe('visibilidad, incorporación y emergencia única de turnos', () => {
         },
       }),
     ).toBe(0);
+
+    // El "cupo" de emergencia quedó libre: si más tarde el turno vigente sufre
+    // otra contingencia real, puede abrirse una nueva excepción independiente.
+    const nextEmergency = await openShift(relevoPosterior, {
+      type: ShiftType.DIA,
+      continuity: true,
+      emergencyReason: 'FALLA_TECNICA_CIERRE',
+      emergencyAccepted: true,
+    });
+    expect(nextEmergency.shift.emergency).toBe(true);
+    expect(nextEmergency.shift.emergencyReleasedAt).toBeNull();
+    expect(nextEmergency.shift.emergencySourceShiftId).toBe(emergency.shift.id);
+    expect(
+      await prisma.shift.count({
+        where: {
+          emergency: true,
+          emergencyReleasedAt: null,
+          status: { in: ['INICIADO', 'ACTIVO', 'PREPARANDO_ENTREGA', 'ENTREGA_ENVIADA'] },
+        },
+      }),
+    ).toBe(1);
   });
 
   it('la base impide físicamente dos emergencias activas aunque se intente saltar el servicio', async () => {

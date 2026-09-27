@@ -302,6 +302,26 @@ export function EmergencyOpenShiftForm({
   );
 }
 
+/** Permite a un usuario operativo incorporarse por sí mismo al turno que ya está en curso. */
+export function JoinShiftForm({
+  shiftId,
+}: {
+  shiftId: string;
+}) {
+  return (
+    <ActionForm action={addShiftMemberAction} hideSuccess refreshOnSuccess className="space-y-2">
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <input type="hidden" name="userId" value="__SELF__" />
+      <SubmitButton variant="gold" pendingLabel="Sumándote…">
+        SUMARME AL TURNO EN CURSO
+      </SubmitButton>
+      <p className="text-xs leading-5 text-slate-500">
+        No abre un turno nuevo. Te incorpora como apoyo al turno que Recepción ya está operando.
+      </p>
+    </ActionForm>
+  );
+}
+
 /** Suma a otra persona al turno vigente. */
 export function AddShiftMemberForm({
   shiftId,

@@ -11,6 +11,7 @@ type UploadResult = {
   findings?: number;
   warnings?: string[];
   completeness?: { found: number; expected: number } | null;
+  disposition?: 'CREATED' | 'CONSOLIDATED' | 'REPLACED' | 'DUPLICATE';
   error?: string;
 };
 
@@ -48,6 +49,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
           findings?: number;
           warnings?: string[];
           completeness?: { found: number; expected: number } | null;
+          disposition?: 'CREATED' | 'CONSOLIDATED' | 'REPLACED' | 'DUPLICATE';
           error?: string;
         };
         next.push({
@@ -57,6 +59,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
           findings: payload.findings,
           warnings: payload.warnings,
           completeness: payload.completeness,
+          disposition: payload.disposition,
           error: response.ok ? undefined : payload.error ?? 'No se pudo leer el informe.',
         });
       } catch (error) {
@@ -79,10 +82,32 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
       <div className="rounded-xl bg-petrol-50 px-3 py-3 text-sm text-petrol-900 ring-1 ring-petrol-100">
         <div className="flex gap-2">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-700" aria-hidden="true" />
-          <p>
-            Los PDF se leen uno por uno y se descartan inmediatamente. El Libro conserva sólo los datos
-            normalizados que alimentan Supervisión y el cierre del turno; no conserva el archivo ni su texto completo.
-          </p>
+          <div>
+            <p>
+              Los PDF se leen uno por uno y se descartan inmediatamente. El Libro conserva sólo los datos
+              normalizados que alimentan Supervisión y el cierre del turno; no conserva el archivo ni su texto completo.
+            </p>
+            <details className="mt-2">
+              <summary className="cursor-pointer font-medium text-petrol-700">
+                Qué informes cargar y qué pasa si subo una versión nueva
+              </summary>
+              <div className="mt-2 space-y-2 text-xs leading-5 text-slate-700">
+                <p>
+                  Reconocidos: Formulario de auditoría, Cobros, Ventas por canal, Producción por habitación,
+                  Salidas, Revenue, In house, Cargos diarios y Cierre de caja.
+                </p>
+                <p>
+                  Misma fecha + tipos distintos: se consolidan. Misma fecha + mismo tipo actualizado:
+                  la versión nueva reemplaza sólo ese tipo y el consolidado se recalcula. El mismo archivo
+                  exacto no se procesa dos veces.
+                </p>
+                <p>
+                  La fecha del PDF se coteja con la fecha auditada cuando puede reconocerse. Un formato no
+                  reconocido no inventa datos y queda advertido para revisión.
+                </p>
+              </div>
+            </details>
+          </div>
         </div>
       </div>
 
@@ -138,6 +163,17 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
                 {result.ok ? '✓' : '×'} {result.name}
                 {result.label ? ` · ${result.label}` : ''}
               </p>
+              {result.ok && result.disposition ? (
+                <p className="mt-0.5 text-xs font-medium">
+                  {result.disposition === 'CREATED'
+                    ? 'Creó el consolidado de esta fecha.'
+                    : result.disposition === 'CONSOLIDATED'
+                      ? 'Se agregó como informe complementario del mismo día.'
+                      : result.disposition === 'REPLACED'
+                        ? 'Reemplazó la versión anterior de este mismo tipo y recalculó el consolidado.'
+                        : 'Este archivo ya había sido procesado; el consolidado no cambió.'}
+                </p>
+              ) : null}
               {result.ok && result.completeness ? (
                 <p className="mt-0.5 text-xs">
                   Lectura: {result.completeness.found} de {result.completeness.expected} campos/control(es) esperados.

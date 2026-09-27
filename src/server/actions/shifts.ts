@@ -207,7 +207,7 @@ export async function receiveHandoverAction(
       revalidatePath(`/turno/entrega/${input.handoverId}`);
       return {
         ok: true as const,
-        message: handover.toShiftId
+        message: 'toShiftId' in handover && handover.toShiftId
           ? 'Recepción confirmada. La entrega quedó vinculada al turno que ya está en curso.'
           : 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
       };

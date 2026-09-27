@@ -171,6 +171,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           `${label} REGISTRADA`,
           `Referencia: #${created.seq}`,
           `ID: ${created.id}`,
+          `Título: ${created.title}`,
           `Fecha/hora: ${operationalMailTimestamp(created.occurredAt)}`,
           `Registrado por: ${user.name} (ID ${user.id})`,
           `Turno: ${created.shift ? `${created.shift.type} · ${created.shift.id}` : 'sin turno asociado'}`,
@@ -184,8 +185,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           '',
           'Descripción:',
           created.description,
-          ...(created.impact ? ['', 'Impacto:', created.impact] : []),
-          ...(created.immediateAction ? ['', 'Acción inmediata:', created.immediateAction] : []),
+          ...(created.impact ? ['', `Impacto: ${created.impact}`] : []),
+          ...(created.immediateAction ? ['', `Acción inmediata: ${created.immediateAction}`] : []),
           ...(created.tags.length > 0 ? ['', `Etiquetas: ${created.tags.join(', ')}`] : []),
         ].join('\n'),
       });

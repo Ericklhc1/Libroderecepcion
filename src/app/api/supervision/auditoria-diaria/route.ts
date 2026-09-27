@@ -4,6 +4,7 @@ import { RuleError } from '@/server/errors';
 import {
   mergeSupervisionAuditReport,
   parseSupervisionReport,
+  SUPERVISION_AUDIT_PARSER_VERSION,
 } from '@/server/services/supervision-audit-import';
 
 export const runtime = 'nodejs';
@@ -38,11 +39,33 @@ export async function POST(request: Request) {
     }
 
     const businessDate = businessDateFrom(formData.get('businessDate'));
-    const parsed = await parseSupervisionReport(
-      file.name,
-      new Uint8Array(await file.arrayBuffer()),
-    );
-    const saved = await mergeSupervisionAuditReport(user, { businessDate, parsed });
+    const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const parsed = await parseSupervisionReport(file.name, bytes);
+
+    if (parsed.reportedBusinessDate && parsed.reportedBusinessDate !== selectedBusinessDate) {
+      throw new RuleError(
+        `La fecha seleccionada es ${selectedBusinessDate}, pero el informe parece corresponder a ${parsed.reportedBusinessDate}. Corrige la fecha antes de cargarlo.`,
+      );
+    }
+
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const sha256 = Array.from(new Uint8Array(digest))
+      .map((value) => value.toString(16).padStart(2, '0'))
+      .join('');
+
+    const saved = await mergeSupervisionAuditReport(user, {
+      businessDate,
+      parsed,
+      sourceFile: {
+        name: file.name,
+        sha256,
+        size: file.size,
+        parserVersion: SUPERVISION_AUDIT_PARSER_VERSION,
+        reportedBusinessDate: parsed.reportedBusinessDate,
+        completeness: parsed.completeness,
+      },
+    });
 
     return NextResponse.json(
       {

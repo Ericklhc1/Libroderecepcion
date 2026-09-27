@@ -285,12 +285,9 @@ export default async function ShiftPage({
               ) : null}
               {pendingClosureNeedsCash ? (
                 pendingClosureIsStale ? (
-                  <Link
-                    href="/admin/turnos?estado=ENTREGA_ENVIADA"
-                    className="inline-flex items-center rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 ring-1 ring-amber-300 hover:bg-amber-200"
-                  >
-                    Regularizar administrativamente
-                  </Link>
+                  <span className="inline-flex items-center rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 ring-1 ring-amber-300">
+                    Requiere Administrador de sistema
+                  </span>
                 ) : pendingClosure.handoverOut ? (
                   <Link
                     href={`/turno/entrega/${pendingClosure.handoverOut.id}`}

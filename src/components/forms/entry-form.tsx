@@ -81,6 +81,12 @@ export function EntryForm({
         </Field>
       </div>
 
+      {!isIncident ? (
+        <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
+          Una garantía en efectivo recibida se registra en Caja → Nueva garantía. Usa Novedad sólo si existe un hecho operativo adicional que deba quedar informado.
+        </p>
+      ) : null}
+
       <Field label="Título" name="title" required>
         <Input
           name="title"

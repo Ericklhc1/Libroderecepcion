@@ -1723,16 +1723,49 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
     if (shift.handoverOut) {
       const handoverId = shift.handoverOut.id;
 
-      // Antes se borraba el handover y PostgreSQL limpiaba estas relaciones por
-      // cascada. Al conservarlo como ANULADA hay que reproducir esa limpieza
-      // explícitamente para que una futura preparación parta realmente de cero.
+      /*
+       * Cancelar el CIERRE no puede borrar hechos que ya ocurrieron.
+       *
+       * - HandoverItem, CashCount y HandoverElement son estado de preparación:
+       *   se invalidan porque, al volver a operar, deben reconstruirse/recontarse.
+       * - CashTransfer NO se borra. Si el efectivo ya salió físicamente a
+       *   Tesorería, ese hecho y su CashMovement deben sobrevivir al abandono
+       *   del cierre. La siguiente preparación reutiliza el mismo handover y
+       *   vuelve a mostrar esas transferencias.
+       * - Si Caja ya se había cerrado formalmente, reabrir la operación invalida
+       *   ese cierre de Caja. Se marca como reabierto dentro de la misma acción
+       *   y queda auditado; no se exige al recepcionista un permiso técnico
+       *   adicional para deshacer su propio intento de cierre aún no enviado.
+       */
       await tx.handoverItem.deleteMany({ where: { handoverId } });
       await tx.cashCount.deleteMany({ where: { handoverId } });
-      await tx.cashTransfer.deleteMany({ where: { handoverId } });
       await tx.handoverElement.deleteMany({ where: { handoverId } });
       await tx.comment.deleteMany({ where: { handoverId } });
       await tx.task.updateMany({ where: { handoverId }, data: { handoverId: null } });
       await tx.alert.updateMany({ where: { handoverId }, data: { handoverId: null } });
+
+      const reopenedCashRows = await tx.$queryRaw<Array<{ id: string }>>`
+        UPDATE "ShiftCashClosure"
+        SET "reopenedAt" = NOW(),
+            "reopenedById" = ${user.id},
+            "reopenReason" = 'Cancelación del cierre de turno antes del envío'
+        WHERE "shiftId" = ${shift.id}
+          AND "reopenedAt" IS NULL
+        RETURNING "id"
+      `;
+      if (reopenedCashRows.length > 0) {
+        await recordAudit(
+          {
+            entity: 'ShiftCashClosure',
+            entityId: shift.id,
+            action: AuditAction.REABRIR,
+            summary: 'Caja reabierta automáticamente al cancelar el cierre de turno',
+            user,
+            reason: 'El turno volvió a ACTIVO antes de enviar la entrega.',
+          },
+          tx,
+        );
+      }
 
       await tx.shiftHandover.update({
         where: { id: handoverId },
@@ -1754,7 +1787,7 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
           entity: 'ShiftHandover',
           entityId: handoverId,
           action: AuditAction.CAMBIO_ESTADO,
-          summary: 'Entrega de turno anulada durante la preparación',
+          summary: 'Entrega de turno anulada durante la preparación; los hechos financieros ya registrados se conservaron',
           user,
           before: { status: HandoverStatus.BORRADOR },
           after: { status: HandoverStatus.ANULADA },
@@ -1772,7 +1805,7 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
         entity: 'Shift',
         entityId: shift.id,
         action: AuditAction.CAMBIO_ESTADO,
-        summary: 'Preparación de entrega cancelada',
+        summary: 'Preparación de entrega cancelada; el turno volvió a operación activa',
         user,
         before: { status: shift.status },
         after: { status: ShiftStatus.ACTIVO },

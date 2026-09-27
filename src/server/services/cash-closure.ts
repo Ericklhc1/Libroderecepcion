@@ -53,7 +53,6 @@ type CashSnapshot = {
 export type ShiftCashClosure = {
   id: string;
   humanId: number;
-  humanId: number;
   shiftId: string;
   closedById: string;
   closedByName: string;
@@ -65,7 +64,6 @@ export type ShiftCashClosure = {
 
 type ClosureRow = {
   id: string;
-  humanId: number;
   humanId: number;
   shiftId: string;
   closedById: string;

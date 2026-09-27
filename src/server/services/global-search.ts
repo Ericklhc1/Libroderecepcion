@@ -29,6 +29,7 @@ const BASE_TYPES = [
   'OperationalEntry',
   'Task',
   'FollowUp',
+  'Alert',
   'Shift',
   'ShiftHandover',
 ] as const;
@@ -59,6 +60,7 @@ function allowedTypes(user: CurrentUser): string[] {
   ) {
     types.push(
       'SupervisionShift',
+      'SupervisionShiftHandover',
       'Announcement',
       'ChecklistRun',
       'AuditFinding',

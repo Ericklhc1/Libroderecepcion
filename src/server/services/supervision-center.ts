@@ -257,9 +257,30 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
       throw new RuleError('Ese turno de Supervisión ya está cerrado.');
     }
 
+    let handover = await tx.supervisionShiftHandover.findUnique({
+      where: { supervisionShiftId: shift.id },
+      select: { id: true, issuedAt: true },
+    });
+    if (!handover) {
+      const snapshot = await buildSupervisionSnapshot(shift.id, tx);
+      handover = await tx.supervisionShiftHandover.create({
+        data: {
+          supervisionShiftId: shift.id,
+          issuedById: user.id,
+          snapshot,
+        },
+        select: { id: true, issuedAt: true },
+      });
+    }
+
+    const finishedAt = new Date();
     const finished = await tx.supervisionShift.update({
       where: { id: shift.id },
-      data: { status: SupervisionShiftStatus.CERRADO, finishedAt: new Date() },
+      data: {
+        status: SupervisionShiftStatus.CERRADO,
+        finishedAt,
+        deliveredAt: shift.deliveredAt ?? handover.issuedAt,
+      },
     });
     await recordAudit(
       {
@@ -270,6 +291,8 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
         user,
         after: {
           finishedAt: finished.finishedAt,
+          handoverId: handover.id,
+          snapshotEnsured: true,
           continuity: 'Los seguimientos y tareas abiertos permanecen vigentes fuera del turno.',
         },
       },

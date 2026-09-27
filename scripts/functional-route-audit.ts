@@ -28,9 +28,9 @@ const probes: Record<string, Probe> = {
     source: 'OperationalEntry + Task + Alert',
     run: () =>
       combined(
-        prisma.operationalEntry.count({ where: { deletedAt: null }, take: undefined }),
-        prisma.task.count({ where: { deletedAt: null }, take: undefined }),
-        prisma.alert.count({ where: { deletedAt: null }, take: undefined }),
+        prisma.operationalEntry.count({ where: { deletedAt: null } }),
+        prisma.task.count({ where: { deletedAt: null } }),
+        prisma.alert.count({ where: { deletedAt: null } }),
       ),
   },
   '/admin': { source: 'User', run: () => sample(prisma.user.findMany({ take: 3, select: { id: true } })) },

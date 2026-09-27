@@ -59,10 +59,14 @@ export default async function IncidentsPage({
     ...(values.q
       ? {
           OR: [
-            { title: { contains: values.q, mode: 'insensitive' } },
+            ...(/^#?\d+$/.test(values.q) ? [{ humanId: Number(values.q.replace(/^#/, '')) }] : []),
+            { title: { contains: values.q.replace(/^#/, ''), mode: 'insensitive' } },
             { description: { contains: values.q, mode: 'insensitive' } },
             { rootCause: { contains: values.q, mode: 'insensitive' } },
             { resolution: { contains: values.q, mode: 'insensitive' } },
+            { room: { number: { contains: values.q, mode: 'insensitive' } } },
+            { guest: { fullName: { contains: values.q, mode: 'insensitive' } } },
+            { owner: { name: { contains: values.q, mode: 'insensitive' } } },
           ],
         }
       : {}),
@@ -147,6 +151,7 @@ export default async function IncidentsPage({
       <Filters
         action="/incidencias"
         fields={['q', 'estado', 'prioridad', 'area', 'responsable', 'habitacion']}
+        secondaryFields={['prioridad', 'area', 'habitacion']}
         values={values}
         options={{ departments: options.departments, users: options.users }}
         extraHidden={gravedad ? { gravedad } : undefined}
@@ -171,7 +176,7 @@ export default async function IncidentsPage({
                     className="block px-4 py-3 hover:bg-slate-50"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs tabular text-slate-400">#{incident.seq}</span>
+                      <span className="text-xs tabular text-slate-400">#{incident.humanId}</span>
                       {incident.severity ? (
                         <Badge tone={SEVERITY_TONE[incident.severity]}>
                           Gravedad {SEVERITY_LABEL[incident.severity]}

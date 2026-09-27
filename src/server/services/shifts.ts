@@ -329,19 +329,20 @@ export type ShiftDesk = {
 };
 
 export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
-  const [current, awaitingReceipt] = await Promise.all([
+  const [current, mine, awaitingReceipt] = await Promise.all([
+    getCurrentShift(),
     getMyActiveShift(user.id),
     getShiftsAwaitingReceipt(),
   ]);
   const [pending, cashPending] = await Promise.all([
-    getPendingHandover(current?.id ?? null),
-    getPendingCashHandover(current?.id ?? null),
+    getPendingHandover(mine?.id ?? null),
+    getPendingCashHandover(mine?.id ?? null),
   ]);
   const suggestedType = shiftTypeAt();
 
   return {
     current,
-    iAmIn: Boolean(current),
+    iAmIn: Boolean(mine),
     pending,
     cashPending,
     awaitingReceipt,
@@ -434,6 +435,89 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
     reservations: [] as const,
     comments,
   };
+}
+
+async function releaseEmergencyForResolvedSource(
+  tx: Prisma.TransactionClient,
+  sourceShiftId: string,
+  actor: CurrentUser,
+  at: Date,
+) {
+  const emergencies = await tx.shift.findMany({
+    where: {
+      emergency: true,
+      emergencyReleasedAt: null,
+      emergencySourceShiftId: sourceShiftId,
+      archivedAt: null,
+      status: {
+        in: [
+          ShiftStatus.INICIADO,
+          ShiftStatus.ACTIVO,
+          ShiftStatus.PREPARANDO_ENTREGA,
+          ShiftStatus.ENTREGA_ENVIADA,
+        ],
+      },
+    },
+    select: {
+      id: true,
+      humanId: true,
+      assignments: {
+        where: { activatedAt: { not: null }, leftAt: null },
+        select: { userId: true },
+      },
+    },
+  });
+  if (emergencies.length === 0) return;
+
+  const reason = 'El turno saliente que originó la emergencia quedó cerrado formalmente.';
+  await tx.shift.updateMany({
+    where: { id: { in: emergencies.map((shift) => shift.id) } },
+    data: { emergencyReleasedAt: at, emergencyReleaseReason: reason },
+  });
+
+  await tx.alert.updateMany({
+    where: {
+      dedupeKey: `shift-emergency-source:${sourceShiftId}`,
+      status: { not: AlertStatus.RESUELTA },
+    },
+    data: {
+      status: AlertStatus.RESUELTA,
+      resolvedAt: at,
+      resolvedById: actor.id,
+      resolutionNote: reason,
+    },
+  });
+
+  await notify(
+    emergencies.flatMap((shift) =>
+      shift.assignments.map((assignment) => ({
+        userId: assignment.userId,
+        type: NotificationType.ACTUALIZACION_OPERATIVA,
+        title: 'Emergencia de turno regularizada',
+        body:
+          `El turno #${shift.humanId} continúa normalmente: el turno saliente que originó la excepción ya quedó cerrado.`,
+        link: '/turno',
+        entity: 'Shift',
+        entityId: shift.id,
+      })),
+    ),
+    tx,
+  );
+
+  for (const emergency of emergencies) {
+    await recordAudit(
+      {
+        entity: 'Shift',
+        entityId: emergency.id,
+        action: AuditAction.CAMBIO_ESTADO,
+        summary: `Emergencia del turno #${emergency.humanId} regularizada; el turno continúa como operación normal`,
+        user: actor,
+        after: { emergencyReleasedAt: at, emergencyReleaseReason: reason },
+        reason,
+      },
+      tx,
+    );
+  }
 }
 
 /**
@@ -548,6 +632,30 @@ export async function openShift(
       await tx.$queryRaw<Array<{ locked: boolean }>>`
         SELECT pg_advisory_xact_lock(1279873618) IS NULL AS "locked"
       `;
+
+      if (continuityRequested) {
+        const activeEmergency = await tx.shift.findFirst({
+          where: {
+            emergency: true,
+            emergencyReleasedAt: null,
+            archivedAt: null,
+            status: {
+              in: [
+                ShiftStatus.INICIADO,
+                ShiftStatus.ACTIVO,
+                ShiftStatus.PREPARANDO_ENTREGA,
+                ShiftStatus.ENTREGA_ENVIADA,
+              ],
+            },
+          },
+          select: { id: true, humanId: true },
+        });
+        if (activeEmergency) {
+          throw new RuleError(
+            `Ya existe un turno de emergencia abierto (#${activeEmergency.humanId}). Debe regularizarse o cerrarse antes de abrir otra emergencia.`,
+          );
+        }
+      }
 
       const concurrentOutgoing = await tx.shift.findFirst({
         where: {
@@ -1852,6 +1960,7 @@ export async function closeShift(
 
     await endShiftParticipation(tx, shift.id, now);
     await cancelShiftTimers(tx, shift.id, now);
+    await releaseEmergencyForResolvedSource(tx, shift.id, user, now);
 
     await recordAudit(
       {

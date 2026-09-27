@@ -72,6 +72,23 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(cashBox).not.toContain('ReturnCashGuaranteeForm');
   });
 
+  it('el cierre saliente guía una pantalla a la vez y confirma cancelación/envío', () => {
+    const page = readFileSync('src/app/(app)/turno/entrega/[id]/page.tsx', 'utf8');
+    const actions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
+
+    expect(page).toContain('Cierre guiado · paso');
+    expect(page).toContain("query.paso ?? '1'");
+    expect(page).toContain('Caja y custodia');
+    expect(page).toContain('Pendientes');
+    expect(page).toContain('Revisión final');
+    expect(page).toContain('Enviar entrega');
+    expect(page).toContain('SIGUIENTE →');
+    expect(page).toContain('← ANTERIOR');
+    expect(actions).toContain('¿Estás seguro/a de que quieres cancelar el cierre?');
+    expect(actions).toContain('¿Estás seguro/a de que quieres enviar la entrega?');
+    expect(actions).toContain('Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.');
+  });
+
   it('permite tomar la liana antes de abrir el turno siguiente', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',

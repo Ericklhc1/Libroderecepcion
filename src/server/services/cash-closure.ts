@@ -336,7 +336,7 @@ export async function reopenShiftCash(
         `ID turno: ${params.shiftId}`,
         `Caja cerrada originalmente: ${operationalMailTimestamp(closure.closedAt)}`,
         `Caja reabierta: ${operationalMailTimestamp(now)}`,
-        `Reabierta por: ${user.name} (@${user.username})`,
+        `Reabierta por: ${user.name} (ID ${user.id})`,
         `Motivo: ${reason}`,
         'Efecto: el cierre anterior se conserva en auditoría y Caja debe volver a arquearse/cerrarse antes de enviar la entrega.',
       ].join('\n'),

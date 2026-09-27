@@ -94,6 +94,7 @@ export default async function LiveCashPage({
     (item) =>
       (!moneda || item.currency === moneda) &&
       matches([
+        item.humanId,
         item.guestName,
         item.roomNumber,
         item.reference,
@@ -109,6 +110,7 @@ export default async function LiveCashPage({
   const visibleMovements = state.movements;
   const visibleGymPasses = gymSummary.rows.filter((item) =>
     matches([
+      item.humanId,
       item.formattedFolio,
       item.roomNumber,
       item.guestName,
@@ -224,7 +226,7 @@ export default async function LiveCashPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar concepto, referencia, responsable o garantía…"
+        searchPlaceholder="Buscar #ID, habitación, huésped, concepto o responsable…"
         clearHref="/caja"
       >
         <label className="min-w-[10rem]">
@@ -361,7 +363,11 @@ export default async function LiveCashPage({
                     <li key={guarantee.id} className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="font-medium text-petrol-900">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold tabular text-petrol-700">#{guarantee.humanId}</span>
+                            <Chip>Garantía</Chip>
+                          </div>
+                          <p className="mt-1 font-medium text-petrol-900">
                             {guarantee.guestName ?? guarantee.reference ?? 'Garantía sin referencia'}
                             {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                           </p>
@@ -418,7 +424,11 @@ export default async function LiveCashPage({
                     <li key={audit.id} className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="font-medium text-petrol-900">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold tabular text-petrol-700">#{audit.humanId}</span>
+                            <Chip>Arqueo</Chip>
+                          </div>
+                          <p className="mt-1 font-medium text-petrol-900">
                             {audit.currency} · {audit.countedByName}
                           </p>
                           <p className="text-xs text-slate-500">
@@ -505,8 +515,9 @@ export default async function LiveCashPage({
                   <tbody className="divide-y divide-slate-100">
                     {visibleGymPasses.map((pass) => (
                       <tr key={pass.id}>
-                        <td className="px-4 py-2 font-semibold tabular text-petrol-900">
-                          {pass.formattedFolio}
+                        <td className="px-4 py-2">
+                          <span className="font-semibold tabular text-petrol-900">#{pass.humanId}</span>
+                          <span className="ml-2 text-xs tabular text-slate-400">folio {pass.formattedFolio}</span>
                         </td>
                         <td className="px-4 py-2 text-slate-600">
                           {formatCalendarDate(pass.serviceDate)}
@@ -573,6 +584,7 @@ export default async function LiveCashPage({
                           {formatDateTime(movement.createdAt)}
                         </td>
                         <td className="px-4 py-2">
+                          <div className="mb-0.5 text-xs font-semibold tabular text-petrol-700">#{movement.humanId}</div>
                           <span className="font-medium text-petrol-900">
                             {movement.affectsExpected
                               ? MOVEMENT_LABEL[movement.kind] ?? human(movement.kind)

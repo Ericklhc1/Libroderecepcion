@@ -126,6 +126,7 @@ export default async function BookPage({
           'desde',
           'hasta',
         ]}
+        secondaryFields={['tipo', 'prioridad', 'area', 'turno', 'desde', 'hasta']}
         values={filterValues(params)}
         extraHidden={{ clase }}
         options={{ departments: options.departments, users: options.users, shifts }}

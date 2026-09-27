@@ -93,7 +93,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: '¿Cómo cierro y entrego mi turno?',
     steps: [
       'En Mi turno, inicia la preparación de entrega. Desde ese momento tu cuenta queda bloqueada para la operación general.',
-      'Revisa los pendientes reales de Recepción y completa el cierre de Caja.',
+      'Revisa los pendientes operativos vigentes. Todo lo que siga abierto continúa automáticamente entre turnos hasta resolverse; después completa el cierre de Caja.',
       'Prepara y revisa la entrega; agrega sólo las notas manuales que el sistema no pueda conocer.',
       'Envía la entrega y cierra formalmente tu turno.',
       'La entrega cerrada queda entonces disponible para cualquier recepcionista o supervisor autorizado, sin preasignación.',
@@ -131,7 +131,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: '¿Cómo registro o devuelvo una garantía en efectivo?',
     steps: [
       'Entra a Caja.',
-      'Usa «Nueva garantía» para registrar el dinero bajo custodia.',
+      'Usa «Nueva garantía» para registrar el dinero bajo custodia. No lo dupliques como Novedad: la garantía ya conserva su propia trazabilidad entre turnos.',
       'El nombre, habitación o referencia son contexto libre opcional: no necesitas crear una reserva.',
       'Cuando corresponda devolverla, usa la acción de devolución en la misma sección de Caja.',
     ],

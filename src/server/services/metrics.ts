@@ -39,7 +39,7 @@ export async function getMetrics(range: MetricsRange) {
     incidentsByDepartment,
     openTasks,
     liveAlerts,
-    inheritedPendings,
+    openOperationalEntries,
   ] = await Promise.all([
     prisma.task.findMany({
       where: {
@@ -92,12 +92,13 @@ export async function getMetrics(range: MetricsRange) {
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
     prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
-    // Pendientes heredados: abiertos creados en un turno anterior al actual.
+    // La continuidad es inherente: todo registro abierto sigue vigente entre
+    // turnos hasta resolverse o cerrarse. No existe una categoría separada de
+    // «heredados» ni un umbral horario artificial.
     prisma.operationalEntry.count({
       where: {
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
-        occurredAt: { lt: new Date(now.getTime() - 8 * 3600_000) },
       },
     }),
   ]);
@@ -197,7 +198,7 @@ export async function getMetrics(range: MetricsRange) {
       .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
       .slice(0, 12),
     alerts: { live: liveAlerts },
-    inheritedPendings,
+    openOperationalEntries,
   };
 }
 

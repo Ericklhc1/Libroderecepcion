@@ -57,7 +57,7 @@ export default async function MetricsPage({
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
             Del {formatDate(metrics.range.from)} al {formatDate(metrics.range.to)}. Cumplimiento,
-            carga heredada y tiempos de resolución.
+            carga operativa vigente y tiempos de resolución.
           </p>
         </div>
         <nav className="flex gap-2" aria-label="Rango de fechas">
@@ -167,10 +167,10 @@ export default async function MetricsPage({
             hint={`${metrics.shifts.closed} de ${metrics.shifts.total} turnos`}
           />
           <StatTile
-            label="Pendientes heredados"
-            value={metrics.inheritedPendings}
-            hint="Abiertos de turnos anteriores"
-            tone={metrics.inheritedPendings > 5 ? 'alert' : 'neutral'}
+            label="Registros abiertos vigentes"
+            value={metrics.openOperationalEntries}
+            hint="Persisten entre turnos hasta resolverse"
+            tone={metrics.openOperationalEntries > 5 ? 'alert' : 'neutral'}
           />
         </div>
       </section>

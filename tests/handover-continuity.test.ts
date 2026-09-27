@@ -1,7 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EntryStatus, EntryType, Priority, Severity, ShiftType, TaskStatus } from '@prisma/client';
+import { EntryStatus, EntryType, Priority, Severity, ShiftStatus, ShiftType, TaskStatus } from '@prisma/client';
 import {
   ROLE_KEYS,
+  createShift,
   createUser,
   openShiftAs,
   prisma,
@@ -13,7 +14,7 @@ import { buildHandoverSnapshot } from '@/server/services/handover-snapshot';
 import { createEntry, changeEntryStatus } from '@/server/services/entries';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
-import { receiveHandover } from '@/server/services/shifts';
+import { getShiftBriefing, receiveHandover } from '@/server/services/shifts';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 describe('continuidad de la entrega de turno', () => {
@@ -61,6 +62,37 @@ describe('continuidad de la entrega de turno', () => {
 
     expect(resolved).toBeDefined();
     expect(resolved?.detail).toContain('Tarjeta recibida en recepción');
+  });
+
+  it('un registro abierto continúa automáticamente aunque haya nacido en otro turno', async () => {
+    const current = await abrirTurno();
+    const previous = await createShift({
+      type: ShiftType.NOCHE,
+      status: ShiftStatus.CERRADO,
+      dayOffset: -1,
+    });
+    const entry = await createEntry(user, {
+      type: EntryType.NOVEDAD,
+      title: 'Pendiente que continúa',
+      description: 'Debe seguir visible hasta que alguien lo resuelva.',
+      priority: Priority.MEDIA,
+      tags: [],
+      requiresFollowUp: false,
+    });
+
+    await prisma.operationalEntry.update({
+      where: { id: entry.id },
+      data: {
+        shiftId: previous.id,
+        occurredAt: new Date(Date.now() - 12 * 60 * 60_000),
+      },
+    });
+
+    const briefing = await getShiftBriefing(current);
+    expect(briefing.openEntries.some((row) => row.id === entry.id)).toBe(true);
+
+    const snapshot = await buildHandoverSnapshot(new Date(), { shiftId: current.id });
+    expect(snapshot.some((item) => item.refId === entry.id)).toBe(true);
   });
 
   it('conserva tarea y seguimiento ligados al mismo caso con contexto explícito', async () => {

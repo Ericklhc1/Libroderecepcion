@@ -28,7 +28,7 @@ export async function QuickActions({
       {can('entry.create') ? (
         <Dialog
           title="Nueva novedad"
-          description="Registra lo ocurrido. Habitación, huésped y reserva son contexto opcional: agrégalos sólo cuando aporten información útil."
+          description="Registra lo ocurrido. Una garantía recibida no es una novedad: se registra en Caja → Nueva garantía. Usa Novedad sólo para hechos operativos que deban continuar entre turnos."
           triggerVariant="gold"
           triggerSize={compact ? 'sm' : 'md'}
           trigger={

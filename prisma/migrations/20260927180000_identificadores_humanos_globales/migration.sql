@@ -19,11 +19,15 @@ ALTER TABLE "ShiftHandover"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
 ALTER TABLE "SupervisionShift"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
+ALTER TABLE "SupervisionShiftHandover"
+  ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
 ALTER TABLE "OperationalEntry"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
 ALTER TABLE "Task"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
 ALTER TABLE "FollowUp"
+  ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
+ALTER TABLE "Alert"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
 ALTER TABLE "Guarantee"
   ADD COLUMN "humanId" INTEGER NOT NULL DEFAULT nextval('human_operational_id_seq'::regclass);
@@ -55,9 +59,11 @@ ALTER TABLE "ShiftCashClosure"
 CREATE UNIQUE INDEX "Shift_humanId_key" ON "Shift"("humanId");
 CREATE UNIQUE INDEX "ShiftHandover_humanId_key" ON "ShiftHandover"("humanId");
 CREATE UNIQUE INDEX "SupervisionShift_humanId_key" ON "SupervisionShift"("humanId");
+CREATE UNIQUE INDEX "SupervisionShiftHandover_humanId_key" ON "SupervisionShiftHandover"("humanId");
 CREATE UNIQUE INDEX "OperationalEntry_humanId_key" ON "OperationalEntry"("humanId");
 CREATE UNIQUE INDEX "Task_humanId_key" ON "Task"("humanId");
 CREATE UNIQUE INDEX "FollowUp_humanId_key" ON "FollowUp"("humanId");
+CREATE UNIQUE INDEX "Alert_humanId_key" ON "Alert"("humanId");
 CREATE UNIQUE INDEX "Guarantee_humanId_key" ON "Guarantee"("humanId");
 CREATE UNIQUE INDEX "CashCount_humanId_key" ON "CashCount"("humanId");
 CREATE UNIQUE INDEX "CashTransfer_humanId_key" ON "CashTransfer"("humanId");
@@ -130,6 +136,17 @@ WHERE f."deletedAt" IS NULL
 
 UNION ALL
 SELECT
+  a."humanId", 'Alert', a."id", 'Alerta', a."title", a."message",
+  a."status"::text, NULL::text, g."fullName", COALESCE(r."name", c."name"),
+  a."type"::text, a."createdAt", '/alertas?q=%23' || a."humanId"::text,
+  NULL::text, NULL::text
+FROM "Alert" a
+LEFT JOIN "GuestReference" g ON g."id" = a."guestId"
+LEFT JOIN "User" r ON r."id" = a."resolvedById"
+LEFT JOIN "User" c ON c."id" = a."createdById"
+
+UNION ALL
+SELECT
   s."humanId", 'Shift', s."id", 'Turno',
   'Turno ' || s."type"::text || ' ' || to_char(s."date", 'DD/MM/YYYY'),
   s."notes", s."status"::text, NULL::text, NULL::text, u."name",
@@ -146,6 +163,16 @@ SELECT
   NULL::text, NULL::text
 FROM "ShiftHandover" h
 LEFT JOIN "User" u ON u."id" = h."issuedById"
+
+UNION ALL
+SELECT
+  sh."humanId", 'SupervisionShiftHandover', sh."id", 'Entrega de Supervisión',
+  'Entrega de Supervisión', sh."note",
+  CASE WHEN sh."receivedAt" IS NULL THEN 'PENDIENTE' ELSE 'RECIBIDA' END,
+  NULL::text, NULL::text, u."name", 'SUPERVISION',
+  sh."issuedAt", '/supervision', NULL::text, NULL::text
+FROM "SupervisionShiftHandover" sh
+LEFT JOIN "User" u ON u."id" = sh."issuedById"
 
 UNION ALL
 SELECT

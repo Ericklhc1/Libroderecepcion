@@ -4,7 +4,7 @@ import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
-import { formatGymFolio, listGymPasses } from './gym-pass';
+import { listGymPasses } from './gym-pass';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -76,7 +76,7 @@ export async function buildSupervisorReport(
       ],
       lines: summary.rows.map(
         (row) =>
-          `${formatCalendarDate(row.serviceDate)} | ${formatGymFolio(row.folio)} | ${row.status} | Hab. ${row.roomNumber} | ${row.guestName} | ${row.receptionistName}`,
+          `${formatCalendarDate(row.serviceDate)} | ${row.formattedFolio} | ${row.status} | Hab. ${row.roomNumber} | ${row.guestName} | ${row.receptionistName}`,
       ),
     };
   }

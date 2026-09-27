@@ -87,10 +87,10 @@ export default async function DeletedPage({
       .toLowerCase()
       .includes(q);
   const visibleEntries = entries.filter((entry) =>
-    textMatches([entry.seq, entry.title, entry.deletionReason, entry.type]),
+    textMatches([entry.humanId, entry.title, entry.deletionReason, entry.type]),
   );
   const visibleTasks = tasks.filter((task) =>
-    textMatches([task.seq, task.title, task.deletionReason]),
+    textMatches([task.humanId, task.title, task.deletionReason]),
   );
   const visibleFollowUps = followUps.filter((followUp) =>
     textMatches([followUp.action, followUp.deletionReason]),
@@ -170,7 +170,7 @@ export default async function DeletedPage({
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs tabular text-slate-400">#{entry.seq}</span>
+                    <span className="text-xs tabular text-slate-400">#{entry.humanId}</span>
                     <Chip>{ENTRY_TYPE_LABEL[entry.type]}</Chip>
                   </div>
                   <p className="mt-1 font-medium text-petrol-900">{entry.title}</p>
@@ -199,7 +199,7 @@ export default async function DeletedPage({
               >
                 <div className="min-w-0">
                   <p className="font-medium text-petrol-900">
-                    <span className="mr-2 text-xs tabular text-slate-400">T#{task.seq}</span>
+                    <span className="mr-2 text-xs tabular text-slate-400">#{task.humanId}</span>
                     {task.title}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">

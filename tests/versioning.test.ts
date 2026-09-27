@@ -22,4 +22,13 @@ describe('versionado de Production', () => {
     };
     expect(config.git?.deploymentEnabled).toEqual({ '**': false, main: true });
   });
+
+  it('el cron de respaldo por correo respeta la frecuencia diaria de Vercel Hobby', () => {
+    const config = JSON.parse(readFileSync('vercel.json', 'utf-8')) as {
+      crons?: Array<{ path: string; schedule: string }>;
+    };
+    expect(
+      config.crons?.find((cron) => cron.path === '/api/cron/operational-mail')?.schedule,
+    ).toBe('5 10 * * *');
+  });
 });

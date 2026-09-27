@@ -158,7 +158,9 @@ conserva su modelo y sus reglas.
 - Los informes de un mismo día se fusionan en un único
   `SupervisionAuditImport` del turno de Supervisión activo.
 - Ese resumen forma parte de la copia inalterable del cierre/entrega del turno
-  de Supervisión, aun cuando los archivos fuente ya no existan.
+  de Supervisión, aun cuando los archivos fuente ya no existan. Si el Supervisor
+  pulsa «Finalizar turno» sin haber usado «Entregar», el cierre crea el snapshot
+  automáticamente antes de marcar el turno como cerrado.
 - El inventario de llaves sigue fuera del cierre de Recepción y no se incorpora
   a esta carga documental.
 - Nueva migración:

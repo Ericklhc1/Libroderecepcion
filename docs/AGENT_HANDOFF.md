@@ -1,5 +1,14 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.14.9
+
+- Cierre saliente guiado: Caja/custodia → pendientes → revisión → envío → cierre formal.
+- Antes del envío se puede volver atrás o cancelar con confirmación explícita.
+- Cancelar invalida la preparación, pero conserva transferencias y movimientos financieros reales.
+- Si Caja ya estaba cerrada, la cancelación la reabre al devolver el turno a ACTIVO.
+- El inventario de llaves permanece independiente del cierre.
+
+
 ## Actualización 27/09/2026 · turno de emergencia controlado
 
 - Release objetivo: **v1.14.8**.

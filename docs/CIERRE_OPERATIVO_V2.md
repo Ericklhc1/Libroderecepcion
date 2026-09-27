@@ -60,7 +60,9 @@ datos lo impide además del servicio.
 el turno saliente que originó la contingencia queda formalmente cerrado, el
 turno actual **no se recrea ni cambia de ID**: continúa operando normalmente,
 se registra `emergencyReleasedAt`, se libera el cupo de emergencia y se
-resuelve la alerta crítica. El antecedente permanece para auditoría.
+resuelve la alerta crítica. La misma liberación ocurre si el propio turno de
+emergencia llega a cierre formal antes que su origen. El antecedente permanece
+para auditoría.
 
 Si el cierre del saliente produce una entrega tardía, quien ya está operando en
 el turno nacido por emergencia debe recibirla desde ese mismo turno. Al

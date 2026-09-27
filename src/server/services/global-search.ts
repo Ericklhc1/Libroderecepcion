@@ -23,19 +23,23 @@ export type GlobalSearchResult = {
 type SearchRow = GlobalSearchResult & {
   targetUserId: string | null;
   scope: string | null;
+  createdByUserId: string | null;
 };
 
 const BASE_TYPES = [
   'OperationalEntry',
   'Task',
   'FollowUp',
-  'Alert',
   'Shift',
   'ShiftHandover',
 ] as const;
 
 function allowedTypes(user: CurrentUser): string[] {
   const types = [...BASE_TYPES] as string[];
+
+  if (hasPermission(user, 'alert.manage')) {
+    types.push('Alert');
+  }
 
   if (hasPermission(user, 'cash.view')) {
     types.push(
@@ -130,7 +134,8 @@ export async function searchOperationalRecords(
       "createdAt",
       "href",
       "targetUserId",
-      "scope"
+      "scope",
+      "createdByUserId"
     FROM "HumanOperationalRecord"
     WHERE "entityType" IN (${Prisma.join(types)})
       AND ${Prisma.join(termFilters, ' AND ')}
@@ -151,14 +156,21 @@ export async function searchOperationalRecords(
   `);
 
   const canManageAnnouncements = hasPermission(user, 'announcement.manage');
+  const canSeeSupervisionFollowUps = hasPermission(user, 'supervision.followup.manage');
 
   return rows
-    .filter(
-      (row) =>
-        row.entityType !== 'Announcement' ||
-        canManageAnnouncements ||
-        row.scope === 'TODOS' ||
-        row.targetUserId === user.id,
-    )
-    .map(({ targetUserId: _targetUserId, scope: _scope, ...row }) => row);
+    .filter((row) => {
+      if (row.entityType === 'Announcement') {
+        return canManageAnnouncements || row.scope === 'TODOS' || row.targetUserId === user.id;
+      }
+      if (row.entityType === 'FollowUp') {
+        if (row.scope === 'PRIVADO') return row.createdByUserId === user.id;
+        if (row.scope === 'SUPERVISION') return canSeeSupervisionFollowUps;
+        if (row.scope === 'OPERATIVO') {
+          return canSeeSupervisionFollowUps || row.targetUserId === user.id || row.createdByUserId === user.id;
+        }
+      }
+      return true;
+    })
+    .map(({ targetUserId: _targetUserId, scope: _scope, createdByUserId: _createdByUserId, ...row }) => row);
 }

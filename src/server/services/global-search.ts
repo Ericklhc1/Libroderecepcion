@@ -163,6 +163,17 @@ export async function searchOperationalRecords(
       if (row.entityType === 'Announcement') {
         return canManageAnnouncements || row.scope === 'TODOS' || row.targetUserId === user.id;
       }
+      if (row.entityType === 'Alert') {
+        if (row.scope?.startsWith('shift-validation:') && !hasPermission(user, 'shift.manage')) {
+          return false;
+        }
+        if (
+          (row.scope?.startsWith('cash-transfer:') || row.scope?.startsWith('cash-manual:')) &&
+          !hasPermission(user, 'cash.approve')
+        ) {
+          return false;
+        }
+      }
       if (row.entityType === 'FollowUp') {
         if (row.scope === 'PRIVADO') return row.createdByUserId === user.id;
         if (row.scope === 'SUPERVISION') return canSeeSupervisionFollowUps;

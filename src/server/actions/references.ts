@@ -21,6 +21,11 @@ import {
 } from '@/server/services/guarantees';
 import { GUARANTEE_STATE_LABELS } from '@/domain/guarantees';
 import { hotelDateKey } from '@/domain/time';
+import {
+  queueAndFlushOperationalMail,
+  SUPERVISOR_BACKUP_MAIL,
+} from '@/server/services/operational-mail';
+import { formatDateTime } from '@/lib/format';
 
 /**
  * Referencias ligeras de huésped y reserva.
@@ -227,6 +232,44 @@ export async function createGuaranteeAction(
     const input = parseOrThrow(guaranteeCreateSchema, formDataToObject(formData));
     const user = await requirePermission('cash.guarantee_in');
     const guarantee = await createGuarantee(user, input);
+    const created = await prisma.guarantee.findUnique({
+      where: { id: guarantee.id },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        amount: true,
+        currency: true,
+        guestName: true,
+        roomNumber: true,
+        reference: true,
+        dueAt: true,
+        notes: true,
+        createdAt: true,
+      },
+    });
+    if (created) {
+      await queueAndFlushOperationalMail({
+        eventKey: `guarantee-created:${created.id}`,
+        to: SUPERVISOR_BACKUP_MAIL,
+        subject: `[Libro Operativo] Garantía registrada · ${created.currency} ${Number(created.amount).toLocaleString('es-CL')}`,
+        body: [
+          'Operación: Registro de garantía',
+          `Tipo: ${created.kind}`,
+          `Estado: ${created.state}`,
+          `Divisa: ${created.currency}`,
+          `Monto: ${Number(created.amount).toLocaleString('es-CL')}`,
+          `Huésped: ${created.guestName ?? 'Sin huésped'}`,
+          `Habitación: ${created.roomNumber ?? 'Sin habitación'}`,
+          `Referencia: ${created.reference ?? 'Sin referencia'}`,
+          `Vencimiento/objetivo: ${created.dueAt ? formatDateTime(created.dueAt) : 'Sin fecha'}`,
+          `Observaciones: ${created.notes ?? 'Sin observaciones'}`,
+          `Registrado por: ${user.name}`,
+          `Fecha/hora: ${formatDateTime(created.createdAt)}`,
+          `ID garantía: ${created.id}`,
+        ].join('\n'),
+      });
+    }
     refreshGuarantees();
     return {
       ok: true as const,
@@ -243,7 +286,53 @@ export async function changeGuaranteeStateAction(
   return runAction(async () => {
     const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeStateSchema, formDataToObject(formData));
+    const before = await prisma.guarantee.findUnique({
+      where: { id: input.id },
+      select: { state: true },
+    });
     await changeGuaranteeState(user, input);
+    const updated = await prisma.guarantee.findUnique({
+      where: { id: input.id },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        amount: true,
+        appliedAmount: true,
+        penaltyAmount: true,
+        currency: true,
+        guestName: true,
+        roomNumber: true,
+        reference: true,
+        notes: true,
+        returnedAt: true,
+        updatedAt: true,
+      },
+    });
+    if (updated) {
+      await queueAndFlushOperationalMail({
+        eventKey: `guarantee-state:${updated.id}:${updated.state}:${updated.updatedAt.toISOString()}`,
+        to: SUPERVISOR_BACKUP_MAIL,
+        subject: `[Libro Operativo] Garantía · ${before?.state ?? '—'} → ${updated.state}`,
+        body: [
+          'Operación: Cambio de estado de garantía',
+          `Estado anterior: ${before?.state ?? 'No disponible'}`,
+          `Estado nuevo: ${updated.state}`,
+          `Tipo: ${updated.kind}`,
+          `Divisa: ${updated.currency}`,
+          `Monto original: ${Number(updated.amount).toLocaleString('es-CL')}`,
+          `Monto aplicado: ${Number(updated.appliedAmount ?? 0).toLocaleString('es-CL')}`,
+          `Multa: ${Number(updated.penaltyAmount ?? 0).toLocaleString('es-CL')}`,
+          `Huésped: ${updated.guestName ?? 'Sin huésped'}`,
+          `Habitación: ${updated.roomNumber ?? 'Sin habitación'}`,
+          `Referencia: ${updated.reference ?? 'Sin referencia'}`,
+          `Observaciones: ${updated.notes ?? 'Sin observaciones'}`,
+          `Realizado por: ${user.name}`,
+          `Fecha/hora: ${formatDateTime(updated.returnedAt ?? updated.updatedAt)}`,
+          `ID garantía: ${updated.id}`,
+        ].join('\n'),
+      });
+    }
     refreshGuarantees();
     return {
       ok: true as const,

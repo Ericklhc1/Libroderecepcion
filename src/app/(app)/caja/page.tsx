@@ -228,6 +228,7 @@ export default async function LiveCashPage({
         searchValue={q}
         searchPlaceholder="Buscar concepto, referencia, responsable o garantía…"
         clearHref="/caja"
+        collapseChildren
       >
         <label className="min-w-[10rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Moneda</span>

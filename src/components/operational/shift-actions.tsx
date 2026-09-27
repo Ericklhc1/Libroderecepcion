@@ -483,8 +483,15 @@ export function CloseShiftForm({
   guided?: boolean;
   guidanceSession?: number;
 }) {
+  const router = useRouter();
+
   return (
-    <ActionForm action={closeShiftAction} hideSuccess refreshOnSuccess className="space-y-0">
+    <ActionForm
+      action={closeShiftAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={() => router.push('/turno')}
+    >
       <input type="hidden" name="shiftId" value={shiftId} />
       <GuidedShiftSubmit
         guided={guided}

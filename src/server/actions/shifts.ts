@@ -29,6 +29,7 @@ import {
 } from '@/server/services/shifts';
 import {
   ARCHIVABLE_SHIFT_STATUSES,
+  SHIFT_EMERGENCY_REASON_KEYS,
   SHIFT_STATUS_LABEL,
   SHIFT_TYPE_LABEL,
   SHIFT_WINDOW_LABEL,
@@ -56,17 +57,39 @@ function refresh(shiftId?: string) {
 
 const shiftIdSchema = z.object({ shiftId: z.string().min(1) });
 
-const openShiftSchema = z.object({
-  type: z
-    .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
-    .optional()
-    .transform((value) => (value === '' || value === undefined ? null : value)),
-  continuity: z
-    .string()
-    .optional()
-    .transform((value) => value === '1' || value === 'true'),
-  continuityReason: zOptionalString,
-});
+const openShiftSchema = z
+  .object({
+    type: z
+      .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
+      .optional()
+      .transform((value) => (value === '' || value === undefined ? null : value)),
+    continuity: z
+      .string()
+      .optional()
+      .transform((value) => value === '1' || value === 'true'),
+    emergencyReason: z.enum(SHIFT_EMERGENCY_REASON_KEYS).optional(),
+    emergencyAccepted: z
+      .string()
+      .optional()
+      .transform((value) => value === '1' || value === 'true' || value === 'on'),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.continuity) return;
+    if (!data.emergencyReason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['emergencyReason'],
+        message: 'Selecciona una razón válida para abrir un turno de emergencia.',
+      });
+    }
+    if (!data.emergencyAccepted) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['emergencyAccepted'],
+        message: 'Debes aceptar expresamente las condiciones de apertura de emergencia.',
+      });
+    }
+  });
 
 export async function openShiftAction(
   _state: ActionState | null,
@@ -75,16 +98,17 @@ export async function openShiftAction(
   return runAction(async () => {
     const user = await requirePermission('shift.start');
     const input = parseOrThrow(openShiftSchema, formDataToObject(formData));
-    const contingency = input.continuity === true;
+    const emergency = input.continuity === true;
     const metric = startOperationalMetric({
-      startedEventType: contingency ? 'SHIFT_CONTINGENCY_STARTED' : 'SHIFT_START_REQUESTED',
-      completedEventType: contingency ? 'SHIFT_CONTINGENCY_COMPLETED' : 'SHIFT_STARTED',
-      failedEventType: contingency ? 'SHIFT_CONTINGENCY_FAILED' : 'SHIFT_START_FAILED',
+      startedEventType: emergency ? 'SHIFT_CONTINGENCY_STARTED' : 'SHIFT_START_REQUESTED',
+      completedEventType: emergency ? 'SHIFT_CONTINGENCY_COMPLETED' : 'SHIFT_STARTED',
+      failedEventType: emergency ? 'SHIFT_CONTINGENCY_FAILED' : 'SHIFT_START_FAILED',
       userId: user.id,
       entityType: 'Shift',
       metadata: {
         shiftType: input.type ?? 'AUTO',
-        mode: contingency ? 'CONTINGENCIA' : 'NORMAL',
+        mode: emergency ? 'EMERGENCIA' : 'NORMAL',
+        emergencyReason: input.emergencyReason ?? null,
       },
     });
 
@@ -92,7 +116,8 @@ export async function openShiftAction(
       const { shift } = await openShift(user, {
         type: input.type,
         continuity: input.continuity,
-        continuityReason: input.continuityReason,
+        emergencyReason: input.emergencyReason ?? null,
+        emergencyAccepted: input.emergencyAccepted,
       });
       finishOperationalMetric(metric, {
         shiftId: shift.id,
@@ -104,7 +129,7 @@ export async function openShiftAction(
       return {
         ok: true as const,
         message: input.continuity
-          ? `Continuidad operativa activada. Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} ya está activo; el cierre anterior quedó alertado para Supervisión.`
+          ? `Turno de emergencia abierto. Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo; el cierre anterior permanece crítico y bajo seguimiento de Supervisión.`
           : shift.status === ShiftStatus.ACTIVO
             ? `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} está activo (${SHIFT_WINDOW_LABEL[shift.type]}).`
             : `Tu turno de ${SHIFT_TYPE_LABEL[shift.type]} quedó abierto y espera la recepción del relevo (${SHIFT_WINDOW_LABEL[shift.type]}).`,

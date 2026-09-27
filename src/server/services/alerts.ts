@@ -17,8 +17,8 @@ import {
 } from '@/server/services/operational-mail';
 
 export const alertInclude = {
-  entry: { select: { id: true, seq: true, title: true, type: true } },
-  task: { select: { id: true, seq: true, title: true } },
+  entry: { select: { id: true, humanId: true, title: true, type: true } },
+  task: { select: { id: true, humanId: true, title: true } },
   followUp: { select: { id: true, action: true } },
   handover: { select: { id: true, fromShift: { select: { type: true, date: true } } } },
   department: { select: { id: true, name: true } },
@@ -67,7 +67,7 @@ export async function createManualAlert(
     entity: 'Alert',
     entityId: created.id,
     action: AuditAction.CREAR,
-    summary: `Alerta manual (${ALERT_TYPE_LABEL[created.type]}): ${created.title}`,
+    summary: `Alerta #${created.humanId} manual (${ALERT_TYPE_LABEL[created.type]}): ${created.title}`,
     user,
     after: { type: created.type, level: created.level, title: created.title },
   });
@@ -253,7 +253,7 @@ export async function acknowledgeAlert(user: CurrentUser, id: string) {
     entity: 'Alert',
     entityId: id,
     action: AuditAction.CAMBIO_ESTADO,
-    summary: `Alerta marcada como vista: ${alert.title}`,
+    summary: `Alerta #${alert.humanId} marcada como vista: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.VISTA },
@@ -285,7 +285,7 @@ export async function snoozeAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.CAMBIO_ESTADO,
-    summary: `Alerta pospuesta ${minutes} minutos: ${alert.title}`,
+    summary: `Alerta #${alert.humanId} pospuesta ${minutes} minutos: ${alert.title}`,
     user,
     before: { status: alert.status },
     after: { status: AlertStatus.POSPUESTA, snoozedUntil: until },
@@ -375,7 +375,7 @@ export async function resolveAlert(
               ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
               : shiftValidation
                 ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-                : `Alerta resuelta: ${alert.title}`,
+                : `Alerta #${alert.humanId} resuelta: ${alert.title}`,
         user,
         before: { status: alert.status },
         after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
@@ -403,7 +403,7 @@ export async function softDeleteAlert(
         entity: 'Alert',
         entityId: input.id,
         action: AuditAction.ELIMINAR,
-        summary: `Eliminación lógica de la alerta: ${alert.title}`,
+        summary: `Eliminación lógica de la alerta #${alert.humanId}: ${alert.title}`,
         user,
         after: { deletedAt: deleted.deletedAt },
         reason: input.reason,
@@ -430,7 +430,7 @@ export async function restoreAlert(
     entity: 'Alert',
     entityId: input.id,
     action: AuditAction.RESTAURAR,
-    summary: `Alerta restaurada: ${alert.title} (${ALERT_STATUS_LABEL[alert.status]})`,
+    summary: `Alerta #${alert.humanId} restaurada: ${alert.title} (${ALERT_STATUS_LABEL[alert.status]})`,
     user,
     before: { deletedAt: alert.deletedAt },
     after: { deletedAt: null },

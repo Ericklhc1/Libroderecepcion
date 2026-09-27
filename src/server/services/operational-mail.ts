@@ -43,6 +43,16 @@ function retryAt(attempts: number): Date {
 async function deliverRow(id: string): Promise<boolean> {
   const row = await prisma.operationalMailOutbox.findUnique({ where: { id } });
   if (!row || row.status === OperationalMailStatus.ENVIADO) return true;
+  if (row.status === OperationalMailStatus.ENVIANDO) return false;
+
+  const claim = await prisma.operationalMailOutbox.updateMany({
+    where: {
+      id: row.id,
+      status: { in: [OperationalMailStatus.PENDIENTE, OperationalMailStatus.ERROR] },
+    },
+    data: { status: OperationalMailStatus.ENVIANDO },
+  });
+  if (claim.count === 0) return false;
 
   const result = await sendMail({
     to: row.recipients.join(', '),
@@ -101,6 +111,18 @@ export async function flushOperationalMailOutbox(limit = 30): Promise<{
   sent: number;
 }> {
   const now = new Date();
+  await prisma.operationalMailOutbox.updateMany({
+    where: {
+      status: OperationalMailStatus.ENVIANDO,
+      updatedAt: { lt: new Date(now.getTime() - 15 * 60_000) },
+    },
+    data: {
+      status: OperationalMailStatus.ERROR,
+      lastError: 'Reintento automático: el intento anterior quedó interrumpido.',
+      nextAttemptAt: now,
+    },
+  });
+
   const rows = await prisma.operationalMailOutbox.findMany({
     where: {
       status: { in: [OperationalMailStatus.PENDIENTE, OperationalMailStatus.ERROR] },

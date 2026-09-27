@@ -125,7 +125,7 @@ SELECT
   COALESCE(f."nextAction", f."result", f."description", f."notes"),
   f."status"::text, r."number", g."fullName", o."name",
   COALESCE(f."origin", 'SEGUIMIENTO'), f."createdAt",
-  '/seguimientos?q=%23' || f."humanId"::text, NULL::text, NULL::text
+  '/seguimientos?q=%23' || f."humanId"::text, f."ownerId", f."visibility"::text
 FROM "FollowUp" f
 LEFT JOIN "User" o ON o."id" = f."ownerId"
 LEFT JOIN "OperationalEntry" e ON e."id" = f."entryId"

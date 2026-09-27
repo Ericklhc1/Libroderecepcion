@@ -415,6 +415,40 @@ describe('Centro de Supervisión', () => {
     );
   });
 
+  it('excluye «No aplica» del denominador de cumplimiento de procedimientos', async () => {
+    const template = await saveTemplate(supervisor, {
+      name: 'Control aplicabilidad',
+      items: ['Punto aplicable', 'Punto que no aplica'],
+    });
+    const run = await startRun(supervisor, {
+      templateId: template.id,
+      participantIds: [receptionist.id],
+    });
+    await markRunItem(supervisor, {
+      itemId: run.items[0]!.id,
+      result: 'CUMPLE',
+    });
+    await markRunItem(supervisor, {
+      itemId: run.items[1]!.id,
+      result: 'NO_APLICA',
+    });
+    await finishRun(supervisor, { runId: run.id });
+
+    const period = {
+      from: new Date(Date.now() - 86_400_000),
+      to: new Date(Date.now() + 86_400_000),
+    };
+    const report = await getUserPerformance(supervisor, receptionist.id, period);
+    const procedures = report.indicators.find((indicator) => indicator.key === 'procedures');
+
+    expect(procedures).toMatchObject({
+      numerator: 1,
+      denominator: 1,
+      value: 100,
+    });
+    expect(procedures?.formula).toMatch(/excluye.*No aplica/i);
+  });
+
   it('mantiene navegación y rejillas adaptables en el Centro', async () => {
     const [page, nav] = await Promise.all([
       readFile('src/app/(app)/supervision/page.tsx', 'utf8'),

@@ -22,8 +22,8 @@ import { assertAssignable } from './users';
 export const followUpInclude = {
   owner: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
-  entry: { select: { id: true, seq: true, title: true, type: true, status: true } },
-  task: { select: { id: true, seq: true, title: true, status: true } },
+  entry: { select: { id: true, humanId: true, title: true, type: true, status: true } },
+  task: { select: { id: true, humanId: true, title: true, status: true } },
   _count: { select: { comments: true } },
 } satisfies Prisma.FollowUpInclude;
 

@@ -5,6 +5,7 @@ import {
 } from '@/server/services/supervision-audit-import';
 import {
   deliverSupervisionShift,
+  finishSupervisionShift,
   startSupervisionShift,
 } from '@/server/services/supervision-center';
 import {
@@ -225,6 +226,35 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
 
     expect(snapshot.auditImports).toHaveLength(1);
     expect(snapshot.auditImports?.[0]?.reportKinds).toContain('SALIDAS');
+    expect(snapshot.summary?.dailyAuditImports).toBe(1);
+  });
+
+  it('finalizar Supervisión también crea el snapshot aunque no se haya usado Entregar', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor Snapshot',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-26T00:00:00.000Z');
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Cobros 26-9-26.pdf',
+        'Operaciones de caja Reservas Totales por moneda CL$ CL$ 1.039.180 10 US$ US$ 48.26 1 Informe generado',
+      ),
+    });
+
+    await finishSupervisionShift(supervisor, shift.id);
+    const handover = await prisma.supervisionShiftHandover.findUniqueOrThrow({
+      where: { supervisionShiftId: shift.id },
+    });
+    const snapshot = handover.snapshot as {
+      auditImports?: Array<{ reportKinds: string[] }>;
+      summary?: { dailyAuditImports?: number };
+    };
+
+    expect(snapshot.auditImports?.[0]?.reportKinds).toContain('COBROS');
     expect(snapshot.summary?.dailyAuditImports).toBe(1);
   });
 

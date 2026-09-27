@@ -122,7 +122,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </Link>
 
-            <form action="/libro" className="relative min-w-0 flex-1 max-w-xl" data-tour="global-search">
+            <form action="/buscar" className="relative min-w-0 flex-1 max-w-xl" data-tour="global-search">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"
@@ -130,7 +130,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <input
                 type="search"
                 name="q"
-                placeholder="Buscar: #registro, T#tarea, texto, categoría o responsable…"
+                placeholder="Buscar #ID, habitación, huésped, responsable o texto…"
                 aria-label="Búsqueda global"
                 className="input-base pl-9"
               />

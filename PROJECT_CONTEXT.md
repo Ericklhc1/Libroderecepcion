@@ -109,6 +109,25 @@ conserva su modelo y sus reglas.
   cerrado, la alarma se presenta al reconectar.
 - Lo vigila `tests/operational-alarms.test.ts`.
 
+## Actualización 27/09/2026 · respaldo operativo por correo
+
+- La entrega de turno enviada genera, sin opción visible para el usuario, un
+  respaldo a `eherrera@hoteleshw.com` y `recepcion@hoteleshw.com`.
+- Ingresos/egresos manuales de Caja, regularizaciones, garantías,
+  devoluciones/reintegros de garantía, Novedades e Incidencias generan respaldo
+  a `eherrera@hoteleshw.com`.
+- Las reaperturas y correcciones de Caja generan un nuevo correo; ningún mensaje
+  anterior se sobrescribe ni pretende desaparecer de la historia.
+- Los correos se encolan en la misma transacción que confirma el hecho. El
+  intento SMTP es inmediato y transparente; un fallo de correo **no revierte ni
+  bloquea la operación hotelera**.
+- La outbox usa `eventKey` único, estado de envío reservado y reintentos para
+  evitar duplicados por concurrencia.
+- Los mensajes contienen el detalle operacional disponible y no incluyen
+  credenciales ni datos de tarjetas.
+- Ruta de reintento: `/api/cron/operational-mail`.
+- Cobertura principal: `tests/operational-mail.test.ts`.
+
 ## Decisiones que no se revierten
 
 0. **Una cuenta es nombre, usuario y contraseña. Nada más.**

@@ -29,7 +29,7 @@ export type AlarmCreateInput = {
 
 export async function listAlarmCandidates() {
   return prisma.user.findMany({
-    where: { active: true, deletedAt: null },
+    where: { active: true, deletedAt: null, role: { operational: true } },
     select: { id: true, name: true, username: true, role: { select: { name: true } } },
     orderBy: [{ name: 'asc' }],
   });
@@ -59,7 +59,7 @@ async function resolveRecipients(
 ): Promise<string[]> {
   if (scope === OperationalAlarmScope.GLOBAL) {
     const users = await prisma.user.findMany({
-      where: { active: true, deletedAt: null },
+      where: { active: true, deletedAt: null, role: { operational: true } },
       select: { id: true },
     });
     if (users.length === 0) throw new RuleError('No hay usuarios activos para recibir la alarma.');
@@ -85,6 +85,13 @@ async function resolveRecipients(
 }
 
 export async function createOperationalAlarm(user: CurrentUser, input: AlarmCreateInput) {
+  if (
+    input.scope === OperationalAlarmScope.GLOBAL &&
+    !user.permissions.includes('shift.manage') &&
+    !user.isSystemAdmin
+  ) {
+    throw new RuleError('Sólo Supervisión puede emitir una alarma global.');
+  }
   if (!input.title.trim()) throw new RuleError('Escribe qué debe recordar la alarma.');
   if (input.dueAt.getTime() <= Date.now()) {
     throw new RuleError('La alarma debe programarse para un momento futuro.');

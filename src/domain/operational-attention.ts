@@ -37,7 +37,7 @@ type AttentionInput = {
   }>;
   criticalEntries: Array<{
     id: string;
-    seq: number;
+    humanId: number;
     title: string;
     priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
     overdue: boolean;
@@ -152,7 +152,7 @@ export function buildOperationalAttention(
       kind: 'entry',
       tone: toneForScore(score),
       score,
-      title: `#${entry.seq} · ${entry.title}`,
+      title: `#${entry.humanId} · ${entry.title}`,
       reason: entry.overdue
         ? 'Registro operativo vencido.'
         : `Prioridad ${entry.priority.toLowerCase()}.`,

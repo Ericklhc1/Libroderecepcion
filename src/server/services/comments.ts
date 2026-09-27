@@ -79,22 +79,22 @@ export async function addComment(
   if (input.entryId) {
     const entry = await prisma.operationalEntry.findFirst({
       where: { id: input.entryId, deletedAt: null },
-      select: { id: true, seq: true, title: true, createdById: true, ownerId: true },
+      select: { id: true, humanId: true, title: true, createdById: true, ownerId: true },
     });
     if (!entry) throw new NotFoundError('El registro no existe.');
     recipients.add(entry.createdById);
     if (entry.ownerId) recipients.add(entry.ownerId);
-    summaryRef = `registro #${entry.seq}`;
+    summaryRef = `registro #${entry.humanId}`;
     link = `/libro/${entry.id}`;
   } else if (input.taskId) {
     const task = await prisma.task.findFirst({
       where: { id: input.taskId, deletedAt: null },
-      select: { id: true, seq: true, createdById: true, assigneeId: true },
+      select: { id: true, humanId: true, createdById: true, assigneeId: true },
     });
     if (!task) throw new NotFoundError('La tarea no existe.');
     recipients.add(task.createdById);
     if (task.assigneeId) recipients.add(task.assigneeId);
-    summaryRef = `tarea #${task.seq}`;
+    summaryRef = `tarea #${task.humanId}`;
     link = `/tareas/${task.id}`;
   } else if (input.followUpId) {
     const followUp = await prisma.followUp.findFirst({

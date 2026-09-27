@@ -59,8 +59,8 @@ export const HELP_TOPICS: HelpTopic[] = [
       'Entra a Mi turno.',
       'Si el turno saliente todavía está activo o cerrando, espera: el sistema no permite abrir el siguiente turno en paralelo.',
       'Cuando el saliente quede cerrado, abre la entrega pendiente. La entrega queda en bandeja y no está preasignada a ningún recepcionista ni turno.',
-      'Recuenta Caja si corresponde, valida físicamente las garantías y confirma la recepción de la entrega.',
-      'Después de confirmar la recepción, pulsa «Abrir mi turno». El sistema enlaza esa continuidad al turno nuevo y habilita la operación.',
+      'Dentro de esa misma entrega, recuenta Caja si corresponde y valida físicamente las garantías. No uses la pestaña Caja general para este paso.',
+      'Confirma la recepción de la entrega y después pulsa «Abrir mi turno». El sistema enlaza esa continuidad al turno nuevo y habilita la operación.',
     ],
     caveat:
       'Recepción sólo puede operar con un turno ACTIVO. Sin turno, durante la recepción y durante el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas.',
@@ -76,7 +76,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     steps: [
       'El recepcionista saliente debe haber cerrado formalmente su turno.',
       'Abre la entrega pendiente desde Mi turno. Cualquier recepcionista o supervisor autorizado puede tomarla; no pertenece todavía a un turno entrante.',
-      'Recuenta el efectivo físicamente por denominación y valida las garantías bajo custodia como elementos separados.',
+      'Dentro de la ficha de entrega, recuenta el efectivo físicamente por denominación y valida las garantías bajo custodia como elementos separados. La Caja general seguirá bloqueada hasta iniciar tu turno.',
       'Confirma la recepción de la entrega. La recepción queda registrada a tu nombre, pero todavía no crea un turno nuevo.',
       'Si eres quien continuará la operación, inicia entonces tu propio turno. El sistema enlaza la entrega recibida al nuevo turno.',
       'Con la recepción confirmada, imprime el acta de entrega/recepción para las firmas correspondientes.',

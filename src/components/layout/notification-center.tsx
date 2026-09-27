@@ -315,8 +315,10 @@ export function NotificationCenter({
         Boolean(item.entityId),
     ) ?? null;
 
+  const activeAlarmId = activeAlarm?.id ?? null;
+
   useEffect(() => {
-    if (!activeAlarm) return;
+    if (!activeAlarmId) return;
     if (!mutedRef.current && profileSoundEnabledRef.current) {
       playChime(true, notificationToneRef.current);
     }
@@ -326,7 +328,7 @@ export function NotificationCenter({
       }
     }, 4_000);
     return () => window.clearInterval(timer);
-  }, [activeAlarm?.id]);
+  }, [activeAlarmId]);
 
   const actOnAlarm = useCallback(
     async (action: 'acknowledge' | 'snooze', minutes?: 5 | 10 | 15) => {

@@ -346,6 +346,7 @@ export type HandoverCashState = {
   latestMovementAt: Date | null;
   currentExpectations: CashExpectation[];
   declared: {
+    humanId: number;
     countedByName: string;
     countedAt: Date;
     notes: string | null;
@@ -353,6 +354,7 @@ export type HandoverCashState = {
     validatedGuarantees: CashGuaranteeValidationSnapshot[];
   } | null;
   confirmed: {
+    humanId: number;
     countedByName: string;
     countedAt: Date;
     notes: string | null;
@@ -367,6 +369,7 @@ export type HandoverCashState = {
   }>;
   transfers: Array<{
     id: string;
+    humanId: number;
     currency: string;
     amount: number;
     reference: string | null;
@@ -384,6 +387,7 @@ export type HandoverCashState = {
   }>;
   cashGuarantees: Array<{
     id: string;
+    humanId: number;
     currency: string;
     amount: number;
     originalAmount: number;
@@ -435,6 +439,7 @@ export async function getHandoverCashState(
   const shape = (count: (typeof counts)[number] | undefined) =>
     count
       ? {
+          humanId: count.humanId,
           countedByName: count.countedBy.name,
           countedAt: count.countedAt,
           notes: count.notes,
@@ -479,6 +484,7 @@ export async function getHandoverCashState(
         : [],
     transfers: transfers.map((transfer) => ({
       id: transfer.id,
+      humanId: transfer.humanId,
       currency: transfer.currency,
       amount: Number(transfer.amount),
       reference: transfer.reference,
@@ -498,6 +504,7 @@ export async function getHandoverCashState(
     })),
     cashGuarantees: composition.guarantees.map((guarantee) => ({
       id: guarantee.id,
+      humanId: guarantee.humanId,
       currency: guarantee.currency,
       amount: guaranteeCustodyAmount(guarantee),
       originalAmount: Number(guarantee.amount),

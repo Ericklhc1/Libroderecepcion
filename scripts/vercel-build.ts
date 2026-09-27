@@ -19,6 +19,7 @@ console.log(`✔ ${result.detail}`);
 const steps: Array<[string, string]> = [
   ['Generando el cliente de base de datos', 'npx prisma generate'],
   ['Aplicando migraciones', 'npx prisma migrate deploy'],
+  ['Auditando rutas con datos reales del entorno (sólo lectura)', 'npm run audit:routes'],
   ['Compilando la aplicación', 'npx next build'],
 ];
 

@@ -331,7 +331,7 @@ function countExtractedValues(value: unknown): number {
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') return 1;
   if (Array.isArray(value)) return value.reduce((sum, item) => sum + countExtractedValues(item), 0);
   if (typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).reduce(
+    return Object.values(value as Record<string, unknown>).reduce<number>(
       (sum, item) => sum + countExtractedValues(item),
       0,
     );

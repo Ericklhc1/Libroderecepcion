@@ -1,5 +1,22 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.17.0 · blindaje de flujos
+
+- Cierre de Recepción: las revisiones de pendientes/final quedan persistidas y
+  `sendHandover()` las exige en servidor. Cambiar el borrador las invalida.
+- Urgentes: requieren aceptación expresa antes del envío.
+- Caja: historial filtrado en servidor, totales reales, confirmación de fechas
+  efectivas atípicas y doble confirmación al devolver efectivo.
+- Garantías nuevas: deben quedar identificadas al menos por huésped, habitación
+  o referencia. Supervisión señala garantías históricas con salida financiera faltante.
+- Checklists: `ChecklistRunMode.RONDA` y `AUDITORIA_SORPRESA`; una sola
+  ejecución abierta por supervisor. Auditoría sorpresa exige alcance + muestra.
+- Dashboard de auditoría: valida fecha aparente del PDF, reporta completitud,
+  no marca verde con controles inciertos y guarda sólo huella técnica
+  (SHA-256/tamaño/parser/fecha/completitud), nunca PDF, nombre ni texto crudo.
+- Finalizar Supervisión exige confirmar revisión de críticos, auditoría y continuidad.
+- Versión: 1.17.0. Migración: `20260927160000_blindaje_flows`.
+
 ## Actualización 27/09/2026 · Libro 1.16.0 · dashboard de auditoría
 
 - Nueva carga dentro de `/supervision` para los informes diarios del PMS.

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
+  AlarmClock,
   Bell,
   CheckCheck,
   ExternalLink,
@@ -71,6 +72,7 @@ export function NotificationCenter({
   const [muted, setMuted] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [toast, setToast] = useState<NotificationFeedItem | null>(null);
+  const [alarmBusy, setAlarmBusy] = useState(false);
 
   const mutedRef = useRef(false);
   const profileSoundEnabledRef = useRef(true);
@@ -144,9 +146,11 @@ export function NotificationCenter({
       if (fresh.length > 0) {
         const newest = fresh[0];
         if (newest) {
-          setToast(newest);
-          if (!mutedRef.current && profileSoundEnabledRef.current) {
-            playChime(isUrgent(newest), notificationToneRef.current);
+          if (newest.type !== 'ALARMA') {
+            setToast(newest);
+            if (!mutedRef.current && profileSoundEnabledRef.current) {
+              playChime(isUrgent(newest), notificationToneRef.current);
+            }
           }
         }
       }
@@ -302,6 +306,59 @@ export function NotificationCenter({
     router.push(item.link);
   };
 
+  const activeAlarm =
+    items.find(
+      (item) =>
+        item.type === 'ALARMA' &&
+        !item.readAt &&
+        item.entity === 'OperationalAlarmRecipient' &&
+        Boolean(item.entityId),
+    ) ?? null;
+
+  useEffect(() => {
+    if (!activeAlarm) return;
+    if (!mutedRef.current && profileSoundEnabledRef.current) {
+      playChime(true, notificationToneRef.current);
+    }
+    const timer = window.setInterval(() => {
+      if (!mutedRef.current && profileSoundEnabledRef.current) {
+        playChime(true, notificationToneRef.current);
+      }
+    }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [activeAlarm?.id]);
+
+  const actOnAlarm = useCallback(
+    async (action: 'acknowledge' | 'snooze', minutes?: 5 | 10 | 15) => {
+      if (!activeAlarm?.entityId || alarmBusy) return;
+      setAlarmBusy(true);
+      try {
+        const response = await fetch('/api/alarms/action', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action,
+            recipientId: activeAlarm.entityId,
+            ...(action === 'snooze' ? { minutes } : {}),
+          }),
+        });
+        if (response.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        if (!response.ok) return;
+        const snapshot = (await response.json()) as NotificationFeedSnapshot;
+        applySnapshot(snapshot, false);
+      } finally {
+        setAlarmBusy(false);
+      }
+    },
+    [activeAlarm, alarmBusy, applySnapshot],
+  );
+
   const toggleSound = () => {
     const next = !muted;
     mutedRef.current = next;
@@ -321,6 +378,60 @@ export function NotificationCenter({
 
   return (
     <>
+      {activeAlarm ? createPortal(
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-petrol-950/70 p-4 no-print">
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="operational-alarm-title"
+            className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-red-200"
+          >
+            <div className="bg-red-600 px-5 py-4 text-white">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-white/15 p-2">
+                  <AlarmClock className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-100">Alarma</p>
+                  <h2 id="operational-alarm-title" className="mt-0.5 text-xl font-semibold">
+                    {activeAlarm.title}
+                  </h2>
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-5">
+              {activeAlarm.body ? (
+                <p className="text-sm leading-6 text-slate-700">{activeAlarm.body}</p>
+              ) : null}
+              <p className="mt-3 text-xs text-slate-500">
+                Detener o posponer afecta sólo a tu alarma. Los demás destinatarios conservan la suya.
+              </p>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {[5, 10, 15].map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    disabled={alarmBusy}
+                    onClick={() => void actOnAlarm('snooze', minutes as 5 | 10 | 15)}
+                    className="rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    +{minutes} min
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={alarmBusy}
+                onClick={() => void actOnAlarm('acknowledge')}
+                className="mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:bg-red-300"
+              >
+                {alarmBusy ? 'Actualizando…' : 'DETENER ALARMA'}
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
       <button
         type="button"
         onClick={toggleSound}

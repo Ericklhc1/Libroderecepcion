@@ -1,5 +1,17 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · cierre guiado v3
+
+- Release objetivo: **v1.14.9**.
+- El cierre saliente pasa a un flujo secuencial: Caja/custodia → pendientes → revisión final → envío → cierre formal.
+- El primer paso no puede saltarse mientras Caja/custodia sigan incompletas.
+- Con Caja habilitada, `sendHandover()` exige el cierre formal de Caja además del arqueo.
+- Enviar exige confirmación explícita y constituye el punto de no retorno del cierre normal.
+- Cancelar exige confirmación, devuelve el turno a ACTIVO, invalida arqueos de preparación y reabre Caja formal si ya se había cerrado.
+- Cancelar **nunca borra hechos financieros ejecutados**: las transferencias a Tesorería y sus movimientos sobreviven y reaparecen al reanudar el cierre.
+- El inventario de llaves permanece fuera del cierre; sigue siendo un control autónomo que alimenta Supervisión.
+
+
 ## Actualización 27/09/2026 · Libro 1.14.9
 
 - Cierre saliente guiado: Caja/custodia → pendientes → revisión → envío → cierre formal.

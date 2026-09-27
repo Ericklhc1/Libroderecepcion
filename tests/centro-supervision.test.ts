@@ -333,6 +333,7 @@ describe('Centro de Supervisión', () => {
     });
     const run = await startRun(supervisor, {
       templateId: template.id,
+      mode: ChecklistRunMode.AUDITORIA_SORPRESA,
       scope: 'Turno diurno del día',
       sample: 'Cinco movimientos elegidos al azar',
       participantIds: [receptionist.id],

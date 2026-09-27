@@ -128,6 +128,18 @@ conserva su modelo y sus reglas.
 - Ruta de reintento: `/api/cron/operational-mail`.
 - Cobertura principal: `tests/operational-mail.test.ts`.
 
+## Actualización 27/09/2026 · compatibilidad Vercel Hobby
+
+- Vercel Hobby sólo admite cron una vez al día; un cron de 5 minutos bloqueaba
+  el deployment de Production.
+- El reintento de respaldo por correo queda en dos capas:
+  1. intento inmediato al confirmar el hecho operativo;
+  2. reintento oportunista de correos vencidos cuando ocurre nueva actividad;
+  3. cron diario como red de seguridad final.
+- Cron de correo: `/api/cron/operational-mail` a `5 10 * * *` UTC.
+- Esta decisión evita contratar infraestructura adicional sólo para reintentos
+  y mantiene SMTP fuera del camino crítico de Recepción.
+
 ## Decisiones que no se revierten
 
 0. **Una cuenta es nombre, usuario y contraseña. Nada más.**

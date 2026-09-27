@@ -11,6 +11,7 @@ import {
 import {
   cancelHandoverPreparation,
   closeShift,
+  confirmHandoverReviewStep,
   prepareHandover,
   receiveHandover,
   receiveShiftCash,
@@ -49,6 +50,11 @@ async function seedFunds() {
     ],
     skipDuplicates: true,
   });
+}
+
+async function confirmReview(user: CurrentUser, handoverId: string) {
+  await confirmHandoverReviewStep(user, { handoverId, step: 'PENDINGS' });
+  await confirmHandoverReviewStep(user, { handoverId, step: 'FINAL' });
 }
 
 async function seedElement(name: string, required = true) {
@@ -111,6 +117,7 @@ describe('caja en la entrega de turno', () => {
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
     expect(await cashBlockersForReceiving(handover.id)).toEqual([]);
 
+    await confirmReview(saliente, handover.id);
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -143,6 +150,7 @@ describe('caja en la entrega de turno', () => {
       /cierre formal de Caja/i,
     );
     await closeShiftCash(saliente, { shiftId: shift.id });
+    await confirmReview(saliente, handover.id);
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -172,6 +180,7 @@ describe('caja en la entrega de turno', () => {
       notes: 'Faltan 20.000 y los dólares: se entregaron a tesorería sin comprobante.',
     });
     await closeShiftCash(saliente, { shiftId: shift.id });
+    await confirmReview(saliente, handover.id);
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -201,6 +210,7 @@ describe('caja en la entrega de turno', () => {
       quantities,
     });
     await closeShiftCash(saliente, { shiftId: manana.id });
+    await confirmReview(saliente, handover.id);
     await sendHandover(saliente, { shiftId: manana.id });
     await closeShift(saliente, { shiftId: manana.id });
 
@@ -253,6 +263,7 @@ describe('caja en la entrega de turno', () => {
       shiftId: shift.id,
       notes: 'Diferencia declarada y documentada.',
     });
+    await confirmReview(saliente, handover.id);
     await sendHandover(saliente, { shiftId: shift.id });
     await closeShift(saliente, { shiftId: shift.id });
 
@@ -423,6 +434,7 @@ describe('caja en la entrega de turno', () => {
 
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
     await closeShiftCash(saliente, { shiftId: shift.id });
+    await confirmReview(saliente, handover.id);
     const sent = await sendHandover(saliente, { shiftId: shift.id });
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
   });
@@ -543,6 +555,7 @@ describe('elementos que viajan con la caja', () => {
     });
 
     await closeShiftCash(saliente, { shiftId: manana.id });
+    await confirmReview(saliente, handover.id);
     const sent = await sendHandover(saliente, { shiftId: manana.id });
     await closeShift(saliente, { shiftId: manana.id });
 

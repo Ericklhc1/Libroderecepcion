@@ -383,17 +383,25 @@ export default async function SupervisionCenterPage({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="flex h-[26rem] flex-col overflow-hidden">
-          <CardHeader title="Notas" count={notes.length} action={isSupervisor ? <NewSupervisionNoteDialog /> : null} />
+          <CardHeader title="Notas recientes" count={notes.length} action={isSupervisor ? <NewSupervisionNoteDialog /> : null} />
           {notes.length === 0 ? <EmptyState message="Sin notas visibles." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{notes.map((note) => <li key={note.id} className="px-4 py-3"><div className="flex items-start justify-between gap-2"><Chip>{note.visibility === 'PRIVADO' ? 'Privada' : note.visibility === 'SUPERVISION' ? 'Supervisión' : 'Operativa'}</Chip>{isSupervisor && note.author.id === user.id ? <DeleteSupervisionNoteDialog noteId={note.id} /> : null}</div><p className="mt-1 font-medium text-petrol-900">{note.title}</p><p className="line-clamp-3 text-sm text-slate-600">{note.body}</p><p className="mt-1 text-xs text-slate-500">{note.author.name} · {formatDateTime(note.createdAt)}</p></li>)}</ul></CardScroll>
           )}
         </Card>
         <Card className="flex h-[26rem] flex-col overflow-hidden">
-          <CardHeader title="Auditorías abiertas" count={audits.length} action={<Link href="/supervision/auditorias" className="text-xs font-medium text-petrol-600 hover:underline">Abrir módulo</Link>} />
+          <CardHeader
+            title="Auditorías abiertas"
+            count={center.counts.auditsOpen}
+            action={<Link href="/supervision/auditorias" className="text-xs font-medium text-petrol-600 hover:underline">Abrir módulo</Link>}
+          />
           {audits.length === 0 ? <EmptyState message="No hay auditorías abiertas." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{audits.map((audit) => <li key={audit.id} className="px-4 py-3"><Badge tone={audit.status === 'PREPARACION' ? 'pendiente' : 'curso'}>{audit.status === 'PREPARACION' ? 'Preparación reservada' : 'En curso'}</Badge><p className="mt-1 font-medium text-petrol-900">{audit.templateName}</p><p className="text-xs text-slate-500">{audit.runBy.name} · {audit._count.findings} hallazgo(s)</p></li>)}</ul></CardScroll>}
         </Card>
         <Card className="flex h-[26rem] flex-col overflow-hidden">
-          <CardHeader title="Medidas correctivas" count={measures.length} />
+          <CardHeader
+            title="Medidas correctivas"
+            count={center.counts.measuresOpen}
+            action={center.counts.measuresOpen > measures.length ? <span className="text-xs text-slate-500">Muestra visible: {measures.length}</span> : null}
+          />
           {measures.length === 0 ? <EmptyState message="No hay medidas correctivas pendientes." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{measures.map((measure) => <li key={measure.id} className="px-4 py-3"><Badge tone={measure.status === 'BLOQUEADA' ? 'critico' : 'atencion'}>{measure.status.toLocaleLowerCase('es-CL')}</Badge><p className="mt-1 font-medium text-petrol-900">{measure.title}</p><p className="text-xs text-slate-500">{measure.assignee.name}{measure.dueAt ? ` · vence ${formatDateTime(measure.dueAt)}` : ''}</p></li>)}</ul></CardScroll>}
         </Card>
       </div>

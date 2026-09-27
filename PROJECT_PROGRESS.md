@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-25** · Auditoría integral de lógica + UX · versión propuesta **v1.10.10**
+Actualizado: **2026-09-27** · Ajuste visual del Chat · versión propuesta **v1.17.2**
 
 ## Estados canónicos
 
@@ -31,27 +31,22 @@ Actualizado: **2026-09-25** · Auditoría integral de lógica + UX · versión p
 
 ## Iteración actual
 
-**Libro 1.10.10** · rama **`fix/ux-operational-audit-1-10-10`**
+**Libro 1.17.2** · rama **`fix/chat-corner-1-17-2`**
 
-Objetivo: cerrar incoherencias detectadas en la auditoría transversal de
-procedimientos, botones, lógica, usabilidad e intuitividad.
+Objetivo: corregir el anclaje visual del Chat operativo para que funcione como una pestaña de mensajería persistente pegada al borde inferior derecho, independiente de la barra lateral.
 
 Incluye:
-- gate obligatorio también para Auditor nocturno y coherencia de sus Novedades;
-- textos del relevo alineados con el cierre secuencial vigente;
-- comunicados obligatorios reactivos en tiempo real y por encima del Chat;
-- navegación móvil sin etiquetas truncadas semánticamente;
-- formulario de tareas sin vínculos PMS retirados ni multiselección Ctrl/Cmd;
-- botones de envío protegidos contra doble envío incluso con `disabled` propio;
-- foco de diálogos atrapado y restaurado para teclado/accesibilidad;
-- eliminación del refresco duplicado de Chat;
-- regresiones y documentación canónica actualizadas.
+- pestaña cerrada fija al extremo inferior derecho;
+- panel abierto alineado al mismo borde en tablet/escritorio;
+- conservación del panel completo en móvil pequeño;
+- regresión automatizada de clases de posicionamiento;
+- sin cambios de datos, permisos, API ni migraciones.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - despliegue Vercel del SHA fusionado;
-- smoke y revisión de errores de runtime.
+- smoke visual en escritorio y móvil.
 
 ## Infraestructura vigente
 

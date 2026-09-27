@@ -36,7 +36,14 @@ import {
 } from '@/domain/labels';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
-import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
+import {
+  addCalendarDateDays,
+  addHotelCalendarDays,
+  calendarDateKey,
+  hotelCalendarDate,
+  hotelDateKey,
+  hotelWallDateTime,
+} from '@/domain/time';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -94,12 +101,17 @@ function ReviewBlock({
 
 function parsePeriod(params: RawSearchParams) {
   const now = new Date();
-  const defaultFrom = new Date(now.getTime() - 30 * 86_400_000);
-  const rawFrom = typeof params.desde === 'string' ? new Date(`${params.desde}T00:00:00`) : defaultFrom;
-  const rawTo = typeof params.hasta === 'string' ? new Date(`${params.hasta}T23:59:59.999`) : now;
+  const defaultFrom = hotelWallDateTime(hotelDateKey(addHotelCalendarDays(now, -30)), 0);
+  const parseKey = (value: unknown, endOfDay = false) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const start = hotelWallDateTime(value, 0);
+    return endOfDay
+      ? new Date(addHotelCalendarDays(start, 1).getTime() - 1)
+      : start;
+  };
   return {
-    from: Number.isNaN(rawFrom.getTime()) ? defaultFrom : rawFrom,
-    to: Number.isNaN(rawTo.getTime()) ? now : rawTo,
+    from: parseKey(params.desde) ?? defaultFrom,
+    to: parseKey(params.hasta, true) ?? now,
   };
 }
 
@@ -112,7 +124,6 @@ export default async function SupervisionCenterPage({
   if (!hasPermission(user, 'supervision.center.view')) redirect('/sin-permisos');
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
-  const responsible = typeof params.responsable === 'string' ? params.responsable : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';
   const period = parsePeriod(params);
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
@@ -132,17 +143,16 @@ export default async function SupervisionCenterPage({
   const matches = (...values: Array<string | number | null | undefined>) =>
     !q || values.filter(Boolean).join(' ').toLocaleLowerCase('es-CL').includes(q);
   const inPeriod = (value: Date) => value >= period.from && value <= period.to;
-  const tasks = center.myTasks.filter((task) =>
-    inPeriod(task.createdAt) &&
-    (!responsible || task.assigneeId === responsible) &&
-    (!priority || task.priority === priority) &&
-    matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
+  // La continuidad activa no se oculta por antigüedad: si sigue abierta, sigue siendo trabajo.
+  const tasks = center.myTasks.filter(
+    (task) =>
+      (!priority || task.priority === priority) &&
+      matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
   );
-  const followUps = center.myFollowUps.filter((item) =>
-    inPeriod(item.createdAt) &&
-    (!responsible || item.ownerId === responsible) &&
-    (!priority || item.priority === priority) &&
-    matches(item.action, item.owner.name, item.status, item.priority),
+  const followUps = center.myFollowUps.filter(
+    (item) =>
+      (!priority || item.priority === priority) &&
+      matches(item.action, item.owner.name, item.status, item.priority),
   );
   const notes = center.notes.filter((note) =>
     inPeriod(note.createdAt) && matches(note.title, note.body, note.author.name),
@@ -151,10 +161,10 @@ export default async function SupervisionCenterPage({
     inPeriod(audit.startedAt) &&
     matches(audit.templateName, audit.runBy.name, audit.status, audit.scope),
   );
-  const measures = center.measures.filter((measure) =>
-    inPeriod(measure.createdAt) &&
-    (!responsible || measure.assigneeId === responsible) &&
-    matches(measure.title, measure.action, measure.assignee.name, measure.status),
+  const measures = center.measures.filter(
+    (measure) =>
+      inPeriod(measure.createdAt) &&
+      matches(measure.title, measure.action, measure.assignee.name, measure.status),
   );
   const blocks = review.blocks
     .map((block) => ({
@@ -166,7 +176,7 @@ export default async function SupervisionCenterPage({
     .filter((block) => block.tone === 'critico')
     .reduce((sum, block) => sum + block.rows.length, 0);
   const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
-  const continuityOpen = center.myTasks.length + center.myFollowUps.length;
+  const continuityOpen = center.counts.myTasks + center.counts.myFollowUps;
   const auditPendingCount = center.auditImports.reduce((sum, auditImport) => {
     if (!Array.isArray(auditImport.checks)) return sum;
     return (
@@ -219,13 +229,6 @@ export default async function SupervisionCenterPage({
       </nav>
 
       <ListFilterBar searchValue={q} searchPlaceholder="Buscar pendiente, señal, nota o persona…" clearHref="/supervision">
-        <label className="min-w-[13rem]">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Responsable</span>
-          <select className="input-base w-full" name="responsable" defaultValue={responsible}>
-            <option value="">Todos</option>
-            {options.users.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
         <label className="min-w-[10rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Prioridad</span>
           <select className="input-base w-full" name="prioridad" defaultValue={priority}>
@@ -234,14 +237,19 @@ export default async function SupervisionCenterPage({
           </select>
         </label>
         <label>
-          <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
+          <span className="mb-1 block text-xs font-medium text-slate-500">Historial desde</span>
           <input className="input-base" type="date" name="desde" defaultValue={period.from.toISOString().slice(0, 10)} />
         </label>
         <label>
-          <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
+          <span className="mb-1 block text-xs font-medium text-slate-500">Historial hasta</span>
           <input className="input-base" type="date" name="hasta" defaultValue={period.to.toISOString().slice(0, 10)} />
         </label>
       </ListFilterBar>
+      <p className="-mt-2 text-xs text-slate-500">
+        La búsqueda recorre las secciones visibles. Prioridad filtra tus pendientes y seguimientos;
+        el período sólo acota historial, auditorías, medidas y rendimiento. Un pendiente abierto
+        nunca desaparece por ser antiguo.
+      </p>
 
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">
@@ -302,7 +310,7 @@ export default async function SupervisionCenterPage({
         <StatTile label="Mis pendientes" value={continuityOpen} tone={continuityOpen ? 'neutral' : 'good'} />
         <StatTile label="Cierres por validar" value={pendingClosures} tone={pendingClosures ? 'alert' : 'good'} />
         <StatTile label="Señales del Libro" value={review.total} tone={review.total ? 'alert' : 'good'} />
-        <StatTile label="Auditorías abiertas" value={center.audits.length} tone={center.audits.length ? 'alert' : 'good'} />
+        <StatTile label="Auditorías abiertas" value={center.counts.auditsOpen} tone={center.counts.auditsOpen ? 'alert' : 'good'} />
         <StatTile label="Confirmaciones pendientes" value={announcementPending} tone={announcementPending ? 'alert' : 'good'} />
       </div>
 

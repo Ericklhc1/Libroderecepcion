@@ -103,6 +103,22 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
     });
   });
 
+  it('normaliza In house y detecta un informe de cargos sin actividad', () => {
+    const inHouse = parseSupervisionReportText(
+      'In house 27-9-26.pdf',
+      'In house - Hotel HW LIBERTAD - 27/09/2026 In-house 51 0 48 Habitaciones in￾house 26 Informe generado',
+    );
+    expect(inHouse.kind).toBe('IN_HOUSE');
+    expect(inHouse.metrics).toEqual({ inHouse: { rooms: 26 } });
+
+    const charges = parseSupervisionReportText(
+      'Cargos diarios 26-9-26.pdf',
+      'Informe de cargos diarios Hotel HW LIBERTAD Ningún dato disponible en esta tabla Informe de cargos diarios Eventos Ningún dato disponible en esta tabla',
+    );
+    expect(charges.kind).toBe('CARGOS_DIARIOS');
+    expect(charges.metrics).toEqual({ dailyCharges: { noData: true } });
+  });
+
   it('convierte el formulario nocturno en controles y hallazgos accionables', () => {
     const parsed = parseSupervisionReportText(
       'Formulario Auditoria 27-09-26.pdf',

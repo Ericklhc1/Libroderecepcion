@@ -1460,6 +1460,9 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
               receiverObservations: null,
               issuerSessionId: null,
               receiverSessionId: null,
+              pendingsReviewedAt: null,
+              finalReviewAt: null,
+              urgentAcknowledgedAt: null,
             },
           })
         : shift.handoverOut
@@ -1472,6 +1475,17 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
             isDemo: shift.isDemo,
           },
         });
+
+    // Cualquier regeneración cambia el contenido que la persona debe revisar:
+    // las confirmaciones anteriores dejan de ser válidas.
+    await tx.shiftHandover.update({
+      where: { id: handover.id },
+      data: {
+        pendingsReviewedAt: null,
+        finalReviewAt: null,
+        urgentAcknowledgedAt: null,
+      },
+    });
 
     // El resumen automático se regenera; las notas manuales se conservan.
     await tx.handoverItem.deleteMany({
@@ -1523,6 +1537,97 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
   });
 }
 
+/**
+ * Barreras reales del cierre guiado.
+ *
+ * A diferencia del parámetro de interfaz `?paso=`, estas confirmaciones se
+ * persisten y se vuelven a comprobar en el servidor antes de enviar.
+ */
+export async function confirmHandoverReviewStep(
+  user: CurrentUser,
+  params: {
+    handoverId: string;
+    step: 'PENDINGS' | 'FINAL';
+    urgentAcknowledged?: boolean;
+  },
+) {
+  const handover = await prisma.shiftHandover.findUnique({
+    where: { id: params.handoverId },
+    include: {
+      fromShift: { include: { assignments: true } },
+      items: { select: { level: true } },
+    },
+  });
+  if (!handover) throw new NotFoundError('La entrega no existe.');
+  if (handover.status !== HandoverStatus.BORRADOR) {
+    throw new RuleError('La entrega ya no está en preparación.');
+  }
+  if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+    throw new RuleError('Sólo quien está en el turno puede confirmar la revisión de su entrega.');
+  }
+  if (handover.fromShift.status !== ShiftStatus.PREPARANDO_ENTREGA) {
+    throw new RuleError('El turno no está en preparación de entrega.');
+  }
+
+  const cashProblems = await cashBlockersForSending(handover.id);
+  if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
+  if (await isCashEnabled()) await assertShiftCashClosed(handover.fromShiftId);
+
+  const now = new Date();
+  const hasUrgent = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+
+  if (params.step === 'FINAL' && !handover.pendingsReviewedAt) {
+    throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
+  }
+  if (params.step === 'FINAL' && hasUrgent && !params.urgentAcknowledged) {
+    throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.shiftHandover.update({
+      where: { id: handover.id, status: HandoverStatus.BORRADOR },
+      data:
+        params.step === 'PENDINGS'
+          ? {
+              pendingsReviewedAt: now,
+              finalReviewAt: null,
+              urgentAcknowledgedAt: null,
+            }
+          : {
+              finalReviewAt: now,
+              urgentAcknowledgedAt: hasUrgent ? now : null,
+            },
+    });
+
+    await recordAudit(
+      {
+        entity: 'ShiftHandover',
+        entityId: handover.id,
+        action: AuditAction.CAMBIO_ESTADO,
+        summary:
+          params.step === 'PENDINGS'
+            ? 'Pendientes del cierre revisados y confirmados'
+            : hasUrgent
+              ? 'Revisión final confirmada con reconocimiento de puntos urgentes'
+              : 'Revisión final del cierre confirmada',
+        user,
+        after: {
+          reviewStep: params.step,
+          pendingsReviewedAt:
+            params.step === 'PENDINGS' ? now : handover.pendingsReviewedAt,
+          finalReviewAt: params.step === 'FINAL' ? now : null,
+          urgentAcknowledgedAt:
+            params.step === 'FINAL' && hasUrgent ? now : null,
+        },
+      },
+      tx,
+    );
+    return row;
+  });
+
+  return updated;
+}
+
 /** Paso 4: enviar la entrega al turno siguiente. */
 export async function sendHandover(
   user: CurrentUser,
@@ -1538,6 +1643,16 @@ export async function sendHandover(
   }
   if (handover.status !== HandoverStatus.BORRADOR) {
     throw new RuleError('Esta entrega ya fue enviada.');
+  }
+  if (!handover.pendingsReviewedAt) {
+    throw new RuleError('Antes de enviar, confirma la revisión de los pendientes del turno.');
+  }
+  if (!handover.finalReviewAt) {
+    throw new RuleError('Antes de enviar, confirma la revisión final de la entrega.');
+  }
+  const hasUrgentItems = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  if (hasUrgentItems && !handover.urgentAcknowledgedAt) {
+    throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
   }
   assertTransition(shift.status, ShiftStatus.ENTREGA_ENVIADA);
 
@@ -1580,6 +1695,11 @@ export async function sendHandover(
             urgente: items.filter((i) => i.level === HandoverLevel.URGENTE).length,
             importante: items.filter((i) => i.level === HandoverLevel.IMPORTANTE).length,
             informativo: items.filter((i) => i.level === HandoverLevel.INFORMATIVO).length,
+          },
+          review: {
+            pendingsReviewedAt: handover.pendingsReviewedAt?.toISOString() ?? null,
+            finalReviewAt: handover.finalReviewAt?.toISOString() ?? null,
+            urgentAcknowledgedAt: handover.urgentAcknowledgedAt?.toISOString() ?? null,
           },
           items: items.map((i) => ({
             level: i.level,
@@ -1825,6 +1945,9 @@ export async function cancelHandoverPreparation(user: CurrentUser, shiftId: stri
           receiverObservations: null,
           issuerSessionId: null,
           receiverSessionId: null,
+          pendingsReviewedAt: null,
+          finalReviewAt: null,
+          urgentAcknowledgedAt: null,
         },
       });
 

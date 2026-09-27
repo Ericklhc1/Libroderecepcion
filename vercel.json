@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/operational-mail",
-      "schedule": "*/5 * * * *"
+      "schedule": "5 10 * * *"
     }
   ],
   "git": {

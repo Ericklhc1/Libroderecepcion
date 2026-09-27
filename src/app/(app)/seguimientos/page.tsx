@@ -191,12 +191,12 @@ export default async function FollowUpsPage({
                   </Badge>
                   {followUp.entry ? (
                     <Link href={`/libro/${followUp.entry.id}`}>
-                      <Chip>Registro #{followUp.entry.seq}</Chip>
+                      <Chip>Registro #{followUp.entry.humanId}</Chip>
                     </Link>
                   ) : null}
                   {followUp.task ? (
                     <Link href={`/tareas/${followUp.task.id}`}>
-                      <Chip>Tarea T#{followUp.task.seq}</Chip>
+                      <Chip>Tarea #{followUp.task.humanId}</Chip>
                     </Link>
                   ) : null}
                 </div>

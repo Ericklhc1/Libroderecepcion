@@ -14,7 +14,6 @@ import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 
-type Db = Prisma.TransactionClient | typeof prisma;
 
 const MAX_ACTIVE_PER_CREATOR = 100;
 

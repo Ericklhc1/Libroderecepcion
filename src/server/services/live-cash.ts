@@ -31,6 +31,7 @@ export type CashMovementKind =
   | 'AJUSTE_SALIDA';
 export type LiveCashMovement = {
   id: string;
+  humanId: number;
   kind: CashMovementKind;
   direction: CashDirection;
   currency: string;
@@ -50,6 +51,7 @@ export type LiveCashMovement = {
 
 export type CashAuditRow = {
   id: string;
+  humanId: number;
   currency: string;
   expectedAmount: number;
   countedAmount: number;
@@ -80,6 +82,7 @@ export type LiveCashState = {
   movements: LiveCashMovement[];
   cashGuarantees: Array<{
     id: string;
+    humanId: number;
     reservationCode: string | null;
     roomNumber: string | null;
     guestName: string | null;
@@ -410,7 +413,8 @@ export async function getLiveCashState(
     typeof input === 'number'
       ? { movementLimit: input, auditLimit: input }
       : input;
-  const query = options.query?.trim() ?? '';
+  const query = options.query?.trim().replace(/^#/, '') ?? '';
+  const humanId = /^\d+$/.test(query) ? Number(query) : null;
   const currency = options.currency?.trim().toUpperCase() || undefined;
   const movementLimit = Math.min(Math.max(options.movementLimit ?? 50, 1), 200);
   const auditLimit = Math.min(Math.max(options.auditLimit ?? 50, 1), 200);
@@ -437,6 +441,7 @@ export async function getLiveCashState(
     ...(query
       ? {
           OR: [
+            ...(humanId !== null ? [{ humanId }] : []),
             { kind: { contains: query, mode: 'insensitive' } },
             { direction: { contains: query, mode: 'insensitive' } },
             { reference: { contains: query, mode: 'insensitive' } },
@@ -452,6 +457,7 @@ export async function getLiveCashState(
     ...(query
       ? {
           OR: [
+            ...(humanId !== null ? [{ humanId }] : []),
             { notes: { contains: query, mode: 'insensitive' } },
             { countedBy: { name: { contains: query, mode: 'insensitive' } } },
           ],
@@ -491,6 +497,7 @@ export async function getLiveCashState(
       where: movementWhere,
       select: {
         id: true,
+        humanId: true,
         kind: true,
         direction: true,
         currency: true,
@@ -523,6 +530,7 @@ export async function getLiveCashState(
       where: auditWhere,
       select: {
         id: true,
+        humanId: true,
         currency: true,
         expectedAmount: true,
         countedAmount: true,
@@ -579,6 +587,7 @@ export async function getLiveCashState(
     currencies,
     movements: movementRows.map((row) => ({
       id: row.id,
+      humanId: row.humanId,
       kind: row.kind as CashMovementKind,
       direction: row.direction as CashDirection,
       currency: row.currency,
@@ -597,6 +606,7 @@ export async function getLiveCashState(
     movementTotal,
     cashGuarantees: guarantees.map((row) => ({
       id: row.id,
+      humanId: row.humanId,
       reservationCode: null,
       roomNumber: row.roomNumber ?? null,
       guestName: row.guestName ?? null,
@@ -627,6 +637,7 @@ export async function getLiveCashState(
       );
       return {
         id: row.id,
+        humanId: row.humanId,
         currency: row.currency,
         expectedAmount: decimal(row.expectedAmount),
         countedAmount: decimal(row.countedAmount),

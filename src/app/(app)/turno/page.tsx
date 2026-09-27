@@ -552,7 +552,7 @@ export default async function ShiftPage({
                   <span className="mb-1 block text-xs font-medium text-slate-500">Sección</span>
                   <select name="seccion" defaultValue={seccion} className="input-base w-full">
                     <option value="">Todas</option>
-                    <option value="pendientes">Pendientes heredados</option>
+                    <option value="pendientes">Pendientes operativos vigentes</option>
                     <option value="tareas">Tareas vencidas</option>
                     <option value="alertas">Alertas</option>
                     <option value="seguimientos">Seguimientos</option>
@@ -578,12 +578,15 @@ export default async function ShiftPage({
               {showSection('pendientes') ? (
                 <Card>
                   <CardHeader
-                    title="Pendientes heredados"
+                    title="Pendientes operativos vigentes"
                     count={visibleBriefing.openEntries.length}
                     href="/libro?estado=abiertos"
                   />
+                  <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+                    Todo registro abierto continúa visible entre turnos hasta que se resuelva o cierre.
+                  </p>
                   {visibleBriefing.openEntries.length === 0 ? (
-                    <EmptyState message="Sin registros abiertos." />
+                    <EmptyState message="Sin pendientes operativos vigentes." />
                   ) : (
                     <CardScroll>
                       <ul className="divide-y divide-slate-100">

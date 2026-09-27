@@ -112,8 +112,8 @@ describe('mesa de supervisión', () => {
     });
 
     const refs = rowsOf((await getSupervisionData()).blocks, 'sin-responsable').map((r) => r.ref);
-    expect(refs).toContain(`#${huerfana.seq}`);
-    expect(refs).not.toContain(`#${asignada.seq}`);
+    expect(refs).toContain(`#${huerfana.humanId}`);
+    expect(refs).not.toContain(`#${asignada.humanId}`);
   });
 
   it('el registro eliminado lógicamente sale de la revisión', async () => {

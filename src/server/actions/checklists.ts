@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { ChecklistRunMode } from '@prisma/client';
 import {
   formDataToObject,
   parseOrThrow,
@@ -114,6 +115,7 @@ export async function startChecklistRunAction(
     const input = parseOrThrow(
       z.object({
         templateId: z.string().min(1),
+        mode: z.nativeEnum(ChecklistRunMode).default(ChecklistRunMode.RONDA),
         scope: zOptionalString,
         sample: zOptionalString,
         participantIds: z.union([z.string(), z.array(z.string())]).optional().transform((value) =>
@@ -133,7 +135,10 @@ export async function startChecklistRunAction(
     refresh();
     return {
       ok: true as const,
-      message: `Ronda «${run.templateName}» iniciada: ${run.items.length} puntos por revisar.`,
+      message:
+        run.mode === ChecklistRunMode.AUDITORIA_SORPRESA
+          ? `Auditoría sorpresa «${run.templateName}» iniciada: ${run.items.length} puntos por revisar.`
+          : `Ronda «${run.templateName}» iniciada: ${run.items.length} puntos por revisar.`,
       id: run.id,
     };
   });
@@ -202,10 +207,12 @@ export async function finishChecklistRunAction(
       ok: true as const,
       message:
         result.failures === 0
-          ? 'Ronda cerrada sin fallas.'
-          : `Ronda cerrada con ${result.failures} falla(s)` +
+          ? result.observations > 0
+            ? `Cierre registrado sin incumplimientos y con ${result.observations} observación(es).`
+            : 'Cierre registrado sin incumplimientos ni observaciones.'
+          : `Cierre registrado con ${result.failures} incumplimiento(s) y ${result.observations} observación(es)` +
             (result.criticalFailures > 0
-              ? `, ${result.criticalFailures} de ellas críticas. Registra las incidencias que correspondan.`
+              ? `, ${result.criticalFailures} de los incumplimientos son críticos.`
               : '.'),
     };
   });

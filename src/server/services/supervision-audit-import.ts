@@ -34,6 +34,8 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.17.0';
+
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
   label: string;
@@ -41,6 +43,8 @@ export type ParsedSupervisionReport = {
   checks: SupervisionAuditCheck[];
   findings: SupervisionAuditFinding[];
   warnings: string[];
+  reportedBusinessDate: string | null;
+  completeness: { found: number; expected: number } | null;
 };
 
 const REPORT_LABELS: Record<SupervisionReportKind, string> = {
@@ -286,6 +290,69 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
   }
 }
 
+function normalizeReportedDate(dayRaw: string, monthRaw: string, yearRaw: string): string | null {
+  const day = Number(dayRaw);
+  const month = Number(monthRaw);
+  let year = Number(yearRaw);
+  if (yearRaw.length === 2) year += 2000;
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) return null;
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+}
+
+function reportedBusinessDate(fileName: string, text: string): string | null {
+  for (const source of [text.slice(0, 800), fileName]) {
+    const match = source.match(/(?:^|\D)(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\D|$)/);
+    if (!match?.[1] || !match[2] || !match[3]) continue;
+    const normalized = normalizeReportedDate(match[1], match[2], match[3]);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {
+  VENTAS_CANAL: 8,
+  COBROS: 4,
+  PRODUCCION_HABITACION: 3,
+  SALIDAS: 5,
+  REVENUE: 4,
+  IN_HOUSE: 1,
+  CARGOS_DIARIOS: 1,
+  AUDITORIA_FORMULARIO: 20,
+};
+
+function countExtractedValues(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') return 1;
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + countExtractedValues(item), 0);
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).reduce(
+      (sum, item) => sum + countExtractedValues(item),
+      0,
+    );
+  }
+  return 0;
+}
+
+function completenessFor(
+  kind: SupervisionReportKind,
+  metrics: Record<string, unknown>,
+  checks: SupervisionAuditCheck[],
+): { found: number; expected: number } | null {
+  const expected = EXPECTED_FIELDS[kind] ?? 0;
+  if (expected === 0) return null;
+  const found =
+    kind === 'AUDITORIA_FORMULARIO'
+      ? checks.length
+      : Math.min(expected, countExtractedValues(metrics));
+  return { found, expected };
+}
+
 export function parseSupervisionReportText(
   fileName: string,
   rawText: string,
@@ -307,14 +374,23 @@ export function parseSupervisionReportText(
 
   const checks = kind === 'AUDITORIA_FORMULARIO' ? auditChecks(text) : [];
   const findings = kind === 'AUDITORIA_FORMULARIO' ? findingsFromAudit(text, checks) : [];
+  const metrics = metricsFor(kind, text, checks);
+  const completeness = completenessFor(kind, metrics, checks);
+  if (completeness && completeness.found < completeness.expected) {
+    warnings.push(
+      `Formato parcialmente reconocido: se extrajeron ${completeness.found} de ${completeness.expected} campos/control(es) esperados para ${REPORT_LABELS[kind]}.`,
+    );
+  }
 
   return {
     kind,
     label: REPORT_LABELS[kind],
-    metrics: metricsFor(kind, text, checks),
+    metrics,
     checks,
     findings,
     warnings,
+    reportedBusinessDate: reportedBusinessDate(fileName, text),
+    completeness,
   };
 }
 
@@ -352,7 +428,18 @@ function mergeByKey<T extends { key: string }>(a: T[], b: T[]): T[] {
 
 export async function mergeSupervisionAuditReport(
   user: CurrentUser,
-  input: { businessDate: Date; parsed: ParsedSupervisionReport },
+  input: {
+    businessDate: Date;
+    parsed: ParsedSupervisionReport;
+    sourceFile?: {
+      name: string;
+      sha256: string;
+      size: number;
+      parserVersion: string;
+      reportedBusinessDate: string | null;
+      completeness: { found: number; expected: number } | null;
+    };
+  },
 ) {
   if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
     throw new RuleError('Sólo el Supervisor operativo puede cargar la auditoría diaria.');
@@ -394,6 +481,20 @@ export async function mergeSupervisionAuditReport(
     );
     const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
     const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
+    const existingSourceFiles = jsonArray<{
+      name: string;
+      sha256: string;
+      size: number;
+      parserVersion: string;
+      reportedBusinessDate: string | null;
+      completeness: { found: number; expected: number } | null;
+    }>(existing?.sourceFiles);
+    const sourceFiles = input.sourceFile
+      ? [
+          ...existingSourceFiles.filter((item) => item.sha256 !== input.sourceFile?.sha256),
+          input.sourceFile,
+        ]
+      : existingSourceFiles;
 
     const saved = await tx.supervisionAuditImport.upsert({
       where: {
@@ -409,6 +510,7 @@ export async function mergeSupervisionAuditReport(
         checks: checks as unknown as Prisma.InputJsonArray,
         findings: findings as unknown as Prisma.InputJsonArray,
         warnings,
+        sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
       },
       create: {
         supervisionShiftId: shift.id,
@@ -419,6 +521,7 @@ export async function mergeSupervisionAuditReport(
         checks: checks as unknown as Prisma.InputJsonArray,
         findings: findings as unknown as Prisma.InputJsonArray,
         warnings,
+        sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
       },
     });
 
@@ -436,6 +539,8 @@ export async function mergeSupervisionAuditReport(
           findings: findings.length,
           warnings: warnings.length,
           sourceFilePersisted: false,
+          sourceFileHashesPersisted: sourceFiles.length,
+          parserVersion: SUPERVISION_AUDIT_PARSER_VERSION,
         },
       },
       tx,

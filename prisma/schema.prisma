@@ -342,6 +342,30 @@ enum NotificationType {
   ACTUALIZACION_OPERATIVA
   FRONTI_HALLAZGO
   CHAT_MENSAJE
+  ALARMA
+}
+
+enum OperationalAlarmKind {
+  TIMER
+  RECORDATORIO
+}
+
+enum OperationalAlarmScope {
+  INDIVIDUAL
+  GRUPO
+  GLOBAL
+}
+
+enum OperationalAlarmStatus {
+  ACTIVA
+  CANCELADA
+  CERRADA
+}
+
+enum OperationalMailStatus {
+  PENDIENTE
+  ENVIADO
+  ERROR
 }
 
 // =============================== IDENTIDAD ================================
@@ -508,6 +532,8 @@ model User {
   chatTyping                        ChatTyping[]
   chatStickers                      ChatSticker[]
   chatMediaPreferences              ChatMediaPreference[]
+  operationalAlarmsCreated          OperationalAlarm[]          @relation("operationalAlarmCreatedBy")
+  operationalAlarmRecipients        OperationalAlarmRecipient[] @relation("operationalAlarmRecipientUser")
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -641,8 +667,9 @@ model Shift {
   tasks         Task[]
   targetedTasks Task[]             @relation("taskTargetShift")
   checklistRuns ChecklistRun[]
-  cashMovements CashMovement[]
-  gymPasses     GymPass[]
+  cashMovements     CashMovement[]
+  gymPasses         GymPass[]
+  operationalAlarms OperationalAlarm[] @relation("operationalAlarmOriginShift")
 
   /**
    * NO hay unicidad por fecha+tipo, y es deliberado.
@@ -1418,6 +1445,63 @@ model Notification {
   isDemo    Boolean          @default(false)
 
   @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+model OperationalAlarm {
+  id            String                 @id @default(cuid())
+  kind          OperationalAlarmKind
+  scope         OperationalAlarmScope
+  title         String
+  note          String?
+  dueAt         DateTime
+  createdById   String
+  createdBy     User                   @relation("operationalAlarmCreatedBy", fields: [createdById], references: [id])
+  originShiftId String?
+  originShift   Shift?                 @relation("operationalAlarmOriginShift", fields: [originShiftId], references: [id], onDelete: SetNull)
+  status        OperationalAlarmStatus @default(ACTIVA)
+  cancelledAt   DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  recipients OperationalAlarmRecipient[]
+
+  @@index([status, dueAt])
+  @@index([originShiftId, status])
+  @@index([createdById, createdAt])
+}
+
+model OperationalAlarmRecipient {
+  id              String           @id @default(cuid())
+  alarmId         String
+  alarm           OperationalAlarm @relation(fields: [alarmId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User             @relation("operationalAlarmRecipientUser", fields: [userId], references: [id], onDelete: Cascade)
+  acknowledgedAt  DateTime?
+  snoozedUntil    DateTime?
+  lastTriggeredAt DateTime?
+  createdAt       DateTime         @default(now())
+
+  @@unique([alarmId, userId])
+  @@index([userId, acknowledgedAt, snoozedUntil])
+}
+
+model OperationalMailOutbox {
+  id            String                @id @default(cuid())
+  eventKey      String                @unique
+  recipients    String[]
+  subject       String
+  text          String
+  status        OperationalMailStatus @default(PENDIENTE)
+  attempts      Int                   @default(0)
+  lastError     String?
+  sentAt        DateTime?
+  nextAttemptAt DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status, nextAttemptAt])
   @@index([createdAt])
 }
 

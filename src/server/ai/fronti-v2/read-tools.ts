@@ -68,6 +68,8 @@ async function shiftsTool(user: CurrentUser) {
     shift
       ? {
           id: shift.id,
+          humanId: shift.humanId,
+          ref: `#${shift.humanId}`,
           date: shift.date,
           type: shift.type,
           status: shift.status,
@@ -93,6 +95,8 @@ async function shiftsTool(user: CurrentUser) {
     pendingHandover: desk.pending
       ? {
           id: desk.pending.id,
+          humanId: desk.pending.humanId,
+          ref: `#${desk.pending.humanId}`,
           fromShiftId: desk.pending.fromShiftId,
           issuedAt: desk.pending.issuedAt,
           issuedBy: desk.pending.issuedBy.name,
@@ -102,6 +106,8 @@ async function shiftsTool(user: CurrentUser) {
     cashPending: desk.cashPending
       ? {
           id: desk.cashPending.id,
+          humanId: desk.cashPending.humanId,
+          ref: `#${desk.cashPending.humanId}`,
           fromShiftId: desk.cashPending.fromShiftId,
           issuedBy: desk.cashPending.issuedBy.name,
         }
@@ -124,7 +130,7 @@ async function entriesTool(user: CurrentUser, args: Record<string, unknown>) {
     },
     select: {
       id: true,
-      seq: true,
+      humanId: true,
       type: true,
       title: true,
       description: true,
@@ -147,7 +153,7 @@ async function entriesTool(user: CurrentUser, args: Record<string, unknown>) {
     onlyOpen,
     items: rows.map((row) => ({
       ...row,
-      ref: `#${row.seq}`,
+      ref: `#${row.humanId}`,
       room: row.room?.number ?? null,
       owner: row.owner
         ? { name: row.owner.name, username: row.owner.username }
@@ -169,6 +175,8 @@ async function guaranteesTool(user: CurrentUser, args: Record<string, unknown>) 
   return {
     items: guarantees.map((row) => ({
       id: row.id,
+      humanId: row.humanId,
+      ref: `#${row.humanId}`,
       reference: row.reference,
       roomNumber: row.roomNumber,
       guestName: row.guestName,
@@ -212,7 +220,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
     },
     select: {
       id: true,
-      seq: true,
+      humanId: true,
       title: true,
       description: true,
       status: true,
@@ -237,7 +245,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
     scope,
     items: rows.map((row) => ({
       ...row,
-      ref: `T#${row.seq}`,
+      ref: `#${row.humanId}`,
       room: row.room?.number ?? null,
       department: row.department?.name ?? null,
       assignee: row.assignee
@@ -288,6 +296,7 @@ async function followUpsTool(user: CurrentUser, args: Record<string, unknown>) {
     },
     select: {
       id: true,
+      humanId: true,
       action: true,
       description: true,
       status: true,
@@ -304,7 +313,13 @@ async function followUpsTool(user: CurrentUser, args: Record<string, unknown>) {
     take: limit,
   });
 
-  return { onlyOpen, items: rows };
+  return {
+    onlyOpen,
+    items: rows.map((row) => ({
+      ...row,
+      ref: `#${row.humanId}`,
+    })),
+  };
 }
 
 async function supervisionTool(user: CurrentUser) {
@@ -352,6 +367,7 @@ async function alertsTool(user: CurrentUser, args: Record<string, unknown>) {
     where: LIVE_ALERT_WHERE(now),
     select: {
       id: true,
+      humanId: true,
       type: true,
       level: true,
       title: true,
@@ -363,13 +379,16 @@ async function alertsTool(user: CurrentUser, args: Record<string, unknown>) {
       createdAt: true,
       entry: { select: { id: true, seq: true, title: true } },
       task: { select: { id: true, seq: true, title: true } },
-      followUp: { select: { id: true, action: true } },
+      followUp: { select: { id: true, humanId: true, action: true } },
       department: { select: { name: true } },
     },
     orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
     take: limit,
   });
-  return { generatedAt: now, items: rows };
+  return {
+    generatedAt: now,
+    items: rows.map((row) => ({ ...row, ref: `#${row.humanId}` })),
+  };
 }
 
 async function auditTool(user: CurrentUser, args: Record<string, unknown>) {

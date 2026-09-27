@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   AlarmKind,
+  AuditAction,
   AlarmScope,
   AlarmStatus,
   NotificationType,
@@ -128,7 +129,7 @@ export async function createAlarm(
       {
         entity: 'Alarm',
         entityId: alarm.id,
-        action: 'CREAR',
+        action: AuditAction.CREAR,
         user,
         summary: `${input.kind === AlarmKind.TIMER ? 'Timer' : 'Reminder'} «${alarm.title}» · ${recipientIds.length} destinatario(s)`,
         after: {
@@ -288,7 +289,7 @@ export async function respondAlarm(
       {
         entity: 'Alarm',
         entityId: recipient.alarmId,
-        action: 'CAMBIO_ESTADO',
+        action: AuditAction.CAMBIO_ESTADO,
         user,
         summary:
           input.action === 'ACK'
@@ -335,7 +336,7 @@ export async function cancelAlarm(user: CurrentUser, alarmId: string) {
     await recordAudit({
       entity: 'Alarm',
       entityId: alarm.id,
-      action: 'CERRAR',
+      action: AuditAction.CERRAR,
       user,
       summary: `Alarma «${alarm.title}» cancelada`,
       after: { status: AlarmStatus.CANCELADA, cancelledAt: now },

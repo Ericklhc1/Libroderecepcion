@@ -186,6 +186,13 @@ enum AuditDisclosure {
   OPERATIVO
 }
 
+/// La misma infraestructura soporta rondas rutinarias y auditorías sorpresa,
+/// pero su semántica no debe mezclarse en la interfaz ni en los informes.
+enum ChecklistRunMode {
+  RONDA
+  AUDITORIA_SORPRESA
+}
+
 enum CorrectiveMeasureStatus {
   PENDIENTE
   EN_CURSO
@@ -728,6 +735,10 @@ model ShiftHandover {
   receivedAt           DateTime?
   /// Fotografía inmutable del estado operativo al momento de enviar la entrega.
   snapshot             Json?
+  /// Barreras reales del cierre guiado. No dependen del parámetro ?paso=.
+  pendingsReviewedAt   DateTime?
+  finalReviewAt        DateTime?
+  urgentAcknowledgedAt DateTime?
   notes                String?
   receiverObservations String?
   issuerSessionId      String?
@@ -825,6 +836,8 @@ model SupervisionAuditImport {
   checks             Json
   findings           Json
   warnings           String[]         @default([])
+  /// Huellas técnicas de los PDF procesados. No contiene el archivo ni texto extraído.
+  sourceFiles        Json             @default("[]")
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -2333,6 +2346,7 @@ model ChecklistRun {
   runBy                 User                   @relation("checklistRunBy", fields: [runById], references: [id])
   status                SupervisionAuditStatus @default(EN_CURSO)
   surprise              Boolean                @default(false)
+  mode                  ChecklistRunMode       @default(RONDA)
   scope                 String?
   sample                String?
   disclosure            AuditDisclosure        @default(RESERVADO)

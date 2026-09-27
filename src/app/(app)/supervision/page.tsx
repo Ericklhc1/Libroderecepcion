@@ -161,10 +161,8 @@ export default async function SupervisionCenterPage({
     inPeriod(audit.startedAt) &&
     matches(audit.templateName, audit.runBy.name, audit.status, audit.scope),
   );
-  const measures = center.measures.filter(
-    (measure) =>
-      inPeriod(measure.createdAt) &&
-      matches(measure.title, measure.action, measure.assignee.name, measure.status),
+  const measures = center.measures.filter((measure) =>
+    matches(measure.title, measure.action, measure.assignee.name, measure.status),
   );
   const blocks = review.blocks
     .map((block) => ({

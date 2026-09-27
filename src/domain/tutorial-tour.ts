@@ -97,6 +97,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   {
+    id: 'alarmas',
+    title: 'Timers y reminders',
+    description:
+      'Programa avisos individuales, grupales o globales. Un timer muere con su turno; un reminder continúa aunque cambie el relevo.',
+    route: '/alarmas',
+    target: ROUTE_TARGET,
+  },
+  {
     id: 'supervision',
     title: 'Centro de Supervisión',
     description:

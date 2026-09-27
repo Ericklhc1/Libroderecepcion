@@ -3,6 +3,7 @@ import 'server-only';
 import { AnnouncementScope } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { NotificationFeedSnapshot } from '@/domain/notifications';
+import { materializeDueAlarmsForUser } from '@/server/services/alarms';
 
 export const NOTIFICATION_FEED_LIMIT = 40;
 
@@ -18,6 +19,7 @@ export async function getNotificationFeedForUser(
 ): Promise<NotificationFeedSnapshot> {
   const safeLimit = Math.max(1, Math.min(limit, NOTIFICATION_FEED_LIMIT));
 
+  await materializeDueAlarmsForUser(userId);
   const now = new Date();
   const [rows, unread, blockingAnnouncements] = await Promise.all([
     prisma.notification.findMany({

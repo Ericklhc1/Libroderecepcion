@@ -342,6 +342,30 @@ enum NotificationType {
   ACTUALIZACION_OPERATIVA
   FRONTI_HALLAZGO
   CHAT_MENSAJE
+  ALARMA
+}
+
+enum AlarmKind {
+  TIMER
+  REMINDER
+}
+
+enum AlarmScope {
+  INDIVIDUAL
+  GRUPO
+  GLOBAL
+}
+
+enum AlarmStatus {
+  ACTIVA
+  COMPLETADA
+  CANCELADA
+}
+
+enum MailOutboxStatus {
+  PENDIENTE
+  ENVIADO
+  ERROR
 }
 
 // =============================== IDENTIDAD ================================
@@ -454,6 +478,8 @@ model User {
   alertsResolved                  Alert[]                    @relation("alertResolvedBy")
   auditLogs                       AuditLog[]
   notifications                   Notification[]
+  alarmsCreated                   Alarm[]                    @relation("alarmCreatedBy")
+  alarmRecipients                 AlarmRecipient[]           @relation("alarmRecipientUser")
   settingsUpdated                 SystemSetting[]
   mailSettingsUpdated             MailSettings[]
   checklistDone                   TaskChecklistItem[]
@@ -643,6 +669,7 @@ model Shift {
   checklistRuns ChecklistRun[]
   cashMovements CashMovement[]
   gymPasses     GymPass[]
+  alarms        Alarm[]             @relation("alarmSourceShift")
 
   /**
    * NO hay unicidad por fecha+tipo, y es deliberado.
@@ -759,6 +786,7 @@ model SupervisionShift {
   notes     SupervisionNote[]
   audits    ChecklistRun[]
   handover  SupervisionShiftHandover?
+  alarms    Alarm[]                    @relation("alarmSourceSupervisionShift")
 
   @@index([supervisorId, status])
   @@index([startedAt])
@@ -1418,6 +1446,74 @@ model Notification {
   isDemo    Boolean          @default(false)
 
   @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+/// Aviso temporal operativo. TIMER muere con el turno de origen; REMINDER persiste.
+model Alarm {
+  id                       String           @id @default(cuid())
+  kind                     AlarmKind
+  scope                    AlarmScope
+  status                   AlarmStatus      @default(ACTIVA)
+  title                    String
+  note                     String?
+  dueAt                    DateTime
+  createdById              String
+  createdBy                User             @relation("alarmCreatedBy", fields: [createdById], references: [id])
+  sourceShiftId            String?
+  sourceShift              Shift?           @relation("alarmSourceShift", fields: [sourceShiftId], references: [id], onDelete: SetNull)
+  sourceSupervisionShiftId String?
+  sourceSupervisionShift   SupervisionShift? @relation("alarmSourceSupervisionShift", fields: [sourceSupervisionShiftId], references: [id], onDelete: SetNull)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  isDemo                   Boolean          @default(false)
+
+  recipients AlarmRecipient[]
+
+  @@index([status, dueAt])
+  @@index([createdById, createdAt])
+  @@index([sourceShiftId, status])
+  @@index([sourceSupervisionShiftId, status])
+}
+
+/// Estado individual: una alarma grupal se detiene/pospone por persona.
+model AlarmRecipient {
+  id             String   @id @default(cuid())
+  alarmId        String
+  alarm          Alarm    @relation(fields: [alarmId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation("alarmRecipientUser", fields: [userId], references: [id], onDelete: Cascade)
+  triggeredAt    DateTime?
+  lastNotifiedAt DateTime?
+  snoozedUntil   DateTime?
+  acknowledgedAt DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([alarmId, userId])
+  @@index([userId, acknowledgedAt, cancelledAt])
+  @@index([snoozedUntil])
+}
+
+/// Cola persistente: el hecho operativo se confirma aunque SMTP falle y el correo se reintenta.
+model OperationalMailOutbox {
+  id            String           @id @default(cuid())
+  eventKey      String           @unique
+  to            String
+  subject       String
+  body          String
+  status        MailOutboxStatus @default(PENDIENTE)
+  attempts      Int              @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  lastError     String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([status, nextAttemptAt])
   @@index([createdAt])
 }
 

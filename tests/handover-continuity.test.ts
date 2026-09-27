@@ -123,8 +123,8 @@ describe('continuidad de la entrega de turno', () => {
     const taskItem = snapshot.find((item) => item.refId === task.id);
     const followUpItem = snapshot.find((item) => item.refId === followUp.id);
 
-    expect(taskItem?.detail).toContain(`Caso #${incident.seq}`);
-    expect(followUpItem?.detail).toContain(`Caso #${incident.seq}`);
+    expect(taskItem?.detail).toContain(`Caso #${incident.humanId}`);
+    expect(followUpItem?.detail).toContain(`Caso #${incident.humanId}`);
   });
 
   it('no mezcla ocupación ni dólar con la entrega de turno', async () => {

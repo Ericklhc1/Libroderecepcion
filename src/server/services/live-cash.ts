@@ -94,6 +94,8 @@ export type LiveCashState = {
     createdAt: Date;
   }>;
   audits: CashAuditRow[];
+  movementTotal: number;
+  auditTotal: number;
 };
 
 function decimal(value: Prisma.Decimal | number | string | null | undefined): number {
@@ -391,8 +393,82 @@ export async function saveLiveCashAudit(
   return { expected, difference, guaranteeCount: guaranteeSnapshot.length };
 }
 
-export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
-  const [denominations, funds, totals, movementRows, guarantees, auditRows] = await Promise.all([
+export async function getLiveCashState(
+  input:
+    | number
+    | {
+        query?: string;
+        currency?: string;
+        from?: Date;
+        to?: Date;
+        movementLimit?: number;
+        auditLimit?: number;
+      } = {},
+): Promise<LiveCashState> {
+  // Compatibilidad con Fronti y llamadas internas antiguas que pasaban sólo un límite.
+  const options =
+    typeof input === 'number'
+      ? { movementLimit: input, auditLimit: input }
+      : input;
+  const query = options.query?.trim() ?? '';
+  const currency = options.currency?.trim().toUpperCase() || undefined;
+  const movementLimit = Math.min(Math.max(options.movementLimit ?? 50, 1), 200);
+  const auditLimit = Math.min(Math.max(options.auditLimit ?? 50, 1), 200);
+
+  const effectiveAt =
+    options.from || options.to
+      ? {
+          ...(options.from ? { gte: options.from } : {}),
+          ...(options.to ? { lte: options.to } : {}),
+        }
+      : undefined;
+  const createdAt =
+    options.from || options.to
+      ? {
+          ...(options.from ? { gte: options.from } : {}),
+          ...(options.to ? { lte: options.to } : {}),
+        }
+      : undefined;
+
+  const movementWhere: Prisma.CashMovementWhereInput = {
+    voidedAt: null,
+    ...(currency ? { currency } : {}),
+    ...(effectiveAt ? { effectiveAt } : {}),
+    ...(query
+      ? {
+          OR: [
+            { kind: { contains: query, mode: 'insensitive' } },
+            { direction: { contains: query, mode: 'insensitive' } },
+            { reference: { contains: query, mode: 'insensitive' } },
+            { notes: { contains: query, mode: 'insensitive' } },
+            { createdBy: { name: { contains: query, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+  const auditWhere: Prisma.CashAuditWhereInput = {
+    ...(currency ? { currency } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(query
+      ? {
+          OR: [
+            { notes: { contains: query, mode: 'insensitive' } },
+            { countedBy: { name: { contains: query, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [
+    denominations,
+    funds,
+    totals,
+    movementRows,
+    movementTotal,
+    guarantees,
+    auditRows,
+    auditTotal,
+  ] = await Promise.all([
     prisma.cashDenomination.findMany({
       where: { active: true, currency: { in: ['CLP', 'USD'] } },
       select: { id: true, currency: true, value: true, medium: true },
@@ -411,36 +487,25 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         AND "affectsExpected" = TRUE
       GROUP BY "currency"
     `,
-    prisma.$queryRaw<
-      Array<{
-        id: string;
-        kind: CashMovementKind;
-        direction: CashDirection;
-        currency: string;
-        amount: Prisma.Decimal;
-        reference: string | null;
-        notes: string | null;
-        roomNumber: string | null;
-        reservationCode: string | null;
-        stayId: string | null;
-        guestName: string | null;
-        createdByName: string;
-        createdAt: Date;
-        effectiveAt: Date;
-        affectsExpected: boolean;
-      }>
-    >`
-      SELECT m."id", m."kind", m."direction", m."currency", m."amount",
-             m."reference", m."notes", NULL::text AS "roomNumber",
-             NULL::text AS "reservationCode", NULL::text AS "stayId",
-             NULL::text AS "guestName", u."name" AS "createdByName",
-             m."createdAt", m."effectiveAt", m."affectsExpected"
-      FROM "CashMovement" m
-      JOIN "User" u ON u."id" = m."createdById"
-      WHERE m."voidedAt" IS NULL
-      ORDER BY m."createdAt" DESC
-      LIMIT ${limit}
-    `,
+    prisma.cashMovement.findMany({
+      where: movementWhere,
+      select: {
+        id: true,
+        kind: true,
+        direction: true,
+        currency: true,
+        amount: true,
+        reference: true,
+        notes: true,
+        createdAt: true,
+        effectiveAt: true,
+        affectsExpected: true,
+        createdBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: movementLimit,
+    }),
+    prisma.cashMovement.count({ where: movementWhere }),
     prisma.guarantee.findMany({
       where: {
         deletedAt: null,
@@ -454,26 +519,23 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       },
       orderBy: { createdAt: 'asc' },
     }),
-    prisma.$queryRaw<
-      Array<{
-        id: string;
-        currency: string;
-        expectedAmount: Prisma.Decimal;
-        countedAmount: Prisma.Decimal;
-        difference: Prisma.Decimal;
-        countedByName: string;
-        notes: string | null;
-        guaranteeSnapshot: Prisma.JsonValue | null;
-        createdAt: Date;
-      }>
-    >`
-      SELECT a."id", a."currency", a."expectedAmount", a."countedAmount", a."difference",
-             u."name" AS "countedByName", a."notes", a."guaranteeSnapshot", a."createdAt"
-      FROM "CashAudit" a
-      JOIN "User" u ON u."id" = a."countedById"
-      ORDER BY a."createdAt" DESC
-      LIMIT 12
-    `,
+    prisma.cashAudit.findMany({
+      where: auditWhere,
+      select: {
+        id: true,
+        currency: true,
+        expectedAmount: true,
+        countedAmount: true,
+        difference: true,
+        notes: true,
+        guaranteeSnapshot: true,
+        createdAt: true,
+        countedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: auditLimit,
+    }),
+    prisma.cashAudit.count({ where: auditWhere }),
   ]);
 
   const fundsMap = new Map(funds.map((row) => [row.currency, decimal(row.amount)]));
@@ -491,13 +553,13 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
     new Set([...fundsMap.keys(), ...netMap.keys(), ...custodyMap.keys()]),
   )
     .sort()
-    .map((currency) => {
-      const fund = fundsMap.get(currency) ?? 0;
-      const netMovements = netMap.get(currency) ?? 0;
-      const guaranteeCustody = custodyMap.get(currency) ?? 0;
+    .map((itemCurrency) => {
+      const fund = fundsMap.get(itemCurrency) ?? 0;
+      const netMovements = netMap.get(itemCurrency) ?? 0;
+      const guaranteeCustody = custodyMap.get(itemCurrency) ?? 0;
       const operational = netMovements - guaranteeCustody;
       return {
-        currency,
+        currency: itemCurrency,
         fund,
         guaranteeCustody,
         operational,
@@ -515,7 +577,24 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
       medium: row.medium,
     })),
     currencies,
-    movements: movementRows.map((row) => ({ ...row, amount: decimal(row.amount) })),
+    movements: movementRows.map((row) => ({
+      id: row.id,
+      kind: row.kind as CashMovementKind,
+      direction: row.direction as CashDirection,
+      currency: row.currency,
+      amount: decimal(row.amount),
+      reference: row.reference,
+      notes: row.notes,
+      roomNumber: null,
+      reservationCode: null,
+      stayId: null,
+      guestName: null,
+      createdByName: row.createdBy.name,
+      createdAt: row.createdAt,
+      effectiveAt: row.effectiveAt,
+      affectsExpected: row.affectsExpected,
+    })),
+    movementTotal,
     cashGuarantees: guarantees.map((row) => ({
       id: row.id,
       reservationCode: null,
@@ -552,16 +631,16 @@ export async function getLiveCashState(limit = 30): Promise<LiveCashState> {
         expectedAmount: decimal(row.expectedAmount),
         countedAmount: decimal(row.countedAmount),
         difference: decimal(row.difference),
-        countedByName: row.countedByName,
+        countedByName: row.countedBy.name,
         notes: row.notes,
         guaranteeCount: guaranteeRows.length,
         guaranteeAmount,
         createdAt: row.createdAt,
       };
     }),
+    auditTotal,
   };
 }
-
 
 /**
  * Reclasifica un ingreso/egreso manual ya registrado como regularización de una

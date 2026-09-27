@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
   closeShift,
+  confirmHandoverReviewStep,
   getMyActiveShift,
   getPendingHandover,
   openShift,
@@ -24,6 +25,11 @@ async function activate(
   const { shift } = await openShift(user, { type });
   await receiveHandover(user, { shiftId: shift.id });
   return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+}
+
+async function confirmReview(user: Awaited<ReturnType<typeof createUser>>, handoverId: string) {
+  await confirmHandoverReviewStep(user, { handoverId, step: 'PENDINGS' });
+  await confirmHandoverReviewStep(user, { handoverId, step: 'FINAL' });
 }
 
 describe('relevo secuencial de Recepción', () => {
@@ -64,7 +70,8 @@ describe('relevo secuencial de Recepción', () => {
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
     const turno = await activate(saliente, ShiftType.DIA);
-    await prepareHandover(saliente, turno.id);
+    const prepared = await prepareHandover(saliente, turno.id);
+    await confirmReview(saliente, prepared.id);
     await sendHandover(saliente, { shiftId: turno.id });
 
     const participation = await prisma.shiftAssignment.findFirstOrThrow({
@@ -84,6 +91,7 @@ describe('relevo secuencial de Recepción', () => {
 
     const turno = await activate(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, turno.id);
+    await confirmReview(saliente, handover.id);
     await sendHandover(saliente, { shiftId: turno.id });
     await closeShift(saliente, { shiftId: turno.id });
 

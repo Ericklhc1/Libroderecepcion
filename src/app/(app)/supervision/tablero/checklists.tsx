@@ -141,6 +141,7 @@ export function StartRunForm({ templateId }: { templateId: string }) {
   return (
     <ActionForm action={startChecklistRunAction} className="space-y-0" hideSuccess>
       <input type="hidden" name="templateId" value={templateId} />
+      <input type="hidden" name="mode" value="RONDA" />
       <SubmitButton variant="secondary" size="sm" pendingLabel="Iniciando…">
         Recorrer
       </SubmitButton>
@@ -172,6 +173,7 @@ export function StartAuditDialog({
     >
       <ActionForm action={startChecklistRunAction} closeOnSuccess>
         <input type="hidden" name="templateId" value={templateId} />
+        <input type="hidden" name="mode" value="AUDITORIA_SORPRESA" />
         <Field label="Alcance" name="scope" required>
           <Textarea
             name="scope"

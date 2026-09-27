@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   AuditDisclosure,
+  ChecklistRunMode,
   CorrectiveMeasureStatus,
   EntryStatus,
   Priority,
@@ -333,6 +334,7 @@ describe('Centro de Supervisión', () => {
     });
     const run = await startRun(supervisor, {
       templateId: template.id,
+      mode: ChecklistRunMode.AUDITORIA_SORPRESA,
       scope: 'Turno diurno del día',
       sample: 'Cinco movimientos elegidos al azar',
       participantIds: [receptionist.id],

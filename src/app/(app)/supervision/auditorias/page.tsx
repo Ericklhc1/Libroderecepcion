@@ -23,6 +23,7 @@ import {
 } from '@/components/supervision/center-actions';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { ChecklistRunMode } from '@prisma/client';
 
 export const metadata = { title: 'Auditorías sorpresa' };
 export const dynamic = 'force-dynamic';
@@ -74,8 +75,8 @@ export default async function SurpriseAuditsPage({
 
   const [templates, runs, myRun, findings, measures, options] = await Promise.all([
     listTemplates(true),
-    listRuns(user, 30),
-    getMyOpenRun(user.id),
+    listRuns(user, 30, ChecklistRunMode.AUDITORIA_SORPRESA),
+    getMyOpenRun(user.id, ChecklistRunMode.AUDITORIA_SORPRESA),
     prisma.auditFinding.findMany({
       where: { deletedAt: null, confirmed: true },
       include: { audit: { select: { templateName: true, finishedAt: true } }, correctiveMeasures: true },

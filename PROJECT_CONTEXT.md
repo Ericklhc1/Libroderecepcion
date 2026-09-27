@@ -80,6 +80,27 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.17.0 · blindaje de flujos operativos
+
+- El cierre de Recepción deja de depender de `?paso=`: pendientes y revisión final
+  quedan confirmados en base de datos antes de permitir el envío.
+- Si el resumen automático o la nota manual cambian, esas confirmaciones se
+  invalidan y deben repetirse. Los puntos urgentes exigen reconocimiento expreso.
+- Caja aplica filtros históricos en PostgreSQL y muestra totales reales aunque la
+  pantalla sólo renderice una muestra. Las acciones siguen sujetas al gate de turno.
+- Movimientos con fecha efectiva distinta del día operativo requieren confirmación;
+  devolver una garantía en efectivo exige confirmar físicamente el monto mostrado.
+- Supervisión separa `RONDA` de `AUDITORIA_SORPRESA`; una persona sólo puede
+  mantener una ejecución abierta a la vez. La auditoría sorpresa formal exige
+  alcance y muestra.
+- Los informes diarios conservan sólo huella SHA-256, tamaño, versión del parser,
+  fecha detectada y completitud. El PDF, su nombre y el texto extraído se descartan.
+- Una fecha detectada que no coincide con la fecha elegida bloquea la carga.
+- Controles sin respuesta nunca producen un estado verde; se cuentan como puntos a revisar.
+- El cierre del turno de Supervisión exige confirmar revisión de críticos,
+  auditoría diaria y continuidad antes de generar su snapshot.
+- Nueva migración: `20260927160000_blindaje_flows`.
+
 ## Actualización 27/09/2026 · cierre guiado v3
 
 - El cierre de Recepción se conduce paso a paso: Caja/custodia → pendientes →

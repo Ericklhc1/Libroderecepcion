@@ -66,12 +66,64 @@ export function DeliverSupervisionShiftDialog({ shiftId }: { shiftId: string }) 
   );
 }
 
-export function FinishSupervisionShiftForm({ shiftId }: { shiftId: string }) {
+export function FinishSupervisionShiftForm({
+  shiftId,
+  criticalCount,
+  continuityCount,
+  auditPendingCount,
+}: {
+  shiftId: string;
+  criticalCount: number;
+  continuityCount: number;
+  auditPendingCount: number;
+}) {
   return (
-    <ActionForm action={finishSupervisionShiftAction} hideSuccess refreshOnSuccess className="space-y-0">
-      <input type="hidden" name="shiftId" value={shiftId} />
-      <SubmitButton pendingLabel="Finalizando…">Finalizar turno</SubmitButton>
-    </ActionForm>
+    <Dialog
+      title="Finalizar turno de Supervisión"
+      description="Antes de cerrar, confirma que revisaste las tres fuentes que pueden dejar trabajo sin dueño. Los pendientes continúan al próximo turno; no se borran."
+      trigger="FINALIZAR TURNO"
+      triggerVariant="gold"
+      width="sm"
+    >
+      <ActionForm action={finishSupervisionShiftAction} closeOnSuccess refreshOnSuccess className="space-y-3">
+        <input type="hidden" name="shiftId" value={shiftId} />
+
+        <label className="flex items-start gap-3 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+          <input type="checkbox" name="reviewedCritical" required className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Revisé las señales críticas y cierres que requieren atención
+            {criticalCount > 0 ? ` (${criticalCount} visibles ahora)` : ''}.
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+          <input type="checkbox" name="reviewedAudit" required className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Revisé la auditoría diaria y sus controles incompletos o inciertos
+            {auditPendingCount > 0 ? ` (${auditPendingCount} punto(s) pendientes)` : ''}.
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+          <input type="checkbox" name="reviewedContinuity" required className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Revisé tareas, delegaciones y seguimientos que continuarán después de mi jornada
+            {continuityCount > 0 ? ` (${continuityCount} abiertos)` : ''}.
+          </span>
+        </label>
+
+        <p className="text-xs text-slate-500">
+          Finalizar genera automáticamente la copia inalterable del turno. Los asuntos abiertos
+          reaparecerán en tu continuidad cuando vuelvas a iniciar Supervisión.
+        </p>
+
+        <div className="flex justify-end">
+          <SubmitButton variant="gold" pendingLabel="Finalizando…">
+            CONFIRMAR Y FINALIZAR
+          </SubmitButton>
+        </div>
+      </ActionForm>
+    </Dialog>
   );
 }
 

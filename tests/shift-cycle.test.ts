@@ -12,6 +12,7 @@ import {
 import {
   cancelHandoverPreparation,
   closeShift,
+  confirmHandoverReviewStep,
   getPendingHandover,
   getMyOpenShift,
   openShift,
@@ -21,6 +22,27 @@ import {
 } from '@/server/services/shifts';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
+
+async function sendReviewedHandover(
+  user: CurrentUser,
+  shiftId: string,
+  notes?: string,
+) {
+  const handover = await prisma.shiftHandover.findUniqueOrThrow({
+    where: { fromShiftId: shiftId },
+  });
+  await confirmHandoverReviewStep(user, { handoverId: handover.id, step: 'PENDINGS' });
+  const refreshed = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+  const hasUrgent = await prisma.handoverItem.count({
+    where: { handoverId: handover.id, level: 'URGENTE' },
+  });
+  await confirmHandoverReviewStep(user, {
+    handoverId: refreshed.id,
+    step: 'FINAL',
+    urgentAcknowledged: hasUrgent > 0,
+  });
+  return sendHandover(user, { shiftId, notes });
+}
 
 describe('ciclo de turno de punta a punta', () => {
   let morning: CurrentUser;
@@ -64,10 +86,7 @@ describe('ciclo de turno de punta a punta', () => {
       ShiftStatus.PREPARANDO_ENTREGA,
     );
 
-    const sent = await sendHandover(morning, {
-      shiftId: shiftA.id,
-      notes: 'Pendiente la 318 con mantenimiento.',
-    });
+    const sent = await sendReviewedHandover(morning, shiftA.id, 'Pendiente la 318 con mantenimiento.');
     expect(sent.status).toBe(HandoverStatus.ENVIADA);
     expect(sent.issuedById).toBe(morning.id);
     expect(sent.issuedAt).not.toBeNull();
@@ -123,7 +142,7 @@ describe('ciclo de turno de punta a punta', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    await sendHandover(morning, { shiftId: shiftA.id });
+    await sendReviewedHandover(morning, shiftA.id);
 
     const notification = await prisma.notification.findFirst({
       where: { userId: evening.id, type: 'ENTREGA_DISPONIBLE' },
@@ -297,7 +316,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
 
     await receiveHandover(evening, { handoverId: sent.id });
@@ -311,7 +330,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
 
     await expect(
@@ -336,7 +355,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    await sendHandover(morning, { shiftId: shiftA.id });
+    await sendReviewedHandover(morning, shiftA.id);
 
     const closed = await closeShift(morning, { shiftId: shiftA.id });
     expect(closed.status).toBe(ShiftStatus.CERRADO);
@@ -362,7 +381,7 @@ describe('invariantes del turno', () => {
       /primero debes preparar la entrega/i,
     );
     await prepareHandover(morning, shift.id);
-    await sendHandover(morning, { shiftId: shift.id });
+    await sendReviewedHandover(morning, shift.id);
     await expect(sendHandover(morning, { shiftId: shift.id })).rejects.toThrow(/ya fue enviada/);
   });
 
@@ -425,7 +444,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    await sendHandover(morning, { shiftId: shiftA.id });
+    await sendReviewedHandover(morning, shiftA.id);
     await expect(cancelHandoverPreparation(morning, shiftA.id)).rejects.toThrow(RuleError);
   });
 
@@ -436,7 +455,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    const sent = await sendReviewedHandover(morning, shiftA.id);
 
     await expect(openShiftAs(evening, shiftB)).rejects.toThrow(
       /saliente todavía no está cerrado/i,
@@ -476,7 +495,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    const sent = await sendReviewedHandover(morning, shiftA.id);
 
     expect((await getMyOpenShift(morning.id))?.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
     await expect(openShiftAs(evening, shiftB)).rejects.toThrow(
@@ -496,7 +515,7 @@ describe('invariantes del turno', () => {
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
     await prepareHandover(morning, shiftA.id);
-    const sent = await sendHandover(morning, { shiftId: shiftA.id });
+    const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
     await receiveHandover(evening, { handoverId: sent.id });
     await openShiftAs(evening, shiftB);

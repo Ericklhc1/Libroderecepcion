@@ -261,27 +261,45 @@ const zMoney = z
   .transform((value) => (typeof value === 'number' ? value : Number(value.replace(/[^\d.-]/g, ''))))
   .refine((value) => Number.isFinite(value) && value >= 0, 'Monto inválido');
 
-export const guaranteeCreateSchema = z.object({
-  /** Vínculo PMS legado: opcional y nunca requerido para garantías nuevas. */
-  reservationReferenceId: zOptionalCuid,
-  stayId: zOptionalCuid,
-  roomId: zOptionalCuid,
-  /** Contexto directo de Caja. Todos son opcionales. */
-  guestName: zOptionalString,
-  roomNumber: zOptionalString,
-  reference: zOptionalString,
-  dueAt: zOptionalDate,
-  kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),
-  amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero'),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .default('CLP')
-    .refine((value) => /^[A-Z]{3}$/.test(value), 'Usa el código de tres letras, como CLP o USD'),
-  state: z.enum(['PENDIENTE', 'VIGENTE']).optional(),
-  notes: zOptionalString,
-});
+export const guaranteeCreateSchema = z
+  .object({
+    /** Vínculo PMS legado: opcional y nunca requerido para garantías nuevas. */
+    reservationReferenceId: zOptionalCuid,
+    stayId: zOptionalCuid,
+    roomId: zOptionalCuid,
+    /** Contexto directo de Caja: al menos uno debe identificar de quién/de qué es el dinero. */
+    guestName: zOptionalString,
+    roomNumber: zOptionalString,
+    reference: zOptionalString,
+    dueAt: zOptionalDate,
+    kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),
+    amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero'),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .default('CLP')
+      .refine((value) => /^[A-Z]{3}$/.test(value), 'Usa el código de tres letras, como CLP o USD'),
+    state: z.enum(['PENDIENTE', 'VIGENTE']).optional(),
+    notes: zOptionalString,
+  })
+  .superRefine((data, ctx) => {
+    const identified = Boolean(
+      data.reservationReferenceId ||
+      data.stayId ||
+      data.roomId ||
+      data.guestName?.trim() ||
+      data.roomNumber?.trim() ||
+      data.reference?.trim(),
+    );
+    if (!identified) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reference'],
+        message: 'Indica al menos huésped, habitación o referencia para identificar esta garantía.',
+      });
+    }
+  });
 
 export const guaranteeStateSchema = z.object({
   id: z.string().min(1),

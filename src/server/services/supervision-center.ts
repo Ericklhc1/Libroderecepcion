@@ -135,6 +135,7 @@ async function buildSupervisionSnapshot(
         checks: true,
         findings: true,
         warnings: true,
+        sourceFiles: true,
         createdAt: true,
         updatedAt: true,
       },

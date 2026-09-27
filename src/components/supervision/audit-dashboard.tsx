@@ -13,6 +13,7 @@ type AuditImportRow = {
   checks: Prisma.JsonValue;
   findings: Prisma.JsonValue;
   warnings: string[];
+  sourceFiles?: Prisma.JsonValue;
   updatedAt: Date;
   uploadedBy: { id: string; name: string };
 };
@@ -136,6 +137,9 @@ export function SupervisionAuditDashboard({
           const checks = checksOf(row.checks);
           const findings = findingsOf(row.findings);
           const incomplete = checks.filter((check) => check.done !== true);
+          const unknown = checks.filter((check) => check.done === null);
+          const pointsToReview = findings.length + unknown.length;
+          const sources = Array.isArray(row.sourceFiles) ? row.sourceFiles : [];
 
           const auditCompleted = numberValue(audit.completed);
           const auditControls = numberValue(audit.controls);
@@ -168,9 +172,21 @@ export function SupervisionAuditDashboard({
                   <StatTile
                     label="Controles auditoría"
                     value={auditControls === null ? '—' : `${auditCompleted ?? 0}/${auditControls}`}
-                    tone={auditControls !== null && auditCompleted === auditControls ? 'good' : 'neutral'}
+                    tone={
+                      auditControls !== null &&
+                      auditCompleted === auditControls &&
+                      incomplete.length === 0
+                        ? 'good'
+                        : incomplete.length > 0
+                          ? 'alert'
+                          : 'neutral'
+                    }
                   />
-                  <StatTile label="Puntos a revisar" value={findings.length} tone={findings.length ? 'alert' : 'good'} />
+                  <StatTile
+                    label="Puntos a revisar"
+                    value={pointsToReview}
+                    tone={pointsToReview > 0 ? 'alert' : checks.length > 0 ? 'good' : 'neutral'}
+                  />
                   <StatTile
                     label="Check-out pendientes"
                     value={departuresPending ?? '—'}
@@ -206,10 +222,15 @@ export function SupervisionAuditDashboard({
                       ))}
                     </ul>
                   </div>
-                ) : checks.length > 0 ? (
+                ) : checks.length > 0 && incomplete.length === 0 ? (
                   <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    No se detectaron puntos de atención en el formulario leído.
+                    Todos los controles reconocidos tienen respuesta y no se detectaron puntos de atención.
+                  </div>
+                ) : checks.length > 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+                    <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                    La auditoría todavía tiene controles sin respuesta reconocible. No se considera cerrada ni en verde.
                   </div>
                 ) : null}
 
@@ -239,6 +260,13 @@ export function SupervisionAuditDashboard({
                       {row.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
                     </ul>
                   </details>
+                ) : null}
+
+                {sources.length > 0 ? (
+                  <p className="text-xs text-slate-500">
+                    Fuentes verificadas: {sources.length} archivo(s). Se conserva sólo su huella técnica,
+                    tamaño, versión del lector y completitud; nunca el PDF ni el texto extraído.
+                  </p>
                 ) : null}
 
                 <p className="flex items-center gap-1.5 text-xs text-slate-500">

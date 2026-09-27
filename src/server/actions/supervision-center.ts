@@ -83,7 +83,18 @@ export async function finishSupervisionShiftAction(
   return runAction(async () => {
     const user = await requirePermission('supervision.shift.manage');
     const input = parseOrThrow(
-      z.object({ shiftId: z.string().min(1) }),
+      z.object({
+        shiftId: z.string().min(1),
+        reviewedCritical: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que revisaste las señales críticas.' }),
+        }),
+        reviewedAudit: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que revisaste la auditoría diaria.' }),
+        }),
+        reviewedContinuity: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que revisaste pendientes, delegaciones y seguimientos.' }),
+        }),
+      }),
       formDataToObject(formData),
     );
     await finishSupervisionShift(user, input.shiftId);

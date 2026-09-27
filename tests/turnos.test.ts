@@ -3,6 +3,7 @@ import { HandoverStatus, ShiftStatus, ShiftType } from '@prisma/client';
 import {
   addShiftMember,
   closeShift,
+  confirmHandoverReviewStep,
   getCurrentShift,
   getMyOpenShift,
   getPendingHandover,
@@ -251,6 +252,8 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
 
     const { shift: primero } = await openShift(saliente, { type: ShiftType.DIA });
     const draft = await prepareHandover(saliente, primero.id);
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'PENDINGS' });
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'FINAL' });
     await sendHandover(saliente, { shiftId: primero.id, notes: 'Todo en orden.' });
 
     await expect(
@@ -311,6 +314,8 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
 
     const { shift: primero } = await openShift(saliente, { type: ShiftType.DIA });
     const handover = await prepareHandover(saliente, primero.id);
+    await confirmHandoverReviewStep(saliente, { handoverId: handover.id, step: 'PENDINGS' });
+    await confirmHandoverReviewStep(saliente, { handoverId: handover.id, step: 'FINAL' });
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 
@@ -334,6 +339,8 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
 
     const { shift: primero } = await openShift(saliente, { type: ShiftType.DIA });
     const draft = await prepareHandover(saliente, primero.id);
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'PENDINGS' });
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'FINAL' });
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 
@@ -367,7 +374,9 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const { shift } = await openShift(saliente, { type: ShiftType.DIA });
     await receiveHandover(saliente, { shiftId: shift.id });
-    await prepareHandover(saliente, shift.id);
+    const handover = await prepareHandover(saliente, shift.id);
+    await confirmHandoverReviewStep(saliente, { handoverId: handover.id, step: 'PENDINGS' });
+    await confirmHandoverReviewStep(saliente, { handoverId: handover.id, step: 'FINAL' });
     await sendHandover(saliente, { shiftId: shift.id });
 
     const mio = await getMyOpenShift(saliente.id);

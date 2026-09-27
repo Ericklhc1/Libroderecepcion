@@ -131,6 +131,14 @@ export function ManualCashMovementForm({
         <Input name="effectiveAt" type="datetime-local" />
       </Field>
 
+      <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        <input type="checkbox" name="effectiveDateConfirmed" value="1" className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Si elegí una fecha distinta del día operativo actual, confirmo que el registro retroactivo
+          o futuro es intencional. Para «ahora» o una hora de hoy, déjalo sin marcar.
+        </span>
+      </label>
+
       <Field
         label="Concepto"
         name="reference"
@@ -211,6 +219,14 @@ export function CashDifferenceRegularizationForm() {
       >
         <Input name="effectiveAt" type="datetime-local" />
       </Field>
+
+      <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        <input type="checkbox" name="effectiveDateConfirmed" value="1" className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Si elegí una fecha distinta del día operativo actual, confirmo que la regularización
+          retroactiva o futura es intencional.
+        </span>
+      </label>
 
       <Field
         label="Concepto"
@@ -310,10 +326,10 @@ export function CreateCashGuaranteeForm() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Huésped / persona" name="guestName" hint="Opcional. Texto libre.">
+        <Field label="Huésped / persona" name="guestName" hint="Indica al menos huésped, habitación o referencia.">
           <Input name="guestName" maxLength={160} placeholder="Nombre" />
         </Field>
-        <Field label="Habitación" name="roomNumber" hint="Opcional. Texto libre.">
+        <Field label="Habitación" name="roomNumber" hint="Indica al menos huésped, habitación o referencia.">
           <Input name="roomNumber" maxLength={20} placeholder="512" />
         </Field>
       </div>
@@ -321,7 +337,7 @@ export function CreateCashGuaranteeForm() {
       <Field
         label="Referencia"
         name="reference"
-        hint="Opcional. Ej.: reserva, sobre, motivo o cualquier identificador útil."
+        hint="Indica al menos huésped, habitación o referencia. Ej.: reserva, sobre o motivo."
       >
         <Input name="reference" maxLength={160} placeholder="Referencia libre" />
       </Field>
@@ -592,27 +608,60 @@ export function LiveCashAuditDialog({
 export function ReturnCashGuaranteeForm({
   guaranteeId,
   reference,
+  currency,
+  amount,
+  guestName,
+  roomNumber,
 }: {
   guaranteeId: string;
   reference?: string | null;
+  currency: string;
+  amount: number;
+  guestName?: string | null;
+  roomNumber?: string | null;
 }) {
+  const label =
+    [guestName, roomNumber ? `Hab. ${roomNumber}` : null, reference]
+      .filter(Boolean)
+      .join(' · ') || 'Garantía sin referencia';
+
   return (
-    <ActionForm
-      action={returnCashGuaranteeAction}
-      className="space-y-0"
-      hideSuccess
-      refreshOnSuccess
+    <Dialog
+      title="Devolver garantía en efectivo"
+      description="Esta acción registra la salida física de dinero y cambia la garantía a devuelta."
+      triggerVariant="secondary"
+      triggerSize="sm"
+      width="sm"
+      trigger="Devolver garantía"
     >
-      <input type="hidden" name="guaranteeId" value={guaranteeId} />
-      <SubmitButton
-        variant="secondary"
-        size="sm"
-        pendingLabel="Devolviendo…"
-        title={reference ? `Devolver garantía · ${reference}` : 'Devolver garantía'}
+      <ActionForm
+        action={returnCashGuaranteeAction}
+        hideSuccess
+        refreshOnSuccess
+        closeOnSuccess
+        className="space-y-3"
       >
-        Devolver garantía
-      </SubmitButton>
-    </ActionForm>
+        <input type="hidden" name="guaranteeId" value={guaranteeId} />
+        <div className="rounded-xl bg-red-50 px-3 py-3 ring-1 ring-red-200">
+          <p className="text-sm font-semibold text-red-950">{label}</p>
+          <p className="mt-1 text-xl font-semibold tabular text-red-950">
+            {currency} {amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
+          </p>
+        </div>
+        <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+          <input type="checkbox" name="confirmed" value="1" required className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Confirmo que entregué físicamente este efectivo a la persona correspondiente y que el
+            monto mostrado coincide con lo devuelto.
+          </span>
+        </label>
+        <div className="flex justify-end">
+          <SubmitButton variant="danger" pendingLabel="Devolviendo…">
+            CONFIRMAR DEVOLUCIÓN
+          </SubmitButton>
+        </div>
+      </ActionForm>
+    </Dialog>
   );
 }
 

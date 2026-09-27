@@ -10,6 +10,7 @@ type UploadResult = {
   label?: string;
   findings?: number;
   warnings?: string[];
+  completeness?: { found: number; expected: number } | null;
   error?: string;
 };
 
@@ -46,6 +47,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
           label?: string;
           findings?: number;
           warnings?: string[];
+          completeness?: { found: number; expected: number } | null;
           error?: string;
         };
         next.push({
@@ -54,6 +56,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
           label: payload.label,
           findings: payload.findings,
           warnings: payload.warnings,
+          completeness: payload.completeness,
           error: response.ok ? undefined : payload.error ?? 'No se pudo leer el informe.',
         });
       } catch (error) {
@@ -135,6 +138,11 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
                 {result.ok ? '✓' : '×'} {result.name}
                 {result.label ? ` · ${result.label}` : ''}
               </p>
+              {result.ok && result.completeness ? (
+                <p className="mt-0.5 text-xs">
+                  Lectura: {result.completeness.found} de {result.completeness.expected} campos/control(es) esperados.
+                </p>
+              ) : null}
               {result.ok && typeof result.findings === 'number' && result.findings > 0 ? (
                 <p className="mt-0.5 text-xs">{result.findings} punto(s) para revisar.</p>
               ) : null}

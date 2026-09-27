@@ -20,6 +20,7 @@ import {
   TemplateDialog,
 } from './checklists';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { ChecklistRunMode } from '@prisma/client';
 
 export const metadata = { title: 'Tablero de supervisión' };
 export const dynamic = 'force-dynamic';
@@ -75,8 +76,8 @@ export default async function AssignmentBoardPage({
   const [board, templates, runs, myRun] = await Promise.all([
     getAssignmentBoard(),
     listTemplates(canConfigure),
-    listRuns(user, 8),
-    getMyOpenRun(user.id),
+    listRuns(user, 8, ChecklistRunMode.RONDA),
+    getMyOpenRun(user.id, ChecklistRunMode.RONDA),
   ]);
 
   const pendingInRun = myRun?.items.filter((item) => item.result === 'PENDIENTE').length ?? 0;

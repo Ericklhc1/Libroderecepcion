@@ -72,6 +72,7 @@ export async function getSupervisionData(): Promise<{
     unassigned,
     criticalAlerts,
     openGuarantees,
+    cashGuaranteeIntegrity,
     staleHandovers,
     pendingClosures,
     cashAudits,
@@ -195,7 +196,39 @@ export async function getSupervisionData(): Promise<{
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       take: 20,
     }),
-    prisma.shiftHandover.findMany({
+    prisma.$queryRaw<
+      Array<{
+        id: string;
+        state: string;
+        currency: string;
+        amount: unknown;
+        guestName: string | null;
+        roomNumber: string | null;
+        reference: string | null;
+      }>
+    >`
+      SELECT g."id", g."state"::text, g."currency", g."amount",
+             g."guestName", g."roomNumber", g."reference"
+      FROM "Guarantee" g
+      WHERE g."deletedAt" IS NULL
+        AND g."kind" = 'EFECTIVO'
+        AND g."state"::text IN ('DEVUELTA', 'MULTA')
+        AND EXISTS (
+          SELECT 1 FROM "CashMovement" m
+          WHERE m."guaranteeId" = g."id"
+            AND m."kind" = 'GARANTIA_INGRESO'
+            AND m."voidedAt" IS NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "CashMovement" m
+          WHERE m."guaranteeId" = g."id"
+            AND m."kind" = 'GARANTIA_DEVOLUCION'
+            AND m."voidedAt" IS NULL
+        )
+      ORDER BY g."updatedAt" DESC
+      LIMIT 20
+    `,
+        prisma.shiftHandover.findMany({
       where: { status: HandoverStatus.ENVIADA },
       select: {
         id: true,
@@ -344,6 +377,29 @@ export async function getSupervisionData(): Promise<{
           ]
             .filter(Boolean)
             .join(' · '),
+          sourceEntity: 'Guarantee',
+          sourceId: guarantee.id,
+        };
+      }),
+    },
+    {
+      key: 'garantias-integridad',
+      title: 'Integridad financiera de garantías',
+      hint: 'Garantías históricas de efectivo cerradas o devueltas que tienen ingreso de Caja pero no su movimiento financiero de salida.',
+      tone: 'critico',
+      rows: cashGuaranteeIntegrity.map((guarantee) => {
+        const label =
+          guarantee.reference ||
+          guarantee.guestName ||
+          (guarantee.roomNumber ? `Hab. ${guarantee.roomNumber}` : null) ||
+          `Garantía ${guarantee.id.slice(-6)}`;
+        return {
+          id: guarantee.id,
+          ref: `GAR-${guarantee.id.slice(-6).toUpperCase()}`,
+          title: `${label} · ${guarantee.currency} ${Number(guarantee.amount).toLocaleString('es-CL')}`,
+          detail: `Estado ${guarantee.state.toLocaleLowerCase('es-CL')} sin movimiento GARANTIA_DEVOLUCION asociado. Requiere revisión histórica; no se corrige automáticamente.`,
+          href: '/caja?seccion=garantias',
+          meta: guarantee.roomNumber ? `Hab. ${guarantee.roomNumber}` : null,
           sourceEntity: 'Guarantee',
           sourceId: guarantee.id,
         };

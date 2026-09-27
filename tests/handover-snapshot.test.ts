@@ -23,11 +23,17 @@ import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import {
+  confirmHandoverReviewStep,
   prepareHandover,
   receiveHandover,
   sendHandover,
 } from '@/server/services/shifts';
 import type { CurrentUser } from '@/server/auth/current-user';
+
+async function confirmReview(user: CurrentUser, handoverId: string) {
+  await confirmHandoverReviewStep(user, { handoverId, step: 'PENDINGS' });
+  await confirmHandoverReviewStep(user, { handoverId, step: 'FINAL' });
+}
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000);
 
@@ -216,7 +222,8 @@ describe('resumen automático de la entrega', () => {
 
     await openShiftAs(user, shiftA);
     await receiveHandover(user, { shiftId: shiftA.id });
-    await prepareHandover(user, shiftA.id);
+    const handover = await prepareHandover(user, shiftA.id);
+    await confirmReview(user, handover.id);
     const sent = await sendHandover(user, { shiftId: shiftA.id });
 
     const snapshot = sent.snapshot as {

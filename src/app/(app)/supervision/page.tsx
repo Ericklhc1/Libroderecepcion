@@ -167,6 +167,19 @@ export default async function SupervisionCenterPage({
     .reduce((sum, block) => sum + block.rows.length, 0);
   const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
   const continuityOpen = center.myTasks.length + center.myFollowUps.length;
+  const auditPendingCount = center.auditImports.reduce((sum, auditImport) => {
+    if (!Array.isArray(auditImport.checks)) return sum;
+    return (
+      sum +
+      auditImport.checks.filter(
+        (item) =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          !Array.isArray(item) &&
+          (item as Record<string, unknown>).done !== true,
+      ).length
+    );
+  }, 0);
   const followedSourceKeys = new Set(
     center.myFollowUps
       .filter((item) => item.sourceEntity && item.sourceId)
@@ -252,7 +265,14 @@ export default async function SupervisionCenterPage({
           </div>
           <div className="flex flex-wrap gap-2 no-print">
             {isSupervisor && !center.currentShift ? <StartSupervisionShiftDialog /> : null}
-            {isSupervisor && center.currentShift ? <FinishSupervisionShiftForm shiftId={center.currentShift.id} /> : null}
+            {isSupervisor && center.currentShift ? (
+              <FinishSupervisionShiftForm
+                shiftId={center.currentShift.id}
+                criticalCount={critical + pendingClosures}
+                continuityCount={continuityOpen}
+                auditPendingCount={auditPendingCount}
+              />
+            ) : null}
           </div>
         </div>
       </Card>

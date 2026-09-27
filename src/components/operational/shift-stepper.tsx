@@ -5,8 +5,8 @@ import { cn } from '@/lib/cn';
 const STEPS = [
   'Iniciar turno',
   'Operar',
-  'Cerrar Caja',
-  'Enviar entrega',
+  'Preparar entrega',
+  'Entrega enviada',
   'Cerrar turno',
 ] as const;
 
@@ -20,6 +20,7 @@ function currentStep(status: ShiftStatus): number {
     case ShiftStatus.PREPARANDO_ENTREGA:
       return 2;
     case ShiftStatus.ENTREGA_ENVIADA:
+      return 3;
     case ShiftStatus.RECIBIDO:
       return 4;
     case ShiftStatus.CERRADO:

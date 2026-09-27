@@ -9,6 +9,7 @@ import {
   addShiftMemberAction,
   cancelHandoverPreparationAction,
   closeShiftAction,
+  confirmHandoverReviewStepAction,
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
@@ -409,6 +410,55 @@ export function PrepareHandoverForm({
   );
 }
 
+export function ConfirmHandoverReviewStepForm({
+  handoverId,
+  step,
+  urgentCount = 0,
+}: {
+  handoverId: string;
+  step: 'PENDINGS' | 'FINAL';
+  urgentCount?: number;
+}) {
+  const router = useRouter();
+  const nextStep = step === 'PENDINGS' ? 3 : 4;
+
+  return (
+    <ActionForm
+      action={confirmHandoverReviewStepAction}
+      hideSuccess
+      className="space-y-3"
+      onSuccess={() => router.push(`/turno/entrega/${handoverId}?paso=${nextStep}`)}
+    >
+      <input type="hidden" name="handoverId" value={handoverId} />
+      <input type="hidden" name="step" value={step} />
+
+      {step === 'FINAL' && urgentCount > 0 ? (
+        <label className="flex items-start gap-3 rounded-xl bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+          <input
+            type="checkbox"
+            name="urgentAcknowledged"
+            value="1"
+            required
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que continuarán
+            visibles para el turno entrante hasta su resolución.
+          </span>
+        </label>
+      ) : null}
+
+      <div className="flex justify-end">
+        <SubmitButton variant="gold" pendingLabel="Confirmando…">
+          {step === 'PENDINGS'
+            ? 'CONFIRMAR PENDIENTES REVISADOS'
+            : 'CONFIRMAR REVISIÓN FINAL'}
+        </SubmitButton>
+      </div>
+    </ActionForm>
+  );
+}
+
 export function SendHandoverForm({ shiftId }: { shiftId: string }) {
   const [open, setOpen] = useState(false);
 
@@ -484,6 +534,35 @@ export function CloseShiftForm({
   guidanceSession?: number;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  if (guided) {
+    return (
+      <ActionForm
+        action={closeShiftAction}
+        hideSuccess
+        className="space-y-0"
+        onSuccess={() => router.push('/turno')}
+      >
+        <input type="hidden" name="shiftId" value={shiftId} />
+        <GuidedShiftSubmit
+          guided
+          session={guidanceSession}
+          buttonLabel="Cerrar mi turno"
+          title="Último paso: cerrar el turno"
+          description="Este cierre termina tu responsabilidad operativa sobre el turno, pero conserva toda la trazabilidad."
+          steps={[
+            'Caja debe haber quedado cerrada.',
+            'La entrega debe estar enviada y disponible para quien llegue después.',
+            'Al confirmar, dejas de ocupar el turno y tu cuenta queda fuera de operación hasta iniciar otro.',
+            'La validación de Supervisión ocurre después y no bloquea tu salida.',
+          ]}
+          confirmLabel="CERRAR TURNO"
+          pendingLabel="Cerrando…"
+        />
+      </ActionForm>
+    );
+  }
 
   return (
     <ActionForm
@@ -493,21 +572,45 @@ export function CloseShiftForm({
       onSuccess={() => router.push('/turno')}
     >
       <input type="hidden" name="shiftId" value={shiftId} />
-      <GuidedShiftSubmit
-        guided={guided}
-        session={guidanceSession}
-        buttonLabel="Cerrar mi turno"
-        title="Último paso: cerrar el turno"
-        description="Este cierre termina tu responsabilidad operativa sobre el turno, pero conserva toda la trazabilidad."
-        steps={[
-          'Caja debe haber quedado cerrada.',
-          'La entrega debe estar enviada y disponible para quien llegue después.',
-          'Al confirmar, dejas de ocupar el turno y tu cuenta queda fuera de operación hasta iniciar otro.',
-          'La validación de Supervisión ocurre después y no bloquea tu salida.',
-        ]}
-        confirmLabel="CERRAR TURNO"
-        pendingLabel="Cerrando…"
-      />
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+      >
+        CERRAR MI TURNO
+      </button>
+
+      {open ? (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-petrol-950/60 p-4 no-print">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-shift-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-gold-200"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">Último paso</p>
+            <h2 id="close-shift-title" className="mt-1 text-lg font-semibold text-petrol-950">
+              ¿Confirmas el cierre definitivo de tu turno?
+            </h2>
+            <p className="mt-2 text-sm leading-5 text-slate-600">
+              La entrega ya fue enviada. Al confirmar dejarás de ocupar el turno y terminará tu
+              responsabilidad operativa. La validación de Supervisión ocurrirá después.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
+              >
+                VOLVER
+              </button>
+              <SubmitButton variant="gold" pendingLabel="Cerrando…">
+                SÍ, CERRAR TURNO
+              </SubmitButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </ActionForm>
   );
 }

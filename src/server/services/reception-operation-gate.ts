@@ -17,6 +17,7 @@ export type ReceptionOperationGate = {
   mode: ReceptionOperationMode;
   shiftId: string | null;
   shiftStatus: ShiftStatus | null;
+  handoverId: string | null;
 };
 
 const SESSION_STATUSES: ShiftStatus[] = [
@@ -49,7 +50,7 @@ export async function getReceptionOperationGate(
   user: Pick<CurrentUser, 'id' | 'roleKey'>,
 ): Promise<ReceptionOperationGate> {
   if (!isReceptionDeskRole(user.roleKey)) {
-    return { mode: 'ACTIVE', shiftId: null, shiftStatus: null };
+    return { mode: 'ACTIVE', shiftId: null, shiftStatus: null, handoverId: null };
   }
 
   const assignment = await prisma.shiftAssignment.findFirst({
@@ -77,7 +78,11 @@ export async function getReceptionOperationGate(
         toShiftId: null,
         fromShift: {
           status: ShiftStatus.CERRADO,
-          archivedAt: null,
+          // No filtramos por archivedAt aquí: la pantalla de entrega y
+          // getPendingHandover() consideran recepcionable una entrega ENVIADA
+          // y no recibida aunque el turno de origen haya sido archivado. El
+          // gate debe reconocer exactamente el mismo relevo o la UI muestra
+          // formularios que luego responden «Debes iniciar tu turno».
           // La entrega sólo debe bloquear a alguien que realmente pueda
           // recibirla. Cualquier participante del turno saliente está
           // excluido por la regla de recepción y, si lo incluyéramos acá,
@@ -91,23 +96,43 @@ export async function getReceptionOperationGate(
     });
 
     if (pendingHandover) {
-      return { mode: 'HANDOVER_PENDING', shiftId: null, shiftStatus: null };
+      return {
+        mode: 'HANDOVER_PENDING',
+        shiftId: null,
+        shiftStatus: null,
+        handoverId: pendingHandover.id,
+      };
     }
 
-    return { mode: 'NO_SHIFT', shiftId: null, shiftStatus: null };
+    return { mode: 'NO_SHIFT', shiftId: null, shiftStatus: null, handoverId: null };
   }
 
   const status = assignment.shift.status;
   if (status === ShiftStatus.INICIADO) {
-    return { mode: 'RECEIVING', shiftId: assignment.shiftId, shiftStatus: status };
+    return {
+      mode: 'RECEIVING',
+      shiftId: assignment.shiftId,
+      shiftStatus: status,
+      handoverId: null,
+    };
   }
   if (
     status === ShiftStatus.PREPARANDO_ENTREGA ||
     status === ShiftStatus.ENTREGA_ENVIADA
   ) {
-    return { mode: 'CLOSING', shiftId: assignment.shiftId, shiftStatus: status };
+    return {
+      mode: 'CLOSING',
+      shiftId: assignment.shiftId,
+      shiftStatus: status,
+      handoverId: null,
+    };
   }
-  return { mode: 'ACTIVE', shiftId: assignment.shiftId, shiftStatus: status };
+  return {
+    mode: 'ACTIVE',
+    shiftId: assignment.shiftId,
+    shiftStatus: status,
+    handoverId: null,
+  };
 }
 
 function gateMessage(mode: ReceptionOperationMode): string {

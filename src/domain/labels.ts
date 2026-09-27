@@ -303,6 +303,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   ACTUALIZACION_OPERATIVA: 'Actualización operativa',
   FRONTI_HALLAZGO: 'Hallazgo de Fronti',
   CHAT_MENSAJE: 'Nuevo mensaje',
+  ALARMA: 'Alarma',
 };
 
 /** Vencido = tiene fecha límite pasada y sigue abierto. */

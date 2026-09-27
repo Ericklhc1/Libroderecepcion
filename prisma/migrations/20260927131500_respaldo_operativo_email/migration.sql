@@ -1,4 +1,4 @@
-CREATE TYPE "OperationalMailStatus" AS ENUM ('PENDIENTE', 'ENVIADO', 'ERROR');
+CREATE TYPE "OperationalMailStatus" AS ENUM ('PENDIENTE', 'ENVIANDO', 'ENVIADO', 'ERROR');
 
 CREATE TABLE "OperationalMailOutbox" (
   "id" TEXT NOT NULL,

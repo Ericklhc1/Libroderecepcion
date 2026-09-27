@@ -35,10 +35,12 @@ export const NOTIFICATION_WIDGET_LABELS: Record<string, string> = {
   ACTUALIZACION_OPERATIVA: 'Actualización operativa',
   FRONTI_HALLAZGO: 'Hallazgo de Fronti',
   CHAT_MENSAJE: 'Nuevo mensaje',
+  ALARMA: 'Alarma',
 };
 
 export const URGENT_NOTIFICATION_TYPES = new Set([
   'INCIDENCIA_CRITICA',
   'TAREA_VENCIDA',
   'ACCION_REQUERIDA',
+  'ALARMA',
 ]);

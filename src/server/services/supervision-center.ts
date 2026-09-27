@@ -92,7 +92,7 @@ async function buildSupervisionSnapshot(
       where: { supervisionShiftId: shift.id, deletedAt: null },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         status: true,
         priority: true,
@@ -350,10 +350,10 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'OperationalEntry': {
       const row = await prisma.operationalEntry.findFirst({
         where: { id: sourceId, deletedAt: null },
-        select: { id: true, seq: true, title: true },
+        select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La novedad de origen ya no existe.');
-      return { label: `#${row.seq} · ${row.title}`, entryId: row.id, taskId: null };
+      return { label: `#${row.humanId} · ${row.title}`, entryId: row.id, taskId: null };
     }
     case 'Alert': {
       const row = await prisma.alert.findUnique({
@@ -366,20 +366,20 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'Guarantee': {
       const row = await prisma.guarantee.findFirst({
         where: { id: sourceId, deletedAt: null },
-        select: { id: true, reference: true, guestName: true, roomNumber: true },
+        select: { id: true, humanId: true, reference: true, guestName: true, roomNumber: true },
       });
       if (!row) throw new NotFoundError('La garantía de origen ya no existe.');
       const label = row.reference || row.guestName || (row.roomNumber ? `Hab. ${row.roomNumber}` : null);
-      return { label: `Garantía · ${label ?? row.id.slice(-6)}`, entryId: null, taskId: null };
+      return { label: `#${row.humanId} · Garantía · ${label ?? 'sin referencia'}`, entryId: null, taskId: null };
     }
     case 'CashAudit': {
       const row = await prisma.cashAudit.findUnique({
         where: { id: sourceId },
-        select: { id: true, currency: true, difference: true },
+        select: { id: true, humanId: true, currency: true, difference: true },
       });
       if (!row) throw new NotFoundError('El arqueo de origen ya no existe.');
       return {
-        label: `Caja ${row.currency} · diferencia ${Number(row.difference).toLocaleString('es-CL')}`,
+        label: `#${row.humanId} · Caja ${row.currency} · diferencia ${Number(row.difference).toLocaleString('es-CL')}`,
         entryId: null,
         taskId: null,
       };
@@ -387,27 +387,27 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'Task': {
       const row = await prisma.task.findFirst({
         where: { id: sourceId, deletedAt: null },
-        select: { id: true, seq: true, title: true },
+        select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La tarea de origen ya no existe.');
-      return { label: `T#${row.seq} · ${row.title}`, entryId: null, taskId: row.id };
+      return { label: `#${row.humanId} · ${row.title}`, entryId: null, taskId: row.id };
     }
     case 'ShiftHandover': {
       const row = await prisma.shiftHandover.findUnique({
         where: { id: sourceId },
-        select: { id: true, issuedBy: { select: { name: true } } },
+        select: { id: true, humanId: true, issuedBy: { select: { name: true } } },
       });
       if (!row) throw new NotFoundError('La entrega de turno de origen ya no existe.');
-      return { label: `Entrega de turno · ${row.issuedBy.name}`, entryId: null, taskId: null };
+      return { label: `#${row.humanId} · Entrega de turno · ${row.issuedBy.name}`, entryId: null, taskId: null };
     }
     case 'Shift': {
       const row = await prisma.shift.findUnique({
         where: { id: sourceId },
-        select: { id: true, type: true, date: true },
+        select: { id: true, humanId: true, type: true, date: true },
       });
       if (!row) throw new NotFoundError('El turno de origen ya no existe.');
       return {
-        label: `Turno ${row.type} · ${formatCalendarDate(row.date)}`,
+        label: `#${row.humanId} · Turno ${row.type} · ${formatCalendarDate(row.date)}`,
         entryId: null,
         taskId: null,
       };
@@ -415,11 +415,11 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'KeyInventoryCount': {
       const row = await prisma.keyInventoryCount.findUnique({
         where: { id: sourceId },
-        select: { id: true, floor: true, countedAt: true },
+        select: { id: true, humanId: true, floor: true, countedAt: true },
       });
       if (!row) throw new NotFoundError('El inventario de llaves de origen ya no existe.');
       return {
-        label: `Inventario de llaves · piso ${row.floor}`,
+        label: `#${row.humanId} · Inventario de llaves · piso ${row.floor}`,
         entryId: null,
         taskId: null,
       };

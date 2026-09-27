@@ -63,7 +63,7 @@ export default async function TasksPage({
         assignee: { select: { id: true, name: true } },
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
-        entry: { select: { id: true, seq: true } },
+        entry: { select: { id: true, humanId: true } },
         _count: { select: { checklist: true, comments: true } },
       },
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' }],
@@ -150,7 +150,7 @@ export default async function TasksPage({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <Link href={`/tareas/${task.id}`} className="min-w-0 flex-1 group">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs tabular text-slate-400">T#{task.seq}</span>
+                        <span className="text-xs tabular text-slate-400">#{task.humanId}</span>
                         <Badge tone={overdue ? 'critico' : TASK_STATUS_TONE[task.status]}>
                           {overdue ? 'Vencida' : TASK_STATUS_LABEL[task.status]}
                         </Badge>
@@ -158,7 +158,7 @@ export default async function TasksPage({
                           {PRIORITY_LABEL[task.priority]}
                         </Badge>
                         <Chip>{TASK_ORIGIN_LABEL[task.origin]}</Chip>
-                        {task.entry ? <Chip>Registro #{task.entry.seq}</Chip> : null}
+                        {task.entry ? <Chip>Registro #{task.entry.humanId}</Chip> : null}
                       </div>
                       <p className="mt-1 font-medium text-petrol-900 group-hover:underline">
                         {task.title}

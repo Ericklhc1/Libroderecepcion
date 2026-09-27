@@ -49,7 +49,7 @@ describe('registros del libro operativo', () => {
   it('crea una novedad con su numeración, autor y auditoría', async () => {
     const entry = await createEntry(receptionist, novedad);
 
-    expect(entry.seq).toBeGreaterThan(0);
+    expect(entry.humanId).toBeGreaterThanOrEqual(1000);
     expect(entry.createdById).toBe(receptionist.id);
     expect(entry.status).toBe(EntryStatus.ABIERTO);
     expect(entry.tags).toEqual(['llaves']);
@@ -58,7 +58,7 @@ describe('registros del libro operativo', () => {
       where: { entity: 'OperationalEntry', entityId: entry.id, action: 'CREAR' },
     });
     expect(log?.userId).toBe(receptionist.id);
-    expect(log?.summary).toContain(`#${entry.seq}`);
+    expect(log?.summary).toContain(`#${entry.humanId}`);
   });
 
   it('asocia el registro al turno abierto de quien lo crea', async () => {

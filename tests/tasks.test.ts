@@ -49,7 +49,7 @@ describe('tareas', () => {
   it('crea la tarea con numeración, origen manual y auditoría', async () => {
     const task = await createTask(receptionist, base);
 
-    expect(task.seq).toBeGreaterThan(0);
+    expect(task.humanId).toBeGreaterThanOrEqual(1000);
     expect(task.origin).toBe('MANUAL');
     expect(task.status).toBe(TaskStatus.PENDIENTE);
     expect(task.createdById).toBe(receptionist.id);

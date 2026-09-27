@@ -404,7 +404,7 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         },
         include: {
           owner: { select: { id: true, name: true } },
-          entry: { select: { id: true, seq: true, title: true } },
+          entry: { select: { id: true, humanId: true, title: true } },
         },
         orderBy: { scheduledAt: 'asc' },
         take: 25,
@@ -415,8 +415,8 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
     where: { deletedAt: null },
     include: {
       author: { select: { id: true, name: true } },
-      entry: { select: { id: true, seq: true, title: true } },
-      task: { select: { id: true, seq: true, title: true } },
+      entry: { select: { id: true, humanId: true, title: true } },
+      task: { select: { id: true, humanId: true, title: true } },
     },
     orderBy: { createdAt: 'desc' },
     take: 10,

@@ -112,7 +112,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         entity: 'OperationalEntry',
         entityId: created.id,
         action: AuditAction.CREAR,
-        summary: `${ENTRY_TYPE_LABEL[created.type]} #${created.seq}: ${created.title}`,
+        summary: `${ENTRY_TYPE_LABEL[created.type]} #${created.humanId}: ${created.title}`,
         user,
         after: {
           type: created.type,
@@ -134,7 +134,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           userId: created.ownerId,
           type: NotificationType.ACCION_REQUERIDA,
           title: `Te asignaron un registro: ${created.title}`,
-          body: `${ENTRY_TYPE_LABEL[created.type]} #${created.seq} creada por ${user.name}.`,
+          body: `${ENTRY_TYPE_LABEL[created.type]} #${created.humanId} creada por ${user.name}.`,
           link: `/libro/${created.id}`,
           entity: 'OperationalEntry',
           entityId: created.id,
@@ -151,7 +151,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           .map((id) => ({
             userId: id,
             type: NotificationType.INCIDENCIA_CRITICA,
-            title: `Incidencia crítica #${created.seq}: ${created.title}`,
+            title: `Incidencia crítica #${created.humanId}: ${created.title}`,
             body: created.description.slice(0, 200),
             link: `/libro/${created.id}`,
             entity: 'OperationalEntry',
@@ -166,10 +166,10 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
       await queueOperationalMail(tx, {
         eventKey: `entry-created:${created.id}`,
         recipients: [SUPERVISION_BACKUP_EMAIL],
-        subject: `[Libro Operativo] ${label} #${created.seq} · ${created.title}`,
+        subject: `[Libro Operativo] ${label} #${created.humanId} · ${created.title}`,
         text: [
           `${label} REGISTRADA`,
-          `Referencia: #${created.seq}`,
+          `Referencia: #${created.humanId}`,
           `ID: ${created.id}`,
           `Título: ${created.title}`,
           `Fecha/hora: ${operationalMailTimestamp(created.occurredAt)}`,
@@ -292,7 +292,7 @@ export async function updateEntry(
           : priorityChanged
             ? AuditAction.CAMBIO_PRIORIDAD
             : AuditAction.EDITAR,
-        summary: `Registro #${updated.seq} actualizado (${changes.changed.join(', ')})`,
+        summary: `Registro #${updated.humanId} actualizado (${changes.changed.join(', ')})`,
         user,
         before: changes.before,
         after: changes.after,
@@ -305,7 +305,7 @@ export async function updateEntry(
         {
           userId: updated.ownerId,
           type: NotificationType.RESPONSABLE_CAMBIADO,
-          title: `Ahora eres responsable de #${updated.seq}`,
+          title: `Ahora eres responsable de #${updated.humanId}`,
           body: updated.title,
           link: `/libro/${updated.id}`,
           entity: 'OperationalEntry',
@@ -406,7 +406,7 @@ export async function changeEntryStatus(
             : reopening
               ? AuditAction.REABRIR
               : AuditAction.CAMBIO_ESTADO,
-        summary: `Registro #${updated.seq}: ${ENTRY_STATUS_LABEL[current.status]} → ${ENTRY_STATUS_LABEL[input.status]}`,
+        summary: `Registro #${updated.humanId}: ${ENTRY_STATUS_LABEL[current.status]} → ${ENTRY_STATUS_LABEL[input.status]}`,
         user,
         before: { status: current.status },
         after: { status: input.status, resolution: updated.resolution },
@@ -432,7 +432,7 @@ export async function changeEntryStatus(
       Array.from(interested).map((userId) => ({
         userId,
         type: NotificationType.ACCION_REQUERIDA,
-        title: `#${updated.seq} pasó a ${ENTRY_STATUS_LABEL[input.status]}`,
+        title: `#${updated.humanId} pasó a ${ENTRY_STATUS_LABEL[input.status]}`,
         body: updated.title,
         link: `/libro/${updated.id}`,
         entity: 'OperationalEntry',
@@ -506,7 +506,7 @@ export async function softDeleteEntry(
         entity: 'OperationalEntry',
         entityId: input.id,
         action: AuditAction.ELIMINAR,
-        summary: `Eliminación lógica del registro #${current.seq}: ${current.title}`,
+        summary: `Eliminación lógica del registro #${current.humanId}: ${current.title}`,
         user,
         before: { deletedAt: null },
         after: { deletedAt: deleted.deletedAt },
@@ -544,7 +544,7 @@ export async function restoreEntry(
         entity: 'OperationalEntry',
         entityId: input.id,
         action: AuditAction.RESTAURAR,
-        summary: `Registro #${current.seq} restaurado`,
+        summary: `Registro #${current.humanId} restaurado`,
         user,
         before: { deletedAt: current.deletedAt, deletionReason: current.deletionReason },
         after: { deletedAt: null },

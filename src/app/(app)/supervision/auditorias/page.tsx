@@ -85,7 +85,7 @@ export default async function SurpriseAuditsPage({
     }),
     prisma.correctiveMeasure.findMany({
       where: { deletedAt: null },
-      include: { assignee: { select: { name: true } }, task: { select: { id: true, seq: true } } },
+      include: { assignee: { select: { name: true } }, task: { select: { id: true, humanId: true } } },
       orderBy: { createdAt: 'desc' },
       take: 80,
     }),
@@ -161,7 +161,7 @@ export default async function SurpriseAuditsPage({
 
       <Card>
         <CardHeader title="Medidas correctivas" count={measures.length} />
-        {measures.length === 0 ? <EmptyState message="No hay medidas correctivas." /> : <CardScroll><ul className="divide-y divide-slate-100">{measures.map((measure) => <li key={measure.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"><div><div className="flex flex-wrap gap-2"><Badge tone={measure.status === 'VALIDADA' ? 'resuelto' : measure.status === 'BLOQUEADA' ? 'critico' : 'atencion'}>{measure.status.toLocaleLowerCase('es-CL')}</Badge>{measure.task ? <Link href={`/tareas/${measure.task.id}`}><Chip>T#{measure.task.seq}</Chip></Link> : null}</div><p className="mt-1 font-medium text-petrol-900">{measure.title}</p><p className="text-xs text-slate-500">{measure.assignee.name}{measure.dueAt ? ` · vence ${formatDateTime(measure.dueAt)}` : ''}</p></div>{isSupervisor && measure.status === 'REALIZADA' ? <ValidateCorrectiveMeasureDialog measureId={measure.id} /> : null}</li>)}</ul></CardScroll>}
+        {measures.length === 0 ? <EmptyState message="No hay medidas correctivas." /> : <CardScroll><ul className="divide-y divide-slate-100">{measures.map((measure) => <li key={measure.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"><div><div className="flex flex-wrap gap-2"><Badge tone={measure.status === 'VALIDADA' ? 'resuelto' : measure.status === 'BLOQUEADA' ? 'critico' : 'atencion'}>{measure.status.toLocaleLowerCase('es-CL')}</Badge>{measure.task ? <Link href={`/tareas/${measure.task.id}`}><Chip>#{measure.task.humanId}</Chip></Link> : null}</div><p className="mt-1 font-medium text-petrol-900">{measure.title}</p><p className="text-xs text-slate-500">{measure.assignee.name}{measure.dueAt ? ` · vence ${formatDateTime(measure.dueAt)}` : ''}</p></div>{isSupervisor && measure.status === 'REALIZADA' ? <ValidateCorrectiveMeasureDialog measureId={measure.id} /> : null}</li>)}</ul></CardScroll>}
       </Card>
     </div>
   );

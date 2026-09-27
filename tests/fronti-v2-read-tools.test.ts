@@ -45,7 +45,7 @@ describe('FRONTI v2 alpha · herramientas de lectura', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: entry.id,
-          ref: `#${entry.seq}`,
+          ref: `#${entry.humanId}`,
           title: 'Prueba Fronti',
         }),
       ]),

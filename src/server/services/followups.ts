@@ -22,8 +22,8 @@ import { assertAssignable } from './users';
 export const followUpInclude = {
   owner: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
-  entry: { select: { id: true, seq: true, title: true, type: true, status: true } },
-  task: { select: { id: true, seq: true, title: true, status: true } },
+  entry: { select: { id: true, humanId: true, title: true, type: true, status: true } },
+  task: { select: { id: true, humanId: true, title: true, status: true } },
   _count: { select: { comments: true } },
 } satisfies Prisma.FollowUpInclude;
 
@@ -130,7 +130,7 @@ export async function createFollowUp(
         entity: 'FollowUp',
         entityId: created.id,
         action: AuditAction.CREAR,
-        summary: `Seguimiento creado: ${created.action}`,
+        summary: `Seguimiento #${created.humanId} creado: ${created.action}`,
         user,
         after: {
           action: created.action,
@@ -267,8 +267,8 @@ export async function updateFollowUp(
             : AuditAction.CAMBIO_ESTADO
           : AuditAction.EDITAR,
         summary: input.status
-          ? `Seguimiento "${updated.action}" → ${FOLLOWUP_STATUS_LABEL[input.status]}`
-          : `Seguimiento "${updated.action}" actualizado (${changes.changed.join(', ')})`,
+          ? `Seguimiento #${updated.humanId} "${updated.action}" → ${FOLLOWUP_STATUS_LABEL[input.status]}`
+          : `Seguimiento #${updated.humanId} "${updated.action}" actualizado (${changes.changed.join(', ')})`,
         user,
         before: changes.before,
         after: changes.after,
@@ -301,7 +301,7 @@ export async function finishSupervisionTrackingForSource(
       origin: { startsWith: 'SUPERVISION_' },
       status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
     },
-    select: { id: true, action: true, result: true },
+    select: { id: true, humanId: true, action: true, result: true },
   });
   if (open.length === 0) return 0;
 
@@ -336,7 +336,7 @@ export async function finishSupervisionTrackingForSource(
         entity: 'FollowUp',
         entityId: followUp.id,
         action: outcome === 'CANCELADO' ? AuditAction.CAMBIO_ESTADO : AuditAction.CERRAR,
-        summary: `Seguimiento "${followUp.action}" cerrado automáticamente desde su fuente`,
+        summary: `Seguimiento #${followUp.humanId} "${followUp.action}" cerrado automáticamente desde su fuente`,
         user,
         after: { status, result, sourceEntity, sourceId },
       },
@@ -354,7 +354,7 @@ export async function finishSupervisionTrackingForSource(
 export async function raiseOverdueFollowUpAlert(followUpId: string) {
   const followUp = await prisma.followUp.findFirst({
     where: { id: followUpId, deletedAt: null },
-    select: { id: true, action: true, scheduledAt: true, status: true, entryId: true },
+    select: { id: true, humanId: true, action: true, scheduledAt: true, status: true, entryId: true },
   });
   if (!followUp || !followUp.scheduledAt) return null;
   if (followUp.scheduledAt.getTime() > Date.now()) return null;
@@ -404,7 +404,7 @@ export async function softDeleteFollowUp(
         entity: 'FollowUp',
         entityId: input.id,
         action: AuditAction.ELIMINAR,
-        summary: `Eliminación lógica del seguimiento "${current.action}"`,
+        summary: `Eliminación lógica del seguimiento #${current.humanId} "${current.action}"`,
         user,
         after: { deletedAt: deleted.deletedAt },
         reason: input.reason,
@@ -433,7 +433,7 @@ export async function restoreFollowUp(
         entity: 'FollowUp',
         entityId: input.id,
         action: AuditAction.RESTAURAR,
-        summary: `Seguimiento "${current.action}" restaurado`,
+        summary: `Seguimiento #${current.humanId} "${current.action}" restaurado`,
         user,
         before: { deletedAt: current.deletedAt },
         after: { deletedAt: null },

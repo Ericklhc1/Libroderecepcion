@@ -43,7 +43,7 @@ export async function createTaskAction(
     }
     const task = await createTask(user, input);
     refresh(task.id);
-    return { ok: true as const, message: `Tarea #${task.seq} creada.`, id: task.id };
+    return { ok: true as const, message: `Tarea #${task.humanId} creada.`, id: task.id };
   });
 }
 

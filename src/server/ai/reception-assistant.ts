@@ -316,7 +316,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
       },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         priority: true,
         dueAt: true,
@@ -337,7 +337,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
         scheduledAt: true,
         status: true,
         owner: { select: { name: true } },
-        entry: { select: { seq: true } },
+        entry: { select: { humanId: true } },
       },
       orderBy: { scheduledAt: 'asc' },
       take: 30,
@@ -350,7 +350,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
       },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         priority: true,
         dueAt: true,
@@ -365,7 +365,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ...tasks.map((item) => ({
       type: 'tarea',
       id: item.id,
-      ref: `T#${item.seq}`,
+      ref: `#${item.humanId}`,
       title: item.title,
       priority: item.priority,
       at: item.dueAt,
@@ -374,7 +374,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ...followUps.map((item) => ({
       type: 'seguimiento',
       id: item.id,
-      ref: item.entry ? `#${item.entry.seq}` : null,
+      ref: item.entry ? `#${item.entry.humanId}` : null,
       title: item.action,
       priority: item.status === FollowUpStatus.VENCIDO ? 'CRITICA' : 'MEDIA',
       at: item.scheduledAt,
@@ -383,7 +383,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ...entries.map((item) => ({
       type: 'registro',
       id: item.id,
-      ref: `#${item.seq}`,
+      ref: `#${item.humanId}`,
       title: item.title,
       priority: item.priority,
       at: item.dueAt,
@@ -672,7 +672,7 @@ async function completeTaskProposalTool(
     return {
       status: 'needs_info',
       missing: [{ field: 'task', message: 'Indica qué tarea quieres completar.' }],
-      instruction: 'Pide sólo la referencia T# o identifica la tarea desde el contexto de pantalla.',
+      instruction: 'Pide sólo la referencia # o identifica la tarea desde el contexto de pantalla.',
     };
   }
 
@@ -681,14 +681,14 @@ async function completeTaskProposalTool(
       deletedAt: null,
       ...(taskId ? { id: taskId } : { seq: taskSeq as number }),
     },
-    select: { id: true, seq: true, title: true, status: true },
+    select: { id: true, humanId: true, title: true, status: true },
   });
   if (!task) throw new Error('No encontré esa tarea.');
   if (task.status === TaskStatus.COMPLETADA) {
-    return { status: 'already_done', message: `La tarea T#${task.seq} ya está completada.` };
+    return { status: 'already_done', message: `La tarea #${task.humanId} ya está completada.` };
   }
   if (task.status === TaskStatus.CANCELADA) {
-    throw new Error(`La tarea T#${task.seq} está cancelada y no puede completarse directamente.`);
+    throw new Error(`La tarea #${task.humanId} está cancelada y no puede completarse directamente.`);
   }
 
   const reason =
@@ -698,7 +698,7 @@ async function completeTaskProposalTool(
     user,
     'complete_task',
     { taskId: task.id, reason },
-    `Completar tarea T#${task.seq}`,
+    `Completar tarea #${task.humanId}`,
     task.title,
     'normal',
   );
@@ -1219,7 +1219,7 @@ export async function executeReceptionConfirmation(
       await ensureIncidentWorkflow(entry.id);
     }
     return {
-      reply: `${type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.seq} creada: ${entry.title}.`,
+      reply: `${type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.humanId} creada: ${entry.title}.`,
     };
   }
 
@@ -1230,7 +1230,7 @@ export async function executeReceptionConfirmation(
       status: TaskStatus.COMPLETADA,
       reason: pending.args.reason ?? 'Completada mediante Fronti.',
     });
-    return { reply: `Tarea T#${task.seq} completada: ${task.title}.` };
+    return { reply: `Tarea #${task.humanId} completada: ${task.title}.` };
   }
 
   assertFrontiToolEnabled(config, 'proponer_checkouts');

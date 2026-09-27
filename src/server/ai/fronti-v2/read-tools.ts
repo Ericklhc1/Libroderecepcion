@@ -124,7 +124,7 @@ async function entriesTool(user: CurrentUser, args: Record<string, unknown>) {
     },
     select: {
       id: true,
-      seq: true,
+      humanId: true,
       type: true,
       title: true,
       description: true,
@@ -147,7 +147,7 @@ async function entriesTool(user: CurrentUser, args: Record<string, unknown>) {
     onlyOpen,
     items: rows.map((row) => ({
       ...row,
-      ref: `#${row.seq}`,
+      ref: `#${row.humanId}`,
       room: row.room?.number ?? null,
       owner: row.owner
         ? { name: row.owner.name, username: row.owner.username }
@@ -212,7 +212,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
     },
     select: {
       id: true,
-      seq: true,
+      humanId: true,
       title: true,
       description: true,
       status: true,
@@ -222,7 +222,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
       targetType: true,
       assignee: { select: { name: true, username: true } },
       department: { select: { name: true } },
-      entry: { select: { id: true, seq: true, title: true } },
+      entry: { select: { id: true, humanId: true, title: true } },
       room: { select: { number: true } },
       participants: {
         where: { removedAt: null },
@@ -237,7 +237,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
     scope,
     items: rows.map((row) => ({
       ...row,
-      ref: `T#${row.seq}`,
+      ref: `#${row.humanId}`,
       room: row.room?.number ?? null,
       department: row.department?.name ?? null,
       assignee: row.assignee
@@ -297,8 +297,8 @@ async function followUpsTool(user: CurrentUser, args: Record<string, unknown>) {
       nextAction: true,
       result: true,
       owner: { select: { name: true, username: true } },
-      entry: { select: { id: true, seq: true, title: true } },
-      task: { select: { id: true, seq: true, title: true } },
+      entry: { select: { id: true, humanId: true, title: true } },
+      task: { select: { id: true, humanId: true, title: true } },
     },
     orderBy: [{ scheduledAt: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
     take: limit,
@@ -361,8 +361,8 @@ async function alertsTool(user: CurrentUser, args: Record<string, unknown>) {
       snoozedUntil: true,
       auto: true,
       createdAt: true,
-      entry: { select: { id: true, seq: true, title: true } },
-      task: { select: { id: true, seq: true, title: true } },
+      entry: { select: { id: true, humanId: true, title: true } },
+      task: { select: { id: true, humanId: true, title: true } },
       followUp: { select: { id: true, action: true } },
       department: { select: { name: true } },
     },

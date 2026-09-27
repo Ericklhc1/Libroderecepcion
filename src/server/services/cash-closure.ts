@@ -52,6 +52,7 @@ type CashSnapshot = {
 
 export type ShiftCashClosure = {
   id: string;
+  humanId: number;
   shiftId: string;
   closedById: string;
   closedByName: string;
@@ -63,6 +64,7 @@ export type ShiftCashClosure = {
 
 type ClosureRow = {
   id: string;
+  humanId: number;
   shiftId: string;
   closedById: string;
   closedByName: string;
@@ -82,7 +84,7 @@ const CLOSEABLE_SHIFT_STATUSES = [
 
 export async function getShiftCashClosure(shiftId: string): Promise<ShiftCashClosure | null> {
   const rows = await prisma.$queryRaw<ClosureRow[]>`
-    SELECT c."id", c."shiftId", c."closedById", u."name" AS "closedByName",
+    SELECT c."id", c."humanId", c."shiftId", c."closedById", u."name" AS "closedByName",
            c."closedAt", c."notes", c."reopenedAt", c."snapshot"
     FROM "ShiftCashClosure" c
     JOIN "User" u ON u."id" = c."closedById"

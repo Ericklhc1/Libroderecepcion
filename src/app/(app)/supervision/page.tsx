@@ -147,7 +147,7 @@ export default async function SupervisionCenterPage({
   const tasks = center.myTasks.filter(
     (task) =>
       (!priority || task.priority === priority) &&
-      matches(task.seq, task.title, task.assignee?.name, task.status, task.priority),
+      matches(task.humanId, task.title, task.assignee?.name, task.status, task.priority),
   );
   const followUps = center.myFollowUps.filter(
     (item) =>
@@ -342,7 +342,7 @@ export default async function SupervisionCenterPage({
                       <Badge tone={TASK_STATUS_TONE[task.status]}>{TASK_STATUS_LABEL[task.status]}</Badge>
                       <Badge tone={PRIORITY_TONE[task.priority]}>{PRIORITY_LABEL[task.priority]}</Badge>
                     </div>
-                    <Link href={`/tareas/${task.id}`} className="mt-1 block font-medium text-petrol-900 hover:underline">T#{task.seq} · {task.title}</Link>
+                    <Link href={`/tareas/${task.id}`} className="mt-1 block font-medium text-petrol-900 hover:underline">#{task.humanId} · {task.title}</Link>
                     <p className="text-xs text-slate-500">{task.assignee?.name ?? 'Sin responsable'}{task.dueAt ? ` · vence ${formatDateTime(task.dueAt)}` : ''}</p>
                   </li>
                 ))}

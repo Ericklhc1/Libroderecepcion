@@ -26,7 +26,8 @@ export default async function FollowUpsPage({
   const params = await searchParams;
   refreshAlertsInBackground();
 
-  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '') : '';
+  const humanId = /^\d+$/.test(q) ? Number(q) : null;
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';
   const canSeeSupervision = user.permissions.includes('supervision.followup.manage');
@@ -49,6 +50,7 @@ export default async function FollowUpsPage({
     ...(q
       ? {
           OR: [
+            ...(humanId !== null ? [{ humanId }] : []),
             { action: { contains: q, mode: 'insensitive' } },
             { result: { contains: q, mode: 'insensitive' } },
             { nextAction: { contains: q, mode: 'insensitive' } },
@@ -159,7 +161,7 @@ export default async function FollowUpsPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar acción, resultado o próxima acción…"
+        searchPlaceholder="#ID, acción, resultado o próxima acción…"
         clearHref="/seguimientos"
       >
         <label className="min-w-[13rem]">
@@ -186,17 +188,18 @@ export default async function FollowUpsPage({
             {followUps.map((followUp) => (
               <li key={followUp.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold tabular text-petrol-700">#{followUp.humanId}</span>
                   <Badge tone={FOLLOWUP_STATUS_TONE[followUp.status]}>
                     {FOLLOWUP_STATUS_LABEL[followUp.status]}
                   </Badge>
                   {followUp.entry ? (
                     <Link href={`/libro/${followUp.entry.id}`}>
-                      <Chip>Registro #{followUp.entry.seq}</Chip>
+                      <Chip>Registro #{followUp.entry.humanId}</Chip>
                     </Link>
                   ) : null}
                   {followUp.task ? (
                     <Link href={`/tareas/${followUp.task.id}`}>
-                      <Chip>Tarea T#{followUp.task.seq}</Chip>
+                      <Chip>Tarea #{followUp.task.humanId}</Chip>
                     </Link>
                   ) : null}
                 </div>

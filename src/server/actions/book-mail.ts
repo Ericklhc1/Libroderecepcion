@@ -62,7 +62,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
     });
     if (!row) return null;
     return {
-      ref: `#${row.seq}`,
+      ref: `#${row.humanId}`,
       type: human(row.type) ?? 'Novedad',
       title: row.title,
       status: human(row.status) ?? row.status,
@@ -90,12 +90,12 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
         assignee: { select: { name: true } },
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
-        entry: { select: { seq: true, title: true } },
+        entry: { select: { humanId: true, title: true } },
       },
     });
     if (!row) return null;
     return {
-      ref: `T#${row.seq}`,
+      ref: `#${row.humanId}`,
       type: 'Tarea',
       title: row.title,
       status: human(row.status) ?? row.status,
@@ -106,7 +106,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
       extra: [
         ['Área', row.department?.name],
         ['Prioridad', human(row.priority)],
-        ['Caso', row.entry ? `#${row.entry.seq} · ${row.entry.title}` : null],
+        ['Caso', row.entry ? `#${row.entry.humanId} · ${row.entry.title}` : null],
         ['Vencimiento', row.dueAt ? dateTime(row.dueAt) : null],
       ],
     };
@@ -118,8 +118,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
       include: {
         owner: { select: { name: true } },
         createdBy: { select: { name: true } },
-        entry: { select: { seq: true, title: true } },
-        task: { select: { seq: true, title: true } },
+        entry: { select: { humanId: true, title: true } },
+        task: { select: { humanId: true, title: true } },
       },
     });
     if (!row) return null;
@@ -133,8 +133,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
       owner: row.owner.name,
       creator: row.createdBy.name,
       extra: [
-        ['Caso', row.entry ? `#${row.entry.seq} · ${row.entry.title}` : null],
-        ['Tarea', row.task ? `T#${row.task.seq} · ${row.task.title}` : null],
+        ['Caso', row.entry ? `#${row.entry.humanId} · ${row.entry.title}` : null],
+        ['Tarea', row.task ? `#${row.task.humanId} · ${row.task.title}` : null],
         ['Programado', row.scheduledAt ? dateTime(row.scheduledAt) : null],
         ['Resultado', row.result],
       ],
@@ -146,7 +146,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
     include: {
       createdBy: { select: { name: true } },
       department: { select: { name: true } },
-      entry: { select: { seq: true, title: true } },
+      entry: { select: { humanId: true, title: true } },
     },
   });
   if (!row) return null;
@@ -162,7 +162,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
     extra: [
       ['Nivel', human(row.level)],
       ['Área', row.department?.name],
-      ['Caso', row.entry ? `#${row.entry.seq} · ${row.entry.title}` : null],
+      ['Caso', row.entry ? `#${row.entry.humanId} · ${row.entry.title}` : null],
       ['Vencimiento', row.dueAt ? dateTime(row.dueAt) : null],
     ],
   };

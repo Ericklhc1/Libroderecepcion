@@ -575,7 +575,7 @@ export function selectFrontiToolDefinitions(
   if (/crea|crear|registra|registrar|anota|anotar/.test(text) && /novedad|incidencia/.test(text)) {
     wanted.add('proponer_registro');
   }
-  if (/completa|completar|resuelve|resolver|marca como completada/.test(text) && /tarea|t#/.test(text)) {
+  if (/completa|completar|resuelve|resolver|marca como completada/.test(text) && /tarea|t#|#\\d+/.test(text)) {
     wanted.add('proponer_resolver_tarea');
   }
   if (/reporta|reportar|informa al supervisor|avisa al administrador/.test(text)) {

@@ -78,7 +78,7 @@ export default async function TaskDetailPage({
       <Card>
         <div className="px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold tabular text-slate-400">T#{task.seq}</span>
+            <span className="text-sm font-semibold tabular text-slate-400">#{task.humanId}</span>
             <Badge tone={overdue ? 'critico' : TASK_STATUS_TONE[task.status]}>
               {overdue ? 'Vencida' : TASK_STATUS_LABEL[task.status]}
             </Badge>
@@ -144,7 +144,7 @@ export default async function TaskDetailPage({
                     href={`/libro/${task.entry.id}`}
                     className="font-medium text-petrol-600 hover:underline"
                   >
-                    #{task.entry.seq} · {task.entry.title}
+                    #{task.entry.humanId} · {task.entry.title}
                   </Link>
                 </dd>
               </div>

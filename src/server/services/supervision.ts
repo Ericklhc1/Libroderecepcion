@@ -87,7 +87,7 @@ export async function getSupervisionData(): Promise<{
       },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         occurredAt: true,
         owner: { select: { name: true } },
@@ -100,7 +100,7 @@ export async function getSupervisionData(): Promise<{
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         dueAt: true,
         assignee: { select: { name: true } },
@@ -122,7 +122,7 @@ export async function getSupervisionData(): Promise<{
         action: true,
         scheduledAt: true,
         owner: { select: { name: true } },
-        entry: { select: { id: true, seq: true, title: true } },
+        entry: { select: { id: true, humanId: true, title: true } },
       },
       orderBy: { scheduledAt: 'asc' },
       take: 20,
@@ -145,7 +145,7 @@ export async function getSupervisionData(): Promise<{
       },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         type: true,
         occurredAt: true,
@@ -324,7 +324,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'critico',
       rows: criticalIncidents.map((row) => ({
         id: row.id,
-        ref: `#${row.seq}`,
+        ref: `#${row.humanId}`,
         title: row.title,
         detail: row.owner ? `Responsable: ${row.owner.name}` : 'Sin responsable asignado',
         href: `/libro/${row.id}`,
@@ -446,7 +446,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: overdueTasks.map((row) => ({
         id: row.id,
-        ref: `T#${row.seq}`,
+        ref: `#${row.humanId}`,
         title: row.title,
         detail: row.assignee ? `Asignada a ${row.assignee.name}` : 'Sin responsable asignado',
         href: `/tareas/${row.id}`,
@@ -464,7 +464,7 @@ export async function getSupervisionData(): Promise<{
         id: row.id,
         ref: 'Seg.',
         title: row.action,
-        detail: row.entry ? `Sobre #${row.entry.seq} · ${row.entry.title}` : null,
+        detail: row.entry ? `Sobre #${row.entry.humanId} · ${row.entry.title}` : null,
         href: row.entry ? `/libro/${row.entry.id}` : '/seguimientos',
         meta: [dueText(row.scheduledAt, now), `a cargo de ${row.owner.name}`]
           .filter(Boolean)
@@ -480,7 +480,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: unassigned.map((row) => ({
         id: row.id,
-        ref: `#${row.seq}`,
+        ref: `#${row.humanId}`,
         title: row.title,
         detail: null,
         href: `/libro/${row.id}`,

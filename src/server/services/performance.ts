@@ -77,7 +77,7 @@ export async function getUserPerformance(
         },
         select: {
           id: true,
-          seq: true,
+          humanId: true,
           title: true,
           status: true,
           dueAt: true,
@@ -120,7 +120,7 @@ export async function getUserPerformance(
           removedAt: null,
           task: { deletedAt: null, createdAt: range },
         },
-        select: { task: { select: { id: true, seq: true, title: true, status: true } } },
+        select: { task: { select: { id: true, humanId: true, title: true, status: true } } },
       }),
       prisma.performanceObservation.findMany({
         where: {
@@ -191,7 +191,7 @@ export async function getUserPerformance(
   const taskCases = (items: typeof tasks) =>
     items.slice(0, 30).map((task) => ({
       id: task.id,
-      label: `T#${task.seq} · ${task.title}`,
+      label: `#${task.humanId} · ${task.title}`,
       href: `/tareas/${task.id}`,
     }));
   const auditCases = (items: typeof auditItems) =>
@@ -308,7 +308,7 @@ export async function getUserPerformance(
       source: 'Asignaciones múltiples y estado de la tarea',
       cases: collaboration.slice(0, 30).map(({ task }) => ({
         id: task.id,
-        label: `T#${task.seq} · ${task.title}`,
+        label: `#${task.humanId} · ${task.title}`,
         href: `/tareas/${task.id}`,
       })),
       kind: 'DATO_OPERATIVO',

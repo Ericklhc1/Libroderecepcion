@@ -112,7 +112,7 @@ export async function getDashboardData(user: CurrentUser) {
       },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         priority: true,
         dueAt: true,
@@ -252,7 +252,7 @@ export async function getDashboardData(user: CurrentUser) {
     })),
     criticalEntries: criticalEntries.map((entry) => ({
       id: entry.id,
-      seq: entry.seq,
+      humanId: entry.humanId,
       title: entry.title,
       priority: entry.priority,
       overdue: Boolean(entry.dueAt && entry.dueAt < now),

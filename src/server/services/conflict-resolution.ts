@@ -291,7 +291,7 @@ export async function resolveAllOperationalConflicts(
       category: 'CONFLICTOS_REQUIEREN_DECISION',
       status: { in: ENTRY_OPEN_STATUSES },
     },
-    select: { id: true, seq: true, status: true },
+    select: { id: true, humanId: true, status: true },
     orderBy: { occurredAt: 'desc' },
   });
 
@@ -317,7 +317,7 @@ export async function resolveAllOperationalConflicts(
         entityId: existingEscalation.id,
         action: AuditAction.CAMBIO_ESTADO,
         user,
-        summary: `Incidencia #${existingEscalation.seq} actualizada con ${remainingConflicts.length} conflicto(s) restante(s)`,
+        summary: `Incidencia #${existingEscalation.humanId} actualizada con ${remainingConflicts.length} conflicto(s) restante(s)`,
         after: { remainingConflicts: remainingConflicts.length },
       });
     } else {
@@ -351,7 +351,7 @@ export async function resolveAllOperationalConflicts(
       entityId: existingEscalation.id,
       action: AuditAction.CERRAR,
       user,
-      summary: `Incidencia #${existingEscalation.seq} resuelta por reconciliación global`,
+      summary: `Incidencia #${existingEscalation.humanId} resuelta por reconciliación global`,
       before: { status: existingEscalation.status },
       after: { status: EntryStatus.RESUELTO },
     });

@@ -11,6 +11,7 @@ export async function ensureIncidentWorkflow(entryId: string) {
     where: { id: entryId },
     select: {
       id: true,
+      humanId: true,
       type: true,
       title: true,
       description: true,
@@ -52,7 +53,7 @@ export async function ensureIncidentWorkflow(entryId: string) {
     if (!followUp) {
       await tx.followUp.create({
         data: {
-          action: `Dar seguimiento a incidencia #${entry.id}: ${entry.title}`,
+          action: `Dar seguimiento a incidencia #${entry.humanId}: ${entry.title}`,
           nextAction: 'Verificar resolución y cerrar únicamente cuando no queden pendientes.',
           scheduledAt: entry.dueAt,
           ownerId,

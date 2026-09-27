@@ -77,6 +77,7 @@ export default async function HistoryPage({
           'desde',
           'hasta',
         ]}
+        secondaryFields={['tipo', 'prioridad', 'area', 'usuario', 'turno', 'desde', 'hasta']}
         values={filterValues(params)}
         options={{ departments: options.departments, users: options.users, shifts }}
       />

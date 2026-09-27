@@ -1,5 +1,6 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, ENTRY_TYPE_LABEL, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { listOperationalUsers } from './users';
 
@@ -76,7 +77,7 @@ export async function getFormOptions(): Promise<FormOptions> {
     rooms: [],
     activeShifts: activeShifts.map((shift) => ({
       value: shift.id,
-      label: `${shift.type} · ${shift.date.toLocaleDateString('es-CL')}`,
+      label: `${shift.type} · ${formatCalendarDate(shift.date)}`,
     })),
   };
 }

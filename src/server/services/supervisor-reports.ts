@@ -3,6 +3,7 @@ import 'server-only';
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
+import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { formatGymFolio, listGymPasses } from './gym-pass';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
@@ -30,9 +31,7 @@ const OPEN_TASK_STATUSES = new Set<TaskStatus>([
 ]);
 
 function dateKey(date: Date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(date);
+  return hotelDateKey(date);
 }
 
 function when(date: Date) {
@@ -43,9 +42,11 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
   const today = dateKey(new Date());
   const fromKey = /^\d{4}-\d{2}-\d{2}$/.test(fromRaw ?? '') ? fromRaw! : today;
   const toKey = /^\d{4}-\d{2}-\d{2}$/.test(toRaw ?? '') ? toRaw! : fromKey;
-  const from = new Date(`${fromKey}T00:00:00-03:00`);
-  const to = new Date(`${toKey}T23:59:59.999-03:00`);
-  if (to < from) return { from: to, to: from };
+  const startKey = fromKey <= toKey ? fromKey : toKey;
+  const endKey = fromKey <= toKey ? toKey : fromKey;
+  const from = hotelWallDateTime(startKey, 0);
+  const endStart = hotelWallDateTime(endKey, 0);
+  const to = new Date(addHotelCalendarDays(endStart, 1).getTime() - 1);
   return { from, to };
 }
 

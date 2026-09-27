@@ -452,8 +452,11 @@ respuesta es válida.
    mezcla en memoria tomando `página × tamaño` de cada una. Es correcto y
    suficiente para volúmenes de recepción; con cientos de miles de registros
    convendría una vista materializada o una tabla de índice.
-5. **Zona horaria**: las fechas se manejan en la hora del servidor. Para una
-   operación multi-hotel en distintos husos habría que persistir la zona por
+5. **Zona horaria**: los instantes se guardan de forma absoluta, pero toda
+   lectura/escritura operativa se interpreta en `America/Santiago`. Las columnas
+   calendario `@db.Date` se formatean en UTC para no retroceder un día y los
+   rangos diarios se construyen con la zona del hotel, incluido el cambio entre
+   UTC-3 y UTC-4. Para una operación multi-hotel habría que persistir la zona por
    propiedad y convertir en los límites.
 6. **Motor de alertas sin cron**: se apoya en las visitas al panel. Un hotel
    sin actividad nocturna en el sistema vería las alertas recalculadas al

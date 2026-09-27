@@ -45,7 +45,7 @@ import {
   TASK_STATUS_TONE,
 } from '@/domain/labels';
 import { SHIFT_STATUS_LABEL, SHIFT_TYPE_LABEL, SHIFT_WINDOW_LABEL } from '@/domain/shift';
-import { formatCalendarDate, formatDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
+import { formatCalendarDate, formatDateTime, formatTime, relativeTime } from '@/lib/format';
 
 export const metadata = { title: 'Turno' };
 export const dynamic = 'force-dynamic';
@@ -116,6 +116,10 @@ export default async function ShiftPage({
     pendingClosure &&
       cashEnabledForPendingClosure &&
       (!pendingClosureCash || pendingClosureCash.reopenedAt),
+  );
+  const pendingClosureIsStale = Boolean(
+    pendingClosure &&
+      Date.now() - pendingClosure.plannedEnd.getTime() > 24 * 60 * 60 * 1000,
   );
 
   const cashEnabledForCurrentClose =
@@ -216,7 +220,7 @@ export default async function ShiftPage({
     textMatches([
       item.type,
       item.status,
-      formatDate(item.date),
+      formatCalendarDate(item.date),
       ...item.assignments.map((assignment) => assignment.user.name),
       item.handoverOut?.status,
     ]),
@@ -260,12 +264,14 @@ export default async function ShiftPage({
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
             <div>
               <p className="text-sm font-medium text-petrol-900">
-                {SHIFT_TYPE_LABEL[pendingClosure.type]} · {formatDate(pendingClosure.date)}
+                {SHIFT_TYPE_LABEL[pendingClosure.type]} · {formatCalendarDate(pendingClosure.date)}
               </p>
               <p className="mt-1 text-xs text-slate-600">
-                {pendingClosureNeedsCash
-                  ? 'La entrega ya fue enviada, pero falta completar el cierre formal de Caja antes de cerrar el turno.'
-                  : 'La entrega ya fue enviada. Puedes cerrar este turno sin esperar a que el siguiente confirme la recepción.'}
+                {pendingClosureNeedsCash && pendingClosureIsStale
+                  ? 'Este cierre quedó pendiente hace más de 24 horas. No reconstruyas ese turno con la Caja actual: requiere regularización administrativa para conservar la trazabilidad.'
+                  : pendingClosureNeedsCash
+                    ? 'La entrega ya fue enviada, pero falta completar el cierre formal de Caja antes de cerrar el turno.'
+                    : 'La entrega ya fue enviada. Puedes cerrar este turno sin esperar a que el siguiente confirme la recepción.'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -278,7 +284,11 @@ export default async function ShiftPage({
                 </Link>
               ) : null}
               {pendingClosureNeedsCash ? (
-                pendingClosure.handoverOut ? (
+                pendingClosureIsStale ? (
+                  <span className="inline-flex items-center rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 ring-1 ring-amber-300">
+                    Requiere Administrador de sistema
+                  </span>
+                ) : pendingClosure.handoverOut ? (
                   <Link
                     href={`/turno/entrega/${pendingClosure.handoverOut.id}`}
                     className="inline-flex items-center rounded-lg bg-gold-500 px-3 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
@@ -715,7 +725,7 @@ export default async function ShiftPage({
                 <CalendarClock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-petrol-900">
-                    {SHIFT_TYPE_LABEL[item.type]} · {formatDate(item.date)}
+                    {SHIFT_TYPE_LABEL[item.type]} · {formatCalendarDate(item.date)}
                   </p>
                   <p className="text-xs text-slate-500">
                     {SHIFT_STATUS_LABEL[item.status]}

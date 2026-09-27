@@ -46,7 +46,7 @@ export async function sendSupervisorReportAction(
       subject: `[Libro Operativo] ${report.title}`,
       text:
         `${report.title}\n` +
-        `Período: ${range.from.toLocaleDateString('es-CL')} a ${range.to.toLocaleDateString('es-CL')}\n` +
+        `Período: ${formatDate(range.from)} a ${formatDate(range.to)}\n` +
         `Generado por: ${user.name}\n\n` +
         `${report.summary.join('\n')}\n\nEl informe completo va adjunto en PDF.`,
       attachments: [{ filename: report.filename, content: pdf, contentType: 'application/pdf' }],

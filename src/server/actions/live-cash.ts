@@ -35,6 +35,7 @@ import {
   cashApprovalRequired,
   listCashApproverIds,
 } from '@/server/services/cash-permission-policy';
+import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 
 const gymPassSchema = z.object({
   serviceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Indica una fecha válida.'),
@@ -416,6 +417,7 @@ export async function returnCashGuaranteeAction(
       id: input.guaranteeId,
       state: GuaranteeState.DEVUELTA,
     });
+    await tryDeliverOperationalMail(`guarantee-return:${input.guaranteeId}:DEVUELTA`);
 
     revalidatePath('/caja');
     revalidatePath('/turno');

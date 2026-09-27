@@ -214,6 +214,9 @@ export async function runFactoryReset(
       });
 
       count('Notificaciones', await tx.notification.deleteMany());
+      count('Destinatarios de alarmas', await tx.alarmRecipient.deleteMany());
+      count('Timers y reminders', await tx.alarm.deleteMany());
+      count('Cola de correo operativo', await tx.operationalMailOutbox.deleteMany());
       count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());
       count('Mensajes de Fronti', await tx.ai_message.deleteMany());
       count('Memorias de Fronti', await tx.ai_memory.deleteMany());

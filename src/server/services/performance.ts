@@ -159,16 +159,18 @@ export async function getUserPerformance(
       (followUp.completedAt !== null && followUp.completedAt <= followUp.scheduledAt),
   );
   const inspected = auditItems.filter((item) => item.result !== ChecklistItemResult.PENDIENTE);
+  const applicableInspected = inspected.filter(
+    (item) => item.result !== ChecklistItemResult.NO_APLICA,
+  );
   const compliantResults = new Set<ChecklistItemResult>([
     ChecklistItemResult.OK,
     ChecklistItemResult.CUMPLE,
-    ChecklistItemResult.NO_APLICA,
   ]);
   const findingResults = new Set<ChecklistItemResult>([
     ChecklistItemResult.FALLA,
     ChecklistItemResult.INCUMPLIMIENTO,
   ]);
-  const compliant = inspected.filter((item) => compliantResults.has(item.result));
+  const compliant = applicableInspected.filter((item) => compliantResults.has(item.result));
   const confirmedFindings = inspected.filter((item) => findingResults.has(item.result));
   const normalizedFindingNames = new Map<string, number>();
   for (const item of confirmedFindings) {
@@ -263,11 +265,11 @@ export async function getUserPerformance(
       key: 'procedures',
       label: 'Cumplimiento de procedimientos',
       numerator: compliant.length,
-      denominator: inspected.length,
-      value: ratio(compliant.length, inspected.length),
-      formula: 'Puntos conformes o no aplicables ÷ puntos auditados',
+      denominator: applicableInspected.length,
+      value: ratio(compliant.length, applicableInspected.length),
+      formula: 'Puntos conformes ÷ puntos auditados aplicables (excluye «No aplica»)',
       source: 'Auditorías cerradas vinculadas a la persona',
-      cases: auditCases(inspected),
+      cases: auditCases(applicableInspected),
       kind: 'HALLAZGO_CONFIRMADO',
     },
     {

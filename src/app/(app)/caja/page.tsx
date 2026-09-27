@@ -3,6 +3,7 @@ import { Banknote, Download, PlusCircle, ShieldCheck, Ticket } from 'lucide-reac
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getLiveCashState } from '@/server/services/live-cash';
+import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
 import { listGymPasses } from '@/server/services/gym-pass';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
@@ -19,7 +20,7 @@ import {
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
-import { hotelDateKey } from '@/domain/time';
+import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Caja' };
@@ -57,18 +58,29 @@ export default async function LiveCashPage({
   const defaultFrom = `${todayKey.slice(0, 8)}01`;
   const gymFrom = typeof params.desde === 'string' && params.desde ? params.desde : defaultFrom;
   const gymTo = typeof params.hasta === 'string' && params.hasta ? params.hasta : todayKey;
-  const [state, gymSummary] = await Promise.all([
-    getLiveCashState(),
+  const historyFrom = hotelWallDateTime(gymFrom, 0);
+  const historyTo = new Date(addHotelCalendarDays(hotelWallDateTime(gymTo, 0), 1).getTime() - 1);
+  const [operationGate, state, gymSummary] = await Promise.all([
+    getReceptionOperationGate(user),
+    getLiveCashState({
+      query: q || undefined,
+      currency: moneda || undefined,
+      from: historyFrom,
+      to: historyTo,
+      movementLimit: 50,
+      auditLimit: 50,
+    }),
     listGymPasses({ from: gymFrom, to: gymTo, limit: 1000 }),
   ]);
+  const canOperateCash = operationGate.mode === 'ACTIVE';
 
-  const canManualIn = hasPermission(user, 'cash.manual_in');
-  const canManualOut = hasPermission(user, 'cash.manual_out');
+  const canManualIn = canOperateCash && hasPermission(user, 'cash.manual_in');
+  const canManualOut = canOperateCash && hasPermission(user, 'cash.manual_out');
   const canManual = canManualIn || canManualOut;
-  const canAudit = hasPermission(user, 'cash.audit');
-  const canCreateGuarantee = hasPermission(user, 'cash.guarantee_in');
-  const canReconcileDifference = hasPermission(user, 'cash.approve');
-  const canReturnGuarantee = hasPermission(user, 'cash.guarantee_out');
+  const canAudit = canOperateCash && hasPermission(user, 'cash.audit');
+  const canCreateGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
+  const canReconcileDifference = canOperateCash && hasPermission(user, 'cash.approve');
+  const canReturnGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_out');
 
   const matches = (values: Array<string | number | null | undefined>) =>
     !q ||
@@ -90,31 +102,11 @@ export default async function LiveCashPage({
         item.amount,
       ]),
   );
-  const visibleAudits = state.audits.filter(
-    (item) =>
-      (!moneda || item.currency === moneda) &&
-      matches([
-        item.currency,
-        item.countedByName,
-        item.notes,
-        item.expectedAmount,
-        item.countedAmount,
-        item.difference,
-      ]),
-  );
-  const visibleMovements = state.movements.filter(
-    (item) =>
-      (!moneda || item.currency === moneda) &&
-      matches([
-        item.kind,
-        item.direction,
-        item.currency,
-        item.amount,
-        item.reference,
-        item.notes,
-        item.createdByName,
-      ]),
-  );
+  // Arqueos y movimientos ya llegan filtrados desde PostgreSQL. Así la búsqueda
+  // no puede responder «sin resultados» sólo porque el registro quedó fuera de
+  // la muestra cargada en memoria.
+  const visibleAudits = state.audits;
+  const visibleMovements = state.movements;
   const visibleGymPasses = gymSummary.rows.filter((item) =>
     matches([
       item.formattedFolio,
@@ -159,21 +151,23 @@ export default async function LiveCashPage({
             </Dialog>
           ) : null}
 
-          <Dialog
-            title="Generar folio de gimnasio"
-            description="Registra fecha, habitación y huésped. El recepcionista se toma automáticamente de tu sesión."
-            triggerVariant="secondary"
-            triggerSize="sm"
-            width="sm"
-            trigger={
-              <>
-                <Ticket className="h-4 w-4" aria-hidden="true" />
-                Folio gimnasio
-              </>
-            }
-          >
-            <CreateGymPassForm defaultServiceDate={todayKey} />
-          </Dialog>
+          {canOperateCash ? (
+            <Dialog
+              title="Generar folio de gimnasio"
+              description="Registra fecha, habitación y huésped. El recepcionista se toma automáticamente de tu sesión."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <Ticket className="h-4 w-4" aria-hidden="true" />
+                  Folio gimnasio
+                </>
+              }
+            >
+              <CreateGymPassForm defaultServiceDate={todayKey} />
+            </Dialog>
+          ) : null}
 
           {canReconcileDifference ? (
             <Dialog
@@ -213,6 +207,21 @@ export default async function LiveCashPage({
         </div>
       </header>
 
+      {!canOperateCash ? (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+          <p className="font-semibold">Caja en modo consulta</p>
+          <p className="mt-1">
+            {operationGate.mode === 'NO_SHIFT'
+              ? 'Inicia tu turno antes de registrar movimientos, garantías, arqueos o folios.'
+              : operationGate.mode === 'HANDOVER_PENDING'
+                ? 'Recibe primero la entrega pendiente y recuenta Caja desde Mi turno.'
+                : operationGate.mode === 'RECEIVING'
+                  ? 'Completa la recepción del turno antes de operar Caja.'
+                  : 'Tu turno está en cierre. Completa Caja desde el cierre guiado y termina el turno antes de volver a operar.'}
+          </p>
+        </div>
+      ) : null}
+
       <ListFilterBar
         searchValue={q}
         searchPlaceholder="Buscar concepto, referencia, responsable o garantía…"
@@ -237,7 +246,7 @@ export default async function LiveCashPage({
           </select>
         </label>
         <label className="min-w-[10rem]">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
+          <span className="mb-1 block text-xs font-medium text-slate-500">Historial desde</span>
           <input
             type="date"
             name="desde"
@@ -246,7 +255,7 @@ export default async function LiveCashPage({
           />
         </label>
         <label className="min-w-[10rem]">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
+          <span className="mb-1 block text-xs font-medium text-slate-500">Historial hasta</span>
           <input
             type="date"
             name="hasta"
@@ -341,6 +350,7 @@ export default async function LiveCashPage({
             <CardHeader
               title="Garantías en efectivo bajo custodia"
               count={visibleGuarantees.length}
+              action={<span className="text-xs text-slate-500">Estado vigente · no se oculta por período</span>}
             />
             {visibleGuarantees.length === 0 ? (
               <EmptyState message="No hay garantías en efectivo activas." />
@@ -376,6 +386,10 @@ export default async function LiveCashPage({
                             <ReturnCashGuaranteeForm
                               guaranteeId={guarantee.id}
                               reference={guarantee.reference ?? guarantee.guestName}
+                              currency={guarantee.currency}
+                              amount={guarantee.amount}
+                              guestName={guarantee.guestName}
+                              roomNumber={guarantee.roomNumber}
                             />
                           ) : null}
                         </div>
@@ -390,7 +404,11 @@ export default async function LiveCashPage({
 
         {show('auditorias') ? (
           <Card>
-            <CardHeader title="Últimos arqueos" count={visibleAudits.length} />
+            <CardHeader
+              title="Arqueos del período"
+              count={state.auditTotal}
+              action={state.auditTotal > visibleAudits.length ? <span className="text-xs text-slate-500">Mostrando {visibleAudits.length} de {state.auditTotal}</span> : null}
+            />
             {visibleAudits.length === 0 ? (
               <EmptyState message="Todavía no se ha registrado ningún arqueo desde esta pantalla." />
             ) : (
@@ -523,7 +541,11 @@ export default async function LiveCashPage({
 
       {show('movimientos') ? (
         <Card>
-          <CardHeader title="Movimientos recientes" count={visibleMovements.length} />
+          <CardHeader
+            title="Movimientos del período"
+            count={state.movementTotal}
+            action={state.movementTotal > visibleMovements.length ? <span className="text-xs text-slate-500">Mostrando {visibleMovements.length} de {state.movementTotal}</span> : null}
+          />
           {visibleMovements.length === 0 ? (
             <EmptyState message="Todavía no hay movimientos en Caja." />
           ) : (

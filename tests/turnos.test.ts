@@ -339,6 +339,8 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
 
     const { shift: primero } = await openShift(saliente, { type: ShiftType.DIA });
     const draft = await prepareHandover(saliente, primero.id);
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'PENDINGS' });
+    await confirmHandoverReviewStep(saliente, { handoverId: draft.id, step: 'FINAL' });
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 

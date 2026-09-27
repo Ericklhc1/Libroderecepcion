@@ -23,7 +23,7 @@ const schema = z.object({
     .min(32, 'AUTH_SECRET debe tener al menos 32 caracteres'),
   SESSION_TTL_HOURS: z.coerce.number().int().positive().max(168).default(12),
   SEED_DEMO_PASSWORD: z.string().min(8).default('Demo2024!'),
-  HOTEL_TIMEZONE: z.string().default('America/Santiago'),
+  HOTEL_TIMEZONE: z.literal('America/Santiago').default('America/Santiago'),
 
   // Fronti es proveedor-agnóstico. Usa un modelo open-weight por defecto.
   // Groq es el backend hospedado inicial; FRONTI_BASE_URL permite apuntar el

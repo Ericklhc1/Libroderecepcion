@@ -267,7 +267,8 @@ export async function startRun(
     entityId: run.id,
     action: AuditAction.CREAR,
     user,
-    summary: `Ronda iniciada: «${template.name}» (${template.items.length} puntos)`,
+    summary:
+      `${mode === ChecklistRunMode.AUDITORIA_SORPRESA ? 'Auditoría sorpresa' : 'Ronda'} iniciada: «${template.name}» (${template.items.length} puntos)`,
     after: {
       supervisionShiftId: run.supervisionShiftId,
       scope: run.scope,
@@ -504,7 +505,12 @@ export async function getMyOpenRun(
   mode?: ChecklistRunMode,
 ): Promise<RunWithItems | null> {
   return prisma.checklistRun.findFirst({
-    where: { runById: userId, finishedAt: null, ...(mode ? { mode } : {}) },
+    where: {
+      runById: userId,
+      finishedAt: null,
+      deletedAt: null,
+      ...(mode ? { mode } : {}),
+    },
     include: runInclude,
     orderBy: { startedAt: 'desc' },
   });

@@ -12,7 +12,13 @@ type Target = {
 };
 
 /** Hilo de comentarios de cualquier objeto operativo. */
-export async function Comments({ target }: { target: Target }) {
+export async function Comments({
+  target,
+  readOnly = false,
+}: {
+  target: Target;
+  readOnly?: boolean;
+}) {
   const comments = await listComments(target);
 
   return (
@@ -21,7 +27,7 @@ export async function Comments({ target }: { target: Target }) {
         {comments.length === 0 ? (
           <li className="flex items-center gap-2 px-4 py-6 text-sm text-slate-500">
             <MessageSquare className="h-4 w-4" aria-hidden="true" />
-            Sin comentarios. Usa este espacio para coordinar entre turnos.
+            {readOnly ? 'Sin comentarios registrados.' : 'Sin comentarios. Usa este espacio para coordinar entre turnos.'}
           </li>
         ) : null}
         {comments.map((comment) => (
@@ -41,9 +47,15 @@ export async function Comments({ target }: { target: Target }) {
           </li>
         ))}
       </ul>
-      <div className="border-t border-slate-200 px-4 py-3">
-        <CommentForm target={target} />
-      </div>
+      {readOnly ? (
+        <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+          Durante el relevo este hilo es de consulta. La coordinación operativa continúa después de iniciar el turno.
+        </div>
+      ) : (
+        <div className="border-t border-slate-200 px-4 py-3">
+          <CommentForm target={target} />
+        </div>
+      )}
     </div>
   );
 }

@@ -172,7 +172,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ReceptionAssistant />
       ) : null}
 
-      <ReceptionOperationGate mode={receptionGate.mode} />
+      <ReceptionOperationGate
+        mode={receptionGate.mode}
+        handoverId={receptionGate.handoverId}
+      />
 
       {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
 

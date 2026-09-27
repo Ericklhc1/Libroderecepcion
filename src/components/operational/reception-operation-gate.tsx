@@ -7,8 +7,10 @@ import type { ReceptionOperationMode } from '@/server/services/reception-operati
 
 export function ReceptionOperationGate({
   mode,
+  handoverId,
 }: {
   mode: ReceptionOperationMode;
+  handoverId?: string | null;
 }) {
   const pathname = usePathname();
 
@@ -31,8 +33,8 @@ export function ReceptionOperationGate({
       : mode === 'HANDOVER_PENDING'
         ? {
             title: 'Entrega de turno pendiente',
-            body: 'El turno saliente ya cerró. Recibe la entrega y recuenta Caja antes de iniciar el turno siguiente.',
-            action: 'Revisar y recibir entrega',
+            body: 'El turno saliente ya cerró. El recuento de recepción se hace dentro de esa entrega, no en la Caja general. Recuenta el fondo fijo y valida las garantías antes de confirmar la recepción.',
+            action: 'Ir al recuento de la entrega',
           }
         : mode === 'RECEIVING'
           ? {
@@ -60,7 +62,13 @@ export function ReceptionOperationGate({
         </div>
 
         <Link
-          href="/turno"
+          href={
+            mode === 'HANDOVER_PENDING' && handoverId
+              ? `/turno/entrega/${handoverId}#recuento-caja`
+              : mode === 'NO_SHIFT'
+                ? '/turno#abrir-turno'
+                : '/turno'
+          }
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700"
         >
           <CalendarClock className="h-4 w-4" aria-hidden="true" />

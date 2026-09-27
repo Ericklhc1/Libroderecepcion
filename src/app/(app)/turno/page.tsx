@@ -313,7 +313,7 @@ export default async function ShiftPage({
       ) : null}
 
       {!shift ? (
-        <Card>
+        <Card id="abrir-turno">
           <CardHeader title="Entrar al turno" />
           <div className="space-y-3 px-4 py-4">
             {!user.roleOperational ? (

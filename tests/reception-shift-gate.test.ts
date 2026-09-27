@@ -33,6 +33,45 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(source).toContain('none: { userId: user.id }');
   });
 
+  it('el gate reconoce la misma entrega que la pantalla permite recibir', () => {
+    const gate = readFileSync(
+      'src/server/services/reception-operation-gate.ts',
+      'utf8',
+    );
+    const pendingStart = gate.indexOf('const pendingHandover');
+    const pendingEnd = gate.indexOf('if (pendingHandover)', pendingStart);
+    const pendingQuery = gate.slice(pendingStart, pendingEnd);
+
+    expect(pendingQuery).toContain('status: HandoverStatus.ENVIADA');
+    expect(pendingQuery).toContain('receivedAt: null');
+    expect(pendingQuery).toContain('toShiftId: null');
+    expect(pendingQuery).toContain('status: ShiftStatus.CERRADO');
+    expect(pendingQuery).not.toContain('archivedAt: null');
+    expect(gate).toContain('handoverId: pendingHandover.id');
+  });
+
+  it('durante el relevo dirige al recuento correcto y no muestra acciones muertas', () => {
+    const gateUi = readFileSync(
+      'src/components/operational/reception-operation-gate.tsx',
+      'utf8',
+    );
+    const handover = readFileSync(
+      'src/app/(app)/turno/entrega/[id]/page.tsx',
+      'utf8',
+    );
+    const cashBox = readFileSync(
+      'src/components/operational/cash-box.tsx',
+      'utf8',
+    );
+
+    expect(gateUi).toContain('#recuento-caja');
+    expect(gateUi).toContain('no en la Caja general');
+    expect(handover).toContain('Recepción de turno · paso');
+    expect(handover).toContain('id="confirmar-recepcion"');
+    expect(cashBox).toContain("'recuento-caja'");
+    expect(cashBox).not.toContain('ReturnCashGuaranteeForm');
+  });
+
   it('permite tomar la liana antes de abrir el turno siguiente', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',

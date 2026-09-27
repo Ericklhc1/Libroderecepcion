@@ -32,7 +32,7 @@ export type WorkloadRow = {
 export type UnassignedItem = {
   id: string;
   kind: 'task' | 'entry';
-  seq: number;
+  humanId: number;
   title: string;
   priority: Priority;
   createdAt: Date;
@@ -62,7 +62,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       where: { deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         priority: true,
         createdAt: true,
@@ -75,7 +75,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
       select: {
         id: true,
-        seq: true,
+        humanId: true,
         title: true,
         priority: true,
         createdAt: true,
@@ -145,7 +145,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
     ...unassignedTasks.map((task) => ({
       id: task.id,
       kind: 'task' as const,
-      seq: task.seq,
+      humanId: task.humanId,
       title: task.title,
       priority: task.priority,
       createdAt: task.createdAt,
@@ -156,7 +156,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
     ...unassignedEntries.map((entry) => ({
       id: entry.id,
       kind: 'entry' as const,
-      seq: entry.seq,
+      humanId: entry.humanId,
       title: entry.title,
       priority: entry.priority,
       createdAt: entry.createdAt,
@@ -191,7 +191,7 @@ export async function getPersonWorkload(userId: string) {
     where: { deletedAt: null, assigneeId: userId, status: { in: TASK_OPEN_STATUSES } },
     select: {
       id: true,
-      seq: true,
+      humanId: true,
       title: true,
       priority: true,
       status: true,

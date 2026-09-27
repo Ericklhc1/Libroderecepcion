@@ -131,6 +131,7 @@ export function SupervisionAuditDashboard({
           const sales = section(row.metrics, 'salesChannels');
           const revenue = section(row.metrics, 'revenue');
           const audit = section(row.metrics, 'audit');
+          const auditActivity = section(row.metrics, 'auditActivity');
           const charges = section(row.metrics, 'dailyCharges');
           const checks = checksOf(row.checks);
           const findings = findingsOf(row.findings);
@@ -143,6 +144,7 @@ export function SupervisionAuditDashboard({
           const productionRooms = numberValue(production.occupiedRoomsWithCost);
           const salesNet = numberValue(sales.netClp);
           const occupancy = numberValue(revenue.occupancyPct);
+          const auditOccupancy = numberValue(auditActivity.occupancyPct);
           const noDailyCharges = charges.noData === true;
 
           return (
@@ -178,6 +180,7 @@ export function SupervisionAuditDashboard({
                   <StatTile label="Hab. con producción" value={productionRooms ?? '—'} tone="neutral" />
                   <StatTile label="Venta neta canales" value={clp(salesNet)} tone="neutral" />
                   <StatTile label="OCC forecast" value={decimal(occupancy, '%')} tone="neutral" />
+                  <StatTile label="OCC actividad" value={decimal(auditOccupancy, '%')} tone="neutral" />
                   <StatTile
                     label="Cargos diarios"
                     value={noDailyCharges ? 'Sin cargos' : charges.noData === false ? 'Con actividad' : '—'}

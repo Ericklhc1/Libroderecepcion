@@ -13,7 +13,11 @@ import {
   receiveHandoverAction,
   sendHandoverAction,
 } from '@/server/actions/shifts';
-import { SHIFT_WINDOW_LABEL } from '@/domain/shift';
+import {
+  SHIFT_EMERGENCY_REASON_KEYS,
+  SHIFT_EMERGENCY_REASON_LABEL,
+  SHIFT_WINDOW_LABEL,
+} from '@/domain/shift';
 
 function GuidedShiftSubmit({
   guided,
@@ -169,33 +173,129 @@ export function OpenShiftForm({
 }
 
 /**
- * Vía de escape controlada cuando el turno anterior quedó atascado.
+ * Excepción controlada cuando el turno saliente no puede terminar su cierre.
  *
- * No exige que la persona diagnostique el problema: inicia su turno, conserva
- * el cierre anterior pendiente y genera trazabilidad crítica para Supervisión.
+ * La primera acción sólo abre la advertencia. El servidor exige además causa
+ * cerrada + aceptación expresa; ocultar o manipular el modal no permite saltar
+ * esas condiciones.
  */
-export function ContinuityOpenShiftForm({
+export function EmergencyOpenShiftForm({
   suggestedType,
 }: {
   suggestedType: 'DIA' | 'NOCHE';
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess className="space-y-2">
       <input type="hidden" name="type" value={suggestedType} />
       <input type="hidden" name="continuity" value="1" />
-      <input
-        type="hidden"
-        name="continuityReason"
-        value="El turno saliente no completó el cierre antes del relevo."
-      />
-      <p className="text-xs text-amber-900">
-        Se iniciará el turno {suggestedType === 'DIA' ? 'DÍA' : 'NOCHE'} ·{' '}
-        {SHIFT_WINDOW_LABEL[suggestedType]}. El cierre anterior quedará pendiente y alertado para
-        Supervisión.
-      </p>
-      <SubmitButton variant="gold" pendingLabel="Iniciando continuidad…">
-        INICIAR TURNO POR CONTINGENCIA
-      </SubmitButton>
+
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+      >
+        EVALUAR TURNO DE EMERGENCIA
+      </button>
+
+      {open ? (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-petrol-950/60 p-4 no-print"
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="emergency-shift-title"
+            className="max-h-[min(92vh,48rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-red-200"
+          >
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-red-700">EXCEPCIÓN OPERATIVA</p>
+                <h2
+                  id="emergency-shift-title"
+                  className="mt-1 text-xl font-semibold text-petrol-950"
+                >
+                  El turno saliente todavía no está cerrado
+                </h2>
+                <p className="mt-2 text-sm leading-5 text-slate-700">
+                  La regla normal es esperar el cierre del recepcionista saliente. Abrir un turno de
+                  emergencia rompe el relevo secuencial y queda registrado para revisión de
+                  Supervisión.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+                aria-label="Cerrar advertencia"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-red-50 p-3 ring-1 ring-red-200">
+              <p className="text-sm font-semibold text-red-900">
+                Sólo procede por una de estas razones:
+              </p>
+              <div className="mt-2 space-y-2">
+                {SHIFT_EMERGENCY_REASON_KEYS.map((reason) => (
+                  <label
+                    key={reason}
+                    className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-red-100"
+                  >
+                    <input
+                      type="radio"
+                      name="emergencyReason"
+                      value={reason}
+                      required
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    />
+                    <span>{SHIFT_EMERGENCY_REASON_LABEL[reason]}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs leading-4 text-red-800">
+                Un atraso, descuido u olvido del cierre no es por sí solo una causa válida.
+              </p>
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+              <input
+                type="checkbox"
+                name="emergencyAccepted"
+                value="1"
+                required
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                Comprendo que este inicio es una excepción, que el turno saliente seguirá pendiente
+                hasta su cierre formal y que Supervisión recibirá una alerta crítica mientras la
+                situación no se regularice.
+              </span>
+            </label>
+
+            <p className="mt-4 text-xs text-slate-500">
+              Se abrirá el turno {suggestedType === 'DIA' ? 'DÍA' : 'NOCHE'} ·{' '}
+              {SHIFT_WINDOW_LABEL[suggestedType]}.
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
+              >
+                ESPERAR CIERRE DEL SALIENTE Y ABRIR TURNO NORMAL
+              </button>
+              <SubmitButton variant="danger" pendingLabel="Abriendo emergencia…">
+                ABRIR TURNO DE EMERGENCIA
+              </SubmitButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </ActionForm>
   );
 }

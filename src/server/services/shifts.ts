@@ -1644,6 +1644,18 @@ export async function sendHandover(
   if (handover.status !== HandoverStatus.BORRADOR) {
     throw new RuleError('Esta entrega ya fue enviada.');
   }
+  assertTransition(shift.status, ShiftStatus.ENTREGA_ENVIADA);
+
+  /*
+    La caja se cuenta antes de entregar, no después. Los bloqueos físicos se
+    evalúan primero para que el mensaje al usuario apunte a la causa real.
+  */
+  const cashProblems = await cashBlockersForSending(handover.id);
+  if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
+  if (await isCashEnabled()) {
+    await assertShiftCashClosed(shift.id);
+  }
+
   if (!handover.pendingsReviewedAt) {
     throw new RuleError('Antes de enviar, confirma la revisión de los pendientes del turno.');
   }
@@ -1653,17 +1665,6 @@ export async function sendHandover(
   const hasUrgentItems = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !handover.urgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
-  }
-  assertTransition(shift.status, ShiftStatus.ENTREGA_ENVIADA);
-
-  /*
-    La caja se cuenta antes de entregar, no después. Si el hotel no tiene
-    fondo fijo configurado esto no bloquea nada: la lista viene vacía.
-  */
-  const cashProblems = await cashBlockersForSending(handover.id);
-  if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
-  if (await isCashEnabled()) {
-    await assertShiftCashClosed(shift.id);
   }
 
   const items = await prisma.handoverItem.findMany({

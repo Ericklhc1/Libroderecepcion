@@ -171,7 +171,7 @@ export default async function IncidentsPage({
                     className="block px-4 py-3 hover:bg-slate-50"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs tabular text-slate-400">#{incident.seq}</span>
+                      <span className="text-xs tabular text-slate-400">#{incident.humanId}</span>
                       {incident.severity ? (
                         <Badge tone={SEVERITY_TONE[incident.severity]}>
                           Gravedad {SEVERITY_LABEL[incident.severity]}

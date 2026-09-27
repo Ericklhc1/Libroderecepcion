@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { formatCalendarDate } from '@/lib/format';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -361,7 +362,7 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
       });
       if (!row) throw new NotFoundError('El turno de origen ya no existe.');
       return {
-        label: `Turno ${row.type} · ${row.date.toLocaleDateString('es-CL')}`,
+        label: `Turno ${row.type} · ${formatCalendarDate(row.date)}`,
         entryId: null,
         taskId: null,
       };

@@ -1,7 +1,12 @@
 import Link from 'next/link';
-import { Filter, X } from 'lucide-react';
+import { ChevronDown, Filter, X } from 'lucide-react';
 import { EntryStatus, EntryType, Priority, TaskStatus } from '@prisma/client';
-import { ENTRY_STATUS_LABEL, ENTRY_TYPE_LABEL, PRIORITY_LABEL, TASK_STATUS_LABEL } from '@/domain/labels';
+import {
+  ENTRY_STATUS_LABEL,
+  ENTRY_TYPE_LABEL,
+  PRIORITY_LABEL,
+  TASK_STATUS_LABEL,
+} from '@/domain/labels';
 import type { Option } from '@/server/services/options';
 
 export type FilterField =
@@ -20,9 +25,14 @@ export type FilterField =
   | 'hasta'
   | 'clase';
 
+const PRIMARY_FIELDS = new Set<FilterField>(['q', 'estado', 'estadoTarea', 'responsable']);
+
 /**
- * Filtros combinables. Es un formulario GET: funciona sin JavaScript, los
- * filtros quedan en la URL (compartibles) y el servidor los valida.
+ * Búsqueda primero, filtros después.
+ *
+ * Estado y responsable quedan a mano porque son los filtros de mayor utilidad
+ * diaria. El resto sigue disponible, compartible por URL y validado en servidor,
+ * pero agrupado bajo «Más filtros» para no convertir cada lista en un formulario.
  */
 export function Filters({
   action,
@@ -39,6 +49,179 @@ export function Filters({
 }) {
   const has = (field: FilterField) => fields.includes(field);
   const activeCount = fields.filter((field) => values[field]).length;
+  const secondary = fields.filter((field) => !PRIMARY_FIELDS.has(field));
+
+  const control = (field: FilterField) => {
+    if (field === 'q') {
+      return (
+        <div key={field} className="min-w-[220px] flex-1">
+          <label htmlFor="q" className="label-base">Buscar</label>
+          <input
+            id="q"
+            name="q"
+            type="search"
+            defaultValue={values.q ?? ''}
+            placeholder="#ID, título, descripción, categoría o responsable"
+            className="input-base"
+          />
+        </div>
+      );
+    }
+
+    if (field === 'clase') {
+      return (
+        <div key={field}>
+          <label htmlFor="clase" className="label-base">Qué mostrar</label>
+          <select id="clase" name="clase" defaultValue={values.clase ?? ''} className="input-base">
+            <option value="">Todo</option>
+            <option value="entry">Registros</option>
+            <option value="task">Tareas</option>
+            <option value="followup">Seguimientos</option>
+            <option value="alert">Alertas</option>
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'tipo') {
+      return (
+        <div key={field}>
+          <label htmlFor="tipo" className="label-base">Tipo</label>
+          <select id="tipo" name="tipo" defaultValue={values.tipo ?? ''} className="input-base">
+            <option value="">Todos</option>
+            {Object.values(EntryType).map((type) => (
+              <option key={type} value={type}>{ENTRY_TYPE_LABEL[type]}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'estado') {
+      return (
+        <div key={field}>
+          <label htmlFor="estado" className="label-base">Estado</label>
+          <select id="estado" name="estado" defaultValue={values.estado ?? ''} className="input-base">
+            <option value="">Todos</option>
+            <option value="abiertos">Sólo abiertos</option>
+            {Object.values(EntryStatus).map((status) => (
+              <option key={status} value={status}>{ENTRY_STATUS_LABEL[status]}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'estadoTarea') {
+      return (
+        <div key={field}>
+          <label htmlFor="estado" className="label-base">Estado</label>
+          <select id="estado" name="estado" defaultValue={values.estado ?? ''} className="input-base">
+            <option value="">Todos</option>
+            <option value="abiertos">Sólo abiertas</option>
+            {Object.values(TaskStatus).map((status) => (
+              <option key={status} value={status}>{TASK_STATUS_LABEL[status]}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'prioridad') {
+      return (
+        <div key={field}>
+          <label htmlFor="prioridad" className="label-base">Prioridad</label>
+          <select id="prioridad" name="prioridad" defaultValue={values.prioridad ?? ''} className="input-base">
+            <option value="">Todas</option>
+            {Object.values(Priority).map((priority) => (
+              <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'area') {
+      return (
+        <div key={field}>
+          <label htmlFor="area" className="label-base">Área</label>
+          <select id="area" name="area" defaultValue={values.area ?? ''} className="input-base">
+            <option value="">Todas</option>
+            {options.departments.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'responsable' || field === 'usuario') {
+      const name = field === 'responsable' ? 'responsable' : 'usuario';
+      return (
+        <div key={field}>
+          <label htmlFor={name} className="label-base">
+            {field === 'responsable' ? 'Responsable' : 'Usuario'}
+          </label>
+          <select id={name} name={name} defaultValue={values[name] ?? ''} className="input-base">
+            <option value="">Cualquiera</option>
+            {options.users.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'turno' && options.shifts) {
+      return (
+        <div key={field}>
+          <label htmlFor="turno" className="label-base">Turno</label>
+          <select id="turno" name="turno" defaultValue={values.turno ?? ''} className="input-base">
+            <option value="">Todos</option>
+            {options.shifts.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field === 'habitacion' || field === 'reserva') {
+      return (
+        <div key={field} className={field === 'habitacion' ? 'w-28' : 'w-36'}>
+          <label htmlFor={field} className="label-base">
+            {field === 'habitacion' ? 'Habitación' : 'Reserva'}
+          </label>
+          <input
+            id={field}
+            name={field}
+            defaultValue={values[field] ?? ''}
+            className="input-base"
+            placeholder={field === 'habitacion' ? '617' : 'RES-10241'}
+          />
+        </div>
+      );
+    }
+
+    if (field === 'desde' || field === 'hasta') {
+      return (
+        <div key={field}>
+          <label htmlFor={field} className="label-base">
+            {field === 'desde' ? 'Desde' : 'Hasta'}
+          </label>
+          <input
+            id={field}
+            name={field}
+            type="date"
+            defaultValue={values[field] ?? ''}
+            className="input-base"
+          />
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <form action={action} className="card px-4 py-3">
@@ -49,241 +232,7 @@ export function Filters({
         : null}
 
       <div className="flex flex-wrap items-end gap-3">
-        {has('q') ? (
-          <div className="min-w-[200px] flex-1">
-            <label htmlFor="q" className="label-base">
-              Buscar
-            </label>
-            <input
-              id="q"
-              name="q"
-              type="search"
-              defaultValue={values.q ?? ''}
-              placeholder="Título, descripción, categoría, etiqueta o responsable"
-              className="input-base"
-            />
-          </div>
-        ) : null}
-
-        {has('clase') ? (
-          <div>
-            <label htmlFor="clase" className="label-base">
-              Qué mostrar
-            </label>
-            <select id="clase" name="clase" defaultValue={values.clase ?? ''} className="input-base">
-              <option value="">Todo</option>
-              <option value="entry">Registros</option>
-              <option value="task">Tareas</option>
-              <option value="followup">Seguimientos</option>
-              <option value="alert">Alertas</option>
-            </select>
-          </div>
-        ) : null}
-
-        {has('tipo') ? (
-          <div>
-            <label htmlFor="tipo" className="label-base">
-              Tipo
-            </label>
-            <select id="tipo" name="tipo" defaultValue={values.tipo ?? ''} className="input-base">
-              <option value="">Todos</option>
-              {Object.values(EntryType).map((type) => (
-                <option key={type} value={type}>
-                  {ENTRY_TYPE_LABEL[type]}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('estado') ? (
-          <div>
-            <label htmlFor="estado" className="label-base">
-              Estado
-            </label>
-            <select id="estado" name="estado" defaultValue={values.estado ?? ''} className="input-base">
-              <option value="">Todos</option>
-              <option value="abiertos">Sólo abiertos</option>
-              {Object.values(EntryStatus).map((status) => (
-                <option key={status} value={status}>
-                  {ENTRY_STATUS_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('estadoTarea') ? (
-          <div>
-            <label htmlFor="estado" className="label-base">
-              Estado
-            </label>
-            <select id="estado" name="estado" defaultValue={values.estado ?? ''} className="input-base">
-              <option value="">Todos</option>
-              <option value="abiertos">Sólo abiertas</option>
-              {Object.values(TaskStatus).map((status) => (
-                <option key={status} value={status}>
-                  {TASK_STATUS_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('prioridad') ? (
-          <div>
-            <label htmlFor="prioridad" className="label-base">
-              Prioridad
-            </label>
-            <select
-              id="prioridad"
-              name="prioridad"
-              defaultValue={values.prioridad ?? ''}
-              className="input-base"
-            >
-              <option value="">Todas</option>
-              {Object.values(Priority).map((priority) => (
-                <option key={priority} value={priority}>
-                  {PRIORITY_LABEL[priority]}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('area') ? (
-          <div>
-            <label htmlFor="area" className="label-base">
-              Área
-            </label>
-            <select id="area" name="area" defaultValue={values.area ?? ''} className="input-base">
-              <option value="">Todas</option>
-              {options.departments.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('responsable') ? (
-          <div>
-            <label htmlFor="responsable" className="label-base">
-              Responsable
-            </label>
-            <select
-              id="responsable"
-              name="responsable"
-              defaultValue={values.responsable ?? ''}
-              className="input-base"
-            >
-              <option value="">Cualquiera</option>
-              {options.users.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('usuario') ? (
-          <div>
-            <label htmlFor="usuario" className="label-base">
-              Usuario
-            </label>
-            <select
-              id="usuario"
-              name="usuario"
-              defaultValue={values.usuario ?? ''}
-              className="input-base"
-            >
-              <option value="">Cualquiera</option>
-              {options.users.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('turno') && options.shifts ? (
-          <div>
-            <label htmlFor="turno" className="label-base">
-              Turno
-            </label>
-            <select id="turno" name="turno" defaultValue={values.turno ?? ''} className="input-base">
-              <option value="">Todos</option>
-              {options.shifts.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {has('habitacion') ? (
-          <div className="w-28">
-            <label htmlFor="habitacion" className="label-base">
-              Habitación
-            </label>
-            <input
-              id="habitacion"
-              name="habitacion"
-              defaultValue={values.habitacion ?? ''}
-              className="input-base"
-              placeholder="318"
-            />
-          </div>
-        ) : null}
-
-        {has('reserva') ? (
-          <div className="w-36">
-            <label htmlFor="reserva" className="label-base">
-              Reserva
-            </label>
-            <input
-              id="reserva"
-              name="reserva"
-              defaultValue={values.reserva ?? ''}
-              className="input-base"
-              placeholder="RES-10241"
-            />
-          </div>
-        ) : null}
-
-        {has('desde') ? (
-          <div>
-            <label htmlFor="desde" className="label-base">
-              Desde
-            </label>
-            <input
-              id="desde"
-              name="desde"
-              type="date"
-              defaultValue={values.desde ?? ''}
-              className="input-base"
-            />
-          </div>
-        ) : null}
-
-        {has('hasta') ? (
-          <div>
-            <label htmlFor="hasta" className="label-base">
-              Hasta
-            </label>
-            <input
-              id="hasta"
-              name="hasta"
-              type="date"
-              defaultValue={values.hasta ?? ''}
-              className="input-base"
-            />
-          </div>
-        ) : null}
+        {fields.filter((field) => PRIMARY_FIELDS.has(field)).map(control)}
 
         <div className="flex items-center gap-2 pb-0.5">
           <button
@@ -291,7 +240,7 @@ export function Filters({
             className="inline-flex items-center gap-2 rounded-lg bg-petrol-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-petrol-800"
           >
             <Filter className="h-4 w-4" aria-hidden="true" />
-            Filtrar
+            Buscar
           </button>
           {activeCount > 0 ? (
             <Link
@@ -304,6 +253,18 @@ export function Filters({
           ) : null}
         </div>
       </div>
+
+      {secondary.length > 0 ? (
+        <details className="mt-3 border-t border-slate-100 pt-2" open={secondary.some((field) => Boolean(values[field]))}>
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-medium text-petrol-700">
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            Más filtros
+          </summary>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            {secondary.map(control)}
+          </div>
+        </details>
+      ) : null}
     </form>
   );
 }

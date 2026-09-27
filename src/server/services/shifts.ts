@@ -1435,6 +1435,20 @@ export async function receiveHandover(
     );
   }
 
+  // Flujo normal: la persona recibe antes de abrir su turno y el destino se
+  // enlaza al abrirlo. Excepción de emergencia: el turno receptor ya existe,
+  // así que la entrega tardía debe quedar ligada a ESE turno y no al siguiente.
+  const receivingShift = await getMyActiveShift(user.id);
+  if (
+    incoming.toShiftId &&
+    receivingShift &&
+    incoming.toShiftId !== receivingShift.id
+  ) {
+    throw new RuleError(
+      'Esta entrega ya está vinculada a otro turno. Actualiza la pantalla antes de recibirla.',
+    );
+  }
+
   const cashProblems = await cashBlockersForReceiving(incoming.id);
   if (cashProblems.length) throw new RuleError(cashProblems.join(' '));
 
@@ -1452,6 +1466,7 @@ export async function receiveHandover(
         receivedAt: now,
         receiverSessionId: user.sessionId,
         receiverObservations: params.observations ?? null,
+        toShiftId: incoming.toShiftId ?? receivingShift?.id ?? null,
       },
     });
     if (claim.count === 0) {
@@ -1505,6 +1520,7 @@ export async function receiveHandover(
           status: HandoverStatus.RECIBIDA,
           observations: params.observations ?? null,
           sessionId: user.sessionId,
+          toShiftId: incoming.toShiftId ?? receivingShift?.id ?? null,
         },
         reason: params.observations ?? null,
       },

@@ -13,7 +13,8 @@
   Producción por habitación, Salidas, Revenue, In house y Cargos diarios.
 - Los escaneos sin capa de texto no usan OCR; se reportan como advertencia.
 - El resumen se incorpora a `SupervisionShiftHandover.snapshot` al cerrar/
-  entregar Supervisión.
+  entregar Supervisión. Finalizar un turno activo crea automáticamente ese
+  snapshot si todavía no existía.
 - Fecha predeterminada de carga: ayer según America/Santiago.
 - El inventario de llaves continúa fuera del cierre de Recepción.
 - Nueva migración `20260927143000_supervision_auditoria_dashboard`.

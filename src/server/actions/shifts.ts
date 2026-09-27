@@ -460,6 +460,14 @@ export async function addHandoverNoteAction(
         order: (last?.order ?? 0) + 1,
       },
     });
+    await prisma.shiftHandover.update({
+      where: { id: input.handoverId },
+      data: {
+        pendingsReviewedAt: null,
+        finalReviewAt: null,
+        urgentAcknowledgedAt: null,
+      },
+    });
 
     revalidatePath(`/turno/entrega/${input.handoverId}`);
     revalidatePath('/turno');

@@ -96,7 +96,8 @@ SELECT
   e."occurredAt" AS "createdAt",
   '/libro/' || e."id" AS "href",
   NULL::text AS "targetUserId",
-  NULL::text AS "scope"
+  NULL::text AS "scope",
+  NULL::text AS "createdByUserId"
 FROM "OperationalEntry" e
 LEFT JOIN "Room" r ON r."id" = e."roomId"
 LEFT JOIN "GuestReference" g ON g."id" = e."guestId"
@@ -110,7 +111,7 @@ SELECT
   t."humanId", 'Task', t."id", 'Tarea', t."title", t."description",
   t."status"::text, r."number", g."fullName", COALESCE(a."name", c."name"),
   COALESCE(d."name", t."origin"::text), t."createdAt", '/tareas/' || t."id",
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "Task" t
 LEFT JOIN "Room" r ON r."id" = t."roomId"
 LEFT JOIN "GuestReference" g ON g."id" = t."guestId"
@@ -125,7 +126,7 @@ SELECT
   COALESCE(f."nextAction", f."result", f."description", f."notes"),
   f."status"::text, r."number", g."fullName", o."name",
   COALESCE(f."origin", 'SEGUIMIENTO'), f."createdAt",
-  '/seguimientos?q=%23' || f."humanId"::text, f."ownerId", f."visibility"::text
+  '/seguimientos?q=%23' || f."humanId"::text, f."ownerId", f."visibility"::text, f."createdById"
 FROM "FollowUp" f
 LEFT JOIN "User" o ON o."id" = f."ownerId"
 LEFT JOIN "OperationalEntry" e ON e."id" = f."entryId"
@@ -139,7 +140,7 @@ SELECT
   a."humanId", 'Alert', a."id", 'Alerta', a."title", a."message",
   a."status"::text, NULL::text, g."fullName", COALESCE(r."name", c."name"),
   a."type"::text, a."createdAt", '/alertas?q=%23' || a."humanId"::text,
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "Alert" a
 LEFT JOIN "GuestReference" g ON g."id" = a."guestId"
 LEFT JOIN "User" r ON r."id" = a."resolvedById"
@@ -151,7 +152,7 @@ SELECT
   'Turno ' || s."type"::text || ' ' || to_char(s."date", 'DD/MM/YYYY'),
   s."notes", s."status"::text, NULL::text, NULL::text, u."name",
   CASE WHEN s."emergency" THEN 'EMERGENCIA' ELSE s."type"::text END,
-  s."createdAt", '/turno', NULL::text, NULL::text
+  s."createdAt", '/turno', NULL::text, NULL::text, NULL::text
 FROM "Shift" s
 LEFT JOIN "User" u ON u."id" = s."createdById"
 
@@ -160,7 +161,7 @@ SELECT
   h."humanId", 'ShiftHandover', h."id", 'Entrega de turno',
   'Entrega de turno', h."notes", h."status"::text, NULL::text, NULL::text,
   u."name", 'TURNO', h."createdAt", '/turno/entrega/' || h."id",
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "ShiftHandover" h
 LEFT JOIN "User" u ON u."id" = h."issuedById"
 
@@ -170,7 +171,7 @@ SELECT
   'Entrega de Supervisión', sh."note",
   CASE WHEN sh."receivedAt" IS NULL THEN 'PENDIENTE' ELSE 'RECIBIDA' END,
   NULL::text, NULL::text, u."name", 'SUPERVISION',
-  sh."issuedAt", '/supervision', NULL::text, NULL::text
+  sh."issuedAt", '/supervision', NULL::text, NULL::text, NULL::text
 FROM "SupervisionShiftHandover" sh
 LEFT JOIN "User" u ON u."id" = sh."issuedById"
 
@@ -179,7 +180,7 @@ SELECT
   ss."humanId", 'SupervisionShift', ss."id", 'Turno de Supervisión',
   'Turno de Supervisión', array_to_string(ss."priorities", ' · '),
   ss."status"::text, NULL::text, NULL::text, u."name", 'SUPERVISION',
-  ss."createdAt", '/supervision', NULL::text, NULL::text
+  ss."createdAt", '/supervision', NULL::text, NULL::text, NULL::text
 FROM "SupervisionShift" ss
 LEFT JOIN "User" u ON u."id" = ss."supervisorId"
 
@@ -189,7 +190,7 @@ SELECT
   COALESCE(gu."guestName", gu."reference", 'Garantía'),
   gu."notes", gu."state"::text, gu."roomNumber", gu."guestName", u."name",
   gu."kind"::text, gu."createdAt",
-  '/caja?q=%23' || gu."humanId"::text || '&seccion=garantias', NULL::text, NULL::text
+  '/caja?q=%23' || gu."humanId"::text || '&seccion=garantias', NULL::text, NULL::text, NULL::text
 FROM "Guarantee" gu
 LEFT JOIN "User" u ON u."id" = gu."createdById"
 WHERE gu."deletedAt" IS NULL
@@ -201,7 +202,7 @@ SELECT
   CASE WHEN cm."voidedAt" IS NULL THEN 'VIGENTE' ELSE 'ANULADO' END,
   r."number", g."fullName", u."name", cm."direction",
   cm."createdAt", '/caja?q=%23' || cm."humanId"::text || '&seccion=movimientos',
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "CashMovement" cm
 LEFT JOIN "Room" r ON r."id" = cm."roomId"
 LEFT JOIN "GuestReference" g ON g."id" = cm."guestId"
@@ -214,7 +215,7 @@ SELECT
   CASE WHEN ca."difference" = 0 THEN 'CUADRA' ELSE 'DIFERENCIA' END,
   NULL::text, NULL::text, u."name", ca."currency",
   ca."createdAt", '/caja?q=%23' || ca."humanId"::text || '&seccion=auditorias',
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "CashAudit" ca
 LEFT JOIN "User" u ON u."id" = ca."countedById"
 
@@ -224,7 +225,7 @@ SELECT
   'Arqueo de entrega · ' || cc."kind"::text, cc."notes",
   cc."kind"::text, NULL::text, NULL::text, u."name", 'CAJA',
   cc."countedAt", '/turno/entrega/' || cc."handoverId",
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "CashCount" cc
 LEFT JOIN "User" u ON u."id" = cc."countedById"
 
@@ -234,7 +235,7 @@ SELECT
   'Transferencia ' || ct."currency", COALESCE(ct."reference", ct."notes"),
   'REGISTRADA', NULL::text, NULL::text, u."name", ct."currency",
   ct."createdAt", '/turno/entrega/' || ct."handoverId",
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "CashTransfer" ct
 LEFT JOIN "User" u ON u."id" = ct."createdById"
 
@@ -244,7 +245,7 @@ SELECT
   'Cierre de caja', sc."notes",
   CASE WHEN sc."reopenedAt" IS NULL THEN 'CERRADO' ELSE 'REABIERTO' END,
   NULL::text, NULL::text, u."name", 'CAJA',
-  sc."closedAt", '/turno', NULL::text, NULL::text
+  sc."closedAt", '/turno', NULL::text, NULL::text, NULL::text
 FROM "ShiftCashClosure" sc
 LEFT JOIN "User" u ON u."id" = sc."closedById"
 
@@ -254,7 +255,7 @@ SELECT
   'Folio de gimnasio · Hab. ' || gp."roomNumber", gp."guestName",
   gp."status", gp."roomNumber", gp."guestName", u."name", 'GIMNASIO',
   gp."issuedAt", '/caja?q=%23' || gp."humanId"::text || '&seccion=gimnasio',
-  NULL::text, NULL::text
+  NULL::text, NULL::text, NULL::text
 FROM "GymPass" gp
 LEFT JOIN "User" u ON u."id" = gp."receptionistId"
 
@@ -263,7 +264,7 @@ SELECT
   fi."humanId", 'Fine', fi."id", 'Multa',
   'Multa · Hab. ' || r."number", fi."reason", fi."status"::text,
   r."number", fi."guestName", u."name", fi."kind"::text,
-  fi."createdAt", '/habitaciones', NULL::text, NULL::text
+  fi."createdAt", '/habitaciones', NULL::text, NULL::text, NULL::text
 FROM "Fine" fi
 LEFT JOIN "Room" r ON r."id" = fi."roomId"
 LEFT JOIN "User" u ON u."id" = fi."createdById"
@@ -275,7 +276,7 @@ SELECT
   an."title", an."body",
   CASE WHEN an."active" THEN 'ACTIVO' ELSE 'RETIRADO' END,
   NULL::text, NULL::text, u."name", 'COMUNICADO',
-  an."createdAt", '/supervision', an."targetUserId", an."scope"::text
+  an."createdAt", '/supervision', an."targetUserId", an."scope"::text, an."createdById"
 FROM "Announcement" an
 LEFT JOIN "User" u ON u."id" = an."createdById"
 WHERE an."deletedAt" IS NULL
@@ -286,7 +287,7 @@ SELECT
   CASE WHEN cr."mode"::text = 'AUDITORIA_SORPRESA' THEN 'Auditoría' ELSE 'Ronda' END,
   cr."templateName", COALESCE(cr."resultSummary", cr."notes"), cr."status"::text,
   NULL::text, NULL::text, u."name", cr."mode"::text,
-  cr."startedAt", '/supervision/auditorias', NULL::text, NULL::text
+  cr."startedAt", '/supervision/auditorias', NULL::text, NULL::text, NULL::text
 FROM "ChecklistRun" cr
 LEFT JOIN "User" u ON u."id" = cr."runById"
 WHERE cr."deletedAt" IS NULL
@@ -297,7 +298,7 @@ SELECT
   af."title", af."description",
   CASE WHEN af."confirmed" THEN 'CONFIRMADO' ELSE 'PENDIENTE' END,
   NULL::text, NULL::text, NULL::text, af."severity"::text,
-  af."createdAt", '/supervision/auditorias', NULL::text, NULL::text
+  af."createdAt", '/supervision/auditorias', NULL::text, NULL::text, NULL::text
 FROM "AuditFinding" af
 WHERE af."deletedAt" IS NULL
 
@@ -306,7 +307,7 @@ SELECT
   co."humanId", 'CorrectiveMeasure', co."id", 'Medida correctiva',
   co."title", co."action", co."status"::text,
   NULL::text, NULL::text, u."name", 'CORRECTIVA',
-  co."createdAt", '/supervision/auditorias', NULL::text, NULL::text
+  co."createdAt", '/supervision/auditorias', NULL::text, NULL::text, NULL::text
 FROM "CorrectiveMeasure" co
 LEFT JOIN "User" u ON u."id" = co."assigneeId"
 WHERE co."deletedAt" IS NULL
@@ -316,7 +317,7 @@ SELECT
   ki."humanId", 'KeyInventoryCount', ki."id", 'Inventario de llaves',
   'Inventario de llaves · Piso ' || ki."floor"::text, ki."notes", 'REGISTRADO',
   NULL::text, NULL::text, u."name", 'LLAVES',
-  ki."countedAt", '/llaves', NULL::text, NULL::text
+  ki."countedAt", '/llaves', NULL::text, NULL::text, NULL::text
 FROM "KeyInventoryCount" ki
 LEFT JOIN "User" u ON u."id" = ki."countedById";
 

@@ -112,19 +112,30 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
         'Revisar en Inicio Auditoría Nocturna que estén todos los check out del día realizados Si Todo OK.',
         'Revisar en Inicio Auditoría Nocturna que todos los check out del día estén marcados como cobrados Si Todos cobrados.',
         'Revisar en Informes Producción Habitaciones, que las tarifas y valores estén correctas Si Correctas.',
+        'Revisar en Informes Producción Salones, que las tarifas y valores estén correctas Si No hay datos disponibles.',
+        'Revisar en Informes Financieros Cobros, la correcta relación entre forma de pago, moneda y tipo de documento asociado Si Todo OK.',
+        'Revisar en Informes Financieros Cargos Diarios que todos los cargos están bien asociados al centro de costo correspondiente y que tengan la moneda bien cargada Si No hay cargos diarios.',
         'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos No',
         'Revisar si hay mesas sin cerrar en Restaurante. Gastro Informes Cuentas Pendientes No',
+        'Revisar en Informes Financieros Auditoría Nocturna que estén bien todos los check in, cargos, cobros, etc Si Todo OK.',
+        'Revisar en Informes Producción Centro de Coste que cuadre con producción de habitaciones, cargos diarios y tiquets Si Todo cuadra.',
+        'Revisar que todas las habitaciones tienen la garantía correcta tarjeta de crédito orden de compra mail de empresa Si Todas correctas.',
         'Revisar si hay cuentas que exceden los 7 días y que la garantía podría haber expirado. Informes Financieros Cuentas sobre días Si Se observa que la Reserva con ID 7484708 tiene un pendiente de 20 CLP (probablemente por error de facturación o tipo de cambio), No se puede cambiar el elemento porque el día está cerrado.',
-        'Revisar si hay facturas rechazadas Si No existen facturas rechazadas.',
         'Revisar e imprimir los informes de Previsión de Servicios y Servicios por habitación, Revisar en Informes Actividad Si Ent 1, Sal 15, Des 52, Occ 13.48%',
+        'Revisar y sacar el Informe de Reservas Grupales en Informes Actividad Inf. Rvas Grupales Si No hay datos.',
+        'Revisar si hay facturas rechazadas Si No existen facturas rechazadas.',
+        'Revisar que todas las habitaciones ocupadas y pendientes de check-out están marcadas como sucias Si Todo marcado.',
+        'Revisar en Inicio Auditoría Nocturna que estén todos los eventos iniciados del día realizados Si',
+        'Revisar en Inicio Auditoría Nocturna que estén todos los eventos finalizados del día realizados Si',
+        'Revisar en Inicio Auditoría Nocturna que todos los eventos finalizados del día estén marcados como cobrados Si',
       ].join(' '),
     );
 
     expect(parsed.kind).toBe('AUDITORIA_FORMULARIO');
     expect(parsed.metrics).toMatchObject({
       audit: {
-        controls: 9,
-        completed: 7,
+        controls: 20,
+        completed: 18,
         notCompleted: 2,
         withoutAnswer: 0,
       },

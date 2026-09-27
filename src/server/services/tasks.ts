@@ -24,7 +24,7 @@ export const taskInclude = {
   assignee: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true } },
-  entry: { select: { id: true, seq: true, title: true, type: true } },
+  entry: { select: { id: true, humanId: true, title: true, type: true } },
   followUp: { select: { id: true, action: true } },
   sourceAlert: { select: { id: true, title: true, type: true } },
   participants: {
@@ -172,7 +172,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         entity: 'Task',
         entityId: created.id,
         action: AuditAction.CREAR,
-        summary: `Tarea #${created.seq}: ${created.title}`,
+        summary: `Tarea #${created.humanId}: ${created.title}`,
         user,
         after: {
           title: created.title,
@@ -278,7 +278,7 @@ export async function updateTask(
         action: changes.changed.includes('priority')
           ? AuditAction.CAMBIO_PRIORIDAD
           : AuditAction.EDITAR,
-        summary: `Tarea #${updated.seq} actualizada (${changes.changed.join(', ')})`,
+        summary: `Tarea #${updated.humanId} actualizada (${changes.changed.join(', ')})`,
         user,
         before: changes.before,
         after: changes.after,
@@ -312,7 +312,7 @@ export async function assignTask(
         entity: 'Task',
         entityId: updated.id,
         action: AuditAction.CAMBIO_RESPONSABLE,
-        summary: `Tarea #${updated.seq} reasignada a ${updated.assignee?.name ?? 'sin asignar'}`,
+        summary: `Tarea #${updated.humanId} reasignada a ${updated.assignee?.name ?? 'sin asignar'}`,
         user,
         before: { assigneeId: current.assigneeId, assignee: current.assignee?.name ?? null },
         after: { assigneeId: updated.assigneeId, assignee: updated.assignee?.name ?? null },
@@ -457,7 +457,7 @@ export async function changeTaskStatus(
         entity: 'Task',
         entityId: updated.id,
         action: closing ? AuditAction.CERRAR : AuditAction.CAMBIO_ESTADO,
-        summary: `Tarea #${updated.seq}: ${TASK_STATUS_LABEL[current.status]} → ${TASK_STATUS_LABEL[input.status]}`,
+        summary: `Tarea #${updated.humanId}: ${TASK_STATUS_LABEL[current.status]} → ${TASK_STATUS_LABEL[input.status]}`,
         user,
         before: { status: current.status },
         after: { status: input.status },
@@ -502,7 +502,7 @@ export async function toggleChecklistItem(
 ) {
   const item = await prisma.taskChecklistItem.findUnique({
     where: { id: input.itemId },
-    include: { task: { select: { id: true, seq: true, deletedAt: true } } },
+    include: { task: { select: { id: true, humanId: true, deletedAt: true } } },
   });
   if (!item || item.task.deletedAt) throw new NotFoundError('El ítem no existe.');
 
@@ -518,7 +518,7 @@ export async function toggleChecklistItem(
     entity: 'Task',
     entityId: item.task.id,
     action: AuditAction.EDITAR,
-    summary: `Checklist de la tarea #${item.task.seq}: "${item.text}" ${input.done ? 'marcado' : 'desmarcado'}`,
+    summary: `Checklist de la tarea #${item.task.humanId}: "${item.text}" ${input.done ? 'marcado' : 'desmarcado'}`,
     user,
     before: { done: item.done },
     after: { done: input.done },
@@ -542,7 +542,7 @@ export async function softDeleteTask(
         entity: 'Task',
         entityId: input.id,
         action: AuditAction.ELIMINAR,
-        summary: `Eliminación lógica de la tarea #${current.seq}: ${current.title}`,
+        summary: `Eliminación lógica de la tarea #${current.humanId}: ${current.title}`,
         user,
         after: { deletedAt: deleted.deletedAt },
         reason: input.reason,
@@ -578,7 +578,7 @@ export async function restoreTask(
         entity: 'Task',
         entityId: input.id,
         action: AuditAction.RESTAURAR,
-        summary: `Tarea #${current.seq} restaurada`,
+        summary: `Tarea #${current.humanId} restaurada`,
         user,
         before: { deletedAt: current.deletedAt },
         after: { deletedAt: null },

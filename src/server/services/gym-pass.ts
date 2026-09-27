@@ -12,6 +12,7 @@ import { getMyOpenShift } from './shifts';
 
 export type GymPassRow = {
   id: string;
+  humanId: number;
   folio: number;
   formattedFolio: string;
   serviceDate: Date;
@@ -60,7 +61,7 @@ export async function createGymPass(
     roomNumber: string;
     guestName: string;
   },
-): Promise<{ id: string; folio: number; formattedFolio: string }> {
+): Promise<{ id: string; humanId: number; folio: number; formattedFolio: string }> {
   const roomNumber = params.roomNumber.trim();
   const guestName = params.guestName.trim();
   if (!roomNumber) throw new RuleError('Indica la habitación.');
@@ -86,6 +87,7 @@ export async function createGymPass(
       },
       select: {
         id: true,
+        humanId: true,
         folio: true,
         serviceDate: true,
         roomNumber: true,
@@ -100,9 +102,10 @@ export async function createGymPass(
         action: AuditAction.CREAR,
         user,
         summary:
-          `Folio de gimnasio ${formatGymFolio(created.folio)} · ` +
+          `Folio de gimnasio #${created.humanId} · ` +
           `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}`,
         after: {
+          humanId: created.humanId,
           folio: formatGymFolio(created.folio),
           serviceDate: calendarDateKey(created.serviceDate),
           roomNumber: created.roomNumber,
@@ -120,8 +123,9 @@ export async function createGymPass(
 
   return {
     id: pass.id,
+    humanId: pass.humanId,
     folio: pass.folio,
-    formattedFolio: formatGymFolio(pass.folio),
+    formattedFolio: `#${pass.humanId}`,
   };
 }
 
@@ -136,6 +140,7 @@ export async function voidGymPass(
     where: { id: params.id },
     select: {
       id: true,
+      humanId: true,
       folio: true,
       status: true,
       serviceDate: true,
@@ -153,7 +158,7 @@ export async function voidGymPass(
   if (!pass) throw new NotFoundError('Ese folio no existe.');
   if (pass.status === 'ANULADO') throw new RuleError('Ese folio ya está anulado.');
 
-  const formattedFolio = formatGymFolio(pass.folio);
+  const formattedFolio = `#${pass.humanId}`;
 
   await prisma.$transaction(async (tx) => {
     await tx.gymPass.update({
@@ -259,8 +264,9 @@ export async function listGymPasses(params: {
 
   const rows: GymPassRow[] = passes.map((pass) => ({
     id: pass.id,
+    humanId: pass.humanId,
     folio: pass.folio,
-    formattedFolio: formatGymFolio(pass.folio),
+    formattedFolio: `#${pass.humanId}`,
     serviceDate: pass.serviceDate,
     roomNumber: pass.roomNumber,
     guestName: pass.guestName,

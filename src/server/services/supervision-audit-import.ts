@@ -432,7 +432,6 @@ export async function mergeSupervisionAuditReport(
     businessDate: Date;
     parsed: ParsedSupervisionReport;
     sourceFile?: {
-      name: string;
       sha256: string;
       size: number;
       parserVersion: string;
@@ -482,7 +481,6 @@ export async function mergeSupervisionAuditReport(
     const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
     const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
     const existingSourceFiles = jsonArray<{
-      name: string;
       sha256: string;
       size: number;
       parserVersion: string;

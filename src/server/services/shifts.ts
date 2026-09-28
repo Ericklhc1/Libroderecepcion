@@ -1159,6 +1159,23 @@ export async function receiveShiftCash(
       'La Caja sólo puede recibirse mientras la entrega cerrada está pendiente de confirmación.',
     );
   }
+  if (!handover.toShiftId) {
+    throw new RuleError(
+      'Inicia la recepción desde Mi turno antes de recontar la Caja del relevo.',
+    );
+  }
+  const receivingAssignment = await prisma.shiftAssignment.findUnique({
+    where: {
+      shiftId_userId: {
+        shiftId: handover.toShiftId,
+        userId: user.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (!receivingAssignment) {
+    throw new RuleError('Esta Caja está vinculada a otro turno receptor.');
+  }
 
   let statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'] = [];
   let discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'] = [];

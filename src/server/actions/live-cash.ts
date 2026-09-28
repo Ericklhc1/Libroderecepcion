@@ -140,6 +140,13 @@ async function applyAuthorizedManualMovement(
       effectiveAt,
       affectsExpected,
     });
+    const movementRef = await tx.cashMovement.findUniqueOrThrow({
+      where: { id: movementId },
+      select: {
+        humanId: true,
+        shift: { select: { humanId: true } },
+      },
+    });
 
     const entry = await tx.operationalEntry.create({
       data: {
@@ -177,6 +184,7 @@ async function applyAuthorizedManualMovement(
     });
 
     let noSessionAlertId: string | null = null;
+    let noSessionAlertHumanId: number | null = null;
     if (!shiftId) {
       const alert = await tx.alert.create({
         data: {
@@ -192,9 +200,10 @@ async function applyAuthorizedManualMovement(
           auto: false,
           createdById: user.id,
         },
-        select: { id: true },
+        select: { id: true, humanId: true },
       });
       noSessionAlertId = alert.id;
+      noSessionAlertHumanId = alert.humanId;
     }
 
     await recordAudit(
@@ -228,21 +237,23 @@ async function applyAuthorizedManualMovement(
       eventKey: `cash-movement:${movementId}`,
       recipients: [SUPERVISION_BACKUP_EMAIL],
       subject:
-        `[Libro Operativo] ${regularization ? 'REGULARIZACIÓN' : verb.toUpperCase()} CAJA · ` +
+        `[Libro Operativo] ${regularization ? 'REGULARIZACIÓN' : verb.toUpperCase()} CAJA #${movementRef.humanId} · ` +
         `${input.currency} ${input.amount} · ${input.reference}`,
       text: [
         regularization ? 'REGULARIZACIÓN DE CAJA' : `${verb.toUpperCase()} DE CAJA`,
-        `ID movimiento: ${movementId}`,
+        `Movimiento: #${movementRef.humanId}`,
         `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
-        `Registrado por: ${user.name} (ID ${user.id})`,
+        `Registrado por: ${user.name} (@${user.username})`,
         `Dirección: ${input.direction}`,
         `Monto: ${input.currency} ${input.amount}`,
         `Concepto: ${input.reference}`,
-        `Turno: ${shiftId ?? 'sin turno asociado'}`,
+        `Turno: ${movementRef.shift ? `#${movementRef.shift.humanId}` : 'sin turno asociado'}`,
         `Afecta efectivo esperado: ${affectsExpected ? 'sí' : 'no'}`,
         `Regularización: ${regularization ? 'sí' : 'no'}`,
         `Observaciones: ${input.notes ?? 'sin observaciones'}`,
-        ...(noSessionAlertId ? [`Alerta de excepción: ${noSessionAlertId}`] : []),
+        ...(noSessionAlertHumanId
+          ? [`Alerta de excepción: #${noSessionAlertHumanId}`]
+          : []),
       ].join('\n'),
     });
 

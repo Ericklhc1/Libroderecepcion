@@ -4,12 +4,14 @@ import {
   GuaranteeKind,
   GuaranteeState,
   Impact,
+  NotificationType,
   OperationalMailStatus,
   Priority,
   Severity,
 } from '@prisma/client';
 import { createEntry } from '@/server/services/entries';
 import { createGuarantee } from '@/server/services/guarantees';
+import { notify } from '@/server/notifications';
 import {
   SUPERVISION_BACKUP_EMAIL,
   queueOperationalMail,
@@ -112,6 +114,89 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain('Huésped Prueba');
     expect(row.text).toContain('507');
     expect(row.text).toContain('80000');
+  });
+
+  it('envía las novedades internas al correo individual habilitado', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción correo individual',
+    });
+    const email = 'recepcionista.prueba@example.com';
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email, emailNotificationsEnabled: true },
+    });
+
+    await notify({
+      userId: user.id,
+      type: NotificationType.TAREA_ASIGNADA,
+      title: 'Nueva tarea operativa',
+      body: 'Revisar el pendiente antes del cierre.',
+      link: '/tareas',
+    });
+
+    const row = await prisma.operationalMailOutbox.findFirstOrThrow({
+      where: { recipients: { has: email } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row.subject).toContain('Nueva tarea operativa');
+    expect(row.text).toContain('Revisar el pendiente antes del cierre.');
+    expect(row.text).toContain('/tareas');
+  });
+
+  it('respeta la preferencia de no recibir novedades por correo', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción sin correo operativo',
+    });
+    const email = 'sin-avisos@example.com';
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email, emailNotificationsEnabled: false },
+    });
+
+    await notify({
+      userId: user.id,
+      type: NotificationType.TAREA_ASIGNADA,
+      title: 'No debe salir por correo',
+    });
+
+    expect(
+      await prisma.operationalMailOutbox.count({
+        where: { recipients: { has: email } },
+      }),
+    ).toBe(0);
+  });
+
+  it('no transforma chat ni alarmas en correo', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción señales inmediatas',
+    });
+    const email = 'solo-operativo@example.com';
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email, emailNotificationsEnabled: true },
+    });
+
+    await notify([
+      {
+        userId: user.id,
+        type: NotificationType.CHAT_MENSAJE,
+        title: 'Mensaje de chat',
+      },
+      {
+        userId: user.id,
+        type: NotificationType.ALARMA,
+        title: 'Timer',
+      },
+    ]);
+
+    expect(
+      await prisma.operationalMailOutbox.count({
+        where: { recipients: { has: email } },
+      }),
+    ).toBe(0);
   });
 
   it('eventKey hace idempotente la cola', async () => {

@@ -80,7 +80,7 @@ export async function attachReservationToRoom(
       if (blocker) {
         throw new RuleError(
           'La habitación ' + room.number + ' todavía está ocupada por ' +
-          (blocker.guestNames[0] ?? 'otra reserva') + ' (ID ' + blocker.reservationId + ').',
+          (blocker.guestNames[0] ?? 'otra reserva') + ' (reserva ' + blocker.reservationId + ').',
         );
       }
     }
@@ -91,7 +91,7 @@ export async function attachReservationToRoom(
       );
       if (otherArrival) {
         throw new RuleError(
-          'La habitación ' + room.number + ' ya tiene un check-in pendiente (ID ' +
+          'La habitación ' + room.number + ' ya tiene un check-in pendiente (reserva ' +
           otherArrival.reservationId + ').',
         );
       }
@@ -103,7 +103,7 @@ export async function attachReservationToRoom(
       );
       if (otherDeparture) {
         throw new RuleError(
-          'La habitación ' + room.number + ' ya tiene otro check-out pendiente (ID ' +
+          'La habitación ' + room.number + ' ya tiene otro check-out pendiente (reserva ' +
           otherDeparture.reservationId + ').',
         );
       }
@@ -297,7 +297,7 @@ export async function moveStayToRoom(
       const blocker = blockers[0]!;
       throw new RuleError(
         'La habitación ' + target.number + ' ya tiene una estadía activa: ' +
-        (blocker.guestNames[0] ?? 'sin nombre') + ' · ID ' + blocker.reservationId +
+        (blocker.guestNames[0] ?? 'sin nombre') + ' · reserva ' + blocker.reservationId +
         ' · ' + blocker.status + '.',
       );
     }

@@ -524,13 +524,12 @@ export async function openShift(
         })
       : null;
 
-  const pendingOperational = await getPendingHandover();
-  if (pendingOperational) {
-    throw new RuleError(
-      'Hay una entrega de turno cerrada pendiente de recepción. Recíbela antes de abrir un turno nuevo.',
-    );
-  }
-  const activateImmediately = true;
+  /*
+   * Una entrega cerrada pendiente ya no se recibe "en el aire".
+   * El entrante primero abre su propio turno en INICIADO; dentro de la misma
+   * transacción la entrega queda vinculada a ese turno y la operación sigue
+   * bloqueada hasta completar el recuento/custodia y confirmar la recepción.
+   */
 
   const type = input.type ?? shiftTypeAt();
   const day = input.date
@@ -821,13 +820,9 @@ export async function openShift(
           toShiftId: null,
           fromShift: { status: ShiftStatus.CERRADO },
         },
-        select: { id: true },
+        select: { id: true, humanId: true },
+        orderBy: { issuedAt: 'asc' },
       });
-      if (concurrentPending) {
-        throw new RuleError(
-          'Hay una entrega de turno cerrada pendiente de recepción. Recíbela antes de abrir un turno nuevo.',
-        );
-      }
 
       const now = new Date();
       const programmed = await tx.shift.findFirst({
@@ -896,29 +891,53 @@ export async function openShift(
       });
 
       /*
-       * La entrega ya fue recibida antes de crear este turno. Recién aquí se
-       * enlaza la continuidad: la entrega no estuvo preasignada a una persona
-       * ni a un turno inexistente.
+       * Relevo normal: si existe una entrega cerrada pendiente, el turno nace
+       * en INICIADO y la reclama atómicamente. Nadie más puede recibirla ni
+       * operar hasta que este mismo turno complete la recepción.
        */
-      const receivedLink = await tx.shiftHandover.findFirst({
-        where: {
-          status: HandoverStatus.RECIBIDA,
-          receivedAt: { not: null },
-          toShiftId: null,
-          fromShift: { status: ShiftStatus.CERRADO },
-        },
-        orderBy: { receivedAt: 'desc' },
-        select: { id: true },
-      });
-      if (receivedLink) {
-        await tx.shiftHandover.updateMany({
+      let receivingHandoverId: string | null = null;
+      if (concurrentPending) {
+        const claimed = await tx.shiftHandover.updateMany({
           where: {
-            id: receivedLink.id,
-            status: HandoverStatus.RECIBIDA,
+            id: concurrentPending.id,
+            status: HandoverStatus.ENVIADA,
+            receivedAt: null,
             toShiftId: null,
           },
           data: { toShiftId: shift.id },
         });
+        if (claimed.count === 0) {
+          throw new RuleError(
+            'La entrega pendiente acaba de ser tomada por otro turno. Actualiza la pantalla.',
+          );
+        }
+        receivingHandoverId = concurrentPending.id;
+      } else {
+        /*
+         * Compatibilidad con entregas ya RECIBIDA de versiones anteriores:
+         * si quedó una recepción sin turno enlazado, se asocia al nuevo turno
+         * y se permite activarlo inmediatamente.
+         */
+        const receivedLink = await tx.shiftHandover.findFirst({
+          where: {
+            status: HandoverStatus.RECIBIDA,
+            receivedAt: { not: null },
+            toShiftId: null,
+            fromShift: { status: ShiftStatus.CERRADO },
+          },
+          orderBy: { receivedAt: 'desc' },
+          select: { id: true },
+        });
+        if (receivedLink) {
+          await tx.shiftHandover.updateMany({
+            where: {
+              id: receivedLink.id,
+              status: HandoverStatus.RECIBIDA,
+              toShiftId: null,
+            },
+            data: { toShiftId: shift.id },
+          });
+        }
       }
 
       await recordAudit(
@@ -928,6 +947,9 @@ export async function openShift(
           action: AuditAction.TURNO_INICIAR,
           summary:
             (concurrentOutgoing && continuityRequested ? 'EMERGENCIA · ' : '') +
+            (receivingHandoverId
+              ? `Recepción iniciada para entrega #${concurrentPending?.humanId ?? '-'} · `
+              : '') +
             `Turno de ${SHIFT_TYPE_LABEL[type]} abierto (${SHIFT_WINDOW_LABEL[type]}) ` +
             `el ${formatCalendarDate(day)}`,
           user,
@@ -935,6 +957,7 @@ export async function openShift(
             status: ShiftStatus.INICIADO,
             type,
             date: day,
+            receivingHandoverId,
             emergency: Boolean(concurrentOutgoing && continuityRequested),
             emergencyReason: emergencyReasonCode,
             emergencySourceShiftId:
@@ -944,7 +967,12 @@ export async function openShift(
         tx,
       );
 
-      if (activateImmediately) {
+      /*
+       * Sin entrega pendiente, o en apertura de emergencia, la operación puede
+       * comenzar inmediatamente. Con relevo normal pendiente se conserva
+       * INICIADO hasta que receiveHandover() confirme la recepción.
+       */
+      if (!receivingHandoverId) {
         const active = await tx.shift.update({
           where: { id: shift.id },
           data: { status: ShiftStatus.ACTIVO },
@@ -954,15 +982,13 @@ export async function openShift(
             entity: 'Shift',
             entityId: shift.id,
             action: AuditAction.TURNO_RECIBIR,
-            summary: receivedLink
-              ? 'Turno activado después de recibir la entrega anterior'
-              : 'Turno activado automáticamente: no había entrega pendiente',
+            summary:
+              concurrentOutgoing && continuityRequested
+                ? 'Turno de emergencia activado para mantener continuidad operativa'
+                : 'Turno activado automáticamente: no había entrega pendiente',
             user,
             before: { status: ShiftStatus.INICIADO },
-            after: {
-              status: ShiftStatus.ACTIVO,
-              receivedHandoverId: receivedLink?.id ?? null,
-            },
+            after: { status: ShiftStatus.ACTIVO },
           },
           tx,
         );
@@ -1327,6 +1353,55 @@ export async function receiveHandover(
     );
   }
 
+  /*
+   * La recepción normal pertenece a un turno INICIADO ya enlazado. La única
+   * excepción es la regularización de un turno de emergencia que continuó la
+   * operación mientras el saliente aún no podía cerrar.
+   */
+  let receivingShiftId = incoming.toShiftId ?? null;
+  let receivingShiftStatus = incoming.toShift?.status ?? null;
+
+  if (receivingShiftId) {
+    const linked = await prisma.shiftAssignment.findUnique({
+      where: {
+        shiftId_userId: {
+          shiftId: receivingShiftId,
+          userId: user.id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!linked) {
+      throw new RuleError('Esta entrega ya está vinculada a otro turno receptor.');
+    }
+  } else {
+    const emergencyTarget = await prisma.shift.findFirst({
+      where: {
+        archivedAt: null,
+        emergency: true,
+        emergencySourceShiftId: incoming.fromShiftId,
+        status: { in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO] },
+        assignments: {
+          some: {
+            userId: user.id,
+            activatedAt: { not: null },
+            leftAt: null,
+          },
+        },
+      },
+      select: { id: true, status: true },
+      orderBy: { actualStart: 'desc' },
+    });
+
+    if (!emergencyTarget) {
+      throw new RuleError(
+        'Inicia la recepción desde Mi turno antes de confirmar esta entrega.',
+      );
+    }
+    receivingShiftId = emergencyTarget.id;
+    receivingShiftStatus = emergencyTarget.status;
+  }
+
   const cashProblems = await cashBlockersForReceiving(incoming.id);
   if (cashProblems.length) throw new RuleError(cashProblems.join(' '));
 
@@ -1340,6 +1415,7 @@ export async function receiveHandover(
       },
       data: {
         status: HandoverStatus.RECIBIDA,
+        toShiftId: receivingShiftId,
         receivedById: user.id,
         receivedAt: now,
         receiverSessionId: user.sessionId,
@@ -1350,16 +1426,16 @@ export async function receiveHandover(
       throw new RuleError('Esa entrega ya fue recibida por otra persona.');
     }
 
-    /*
-     * Compatibilidad con un relevo que haya quedado a medias antes de esta
-     * versión: si ya existía un turno INICIADO enlazado, lo activamos. En el
-     * flujo nuevo no existe toShiftId hasta abrir el turno después de recibir.
-     */
-    if (incoming.toShiftId && incoming.toShift?.status === ShiftStatus.INICIADO) {
-      await tx.shift.updateMany({
-        where: { id: incoming.toShiftId, status: ShiftStatus.INICIADO },
+    if (receivingShiftId && receivingShiftStatus === ShiftStatus.INICIADO) {
+      const activated = await tx.shift.updateMany({
+        where: { id: receivingShiftId, status: ShiftStatus.INICIADO },
         data: { status: ShiftStatus.ACTIVO },
       });
+      if (activated.count === 0) {
+        throw new RuleError(
+          'El turno receptor cambió de estado durante la recepción. Actualiza la pantalla.',
+        );
+      }
     }
 
     await tx.alert.updateMany({

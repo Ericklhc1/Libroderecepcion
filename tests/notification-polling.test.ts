@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-describe('notificaciones realtime resistentes a deployments', () => {
+describe('notificaciones con sincronización eficiente', () => {
   const center = readFileSync('src/components/layout/notification-center.tsx', 'utf-8');
   const stream = readFileSync('src/app/api/notifications/stream/route.ts', 'utf-8');
   const readRoute = readFileSync('src/app/api/notifications/read/route.ts', 'utf-8');
@@ -13,30 +13,34 @@ describe('notificaciones realtime resistentes a deployments', () => {
     expect(center.match(/document\.body/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('el cliente mantiene un EventSource y no hace polling HTTP de no leídos', () => {
-    expect(center).toContain("new EventSource('/api/notifications/stream')");
+  it('el cliente usa polling corto del snapshot y no abre un EventSource persistente', () => {
+    expect(center).toContain("fetch('/api/notifications/stream'");
+    expect(center).not.toContain("new EventSource('/api/notifications/stream')");
     expect(center).not.toContain("fetch('/api/notifications/unread'");
     expect(center).not.toContain("@/server/actions/notifications");
   });
 
-  it('limita el costo del tiempo real y suspende el stream cuando la pestaña está oculta', () => {
-    expect(stream).toContain('const CHECK_MS = 15_000;');
-    expect(stream).not.toContain('const CHECK_MS = 2_000;');
+  it('limita el costo y detiene la sincronización cuando la pestaña está oculta', () => {
+    expect(center).toContain('const NOTIFICATION_POLL_MS = 20_000;');
     expect(center).toContain("document.visibilityState !== 'visible'");
     expect(center).toContain("document.addEventListener('visibilitychange'");
-    expect(center).toContain('disconnect();');
+    expect(stream).not.toContain('ReadableStream');
+    expect(stream).not.toContain('setInterval');
+    expect(stream).not.toContain('maxDuration');
+    expect(stream).not.toContain('text/event-stream');
+    expect(stream).not.toContain(': keepalive');
   });
 
-  it('el stream es dinámico, SSE, no-cache y exige sesión válida', () => {
+  it('la ruta es dinámica, no-cache, corta y exige sesión válida', () => {
     expect(stream).toContain("export const dynamic = 'force-dynamic'");
-    expect(stream).toContain("'Content-Type': 'text/event-stream; charset=utf-8'");
-    expect(stream).toContain("'Cache-Control': 'no-cache, no-store, no-transform'");
+    expect(stream).toContain("'Cache-Control': 'no-store'");
+    expect(stream).toContain('NextResponse.json');
     expect(stream).toContain('getCurrentUser()');
     expect(stream).toContain('hasAcceptedCurrentTerms(user.id)');
-    expect(stream).toContain(': keepalive');
+    expect(stream).toContain('dispatchDueAlarmsForUser(user.id');
   });
 
-  it('render inicial y stream comparten un único snapshot serializable', () => {
+  it('render inicial y polling comparten un único snapshot serializable', () => {
     expect(feed).toContain('export async function getNotificationFeedForUser');
     expect(feed).toContain('prisma.notification.findMany');
     expect(feed).toContain('prisma.notification.count');

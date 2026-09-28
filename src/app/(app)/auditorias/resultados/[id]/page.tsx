@@ -6,6 +6,7 @@ import { hasPermission } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
+import { PrintButton } from '@/components/operational/handover-notes';
 
 export const metadata = { title: 'Resultado de auditoría' };
 export const dynamic = 'force-dynamic';
@@ -70,15 +71,18 @@ export default async function SharedAuditResultPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <Link
-        href={canViewReserved ? '/supervision/auditorias' : '/'}
-        className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        {canViewReserved ? 'Volver a Auditorías sorpresa' : 'Volver al Inicio'}
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2 no-print">
+        <Link
+          href={canViewReserved ? '/supervision/auditorias' : '/'}
+          className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          {canViewReserved ? 'Volver a Auditorías sorpresa' : 'Volver al Inicio'}
+        </Link>
+        <PrintButton label="Imprimir auditoría" />
+      </div>
 
-      <article className="rounded-xl border border-slate-200 bg-white">
+      <article className="print-report rounded-xl border border-slate-200 bg-white print:border-0">
         <header className="border-b border-slate-200 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

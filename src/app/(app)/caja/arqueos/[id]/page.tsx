@@ -84,7 +84,7 @@ export default async function CashAuditPrintPage({
         <PrintButton label="Imprimir arqueo" />
       </div>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-6 print:border-0 print:p-0">
+      <article className="print-report rounded-xl border border-slate-200 bg-white p-6 print:border-0 print:p-0">
         <header className="border-b border-slate-300 pb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Libro Operativo de Recepción</p>
           <h1 className="mt-1 text-2xl font-semibold text-petrol-900">Arqueo de Caja #{audit.humanId}</h1>

@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { addCalendarDateDays, hotelCalendarDate } from '@/domain/time';
+import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
@@ -46,12 +46,22 @@ export default async function ShiftAdminPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';
   const tipo = typeof params.tipo === 'string' ? params.tipo : '';
-
-  const from = addCalendarDateDays(hotelCalendarDate(), -30);
+  const today = hotelCalendarDate();
+  const defaultFrom = addCalendarDateDays(today, -90);
+  const fromKey =
+    typeof params.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.desde)
+      ? params.desde
+      : calendarDateKey(defaultFrom);
+  const toKey =
+    typeof params.hasta === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.hasta)
+      ? params.hasta
+      : calendarDateKey(today);
+  const from = new Date(`${fromKey}T00:00:00.000Z`);
+  const to = new Date(`${toKey}T00:00:00.000Z`);
 
   const shifts = await prisma.shift.findMany({
     where: {
-      date: { gte: from },
+      date: { gte: from, lte: to },
       ...(estado ? { status: estado as never } : {}),
       ...(tipo ? { type: tipo as never } : {}),
     },
@@ -60,7 +70,7 @@ export default async function ShiftAdminPage({
       handoverOut: { select: { id: true, status: true } },
     },
     orderBy: [{ date: 'desc' }, { actualStart: 'desc' }, { createdAt: 'desc' }],
-    take: 120,
+    take: 1500,
   });
 
   const visibleShifts = shifts.filter((shift) => {
@@ -107,6 +117,14 @@ export default async function ShiftAdminPage({
         searchPlaceholder="Buscar personal, nota, estado…"
         clearHref="/admin/turnos"
       >
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
+          <input className="input-base w-full" type="date" name="desde" defaultValue={fromKey} />
+        </label>
+        <label className="min-w-[10rem]">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
+          <input className="input-base w-full" type="date" name="hasta" defaultValue={toKey} />
+        </label>
         <label className="min-w-[12rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
           <select name="estado" defaultValue={estado} className="input-base w-full">
@@ -172,6 +190,15 @@ export default async function ShiftAdminPage({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1">
+                  {shift.handoverOut ? (
+                    <Link
+                      href={`/turno/entrega/${shift.handoverOut.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50"
+                    >
+                      <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                      {shift.handoverOut.status === 'RECIBIDA' ? 'Ver / imprimir' : 'Ver entrega'}
+                    </Link>
+                  ) : null}
                   <ArchiveShiftDialog
                     shiftId={shift.id}
                     archived={shift.archivedAt !== null}

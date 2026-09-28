@@ -98,7 +98,7 @@ export default async function HandoverPage({
       linkedReceiver &&
       !isIssuer &&
       user.permissions.includes('shift.receive') &&
-      [ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status),
+      (handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO),
   );
   const canReceive = receptionInProgress;
   const isReceiver =

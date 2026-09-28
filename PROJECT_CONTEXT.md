@@ -80,6 +80,12 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.1 · sincronización de contexto
+
+- Patch sin cambios funcionales: sincroniza la documentación canónica con la recepción guiada y el ciclo de emergencia publicados en 1.19.0.
+- La lógica operativa, el esquema y la migración siguen siendo los de **v1.19.0**.
+- Release sin migración: **v1.19.1**.
+
 ## Actualización 27/09/2026 · Libro 1.19.0 · recepción guiada y emergencia única
 
 - La recepción de turno entrante es un flujo persistente de cinco pasos: revisar entrega → recontar Caja/garantías → recibir custodia → revisión final → confirmar y activar.

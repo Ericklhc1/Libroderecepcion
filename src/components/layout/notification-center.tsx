@@ -26,6 +26,7 @@ import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 const KEEP_ALIVE_MS = 4 * 60_000;
 const RECENT_ACTIVITY_MS = 10 * 60_000;
+const NOTIFICATION_POLL_MS = 20_000;
 
 type ConnectionState = 'connecting' | 'live' | 'reconnecting';
 
@@ -159,53 +160,84 @@ export function NotificationCenter({
   );
 
   useEffect(() => {
-    let source: EventSource | null = null;
+    let active = true;
+    let timer: number | null = null;
+    let controller: AbortController | null = null;
 
-    const onNotifications = (event: Event) => {
-      try {
-        const snapshot = JSON.parse((event as MessageEvent<string>).data) as NotificationFeedSnapshot;
-        applySnapshot(snapshot, true);
-        setConnection('live');
-      } catch {
-        setConnection('reconnecting');
+    const clearScheduled = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
       }
     };
 
-    const onWarning = () => setConnection('reconnecting');
-
-    const disconnect = () => {
-      if (!source) return;
-      source.removeEventListener('notifications', onNotifications);
-      source.removeEventListener('stream-warning', onWarning);
-      source.close();
-      source = null;
+    const scheduleNext = () => {
+      clearScheduled();
+      if (!active || document.visibilityState !== 'visible') return;
+      timer = window.setTimeout(() => void poll(), NOTIFICATION_POLL_MS);
     };
 
-    const connect = () => {
-      if (document.visibilityState !== 'visible' || source) return;
-      setConnection('connecting');
-      const nextSource = new EventSource('/api/notifications/stream');
-      nextSource.onopen = () => setConnection('live');
-      nextSource.onerror = () => setConnection('reconnecting');
-      nextSource.addEventListener('notifications', onNotifications);
-      nextSource.addEventListener('stream-warning', onWarning);
-      source = nextSource;
+    const poll = async () => {
+      if (!active || document.visibilityState !== 'visible') return;
+
+      controller?.abort();
+      const nextController = new AbortController();
+      controller = nextController;
+
+      try {
+        const response = await fetch('/api/notifications/stream', {
+          cache: 'no-store',
+          signal: nextController.signal,
+        });
+
+        if (response.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        if (!response.ok) throw new Error('No se pudieron actualizar las notificaciones.');
+
+        const snapshot = (await response.json()) as NotificationFeedSnapshot;
+        if (!active) return;
+        applySnapshot(snapshot, true);
+        setConnection('live');
+      } catch (error) {
+        if (
+          active &&
+          (typeof error !== 'object' ||
+            error === null ||
+            !('name' in error) ||
+            error.name !== 'AbortError')
+        ) {
+          setConnection('reconnecting');
+        }
+      } finally {
+        if (controller === nextController) controller = null;
+        scheduleNext();
+      }
     };
 
     const onVisibilityChange = () => {
+      clearScheduled();
+      controller?.abort();
+      controller = null;
+
       if (document.visibilityState === 'visible') {
-        connect();
-      } else {
-        disconnect();
+        setConnection('connecting');
+        void poll();
       }
     };
 
-    connect();
+    if (document.visibilityState === 'visible') {
+      void poll();
+    }
+
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      active = false;
+      clearScheduled();
+      controller?.abort();
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      disconnect();
     };
   }, [applySnapshot]);
 
@@ -228,8 +260,8 @@ export function NotificationCenter({
 
   /*
    * Conserva la política existente de sesión: sólo renueva si la pestaña está
-   * visible y hubo actividad humana reciente. El stream no mantiene viva una
-   * sesión abandonada por sí solo.
+   * visible y hubo actividad humana reciente. La sincronización no mantiene viva una
+   * sesión abandonada por sí sola.
    */
   useEffect(() => {
     const keepAlive = async () => {
@@ -552,7 +584,7 @@ export function NotificationCenter({
                   {connection === 'live' ? (
                     <>
                       <Wifi className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                      <span>En tiempo real</span>
+                      <span>Sincronizado</span>
                     </>
                   ) : (
                     <>

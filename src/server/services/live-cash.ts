@@ -305,7 +305,7 @@ export async function saveLiveCashAudit(
     currency: string;
     countedAmount: number;
     guaranteeIds: string[];
-    denominationSnapshot: Array<{
+    denominationSnapshot?: Array<{
       id: string;
       value: number;
       medium: string;
@@ -375,7 +375,8 @@ export async function saveLiveCashAudit(
     guestName: row.guestName ?? null,
   }));
   const guaranteeSnapshotJson = JSON.stringify(guaranteeSnapshot);
-  const denominationSnapshotJson = JSON.stringify(params.denominationSnapshot);
+  const denominationSnapshot = params.denominationSnapshot ?? [];
+  const denominationSnapshotJson = JSON.stringify(denominationSnapshot);
 
   await prisma.$executeRaw`
     INSERT INTO "CashAudit" (
@@ -400,7 +401,7 @@ export async function saveLiveCashAudit(
       fundCounted: params.countedAmount,
       difference,
       guarantees: guaranteeSnapshot,
-      denominations: params.denominationSnapshot,
+      denominations: denominationSnapshot,
     },
   });
   return { id, expected, difference, guaranteeCount: guaranteeSnapshot.length };

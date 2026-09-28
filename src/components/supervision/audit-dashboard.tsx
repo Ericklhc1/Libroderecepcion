@@ -3,7 +3,21 @@ import { AlertTriangle, CheckCircle2, FileBarChart2 } from 'lucide-react';
 import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
+import {
+  effectiveDeparturePending,
+  parseSupervisionAuditReviewState,
+  sourceDeparturePending,
+  sourceDepartureTotal,
+  unresolvedAuditChecks,
+  unresolvedAuditFindings,
+} from '@/domain/supervision-audit-review';
 import { SupervisionAuditUpload } from './audit-upload';
+import {
+  AuditDeparturesDialog,
+  AuditItemReviewDialog,
+  ReopenAuditReviewForm,
+  ResetAuditDeparturesForm,
+} from './audit-review-actions';
 
 type AuditImportRow = {
   id: string;
@@ -13,6 +27,7 @@ type AuditImportRow = {
   checks: Prisma.JsonValue;
   findings: Prisma.JsonValue;
   warnings: string[];
+  reviewState: Prisma.JsonValue;
   sourceFiles?: Prisma.JsonValue;
   updatedAt: Date;
   uploadedBy: { id: string; name: string };
@@ -95,17 +110,19 @@ export function SupervisionAuditDashboard({
   rows,
   defaultBusinessDate,
   canUpload,
+  canManage,
 }: {
   rows: AuditImportRow[];
   defaultBusinessDate: string;
   canUpload: boolean;
+  canManage: boolean;
 }) {
   return (
     <section id="auditoria-diaria" className="scroll-mt-4 space-y-4">
       <Card>
         <CardHeader
           title="Auditoría diaria · informes PMS"
-          action={<span className="text-xs text-slate-500">Los PDF no se conservan</span>}
+          action={<span className="text-xs text-slate-500">Evidencia fija · revisión operativa actualizable</span>}
         />
         <div className="px-4 py-4">
           {canUpload ? (
@@ -127,7 +144,6 @@ export function SupervisionAuditDashboard({
       ) : (
         rows.map((row) => {
           const payments = section(row.metrics, 'payments');
-          const departures = section(row.metrics, 'departures');
           const production = section(row.metrics, 'roomProduction');
           const sales = section(row.metrics, 'salesChannels');
           const revenue = section(row.metrics, 'revenue');
@@ -136,20 +152,38 @@ export function SupervisionAuditDashboard({
           const charges = section(row.metrics, 'dailyCharges');
           const checks = checksOf(row.checks);
           const findings = findingsOf(row.findings);
-          const incomplete = checks.filter((check) => check.done !== true);
-          const unknown = checks.filter((check) => check.done === null);
-          const pointsToReview = findings.length + unknown.length;
+          const review = parseSupervisionAuditReviewState(row.reviewState);
+          const activeChecks = unresolvedAuditChecks(checks, review);
+          const activeFindings = unresolvedAuditFindings(findings, checks, review);
+          const activeStandaloneFindings = activeFindings.filter(
+            (finding) => !finding.key.startsWith('check:'),
+          );
+          const reviewedChecks = checks.filter(
+            (check) => check.done !== true && Boolean(review.checks[check.key]),
+          );
+          const reviewedFindings = findings.filter(
+            (finding) =>
+              !finding.key.startsWith('check:') &&
+              Boolean(review.findings[finding.key]),
+          );
           const sources = Array.isArray(row.sourceFiles) ? row.sourceFiles : [];
 
           const auditCompleted = numberValue(audit.completed);
           const auditControls = numberValue(audit.controls);
-          const departuresPending = numberValue(departures.pending);
+          const importedDeparturesPending = sourceDeparturePending(row.metrics);
+          const currentDeparturesPending = effectiveDeparturePending(row.metrics, review);
+          const departuresTotal = sourceDepartureTotal(row.metrics);
           const paymentClp = numberValue(payments.clpAmount);
           const productionRooms = numberValue(production.occupiedRoomsWithCost);
           const salesNet = numberValue(sales.netClp);
           const occupancy = numberValue(revenue.occupancyPct);
           const auditOccupancy = numberValue(auditActivity.occupancyPct);
           const noDailyCharges = charges.noData === true;
+          const operationalPending =
+            activeChecks.length +
+            activeStandaloneFindings.length +
+            (currentDeparturesPending && currentDeparturesPending > 0 ? 1 : 0);
+          const hasDepartureOverride = Boolean(review.metrics.departuresPending);
 
           return (
             <Card key={row.id}>
@@ -162,35 +196,47 @@ export function SupervisionAuditDashboard({
                 }
               />
               <div className="space-y-4 px-4 py-4">
-                <div className="flex flex-wrap gap-1.5">
-                  {row.reportKinds.map((kind) => (
-                    <Chip key={kind}>{KIND_LABEL[kind] ?? kind}</Chip>
-                  ))}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {row.reportKinds.map((kind) => (
+                      <Chip key={kind}>{KIND_LABEL[kind] ?? kind}</Chip>
+                    ))}
+                  </div>
+                  <Badge tone={operationalPending > 0 ? 'pendiente' : 'resuelto'}>
+                    {operationalPending > 0
+                      ? `${operationalPending} frente(s) activo(s)`
+                      : 'Revisión operativa al día'}
+                  </Badge>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                   <StatTile
-                    label="Controles auditoría"
+                    label="Controles del informe"
                     value={auditControls === null ? '—' : `${auditCompleted ?? 0}/${auditControls}`}
-                    tone={
-                      auditControls !== null &&
-                      auditCompleted === auditControls &&
-                      incomplete.length === 0
-                        ? 'good'
-                        : incomplete.length > 0
-                          ? 'alert'
-                          : 'neutral'
-                    }
+                    tone={activeChecks.length > 0 ? 'alert' : auditControls ? 'good' : 'neutral'}
+                    hint={activeChecks.length > 0 ? `${activeChecks.length} aún requieren gestión` : undefined}
                   />
                   <StatTile
-                    label="Puntos a revisar"
-                    value={pointsToReview}
-                    tone={pointsToReview > 0 ? 'alert' : checks.length > 0 ? 'good' : 'neutral'}
+                    label="Frentes activos"
+                    value={operationalPending}
+                    tone={operationalPending > 0 ? 'alert' : 'good'}
+                    hint="Lo que aún afecta tu cierre de Supervisión"
                   />
                   <StatTile
                     label="Check-out pendientes"
-                    value={departuresPending ?? '—'}
-                    tone={departuresPending ? 'alert' : departuresPending === 0 ? 'good' : 'neutral'}
+                    value={currentDeparturesPending ?? '—'}
+                    tone={
+                      currentDeparturesPending
+                        ? 'alert'
+                        : currentDeparturesPending === 0
+                          ? 'good'
+                          : 'neutral'
+                    }
+                    hint={
+                      hasDepartureOverride && importedDeparturesPending !== null
+                        ? `Informe original: ${importedDeparturesPending}`
+                        : undefined
+                    }
                   />
                   <StatTile label="Cobros CLP" value={clp(paymentClp)} tone="neutral" />
                   <StatTile label="Hab. con producción" value={productionRooms ?? '—'} tone="neutral" />
@@ -204,51 +250,152 @@ export function SupervisionAuditDashboard({
                   />
                 </div>
 
-                {findings.length > 0 ? (
+                {importedDeparturesPending !== null ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+                    <div>
+                      <p className="text-sm font-medium text-petrol-900">
+                        Avance de check-outs · {currentDeparturesPending ?? importedDeparturesPending} pendiente(s)
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        El informe registró {importedDeparturesPending}
+                        {departuresTotal !== null ? ` de ${departuresTotal} salidas` : ''}.
+                        {review.metrics.departuresPending
+                          ? ` Última actualización operativa: ${review.metrics.departuresPending.byName} · ${review.metrics.departuresPending.note}`
+                          : ' Aún no hay ajuste operativo manual.'}
+                      </p>
+                    </div>
+                    {canManage ? (
+                      <div className="flex flex-wrap gap-2 no-print">
+                        <AuditDeparturesDialog
+                          auditImportId={row.id}
+                          sourcePending={importedDeparturesPending}
+                          currentPending={currentDeparturesPending ?? importedDeparturesPending}
+                          total={departuresTotal}
+                        />
+                        {hasDepartureOverride ? <ResetAuditDeparturesForm auditImportId={row.id} /> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {activeStandaloneFindings.length > 0 ? (
                   <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200">
                     <div className="flex items-center gap-2 border-b border-amber-200 px-3 py-2">
                       <AlertTriangle className="h-4 w-4 text-amber-700" aria-hidden="true" />
-                      <p className="text-sm font-semibold text-amber-950">Requiere revisión de Supervisión</p>
+                      <p className="text-sm font-semibold text-amber-950">Hallazgos que aún requieren decisión</p>
                     </div>
                     <ul className="divide-y divide-amber-200/70">
-                      {findings.map((finding) => (
-                        <li key={finding.key} className="px-3 py-2.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge tone={finding.severity === 'ALTA' ? 'critico' : 'pendiente'}>{finding.severity.toLocaleLowerCase('es-CL')}</Badge>
-                            <span className="text-sm font-medium text-amber-950">{finding.title}</span>
+                      {activeStandaloneFindings.map((finding) => (
+                        <li key={finding.key} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone={finding.severity === 'ALTA' ? 'critico' : 'pendiente'}>
+                                {finding.severity.toLocaleLowerCase('es-CL')}
+                              </Badge>
+                              <span className="text-sm font-medium text-amber-950">{finding.title}</span>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-amber-900">{finding.detail}</p>
                           </div>
-                          <p className="mt-1 text-xs leading-5 text-amber-900">{finding.detail}</p>
+                          {canManage ? (
+                            <AuditItemReviewDialog
+                              auditImportId={row.id}
+                              target="FINDING"
+                              itemKey={finding.key}
+                              label={finding.title}
+                            />
+                          ) : null}
                         </li>
                       ))}
                     </ul>
                   </div>
-                ) : checks.length > 0 && incomplete.length === 0 ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    Todos los controles reconocidos tienen respuesta y no se detectaron puntos de atención.
-                  </div>
-                ) : checks.length > 0 ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-                    <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                    La auditoría todavía tiene controles sin respuesta reconocible. No se considera cerrada ni en verde.
-                  </div>
                 ) : null}
 
-                {incomplete.length > 0 ? (
+                {activeChecks.length > 0 ? (
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Controles no completados o sin respuesta</p>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Controles pendientes de gestión
+                    </p>
                     <div className="grid gap-2 md:grid-cols-2">
-                      {incomplete.map((check) => (
+                      {activeChecks.map((check) => (
                         <div key={check.key} className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-                          <p className="text-sm font-medium text-petrol-900">{check.label}</p>
-                          <p className="mt-0.5 text-xs text-slate-600">
-                            {check.done === false ? 'No realizado' : 'Sin respuesta reconocible'}
-                            {check.observation ? ` · ${check.observation}` : ''}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-petrol-900">{check.label}</p>
+                              <p className="mt-0.5 text-xs text-slate-600">
+                                {check.done === false ? 'No realizado en el informe' : 'Sin respuesta reconocible'}
+                                {check.observation ? ` · ${check.observation}` : ''}
+                              </p>
+                            </div>
+                            {canManage ? (
+                              <AuditItemReviewDialog
+                                auditImportId={row.id}
+                                target="CHECK"
+                                itemKey={check.key}
+                                label={check.label}
+                              />
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
+                ) : checks.length > 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    No quedan controles del formulario pendientes de gestión.
+                  </div>
+                ) : null}
+
+                {reviewedChecks.length + reviewedFindings.length > 0 ? (
+                  <details className="rounded-lg bg-emerald-50/60 px-3 py-2 ring-1 ring-emerald-200">
+                    <summary className="cursor-pointer text-sm font-medium text-emerald-900">
+                      {reviewedChecks.length + reviewedFindings.length} punto(s) resuelto(s) o retirado(s)
+                    </summary>
+                    <ul className="mt-2 divide-y divide-emerald-200/70">
+                      {reviewedChecks.map((check) => {
+                        const decision = review.checks[check.key]!;
+                        return (
+                          <li key={`check-${check.key}`} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                            <div>
+                              <p className="text-sm font-medium text-emerald-950">{check.label}</p>
+                              <p className="text-xs text-emerald-800">
+                                {decision.status === 'NO_APLICA' ? 'No aplica' : 'Resuelto'} · {decision.byName}
+                                {decision.note ? ` · ${decision.note}` : ''}
+                              </p>
+                            </div>
+                            {canManage ? (
+                              <ReopenAuditReviewForm
+                                auditImportId={row.id}
+                                target="CHECK"
+                                itemKey={check.key}
+                              />
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                      {reviewedFindings.map((finding) => {
+                        const decision = review.findings[finding.key]!;
+                        return (
+                          <li key={`finding-${finding.key}`} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                            <div>
+                              <p className="text-sm font-medium text-emerald-950">{finding.title}</p>
+                              <p className="text-xs text-emerald-800">
+                                {decision.status === 'NO_APLICA' ? 'No aplica' : 'Resuelto'} · {decision.byName}
+                                {decision.note ? ` · ${decision.note}` : ''}
+                              </p>
+                            </div>
+                            {canManage ? (
+                              <ReopenAuditReviewForm
+                                auditImportId={row.id}
+                                target="FINDING"
+                                itemKey={finding.key}
+                              />
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </details>
                 ) : null}
 
                 {row.warnings.length > 0 ? (
@@ -271,7 +418,7 @@ export function SupervisionAuditDashboard({
 
                 <p className="flex items-center gap-1.5 text-xs text-slate-500">
                   <FileBarChart2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Sólo se conserva este resumen estructurado. Los PDF y el texto extraído no forman parte del historial.
+                  El informe importado queda como evidencia; resolver, retirar o ajustar un punto sólo actualiza el estado operativo auditado del turno.
                 </p>
               </div>
             </Card>

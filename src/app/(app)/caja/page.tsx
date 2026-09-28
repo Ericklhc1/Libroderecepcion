@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { Banknote, Download, PlusCircle, ShieldCheck, Ticket } from 'lucide-react';
+import { Banknote, Download, PlusCircle, Printer, ShieldCheck, Ticket } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getLiveCashState } from '@/server/services/live-cash';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
-import { listGymPasses } from '@/server/services/gym-pass';
+import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import {
   CashDifferenceRegularizationForm,
   CreateCashGuaranteeForm,
   CreateGymPassForm,
+  CreateParkingPassForm,
   LiveCashAuditDialog,
   ManualCashMovementForm,
   ReclassifyCashMovementDialog,
@@ -60,7 +61,7 @@ export default async function LiveCashPage({
   const gymTo = typeof params.hasta === 'string' && params.hasta ? params.hasta : todayKey;
   const historyFrom = hotelWallDateTime(gymFrom, 0);
   const historyTo = new Date(addHotelCalendarDays(hotelWallDateTime(gymTo, 0), 1).getTime() - 1);
-  const [operationGate, state, gymSummary] = await Promise.all([
+  const [operationGate, state, gymSummary, parkingSummary] = await Promise.all([
     getReceptionOperationGate(user),
     getLiveCashState({
       query: q || undefined,
@@ -71,6 +72,7 @@ export default async function LiveCashPage({
       auditLimit: 50,
     }),
     listGymPasses({ from: gymFrom, to: gymTo, limit: 1000 }),
+    listParkingPasses({ from: gymFrom, to: gymTo, limit: 1000 }),
   ]);
   const canOperateCash = operationGate.mode === 'ACTIVE';
 
@@ -118,9 +120,21 @@ export default async function LiveCashPage({
       item.status,
     ]),
   );
+  const visibleParkingPasses = parkingSummary.rows.filter((item) =>
+    matches([
+      item.humanId,
+      item.formattedFolio,
+      item.roomNumber,
+      item.guestName,
+      item.vehiclePlate,
+      item.receptionistName,
+      item.status,
+    ]),
+  );
 
   const show = (name: string) => !seccion || seccion === name;
   const gymCsvQuery = new URLSearchParams({ desde: gymFrom, hasta: gymTo }).toString();
+  const parkingCsvQuery = gymCsvQuery;
 
   return (
     <div className="space-y-5">
@@ -168,6 +182,24 @@ export default async function LiveCashPage({
               }
             >
               <CreateGymPassForm defaultServiceDate={todayKey} />
+            </Dialog>
+          ) : null}
+
+          {canOperateCash ? (
+            <Dialog
+              title="Generar ticket de estacionamiento"
+              description="Registra fecha, habitación, huésped y patente. El recepcionista se toma automáticamente de tu sesión."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <Ticket className="h-4 w-4" aria-hidden="true" />
+                  Ticket estacionamiento
+                </>
+              }
+            >
+              <CreateParkingPassForm defaultServiceDate={todayKey} />
             </Dialog>
           ) : null}
 
@@ -245,6 +277,7 @@ export default async function LiveCashPage({
             <option value="garantias">Garantías</option>
             <option value="auditorias">Arqueos</option>
             <option value="gimnasio">Folios gimnasio</option>
+            <option value="estacionamiento">Tickets estacionamiento</option>
             <option value="movimientos">Movimientos</option>
           </select>
         </label>
@@ -445,6 +478,15 @@ export default async function LiveCashPage({
                       {audit.notes ? (
                         <p className="mt-1 text-xs text-slate-500">{audit.notes}</p>
                       ) : null}
+                      <div className="mt-2 no-print">
+                        <Link
+                          href={`/caja/arqueos/${audit.id}`}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-petrol-700 hover:underline"
+                        >
+                          <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                          Ver / imprimir arqueo
+                        </Link>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -524,6 +566,90 @@ export default async function LiveCashPage({
                           {pass.voidReason ? (
                             <p className="mt-1 max-w-[14rem] text-xs text-slate-500">{pass.voidReason}</p>
                           ) : null}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {pass.status === 'EMITIDO' ? (
+                            <VoidGymPassDialog id={pass.id} folio={pass.folio} />
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardScroll>
+          )}
+        </Card>
+      ) : null}
+
+      {show('estacionamiento') ? (
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            <div>
+              <h2 className="font-semibold text-petrol-900">Tickets de estacionamiento</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {formatCalendarDate(new Date(`${gymFrom}T00:00:00.000Z`))} a{' '}
+                {formatCalendarDate(new Date(`${gymTo}T00:00:00.000Z`))}
+              </p>
+            </div>
+            <Link
+              href={`/api/caja/estacionamiento?${parkingCsvQuery}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-petrol-700 px-3 py-2 text-sm font-semibold text-white hover:bg-petrol-800"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Descargar CSV
+            </Link>
+          </div>
+
+          <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-3">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Total tickets</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{parkingSummary.total}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Emitidos</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{parkingSummary.emitted}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Anulados</p>
+              <p className="mt-1 text-xl font-semibold tabular text-petrol-900">{parkingSummary.voided}</p>
+            </div>
+          </div>
+
+          {visibleParkingPasses.length === 0 ? (
+            <EmptyState message="No hay tickets de estacionamiento en el rango seleccionado." />
+          ) : (
+            <CardScroll>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Ticket</th>
+                      <th className="px-4 py-2 font-medium">Fecha</th>
+                      <th className="px-4 py-2 font-medium">Habitación</th>
+                      <th className="px-4 py-2 font-medium">Huésped</th>
+                      <th className="px-4 py-2 font-medium">Patente</th>
+                      <th className="px-4 py-2 font-medium">Recepcionista</th>
+                      <th className="px-4 py-2 font-medium">Estado</th>
+                      <th className="px-4 py-2 text-right font-medium">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleParkingPasses.map((pass) => (
+                      <tr key={pass.id}>
+                        <td className="px-4 py-2 font-semibold tabular text-petrol-900">{pass.formattedFolio}</td>
+                        <td className="px-4 py-2 text-slate-600">{formatCalendarDate(pass.serviceDate)}</td>
+                        <td className="px-4 py-2 text-slate-600">{pass.roomNumber}</td>
+                        <td className="px-4 py-2 text-slate-600">{pass.guestName}</td>
+                        <td className="px-4 py-2 font-mono font-semibold text-petrol-900">{pass.vehiclePlate}</td>
+                        <td className="px-4 py-2 text-slate-600">{pass.receptionistName}</td>
+                        <td className="px-4 py-2">
+                          <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>
+                            {pass.status === 'EMITIDO' ? 'Emitido' : 'Anulado'}
+                          </Badge>
+                          {pass.voidReason ? <p className="mt-1 max-w-[14rem] text-xs text-slate-500">{pass.voidReason}</p> : null}
                         </td>
                         <td className="px-4 py-2 text-right">
                           {pass.status === 'EMITIDO' ? (

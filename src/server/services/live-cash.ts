@@ -725,7 +725,7 @@ export async function markCashMovementAsRegularization(
         `Movimiento: #${movement.humanId}`,
         `Fecha/hora del movimiento: ${operationalMailTimestamp(movement.effectiveAt)}`,
         `Fecha/hora de corrección: ${operationalMailTimestamp(new Date())}`,
-        `Corregido por: ${user.name} (@${user.username})`,
+        `Corregido por: ${user.name}`,
         `Dirección original: ${movement.direction}`,
         `Monto: ${movement.currency} ${Number(movement.amount)}`,
         `Concepto: ${movement.reference ?? 'sin referencia'}`,

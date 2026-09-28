@@ -5,6 +5,7 @@ import {
   AuditDisclosure,
   ChecklistItemResult,
   ChecklistRunMode,
+  NotificationType,
   Severity,
   SupervisionAuditStatus,
 } from '@prisma/client';
@@ -362,6 +363,23 @@ export async function markRunItem(
         data: { deletedAt: new Date(), deletionReason: 'El punto dejó de presentar hallazgo.' },
       });
     }
+    if (recipientIds.length > 0) {
+      const body =
+        input.resultSummary?.trim() ||
+        `${failures.length} incumplimiento(s), ${observations.length} observación(es).`;
+      await tx.notification.createMany({
+        data: recipientIds.map((recipientId) => ({
+          userId: recipientId,
+          type: NotificationType.ACTUALIZACION_OPERATIVA,
+          title: `Resultado de auditoría #${run.humanId}: ${run.templateName}`,
+          body,
+          link: `/supervision/auditorias?q=${run.humanId}`,
+          entity: 'ChecklistRun',
+          entityId: run.id,
+        })),
+      });
+    }
+
     await recordAudit(
       {
         entity: 'ChecklistRun',
@@ -390,6 +408,7 @@ export async function finishRun(
     notes?: string | null;
     resultSummary?: string | null;
     disclosure?: AuditDisclosure;
+    recipientId?: string | null;
   },
 ) {
   assertOperationalSupervisor(user);
@@ -419,6 +438,38 @@ export async function finishRun(
     (item) => item.result === ChecklistItemResult.OBSERVACION,
   );
   const criticalFailures = failures.filter((item) => item.critical);
+  const disclosure = input.disclosure ?? AuditDisclosure.RESERVADO;
+
+  let recipientIds: string[] = [];
+  if (disclosure === AuditDisclosure.PERSONA) {
+    if (!input.recipientId) {
+      throw new RuleError('Selecciona la persona que debe recibir el resultado.');
+    }
+    await assertAssignable(input.recipientId);
+    recipientIds = [input.recipientId];
+  } else if (disclosure === AuditDisclosure.SUPERVISION) {
+    const recipients = await prisma.user.findMany({
+      where: {
+        active: true,
+        deletedAt: null,
+        id: { not: user.id },
+        role: { key: ROLE_KEYS.SUPERVISOR, operational: true },
+      },
+      select: { id: true },
+    });
+    recipientIds = recipients.map((recipient) => recipient.id);
+  } else if (disclosure === AuditDisclosure.OPERATIVO) {
+    const recipients = await prisma.user.findMany({
+      where: {
+        active: true,
+        deletedAt: null,
+        id: { not: user.id },
+        role: { operational: true },
+      },
+      select: { id: true },
+    });
+    recipientIds = recipients.map((recipient) => recipient.id);
+  }
 
   const closed = await prisma.$transaction(async (tx) => {
     const result = await tx.checklistRun.update({
@@ -429,7 +480,7 @@ export async function finishRun(
         closedById: user.id,
         notes: input.notes?.trim() || null,
         resultSummary: input.resultSummary?.trim() || null,
-        disclosure: input.disclosure ?? AuditDisclosure.RESERVADO,
+        disclosure,
         severity:
           criticalFailures.length > 0
             ? Severity.CRITICA
@@ -443,7 +494,7 @@ export async function finishRun(
       where: { auditId: run.id, deletedAt: null },
       data: {
         confirmed: true,
-        disclosure: input.disclosure ?? AuditDisclosure.RESERVADO,
+        disclosure,
       },
     });
     await recordAudit(
@@ -456,7 +507,7 @@ export async function finishRun(
           `${run.mode === ChecklistRunMode.AUDITORIA_SORPRESA ? 'Auditoría' : 'Ronda'} «${run.templateName}» cerrada: ${failures.length} incumplimiento(s), ${observations.length} observación(es)` +
           (criticalFailures.length > 0 ? `, ${criticalFailures.length} crítico(s)` : '') +
           `${input.notes ? `. ${input.notes}` : ''}`,
-        after: { disclosure: input.disclosure ?? AuditDisclosure.RESERVADO },
+        after: { disclosure, recipientIds },
       },
       tx,
     );
@@ -468,6 +519,7 @@ export async function finishRun(
     failures: failures.length,
     observations: observations.length,
     criticalFailures: criticalFailures.length,
+    recipients: recipientIds.length,
   };
 }
 

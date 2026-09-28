@@ -65,6 +65,8 @@ type StayDraft = {
   reservationId: string;
   externalId?: string | null;
   roomNumber: string | null;
+  /** Día operativo del informe que originó esta fila. */
+  businessDate: string | null;
   guestNames: string[];
   channel: string | null;
   arrivalDate: string | null;
@@ -146,11 +148,12 @@ export type ActivitySummary = {
  * estados— y mantenerlo habría marcado sus cincuenta y tres filas con un único
  * estado.
  */
-function toDraft(stay: NormalizedStay): StayDraft {
+function toDraft(stay: NormalizedStay, businessDate: Date | null): StayDraft {
   return {
     reservationId: stay.reservationId,
     externalId: stay.externalId,
     roomNumber: stay.roomNumber,
+    businessDate: businessDate ? midnight(businessDate).toISOString() : null,
     guestNames: stay.guestNames,
     channel: stay.channel,
     arrivalDate: stay.arrivalDate ? stay.arrivalDate.toISOString() : null,
@@ -177,6 +180,21 @@ function midnight(date: Date): Date {
   return new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
+}
+
+/**
+ * Fecha operativa de una fila.
+ *
+ * Los borradores anteriores a esta mejora no traen la fecha por fila; en ese
+ * caso conservan el comportamiento histórico y heredan la fecha del lote.
+ */
+function draftBusinessDate(
+  stay: Pick<StayDraft, 'businessDate'>,
+  fallback: Date,
+): Date {
+  if (!stay.businessDate) return midnight(fallback);
+  const parsed = new Date(stay.businessDate);
+  return Number.isNaN(parsed.getTime()) ? midnight(fallback) : midnight(parsed);
 }
 
 /**
@@ -224,7 +242,9 @@ export async function prepareImport(
         }
 
         if (normalized.reportDate) reportDates.push(normalized.reportDate);
-        for (const stay of normalized.stays) stays.push(toDraft(stay));
+        for (const stay of normalized.stays) {
+          stays.push(toDraft(stay, normalized.reportDate));
+        }
 
         reports.push({
           fileName: extracted.name,
@@ -276,6 +296,7 @@ export async function prepareImport(
       stay.reservationId,
       stay.externalId,
       stay.roomNumber,
+      stay.businessDate,
       stay.status,
       stay.arrivalDate,
       stay.departureDate,
@@ -296,6 +317,18 @@ export async function prepareImport(
 
   const businessDate = midnight(
     reportDates.sort((a, b) => b.getTime() - a.getTime())[0] ?? hotelCalendarDate(),
+  );
+
+  /*
+    Un mismo lote puede contener informes de días distintos (por ejemplo, ayer
+    y hoy). Se conserva cada fecha por fila y se procesa cronológicamente. El
+    lote mantiene como fecha principal la más reciente para representar el
+    estado operativo vigente y para las acciones físicas de llaves.
+  */
+  stays.sort(
+    (a, b) =>
+      draftBusinessDate(a, businessDate).getTime() -
+      draftBusinessDate(b, businessDate).getTime(),
   );
 
   const declaredTotals = reports.flatMap((report) => report.declaredTotals);
@@ -424,6 +457,8 @@ async function analyseDraft(
     */
     if (!draft.status || hasBlockingPmsIssues(draft.issues)) continue;
 
+    const rowBusinessDate = draftBusinessDate(draft, businessDate);
+
     if (draft.status === RoomStayStatus.CHECK_IN) counts.checkIn += 1;
     if (draft.status === RoomStayStatus.IN_HOUSE) counts.inHouse += 1;
     if (draft.status === RoomStayStatus.CHECK_OUT) counts.checkOut += 1;
@@ -456,7 +491,7 @@ async function analyseDraft(
       roomId: room.id,
       arrivalDate: draft.arrivalDate ? new Date(draft.arrivalDate) : null,
       departureDate: draft.departureDate ? new Date(draft.departureDate) : null,
-      businessDate,
+      businessDate: rowBusinessDate,
       status: draft.status as StayStatus,
     };
     const decision = decideStayReconciliation(existingEvidence, incoming, {
@@ -529,7 +564,7 @@ async function analyseDraft(
 
     const temporaryId =
       `nuevo:${draft.reservationId}:${room.number}:` +
-      `${draft.arrivalDate ?? businessDate.toISOString()}:${existingEvidence.length}`;
+      `${draft.arrivalDate ?? rowBusinessDate.toISOString()}:${existingEvidence.length}`;
     list.push({
       id: temporaryId,
       reservationId: draft.reservationId,
@@ -552,7 +587,7 @@ async function analyseDraft(
       roomId: room.id,
       arrivalDate: incoming.arrivalDate,
       departureDate: incoming.departureDate,
-      businessDate,
+      businessDate: rowBusinessDate,
       status: draft.status as StayStatus,
       stage:
         draft.status === RoomStayStatus.IN_HOUSE
@@ -808,6 +843,15 @@ export async function applyImport(
         'No hay filas válidas para aplicar. Revisa los errores del archivo o descarta esta carga.',
       );
     }
+    const draftBusinessDates = [
+      ...new Map(
+        drafts.map((draft) => {
+          const date = draftBusinessDate(draft, businessDate);
+          return [date.toISOString(), date] as const;
+        }),
+      ).values(),
+    ];
+
     const summary: ImportResult = {
       created: 0,
       updated: 0,
@@ -832,7 +876,7 @@ export async function applyImport(
       where: {
         deletedAt: null,
         OR: [
-          { businessDate },
+          { businessDate: { in: draftBusinessDates } },
           {
             stage: { in: [RoomStayStage.PENDIENTE, RoomStayStage.CONFIRMADO] },
           },
@@ -922,6 +966,7 @@ export async function applyImport(
         continue;
       }
 
+      const rowBusinessDate = draftBusinessDate(draft, businessDate);
       const room = draft.roomNumber ? byNumber.get(draft.roomNumber) : null;
       if (!room) {
         summary.skipped += 1;
@@ -938,7 +983,7 @@ export async function applyImport(
         contexto; el Libro conserva sus procesos.
       */
       const descriptive = {
-        businessDate,
+        businessDate: rowBusinessDate,
         externalId: draft.externalId ?? null,
         guestNames: draft.guestNames,
         channel: draft.channel,
@@ -962,7 +1007,7 @@ export async function applyImport(
         roomId: room.id,
         arrivalDate: descriptive.arrivalDate,
         departureDate: descriptive.departureDate,
-        businessDate,
+        businessDate: rowBusinessDate,
         status: draft.status as StayStatus,
       };
       const decision = decideStayReconciliation(working, incoming, {
@@ -996,7 +1041,7 @@ export async function applyImport(
           roomId: room.id,
           arrivalDate: descriptive.arrivalDate,
           departureDate: descriptive.departureDate,
-          businessDate,
+          businessDate: rowBusinessDate,
           status: draft.status as StayStatus,
           stage,
           roomMove: false,
@@ -1105,7 +1150,11 @@ export async function applyImport(
       Dos consultas, no una por fila: se leen los códigos presentes y se
       agrupa la actualización por reserva.
     */
-    summary.reservationsLinked = await linkStaysToReservations(tx, { businessDate });
+    for (const date of draftBusinessDates) {
+      summary.reservationsLinked += await linkStaysToReservations(tx, {
+        businessDate: date,
+      });
+    }
 
     /*
       Copias adicionales en habitaciones con salida informada. La principal ya

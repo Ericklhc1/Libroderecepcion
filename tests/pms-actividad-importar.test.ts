@@ -33,6 +33,7 @@ function draft(input: {
   reservationId: string;
   externalId?: string | null;
   roomNumber: string;
+  businessDate?: string;
   status: RoomStayStatus | null;
   guestNames?: string[];
   channel?: string;
@@ -51,6 +52,9 @@ function draft(input: {
     reservationId: input.reservationId,
     externalId: input.externalId ?? null,
     roomNumber: input.roomNumber,
+    businessDate: input.businessDate
+      ? new Date(input.businessDate).toISOString()
+      : null,
     guestNames: input.guestNames ?? ['Huésped Ejemplo'],
     channel: input.channel ?? 'Booking',
     arrivalDate: input.arrival ? new Date(input.arrival).toISOString() : null,
@@ -596,6 +600,85 @@ describe('conciliación de una misma estancia entre informes', () => {
     const stays = await staysOf('416');
     expect(stays).toHaveLength(1);
     expect(stays[0]!.status).toBe(RoomStayStatus.IN_HOUSE);
+  });
+});
+
+describe('lotes con informes de más de un día', () => {
+  const mismaEstancia = (date: string) =>
+    draft({
+      reservationId: '7200001',
+      externalId: 'LOC-7200001',
+      roomNumber: '416',
+      businessDate: date,
+      status: RoomStayStatus.IN_HOUSE,
+      guestNames: ['Ana Pérez'],
+      arrival: '2026-09-15T00:00:00.000Z',
+      departure: '2026-09-20T00:00:00.000Z',
+    });
+
+  it('procesa ayer antes que hoy y conserva una sola estancia vigente', async () => {
+    businessDate = new Date('2026-09-17T00:00:00.000Z');
+
+    const result = await importar([
+      mismaEstancia('2026-09-16T00:00:00.000Z'),
+      mismaEstancia('2026-09-17T00:00:00.000Z'),
+    ]);
+
+    expect(result.created).toBe(1);
+    const stays = await staysOf('416');
+    expect(stays).toHaveLength(1);
+    expect(stays[0]!.businessDate).toEqual(new Date('2026-09-17T00:00:00.000Z'));
+  });
+
+  it('reimportar ayer + hoy mantiene la idempotencia', async () => {
+    businessDate = new Date('2026-09-17T00:00:00.000Z');
+    const payload = [
+      mismaEstancia('2026-09-16T00:00:00.000Z'),
+      mismaEstancia('2026-09-17T00:00:00.000Z'),
+    ];
+
+    await importar(payload);
+    const segunda = await importar(payload);
+
+    expect(segunda.created).toBe(0);
+    expect(segunda.updated).toBe(0);
+    expect(await staysOf('416')).toHaveLength(1);
+  });
+
+  it('no duplica una estancia finalizada de ayer al cargar ayer y hoy juntos', async () => {
+    businessDate = new Date('2026-09-16T00:00:00.000Z');
+    const salidaAyer = draft({
+      reservationId: '7200002',
+      roomNumber: '418',
+      businessDate: '2026-09-16T00:00:00.000Z',
+      status: RoomStayStatus.CHECK_OUT,
+      arrival: '2026-09-14T00:00:00.000Z',
+      departure: '2026-09-16T00:00:00.000Z',
+    });
+
+    await importar([salidaAyer]);
+    const [cerrada] = await staysOf('418');
+    await prisma.roomStay.update({
+      where: { id: cerrada!.id },
+      data: { stage: RoomStayStage.FINALIZADO },
+    });
+
+    businessDate = new Date('2026-09-17T00:00:00.000Z');
+    const result = await importar([
+      salidaAyer,
+      draft({
+        reservationId: '7200003',
+        roomNumber: '419',
+        businessDate: '2026-09-17T00:00:00.000Z',
+        status: RoomStayStatus.IN_HOUSE,
+        arrival: '2026-09-17T00:00:00.000Z',
+        departure: '2026-09-19T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(result.created).toBe(1);
+    expect(await staysOf('418')).toHaveLength(1);
+    expect(await staysOf('419')).toHaveLength(1);
   });
 });
 

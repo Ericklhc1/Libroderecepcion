@@ -366,7 +366,7 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(mia.iAmIn).toBe(true);
 
     const ajena = await getShiftDesk(afuera);
-    expect(ajena.current).toBeNull();
+    expect(ajena.current?.id).toBe(mia.current?.id);
     expect(ajena.iAmIn).toBe(false);
   });
 

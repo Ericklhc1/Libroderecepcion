@@ -105,8 +105,10 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       where: { id: entryId, deletedAt: null, category: 'AJUSTE_CAJA_SOLICITADO' },
       select: {
         id: true,
+        humanId: true,
         status: true,
         shiftId: true,
+        shift: { select: { humanId: true } },
         tags: true,
         title: true,
         createdById: true,
@@ -158,6 +160,10 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       reference,
       notes,
       effectiveAt,
+    });
+    const movementRef = await tx.cashMovement.findUniqueOrThrow({
+      where: { id: movementId },
+      select: { humanId: true },
     });
 
     if (!entry.shiftId) {
@@ -216,18 +222,18 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
     await queueOperationalMail(tx, {
       eventKey: `cash-movement:${movementId}`,
       recipients: [SUPERVISION_BACKUP_EMAIL],
-      subject: `[Libro Operativo] ${direction === 'ENTRADA' ? 'INGRESO' : 'EGRESO'} CAJA AUTORIZADO · ${currency} ${amount} · ${reference}`,
+      subject: `[Libro Operativo] ${direction === 'ENTRADA' ? 'INGRESO' : 'EGRESO'} CAJA #${movementRef.humanId} AUTORIZADO · ${currency} ${amount} · ${reference}`,
       text: [
         `${direction === 'ENTRADA' ? 'INGRESO' : 'EGRESO'} DE CAJA AUTORIZADO`,
-        `ID movimiento: ${movementId}`,
-        `Solicitud: ${entry.id}`,
+        `Movimiento: #${movementRef.humanId}`,
+        `Solicitud: #${entry.humanId}`,
         `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
         `Solicitado por: ${entry.createdBy.name} (@${entry.createdBy.username})`,
-        `Autorizado por: ${user.name} (ID ${user.id})`,
+        `Autorizado por: ${user.name}`,
         `Dirección: ${direction}`,
         `Monto: ${currency} ${amount}`,
         `Concepto: ${reference}`,
-        `Turno: ${entry.shiftId ?? 'sin turno asociado'}`,
+        `Turno: ${entry.shift ? `#${entry.shift.humanId}` : 'sin turno asociado'}`,
         `Observaciones: ${notes ?? 'sin observaciones'}`,
       ].join('\n'),
     });

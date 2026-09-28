@@ -125,6 +125,7 @@ describe('continuidad de la entrega de turno', () => {
 
     expect(taskItem?.detail).toContain(`Caso #${incident.humanId}`);
     expect(followUpItem?.detail).toContain(`Caso #${incident.humanId}`);
+    expect(followUpItem?.title).toContain(`#${followUp.humanId}`);
   });
 
   it('no mezcla ocupación ni dólar con la entrega de turno', async () => {

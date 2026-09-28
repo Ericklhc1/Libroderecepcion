@@ -1,5 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EntryType, Priority, Severity } from '@prisma/client';
+import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
+  EntryType,
+  GuaranteeKind,
+  GuaranteeState,
+  Priority,
+  Severity,
+} from '@prisma/client';
 import {
   ROLE_KEYS,
   createUser,
@@ -114,6 +123,41 @@ describe('mesa de supervisión', () => {
     const refs = rowsOf((await getSupervisionData()).blocks, 'sin-responsable').map((r) => r.ref);
     expect(refs).toContain(`#${huerfana.humanId}`);
     expect(refs).not.toContain(`#${asignada.humanId}`);
+  });
+
+  it('usa #ID humano también para alertas y garantías en Supervisión', async () => {
+    const alert = await prisma.alert.create({
+      data: {
+        type: AlertType.OTRO,
+        level: AlertLevel.CRITICA,
+        status: AlertStatus.NUEVA,
+        title: 'Alerta con referencia humana',
+        createdById: receptionist.id,
+      },
+    });
+    const guarantee = await prisma.guarantee.create({
+      data: {
+        kind: GuaranteeKind.EFECTIVO,
+        state: GuaranteeState.PENDIENTE,
+        amount: '100000',
+        currency: 'CLP',
+        guestName: 'Huésped referencia',
+        roomNumber: '617',
+        createdById: receptionist.id,
+      },
+    });
+
+    const blocks = (await getSupervisionData()).blocks;
+    const alertRows = rowsOf(blocks, 'alertas');
+    const guaranteeRows = rowsOf(blocks, 'garantias');
+
+    expect(alertRows.find((row) => row.id === alert.id)?.ref).toBe(`#${alert.humanId}`);
+    expect(guaranteeRows.find((row) => row.id === guarantee.id)?.ref).toBe(
+      `#${guarantee.humanId}`,
+    );
+    expect(guaranteeRows.find((row) => row.id === guarantee.id)?.ref).not.toContain(
+      guarantee.id.slice(-6),
+    );
   });
 
   it('el registro eliminado lógicamente sale de la revisión', async () => {

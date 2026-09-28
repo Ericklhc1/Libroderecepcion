@@ -150,6 +150,7 @@ export async function buildHandoverSnapshot(
       where: LIVE_ALERT_WHERE(now),
       select: {
         id: true,
+        humanId: true,
         type: true,
         level: true,
         title: true,
@@ -170,6 +171,7 @@ export async function buildHandoverSnapshot(
       },
       select: {
         id: true,
+        humanId: true,
         action: true,
         nextAction: true,
         scheduledAt: true,
@@ -305,7 +307,7 @@ export async function buildHandoverSnapshot(
     items.push({
       section: SECTIONS.seguimientos,
       level: overdue ? HandoverLevel.URGENTE : HandoverLevel.IMPORTANTE,
-      title: followUp.action,
+      title: `#${followUp.humanId} ${followUp.action}`,
       detail: [
         followUp.entry ? `Caso #${followUp.entry.humanId}: ${followUp.entry.title}` : null,
         followUp.nextAction ? `Próxima acción: ${followUp.nextAction}` : null,
@@ -343,7 +345,7 @@ export async function buildHandoverSnapshot(
           : alert.level === AlertLevel.ATENCION
             ? HandoverLevel.IMPORTANTE
             : HandoverLevel.INFORMATIVO,
-      title: `${ALERT_TYPE_LABEL[alert.type]}: ${alert.title}`,
+      title: `#${alert.humanId} · ${ALERT_TYPE_LABEL[alert.type]}: ${alert.title}`,
       detail: alert.message,
       refType: 'alert',
       refId: alert.id,

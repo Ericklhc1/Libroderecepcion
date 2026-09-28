@@ -4,12 +4,19 @@ import {
   GuaranteeKind,
   GuaranteeState,
   Impact,
+  ShiftType,
   OperationalMailStatus,
   Priority,
   Severity,
 } from '@prisma/client';
 import { createEntry } from '@/server/services/entries';
 import { createGuarantee } from '@/server/services/guarantees';
+import {
+  confirmHandoverReviewStep,
+  openShift,
+  prepareHandover,
+  sendHandover,
+} from '@/server/services/shifts';
 import {
   SUPERVISION_BACKUP_EMAIL,
   queueOperationalMail,
@@ -58,6 +65,9 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain('Late checkout autorizado');
     expect(row.text).toContain('Habitación 507 autorizada hasta las 14:00.');
     expect(row.text).toContain(user.name);
+    expect(row.text).toContain(`#${entry.humanId}`);
+        expect(row.text).not.toContain(entry.id);
+    expect(row.text).not.toContain(user.id);
   });
 
   it('encola una incidencia con gravedad y trazabilidad', async () => {
@@ -112,6 +122,53 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain('Huésped Prueba');
     expect(row.text).toContain('507');
     expect(row.text).toContain('80000');
+    expect(row.text).toContain(`#${guarantee.humanId}`);
+        expect(row.text).not.toContain(guarantee.id);
+    expect(row.text).not.toContain(user.id);
+  });
+
+  it('el correo de entrega usa sólo IDs humanos y nunca expone CUID técnicos', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción entrega humana',
+    });
+    const { shift } = await openShift(user, { type: ShiftType.DIA });
+    const entry = await createEntry(user, {
+      type: EntryType.NOVEDAD,
+      title: 'Pendiente identificable',
+      description: 'Pendiente que debe viajar con referencia humana.',
+      priority: Priority.ALTA,
+      tags: [],
+      requiresFollowUp: false,
+    });
+
+    const draft = await prepareHandover(user, shift.id);
+    await confirmHandoverReviewStep(user, { handoverId: draft.id, step: 'PENDINGS' });
+    const urgentCount = await prisma.handoverItem.count({
+      where: { handoverId: draft.id, level: 'URGENTE' },
+    });
+    await confirmHandoverReviewStep(user, {
+      handoverId: draft.id,
+      step: 'FINAL',
+      urgentAcknowledged: urgentCount > 0,
+    });
+    const sent = await sendHandover(user, { shiftId: shift.id });
+
+    const row = await prisma.operationalMailOutbox.findUniqueOrThrow({
+      where: { eventKey: `handover-sent:${sent.id}` },
+    });
+    expect(row.subject).toContain(`ENTREGA #${sent.humanId}`);
+    expect(row.subject).toContain(`TURNO #${shift.humanId}`);
+    expect(row.text).toContain(`Entrega: #${sent.humanId}`);
+    expect(row.text).toContain(`Turno: #${shift.humanId}`);
+    expect(row.text).toContain(`#${entry.humanId}`);
+        expect(row.text).not.toContain(sent.id);
+    expect(row.text).not.toContain(shift.id);
+    expect(row.text).not.toContain(entry.id);
+    expect(row.text).not.toContain(user.id);
+    expect(row.text).not.toContain('Referencia: entry');
+    expect(row.text).not.toContain('Referencia: task');
+    expect(row.text).not.toContain('Referencia: alert');
   });
 
   it('eventKey hace idempotente la cola', async () => {

@@ -22,6 +22,7 @@ import {
   CancelPreparationForm,
   CloseShiftForm,
   EmergencyOpenShiftForm,
+  JoinShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   ReceiveHandoverForm,
@@ -140,7 +141,7 @@ export default async function ShiftPage({
 
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
-  const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
+  const outgoingStillClosing = Boolean(!shift && !desk.current && blockingOutgoing);
   const hasCurrentOrPendingClosure = Boolean(shift || pendingClosure);
   const guidedShiftExperience =
     user.roleOperational &&
@@ -153,8 +154,10 @@ export default async function ShiftPage({
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
     ya dentro. Se consulta sólo si hay turno y quien mira puede sumar gente.
   */
+  const teamShift =
+    shift ?? (user.permissions.includes('shift.manage') ? desk.current : null);
   const canAddMembers =
-    Boolean(shift) &&
+    Boolean(teamShift) &&
     (desk.iAmIn || user.permissions.includes('shift.manage'));
   const memberCandidates = canAddMembers
     ? (
@@ -177,7 +180,7 @@ export default async function ShiftPage({
           orderBy: { name: 'asc' },
         })
       )
-        .filter((person) => !person.assignments.some((assignment) => assignment.shiftId === shift!.id))
+        .filter((person) => !person.assignments.some((assignment) => assignment.shiftId === teamShift!.id))
         .map((person) => {
           const busy = person.assignments.length > 0;
           return {
@@ -323,7 +326,45 @@ export default async function ShiftPage({
               />
             ) : (
               <>
-                {outgoingStillClosing ? (
+                {desk.current ? (
+                  <div className="rounded-xl bg-petrol-50 px-3 py-3 ring-1 ring-petrol-200">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone="curso">En curso</Badge>
+                          <span className="font-semibold tabular text-petrol-700">
+                            #{desk.current.humanId}
+                          </span>
+                          <span className="font-medium text-petrol-950">
+                            Turno {SHIFT_TYPE_LABEL[desk.current.type]}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-700">
+                          Recepción ya tiene un turno activo. No corresponde abrir otro turno ni
+                          usar una emergencia para incorporarte.
+                        </p>
+                        <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                          {desk.current.assignments
+                            .filter((assignment) => assignment.activatedAt && !assignment.leftAt)
+                            .map((assignment) => assignment.user.name)
+                            .join(' · ') || 'Sin participantes activos visibles'}
+                        </p>
+                      </div>
+                      <div className="min-w-[15rem]">
+                        <JoinShiftForm shiftId={desk.current.id} />
+                      </div>
+                    </div>
+                    {canAddMembers && teamShift?.id === desk.current.id ? (
+                      <div className="mt-3 max-w-sm border-t border-petrol-100 pt-3">
+                        <AddShiftMemberForm
+                          shiftId={desk.current.id}
+                          candidates={memberCandidates}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : outgoingStillClosing ? (
                   <div className="rounded-lg bg-red-50 px-3 py-3 ring-1 ring-red-300">
                     <p className="font-semibold text-red-950">
                       El turno anterior sigue sin cierre formal
@@ -403,13 +444,28 @@ export default async function ShiftPage({
                       .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
                       .join(' · ')}
                   </p>
-                  {shift.emergency ? (
+                  {shift.emergency && !shift.emergencyReleasedAt ? (
                     <div className="mt-3 max-w-xl rounded-lg bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
                       <p className="font-semibold">Turno de emergencia activo</p>
                       <p className="mt-1">
-                        {shift.emergencyReason ?? 'Motivo de emergencia regularizado.'} El turno
-                        saliente continúa bajo seguimiento hasta su cierre formal.
+                        {shift.emergencyReason ?? 'Motivo de emergencia registrado.'} El turno
+                        saliente continúa bajo seguimiento hasta su cierre formal. Mientras esta
+                        excepción siga activa no puede abrirse otro turno de emergencia.
                       </p>
+                    </div>
+                  ) : shift.emergency && shift.emergencyReleasedAt ? (
+                    <div className="mt-3 max-w-xl rounded-lg bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+                      <p className="font-semibold">Emergencia regularizada · el turno continúa normal</p>
+                      <p className="mt-1">
+                        Este turno nació como una excepción, pero la causa ya fue regularizada{' '}
+                        {formatDateTime(shift.emergencyReleasedAt)}. La marca de emergencia se
+                        conserva sólo como antecedente de auditoría.
+                      </p>
+                      {shift.emergencyReleaseReason ? (
+                        <p className="mt-1 text-xs text-emerald-800">
+                          {shift.emergencyReleaseReason}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
                   {/*

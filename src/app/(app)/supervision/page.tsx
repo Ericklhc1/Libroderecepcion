@@ -213,6 +213,7 @@ export default async function SupervisionCenterPage({
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="Secciones del Centro de Supervisión">
           <Link href="/supervision/tablero" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Asignación</Link>
           <Link href="/supervision/auditorias" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Auditorías</Link>
+          <Link href="/supervision/informes" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Informes exportables</Link>
           <Link href="/supervision/rendimiento" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Rendimiento</Link>
           <Link href="/supervision/salud" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Salud operativa</Link>
         </nav>
@@ -225,6 +226,40 @@ export default async function SupervisionCenterPage({
         <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Requiere atención</a>
         <a href="#auditoria-diaria" className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100">Auditoría diaria</a>
       </nav>
+
+      <details className="card overflow-hidden">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-petrol-900">
+          Guía rápida · cómo usar el Centro de Supervisión
+        </summary>
+        <div className="border-t border-slate-100 px-4 py-4">
+          <ol className="grid gap-3 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-5">
+            <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <strong className="block text-petrol-900">1. Inicia Supervisión</strong>
+              Abre tu turno. Tus tareas y seguimientos anteriores continúan vigentes.
+            </li>
+            <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <strong className="block text-petrol-900">2. Mira qué cambió</strong>
+              Revisa «Desde tu último turno» y las señales que detectó el Libro.
+            </li>
+            <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <strong className="block text-petrol-900">3. Carga informes PMS</strong>
+              En «Auditoría diaria» sube los PDF del día que debas cotejar y consolidar.
+            </li>
+            <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <strong className="block text-petrol-900">4. Decide qué seguir</strong>
+              Asigna tareas o usa «Seguir» sólo cuando un asunto requiere continuidad.
+            </li>
+            <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <strong className="block text-petrol-900">5. Cierra tu turno</strong>
+              El cierre fotografía lo revisado; lo que siga abierto continúa después.
+            </li>
+          </ol>
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            «Informes exportables» genera PDF internos de estado, gimnasio y multas. No es el lugar
+            donde se cargan los informes PMS.
+          </p>
+        </div>
+      </details>
 
       <ListFilterBar searchValue={q} searchPlaceholder="Buscar pendiente, señal, nota o persona…" clearHref="/supervision">
         <label className="min-w-[10rem]">

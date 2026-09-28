@@ -229,6 +229,95 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
     });
   });
 
+  it('un informe actualizado del mismo tipo reemplaza hallazgos obsoletos y recalcula el día', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor Revisión',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-26T00:00:00.000Z');
+
+    const first = parseSupervisionReportText(
+      'Formulario Auditoria 26-09-26.pdf',
+      [
+        'Formulario auditoría 26/09/2026',
+        'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos No Pendiente físico.',
+      ].join(' '),
+    );
+    await mergeSupervisionAuditReport(supervisor, { businessDate, parsed: first });
+
+    let stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+    expect((stored.findings as Array<{ key: string }>).map((item) => item.key)).toContain(
+      'check:tickets-restaurante',
+    );
+
+    const corrected = parseSupervisionReportText(
+      'Formulario Auditoria actualizado 26-09-26.pdf',
+      [
+        'Formulario auditoría 26/09/2026',
+        'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos Si Todo cotejado.',
+      ].join(' '),
+    );
+    const result = await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: corrected,
+    });
+
+    expect(result.disposition).toBe('REPLACED');
+    stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+    expect((stored.findings as Array<{ key: string }>).map((item) => item.key)).not.toContain(
+      'check:tickets-restaurante',
+    );
+    expect((stored.checks as Array<{ key: string; done: boolean | null }>)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'tickets-restaurante', done: true }),
+      ]),
+    );
+  });
+
+  it('un PDF idéntico se reconoce como duplicado y no agrega una revisión ficticia', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor Duplicado',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-26T00:00:00.000Z');
+    const parsed = parseSupervisionReportText(
+      'Cargos diarios 26-9-26.pdf',
+      'Informe de cargos diarios Ningún dato disponible en esta tabla',
+    );
+    const sourceFile = {
+      sha256: 'a'.repeat(64),
+      size: 1234,
+      parserVersion: 'test',
+      reportedBusinessDate: '2026-09-26',
+      completeness: parsed.completeness,
+    };
+
+    const first = await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed,
+      sourceFile,
+    });
+    const duplicate = await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed,
+      sourceFile,
+    });
+
+    expect(first.disposition).toBe('CREATED');
+    expect(duplicate.disposition).toBe('DUPLICATE');
+
+    const stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+    expect(Array.isArray(stored.sourceFiles) ? stored.sourceFiles : []).toHaveLength(1);
+  });
+
   it('incluye el resumen diario en la copia inalterable del cierre de Supervisión', async () => {
     const supervisor = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,

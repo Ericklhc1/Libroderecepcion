@@ -1,6 +1,6 @@
 # Cierre Operativo — contrato vigente de Recepción
 
-Estado: **vigente para Libro 1.14.9**.  
+Estado: **vigente para Libro 1.19.0**.  
 Fuente de verdad superior: `PROJECT_CONTEXT.md` + código y esquema vigentes.
 
 > Este documento reemplaza el contrato V2 anterior. En particular, quedan
@@ -13,7 +13,9 @@ Fuente de verdad superior: `PROJECT_CONTEXT.md` + código y esquema vigentes.
 Un recepcionista sólo puede interactuar con la operación cuando su turno está
 **ACTIVO**.
 
-- Sin turno: sólo puede iniciar su propio turno.
+- Sin participación activa: si Recepción ya tiene un turno en curso, lo ve y
+  puede **sumarse a ese mismo turno** como apoyo; si no existe turno vigente,
+  puede iniciar el suyo.
 - `INICIADO`: está recibiendo; sólo puede recontar Caja/garantías y confirmar
   la recepción.
 - `ACTIVO`: puede operar Novedades, Caja, Llaves y demás funciones habilitadas.
@@ -50,8 +52,23 @@ Causas válidas:
 
 El atraso, descuido u olvido del saliente no es por sí solo causa de emergencia.
 La apertura queda marcada en el turno entrante, vinculada al turno saliente y
-auditada. Mientras el turno saliente siga sin cierre formal, el motor mantiene
-una alerta crítica automática para Supervisión y la reabre si alguien intenta
+auditada. **Sólo puede existir una emergencia activa a la vez**; la base de
+datos lo impide además del servicio.
+
+`emergency=true` conserva el hecho histórico de cómo nació el turno.
+`emergencyReleasedAt=null` significa que la excepción sigue vigente. Cuando
+el turno saliente que originó la contingencia queda formalmente cerrado, el
+turno actual **no se recrea ni cambia de ID**: continúa operando normalmente,
+se registra `emergencyReleasedAt`, se libera el cupo de emergencia y se
+resuelve la alerta crítica. La misma liberación ocurre si el propio turno de
+emergencia llega a cierre formal antes que su origen. El antecedente permanece
+para auditoría.
+
+Si el cierre del saliente produce una entrega tardía, quien ya está operando en
+el turno nacido por emergencia debe recibirla desde ese mismo turno. Al
+confirmarla, `toShiftId` queda ligado al turno vigente; nunca se difiere al
+turno posterior. Mientras la emergencia siga activa, el motor mantiene una
+alerta crítica automática para Supervisión y la reabre si alguien intenta
 resolverla antes de regularizar la condición.
 
 ## Cierre guiado v3

@@ -242,7 +242,7 @@ describe('motor de alertas', () => {
         startedById: user.id,
       },
     });
-    await prisma.shift.create({
+    const emergency = await prisma.shift.create({
       data: {
         date: new Date('2026-09-27T00:00:00.000Z'),
         type: ShiftType.DIA,
@@ -274,11 +274,25 @@ describe('motor de alertas', () => {
       AlertStatus.NUEVA,
     );
 
+    // Cuando la excepción queda formalmente liberada, la marca histórica
+    // permanece pero el motor ya no debe reabrir su alerta crítica.
     await prisma.shift.update({
-      where: { id: source.id },
-      data: { status: ShiftStatus.CERRADO, actualEnd: new Date(now.getTime() + 2 * 60_000) },
+      where: { id: emergency.id },
+      data: {
+        emergencyReleasedAt: new Date(now.getTime() + 2 * 60_000),
+        emergencyReleaseReason: 'Condición regularizada en prueba',
+      },
     });
     await runAlertEngine(new Date(now.getTime() + 3 * 60_000));
+    expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
+      AlertStatus.RESUELTA,
+    );
+
+    await prisma.shift.update({
+      where: { id: source.id },
+      data: { status: ShiftStatus.CERRADO, actualEnd: new Date(now.getTime() + 4 * 60_000) },
+    });
+    await runAlertEngine(new Date(now.getTime() + 5 * 60_000));
     expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
       AlertStatus.RESUELTA,
     );

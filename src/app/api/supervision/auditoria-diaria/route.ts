@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       .map((value) => value.toString(16).padStart(2, '0'))
       .join('');
 
-    const saved = await mergeSupervisionAuditReport(user, {
+    const merged = await mergeSupervisionAuditReport(user, {
       businessDate,
       parsed,
       sourceFile: {
@@ -69,7 +69,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: true,
-        savedId: saved.id,
+        savedId: merged.saved.id,
+        disposition: merged.disposition,
         kind: parsed.kind,
         label: parsed.label,
         findings: parsed.findings.length,

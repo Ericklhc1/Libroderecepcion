@@ -73,13 +73,18 @@ function guaranteeLabel(input: {
   guestName?: string | null;
   roomNumber?: string | null;
   id?: string | null;
+  humanId?: number | null;
 }): string {
   if (input.reference?.trim()) return input.reference.trim();
   const parts = [
     input.guestName?.trim() || null,
     input.roomNumber?.trim() ? `Hab. ${input.roomNumber.trim()}` : null,
   ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' · ') : `Garantía ${input.id?.slice(-6) ?? ''}`.trim();
+  return parts.length > 0
+    ? parts.join(' · ')
+    : input.humanId
+      ? `Garantía #${input.humanId}`
+      : 'Garantía sin referencia';
 }
 
 /**
@@ -189,13 +194,13 @@ export async function createGuarantee(
     await queueOperationalMail(tx, {
       eventKey: `guarantee-created:${created.id}`,
       recipients: [SUPERVISION_BACKUP_EMAIL],
-      subject: `[Libro Operativo] GARANTÍA · ${guaranteeLabel(created)} · ${created.currency} ${money(created.amount)}`,
+      subject: `[Libro Operativo] GARANTÍA #${created.humanId} · ${guaranteeLabel(created)} · ${created.currency} ${money(created.amount)}`,
       text: [
         'GARANTÍA REGISTRADA',
-        `ID: ${created.id}`,
+        `Referencia: #${created.humanId}`,
         `Fecha/hora: ${operationalMailTimestamp(created.createdAt)}`,
-        `Registrado por: ${user.name} (ID ${user.id})`,
-        `Turno: ${shift?.id ?? 'sin turno asociado'}`,
+        `Registrado por: ${user.name}`,
+        `Turno: ${shift ? `#${shift.humanId}` : 'sin turno asociado'}`,
         `Tipo: ${created.kind}`,
         `Estado inicial: ${GUARANTEE_STATE_LABELS[created.state as GuaranteeStateValue]}`,
         `Monto: ${created.currency} ${money(created.amount)}`,
@@ -387,13 +392,13 @@ export async function changeGuaranteeState(
       await queueOperationalMail(tx, {
         eventKey: `guarantee-return:${guarantee.id}:${to}`,
         recipients: [SUPERVISION_BACKUP_EMAIL],
-        subject: `[Libro Operativo] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
+        subject: `[Libro Operativo] DEVOLUCIÓN GARANTÍA #${guarantee.humanId} · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
         text: [
           'DEVOLUCIÓN / CIERRE DE GARANTÍA',
-          `ID: ${guarantee.id}`,
+          `Referencia: #${guarantee.humanId}`,
           `Fecha/hora: ${operationalMailTimestamp(new Date())}`,
-          `Procesado por: ${user.name} (ID ${user.id})`,
-          `Turno: ${shift?.id ?? 'sin turno asociado'}`,
+          `Procesado por: ${user.name}`,
+          `Turno: ${shift ? `#${shift.humanId}` : 'sin turno asociado'}`,
           `Tipo: ${guarantee.kind}`,
           `Estado anterior: ${GUARANTEE_STATE_LABELS[from]}`,
           `Estado nuevo: ${GUARANTEE_STATE_LABELS[to]}`,

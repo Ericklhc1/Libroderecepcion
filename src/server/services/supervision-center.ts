@@ -358,10 +358,10 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     case 'Alert': {
       const row = await prisma.alert.findUnique({
         where: { id: sourceId },
-        select: { id: true, title: true },
+        select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La alerta de origen ya no existe.');
-      return { label: `Alerta · ${row.title}`, entryId: null, taskId: null };
+      return { label: `#${row.humanId} · Alerta · ${row.title}`, entryId: null, taskId: null };
     }
     case 'Guarantee': {
       const row = await prisma.guarantee.findFirst({

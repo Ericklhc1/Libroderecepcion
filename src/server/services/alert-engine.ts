@@ -231,7 +231,16 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
   const emergencyShifts = await prisma.shift.findMany({
     where: {
       emergency: true,
+      emergencyReleasedAt: null,
       archivedAt: null,
+      status: {
+        in: [
+          ShiftStatus.INICIADO,
+          ShiftStatus.ACTIVO,
+          ShiftStatus.PREPARANDO_ENTREGA,
+          ShiftStatus.ENTREGA_ENVIADA,
+        ],
+      },
       emergencySourceShiftId: { not: null },
     },
     select: {

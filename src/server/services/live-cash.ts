@@ -666,6 +666,7 @@ export async function markCashMovementAsRegularization(
     where: { id: params.movementId },
     select: {
       id: true,
+      humanId: true,
       kind: true,
       direction: true,
       currency: true,
@@ -673,6 +674,7 @@ export async function markCashMovementAsRegularization(
       reference: true,
       notes: true,
       shiftId: true,
+      shift: { select: { humanId: true } },
       effectiveAt: true,
       createdAt: true,
       affectsExpected: true,
@@ -716,18 +718,18 @@ export async function markCashMovementAsRegularization(
       eventKey: `cash-movement-regularized:${movement.id}`,
       recipients: [SUPERVISION_BACKUP_EMAIL],
       subject:
-        `[Libro Operativo] CORRECCIÓN CAJA · ${movement.currency} ${Number(movement.amount)} · ` +
-        `${movement.reference ?? movement.id}`,
+        `[Libro Operativo] CORRECCIÓN CAJA #${movement.humanId} · ${movement.currency} ${Number(movement.amount)} · ` +
+        `${movement.reference ?? 'sin concepto'}`,
       text: [
         'MOVIMIENTO DE CAJA RECLASIFICADO COMO REGULARIZACIÓN',
-        `ID movimiento: ${movement.id}`,
+        `Movimiento: #${movement.humanId}`,
         `Fecha/hora del movimiento: ${operationalMailTimestamp(movement.effectiveAt)}`,
         `Fecha/hora de corrección: ${operationalMailTimestamp(new Date())}`,
-        `Corregido por: ${user.name} (ID ${user.id})`,
+        `Corregido por: ${user.name}`,
         `Dirección original: ${movement.direction}`,
         `Monto: ${movement.currency} ${Number(movement.amount)}`,
         `Concepto: ${movement.reference ?? 'sin referencia'}`,
-        `Turno: ${movement.shiftId ?? 'sin turno asociado'}`,
+        `Turno: ${movement.shift ? `#${movement.shift.humanId}` : 'sin turno asociado'}`,
         `Observaciones originales: ${movement.notes ?? 'sin observaciones'}`,
         `Motivo de corrección: ${reason}`,
         'Efecto: el movimiento se conserva, pero deja de modificar el efectivo esperado.',

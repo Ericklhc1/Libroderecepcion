@@ -1,5 +1,29 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.0 · turno visible, emergencia única y auditoría real de rutas
+
+- `getShiftDesk` expone el turno global vigente aunque el usuario todavía no
+  participe en él. `/turno` ofrece «SUMARME AL TURNO EN CURSO» y evita mostrar
+  una emergencia falsa sólo porque la persona está fuera de la asignación.
+- `Shift` agrega `emergencyReleasedAt` y `emergencyReleaseReason`. Sólo puede
+  existir una emergencia abierta; un índice parcial PostgreSQL funciona como
+  última barrera de concurrencia.
+- Al cerrar el turno origen, la emergencia vigente se regulariza sin perder
+  `emergency=true`: continúa como turno normal y queda trazabilidad histórica.
+- Si la entrega del saliente se recibe después de abierta la emergencia,
+  `receiveHandover` la enlaza al turno que el receptor ya tiene activo.
+- El motor de alertas sólo vigila emergencias no liberadas.
+- `SupervisionAuditImport.reportPayloads` conserva la última versión
+  estructurada por tipo de informe: mismo día + tipo distinto consolida; mismo
+  tipo actualizado reemplaza; misma huella SHA-256 no altera nada.
+- El Centro de Supervisión incorpora guía rápida y distingue carga PMS de
+  «Informes exportables».
+- `scripts/functional-route-audit.ts` descubre las 52 páginas y consulta hasta
+  3 registros reales por ruta en el build de Vercel, sin mutar ni imprimir
+  datos sensibles. `PASS` exige 3 muestras; 1–2=`LIMITED`, 0=`EMPTY`.
+- Migración: `20260927220000_emergencia_unica_y_reportes_versionados`.
+- PR de trabajo: #159.
+
 ## Actualización 27/09/2026 · Libro 1.17.2 · Chat anclado al borde derecho
 
 - La pestaña cerrada de **Chat operativo** queda pegada al borde inferior derecho del viewport, también en escritorio.

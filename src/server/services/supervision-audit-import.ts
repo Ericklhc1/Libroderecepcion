@@ -40,7 +40,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.17.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.22.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;

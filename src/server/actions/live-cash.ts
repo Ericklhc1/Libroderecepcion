@@ -104,6 +104,7 @@ export async function voidGymPassAction(
     await voidGymPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/caja/gimnasio');
+    revalidatePath('/caja/estacionamiento');
     return { ok: true as const, message: 'Folio anulado. La trazabilidad se conserva.' };
   });
 }

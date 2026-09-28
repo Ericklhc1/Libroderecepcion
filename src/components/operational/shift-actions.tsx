@@ -134,10 +134,12 @@ export function OpenShiftForm({
   suggestedType,
   guided = false,
   guidanceSession = 1,
+  receiving = false,
 }: {
   suggestedType: 'DIA' | 'NOCHE';
   guided?: boolean;
   guidanceSession?: number;
+  receiving?: boolean;
 }) {
   return (
     <ActionForm action={openShiftAction} hideSuccess refreshOnSuccess>
@@ -158,17 +160,30 @@ export function OpenShiftForm({
       <GuidedShiftSubmit
         guided={guided}
         session={guidanceSession}
-        buttonLabel="Abrir mi turno"
-        title="Vas a iniciar tu turno"
-        description="El Libro te habilitará la operación y desde aquí irá marcando qué paso corresponde."
-        steps={[
-          'Confirma el turno sugerido según la hora.',
-          'Al abrirlo, Novedades, Caja y Llaves quedan disponibles para tu cuenta.',
-          'Durante el turno, registra sólo lo que realmente ocurra; no necesitas preparar el cierre todavía.',
-          'Cuando termines, usa INICIAR CIERRE DE TURNO: el sistema te llevará por Caja, entrega y cierre final.',
-        ]}
-        confirmLabel="INICIAR MI TURNO"
-        pendingLabel="Abriendo…"
+        buttonLabel={receiving ? 'INICIAR RECEPCIÓN DE TURNO' : 'Abrir mi turno'}
+        title={receiving ? 'Vas a iniciar la recepción del turno' : 'Vas a iniciar tu turno'}
+        description={
+          receiving
+            ? 'Tu turno quedará INICIADO mientras revisas y recibes el relevo. La operación se habilita sólo al confirmar la recepción.'
+            : 'El Libro te habilitará la operación y desde aquí irá marcando qué paso corresponde.'
+        }
+        steps={
+          receiving
+            ? [
+                'Confirma el turno sugerido según la hora.',
+                'El Libro vinculará la entrega pendiente a tu turno y lo dejará en estado INICIADO.',
+                'Revisa la entrega, recuenta Caja y garantías, y confirma la custodia física dentro de Mi turno.',
+                'Al confirmar la recepción, tu turno pasará a ACTIVO y se habilitará la operación.',
+              ]
+            : [
+                'Confirma el turno sugerido según la hora.',
+                'Al abrirlo, Novedades, Caja y Llaves quedan disponibles para tu cuenta.',
+                'Durante el turno, registra sólo lo que realmente ocurra; no necesitas preparar el cierre todavía.',
+                'Cuando termines, usa INICIAR CIERRE DE TURNO: el sistema te llevará por Caja, entrega y cierre final.',
+              ]
+        }
+        confirmLabel={receiving ? 'INICIAR RECEPCIÓN' : 'INICIAR MI TURNO'}
+        pendingLabel={receiving ? 'Iniciando recepción…' : 'Abriendo…'}
       />
     </ActionForm>
   );
@@ -289,7 +304,7 @@ export function EmergencyOpenShiftForm({
                 onClick={() => setOpen(false)}
                 className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
               >
-                ESPERAR CIERRE DEL SALIENTE Y ABRIR TURNO NORMAL
+                VOLVER Y ESPERAR EL CIERRE DEL SALIENTE
               </button>
               <SubmitButton variant="danger" pendingLabel="Abriendo emergencia…">
                 ABRIR TURNO DE EMERGENCIA
@@ -345,10 +360,12 @@ export function AddShiftMemberForm({
 
 export function ReceiveHandoverForm({
   handoverId,
+  finalActivation = false,
 }: {
   shiftId?: string;
   handoverId?: string | null;
   hasHandover?: boolean;
+  finalActivation?: boolean;
 }) {
   if (!handoverId) return null;
 
@@ -363,7 +380,7 @@ export function ReceiveHandoverForm({
         <Textarea name="observations" rows={2} placeholder="Recibido conforme…" />
       </Field>
       <SubmitButton variant="gold" pendingLabel="Confirmando…">
-        Confirmar recepción operativa
+        {finalActivation ? 'CONFIRMAR RECEPCIÓN Y ABRIR MI TURNO' : 'Confirmar recepción operativa'}
       </SubmitButton>
     </ActionForm>
   );

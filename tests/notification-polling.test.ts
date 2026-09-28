@@ -19,6 +19,14 @@ describe('notificaciones realtime resistentes a deployments', () => {
     expect(center).not.toContain("@/server/actions/notifications");
   });
 
+  it('limita el costo del tiempo real y suspende el stream cuando la pestaña está oculta', () => {
+    expect(stream).toContain('const CHECK_MS = 15_000;');
+    expect(stream).not.toContain('const CHECK_MS = 2_000;');
+    expect(center).toContain("document.visibilityState !== 'visible'");
+    expect(center).toContain("document.addEventListener('visibilitychange'");
+    expect(center).toContain('disconnect();');
+  });
+
   it('el stream es dinámico, SSE, no-cache y exige sesión válida', () => {
     expect(stream).toContain("export const dynamic = 'force-dynamic'");
     expect(stream).toContain("'Content-Type': 'text/event-stream; charset=utf-8'");

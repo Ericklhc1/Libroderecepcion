@@ -342,7 +342,7 @@ export async function reopenShiftCash(
         `Turno: ${shift ? `#${shift.humanId}` : 'sin referencia'}`,
         `Caja cerrada originalmente: ${operationalMailTimestamp(closure.closedAt)}`,
         `Caja reabierta: ${operationalMailTimestamp(now)}`,
-        `Reabierta por: ${user.name} (@${user.username})`,
+        `Reabierta por: ${user.name}`,
         `Motivo: ${reason}`,
         'Efecto: el cierre anterior se conserva en auditoría y Caja debe volver a arquearse/cerrarse antes de enviar la entrega.',
       ].join('\n'),

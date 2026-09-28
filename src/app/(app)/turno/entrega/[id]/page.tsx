@@ -240,7 +240,7 @@ export default async function HandoverPage({
   const shiftTypeTitle = SHIFT_TYPE_LABEL[handover.fromShift.type].toUpperCase();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="print-report mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
         <Link
           href="/turno"
@@ -250,7 +250,7 @@ export default async function HandoverPage({
           Volver al turno
         </Link>
         {handover.status === HandoverStatus.RECIBIDA ? (
-          <PrintButton label="Imprimir informe Caja entrega/recepción" />
+          <PrintButton label="Imprimir informe de turno" />
         ) : (
           <span className="text-xs font-medium text-slate-500">
             El acta final se imprime después de que el entrante recuente Caja y confirme la recepción.
@@ -956,7 +956,7 @@ export default async function HandoverPage({
       ) : null}
 
       {(!canEdit || closeStep === 3) ? (
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 no-print">
         <Card>
           <CardHeader title="Comentarios" count={handover._count.comments} />
           <Comments

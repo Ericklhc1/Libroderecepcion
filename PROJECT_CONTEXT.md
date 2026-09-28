@@ -80,6 +80,23 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
+
+- Mantiene el alivio de capacidad de 1.19.2 y corrige la regresión de alarmas cuando la pestaña del Libro está oculta.
+- El feed general y el Chat siguen desconectándose en segundo plano; Notificaciones usa un pulso ligero cada 30 s que sólo consulta alarmas vencidas.
+- Si no vence ninguna alarma, el pulso no carga el feed completo. Si vence una, la materializa y recién entonces devuelve el snapshot para mostrar/sonar la alarma.
+- Sin cambios de esquema, datos, permisos, turnos ni Caja.
+- Release sin migración: **v1.19.3**.
+
+## Actualización 27/09/2026 · Libro 1.19.2 · alivio de capacidad Vercel
+
+- Hotfix P0 por alerta de 90% de Fluid Active CPU del plan gratuito.
+- Notificaciones redujo su comprobación interna de 2 s a 15 s.
+- Chat redujo su comprobación interna de 1,5 s a 10 s y la escritura de presencia de 45 s a 90 s.
+- Chat y feed general de Notificaciones se suspenden en pestañas ocultas y reconectan al volver a primer plano.
+- Se añadieron regresiones para impedir volver a intervalos agresivos.
+- Release sin migración: **v1.19.2**.
+
 ## Actualización 27/09/2026 · Libro 1.19.1 · sincronización de contexto
 
 - Patch sin cambios funcionales: sincroniza la documentación canónica con la recepción guiada y el ciclo de emergencia publicados en 1.19.0.

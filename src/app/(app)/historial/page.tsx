@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { ChevronLeft, ChevronRight, History, Printer } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { getBookItems } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
@@ -33,6 +33,12 @@ export default async function HistoryPage({
   const user = await requirePageUser();
   const params = await searchParams;
   const filters = parseBookFilters(params, { pageSize: 50 });
+  const reportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    const single = Array.isArray(value) ? value[0] : value;
+    if (single && key !== 'pagina') reportParams.set(key, single);
+  }
+  reportParams.set('vista', 'historial');
 
   const [result, options, shifts, auditLogs] = await Promise.all([
     getBookItems(filters),
@@ -52,14 +58,24 @@ export default async function HistoryPage({
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900">
-          <History className="h-5 w-5 text-petrol-600" aria-hidden="true" />
-          Historial y búsqueda
-        </h1>
-        <p className="mt-0.5 text-sm text-slate-600">
-          Archivo de Novedades, tareas, seguimientos y alertas, incluidos los registros cerrados.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900">
+            <History className="h-5 w-5 text-petrol-600" aria-hidden="true" />
+            Historial y búsqueda
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-600">
+            Archivo de Novedades, tareas, seguimientos y alertas, incluidos los registros cerrados.
+          </p>
+        </div>
+        <Link
+          href={`/api/libro/reporte?${reportParams.toString()}`}
+          target="_blank"
+          className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50"
+        >
+          <Printer className="h-4 w-4" aria-hidden="true" />
+          Ver / imprimir informe
+        </Link>
       </header>
 
       <Filters

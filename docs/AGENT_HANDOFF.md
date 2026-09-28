@@ -2,8 +2,8 @@
 
 ## Actualización 27/09/2026 · Libro 1.19.4 · reconciliación de alarmas
 
-- Corrige una carrera del pulso de alarmas de 1.19.3: una alarma ya reclamada por otra pestaña sigue detectándose por su notificación ALARMA no leída.
-- El feed completo sólo se carga si el pulso despachó una alarma o existe una ALARMA no leída; el caso normal sigue siendo de bajo costo.
+- Corrige las carreras entre pestañas del pulso de 1.19.3 mediante reconciliación por ID de alarma conocida por cada pestaña.
+- El feed completo sólo se carga cuando la alarma activa del servidor difiere de la conocida por ese cliente; esto propaga altas, reconocimientos, posposiciones y cancelaciones sin refetch continuo.
 - Sin migración. Release: **v1.19.4**.
 
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo

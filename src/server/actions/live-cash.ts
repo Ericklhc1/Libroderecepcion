@@ -517,7 +517,7 @@ export async function saveLiveCashAuditAction(
             active: true,
             currency: input.currency,
           },
-          select: { id: true, value: true },
+          select: { id: true, value: true, medium: true },
         })
       : [];
 
@@ -525,11 +525,19 @@ export async function saveLiveCashAuditAction(
       throw new RuleError('El conteo contiene una denominación inválida para esa divisa.');
     }
 
-    const byId = new Map(denominations.map((row) => [row.id, Number(row.value)]));
-    const countedAmount = quantityEntries.reduce(
-      (total, row) => total + (byId.get(row.denominationId) ?? 0) * row.quantity,
-      0,
-    );
+    const byId = new Map(denominations.map((row) => [row.id, row]));
+    const denominationSnapshot = quantityEntries.map((row) => {
+      const denomination = byId.get(row.denominationId);
+      const value = denomination ? Number(denomination.value) : 0;
+      return {
+        id: row.denominationId,
+        value,
+        medium: denomination?.medium ?? 'BILLETE',
+        quantity: row.quantity,
+        subtotal: value * row.quantity,
+      };
+    });
+    const countedAmount = denominationSnapshot.reduce((total, row) => total + row.subtotal, 0);
 
     const guaranteeIds = [...formData.entries()]
       .filter(([key, value]) => key.startsWith('g_') && value === '1')
@@ -539,6 +547,7 @@ export async function saveLiveCashAuditAction(
       currency: input.currency,
       countedAmount,
       guaranteeIds,
+      denominationSnapshot,
       notes: input.notes,
     });
 
@@ -548,6 +557,7 @@ export async function saveLiveCashAuditAction(
 
     return {
       ok: true as const,
+      id: result.id,
       message:
         result.difference === 0
           ? `Fondo fijo ${input.currency} corroborado por denominación y ${result.guaranteeCount} garantía(s) validadas por separado: cuadra exactamente.`

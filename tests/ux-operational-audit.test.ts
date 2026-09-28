@@ -38,6 +38,17 @@ describe('auditoría UX operativa 1.10.10', () => {
     expect(chat).not.toContain("addEventListener('libro:notification-feed'");
   });
 
+  it('Chat reduce comprobaciones y cierra el stream en pestañas ocultas', () => {
+    const chat = readFileSync('src/components/layout/chat-widget.tsx', 'utf8');
+    const stream = readFileSync('src/app/api/chat/stream/route.ts', 'utf8');
+    expect(stream).toContain('const CHECK_MS = 10_000;');
+    expect(stream).toContain('const PRESENCE_TOUCH_MS = 90_000;');
+    expect(stream).not.toContain('const CHECK_MS = 1_500;');
+    expect(chat).toContain("document.visibilityState !== 'visible'");
+    expect(chat).toContain("document.addEventListener('visibilitychange'");
+    expect(chat).toContain('disconnect();');
+  });
+
   it('SubmitButton mantiene disabled durante pending aunque reciba disabled=false', () => {
     const button = readFileSync('src/components/ui/button.tsx', 'utf8');
     const component = button.slice(button.indexOf('export function SubmitButton'));

@@ -39,9 +39,11 @@ export type SupervisionBlock = {
   rows: SupervisionRow[];
 };
 
-function shiftText(shift: { type: string; date: Date } | null | undefined): string | null {
+function shiftText(
+  shift: { humanId: number; type: string; date: Date } | null | undefined,
+): string | null {
   if (!shift) return null;
-  return `${shift.type} · ${formatCalendarDate(shift.date)}`;
+  return `#${shift.humanId} · ${shift.type} · ${formatCalendarDate(shift.date)}`;
 }
 
 function dueText(date: Date | null, now: Date): string | null {
@@ -119,6 +121,7 @@ export async function getSupervisionData(): Promise<{
       },
       select: {
         id: true,
+        humanId: true,
         action: true,
         scheduledAt: true,
         owner: { select: { name: true } },
@@ -158,6 +161,7 @@ export async function getSupervisionData(): Promise<{
       where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA },
       select: {
         id: true,
+        humanId: true,
         title: true,
         message: true,
         dueAt: true,
@@ -183,6 +187,7 @@ export async function getSupervisionData(): Promise<{
       },
       select: {
         id: true,
+        humanId: true,
         state: true,
         amount: true,
         appliedAmount: true,
@@ -199,6 +204,7 @@ export async function getSupervisionData(): Promise<{
     prisma.$queryRaw<
       Array<{
         id: string;
+        humanId: number;
         state: string;
         currency: string;
         amount: unknown;
@@ -207,7 +213,7 @@ export async function getSupervisionData(): Promise<{
         reference: string | null;
       }>
     >`
-      SELECT g."id", g."state"::text, g."currency", g."amount",
+      SELECT g."id", g."humanId", g."state"::text, g."currency", g."amount",
              g."guestName", g."roomNumber", g."reference"
       FROM "Guarantee" g
       WHERE g."deletedAt" IS NULL
@@ -232,9 +238,10 @@ export async function getSupervisionData(): Promise<{
       where: { status: HandoverStatus.ENVIADA },
       select: {
         id: true,
+        humanId: true,
         issuedAt: true,
         issuedBy: { select: { name: true } },
-        fromShift: { select: { type: true, date: true } },
+        fromShift: { select: { humanId: true, type: true, date: true } },
         _count: { select: { items: true } },
       },
       orderBy: { issuedAt: 'asc' },
@@ -248,6 +255,7 @@ export async function getSupervisionData(): Promise<{
       },
       select: {
         id: true,
+        humanId: true,
         type: true,
         date: true,
         status: true,
@@ -260,6 +268,7 @@ export async function getSupervisionData(): Promise<{
     prisma.cashAudit.findMany({
       select: {
         id: true,
+        humanId: true,
         currency: true,
         expectedAmount: true,
         countedAmount: true,
@@ -274,6 +283,7 @@ export async function getSupervisionData(): Promise<{
     prisma.keyInventoryCount.findMany({
       select: {
         id: true,
+        humanId: true,
         floor: true,
         countedAt: true,
         countedBy: { select: { name: true } },
@@ -340,7 +350,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'critico',
       rows: criticalAlerts.map((row) => ({
         id: row.id,
-        ref: 'Alerta',
+        ref: `#${row.humanId}`,
         title: row.title,
         detail: row.message,
         href: row.entry ? `/libro/${row.entry.id}` : `/alertas?alerta=${row.id}`,
@@ -362,11 +372,11 @@ export async function getSupervisionData(): Promise<{
           guarantee.reference ||
           guarantee.guestName ||
           (guarantee.roomNumber ? `Hab. ${guarantee.roomNumber}` : null) ||
-          `Garantía ${guarantee.id.slice(-6)}`;
+          `Garantía #${guarantee.humanId}`;
 
         return {
           id: guarantee.id,
-          ref: guarantee.reference ?? `GAR-${guarantee.id.slice(-6).toUpperCase()}`,
+          ref: `#${guarantee.humanId}`,
           title: `${label} · ${guarantee.currency} ${outstanding}`,
           detail: GUARANTEE_STATE_ACTIONS[guarantee.state as GuaranteeStateValue],
           href: '/caja?seccion=garantias',
@@ -392,10 +402,10 @@ export async function getSupervisionData(): Promise<{
           guarantee.reference ||
           guarantee.guestName ||
           (guarantee.roomNumber ? `Hab. ${guarantee.roomNumber}` : null) ||
-          `Garantía ${guarantee.id.slice(-6)}`;
+          `Garantía #${guarantee.humanId}`;
         return {
           id: guarantee.id,
-          ref: `GAR-${guarantee.id.slice(-6).toUpperCase()}`,
+          ref: `#${guarantee.humanId}`,
           title: `${label} · ${guarantee.currency} ${Number(guarantee.amount).toLocaleString('es-CL')}`,
           detail: `Estado ${guarantee.state.toLocaleLowerCase('es-CL')} sin movimiento GARANTIA_DEVOLUCION asociado. Requiere revisión histórica; no se corrige automáticamente.`,
           href: '/caja?seccion=garantias',
@@ -412,7 +422,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'critico',
       rows: latestCashAudits.map((audit) => ({
         id: audit.id,
-        ref: `Caja ${audit.currency}`,
+        ref: `#${audit.humanId}`,
         title: `Diferencia ${Number(audit.difference).toLocaleString('es-CL')} ${audit.currency}`,
         detail: `Esperado ${Number(audit.expectedAmount).toLocaleString('es-CL')} · contado ${Number(audit.countedAmount).toLocaleString('es-CL')}`,
         href: '/caja',
@@ -428,7 +438,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: latestKeyCounts.map((count) => ({
         id: count.id,
-        ref: `Piso ${count.floor}`,
+        ref: `#${count.humanId}`,
         title: `${count.missing} llave(s) faltante(s)`,
         detail: count.missingRooms.length > 0
           ? `Habitaciones: ${count.missingRooms.join(', ')}`
@@ -462,7 +472,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: overdueFollowUps.map((row) => ({
         id: row.id,
-        ref: 'Seg.',
+        ref: `#${row.humanId}`,
         title: row.action,
         detail: row.entry ? `Sobre #${row.entry.humanId} · ${row.entry.title}` : null,
         href: row.entry ? `/libro/${row.entry.id}` : '/seguimientos',
@@ -496,8 +506,8 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: staleHandovers.map((row) => ({
         id: row.id,
-        ref: shiftText(row.fromShift) ?? 'Turno',
-        title: `Entrega de ${row.issuedBy.name}`,
+        ref: `#${row.humanId}`,
+        title: `Entrega de ${row.issuedBy.name} · ${shiftText(row.fromShift) ?? 'turno sin referencia'}`,
         detail: `${row._count.items} punto(s) pendientes de recepción.`,
         href: `/turno/entrega/${row.id}`,
         meta: row.issuedAt ? dueText(row.issuedAt, now) : null,
@@ -512,7 +522,7 @@ export async function getSupervisionData(): Promise<{
       tone: 'atencion',
       rows: pendingClosures.map((row) => ({
         id: row.id,
-        ref: shiftText(row) ?? 'Turno',
+        ref: `#${row.humanId}`,
         title: row.assignments.map((assignment) => assignment.user.name).join(', ') || 'Sin asignados',
         detail: `Estado actual: ${row.status}`,
         href: '/turno',

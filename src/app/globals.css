@@ -79,8 +79,8 @@ h4 {
   compacta sólo al imprimir: la interfaz normal conserva su respiración.
 */
 @page {
-  size: A4;
-  margin: 1cm;
+  size: letter;
+  margin: 0.75cm;
 }
 
 @media print {
@@ -91,8 +91,61 @@ h4 {
   }
 
   body {
-    font-size: 9.5pt;
-    line-height: 1.25;
+    font-size: 8.75pt;
+    line-height: 1.18;
+  }
+
+  .print-report {
+    width: 100% !important;
+    max-width: none !important;
+    font-size: 8.5pt;
+    line-height: 1.18;
+  }
+
+  .print-report .card {
+    break-inside: auto;
+  }
+
+  .print-report .card-header {
+    padding: 0.18cm 0.25cm !important;
+  }
+
+  .print-report .card > div,
+  .print-report .card > ul > li {
+    padding-top: 0.14cm !important;
+    padding-bottom: 0.14cm !important;
+  }
+
+  .print-report h1 {
+    font-size: 13pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .print-report h2,
+  .print-report h3 {
+    font-size: 9.5pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-report table {
+    font-size: 8pt;
+    line-height: 1.12;
+  }
+
+  .print-report th,
+  .print-report td {
+    padding-top: 0.08cm !important;
+    padding-bottom: 0.08cm !important;
+  }
+
+  .print-report li,
+  .print-report .print-keep {
+    break-inside: avoid;
+  }
+
+  .print-report footer {
+    margin-top: 0.45cm !important;
+    padding-top: 0.35cm !important;
   }
 
   .no-print {

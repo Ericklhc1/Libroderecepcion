@@ -248,6 +248,21 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     ).rejects.toThrow(/no participa en la operación/);
   });
 
+  it('Central de Reservas y Gerencia pueden recibir tareas, pero no entrar a turnos de Recepción', async () => {
+    const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const reservas = await createUser({ roleKey: ROLE_KEYS.RESERVATIONS_CENTER, name: 'Central' });
+    const gerencia = await createUser({ roleKey: ROLE_KEYS.MANAGEMENT, name: 'Gerencia' });
+
+    const { shift } = await openShift(titular, { type: ShiftType.DIA });
+
+    await expect(
+      addShiftMember(titular, { shiftId: shift.id, userId: reservas.id }),
+    ).rejects.toThrow(/no participa en turnos de Recepción/i);
+    await expect(
+      addShiftMember(titular, { shiftId: shift.id, userId: gerencia.id }),
+    ).rejects.toThrow(/no participa en turnos de Recepción/i);
+  });
+
   it('el relevo completo mantiene al entrante INICIADO hasta terminar la recepción guiada', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });

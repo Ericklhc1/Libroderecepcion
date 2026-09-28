@@ -1277,7 +1277,7 @@ export async function confirmReceptionReviewStep(
   if (!handover.toShift.assignments.some((assignment) => assignment.userId === user.id)) {
     throw new RuleError('Esta recepción está siendo realizada por otra persona.');
   }
-  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status)) {
+  if (!(handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO)) {
     throw new RuleError('El turno receptor ya no admite completar esta recepción.');
   }
 
@@ -1552,7 +1552,7 @@ export async function receiveShiftCash(
   if (!handover.toShift.assignments.some((assignment) => assignment.userId === user.id)) {
     throw new RuleError('Esta recepción está siendo realizada por otra persona.');
   }
-  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status)) {
+  if (!(handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO)) {
     throw new RuleError('El turno receptor ya no admite este recuento.');
   }
 
@@ -1760,10 +1760,12 @@ export async function receiveHandover(
   if (!incoming.toShiftId || !incoming.toShift) {
     throw new RuleError('Primero inicia la recepción de turno desde Mi turno.');
   }
-  if (!incoming.toShift.assignments.some((assignment) => assignment.userId === user.id)) {
+  const toShiftId = incoming.toShiftId;
+  const toShift = incoming.toShift;
+  if (!toShift.assignments.some((assignment) => assignment.userId === user.id)) {
     throw new RuleError('Esta recepción está siendo realizada por otra persona.');
   }
-  if (![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(incoming.toShift.status)) {
+  if (!(toShift.status === ShiftStatus.INICIADO || toShift.status === ShiftStatus.ACTIVO)) {
     throw new RuleError('El turno receptor ya no admite completar esta recepción.');
   }
   if (!incoming.receiverBriefingReviewedAt) {
@@ -1802,7 +1804,7 @@ export async function receiveHandover(
         id: incoming.id,
         status: HandoverStatus.ENVIADA,
         receivedAt: null,
-        toShiftId: incoming.toShiftId,
+        toShiftId,
       },
       data: {
         status: HandoverStatus.RECIBIDA,
@@ -1821,9 +1823,9 @@ export async function receiveHandover(
      * Un turno de emergencia ya está ACTIVO y aquí sólo regulariza su relevo
      * histórico, sin crear una segunda sesión operativa.
      */
-    if (incoming.toShift.status === ShiftStatus.INICIADO) {
+    if (toShift.status === ShiftStatus.INICIADO) {
       const activated = await tx.shift.updateMany({
-        where: { id: incoming.toShiftId, status: ShiftStatus.INICIADO },
+        where: { id: toShiftId, status: ShiftStatus.INICIADO },
         data: { status: ShiftStatus.ACTIVO },
       });
       if (activated.count === 0) {
@@ -1832,7 +1834,7 @@ export async function receiveHandover(
       await recordAudit(
         {
           entity: 'Shift',
-          entityId: incoming.toShiftId,
+          entityId: toShiftId,
           action: AuditAction.TURNO_RECIBIR,
           summary: `Turno activado al completar la recepción de ${user.name}`,
           user,

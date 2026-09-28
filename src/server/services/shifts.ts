@@ -19,6 +19,7 @@ import { formatCalendarDate } from '@/lib/format';
 import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
+import { assertShiftAssignable } from '@/server/services/users';
 import { notify } from '@/server/notifications';
 import type { CurrentUser } from '@/server/auth/current-user';
 import {
@@ -472,9 +473,9 @@ export async function openShift(
     emergencyAccepted?: boolean;
   } = {},
 ): Promise<{ shift: ShiftWithDetail; joined: boolean }> {
-  if (!user.roleOperational) {
+  if (!user.roleOperational || !user.permissions.includes('shift.start')) {
     throw new RuleError(
-      'El Administrador de sistema no participa en la operación de turnos. Usa una cuenta operativa.',
+      'Tu rol no participa en la operación de turnos de Recepción. Usa una cuenta habilitada para el mesón.',
     );
   }
 
@@ -1478,6 +1479,8 @@ export async function addShiftMember(
   if (!actorIsIn && !actorSupervises && actor.id !== input.userId) {
     throw new RuleError('Sólo quien está en el turno o quien lo supervisa puede sumar gente.');
   }
+
+  await assertShiftAssignable(input.userId);
 
   const person = await prisma.user.findFirst({
     where: { id: input.userId, deletedAt: null, active: true },

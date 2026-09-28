@@ -26,6 +26,7 @@ import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 const KEEP_ALIVE_MS = 4 * 60_000;
 const RECENT_ACTIVITY_MS = 10 * 60_000;
+const NOTIFICATION_POLL_MS = 20_000;
 const HIDDEN_ALARM_PULSE_MS = 30_000;
 
 type ConnectionState = 'connecting' | 'live' | 'reconnecting';
@@ -160,98 +161,95 @@ export function NotificationCenter({
   );
 
   useEffect(() => {
-    let source: EventSource | null = null;
-    let hiddenAlarmTimer: number | null = null;
-    let pulsingAlarms = false;
+    let active = true;
+    let timer: number | null = null;
+    let controller: AbortController | null = null;
 
-    const onNotifications = (event: Event) => {
-      try {
-        const snapshot = JSON.parse((event as MessageEvent<string>).data) as NotificationFeedSnapshot;
-        applySnapshot(snapshot, true);
-        setConnection('live');
-      } catch {
-        setConnection('reconnecting');
+    const clearScheduled = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
       }
     };
 
-    const onWarning = () => setConnection('reconnecting');
-
-    const disconnect = () => {
-      if (!source) return;
-      source.removeEventListener('notifications', onNotifications);
-      source.removeEventListener('stream-warning', onWarning);
-      source.close();
-      source = null;
+    const scheduleNext = () => {
+      clearScheduled();
+      if (!active) return;
+      const delay =
+        document.visibilityState === 'visible'
+          ? NOTIFICATION_POLL_MS
+          : HIDDEN_ALARM_PULSE_MS;
+      timer = window.setTimeout(() => void poll(), delay);
     };
 
-    const stopHiddenAlarmPulse = () => {
-      if (hiddenAlarmTimer !== null) {
-        window.clearInterval(hiddenAlarmTimer);
-        hiddenAlarmTimer = null;
-      }
-    };
+    const poll = async () => {
+      if (!active) return;
 
-    const pulseHiddenAlarms = async () => {
-      if (document.visibilityState === 'visible' || pulsingAlarms) return;
-      pulsingAlarms = true;
+      controller?.abort();
+      const nextController = new AbortController();
+      controller = nextController;
+      const hidden = document.visibilityState !== 'visible';
+
       try {
-        const response = await fetch('/api/alarms/pulse', { cache: 'no-store' });
+        const response = await fetch(
+          hidden
+            ? '/api/notifications/stream?mode=alarm'
+            : '/api/notifications/stream',
+          {
+            cache: 'no-store',
+            signal: nextController.signal,
+          },
+        );
+
         if (response.status === 401) {
           window.location.assign('/login');
           return;
         }
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          dispatched: number;
-          snapshot?: NotificationFeedSnapshot;
-        };
-        if (payload.snapshot) applySnapshot(payload.snapshot, true);
-      } catch {
-        // El siguiente pulso reintenta; el feed normal reconciliará al volver.
+        if (!response.ok) throw new Error('No se pudieron actualizar las notificaciones.');
+
+        if (hidden) {
+          const payload = (await response.json()) as {
+            dispatched: number;
+            snapshot?: NotificationFeedSnapshot;
+          };
+          if (active && payload.snapshot) applySnapshot(payload.snapshot, true);
+        } else {
+          const snapshot = (await response.json()) as NotificationFeedSnapshot;
+          if (!active) return;
+          applySnapshot(snapshot, true);
+          setConnection('live');
+        }
+      } catch (error) {
+        const aborted =
+          typeof error === 'object' &&
+          error !== null &&
+          'name' in error &&
+          error.name === 'AbortError';
+        if (!aborted && active && document.visibilityState === 'visible') {
+          setConnection('reconnecting');
+        }
       } finally {
-        pulsingAlarms = false;
+        if (controller === nextController) controller = null;
+        scheduleNext();
       }
-    };
-
-    const startHiddenAlarmPulse = () => {
-      if (hiddenAlarmTimer !== null) return;
-      void pulseHiddenAlarms();
-      hiddenAlarmTimer = window.setInterval(
-        () => void pulseHiddenAlarms(),
-        HIDDEN_ALARM_PULSE_MS,
-      );
-    };
-
-    const connect = () => {
-      if (document.visibilityState !== 'visible' || source) return;
-      stopHiddenAlarmPulse();
-      setConnection('connecting');
-      const nextSource = new EventSource('/api/notifications/stream');
-      nextSource.onopen = () => setConnection('live');
-      nextSource.onerror = () => setConnection('reconnecting');
-      nextSource.addEventListener('notifications', onNotifications);
-      nextSource.addEventListener('stream-warning', onWarning);
-      source = nextSource;
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        stopHiddenAlarmPulse();
-        connect();
-      } else {
-        disconnect();
-        startHiddenAlarmPulse();
-      }
+      clearScheduled();
+      controller?.abort();
+      controller = null;
+      if (document.visibilityState === 'visible') setConnection('connecting');
+      void poll();
     };
 
-    if (document.visibilityState === 'visible') connect();
-    else startHiddenAlarmPulse();
+    void poll();
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      active = false;
+      clearScheduled();
+      controller?.abort();
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      stopHiddenAlarmPulse();
-      disconnect();
     };
   }, [applySnapshot]);
 
@@ -274,8 +272,8 @@ export function NotificationCenter({
 
   /*
    * Conserva la política existente de sesión: sólo renueva si la pestaña está
-   * visible y hubo actividad humana reciente. El stream no mantiene viva una
-   * sesión abandonada por sí solo.
+   * visible y hubo actividad humana reciente. La sincronización no mantiene viva una
+   * sesión abandonada por sí sola.
    */
   useEffect(() => {
     const keepAlive = async () => {
@@ -354,7 +352,7 @@ export function NotificationCenter({
         const snapshot = (await response.json()) as NotificationFeedSnapshot;
         applySnapshot(snapshot, false);
       } catch {
-        // El stream reconciliará el estado real en el siguiente snapshot.
+        // La siguiente sincronización reconciliará el estado real.
       }
     },
     [applySnapshot],
@@ -598,7 +596,7 @@ export function NotificationCenter({
                   {connection === 'live' ? (
                     <>
                       <Wifi className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                      <span>En tiempo real</span>
+                      <span>Sincronizado</span>
                     </>
                   ) : (
                     <>

@@ -20,33 +20,38 @@ describe('auditoría UX operativa 1.10.10', () => {
     expect(form).toContain('name="collaboratorIds"');
   });
 
-  it('un comunicado obligatorio puede aparecer en vivo y queda sobre el chat', () => {
+  it('un comunicado obligatorio puede aparecer por sincronización y queda sobre el chat', () => {
     const feed = readFileSync('src/server/services/notification-feed.ts', 'utf8');
     const stream = readFileSync('src/app/api/notifications/stream/route.ts', 'utf8');
     const center = readFileSync('src/components/layout/notification-center.tsx', 'utf8');
     const gate = readFileSync('src/components/operational/announcement-gate.tsx', 'utf8');
 
     expect(feed).toContain('blockingAnnouncementIds');
-    expect(stream).toContain('snapshot.blockingAnnouncementIds');
+    expect(stream).toContain('getNotificationFeedForUser(user.id)');
+    expect(center).toContain('snapshot.blockingAnnouncementIds');
     expect(center).toContain('router.refresh()');
     expect(gate).toContain('z-[200]');
   });
 
-  it('Chat usa su stream propio sin duplicar bootstrap desde notificaciones', () => {
+  it('Chat usa su endpoint de versión sin duplicar bootstrap desde notificaciones', () => {
     const chat = readFileSync('src/components/layout/chat-widget.tsx', 'utf8');
-    expect(chat).toContain("new EventSource('/api/chat/stream')");
+    expect(chat).toContain("requestJson<{ version: string }>('/api/chat/stream'");
+    expect(chat).not.toContain("new EventSource('/api/chat/stream')");
     expect(chat).not.toContain("addEventListener('libro:notification-feed'");
   });
 
-  it('Chat reduce comprobaciones y cierra el stream en pestañas ocultas', () => {
+  it('Chat usa peticiones cortas, baja frecuencia en segundo plano lógico y pausa al ocultarse', () => {
     const chat = readFileSync('src/components/layout/chat-widget.tsx', 'utf8');
     const stream = readFileSync('src/app/api/chat/stream/route.ts', 'utf8');
-    expect(stream).toContain('const CHECK_MS = 10_000;');
-    expect(stream).toContain('const PRESENCE_TOUCH_MS = 90_000;');
-    expect(stream).not.toContain('const CHECK_MS = 1_500;');
+    expect(chat).toContain('const CHAT_POLL_OPEN_MS = 8_000;');
+    expect(chat).toContain('const CHAT_POLL_CLOSED_MS = 30_000;');
     expect(chat).toContain("document.visibilityState !== 'visible'");
     expect(chat).toContain("document.addEventListener('visibilitychange'");
-    expect(chat).toContain('disconnect();');
+    expect(stream).toContain('getChatGlobalVersion(user)');
+    expect(stream).toContain('touchChatPresence(user)');
+    expect(stream).not.toContain('ReadableStream');
+    expect(stream).not.toContain('setInterval');
+    expect(stream).not.toContain('maxDuration');
   });
 
   it('SubmitButton mantiene disabled durante pending aunque reciba disabled=false', () => {

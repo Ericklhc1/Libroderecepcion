@@ -662,6 +662,9 @@ model Shift {
   emergencySourceShiftId     String?
   /// Momento en que quien abrió aceptó expresamente las condiciones de emergencia.
   emergencyAcknowledgedAt    DateTime?
+  /// Momento en que desapareció la condición que justificaba la emergencia.
+  /// Desde aquí el turno continúa como un turno normal, conservando la traza de origen.
+  emergencyResolvedAt        DateTime?
   /// Turno retirado de las listas operativas sin borrarlo.
   ///
   /// Distinto de ANULADO: anular es «este turno no se va a usar»; archivar es

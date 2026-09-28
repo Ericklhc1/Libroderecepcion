@@ -849,6 +849,8 @@ model SupervisionAuditImport {
   checks             Json
   findings           Json
   warnings           String[]         @default([])
+  /// Estado operativo de revisión sobre la evidencia importada. No altera lo que decía el PDF.
+  reviewState        Json             @default("{}")
   /// Huellas técnicas de los PDF procesados. No contiene el archivo ni texto extraído.
   sourceFiles        Json             @default("[]")
   createdAt          DateTime         @default(now())

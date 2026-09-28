@@ -80,6 +80,15 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.2 · alivio de capacidad Vercel
+
+- Hotfix P0 sin migración ni cambios de datos: reduce el consumo de Fluid Active CPU causado por los streams permanentes de Chat y Notificaciones.
+- Notificaciones pasa de comprobar cambios cada 2 s a cada 15 s.
+- Chat pasa de comprobar cambios cada 1,5 s a cada 10 s y la escritura de presencia pasa de 45 s a 90 s.
+- Ambos EventSource se desconectan cuando la pestaña queda oculta y vuelven a conectar al regresar a primer plano.
+- Se añadieron regresiones específicas para impedir que reaparezcan los intervalos agresivos.
+- Release sin migración: **v1.19.2**.
+
 ## Actualización 27/09/2026 · Libro 1.19.1 · sincronización de contexto
 
 - Patch sin cambios funcionales: sincroniza la documentación canónica con la recepción guiada y el ciclo de emergencia publicados en 1.19.0.

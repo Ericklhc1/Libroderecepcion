@@ -345,6 +345,25 @@ export function AddShiftMemberForm({
   );
 }
 
+/** Permite a una persona operativa incorporarse al turno vigente sin abrir otro. */
+export function JoinShiftForm({
+  shiftId,
+  userId,
+}: {
+  shiftId: string;
+  userId: string;
+}) {
+  return (
+    <ActionForm action={addShiftMemberAction} hideSuccess refreshOnSuccess className="space-y-0">
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <input type="hidden" name="userId" value={userId} />
+      <SubmitButton variant="gold" pendingLabel="Sumándote al turno…">
+        SUMARME AL TURNO VIGENTE
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function StartReceptionShiftForm({
   handoverId,
   suggestedType,

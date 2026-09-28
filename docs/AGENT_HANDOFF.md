@@ -1,5 +1,20 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
+
+- Corrige la regresión detectada después del hotfix de capacidad 1.19.2: una pestaña oculta ya no pierde el despacho oportuno de timers/recordatorios.
+- El stream pesado continúa apagado en segundo plano; un pulso dedicado consulta sólo alarmas cada 30 s y carga el feed únicamente cuando realmente despacha alguna.
+- No revierte el ahorro de Chat/Notificaciones de 1.19.2.
+- Sin migración ni cambios de negocio. Release: **v1.19.3**.
+
+## Actualización 27/09/2026 · Libro 1.19.2 · alivio de capacidad Vercel
+
+- Notificaciones: comprobación 2 s → 15 s.
+- Chat: comprobación 1,5 s → 10 s; presencia 45 s → 90 s.
+- Chat y feed general de Notificaciones se suspenden en pestañas ocultas.
+- Motivo: alerta de Vercel al 90% de Fluid Active CPU incluido.
+- Sin migración. Release: **v1.19.2**.
+
 ## Actualización 27/09/2026 · Libro 1.19.1 · sincronización canónica
 
 - Patch documental únicamente: actualiza `PROJECT_CONTEXT.md` y este relevo con el estado publicado en 1.19.0.
@@ -152,7 +167,7 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-27**.
-- Versión vigente en Production: **v1.19.1**.
+- Versión vigente en Production: **v1.19.3**.
 - Siguiente versión: definir según el próximo cambio aprobado.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.

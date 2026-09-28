@@ -26,6 +26,7 @@ import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 const KEEP_ALIVE_MS = 4 * 60_000;
 const RECENT_ACTIVITY_MS = 10 * 60_000;
+const HIDDEN_ALARM_PULSE_MS = 30_000;
 
 type ConnectionState = 'connecting' | 'live' | 'reconnecting';
 
@@ -160,6 +161,8 @@ export function NotificationCenter({
 
   useEffect(() => {
     let source: EventSource | null = null;
+    let hiddenAlarmTimer: number | null = null;
+    let pulsingAlarms = false;
 
     const onNotifications = (event: Event) => {
       try {
@@ -181,8 +184,47 @@ export function NotificationCenter({
       source = null;
     };
 
+    const stopHiddenAlarmPulse = () => {
+      if (hiddenAlarmTimer !== null) {
+        window.clearInterval(hiddenAlarmTimer);
+        hiddenAlarmTimer = null;
+      }
+    };
+
+    const pulseHiddenAlarms = async () => {
+      if (document.visibilityState === 'visible' || pulsingAlarms) return;
+      pulsingAlarms = true;
+      try {
+        const response = await fetch('/api/alarms/pulse', { cache: 'no-store' });
+        if (response.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          dispatched: number;
+          snapshot?: NotificationFeedSnapshot;
+        };
+        if (payload.snapshot) applySnapshot(payload.snapshot, true);
+      } catch {
+        // El siguiente pulso reintenta; el feed normal reconciliará al volver.
+      } finally {
+        pulsingAlarms = false;
+      }
+    };
+
+    const startHiddenAlarmPulse = () => {
+      if (hiddenAlarmTimer !== null) return;
+      void pulseHiddenAlarms();
+      hiddenAlarmTimer = window.setInterval(
+        () => void pulseHiddenAlarms(),
+        HIDDEN_ALARM_PULSE_MS,
+      );
+    };
+
     const connect = () => {
       if (document.visibilityState !== 'visible' || source) return;
+      stopHiddenAlarmPulse();
       setConnection('connecting');
       const nextSource = new EventSource('/api/notifications/stream');
       nextSource.onopen = () => setConnection('live');
@@ -194,17 +236,21 @@ export function NotificationCenter({
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        stopHiddenAlarmPulse();
         connect();
       } else {
         disconnect();
+        startHiddenAlarmPulse();
       }
     };
 
-    connect();
+    if (document.visibilityState === 'visible') connect();
+    else startHiddenAlarmPulse();
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      stopHiddenAlarmPulse();
       disconnect();
     };
   }, [applySnapshot]);

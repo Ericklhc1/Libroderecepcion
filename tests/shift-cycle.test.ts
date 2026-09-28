@@ -13,15 +13,39 @@ import {
   cancelHandoverPreparation,
   closeShift,
   confirmHandoverReviewStep,
+  confirmReceptionReviewStep,
   getPendingHandover,
   getMyOpenShift,
   openShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
+  startReceptionShift,
 } from '@/server/services/shifts';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
+
+async function receiveGuidedHandover(
+  user: CurrentUser,
+  handoverId: string,
+  type: ShiftType = ShiftType.DIA,
+  observations?: string,
+) {
+  const shift = await startReceptionShift(user, { handoverId, type });
+  expect(shift.status).toBe(ShiftStatus.INICIADO);
+  await confirmReceptionReviewStep(user, { handoverId, step: 'BRIEFING' });
+  await confirmReceptionReviewStep(user, { handoverId, step: 'CUSTODY' });
+  const urgentCount = await prisma.handoverItem.count({
+    where: { handoverId, level: 'URGENTE' },
+  });
+  await confirmReceptionReviewStep(user, {
+    handoverId,
+    step: 'FINAL',
+    urgentAcknowledged: urgentCount > 0,
+  });
+  await receiveHandover(user, { handoverId, observations });
+  return prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+}
 
 async function sendReviewedHandover(
   user: CurrentUser,
@@ -105,11 +129,13 @@ describe('ciclo de turno de punta a punta', () => {
     const incoming = await getPendingHandover();
     expect(incoming?.id).toBe(sent.id);
 
-    await receiveHandover(evening, {
-      handoverId: sent.id,
-      observations: 'Recibido conforme.',
-    });
-    const startedB = await openShiftAs(evening, shiftB);
+    const startedB = await receiveGuidedHandover(
+      evening,
+      sent.id,
+      ShiftType.DIA,
+      'Recibido conforme.',
+    );
+    expect(startedB.id).toBe(shiftB.id);
     expect(startedB.status).toBe(ShiftStatus.ACTIVO);
 
     const confirmed = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: sent.id } });
@@ -288,6 +314,7 @@ describe('invariantes del turno', () => {
     });
     expect(parked.status).toBe(ShiftStatus.ENTREGA_ENVIADA);
     expect(parked.handoverOut?.status).toBe(HandoverStatus.ENVIADA);
+    expect(parked.handoverOut?.toShiftId).toBe(result.shift.id);
     expect(parked.assignments.every((assignment) => assignment.leftAt !== null)).toBe(true);
 
     const alert = await prisma.alert.findUnique({
@@ -319,7 +346,7 @@ describe('invariantes del turno', () => {
     const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
 
-    await receiveHandover(evening, { handoverId: sent.id });
+    await receiveGuidedHandover(evening, sent.id);
     await expect(
       receiveHandover(evening, { handoverId: sent.id }),
     ).rejects.toThrow(/ya fue recibida/);
@@ -468,7 +495,7 @@ describe('invariantes del turno', () => {
     expect(closed.status).toBe(ShiftStatus.CERRADO);
 
     await expect(openShiftAs(evening, shiftB)).rejects.toThrow(/pendiente de recepción/i);
-    await receiveHandover(evening, { handoverId: sent.id });
+    await receiveGuidedHandover(evening, sent.id);
     await openShiftAs(evening, shiftB);
 
     const task = await prisma.task.findFirst({
@@ -505,7 +532,7 @@ describe('invariantes del turno', () => {
     await closeShift(morning, { shiftId: shiftA.id });
     expect(await getMyOpenShift(morning.id)).toBeNull();
 
-    await receiveHandover(evening, { handoverId: sent.id });
+    await receiveGuidedHandover(evening, sent.id);
     await openShiftAs(evening, shiftB);
   });
 
@@ -517,7 +544,7 @@ describe('invariantes del turno', () => {
     await prepareHandover(morning, shiftA.id);
     const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
-    await receiveHandover(evening, { handoverId: sent.id });
+    await receiveGuidedHandover(evening, sent.id);
     await openShiftAs(evening, shiftB);
 
     const actions = await prisma.auditLog.findMany({

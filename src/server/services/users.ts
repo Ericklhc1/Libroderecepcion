@@ -28,6 +28,38 @@ export async function listOperationalUsers() {
   });
 }
 
+/**
+ * Valida específicamente participación en turnos de Recepción.
+ *
+ * `operational` significa que alguien puede recibir tareas o seguimientos;
+ * no implica que pertenezca al mesón. La capacidad de turno la determina
+ * `shift.start`.
+ */
+export async function assertShiftAssignable(userId: string): Promise<void> {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: {
+      active: true,
+      name: true,
+      roleId: true,
+      role: { select: { operational: true, name: true } },
+    },
+  });
+  if (!user) throw new RuleError('El usuario indicado no existe.');
+  if (!user.active) throw new RuleError(`${user.name} está inactivo y no puede participar en turnos.`);
+  if (!user.role.operational) {
+    throw new RuleError(`${user.name} tiene un rol que no participa en la operación de turnos.`);
+  }
+  const canStartShift = await prisma.rolePermission.count({
+    where: { roleId: user.roleId, permission: { key: 'shift.start' } },
+  });
+  if (canStartShift === 0) {
+    throw new RuleError(
+      `${user.name} puede recibir responsabilidades operativas, pero su rol no participa en turnos de Recepción.`,
+    );
+  }
+}
+
 /** Valida que un usuario pueda recibir responsabilidad operativa. */
 export async function assertAssignable(userId: string): Promise<void> {
   const user = await prisma.user.findFirst({

@@ -18,7 +18,7 @@ function escapePdf(value: string): string {
   return latin(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
-function wrapLine(value: string, width = 94): string[] {
+function wrapLine(value: string, width = 112): string[] {
   const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
   if (words.length === 0) return [''];
   const lines: string[] = [];
@@ -43,7 +43,7 @@ export function createTextPdf(params: {
 }): Buffer {
   const generatedAt = params.generatedAt ?? new Date();
   const body = params.lines.flatMap((line) => wrapLine(line));
-  const pageSize = 47;
+  const pageSize = 56;
   const pages: string[][] = [];
   for (let index = 0; index < Math.max(body.length, 1); index += pageSize) {
     pages.push(body.slice(index, index + pageSize));
@@ -72,15 +72,15 @@ export function createTextPdf(params: {
       `Generado: ${generatedAt.toLocaleString('es-CL', { timeZone: 'America/Santiago' })} · Página ${pageIndex + 1}/${pages.length}`,
     ].filter(Boolean);
     const commands: string[] = [];
-    let y = 752;
+    let y = 764;
     header.forEach((line, index) => {
-      commands.push(`BT /F1 ${index === 0 ? 15 : 9} Tf 42 ${y} Td (${escapePdf(line)}) Tj ET`);
-      y -= index === 0 ? 22 : 16;
+      commands.push(`BT /F1 ${index === 0 ? 13 : 8} Tf 30 ${y} Td (${escapePdf(line)}) Tj ET`);
+      y -= index === 0 ? 18 : 13;
     });
-    y -= 5;
+    y -= 3;
     for (const line of pageLines) {
-      commands.push(`BT /F1 9 Tf 42 ${y} Td (${escapePdf(line)}) Tj ET`);
-      y -= 14;
+      commands.push(`BT /F1 8 Tf 30 ${y} Td (${escapePdf(line)}) Tj ET`);
+      y -= 11;
     }
     const stream = commands.join('\n');
     objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;

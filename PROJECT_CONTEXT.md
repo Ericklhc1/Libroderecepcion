@@ -41,6 +41,7 @@ El núcleo operativo se organiza por trabajo concreto, no por entidades del PMS:
 | `/` Inicio | ¿Qué exige atención ahora? |
 | `/turno` Mi turno | ¿En qué estado está mi relevo y qué debo entregar? |
 | `/libro?clase=entry` Novedades | ¿Qué ocurrió y qué queda pendiente? |
+| `/central-reservas` Central de Reservas | ¿Qué debe quedar preparado o resuelto antes de la llegada? |
 | `/caja` Caja | ¿Qué dinero entró, salió o debe corroborarse? |
 | `/llaves` Llaves | ¿Dónde está cada llave física y qué arrojó el último inventario? |
 | `/supervision` Supervisión | ¿Qué requiere control, seguimiento o validación del Supervisor? |
@@ -50,11 +51,11 @@ turno, cuatro indicadores accionables y una única bandeja priorizada construida
 por reglas determinísticas. No vuelve a listar por separado tareas, incidencias,
 alertas, seguimientos, novedades y entregas.
 
-`/reservas`, `/habitaciones` y la importación PMS son legado aislable:
-pueden conservar datos y rutas históricas mientras existan consumidores, pero
-no forman parte de la navegación operativa ni conceden capacidades PMS a
-Recepción, Auditor nocturno o Supervisor. Habitación y huésped pueden seguir
-apareciendo como referencias opcionales.
+`/reservas`, `/habitaciones` y la importación PMS conservan rutas y datos
+históricos/operativos, pero no convierten al Libro en un PMS. La excepción
+deliberada es `/central-reservas`: una bandeja de trabajo que proyecta
+`ReservationReference` y señales ya existentes para preparar la operación;
+no mantiene inventario comercial paralelo ni sustituye la fuente PMS.
 
 **Decisión que no se revierte:** tareas, incidencias, alertas y seguimientos
 **no son módulos del menú**. Son clases de un mismo flujo y se consultan desde
@@ -79,6 +80,15 @@ concede ni revoca permisos.
 El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
+
+## Actualización 28/09/2026 · Libro 1.22.0 · Central de Reservas, Gerencia y correo individual
+
+- Rol `CENTRAL_RESERVAS`: gestiona referencias de reserva y continuidad asociada, sin turno/Caja/llaves.
+- `/central-reservas` organiza próximas llegadas, pendientes, garantías/saldos y cambios sobre modelos ya existentes; no es un PMS.
+- Gerencia puede dirigir acciones, seguimientos y comunicados desde Supervisión, con lectura transversal, pero permanece fuera de la operación rutinaria del mesón.
+- `User.email` es opcional, no único y no participa del login. `emailNotificationsEnabled` controla el canal externo.
+- El correo de novedades usa la outbox existente; Chat y alarmas no generan correo.
+- Migración: `20260928213000_central_reservas_gerencia_correo_usuario`. Release: **v1.22.0**.
 
 ## Actualización 28/09/2026 · Libro 1.20.0 · auditorías accionables, arqueos imprimibles y servicios
 

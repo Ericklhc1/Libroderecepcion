@@ -1041,7 +1041,7 @@ export async function applyImport(
           roomId: room.id,
           arrivalDate: descriptive.arrivalDate,
           departureDate: descriptive.departureDate,
-          businessDate,
+          businessDate: rowBusinessDate,
           status: draft.status as StayStatus,
           stage,
           roomMove: false,

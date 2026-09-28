@@ -124,15 +124,18 @@ export default async function CentralReservationsPage({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ['Requieren acción', counts.attention, 'accion', ShieldAlert],
-          ['Llegadas ≤ 24 h', counts.next24, '24h', CalendarClock],
-          ['Llegadas ≤ 72 h', counts.next72, '72h', ClipboardList],
-          ['Cambios últimas 24 h', counts.recent, 'recientes', CheckCircle2],
-        ].map(([label, count, value, Icon]) => (
-          <Link key={String(value)} href={filterHref(String(value))}>
+          { label: 'Requieren acción', count: counts.attention, value: 'accion', Icon: ShieldAlert },
+          { label: 'Llegadas ≤ 24 h', count: counts.next24, value: '24h', Icon: CalendarClock },
+          { label: 'Llegadas ≤ 72 h', count: counts.next72, value: '72h', Icon: ClipboardList },
+          { label: 'Cambios últimas 24 h', count: counts.recent, value: 'recientes', Icon: CheckCircle2 },
+        ].map(({ label, count, value, Icon }) => (
+          <Link key={value} href={filterHref(value)}>
             <Card className={view === value ? 'ring-2 ring-petrol-500' : ''}>
               <div className="flex items-center justify-between p-4">
-                <div><p className="text-xs text-slate-500">{String(label)}</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{String(count)}</p></div>
+                <div>
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{count}</p>
+                </div>
                 <Icon className="h-5 w-5 text-petrol-600" aria-hidden="true" />
               </div>
             </Card>

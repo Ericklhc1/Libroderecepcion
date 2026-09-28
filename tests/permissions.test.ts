@@ -140,6 +140,77 @@ describe('matriz de roles y permisos', () => {
     expect(hasPermission(auditor, 'shift.close')).toBe(true);
   });
 
+  it('Central de Reservas prepara reservas sin operar el mesón', async () => {
+    const reservations = await createUser({ roleKey: ROLE_KEYS.RESERVATIONS_CENTER });
+
+    for (const permission of [
+      'reservation.center.view',
+      'guest.view',
+      'guest.manage',
+      'entry.create',
+      'task.create',
+      'task.assign',
+      'followup.create',
+      'followup.manage',
+      'alert.manage',
+    ] as PermissionKey[]) {
+      expect(hasPermission(reservations, permission)).toBe(true);
+    }
+
+    for (const permission of [
+      'shift.start',
+      'shift.receive',
+      'shift.handover',
+      'shift.close',
+      'cash.manual_in',
+      'cash.manual_out',
+      'key.assign',
+      'key.inventory',
+      'user.manage',
+      'role.manage',
+    ] as PermissionKey[]) {
+      expect(hasPermission(reservations, permission)).toBe(false);
+    }
+  });
+
+  it('Gerencia dirige y analiza sin convertirse en operador de Recepción', async () => {
+    const management = await createUser({ roleKey: ROLE_KEYS.MANAGEMENT });
+
+    for (const permission of [
+      'reservation.center.view',
+      'supervision.center.view',
+      'supervision.task.assign',
+      'supervision.followup.manage',
+      'supervision.performance.view',
+      'task.create',
+      'task.assign',
+      'followup.create',
+      'followup.manage',
+      'announcement.manage',
+      'audit.view',
+      'cash.view',
+    ] as PermissionKey[]) {
+      expect(hasPermission(management, permission)).toBe(true);
+    }
+
+    for (const permission of [
+      'shift.start',
+      'shift.receive',
+      'shift.handover',
+      'shift.close',
+      'cash.manual_in',
+      'cash.manual_out',
+      'cash.audit',
+      'key.assign',
+      'key.inventory',
+      'guest.manage',
+      'user.manage',
+      'role.manage',
+    ] as PermissionKey[]) {
+      expect(hasPermission(management, permission)).toBe(false);
+    }
+  });
+
   it('la matriz declarada coincide con la persistida', async () => {
     for (const [roleKey, permissions] of Object.entries(ROLE_PERMISSIONS)) {
       const role = await prisma.role.findUniqueOrThrow({

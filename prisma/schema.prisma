@@ -422,20 +422,20 @@ model RolePermission {
   @@index([permissionId])
 }
 
-/// Una cuenta del sistema: nombre, usuario y contraseña. Nada más.
+/// Una cuenta del sistema se identifica por `username`.
 ///
-/// **No tiene correo**, y es deliberado. Lo tuvo, y sobraba: en el hotel todo
-/// el mesón comparte la casilla de recepción, así que el correo no
-/// identificaba a nadie, no servía para entrar y sólo era un campo más que
-/// alguien tenía que inventar al crear una cuenta. La identidad es `username`.
-/// La casilla a la que se envían las credenciales es del HOTEL y vive en la
-/// configuración de correo, no en cada persona.
+/// El correo es un CANAL de comunicación individual, no una identidad ni una
+/// credencial de acceso. Puede repetirse si la organización comparte casillas,
+/// y cada persona puede desactivar los avisos externos sin afectar la campana
+/// interna del Libro.
 model User {
   id                 String      @id @default(cuid())
   /// Nombre de usuario corto, del estilo @EHerrera. Es la identidad de la
   /// cuenta: con esto se inicia sesión y esto decide qué permisos aplican.
   username           String      @unique
   name               String
+  email              String?
+  emailNotificationsEnabled Boolean @default(true)
   passwordHash       String
   roleId             String
   role               Role        @relation(fields: [roleId], references: [id])
@@ -550,6 +550,8 @@ model User {
   @@index([roleId])
   @@index([active])
   @@index([deletedAt])
+
+  @@index([email])
 }
 
 model Session {

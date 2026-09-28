@@ -330,17 +330,33 @@ export const userCreateSchema = z.object({
       'El usuario empieza con letra y usa entre 3 y 30 caracteres, sin espacios',
     )
     .optional(),
+  email: z
+    .string()
+    .trim()
+    .email('Ingresa un correo válido')
+    .max(254, 'El correo es demasiado largo')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   roleId: z.string().min(1, 'Selecciona un rol'),
   departmentId: zOptionalCuid,
   phone: zOptionalString,
+  emailNotificationsEnabled: zCheckbox,
 });
 
 export const userUpdateSchema = z.object({
   id: z.string().min(1),
   name: zRequiredString(120, 'El nombre'),
+  email: z
+    .string()
+    .trim()
+    .email('Ingresa un correo válido')
+    .max(254, 'El correo es demasiado largo')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   roleId: z.string().min(1),
   departmentId: zOptionalCuid,
   phone: zOptionalString,
+  emailNotificationsEnabled: zCheckbox,
   active: zCheckbox,
 });
 

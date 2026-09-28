@@ -8,8 +8,8 @@ import { normalizeUsername, suggestUsername } from '@/domain/username';
  * Credenciales de los usuarios nuevos.
  *
  * El sistema genera la clave —nadie la elige— y la envía al correo de
- * recepción. La clave en claro sólo existe el tiempo que dura la operación: no
- * se guarda en la base ni en la auditoría, que redacta ese campo.
+ * persona cuando tiene correo registrado; si no, usa la casilla de credenciales
+ * configurada para el hotel. La clave en claro sólo existe durante la operación.
  */
 
 // Sin caracteres que se confundan al dictar por teléfono: O/0, I/l/1.
@@ -79,15 +79,16 @@ export type CredentialDelivery = {
   reason: string | null;
 };
 
-/** Envía las credenciales al correo de recepción. */
+/** Envía las credenciales al correo individual o, como respaldo, al del hotel. */
 export async function deliverCredentials(input: {
   name: string;
   username: string;
   password: string;
   roleName: string;
   hotelName: string;
+  recipient?: string | null;
 }): Promise<CredentialDelivery> {
-  const recipient = await credentialsRecipient();
+  const recipient = input.recipient?.trim() || (await credentialsRecipient());
 
   const result = await sendMail({
     to: recipient,

@@ -53,11 +53,9 @@ export async function createUserAction(
     const input = parseOrThrow(userCreateSchema, formDataToObject(formData));
 
     /*
-      El correo NO se comprueba: puede repetirse a propósito. Varias cuentas
-      comparten la casilla de recepción y lo que distingue a cada una es su
-      nombre de usuario. Lo que sí se comprueba es ese usuario, cuando la
-      persona lo escribió a mano: si ya existe hay que decirlo, en vez de
-      entregar en silencio un «EHerrera2» que nadie pidió.
+      El correo es un canal de avisos y puede repetirse; la identidad sigue
+      siendo el nombre de usuario. Ese sí se comprueba sin distinguir
+      mayúsculas para evitar cuentas ambiguas.
     */
     if (input.username) {
       const taken = await prisma.user.findFirst({
@@ -87,6 +85,8 @@ export async function createUserAction(
       data: {
         name: input.name,
         username,
+        email: input.email ?? null,
+        emailNotificationsEnabled: input.emailNotificationsEnabled,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -102,6 +102,7 @@ export async function createUserAction(
       password,
       roleName: role.name,
       hotelName,
+      recipient: user.email,
     });
 
     await recordAudit({
@@ -114,7 +115,14 @@ export async function createUserAction(
           ? `Credenciales enviadas a ${delivery.recipient}.`
           : 'No se pudo enviar el correo con las credenciales.'),
       user: actor,
-      after: { name: user.name, username, roleId: role.id, role: role.name },
+      after: {
+        name: user.name,
+        username,
+        email: user.email,
+        emailNotificationsEnabled: user.emailNotificationsEnabled,
+        roleId: role.id,
+        role: role.name,
+      },
     });
 
     revalidatePath('/admin/usuarios');
@@ -168,6 +176,8 @@ export async function updateUserAction(
       where: { id: input.id },
       data: {
         name: input.name,
+        email: input.email ?? null,
+        emailNotificationsEnabled: input.emailNotificationsEnabled,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -185,12 +195,14 @@ export async function updateUserAction(
       current as unknown as Record<string, unknown>,
       {
         name: input.name,
+        email: input.email ?? null,
+        emailNotificationsEnabled: input.emailNotificationsEnabled,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
         active: input.active,
       },
-      ['name', 'roleId', 'departmentId', 'phone', 'active'],
+      ['name', 'email', 'emailNotificationsEnabled', 'roleId', 'departmentId', 'phone', 'active'],
     );
 
     await recordAudit({

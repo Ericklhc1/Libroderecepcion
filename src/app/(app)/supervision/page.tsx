@@ -139,7 +139,9 @@ export default async function SupervisionCenterPage({
   const period = parsePeriod(params);
   const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
   const canPerformance = hasPermission(user, 'supervision.performance.view');
-  const canAnnounce = isSupervisor && hasPermission(user, 'announcement.manage');
+  const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
+  const canFollow = hasPermission(user, 'supervision.followup.manage');
+  const canAnnounce = hasPermission(user, 'announcement.manage');
   const defaultAuditBusinessDate = calendarDateKey(addCalendarDateDays(hotelCalendarDate(), -1));
 
   const [center, review, options, announcements, operationalUsers, performance] = await Promise.all([
@@ -330,7 +332,7 @@ export default async function SupervisionCenterPage({
       <Card>
         <CardHeader title="Accesos rápidos" />
         <div className="flex flex-wrap gap-2 px-4 py-3 no-print">
-          {isSupervisor ? <Dialog title="Asignar tarea" trigger="Asignar tarea" triggerVariant="gold" width="lg">
+          {canAssignTasks ? <Dialog title="Asignar tarea" trigger="Asignar tarea" triggerVariant="gold" width="lg">
             <TaskForm action={createTaskAction} options={options} defaultAssigneeId={user.id} />
           </Dialog> : null}
           {isSupervisor ? <NewSupervisionNoteDialog /> : null}
@@ -446,7 +448,7 @@ export default async function SupervisionCenterPage({
           <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}
             block={block}
-            canFollow={isSupervisor}
+            canFollow={canFollow}
             followedSourceKeys={followedSourceKeys}
           />)}</div>
         </section>

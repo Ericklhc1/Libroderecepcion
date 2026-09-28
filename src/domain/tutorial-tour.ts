@@ -36,7 +36,8 @@ export function shouldNavigateTutorial(
  * Recorrido de producto v1.5.0.
  *
  * El Libro gira alrededor de Turnos + Novedades + Caja + Llaves + Avisos + Supervisión.
- * PMS, estadías y reservas quedan como contexto legado opcional.
+ * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
+ * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -68,6 +69,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cualquier habitación o referencia se escribe como contexto libre cuando aporta valor.',
     route: '/libro?clase=entry',
     target: ROUTE_TARGET,
+  },
+  {
+    id: 'central-reservas',
+    title: 'Central de Reservas',
+    description:
+      'Prepara llegadas, garantías, saldos y pendientes antes de que impacten al mesón. Trabaja sobre referencias ya existentes y deriva continuidad a tareas, alertas o seguimientos.',
+    route: '/central-reservas',
+    target: ROUTE_TARGET,
+    anyOf: ['reservation.center.view'],
   },
   {
     id: 'caja',

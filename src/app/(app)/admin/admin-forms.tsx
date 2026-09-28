@@ -60,17 +60,19 @@ export function CreateUserDialog({
             onChange={(event) => setSuggested(suggestUsername(event.target.value))}
           />
         </Field>
-        {/*
-          Una cuenta es nombre, usuario y contraseña. El correo se quitó: en el
-          mesón nadie usaba el suyo, no servía para entrar y era un campo más
-          que alguien tenía que inventar. La clave la genera el sistema.
-        */}
         <Field
           label="Usuario"
           name="username"
           hint={suggested ? `Si lo dejas vacío será @${suggested}.` : 'Se propone a partir del nombre.'}
         >
           <Input name="username" placeholder={suggested ? `@${suggested}` : '@EHerrera'} maxLength={30} />
+        </Field>
+        <Field
+          label="Correo"
+          name="email"
+          hint="Recibirá credenciales y novedades del Libro. No se usa para iniciar sesión."
+        >
+          <Input name="email" type="email" autoComplete="email" maxLength={254} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Rol" name="roleId" required>
@@ -83,9 +85,14 @@ export function CreateUserDialog({
         <Field label="Teléfono" name="phone">
           <Input name="phone" />
         </Field>
+        <Checkbox
+          name="emailNotificationsEnabled"
+          label="Enviar novedades del Libro por correo"
+          defaultChecked
+        />
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-          La clave la genera el sistema y se envía a <strong>{credentialsMailTo}</strong>. Nadie la
-          escribe aquí, y no queda guardada en claro en ninguna parte.
+          Si registras un correo, la clave temporal se envía allí. Sin correo, se usa la casilla
+          de respaldo <strong>{credentialsMailTo}</strong>. El usuario de acceso sigue siendo @usuario.
         </p>
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Creando…">Crear usuario y enviar clave</SubmitButton>
@@ -105,6 +112,8 @@ export function EditUserDialog({
     name: string;
     roleId: string;
     departmentId: string | null;
+    email: string | null;
+    emailNotificationsEnabled: boolean;
     phone: string | null;
     active: boolean;
   };
@@ -117,6 +126,19 @@ export function EditUserDialog({
         <input type="hidden" name="id" value={user.id} />
         <Field label="Nombre" name="name" required>
           <Input name="name" defaultValue={user.name} required maxLength={120} />
+        </Field>
+        <Field
+          label="Correo"
+          name="email"
+          hint="Canal individual para novedades; no cambia el usuario de acceso."
+        >
+          <Input
+            name="email"
+            type="email"
+            autoComplete="email"
+            defaultValue={user.email ?? ''}
+            maxLength={254}
+          />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
@@ -139,6 +161,11 @@ export function EditUserDialog({
         <Field label="Teléfono" name="phone">
           <Input name="phone" defaultValue={user.phone ?? ''} />
         </Field>
+        <Checkbox
+          name="emailNotificationsEnabled"
+          label="Enviar novedades del Libro por correo"
+          defaultChecked={user.emailNotificationsEnabled}
+        />
         <Checkbox name="active" label="Cuenta activa" defaultChecked={user.active} />
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>

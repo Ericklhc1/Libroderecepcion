@@ -12,18 +12,12 @@ import { allocateUsername } from '@/server/services/credentials';
 import { loginSchema } from '@/server/schemas';
 
 /**
- * La identidad de una cuenta es su nombre de usuario, y **es lo único que hay**.
+ * La identidad de una cuenta es su nombre de usuario.
  *
- * Decisión llevada hasta el final: primero el correo dejó de ser identificador
- * —en el hotel todo el mesón comparte la casilla de recepción, así que no
- * distinguía a nadie— y después se eliminó del modelo. Una cuenta es nombre,
- * usuario y contraseña. Un campo que no identifica, no sirve para entrar y hay
- * que inventar al crear la cuenta es un campo que sobra.
- *
- * Lo que estas pruebas fijan: que entrar dependa del usuario, que se acepte la
- * arroba y se ignoren las mayúsculas —en el mesón nadie recuerda cómo se
- * escribió—, y que no existan dos usuarios que sólo se diferencien en eso,
- * porque entonces entrar sería ambiguo.
+ * El correo puede existir como canal individual de avisos, pero no identifica
+ * la cuenta, no participa del login y puede repetirse. Lo que estas pruebas
+ * fijan es que entrar dependa sólo del usuario, que se acepte la arroba y se
+ * ignoren las mayúsculas, y que no existan dos usernames ambiguos.
  */
 describe('la identidad de la cuenta es el usuario', () => {
   beforeAll(async () => {
@@ -34,20 +28,21 @@ describe('la identidad de la cuenta es el usuario', () => {
     await resetOperationalData();
   });
 
-  /*
-    La cuenta no tiene correo. Se comprueba en el ESQUEMA y no sólo en la
-    interfaz: si alguien volviera a agregar la columna, un formulario podría
-    empezar a pedirlo otra vez sin que nadie lo notara.
-  */
-  it('una cuenta es nombre, usuario y contraseña: no hay correo', async () => {
+  it('el correo existe sólo como canal opcional y no altera la identidad', async () => {
     const user = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,
       name: 'Erick Herrera',
       username: 'EHerrera',
     });
 
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email: 'recepcion@hoteleshw.com', emailNotificationsEnabled: true },
+    });
+
     const fila = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    expect(Object.keys(fila)).not.toContain('email');
+    expect(fila.email).toBe('recepcion@hoteleshw.com');
+    expect(fila.emailNotificationsEnabled).toBe(true);
     expect(fila.name).toBe('Erick Herrera');
     expect(fila.username).toBe('EHerrera');
   });
@@ -87,14 +82,29 @@ describe('la identidad de la cuenta es el usuario', () => {
     }
   });
 
-  it('un correo no sirve para entrar', async () => {
-    await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, username: 'EHerrera' });
+  it('un correo no sirve para entrar aunque esté registrado en la cuenta', async () => {
+    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, username: 'EHerrera' });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email: 'recepcion@hoteleshw.com' },
+    });
 
-    // Quien lo intente recibe el mismo mensaje que con cualquier usuario que
-    // no existe: no se revela si la cuenta está o no.
     await expect(
       authenticate({ username: 'recepcion@hoteleshw.com', password: TEST_PASSWORD }),
     ).rejects.toThrow('Usuario o contraseña incorrectos.');
+  });
+
+  it('dos cuentas pueden compartir correo sin volver ambiguo el login', async () => {
+    const uno = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, username: 'EHerrera' });
+    const dos = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, username: 'MSoto' });
+    await prisma.user.updateMany({
+      where: { id: { in: [uno.id, dos.id] } },
+      data: { email: 'recepcion@hoteleshw.com' },
+    });
+
+    expect(
+      await prisma.user.count({ where: { email: 'recepcion@hoteleshw.com' } }),
+    ).toBe(2);
   });
 
   it('no se puede crear un usuario que sólo cambie en las mayúsculas', async () => {

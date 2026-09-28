@@ -446,25 +446,56 @@ export default async function HandoverPage({
         </Card>
       ) : canFinalizeClose ? (
         <Card className="no-print">
-          <CardHeader title="Cierre guiado · paso 5 de 5" />
+          <CardHeader
+            title={
+              closeStepOneReady
+                ? 'Cierre de turno · paso final'
+                : 'Cierre excepcional · completar Caja y custodia'
+            }
+          />
           <div className="space-y-3 px-4 py-4">
-            <div className="grid gap-2 sm:grid-cols-5">
-              {['Caja y custodia', 'Pendientes', 'Revisión final', 'Entrega enviada'].map((label, index) => (
-                <div key={label} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
-                  ✓ {index + 1} · {label}
-                </div>
-              ))}
-              <div className="rounded-lg bg-gold-50 px-3 py-2 text-xs font-semibold text-petrol-950 ring-1 ring-gold-300">
-                5 · Cerrar turno
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div
+                className={`rounded-lg px-3 py-2 text-xs ring-1 ${
+                  closeStepOneReady
+                    ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                    : 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
+                }`}
+              >
+                {closeStepOneReady ? '✓' : '1'} · Caja y custodia
+              </div>
+              <div
+                className={`rounded-lg px-3 py-2 text-xs ring-1 ${
+                  closeStepOneReady
+                    ? 'bg-gold-50 font-semibold text-petrol-950 ring-gold-300'
+                    : 'bg-slate-50 text-slate-500 ring-slate-200'
+                }`}
+              >
+                2 · Cerrar turno
               </div>
             </div>
-            <div>
-              <p className="font-semibold text-petrol-950">La entrega ya fue enviada</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Ya no puedes cancelar el cierre. Sólo falta cerrar formalmente tu turno para terminar tu responsabilidad operativa.
-              </p>
-            </div>
-            <CloseShiftForm shiftId={handover.fromShiftId} />
+            {closeStepOneReady ? (
+              <>
+                <div>
+                  <p className="font-semibold text-petrol-950">La entrega ya fue enviada</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">
+                    Caja y custodia ya están formalizadas. Cierra tu turno para terminar tu
+                    responsabilidad. La revisión de Supervisión será posterior y no bloquea el relevo.
+                  </p>
+                </div>
+                <CloseShiftForm shiftId={handover.fromShiftId} />
+              </>
+            ) : (
+              <div>
+                <p className="font-semibold text-petrol-950">
+                  La continuidad comenzó antes de terminar este cierre
+                </p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  Completa ahora el arqueo, valida las garantías y declara la custodia real del
+                  turno saliente. El Libro no reconstruirá esos valores automáticamente.
+                </p>
+              </div>
+            )}
           </div>
         </Card>
       ) : null}

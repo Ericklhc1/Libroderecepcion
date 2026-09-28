@@ -84,6 +84,15 @@ export function NotificationCenter({
   );
   const lastActivityAt = useRef(Date.now());
   const lastKeepAliveAt = useRef(0);
+  const activeAlarmIdRef = useRef<string | null>(
+    initialSnapshot.items.find(
+      (item) =>
+        item.type === 'ALARMA' &&
+        !item.readAt &&
+        item.entity === 'OperationalAlarmRecipient' &&
+        Boolean(item.entityId),
+    )?.id ?? null,
+  );
 
   useEffect(() => {
     mutedRef.current = muted;
@@ -128,6 +137,15 @@ export function NotificationCenter({
         : [];
 
       for (const item of snapshot.items) knownIds.current.add(item.id);
+
+      activeAlarmIdRef.current =
+        snapshot.items.find(
+          (item) =>
+            item.type === 'ALARMA' &&
+            !item.readAt &&
+            item.entity === 'OperationalAlarmRecipient' &&
+            Boolean(item.entityId),
+        )?.id ?? null;
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);
@@ -195,7 +213,11 @@ export function NotificationCenter({
       if (document.visibilityState === 'visible' || pulsingAlarms) return;
       pulsingAlarms = true;
       try {
-        const response = await fetch('/api/alarms/pulse', { cache: 'no-store' });
+        const knownAlarmId = activeAlarmIdRef.current ?? '';
+        const response = await fetch(
+          `/api/alarms/pulse?knownAlarmId=${encodeURIComponent(knownAlarmId)}`,
+          { cache: 'no-store' },
+        );
         if (response.status === 401) {
           window.location.assign('/login');
           return;
@@ -203,6 +225,7 @@ export function NotificationCenter({
         if (!response.ok) return;
         const payload = (await response.json()) as {
           dispatched: number;
+          activeAlarmId: string | null;
           snapshot?: NotificationFeedSnapshot;
         };
         if (payload.snapshot) applySnapshot(payload.snapshot, true);

@@ -1,5 +1,11 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.4 · reconciliación de alarmas
+
+- Corrige las carreras entre pestañas del pulso de 1.19.3 mediante reconciliación por ID de alarma conocida por cada pestaña.
+- El feed completo sólo se carga cuando la alarma activa del servidor difiere de la conocida por ese cliente; esto propaga altas, reconocimientos, posposiciones y cancelaciones sin refetch continuo.
+- Sin migración. Release: **v1.19.4**.
+
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
 
 - Corrige la regresión detectada después del hotfix de capacidad 1.19.2: una pestaña oculta ya no pierde el despacho oportuno de timers/recordatorios.
@@ -167,7 +173,7 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-27**.
-- Versión vigente en Production: **v1.19.3**.
+- Versión vigente en Production: **v1.19.4**.
 - Siguiente versión: definir según el próximo cambio aprobado.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.

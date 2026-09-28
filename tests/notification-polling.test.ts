@@ -30,11 +30,14 @@ describe('notificaciones realtime resistentes a deployments', () => {
   it('mantiene alarmas con un pulso oculto de bajo costo', () => {
     const pulse = readFileSync('src/app/api/alarms/pulse/route.ts', 'utf-8');
     expect(center).toContain('const HIDDEN_ALARM_PULSE_MS = 30_000;');
-    expect(center).toContain("fetch('/api/alarms/pulse'");
+    expect(center).toContain('/api/alarms/pulse?knownAlarmId=');
     expect(center).toContain('startHiddenAlarmPulse();');
     expect(pulse).toContain('dispatchDueAlarmsForUser(user.id');
-    expect(pulse).toContain('if (dispatched === 0)');
+    expect(pulse).toContain("searchParams.get('knownAlarmId')");
+    expect(pulse).toContain('getUnreadOperationalAlarmNotificationId(user.id)');
+    expect(pulse).toContain('if (activeAlarmId === knownAlarmId)');
     expect(pulse).toContain('getNotificationFeedForUser(user.id)');
+    expect(center).toContain('activeAlarmIdRef.current');
   });
 
   it('el stream es dinámico, SSE, no-cache y exige sesión válida', () => {

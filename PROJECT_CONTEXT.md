@@ -80,6 +80,13 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.4 · reconciliación de alarmas
+
+- El pulso oculto no asume que `dispatched === 0` significa que el cliente está sincronizado.
+- Cada pestaña informa el ID de la alarma activa que ya conoce. El pulso compara esa identidad con la ALARMA no leída vigente del servidor.
+- El snapshot completo sólo se devuelve cuando la identidad cambia: alarma nueva, alarma atendida/pospuesta/cancelada en otra pestaña o cambio a otra alarma pendiente. Si nada cambió, la respuesta sigue siendo mínima.
+- Sin migración ni cambios de negocio. Release: **v1.19.4**.
+
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
 
 - Mantiene el alivio de capacidad de 1.19.2 y corrige la regresión de alarmas cuando la pestaña del Libro está oculta.

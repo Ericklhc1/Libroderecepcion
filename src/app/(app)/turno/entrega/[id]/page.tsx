@@ -16,6 +16,7 @@ import {
   CancelPreparationForm,
   CloseShiftForm,
   ConfirmHandoverReviewStepForm,
+  ConfirmReceptionReviewStepForm,
   ReceiveHandoverForm,
   SendHandoverForm,
 } from '@/components/operational/shift-actions';
@@ -90,16 +91,19 @@ export default async function HandoverPage({
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
-  const canReceive = Boolean(
+  const receptionInProgress = Boolean(
     handover.status === HandoverStatus.ENVIADA &&
       handover.fromShift.status === ShiftStatus.CERRADO &&
+      handover.toShift &&
+      linkedReceiver &&
       !isIssuer &&
-      user.permissions.includes('shift.receive'),
+      user.permissions.includes('shift.receive') &&
+      [ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status),
   );
+  const canReceive = receptionInProgress;
   const isReceiver =
     linkedReceiver ||
-    handover.receivedBy?.id === user.id ||
-    canReceive;
+    handover.receivedBy?.id === user.id;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
   const canFinalizeClose = Boolean(
@@ -109,44 +113,51 @@ export default async function HandoverPage({
   );
   const requestedCloseStep = Number(query.paso ?? '1');
 
-  /*
-    La entrega cerrada existe por sí sola en la bandeja. El receptor puede
-    recontar Caja y confirmar la recepción sin crear todavía su propio turno.
-    Ese turno se enlaza recién al abrirse después de completar el relevo.
-  */
-  const canReceiveCash = Boolean(
-    canReceive &&
-      cashState.declared &&
-      !cashState.confirmed,
+  const cashReadyForReception = !cashState.enabled || Boolean(cashState.confirmed);
+  const pendingReceptionElements = cashState.elements.filter(
+    (element) => element.declared && !element.confirmed,
   );
-  const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
-    ? 'emisor'
-    : canReceiveCash
-      ? 'receptor'
-      : 'lector';
-
-  const receivedByMeWithoutNextShift = Boolean(
-    handover.status === HandoverStatus.RECIBIDA &&
-      handover.receivedBy?.id === user.id &&
-      !handover.toShift,
-  );
-  const receptionStep = receivedByMeWithoutNextShift ? 3 : canReceiveCash ? 1 : canReceive ? 2 : null;
+  const receptionStep = !receptionInProgress
+    ? null
+    : !handover.receiverBriefingReviewedAt
+      ? 1
+      : !cashReadyForReception
+        ? 2
+        : !handover.receiverCustodyReviewedAt
+          ? 3
+          : !handover.receiverFinalReviewAt
+            ? 4
+            : 5;
   const receptionStepTitle =
     receptionStep === 1
-      ? 'Recontar Caja y validar garantías'
+      ? 'Revisar la entrega'
       : receptionStep === 2
-        ? 'Confirmar la recepción'
+        ? 'Recontar Caja y validar garantías'
         : receptionStep === 3
-          ? 'Iniciar mi turno'
-          : null;
+          ? 'Recibir la custodia'
+          : receptionStep === 4
+            ? 'Revisión final'
+            : receptionStep === 5
+              ? 'Confirmar recepción y activar turno'
+              : null;
   const receptionStepBody =
     receptionStep === 1
-      ? 'Este recuento se hace aquí, dentro de la entrega. La Caja general seguirá bloqueada hasta que inicies tu turno.'
+      ? 'Lee los pendientes, prioridades y puntos urgentes del turno saliente antes de tocar Caja.'
       : receptionStep === 2
-        ? 'El recuento ya quedó registrado. Confirma ahora que recibes esta entrega para tomar formalmente la liana.'
+        ? 'Cuenta físicamente CLP/USD y valida cada garantía en efectivo. La Caja general permanece bloqueada.'
         : receptionStep === 3
-          ? 'La entrega ya quedó recibida a tu nombre. Vuelve a Mi turno e inicia el turno que continuará la operación.'
-          : null;
+          ? 'Confirma llaves, teléfono y demás elementos físicos que el saliente declaró entregar.'
+          : receptionStep === 4
+            ? 'Compara lo declarado con lo recibido y confirma que comprendes los puntos que continúan vigentes.'
+            : receptionStep === 5
+              ? 'Este último paso registra la recepción y cambia tu turno de INICIADO a ACTIVO. En emergencia, regulariza el relevo sin crear otro turno.'
+              : null;
+
+  const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
+    ? 'emisor'
+    : receptionInProgress
+      ? 'receptor'
+      : 'lector';
 
   // Rellena el formulario con lo que ya contó este rol, para no empezar de cero.
   const ownCount =
@@ -460,13 +471,15 @@ export default async function HandoverPage({
 
       {receptionStep && receptionStepTitle && receptionStepBody ? (
         <Card className="no-print">
-          <CardHeader title={`Recepción de turno · paso ${receptionStep} de 3`} />
+          <CardHeader title={`Recepción de turno · paso ${receptionStep} de 5`} />
           <div className="space-y-3 px-4 py-4">
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-5">
               {[
-                ['1', 'Recontar Caja'],
-                ['2', 'Confirmar recepción'],
-                ['3', 'Iniciar turno'],
+                ['1', 'Entrega'],
+                ['2', 'Caja'],
+                ['3', 'Custodia'],
+                ['4', 'Revisión'],
+                ['5', 'Activar'],
               ].map(([step, label]) => {
                 const numericStep = Number(step);
                 const done = numericStep < receptionStep;
@@ -492,37 +505,36 @@ export default async function HandoverPage({
               <p className="mt-1 text-sm leading-5 text-slate-600">{receptionStepBody}</p>
             </div>
             {receptionStep === 1 ? (
+              <p className="text-xs text-slate-500">
+                Revisa los puntos de entrega que aparecen a continuación y confirma al final del bloque.
+              </p>
+            ) : receptionStep === 2 ? (
               <Link
                 href="#recuento-caja"
                 className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
               >
                 IR AL RECUENTO DE CAJA
               </Link>
-            ) : receptionStep === 2 ? (
+            ) : receptionStep === 3 ? (
+              <Link
+                href="#custodia-recepcion"
+                className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+              >
+                IR A CUSTODIA
+              </Link>
+            ) : receptionStep === 5 ? (
               <Link
                 href="#confirmar-recepcion"
                 className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
               >
-                CONFIRMAR RECEPCIÓN
+                IR A CONFIRMACIÓN FINAL
               </Link>
-            ) : (
-              <Link
-                href="/turno#abrir-turno"
-                className="inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
-              >
-                INICIAR MI TURNO
-              </Link>
-            )}
+            ) : null}
           </div>
         </Card>
       ) : null}
 
-      {/*
-        Caja se declara en el cierre saliente. Quien toma la entrega la recuenta
-        y confirma antes de abrir el turno siguiente. La recepción no crea ni
-        preasigna un turno: sólo transfiere la continuidad del relevo.
-      */}
-      {(!canEdit || closeStep === 1) ? (
+      {canEdit && closeStep === 1 ? (
         <CashBox
           handoverId={handover.id}
           shiftId={handover.fromShiftId}
@@ -540,12 +552,100 @@ export default async function HandoverPage({
             medium: denomination.medium,
           }))}
           previous={previousQuantities}
-          role={cashRole}
+          role="emisor"
           canReopen={user.permissions.includes('cash.reopen')}
         />
       ) : null}
 
-      {(!canEdit || closeStep === 2 || closeStep === 3) ? (
+      {receptionStep === 2 ? (
+        <CashBox
+          handoverId={handover.id}
+          shiftId={handover.toShiftId ?? handover.fromShiftId}
+          state={cashState}
+          formalClosure={formalCashClosure ? {
+            humanId: formalCashClosure.humanId,
+            closedAt: formalCashClosure.closedAt.toISOString(),
+            closedByName: formalCashClosure.closedByName,
+            reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
+          } : null}
+          denominations={denominations.map((denomination) => ({
+            id: denomination.id,
+            currency: denomination.currency,
+            value: Number(denomination.value),
+            medium: denomination.medium,
+          }))}
+          previous={previousQuantities}
+          role="receptor"
+          receiverStage="CASH"
+        />
+      ) : null}
+
+      {receptionStep === 3 ? (
+        <div id="custodia-recepcion" className="scroll-mt-32 space-y-4">
+          <CashBox
+            handoverId={handover.id}
+            shiftId={handover.toShiftId ?? handover.fromShiftId}
+            state={cashState}
+            formalClosure={formalCashClosure ? {
+              humanId: formalCashClosure.humanId,
+              closedAt: formalCashClosure.closedAt.toISOString(),
+              closedByName: formalCashClosure.closedByName,
+              reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
+            } : null}
+            denominations={denominations.map((denomination) => ({
+              id: denomination.id,
+              currency: denomination.currency,
+              value: Number(denomination.value),
+              medium: denomination.medium,
+            }))}
+            previous={previousQuantities}
+            role="receptor"
+            receiverStage="CUSTODY"
+          />
+          <Card className="no-print">
+            <CardHeader title="Confirmar custodia recibida" />
+            <div className="space-y-3 px-4 py-4">
+              {pendingReceptionElements.length > 0 ? (
+                <p className="text-sm text-amber-900">
+                  Aún falta confirmar: {pendingReceptionElements.map((element) => element.name).join(', ')}.
+                </p>
+              ) : (
+                <p className="text-sm text-slate-600">
+                  Caja, garantías y elementos declarados ya están revisados. Confirma para continuar.
+                </p>
+              )}
+              <ConfirmReceptionReviewStepForm handoverId={handover.id} step="CUSTODY" />
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {!canEdit && !receptionInProgress ? (
+        <CashBox
+          handoverId={handover.id}
+          shiftId={handover.fromShiftId}
+          state={cashState}
+          formalClosure={formalCashClosure ? {
+            humanId: formalCashClosure.humanId,
+            closedAt: formalCashClosure.closedAt.toISOString(),
+            closedByName: formalCashClosure.closedByName,
+            reopenedAt: formalCashClosure.reopenedAt?.toISOString() ?? null,
+          } : null}
+          denominations={denominations.map((denomination) => ({
+            id: denomination.id,
+            currency: denomination.currency,
+            value: Number(denomination.value),
+            medium: denomination.medium,
+          }))}
+          previous={previousQuantities}
+          role="lector"
+        />
+      ) : null}
+
+      {((canEdit && (closeStep === 2 || closeStep === 3)) ||
+        (!canEdit && !receptionInProgress) ||
+        receptionStep === 1 ||
+        receptionStep === 4) ? (
         <>
         {grouped.length === 0 ? (
           <Card>
@@ -614,6 +714,59 @@ export default async function HandoverPage({
           ))
         )}
         </>
+      ) : null}
+
+      {receptionStep === 1 ? (
+        <Card className="no-print">
+          <CardHeader title="Confirmar entrega revisada" />
+          <div className="space-y-3 px-4 py-4">
+            <p className="text-sm text-slate-600">
+              Confirma sólo después de leer los puntos que continúan al turno entrante.
+            </p>
+            <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" />
+          </div>
+        </Card>
+      ) : null}
+
+      {receptionStep === 4 ? (
+        <Card className="no-print">
+          <CardHeader title="Revisión final de recepción" />
+          <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Caja recibida</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {!cashState.enabled ? 'No configurada' : cashState.confirmed ? 'Confirmada' : 'Pendiente'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Garantías en efectivo</p>
+              <p className="mt-1 font-semibold text-petrol-900">{cashState.cashGuarantees.length}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Custodia</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {cashState.elements.filter((element) => element.declared && element.confirmed).length} /{' '}
+                {cashState.elements.filter((element) => element.declared).length} recibidos
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Puntos heredados</p>
+              <p className="mt-1 font-semibold text-petrol-900">
+                {counts.urgente + counts.importante + counts.informativo}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {counts.urgente} urgente · {counts.importante} importante · {counts.informativo} informativo
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-slate-100 px-4 py-4">
+            <ConfirmReceptionReviewStepForm
+              handoverId={handover.id}
+              step="FINAL"
+              urgentCount={counts.urgente}
+            />
+          </div>
+        </Card>
       ) : null}
 
       {canEdit && closeStep === 2 ? (
@@ -698,30 +851,23 @@ export default async function HandoverPage({
         </Card>
       ) : null}
 
-      {canReceive ? (
+      {receptionStep === 5 && canReceive ? (
         <div id="confirmar-recepcion" className="scroll-mt-32">
           <Card className="no-print">
-            <CardHeader title="Tomar la liana · confirmar recepción" />
+            <CardHeader title="Paso 5 de 5 · confirmar y activar" />
             <div className="px-4 py-4">
-              {cashState.declared && !cashState.confirmed ? (
-                <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
-                  Recuenta primero la Caja en esta misma entrega y valida las garantías. La pestaña Caja general permanece bloqueada hasta que inicies tu turno.
-                </div>
-              ) : (
-                <>
-                  <p className="mb-3 text-sm text-slate-700">
-                    El recuento ya está listo. Confirma la recepción para registrar la entrega a tu nombre; después podrás iniciar tu propio turno.
-                  </p>
-                  <ReceiveHandoverForm handoverId={handover.id} />
-                </>
-              )}
+              <p className="mb-3 text-sm leading-5 text-slate-700">
+                Ya completaste entrega, Caja, garantías, custodia y revisión final. Al confirmar,
+                el relevo quedará recibido a tu nombre y tu turno quedará ACTIVO.
+              </p>
+              <ReceiveHandoverForm handoverId={handover.id} />
             </div>
           </Card>
         </div>
-      ) : handover.status === HandoverStatus.ENVIADA && isReceiver ? (
+      ) : handover.status === HandoverStatus.ENVIADA && handover.toShiftId && !isReceiver ? (
         <Card className="no-print">
           <div className="px-4 py-4 text-sm text-slate-600">
-            Esta entrega sigue pendiente de recepción por un usuario autorizado.
+            Esta entrega ya está siendo recibida por otro turno.
           </div>
         </Card>
       ) : null}

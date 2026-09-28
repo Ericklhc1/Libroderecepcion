@@ -207,6 +207,7 @@ export function ActionForm({
   hideSuccess = false,
   refreshOnSuccess = false,
   onSuccess,
+  onError,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
   children: React.ReactNode;
@@ -226,6 +227,8 @@ export function ActionForm({
   refreshOnSuccess?: boolean;
   /** Callback cliente para encadenar un flujo visual después de guardar. */
   onSuccess?: (state: Extract<ActionState, { ok: true }>) => void;
+  /** Callback cliente para reaccionar a un error sin ocultar el mensaje del formulario. */
+  onError?: (state: Extract<ActionState, { ok: false }>) => void;
 }) {
   const [state, formAction] = useActionState(action, null);
   const router = useRouter();
@@ -233,6 +236,7 @@ export function ActionForm({
   const formId = useId();
   const submitted = useRef<Map<string, ControlValue> | null>(null);
   const handledSuccess = useRef<ActionState | null>(null);
+  const handledError = useRef<ActionState | null>(null);
 
   /*
     Si la respuesta trae credenciales, el formulario NO se cierra ni se vacía
@@ -259,7 +263,21 @@ export function ActionForm({
       return;
     }
     if (form && submitted.current) writeControls(form, submitted.current);
-  }, [state, close, closeOnSuccess, resetOnSuccess, refreshOnSuccess, router, formId, onSuccess]);
+    if (handledError.current !== state) {
+      handledError.current = state;
+      onError?.(state);
+    }
+  }, [
+    state,
+    close,
+    closeOnSuccess,
+    resetOnSuccess,
+    refreshOnSuccess,
+    router,
+    formId,
+    onSuccess,
+    onError,
+  ]);
 
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 

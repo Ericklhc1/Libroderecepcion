@@ -71,6 +71,45 @@ export async function getReceptionOperationGate(
   });
 
   if (!assignment) {
+    /*
+     * Una apertura de emergencia termina la participación activa del saliente
+     * para que el nuevo turno pueda operar. Eso NO significa que su cierre
+     * desaparezca: si dejó una entrega ENVIADA, debe conservar acceso
+     * exclusivamente a Caja/entrega/cierre sin tener que abrir otro turno.
+     *
+     * Este caso se evalúa antes que una entrega entrante pendiente porque es
+     * responsabilidad propia del usuario y evita el callejón sin salida
+     * «debes iniciar turno» al intentar cerrar la Caja del turno anterior.
+     */
+    const pendingOwnClosure = await prisma.shift.findFirst({
+      where: {
+        status: ShiftStatus.ENTREGA_ENVIADA,
+        archivedAt: null,
+        assignments: { some: { userId: user.id } },
+        handoverOut: {
+          is: {
+            status: HandoverStatus.ENVIADA,
+            receivedAt: null,
+          },
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        handoverOut: { select: { id: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (pendingOwnClosure) {
+      return {
+        mode: 'CLOSING',
+        shiftId: pendingOwnClosure.id,
+        shiftStatus: pendingOwnClosure.status,
+        handoverId: pendingOwnClosure.handoverOut?.id ?? null,
+      };
+    }
+
     const pendingHandover = await prisma.shiftHandover.findFirst({
       where: {
         status: HandoverStatus.ENVIADA,

@@ -317,6 +317,7 @@ export function CashBox({
   role,
   formalClosure,
   canReopen = false,
+  receiverStage,
 }: {
   handoverId: string;
   shiftId: string;
@@ -331,8 +332,9 @@ export function CashBox({
     reopenedAt: string | null;
   } | null;
   canReopen?: boolean;
+  receiverStage?: 'CASH' | 'CUSTODY';
 }) {
-  if (!state.enabled) return null;
+  if (!state.enabled && state.elements.length === 0) return null;
 
   return (
     <Card>
@@ -436,7 +438,7 @@ export function CashBox({
           </p>
         </section>
 
-        {state.elements.length > 0 ? (
+        {state.elements.length > 0 && !(role === 'receptor' && receiverStage === 'CASH') ? (
           <section>
             <h3 className="text-sm font-semibold text-petrol-900">Elementos físicos</h3>
             {role === 'lector' ? (
@@ -479,7 +481,7 @@ export function CashBox({
           </section>
         ) : null}
 
-        {role !== 'lector' ? (
+        {role !== 'lector' && !(role === 'receptor' && receiverStage === 'CUSTODY') ? (
           <div
             id={role === 'receptor' ? 'recuento-caja' : undefined}
             className="scroll-mt-32 border-t border-slate-100 pt-3 no-print"

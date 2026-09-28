@@ -22,9 +22,10 @@ import {
   CancelPreparationForm,
   CloseShiftForm,
   EmergencyOpenShiftForm,
+  JoinShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
-  ReceiveHandoverForm,
+  StartReceptionShiftForm,
 } from '@/components/operational/shift-actions';
 import {
   ALERT_LEVEL_TONE,
@@ -138,9 +139,28 @@ export default async function ShiftPage({
     ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
     : [null, null];
 
+  const linkedReception = shift
+    ? await prisma.shiftHandover.findFirst({
+        where: {
+          toShiftId: shift.id,
+          status: 'ENVIADA',
+          receivedAt: null,
+        },
+        include: {
+          issuedBy: { select: { name: true } },
+          fromShift: { select: { type: true, date: true, status: true } },
+          items: { select: { id: true } },
+        },
+      })
+    : null;
+
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
-  const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
+  const sharedOperationalShift =
+    !shift && desk.operationalCurrent ? desk.operationalCurrent : null;
+  const outgoingStillClosing = Boolean(
+    !shift && !sharedOperationalShift && blockingOutgoing,
+  );
   const hasCurrentOrPendingClosure = Boolean(shift || pendingClosure);
   const guidedShiftExperience =
     user.roleOperational &&
@@ -153,10 +173,13 @@ export default async function ShiftPage({
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
     ya dentro. Se consulta sólo si hay turno y quien mira puede sumar gente.
   */
-  const canAddMembers =
-    Boolean(shift) &&
-    (desk.iAmIn || user.permissions.includes('shift.manage'));
-  const memberCandidates = canAddMembers
+  const memberTargetShift =
+    shift ?? (user.permissions.includes('shift.manage') ? desk.operationalCurrent : null);
+  const canAddMembers = Boolean(
+    memberTargetShift &&
+      (desk.iAmIn || user.permissions.includes('shift.manage')),
+  );
+  const memberCandidates = canAddMembers && memberTargetShift
     ? (
         await prisma.user.findMany({
           where: {
@@ -177,7 +200,12 @@ export default async function ShiftPage({
           orderBy: { name: 'asc' },
         })
       )
-        .filter((person) => !person.assignments.some((assignment) => assignment.shiftId === shift!.id))
+        .filter(
+          (person) =>
+            !person.assignments.some(
+              (assignment) => assignment.shiftId === memberTargetShift.id,
+            ),
+        )
         .map((person) => {
           const busy = person.assignments.length > 0;
           return {
@@ -253,7 +281,7 @@ export default async function ShiftPage({
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             Durante tus primeros cinco turnos, el Libro explica con más detalle qué ocurre al
-            iniciar y cerrar. Después conservarás exactamente el mismo flujo, pero con menos texto.
+            recibir, iniciar y cerrar. Después conservarás exactamente el mismo flujo, pero con menos texto.
           </p>
         </div>
       ) : null}
@@ -323,7 +351,51 @@ export default async function ShiftPage({
               />
             ) : (
               <>
-                {outgoingStillClosing ? (
+                {sharedOperationalShift ? (
+                  <div className="rounded-lg bg-petrol-50 px-3 py-3 ring-1 ring-petrol-200">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-petrol-950">
+                        Ya existe un turno operativo en curso
+                      </p>
+                      <Badge
+                        tone={
+                          sharedOperationalShift.status === ShiftStatus.ACTIVO
+                            ? 'curso'
+                            : sharedOperationalShift.status === ShiftStatus.INICIADO
+                              ? 'pendiente'
+                              : 'atencion'
+                        }
+                      >
+                        {SHIFT_STATUS_LABEL[sharedOperationalShift.status]}
+                      </Badge>
+                      {sharedOperationalShift.emergency ? (
+                        <Badge tone="atencion">Emergencia</Badge>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {SHIFT_TYPE_LABEL[sharedOperationalShift.type]} ·{' '}
+                      {formatCalendarDate(sharedOperationalShift.date)} ·{' '}
+                      {sharedOperationalShift.assignments
+                        .filter((assignment) => assignment.activatedAt && !assignment.leftAt)
+                        .map((assignment) => assignment.user.name)
+                        .join(' · ') || 'sin participantes activos'}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">
+                      No debes abrir otro turno ni una segunda emergencia. Si vienes a reforzar el
+                      mesón, incorpórate al turno que ya está vigente.
+                    </p>
+                    {sharedOperationalShift.status === ShiftStatus.INICIADO ||
+                    sharedOperationalShift.status === ShiftStatus.ACTIVO ? (
+                      <div className="mt-3 max-w-md">
+                        <JoinShiftForm shiftId={sharedOperationalShift.id} userId={user.id} />
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs font-medium text-amber-800">
+                        El turno ya está en cierre; no admite nuevas incorporaciones operativas.
+                      </p>
+                    )}
+                  </div>
+                ) : outgoingStillClosing ? (
                   <div className="rounded-lg bg-red-50 px-3 py-3 ring-1 ring-red-300">
                     <p className="font-semibold text-red-950">
                       El turno anterior sigue sin cierre formal
@@ -339,18 +411,21 @@ export default async function ShiftPage({
                 ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
                     <p className="font-medium text-petrol-900">
-                      Turno saliente cerrado · liana disponible
+                      Turno saliente cerrado · recepción disponible
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      La entrega no está asignada a ningún turno entrante. Revísala, recuenta Caja
-                      si corresponde y confirma la recepción. Después podrás iniciar tu propio turno.
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Inicia la recepción aquí. Tu turno quedará en modo RECEPCIÓN y el Libro te
+                      llevará paso a paso por entrega, Caja, garantías, custodia y revisión final.
+                      La operación general seguirá bloqueada hasta completar el relevo.
                     </p>
-                    <Link
-                      href={`/turno/entrega/${(cashIncoming ?? incoming)!.id}`}
-                      className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
-                    >
-                      Revisar y recibir entrega
-                    </Link>
+                    <div className="mt-3 max-w-md">
+                      <StartReceptionShiftForm
+                        handoverId={(cashIncoming ?? incoming)!.id}
+                        suggestedType={desk.suggestedType}
+                        guided={guidedShiftExperience}
+                        guidanceSession={guidanceSession}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -418,7 +493,7 @@ export default async function ShiftPage({
                   */}
                   {canAddMembers ? (
                     <div className="mt-3 max-w-sm">
-                      <AddShiftMemberForm shiftId={shift.id} candidates={memberCandidates} />
+                      <AddShiftMemberForm shiftId={memberTargetShift!.id} candidates={memberCandidates} />
                     </div>
                   ) : null}
                 </div>
@@ -496,56 +571,40 @@ export default async function ShiftPage({
               ) : null}
             </div>
 
-            {shift.status === ShiftStatus.INICIADO ||
-            (shift.status === ShiftStatus.ACTIVO && (cashIncoming || incoming)) ? (
+            {linkedReception ? (
               <div className="border-t border-slate-200 bg-gold-50/60 px-4 py-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-petrol-900">
                   <Inbox className="h-4 w-4" aria-hidden="true" />
-                  Confirmar recepción
+                  {shift.status === ShiftStatus.INICIADO
+                    ? 'Recepción de turno en curso'
+                    : 'Regularización de relevo de emergencia'}
                 </h3>
-                {cashIncoming ? (
+                {linkedReception.fromShift.status === ShiftStatus.CERRADO ? (
                   <>
-                    <p className="mt-1 text-sm text-slate-700">
-                      El turno saliente ya está cerrado y dejó la Caja declarada. Recuéntala
-                      físicamente y valida las garantías antes de confirmar la recepción.
+                    <p className="mt-1 text-sm leading-5 text-slate-700">
+                      Entrega de {linkedReception.issuedBy.name} · turno{' '}
+                      {SHIFT_TYPE_LABEL[linkedReception.fromShift.type]} ·{' '}
+                      {formatCalendarDate(linkedReception.fromShift.date)}. Completa el recorrido
+                      guiado antes de operar.
                     </p>
                     <Link
-                      href={`/turno/entrega/${cashIncoming.id}`}
+                      href={`/turno/entrega/${linkedReception.id}`}
                       className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
                     >
-                      Recontar y recibir Caja
+                      CONTINUAR RECEPCIÓN · 5 PASOS
                     </Link>
                   </>
-                ) : incoming ? (
-                  <>
-                    <p className="mt-1 text-sm text-slate-700">
-                      Entrega de {incoming.issuedBy.name} · turno{' '}
-                      {SHIFT_TYPE_LABEL[incoming.fromShift.type]} ·{' '}
-                      <Link
-                        href={`/turno/entrega/${incoming.id}`}
-                        className="font-medium text-petrol-700 hover:underline"
-                      >
-                        ver los {incoming.items.length} puntos
-                      </Link>
-                    </p>
-                    <div className="mt-3 max-w-lg">
-                      <ReceiveHandoverForm
-                        shiftId={shift.id}
-                        handoverId={incoming.id}
-                        hasHandover
-                      />
-                    </div>
-                  </>
-                ) : shift.status === ShiftStatus.INICIADO ? (
-                  <>
-                    <p className="mt-1 text-sm text-slate-700">
-                      No hay Caja ni entrega pendiente para este turno.
-                    </p>
-                    <div className="mt-3 max-w-lg">
-                      <ReceiveHandoverForm shiftId={shift.id} hasHandover={false} />
-                    </div>
-                  </>
-                ) : null}
+                ) : (
+                  <p className="mt-1 text-sm leading-5 text-red-900">
+                    Este turno nació por emergencia. El relevo está enlazado correctamente, pero
+                    sólo podrá regularizarse cuando el turno saliente complete su cierre formal.
+                  </p>
+                )}
+              </div>
+            ) : shift.status === ShiftStatus.INICIADO ? (
+              <div className="border-t border-slate-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                Este turno está INICIADO pero no tiene una entrega enlazada. Requiere recuperación
+                administrativa antes de habilitar la operación.
               </div>
             ) : null}
           </Card>

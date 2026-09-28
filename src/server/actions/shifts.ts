@@ -21,11 +21,13 @@ import {
   cancelHandoverPreparation,
   closeShift,
   confirmHandoverReviewStep,
+  confirmReceptionReviewStep,
   endShiftParticipation,
   getShiftById,
   openShift,
   prepareHandover,
   receiveHandover,
+  startReceptionShift,
   sendHandover,
 } from '@/server/services/shifts';
 import {
@@ -162,6 +164,32 @@ export async function addShiftMemberAction(
   });
 }
 
+const startReceptionSchema = z.object({
+  handoverId: z.string().min(1),
+  type: z
+    .union([z.literal(''), z.enum(['DIA', 'NOCHE'])])
+    .optional()
+    .transform((value) => (value === '' || value === undefined ? null : value)),
+});
+
+export async function startReceptionShiftAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.receive');
+    const input = parseOrThrow(startReceptionSchema, formDataToObject(formData));
+    const shift = await startReceptionShift(user, input);
+    refresh(shift.id);
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
+    return {
+      ok: true as const,
+      message: 'Recepción iniciada. Completa los cinco pasos antes de operar.',
+      id: input.handoverId,
+    };
+  });
+}
+
 const receiveSchema = z.object({
   handoverId: z.string().min(1),
   observations: zOptionalString,
@@ -203,7 +231,7 @@ export async function receiveHandoverAction(
       revalidatePath(`/turno/entrega/${input.handoverId}`);
       return {
         ok: true as const,
-        message: 'Recepción confirmada. La entrega queda enlazada al próximo turno cuando éste se inicie.',
+        message: 'Recepción confirmada. Tu turno quedó activo y la operación está habilitada.',
       };
     } catch (error) {
       const completedAt = new Date();
@@ -271,6 +299,38 @@ export async function prepareHandoverAction(
       });
       throw error;
     }
+  });
+}
+
+const receptionReviewSchema = z.object({
+  handoverId: z.string().min(1),
+  step: z.enum(['BRIEFING', 'CUSTODY', 'FINAL']),
+  urgentAcknowledged: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true' || value === 'on'),
+});
+
+export async function confirmReceptionReviewStepAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.receive');
+    const input = parseOrThrow(receptionReviewSchema, formDataToObject(formData));
+    const updated = await confirmReceptionReviewStep(user, input);
+    revalidatePath(`/turno/entrega/${input.handoverId}`);
+    revalidatePath('/turno');
+    return {
+      ok: true as const,
+      message:
+        input.step === 'BRIEFING'
+          ? 'Entrega revisada. Continúa con el recuento de Caja.'
+          : input.step === 'CUSTODY'
+            ? 'Caja y custodia confirmadas. Continúa con la revisión final.'
+            : 'Revisión final confirmada. Ya puedes recibir y activar el turno.',
+      id: updated.id,
+    };
   });
 }
 
@@ -395,7 +455,11 @@ export async function closeShiftAction(
         fallbackStartedAt: startedAt,
       });
       refresh(input.shiftId);
-      return { ok: true as const, message: 'Turno cerrado y enviado a revisión posterior.' };
+      return {
+        ok: true as const,
+        message:
+          'Turno cerrado correctamente. La validación de Supervisión será posterior y no bloquea el siguiente relevo.',
+      };
     } catch (error) {
       const completedAt = new Date();
       recordOperationalEvent({

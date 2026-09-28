@@ -50,7 +50,7 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(gate).toContain('handoverId: pendingHandover.id');
   });
 
-  it('durante el relevo dirige al recuento correcto y no muestra acciones muertas', () => {
+  it('durante el relevo muestra el recorrido de cinco pasos y dirige al recuento correcto', () => {
     const gateUi = readFileSync(
       'src/components/operational/reception-operation-gate.tsx',
       'utf8',
@@ -67,6 +67,11 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(gateUi).toContain('#recuento-caja');
     expect(gateUi).toContain('no en la Caja general');
     expect(handover).toContain('Recepción de turno · paso');
+    expect(handover).toContain("['1', 'Entrega']");
+    expect(handover).toContain("['2', 'Caja']");
+    expect(handover).toContain("['3', 'Custodia']");
+    expect(handover).toContain("['4', 'Revisión']");
+    expect(handover).toContain("['5', 'Activar']");
     expect(handover).toContain('id="confirmar-recepcion"');
     expect(cashBox).toContain("'recuento-caja'");
     expect(cashBox).not.toContain('ReturnCashGuaranteeForm');
@@ -89,7 +94,7 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(actions).toContain('Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.');
   });
 
-  it('permite tomar la liana antes de abrir el turno siguiente', () => {
+  it('permite iniciar la recepción con shift.receive sin habilitar un turno ACTIVO por atajo', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',
       'utf8',
@@ -102,6 +107,12 @@ describe('Recepción · gate obligatorio de turno', () => {
 
     expect(pendingBranch).toContain('RECEIVE_ONLY_PERMISSIONS.has(permission)');
     expect(pendingBranch).not.toContain("permission === 'shift.start'");
+
+    const shifts = readFileSync('src/server/services/shifts.ts', 'utf8');
+    expect(shifts).toContain('export async function startReceptionShift');
+    expect(shifts).toContain('status: ShiftStatus.INICIADO');
+    expect(shifts).toContain('receiverFinalReviewAt');
+    expect(shifts).toContain('data: { status: ShiftStatus.ACTIVO }');
   });
 
   it('el guard de permisos aplica el gate también en acciones por propiedad', () => {

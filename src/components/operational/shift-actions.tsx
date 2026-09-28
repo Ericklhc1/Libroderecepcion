@@ -10,10 +10,12 @@ import {
   cancelHandoverPreparationAction,
   closeShiftAction,
   confirmHandoverReviewStepAction,
+  confirmReceptionReviewStepAction,
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
   sendHandoverAction,
+  startReceptionShiftAction,
 } from '@/server/actions/shifts';
 import {
   SHIFT_EMERGENCY_REASON_KEYS,
@@ -289,7 +291,7 @@ export function EmergencyOpenShiftForm({
                 onClick={() => setOpen(false)}
                 className="inline-flex min-h-10 items-center justify-center rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
               >
-                ESPERAR CIERRE DEL SALIENTE Y ABRIR TURNO NORMAL
+                VOLVER Y ESPERAR EL CIERRE NORMAL
               </button>
               <SubmitButton variant="danger" pendingLabel="Abriendo emergencia…">
                 ABRIR TURNO DE EMERGENCIA
@@ -343,6 +345,115 @@ export function AddShiftMemberForm({
   );
 }
 
+/** Permite a una persona operativa incorporarse al turno vigente sin abrir otro. */
+export function JoinShiftForm({
+  shiftId,
+  userId,
+}: {
+  shiftId: string;
+  userId: string;
+}) {
+  return (
+    <ActionForm action={addShiftMemberAction} hideSuccess refreshOnSuccess className="space-y-0">
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <input type="hidden" name="userId" value={userId} />
+      <SubmitButton variant="gold" pendingLabel="Sumándote al turno…">
+        SUMARME AL TURNO VIGENTE
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function StartReceptionShiftForm({
+  handoverId,
+  suggestedType,
+  guided = false,
+  guidanceSession = 1,
+}: {
+  handoverId: string;
+  suggestedType: 'DIA' | 'NOCHE';
+  guided?: boolean;
+  guidanceSession?: number;
+}) {
+  const router = useRouter();
+
+  return (
+    <ActionForm
+      action={startReceptionShiftAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={(state) => {
+        if (state.id) router.push(`/turno/entrega/${state.id}`);
+      }}
+    >
+      <input type="hidden" name="handoverId" value={handoverId} />
+      <input type="hidden" name="type" value={suggestedType} />
+      <GuidedShiftSubmit
+        guided={guided}
+        session={guidanceSession}
+        buttonLabel="INICIAR RECEPCIÓN DE TURNO"
+        title="Vas a recibir el turno anterior"
+        description="El Libro abrirá tu turno en modo RECEPCIÓN. La operación seguirá bloqueada hasta completar el relevo."
+        steps={[
+          'Revisar entrega: lee los pendientes, prioridades y puntos urgentes.',
+          'Recontar Caja: cuenta CLP/USD y valida físicamente las garantías.',
+          'Recibir custodia: confirma llaves, teléfono y demás elementos declarados.',
+          'Revisión final: compara lo declarado con lo que realmente recibiste.',
+          'Confirmar y abrir: la entrega queda recibida y tu turno pasa a ACTIVO.',
+        ]}
+        confirmLabel="SÍ, INICIAR RECEPCIÓN"
+        pendingLabel="Iniciando recepción…"
+      />
+    </ActionForm>
+  );
+}
+
+export function ConfirmReceptionReviewStepForm({
+  handoverId,
+  step,
+  urgentCount = 0,
+}: {
+  handoverId: string;
+  step: 'BRIEFING' | 'CUSTODY' | 'FINAL';
+  urgentCount?: number;
+}) {
+  return (
+    <ActionForm
+      action={confirmReceptionReviewStepAction}
+      hideSuccess
+      refreshOnSuccess
+      className="space-y-3"
+    >
+      <input type="hidden" name="handoverId" value={handoverId} />
+      <input type="hidden" name="step" value={step} />
+
+      {step === 'FINAL' && urgentCount > 0 ? (
+        <label className="flex items-start gap-3 rounded-xl bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+          <input
+            type="checkbox"
+            name="urgentAcknowledged"
+            value="1"
+            required
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que quedan bajo
+            responsabilidad del turno que estoy recibiendo.
+          </span>
+        </label>
+      ) : null}
+
+      <SubmitButton variant="gold" pendingLabel="Confirmando…">
+        {step === 'BRIEFING'
+          ? 'CONFIRMAR ENTREGA REVISADA'
+          : step === 'CUSTODY'
+            ? 'CONFIRMAR CAJA Y CUSTODIA'
+            : 'CONFIRMAR REVISIÓN FINAL'}
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function ReceiveHandoverForm({
   handoverId,
 }: {
@@ -350,20 +461,25 @@ export function ReceiveHandoverForm({
   handoverId?: string | null;
   hasHandover?: boolean;
 }) {
+  const router = useRouter();
   if (!handoverId) return null;
 
   return (
-    <ActionForm action={receiveHandoverAction} hideSuccess refreshOnSuccess>
+    <ActionForm
+      action={receiveHandoverAction}
+      hideSuccess
+      onSuccess={() => router.push('/turno')}
+    >
       <input type="hidden" name="handoverId" value={handoverId} />
       <Field
         label="Observaciones de recepción"
         name="observations"
-        hint="Opcional: deja constancia de lo que revisaste o de cualquier discrepancia."
+        hint="Opcional: deja constancia final de una diferencia, ausencia o antecedente relevante."
       >
         <Textarea name="observations" rows={2} placeholder="Recibido conforme…" />
       </Field>
-      <SubmitButton variant="gold" pendingLabel="Confirmando…">
-        Confirmar recepción operativa
+      <SubmitButton variant="gold" pendingLabel="Activando turno…">
+        CONFIRMAR RECEPCIÓN Y ABRIR MI TURNO
       </SubmitButton>
     </ActionForm>
   );

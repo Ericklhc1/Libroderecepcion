@@ -36,6 +36,13 @@ const PRIMARY: NavItem[] = [
     mobile: true,
   },
   {
+    href: '/central-reservas',
+    label: 'Central de Reservas',
+    mobileLabel: 'Reservas',
+    icon: 'guest',
+    anyOf: ['reservation.center.view'],
+  },
+  {
     href: '/caja',
     label: 'Caja',
     icon: 'cash',

@@ -388,6 +388,85 @@ describe('Centro de Supervisión', () => {
     expect((await prisma.correctiveMeasure.findUniqueOrThrow({ where: { id: measure.id } })).deletedAt).toBeNull();
   });
 
+  it('distribuye el resultado de la auditoría según persona, Supervisión u operación', async () => {
+    const template = await saveTemplate(supervisor, {
+      name: 'Comunicación de auditoría',
+      items: ['Punto único'],
+    });
+
+    const closeCompliantRun = async (
+      disclosure: AuditDisclosure,
+      recipientId?: string,
+    ) => {
+      const run = await startRun(supervisor, {
+        templateId: template.id,
+        mode: ChecklistRunMode.AUDITORIA_SORPRESA,
+        scope: 'Prueba de distribución',
+        sample: 'Un punto',
+      });
+      await markRunItem(supervisor, { itemId: run.items[0]!.id, result: 'CUMPLE' });
+      return {
+        run,
+        result: await finishRun(supervisor, {
+          runId: run.id,
+          resultSummary: `Resultado ${disclosure}`,
+          disclosure,
+          recipientId,
+        }),
+      };
+    };
+
+    const firstRun = await startRun(supervisor, {
+      templateId: template.id,
+      mode: ChecklistRunMode.AUDITORIA_SORPRESA,
+      scope: 'Prueba destinatario obligatorio',
+      sample: 'Un punto',
+    });
+    await markRunItem(supervisor, { itemId: firstRun.items[0]!.id, result: 'CUMPLE' });
+    await expect(
+      finishRun(supervisor, {
+        runId: firstRun.id,
+        disclosure: AuditDisclosure.PERSONA,
+      }),
+    ).rejects.toThrow(/Selecciona la persona/);
+    const personResult = await finishRun(supervisor, {
+      runId: firstRun.id,
+      resultSummary: 'Resultado individual',
+      disclosure: AuditDisclosure.PERSONA,
+      recipientId: receptionist.id,
+    });
+    expect(personResult.recipients).toBe(1);
+    expect(
+      await prisma.notification.count({
+        where: { userId: receptionist.id, entity: 'ChecklistRun', entityId: firstRun.id },
+      }),
+    ).toBe(1);
+
+    const supervision = await closeCompliantRun(AuditDisclosure.SUPERVISION);
+    expect(supervision.result.recipients).toBeGreaterThan(0);
+    expect(
+      await prisma.notification.count({
+        where: { userId: nextSupervisor.id, entityId: supervision.run.id },
+      }),
+    ).toBe(1);
+
+    const operational = await closeCompliantRun(AuditDisclosure.OPERATIVO);
+    expect(operational.result.recipients).toBeGreaterThanOrEqual(3);
+    expect(
+      await prisma.notification.count({
+        where: {
+          entityId: operational.run.id,
+          userId: { in: [receptionist.id, collaborator.id, nextSupervisor.id] },
+        },
+      }),
+    ).toBe(3);
+    expect(
+      await prisma.notification.count({
+        where: { entityId: operational.run.id, userId: admin.id },
+      }),
+    ).toBe(0);
+  });
+
   it('calcula indicadores explicables y bloquea la consulta entre recepcionistas', async () => {
     await startSupervisionShift(supervisor, { priorities: ['Revisar cumplimiento'] });
     const task = await createTask(supervisor, {

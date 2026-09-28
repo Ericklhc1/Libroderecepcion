@@ -26,7 +26,7 @@ import {
   saveLiveCashAudit,
 } from '@/server/services/live-cash';
 import { changeGuaranteeState } from '@/server/services/guarantees';
-import { createGymPass, voidGymPass } from '@/server/services/gym-pass';
+import { createGymPass, createParkingPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { notify } from '@/server/notifications';
@@ -58,9 +58,32 @@ export async function createGymPassAction(
     const result = await createGymPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/caja/gimnasio');
+    revalidatePath('/caja/estacionamiento');
     return {
       ok: true as const,
       message: `Folio de gimnasio ${result.formattedFolio} generado.`,
+      id: result.id,
+    };
+  });
+}
+
+const parkingPassSchema = gymPassSchema.extend({
+  vehiclePlate: z.string().trim().min(2, 'Indica la patente o matrícula.').max(20),
+});
+
+export async function createParkingPassAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('cash.view');
+    const input = parseOrThrow(parkingPassSchema, formDataToObject(formData));
+    const result = await createParkingPass(user, input);
+    revalidatePath('/caja');
+    revalidatePath('/caja/estacionamiento');
+    return {
+      ok: true as const,
+      message: `Ticket de estacionamiento ${result.formattedFolio} generado.`,
       id: result.id,
     };
   });

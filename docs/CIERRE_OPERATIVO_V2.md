@@ -87,16 +87,23 @@ El saliente:
 5. completa el cierre formal de Caja;
 6. envía la entrega y cierra el turno.
 
-El entrante:
-1. inicia su turno después del cierre saliente;
-2. permanece `INICIADO` y bloqueado;
-3. recuenta físicamente Caja;
-4. valida las garantías recibidas;
-5. documenta diferencias si existen;
-6. confirma la recepción de la entrega;
-7. sólo entonces pasa a `ACTIVO`.
+El entrante usa un recorrido único dentro de **Mi turno**:
 
-El recuento de Caja por sí solo no activa el turno entrante.
+1. **Revisar entrega:** inicia su turno después del cierre saliente. El sistema
+   reclama la entrega y deja el turno en `INICIADO`; Novedades, Caja general,
+   Llaves y demás operación permanecen bloqueadas.
+2. **Recontar Caja:** cuenta físicamente el fondo fijo por denominación, valida
+   las garantías en efectivo y documenta cualquier diferencia.
+3. **Recibir custodia:** confirma físicamente todos los elementos que el
+   saliente declaró como entregados.
+4. **Revisión final:** comprueba Caja, diferencias, garantías, custodia y puntos
+   del relevo.
+5. **Confirmar recepción y abrir turno:** la entrega pasa a `RECIBIDA` y el
+   turno receptor pasa de `INICIADO` a `ACTIVO` dentro de la misma operación.
+
+El recuento de Caja por sí solo no activa el turno entrante. Tampoco basta con
+confirmar Caja si queda custodia declarada sin recibir. Ninguno de estos pasos
+requiere navegar a Caja general: todo el relevo vive bajo `/turno`.
 
 ## Informe de Caja · entrega/recepción
 

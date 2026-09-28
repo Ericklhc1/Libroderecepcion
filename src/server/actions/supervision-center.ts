@@ -197,22 +197,13 @@ export async function updateSupervisionAuditDeparturesPendingAction(
     const input = parseOrThrow(
       z.object({
         auditImportId: z.string().min(1),
-        value: z.string(),
+        value: z.coerce.number().int('Indica una cantidad entera.').min(0, 'No puede ser negativo.'),
         reset: zOptionalString,
         note: zOptionalString,
       }),
       formDataToObject(formData),
     );
-    const value =
-      input.reset === '1'
-        ? null
-        : (() => {
-            const parsed = Number(input.value);
-            if (!Number.isInteger(parsed) || parsed < 0) {
-              throw new Error('Indica una cantidad válida de check-outs pendientes.');
-            }
-            return parsed;
-          })();
+    const value = input.reset === '1' ? null : input.value;
     await updateSupervisionAuditDeparturesPending(user, {
       auditImportId: input.auditImportId,
       value,

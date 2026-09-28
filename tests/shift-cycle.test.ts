@@ -206,6 +206,10 @@ describe('visibilidad e incorporación al turno vigente', () => {
   let first: CurrentUser;
   let support: CurrentUser;
 
+  beforeAll(async () => {
+    await seedCatalog();
+  });
+
   beforeEach(async () => {
     await resetOperationalData();
     first = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Titular visible' });

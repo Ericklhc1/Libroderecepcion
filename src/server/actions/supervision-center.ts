@@ -28,6 +28,10 @@ import {
   startSupervisionShift,
 } from '@/server/services/supervision-center';
 import {
+  reviewSupervisionAuditItem,
+  updateSupervisionAuditDeparturesPending,
+} from '@/server/services/supervision-audit-import';
+import {
   changeCorrectiveMeasureStatus,
   createCorrectiveMeasureFromFinding,
   restoreCorrectiveMeasure,
@@ -144,6 +148,81 @@ export async function followSupervisionSourceAction(
     const followUp = await followSupervisionSource(user, input);
     refresh();
     return { ok: true as const, message: 'Añadido a Mi continuidad.', id: followUp.id };
+  });
+}
+
+
+export async function reviewSupervisionAuditItemAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('supervision.audit.create');
+    const input = parseOrThrow(
+      z.object({
+        auditImportId: z.string().min(1),
+        target: z.enum(['CHECK', 'FINDING']),
+        key: z.string().min(1),
+        status: z.enum(['RESUELTO', 'NO_APLICA', 'REABRIR']),
+        note: zOptionalString,
+      }),
+      formDataToObject(formData),
+    );
+    await reviewSupervisionAuditItem(user, {
+      auditImportId: input.auditImportId,
+      target: input.target,
+      key: input.key,
+      status: input.status === 'REABRIR' ? null : input.status,
+      note: input.note,
+    });
+    refresh();
+    return {
+      ok: true as const,
+      message:
+        input.status === 'REABRIR'
+          ? 'Punto reabierto.'
+          : input.status === 'NO_APLICA'
+            ? 'Punto retirado como no aplicable.'
+            : 'Punto resuelto.',
+    };
+  });
+}
+
+export async function updateSupervisionAuditDeparturesPendingAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('supervision.audit.create');
+    const input = parseOrThrow(
+      z.object({
+        auditImportId: z.string().min(1),
+        value: z.string(),
+        reset: zOptionalString,
+        note: zOptionalString,
+      }),
+      formDataToObject(formData),
+    );
+    const value =
+      input.reset === '1'
+        ? null
+        : (() => {
+            const parsed = Number(input.value);
+            if (!Number.isInteger(parsed) || parsed < 0) {
+              throw new Error('Indica una cantidad válida de check-outs pendientes.');
+            }
+            return parsed;
+          })();
+    await updateSupervisionAuditDeparturesPending(user, {
+      auditImportId: input.auditImportId,
+      value,
+      note: input.note,
+    });
+    refresh();
+    return {
+      ok: true as const,
+      message: value === null ? 'Se restauró el valor del informe.' : 'Pendientes actualizados.',
+    };
   });
 }
 

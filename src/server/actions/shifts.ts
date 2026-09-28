@@ -38,7 +38,7 @@ import {
   SHIFT_WINDOW_LABEL,
   plannedWindow,
 } from '@/domain/shift';
-import { assertAssignable } from '@/server/services/users';
+import { assertShiftAssignable } from '@/server/services/users';
 import {
   failOperationalMetric,
   finishCorrelatedOperationalMetric,
@@ -592,7 +592,7 @@ export async function scheduleShiftAction(
     const input = parseOrThrow(shiftScheduleSchema, formDataToObject(formData));
 
     for (const userId of input.userIds) {
-      await assertAssignable(userId);
+      await assertShiftAssignable(userId);
     }
 
     const dateKey = input.date.slice(0, 10);

@@ -57,6 +57,7 @@ export default async function UsersPage({
       user.username,
       user.role.name,
       user.department?.name,
+      user.email,
       user.phone,
     ]
       .filter(Boolean)
@@ -91,7 +92,7 @@ export default async function UsersPage({
 
       <ListFilterBar
         searchValue={q}
-        searchPlaceholder="Buscar nombre, usuario, rol, área…"
+        searchPlaceholder="Buscar nombre, usuario, correo, rol, área…"
         clearHref="/admin/usuarios"
       >
         <label className="min-w-[11rem]">
@@ -145,6 +146,8 @@ export default async function UsersPage({
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {user.department?.name ?? 'Sin área'}
+                    {user.email ? ` · ${user.email}` : ' · sin correo'}
+                    {user.email && !user.emailNotificationsEnabled ? ' · avisos por correo desactivados' : ''}
                     {user.phone ? ` · ${user.phone}` : ''} · último ingreso{' '}
                     {formatDateTime(user.lastLoginAt)}
                     {user.lockedUntil && user.lockedUntil > new Date()
@@ -169,6 +172,8 @@ export default async function UsersPage({
                           name: user.name,
                           roleId: user.roleId,
                           departmentId: user.departmentId,
+                          email: user.email,
+                          emailNotificationsEnabled: user.emailNotificationsEnabled,
                           phone: user.phone,
                           active: user.active,
                         }}

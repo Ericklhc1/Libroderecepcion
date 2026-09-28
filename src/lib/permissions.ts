@@ -250,6 +250,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'room.reset',
     'conflict.resolve_all',
     'announcement.manage',
+    'reservation.center.view',
     'supervision.view',
     'supervision.center.view',
     'supervision.shift.manage',

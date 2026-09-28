@@ -384,3 +384,14 @@ Production.
 - El healthcheck añade diagnóstico booleano seguro para detectar si Account ID
   coincide accidentalmente con Access Key o Secret, sin devolver valores.
 - Sin migraciones, sin cambio de permisos, sin almacenamiento de blobs en Neon.
+
+## Actualización 27/09/2026 · v1.18.1 · regularización extraordinaria de turnos
+
+- Se corrigen los turnos no demo que quedaron abiertos hasta el 27/09/2026 bajo versiones anteriores del relevo.
+- La migración enlaza las entregas históricas pendientes con el turno que continuó cronológicamente la operación y refuerza explícitamente DÍA 27/09 con Humberto → NOCHE 27/09 con Yailin.
+- El último handover sin receptor posterior queda ANULADO con motivo administrativo para no bloquear la siguiente apertura.
+- Ningún arqueo físico se fabrica retroactivamente: cuando falta un cierre de Caja, la constancia creada se identifica expresamente como regularización administrativa y usa un snapshot vacío.
+- Las alertas de validación de los cierres del 26–27/09 quedan resueltas bajo autorización de Supervisión y las tareas vinculadas pasan a VALIDADA.
+- En adelante, resolver una alerta `shift-validation:*` valida también su tarea vinculada para evitar el estado contradictorio «alerta resuelta + tarea pendiente».
+- Migración: `20260927214500_regularizar_turnos_26_27_sept`.
+

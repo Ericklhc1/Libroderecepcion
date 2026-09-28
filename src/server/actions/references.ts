@@ -194,6 +194,7 @@ export async function saveReservationAction(
     revalidatePath('/turno');
     revalidatePath('/');
     revalidatePath('/libro');
+    revalidatePath('/central-reservas');
     if (reservation.roomNumber) revalidatePath(`/habitaciones/${reservation.roomNumber}`);
     return {
       ok: true as const,

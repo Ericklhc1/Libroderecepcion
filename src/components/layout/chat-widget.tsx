@@ -48,6 +48,9 @@ import { playChime } from '@/components/layout/notification-chime';
 type View = 'list' | 'direct' | 'group' | 'conversation' | 'profile' | 'settings';
 type HomeTab = 'chats' | 'online' | 'groups' | 'saved';
 
+const CHAT_POLL_OPEN_MS = 8_000;
+const CHAT_POLL_CLOSED_MS = 30_000;
+
 type SavedChatItem = {
   messageId: string;
   conversationId: string;
@@ -302,6 +305,7 @@ export function ChatWidget({
   const stickerInputRef = useRef<HTMLInputElement>(null);
   const openedFromQuery = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
+  const liveVersionRef = useRef<string | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingActiveRef = useRef(false);
   const typingLastSentAtRef = useRef(0);
@@ -400,45 +404,84 @@ export function ChatWidget({
   useEffect(() => {
     if (!mounted) return;
 
-    let source: EventSource | null = null;
-    const refresh = () => {
-      void loadBootstrap();
-      const conversationId = selectedIdRef.current;
-      if (conversationId) {
-        void loadConversation(conversationId, { mark: true, busy: false });
+    let active = true;
+    let timer: number | null = null;
+    let controller: AbortController | null = null;
+    const delay = open ? CHAT_POLL_OPEN_MS : CHAT_POLL_CLOSED_MS;
+
+    const clearScheduled = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
       }
     };
 
-    const disconnect = () => {
-      if (!source) return;
-      source.removeEventListener('chat-change', refresh);
-      source.close();
-      source = null;
+    const scheduleNext = () => {
+      clearScheduled();
+      if (!active || document.visibilityState !== 'visible') return;
+      timer = window.setTimeout(() => void poll(), delay);
     };
 
-    const connect = () => {
-      if (document.visibilityState !== 'visible' || source) return;
-      const nextSource = new EventSource('/api/chat/stream');
-      nextSource.addEventListener('chat-change', refresh);
-      source = nextSource;
+    const refresh = async () => {
+      await loadBootstrap();
+      const conversationId = selectedIdRef.current;
+      if (conversationId) {
+        await loadConversation(conversationId, { mark: true, busy: false });
+      }
+    };
+
+    const poll = async () => {
+      if (!active || document.visibilityState !== 'visible') return;
+
+      controller?.abort();
+      const nextController = new AbortController();
+      controller = nextController;
+
+      try {
+        const data = await requestJson<{ version: string }>('/api/chat/stream', {
+          signal: nextController.signal,
+        });
+        if (!active) return;
+
+        if (liveVersionRef.current !== data.version) {
+          liveVersionRef.current = data.version;
+          await refresh();
+        }
+      } catch (error) {
+        const aborted =
+          typeof error === 'object' &&
+          error !== null &&
+          'name' in error &&
+          error.name === 'AbortError';
+        if (!aborted && active) {
+          setError(error instanceof Error ? error.message : 'No se pudo sincronizar el chat.');
+        }
+      } finally {
+        if (controller === nextController) controller = null;
+        scheduleNext();
+      }
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        connect();
-      } else {
-        disconnect();
-      }
+      clearScheduled();
+      controller?.abort();
+      controller = null;
+      if (document.visibilityState === 'visible') void poll();
     };
 
-    connect();
+    if (document.visibilityState === 'visible') {
+      void poll();
+    }
+
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      active = false;
+      clearScheduled();
+      controller?.abort();
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      disconnect();
     };
-  }, [mounted, loadConversation, loadBootstrap]);
+  }, [mounted, open, loadConversation, loadBootstrap]);
 
   useEffect(() => {
     if (!open) return;

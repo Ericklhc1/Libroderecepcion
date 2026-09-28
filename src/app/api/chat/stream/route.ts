@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import { requireUser } from '@/server/auth/guard';
 import {
   getChatGlobalVersion,
@@ -6,122 +7,29 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
 
-// P0 de capacidad: 10 s evita consultar varias tablas cada 1,5 s por pestaña.
-const CHECK_MS = 10_000;
-const HEARTBEAT_MS = 15_000;
-// La ventana online es 150 s; 90 s mantiene presencia útil con la mitad de escrituras.
-const PRESENCE_TOUCH_MS = 90_000;
-const STREAM_LIFETIME_MS = 4 * 60_000;
+const headers = { 'Cache-Control': 'no-store' };
 
 /**
- * Stream global del IM.
+ * Firma corta del Chat para sincronización incremental.
  *
- * Un único EventSource por usuario mantiene conversaciones, no leídos y
- * presencia sincronizados. El navegador sólo vuelve a pedir el contenido
- * completo cuando esta firma cambia; el stream no transporta historiales.
+ * La versión anterior sostenía una función SSE de cuatro minutos por pestaña.
+ * Esta ruta termina después de una comprobación, reduciendo drásticamente la
+ * memoria provisionada mientras conserva la actualización incremental.
  */
-export async function GET(request: Request) {
-  let user;
+export async function GET() {
   try {
-    user = await requireUser();
+    const user = await requireUser();
     await touchChatPresence(user);
+    const version = await getChatGlobalVersion(user);
+    return NextResponse.json(
+      { version, at: new Date().toISOString() },
+      { headers },
+    );
   } catch {
-    return new Response('Sesión no disponible.', { status: 401 });
+    return NextResponse.json(
+      { error: 'Sesión no disponible.' },
+      { status: 401, headers },
+    );
   }
-
-  const encoder = new TextEncoder();
-  let closed = false;
-  let checking = false;
-  let lastVersion = '';
-  let checkTimer: ReturnType<typeof setInterval> | null = null;
-  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let presenceTimer: ReturnType<typeof setInterval> | null = null;
-  let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
-  let abortHandler: (() => void) | null = null;
-
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        if (checkTimer) clearInterval(checkTimer);
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-        if (presenceTimer) clearInterval(presenceTimer);
-        if (lifetimeTimer) clearTimeout(lifetimeTimer);
-        if (abortHandler) request.signal.removeEventListener('abort', abortHandler);
-      };
-
-      const close = () => {
-        if (closed) return;
-        cleanup();
-        try {
-          controller.close();
-        } catch {
-          // El navegador pudo cerrar antes.
-        }
-      };
-
-      const send = (event: string, data: unknown) => {
-        if (closed) return;
-        try {
-          controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-          );
-        } catch {
-          close();
-        }
-      };
-
-      const check = async () => {
-        if (closed || checking) return;
-        checking = true;
-        try {
-          const version = await getChatGlobalVersion(user);
-          if (version !== lastVersion) {
-            lastVersion = version;
-            send('chat-change', { version, at: new Date().toISOString() });
-          }
-        } catch {
-          send('stream-warning', { retrying: true });
-        } finally {
-          checking = false;
-        }
-      };
-
-      abortHandler = close;
-      request.signal.addEventListener('abort', abortHandler, { once: true });
-
-      void check();
-
-      checkTimer = setInterval(() => void check(), CHECK_MS);
-      presenceTimer = setInterval(() => void touchChatPresence(user), PRESENCE_TOUCH_MS);
-      heartbeatTimer = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(': keepalive\n\n'));
-        } catch {
-          close();
-        }
-      }, HEARTBEAT_MS);
-      lifetimeTimer = setTimeout(close, STREAM_LIFETIME_MS);
-    },
-    cancel() {
-      closed = true;
-      if (checkTimer) clearInterval(checkTimer);
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (presenceTimer) clearInterval(presenceTimer);
-      if (lifetimeTimer) clearTimeout(lifetimeTimer);
-      if (abortHandler) request.signal.removeEventListener('abort', abortHandler);
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, no-transform',
-      'X-Accel-Buffering': 'no',
-    },
-  });
 }

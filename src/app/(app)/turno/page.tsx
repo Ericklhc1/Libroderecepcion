@@ -22,6 +22,7 @@ import {
   CancelPreparationForm,
   CloseShiftForm,
   EmergencyOpenShiftForm,
+  JoinShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
   StartReceptionShiftForm,
@@ -155,7 +156,11 @@ export default async function ShiftPage({
 
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
-  const outgoingStillClosing = Boolean(!shift && blockingOutgoing);
+  const sharedOperationalShift =
+    !shift && desk.operationalCurrent ? desk.operationalCurrent : null;
+  const outgoingStillClosing = Boolean(
+    !shift && !sharedOperationalShift && blockingOutgoing,
+  );
   const hasCurrentOrPendingClosure = Boolean(shift || pendingClosure);
   const guidedShiftExperience =
     user.roleOperational &&
@@ -168,10 +173,13 @@ export default async function ShiftPage({
     Candidatos a sumarse al turno vigente: operativos, activos y que no estén
     ya dentro. Se consulta sólo si hay turno y quien mira puede sumar gente.
   */
-  const canAddMembers =
-    Boolean(shift) &&
-    (desk.iAmIn || user.permissions.includes('shift.manage'));
-  const memberCandidates = canAddMembers
+  const memberTargetShift =
+    shift ?? (user.permissions.includes('shift.manage') ? desk.operationalCurrent : null);
+  const canAddMembers = Boolean(
+    memberTargetShift &&
+      (desk.iAmIn || user.permissions.includes('shift.manage')),
+  );
+  const memberCandidates = canAddMembers && memberTargetShift
     ? (
         await prisma.user.findMany({
           where: {
@@ -192,7 +200,12 @@ export default async function ShiftPage({
           orderBy: { name: 'asc' },
         })
       )
-        .filter((person) => !person.assignments.some((assignment) => assignment.shiftId === shift!.id))
+        .filter(
+          (person) =>
+            !person.assignments.some(
+              (assignment) => assignment.shiftId === memberTargetShift.id,
+            ),
+        )
         .map((person) => {
           const busy = person.assignments.length > 0;
           return {
@@ -338,7 +351,51 @@ export default async function ShiftPage({
               />
             ) : (
               <>
-                {outgoingStillClosing ? (
+                {sharedOperationalShift ? (
+                  <div className="rounded-lg bg-petrol-50 px-3 py-3 ring-1 ring-petrol-200">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-petrol-950">
+                        Ya existe un turno operativo en curso
+                      </p>
+                      <Badge
+                        tone={
+                          sharedOperationalShift.status === ShiftStatus.ACTIVO
+                            ? 'curso'
+                            : sharedOperationalShift.status === ShiftStatus.INICIADO
+                              ? 'pendiente'
+                              : 'atencion'
+                        }
+                      >
+                        {SHIFT_STATUS_LABEL[sharedOperationalShift.status]}
+                      </Badge>
+                      {sharedOperationalShift.emergency ? (
+                        <Badge tone="atencion">Emergencia</Badge>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {SHIFT_TYPE_LABEL[sharedOperationalShift.type]} ·{' '}
+                      {formatCalendarDate(sharedOperationalShift.date)} ·{' '}
+                      {sharedOperationalShift.assignments
+                        .filter((assignment) => assignment.activatedAt && !assignment.leftAt)
+                        .map((assignment) => assignment.user.name)
+                        .join(' · ') || 'sin participantes activos'}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">
+                      No debes abrir otro turno ni una segunda emergencia. Si vienes a reforzar el
+                      mesón, incorpórate al turno que ya está vigente.
+                    </p>
+                    {sharedOperationalShift.status === ShiftStatus.INICIADO ||
+                    sharedOperationalShift.status === ShiftStatus.ACTIVO ? (
+                      <div className="mt-3 max-w-md">
+                        <JoinShiftForm shiftId={sharedOperationalShift.id} userId={user.id} />
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs font-medium text-amber-800">
+                        El turno ya está en cierre; no admite nuevas incorporaciones operativas.
+                      </p>
+                    )}
+                  </div>
+                ) : outgoingStillClosing ? (
                   <div className="rounded-lg bg-red-50 px-3 py-3 ring-1 ring-red-300">
                     <p className="font-semibold text-red-950">
                       El turno anterior sigue sin cierre formal
@@ -436,7 +493,7 @@ export default async function ShiftPage({
                   */}
                   {canAddMembers ? (
                     <div className="mt-3 max-w-sm">
-                      <AddShiftMemberForm shiftId={shift.id} candidates={memberCandidates} />
+                      <AddShiftMemberForm shiftId={memberTargetShift!.id} candidates={memberCandidates} />
                     </div>
                   ) : null}
                 </div>

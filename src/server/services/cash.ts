@@ -689,6 +689,16 @@ export async function confirmHandoverCash(
     },
   });
 
+  // Un nuevo recuento invalida cualquier revisión posterior de custodia/final.
+  await tx.shiftHandover.update({
+    where: { id: params.handoverId },
+    data: {
+      receiverCustodyReviewedAt: null,
+      receiverFinalReviewAt: null,
+      receiverUrgentAcknowledgedAt: null,
+    },
+  });
+
   const discrepancies = countDiscrepancies(
     countedLines(declared.lines),
     countedLines(lines),
@@ -889,9 +899,9 @@ export async function markHandoverElements(
   const updates = Object.entries(params.marks).filter(([id]) => known.has(id));
   if (updates.length === 0) return { updated: 0 };
 
-  await prisma.$transaction(
-    updates.map(([id, value]) =>
-      prisma.handoverElement.update({
+  await prisma.$transaction(async (tx) => {
+    for (const [id, value] of updates) {
+      await tx.handoverElement.update({
         where: { id },
         data: {
           [params.field]: value,
@@ -899,9 +909,21 @@ export async function markHandoverElements(
             ? { notes: params.notes[id]?.trim() || null }
             : {}),
         },
-      }),
-    ),
-  );
+      });
+    }
+
+    if (params.field === 'confirmed') {
+      // Cambiar la custodia obliga a volver a confirmar los pasos 3 y 4.
+      await tx.shiftHandover.update({
+        where: { id: params.handoverId },
+        data: {
+          receiverCustodyReviewedAt: null,
+          receiverFinalReviewAt: null,
+          receiverUrgentAcknowledgedAt: null,
+        },
+      });
+    }
+  });
 
   await recordAudit({
     entity: 'HandoverElement',
@@ -967,19 +989,26 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
 }
 
 export async function cashBlockersForReceiving(handoverId: string): Promise<string[]> {
-  if (!(await isCashEnabled())) return [];
-
   const state = await getHandoverCashState(handoverId);
   const problems: string[] = [];
 
-  if (!state.confirmed) {
+  if (state.enabled && !state.confirmed) {
     problems.push(
       'Cuenta el efectivo recibido antes de tomar la custodia. Si no coincide con lo declarado, la diferencia queda registrada.',
     );
   }
 
-  // Sólo Caja bloquea la continuidad. Los elementos físicos quedan visibles
-  // como pendientes, pero se revisan después y no detienen al turno entrante.
+  const pendingElements = state.elements.filter(
+    (element) => element.declared && !element.confirmed,
+  );
+  if (pendingElements.length > 0) {
+    problems.push(
+      `Confirma los elementos físicos recibidos: ${pendingElements
+        .map((element) => element.name)
+        .join(', ')}.`,
+    );
+  }
+
   return problems;
 }
 

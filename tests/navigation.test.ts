@@ -34,6 +34,7 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
+      '/central-reservas', // preparación previa y continuidad de reservas
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo

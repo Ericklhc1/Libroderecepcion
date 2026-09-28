@@ -80,6 +80,18 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.0 · recepción guiada de turno
+
+- Cierre y recepción quedan concentrados dentro de **Mi turno**; Caja general deja de formar parte del relevo.
+- Si existe una entrega cerrada pendiente, el entrante abre primero su turno en `INICIADO`; la misma transacción enlaza la entrega a ese turno.
+- Recepción usa cinco pasos: revisar entrega → recontar Caja/garantías → recibir custodia → revisión final → confirmar recepción y activar.
+- `INICIADO` bloquea la operación general. `receiveHandover()` cambia entrega a `RECIBIDA` y turno a `ACTIVO` atómicamente.
+- El recuento de Caja y la confirmación de custodia exigen pertenecer al turno receptor enlazado.
+- Todo elemento que el saliente declaró como entregado debe confirmarse físicamente antes de activar el turno.
+- La apertura de emergencia sigue activando de inmediato por continuidad operativa; al regularizar el saliente, la entrega se enlaza al turno de emergencia que realmente continuó la operación.
+- El botón de «esperar cierre» del modal de emergencia deja de prometer una apertura que no ejecuta: ahora sólo indica volver y esperar.
+- Release sin migración: **v1.19.0**.
+
 ## Actualización 27/09/2026 · Libro 1.18.0 · identificadores humanos globales
 
 - Todo registro operativo citable usa un correlativo humano único `#NNNN`, independiente del módulo.

@@ -80,6 +80,19 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.0 · recepción guiada y emergencia única
+
+- La recepción de turno entrante es un flujo persistente de cinco pasos: revisar entrega → recontar Caja/garantías → recibir custodia → revisión final → confirmar y activar.
+- El turno entrante queda `INICIADO` durante la recepción y sólo pasa a `ACTIVO` al completar el relevo; la puerta operativa bloquea la operación general mientras tanto.
+- Recontar Caja o cambiar custodia invalida confirmaciones posteriores para impedir que el flujo se salte controles físicos.
+- Un recepcionista fuera del turno ahora ve el turno operativo vigente y puede sumarse a él; no se le ofrece abrir otro turno ni una emergencia sólo porque no era participante.
+- Sólo puede existir una emergencia operativa activa. PostgreSQL lo protege con un índice único parcial y el servicio lo valida también bajo concurrencia.
+- Cuando cierra el turno que originó la emergencia, el turno vigente se regulariza automáticamente: deja de ser emergencia, continúa como turno normal y conserva `emergencySourceShiftId` + `emergencyResolvedAt` para auditoría.
+- La entrega de emergencia queda ligada al mismo turno excepcional para su regularización posterior; no se crea un segundo turno al desaparecer la causa.
+- Supervisión sigue validando el cierre después del relevo; esa validación no bloquea la continuidad del mesón.
+- Nueva migración: `20260928011000_recepcion_turno_guiada`.
+- Release con migración: **v1.19.0**.
+
 ## Actualización 27/09/2026 · Libro 1.18.0 · identificadores humanos globales
 
 - Todo registro operativo citable usa un correlativo humano único `#NNNN`, independiente del módulo.

@@ -65,8 +65,9 @@ async function seedDemo() {
   const departments = await prisma.department.findMany();
   const dept = (key: string) => departments.find((d) => d.key === key)?.id ?? null;
 
-  /* Las cuentas se identifican por su USUARIO, que es lo único que las
-     identifica: no tienen correo. La clave es la de `SEED_DEMO_PASSWORD`. */
+  /* Las cuentas se identifican por su USUARIO. El correo es opcional y sólo
+     funciona como canal de avisos; los usuarios demo no necesitan uno.
+     La clave es la de `SEED_DEMO_PASSWORD`. */
   const people = [
     { key: 'admin', name: 'Sofía Reyes', roleKey: ROLE_KEYS.SYSTEM_ADMIN, departmentKey: 'SISTEMAS' },
     { key: 'supervisor', name: 'Marcela Pinto', roleKey: ROLE_KEYS.SUPERVISOR, departmentKey: 'RECEPCION' },

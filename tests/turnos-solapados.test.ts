@@ -85,7 +85,7 @@ describe('relevo secuencial de Recepción', () => {
     ).rejects.toThrow(/saliente todavía no está cerrado/i);
   });
 
-  it('después del cierre la entrega queda libre, se recibe y recién entonces abre el siguiente turno', async () => {
+  it('después del cierre el entrante inicia, recibe y recién entonces queda ACTIVO', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Saliente' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Entrante' });
 
@@ -99,21 +99,23 @@ describe('relevo secuencial de Recepción', () => {
       where: { shiftId: turno.id, userId: saliente.id },
     });
     expect(closedParticipation.leftAt).toBeInstanceOf(Date);
-
-    await expect(
-      openShift(entrante, { type: ShiftType.NOCHE }),
-    ).rejects.toThrow(/entrega.*pendiente de recepción/i);
-
     expect((await getPendingHandover())?.id).toBe(handover.id);
-    await receiveHandover(entrante, { handoverId: handover.id });
-    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(received.status).toBe('RECIBIDA');
-    expect(received.toShiftId).toBeNull();
 
     const { shift: incoming } = await openShift(entrante, { type: ShiftType.NOCHE });
-    expect(incoming.status).toBe(ShiftStatus.ACTIVO);
+    expect(incoming.status).toBe(ShiftStatus.INICIADO);
 
-    const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(linked.toShiftId).toBe(incoming.id);
+    const claimed = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(claimed.status).toBe('ENVIADA');
+    expect(claimed.toShiftId).toBe(incoming.id);
+
+    await receiveHandover(entrante, { handoverId: handover.id });
+
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(received.status).toBe('RECIBIDA');
+    expect(received.toShiftId).toBe(incoming.id);
+    expect(received.receivedById).toBe(entrante.id);
+
+    const active = await prisma.shift.findUniqueOrThrow({ where: { id: incoming.id } });
+    expect(active.status).toBe(ShiftStatus.ACTIVO);
   });
 });

@@ -22,11 +22,12 @@ export async function GET(request: NextRequest) {
     subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,
     lines: [...report.summary, '', ...report.lines],
   });
+  const disposition = url.searchParams.get('modo') === 'inline' ? 'inline' : 'attachment';
   return new Response(new Uint8Array(pdf), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${report.filename}"`,
+      'Content-Disposition': `${disposition}; filename="${report.filename}"`,
       'Cache-Control': 'no-store',
     },
   });

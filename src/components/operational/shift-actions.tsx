@@ -686,6 +686,7 @@ export function CloseShiftForm({
       hideSuccess
       className="space-y-0"
       onSuccess={() => router.push('/turno')}
+      onError={() => setOpen(false)}
     >
       <input type="hidden" name="shiftId" value={shiftId} />
       <button

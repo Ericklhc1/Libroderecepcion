@@ -243,7 +243,7 @@ async function applyAuthorizedManualMovement(
         regularization ? 'REGULARIZACIÓN DE CAJA' : `${verb.toUpperCase()} DE CAJA`,
         `Movimiento: #${movementRef.humanId}`,
         `Fecha/hora efectiva: ${operationalMailTimestamp(effectiveAt)}`,
-        `Registrado por: ${user.name} (@${user.username})`,
+        `Registrado por: ${user.name}`,
         `Dirección: ${input.direction}`,
         `Monto: ${input.currency} ${input.amount}`,
         `Concepto: ${input.reference}`,

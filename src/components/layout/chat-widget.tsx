@@ -399,7 +399,8 @@ export function ChatWidget({
 
   useEffect(() => {
     if (!mounted) return;
-    const source = new EventSource('/api/chat/stream');
+
+    let source: EventSource | null = null;
     const refresh = () => {
       void loadBootstrap();
       const conversationId = selectedIdRef.current;
@@ -407,10 +408,35 @@ export function ChatWidget({
         void loadConversation(conversationId, { mark: true, busy: false });
       }
     };
-    source.addEventListener('chat-change', refresh);
-    return () => {
+
+    const disconnect = () => {
+      if (!source) return;
       source.removeEventListener('chat-change', refresh);
       source.close();
+      source = null;
+    };
+
+    const connect = () => {
+      if (document.visibilityState !== 'visible' || source) return;
+      const nextSource = new EventSource('/api/chat/stream');
+      nextSource.addEventListener('chat-change', refresh);
+      source = nextSource;
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        connect();
+      } else {
+        disconnect();
+      }
+    };
+
+    connect();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      disconnect();
     };
   }, [mounted, loadConversation, loadBootstrap]);
 

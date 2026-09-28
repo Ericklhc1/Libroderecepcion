@@ -8,9 +8,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const CHECK_MS = 1_500;
+// P0 de capacidad: 10 s evita consultar varias tablas cada 1,5 s por pestaña.
+const CHECK_MS = 10_000;
 const HEARTBEAT_MS = 15_000;
-const PRESENCE_TOUCH_MS = 45_000;
+// La ventana online es 150 s; 90 s mantiene presencia útil con la mitad de escrituras.
+const PRESENCE_TOUCH_MS = 90_000;
 const STREAM_LIFETIME_MS = 4 * 60_000;
 
 /**

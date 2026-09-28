@@ -18,7 +18,8 @@ export const maxDuration = 300;
  * El stream se recicla antes del límite de la función; EventSource reconecta
  * solo y conserva la experiencia continua.
  */
-const CHECK_MS = 2_000;
+// P0 de capacidad: 15 s conserva avisos casi en tiempo real sin consultar Neon cada 2 s.
+const CHECK_MS = 15_000;
 const HEARTBEAT_MS = 15_000;
 const STREAM_LIFETIME_MS = 4 * 60_000;
 

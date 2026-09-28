@@ -1,5 +1,5 @@
 import 'server-only';
-import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
+import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus, TaskStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -349,18 +349,37 @@ export async function resolveAlert(
 
   const checkoutDismissed = alert.dedupeKey?.startsWith('checkout-unconfirmed:') === true;
   return prisma.$transaction(async (tx) => {
+    const resolvedAt = new Date();
     const updated = await tx.alert.update({
       where: { id: input.id },
       data: {
         status: AlertStatus.RESUELTA,
         resolvedById: user.id,
-        resolvedAt: new Date(),
+        resolvedAt,
         resolutionNote: input.note ?? null,
         snoozedUntil: null,
         ...(checkoutDismissed ? { auto: false } : {}),
       },
       include: alertInclude,
     });
+
+    if (shiftValidation) {
+      await tx.task.updateMany({
+        where: {
+          alertId: alert.id,
+          deletedAt: null,
+          status: { notIn: [TaskStatus.VALIDADA, TaskStatus.CANCELADA] },
+        },
+        data: {
+          status: TaskStatus.VALIDADA,
+          validatedAt: resolvedAt,
+          validatedById: user.id,
+          completedAt: resolvedAt,
+          completedById: user.id,
+        },
+      });
+    }
+
     await finishSupervisionTrackingForSource(tx, user, 'Alert', alert.id, 'RESUELTO');
     await recordAudit(
       {

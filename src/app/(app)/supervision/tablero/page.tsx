@@ -8,7 +8,6 @@ import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { getAssignmentBoard } from '@/server/services/assignment-board';
-import { getFormOptions } from '@/server/services/options';
 import { getMyOpenRun, listRuns, listTemplates } from '@/server/services/checklists';
 import { PRIORITY_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
@@ -74,12 +73,11 @@ export default async function AssignmentBoardPage({
   const canAssign = isSupervisor && hasPermission(user, 'supervision.task.assign');
   const canConfigure = isSupervisor && hasPermission(user, 'supervision.audit.create');
 
-  const [board, templates, runs, myRun, options] = await Promise.all([
+  const [board, templates, runs, myRun] = await Promise.all([
     getAssignmentBoard(),
     listTemplates(canConfigure),
     listRuns(user, 8, ChecklistRunMode.RONDA),
     getMyOpenRun(user.id, ChecklistRunMode.RONDA),
-    getFormOptions(),
   ]);
 
   const pendingInRun = myRun?.items.filter((item) => item.result === 'PENDIENTE').length ?? 0;
@@ -288,7 +286,7 @@ export default async function AssignmentBoardPage({
           <CardHeader
             title={`Ronda en curso: ${myRun.templateName}`}
             count={myRun.items.length}
-            action={pendingInRun === 0 ? <FinishRunDialog runId={myRun.id} users={options.users} /> : null}
+            action={pendingInRun === 0 ? <FinishRunDialog runId={myRun.id} users={board.assignees} /> : null}
           />
           <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
             {pendingInRun > 0

@@ -880,6 +880,30 @@ export async function markHandoverElements(
     notes?: Record<string, string | null>;
   },
 ) {
+  if (params.field === 'confirmed') {
+    const handover = await prisma.shiftHandover.findUnique({
+      where: { id: params.handoverId },
+      select: { toShiftId: true, status: true },
+    });
+    if (!handover || handover.status !== HandoverStatus.ENVIADA || !handover.toShiftId) {
+      throw new RuleError(
+        'Inicia la recepción desde Mi turno antes de confirmar la custodia física.',
+      );
+    }
+    const receiver = await prisma.shiftAssignment.findUnique({
+      where: {
+        shiftId_userId: {
+          shiftId: handover.toShiftId,
+          userId: user.id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!receiver) {
+      throw new RuleError('Esta custodia está vinculada a otro turno receptor.');
+    }
+  }
+
   const elements = await prisma.handoverElement.findMany({
     where: { handoverId: params.handoverId },
     select: { id: true },

@@ -7,6 +7,12 @@ import { RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ROLE_KEYS } from '@/lib/permissions';
+import {
+  parseSupervisionAuditReviewState,
+  sourceDeparturePending,
+  sourceDepartureTotal,
+  type AuditReviewStatus,
+} from '@/domain/supervision-audit-review';
 
 export type SupervisionReportKind =
   | 'AUDITORIA_FORMULARIO'
@@ -470,14 +476,26 @@ export async function mergeSupervisionAuditReport(
       ...jsonObject(existing?.metrics),
       ...input.parsed.metrics,
     } as Prisma.InputJsonObject;
-    const checks = mergeByKey(
-      jsonArray<SupervisionAuditCheck>(existing?.checks),
-      input.parsed.checks,
-    );
-    const findings = mergeByKey(
-      jsonArray<SupervisionAuditFinding>(existing?.findings),
-      input.parsed.findings,
-    );
+    const checks =
+      input.parsed.kind === 'AUDITORIA_FORMULARIO'
+        ? input.parsed.checks
+        : mergeByKey(
+            jsonArray<SupervisionAuditCheck>(existing?.checks),
+            input.parsed.checks,
+          );
+    const findings =
+      input.parsed.kind === 'AUDITORIA_FORMULARIO'
+        ? input.parsed.findings
+        : mergeByKey(
+            jsonArray<SupervisionAuditFinding>(existing?.findings),
+            input.parsed.findings,
+          );
+    const reviewState = parseSupervisionAuditReviewState(existing?.reviewState);
+    // Un informe SALIDAS recién cargado es una nueva fotografía de origen:
+    // sustituye cualquier ajuste manual previo del contador, para no ocultar datos más frescos.
+    if (input.parsed.kind === 'SALIDAS') {
+      delete reviewState.metrics.departuresPending;
+    }
     const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
     const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
     const existingSourceFiles = jsonArray<{
@@ -508,6 +526,7 @@ export async function mergeSupervisionAuditReport(
         checks: checks as unknown as Prisma.InputJsonArray,
         findings: findings as unknown as Prisma.InputJsonArray,
         warnings,
+        reviewState: JSON.parse(JSON.stringify(reviewState)) as Prisma.InputJsonObject,
         sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
       },
       create: {
@@ -519,6 +538,7 @@ export async function mergeSupervisionAuditReport(
         checks: checks as unknown as Prisma.InputJsonArray,
         findings: findings as unknown as Prisma.InputJsonArray,
         warnings,
+        reviewState: JSON.parse(JSON.stringify(reviewState)) as Prisma.InputJsonObject,
         sourceFiles: sourceFiles as unknown as Prisma.InputJsonArray,
       },
     });
@@ -539,6 +559,168 @@ export async function mergeSupervisionAuditReport(
           sourceFilePersisted: false,
           sourceFileHashesPersisted: sourceFiles.length,
           parserVersion: SUPERVISION_AUDIT_PARSER_VERSION,
+        },
+      },
+      tx,
+    );
+    return saved;
+  });
+}
+
+
+function assertActiveAuditReviewOwner(
+  user: CurrentUser,
+  row: { supervisionShift: { supervisorId: string; status: SupervisionShiftStatus } },
+) {
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
+    throw new RuleError('Sólo el Supervisor operativo puede actualizar la revisión diaria.');
+  }
+  if (row.supervisionShift.supervisorId !== user.id) {
+    throw new RuleError('Esa auditoría diaria pertenece al turno de otro Supervisor.');
+  }
+  if (row.supervisionShift.status !== SupervisionShiftStatus.ACTIVO) {
+    throw new RuleError('La revisión diaria sólo puede modificarse mientras tu turno de Supervisión está activo.');
+  }
+}
+
+export async function reviewSupervisionAuditItem(
+  user: CurrentUser,
+  input: {
+    auditImportId: string;
+    target: 'CHECK' | 'FINDING';
+    key: string;
+    status: AuditReviewStatus | null;
+    note?: string | null;
+  },
+) {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.supervisionAuditImport.findUnique({
+      where: { id: input.auditImportId },
+      include: { supervisionShift: { select: { supervisorId: true, status: true } } },
+    });
+    if (!row) throw new RuleError('Ese resumen de auditoría ya no existe.');
+    assertActiveAuditReviewOwner(user, row);
+
+    const collection =
+      input.target === 'CHECK'
+        ? jsonArray<SupervisionAuditCheck>(row.checks)
+        : jsonArray<SupervisionAuditFinding>(row.findings);
+    if (!collection.some((item) => item.key === input.key)) {
+      throw new RuleError('Ese punto ya no forma parte de la auditoría vigente.');
+    }
+
+    const note = input.note?.trim() || null;
+    if (input.status === 'NO_APLICA' && !note) {
+      throw new RuleError('Indica por qué este punto no aplica antes de retirarlo del pendiente.');
+    }
+
+    const reviewState = parseSupervisionAuditReviewState(row.reviewState);
+    const bucket = input.target === 'CHECK' ? reviewState.checks : reviewState.findings;
+    const before = bucket[input.key] ?? null;
+    if (input.status === null) {
+      delete bucket[input.key];
+    } else {
+      bucket[input.key] = {
+        status: input.status,
+        note,
+        at: new Date().toISOString(),
+        byId: user.id,
+        byName: user.name,
+      };
+    }
+
+    const saved = await tx.supervisionAuditImport.update({
+      where: { id: row.id },
+      data: {
+        reviewState: JSON.parse(JSON.stringify(reviewState)) as Prisma.InputJsonObject,
+      },
+    });
+    await recordAudit(
+      {
+        entity: 'SupervisionAuditImport',
+        entityId: row.id,
+        action: AuditAction.EDITAR,
+        summary:
+          input.status === null
+            ? `Punto de auditoría reabierto: ${input.key}`
+            : `Punto de auditoría ${input.status === 'RESUELTO' ? 'resuelto' : 'marcado no aplicable'}: ${input.key}`,
+        user,
+        before: { target: input.target, key: input.key, decision: before },
+        after: { target: input.target, key: input.key, decision: bucket[input.key] ?? null },
+      },
+      tx,
+    );
+    return saved;
+  });
+}
+
+export async function updateSupervisionAuditDeparturesPending(
+  user: CurrentUser,
+  input: {
+    auditImportId: string;
+    value: number | null;
+    note?: string | null;
+  },
+) {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.supervisionAuditImport.findUnique({
+      where: { id: input.auditImportId },
+      include: { supervisionShift: { select: { supervisorId: true, status: true } } },
+    });
+    if (!row) throw new RuleError('Ese resumen de auditoría ya no existe.');
+    assertActiveAuditReviewOwner(user, row);
+
+    const importedPending = sourceDeparturePending(row.metrics);
+    if (importedPending === null) {
+      throw new RuleError('Esta carga no contiene un contador de check-outs pendientes.');
+    }
+
+    const total = sourceDepartureTotal(row.metrics);
+    const reviewState = parseSupervisionAuditReviewState(row.reviewState);
+    const before = reviewState.metrics.departuresPending ?? null;
+
+    if (input.value === null) {
+      delete reviewState.metrics.departuresPending;
+    } else {
+      if (!Number.isInteger(input.value) || input.value < 0) {
+        throw new RuleError('Los check-outs pendientes deben ser un número entero igual o mayor que cero.');
+      }
+      if (total !== null && input.value > total) {
+        throw new RuleError(`No puedes indicar más pendientes (${input.value}) que salidas informadas (${total}).`);
+      }
+      const note = input.note?.trim();
+      if (!note) {
+        throw new RuleError('Indica qué cambió para actualizar el estado operativo de check-outs.');
+      }
+      reviewState.metrics.departuresPending = {
+        value: input.value,
+        note,
+        at: new Date().toISOString(),
+        byId: user.id,
+        byName: user.name,
+      };
+    }
+
+    const saved = await tx.supervisionAuditImport.update({
+      where: { id: row.id },
+      data: {
+        reviewState: JSON.parse(JSON.stringify(reviewState)) as Prisma.InputJsonObject,
+      },
+    });
+    await recordAudit(
+      {
+        entity: 'SupervisionAuditImport',
+        entityId: row.id,
+        action: AuditAction.EDITAR,
+        summary:
+          input.value === null
+            ? 'Check-outs pendientes restablecidos al valor del informe'
+            : `Check-outs pendientes actualizados: ${importedPending} del informe → ${input.value} operativos`,
+        user,
+        before: { importedPending, override: before },
+        after: {
+          importedPending,
+          override: reviewState.metrics.departuresPending ?? null,
         },
       },
       tx,

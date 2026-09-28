@@ -153,7 +153,7 @@ export default async function HandoverPage({
               ? 'Este último paso registra la recepción y cambia tu turno de INICIADO a ACTIVO. En emergencia, regulariza el relevo sin crear otro turno.'
               : null;
 
-  const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit
+  const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit || canFinalizeClose
     ? 'emisor'
     : receptionInProgress
       ? 'receptor'
@@ -534,7 +534,7 @@ export default async function HandoverPage({
         </Card>
       ) : null}
 
-      {canEdit && closeStep === 1 ? (
+      {(canEdit && closeStep === 1) || (canFinalizeClose && !closeStepOneReady) ? (
         <CashBox
           handoverId={handover.id}
           shiftId={handover.fromShiftId}
@@ -620,7 +620,7 @@ export default async function HandoverPage({
         </div>
       ) : null}
 
-      {!canEdit && !receptionInProgress ? (
+      {!canEdit && !canFinalizeClose && !receptionInProgress ? (
         <CashBox
           handoverId={handover.id}
           shiftId={handover.fromShiftId}

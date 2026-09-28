@@ -2,12 +2,19 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   mergeSupervisionAuditReport,
   parseSupervisionReportText,
+  reviewSupervisionAuditItem,
+  updateSupervisionAuditDeparturesPending,
 } from '@/server/services/supervision-audit-import';
 import {
   deliverSupervisionShift,
   finishSupervisionShift,
   startSupervisionShift,
 } from '@/server/services/supervision-center';
+import {
+  auditOperationalPendingCount,
+  effectiveDeparturePending,
+  parseSupervisionAuditReviewState,
+} from '@/domain/supervision-audit-review';
 import {
   ROLE_KEYS,
   createUser,
@@ -227,6 +234,169 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
       salesChannels: { netClp: 1_340_204 },
       payments: { clpAmount: 1_039_180, usdAmount: 48.26 },
     });
+  });
+
+
+  it('reemplaza el formulario recargado y no deja Gastro obsoleto de forma persistente', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor recarga',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-27T00:00:00.000Z');
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Formulario Auditoria 27-09-26.pdf',
+        [
+          'Formulario auditoría 27/09/2026',
+          'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos No',
+          'Revisar si hay mesas sin cerrar en Restaurante. Gastro Informes Cuentas Pendientes No',
+        ].join(' '),
+      ),
+    });
+
+    let stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+    expect((stored.findings as Array<{ key: string }>).map((item) => item.key)).toEqual(
+      expect.arrayContaining(['check:tickets-restaurante', 'check:mesas-restaurante']),
+    );
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Formulario Auditoria 27-09-26.pdf',
+        [
+          'Formulario auditoría 27/09/2026',
+          'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos Si Todo OK.',
+          'Revisar si hay mesas sin cerrar en Restaurante. Gastro Informes Cuentas Pendientes Si Todo OK.',
+        ].join(' '),
+      ),
+    });
+
+    stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+    const checks = stored.checks as Array<{ key: string; done: boolean | null }>;
+    const findings = stored.findings as Array<{ key: string }>;
+    expect(checks.find((item) => item.key === 'tickets-restaurante')?.done).toBe(true);
+    expect(checks.find((item) => item.key === 'mesas-restaurante')?.done).toBe(true);
+    expect(findings.map((item) => item.key)).not.toContain('check:tickets-restaurante');
+    expect(findings.map((item) => item.key)).not.toContain('check:mesas-restaurante');
+  });
+
+  it('permite retirar o reabrir un control sin alterar la evidencia importada', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor revisión',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-27T00:00:00.000Z');
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Formulario Auditoria 27-09-26.pdf',
+        [
+          'Formulario auditoría 27/09/2026',
+          'En Gastro Informes Tiquets, cotejamos todos los tiquet de restaurante pagados con los tíquets físicos No',
+          'Revisar si hay mesas sin cerrar en Restaurante. Gastro Informes Cuentas Pendientes No',
+        ].join(' '),
+      ),
+    });
+    let stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+
+    await reviewSupervisionAuditItem(supervisor, {
+      auditImportId: stored.id,
+      target: 'CHECK',
+      key: 'tickets-restaurante',
+      status: 'NO_APLICA',
+      note: 'Restaurante cerrado por mantenimiento; control no corresponde hoy.',
+    });
+
+    stored = await prisma.supervisionAuditImport.findUniqueOrThrow({ where: { id: stored.id } });
+    const review = parseSupervisionAuditReviewState(stored.reviewState);
+    expect(review.checks['tickets-restaurante']?.status).toBe('NO_APLICA');
+    expect(stored.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'tickets-restaurante', done: false }),
+    ]));
+    expect(
+      auditOperationalPendingCount({
+        metrics: stored.metrics,
+        checks: stored.checks as Array<{ key: string; done: boolean | null }>,
+        findings: stored.findings as Array<{ key: string }>,
+        reviewState: stored.reviewState,
+      }),
+    ).toBe(1);
+
+    await reviewSupervisionAuditItem(supervisor, {
+      auditImportId: stored.id,
+      target: 'CHECK',
+      key: 'tickets-restaurante',
+      status: null,
+    });
+    stored = await prisma.supervisionAuditImport.findUniqueOrThrow({ where: { id: stored.id } });
+    expect(
+      auditOperationalPendingCount({
+        metrics: stored.metrics,
+        checks: stored.checks as Array<{ key: string; done: boolean | null }>,
+        findings: stored.findings as Array<{ key: string }>,
+        reviewState: stored.reviewState,
+      }),
+    ).toBe(2);
+  });
+
+  it('actualiza check-outs durante el turno y una nueva carga SALIDAS vuelve a ser la fuente vigente', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor salidas',
+    });
+    const shift = await startSupervisionShift(supervisor, { priorities: [] });
+    const businessDate = new Date('2026-09-27T00:00:00.000Z');
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Salidas 27-9-26.pdf',
+        'Informe de salidas Total Realizado Pendiente Check-out 21 18 3',
+      ),
+    });
+    let stored = await prisma.supervisionAuditImport.findFirstOrThrow({
+      where: { supervisionShiftId: shift.id, businessDate },
+    });
+
+    await updateSupervisionAuditDeparturesPending(supervisor, {
+      auditImportId: stored.id,
+      value: 1,
+      note: 'Se completaron dos salidas; queda una pendiente de cobro.',
+    });
+    stored = await prisma.supervisionAuditImport.findUniqueOrThrow({ where: { id: stored.id } });
+    expect(
+      effectiveDeparturePending(
+        stored.metrics,
+        parseSupervisionAuditReviewState(stored.reviewState),
+      ),
+    ).toBe(1);
+
+    await mergeSupervisionAuditReport(supervisor, {
+      businessDate,
+      parsed: parseSupervisionReportText(
+        'Salidas 27-9-26.pdf',
+        'Informe de salidas Total Realizado Pendiente Check-out 21 21 0',
+      ),
+    });
+    stored = await prisma.supervisionAuditImport.findUniqueOrThrow({ where: { id: stored.id } });
+    expect(parseSupervisionAuditReviewState(stored.reviewState).metrics.departuresPending).toBeUndefined();
+    expect(
+      effectiveDeparturePending(
+        stored.metrics,
+        parseSupervisionAuditReviewState(stored.reviewState),
+      ),
+    ).toBe(0);
   });
 
   it('incluye el resumen diario en la copia inalterable del cierre de Supervisión', async () => {

@@ -41,12 +41,14 @@ describe('comunicados obligatorios', () => {
     otro = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
   });
 
-  it('el permiso de emitir lo tienen el administrador y el supervisor', () => {
+  it('el permiso de emitir lo tienen administración técnica, supervisión y gerencia', () => {
     const conPermiso = Object.entries(ROLE_PERMISSIONS)
       .filter(([, p]) => (p as readonly string[]).includes('announcement.manage'))
       .map(([role]) => role)
       .sort();
-    expect(conPermiso).toEqual([ROLE_KEYS.SYSTEM_ADMIN, ROLE_KEYS.SUPERVISOR].sort());
+    expect(conPermiso).toEqual(
+      [ROLE_KEYS.SYSTEM_ADMIN, ROLE_KEYS.SUPERVISOR, ROLE_KEYS.MANAGEMENT].sort(),
+    );
   });
 
   it('un comunicado para todos bloquea a todo el personal', async () => {

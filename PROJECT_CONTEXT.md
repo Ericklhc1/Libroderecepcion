@@ -80,6 +80,16 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 28/09/2026 · Libro 1.20.0 · auditorías accionables, arqueos imprimibles y servicios
+
+- Auditorías sorpresa: el cierre ya no guarda una etiqueta inerte. «Persona» exige destinatario y crea notificación; «Supervisión» distribuye al equipo supervisor; «Operativo» publica mediante notificaciones al equipo operativo. «Reservado» no distribuye.
+- El historial de auditorías muestra el resultado completo: alcance, muestra, resumen, observaciones, cada punto, estado y evidencia.
+- Arqueos de Caja: cada arqueo nuevo conserva un snapshot de billetes/monedas y puede abrirse en una hoja imprimible con fondo esperado, contado, diferencia, garantías y firmas. Los arqueos históricos siguen siendo imprimibles, pero sin inventar un desglose que antes no se guardaba.
+- Estacionamiento reutiliza la infraestructura de folios: fecha, habitación, huésped, patente, recepcionista, estado/anulación y exportación CSV. No crea movimientos de Caja.
+- Llaves incorpora «Todos los pisos · 89 hab.» para consulta, búsqueda y operación transversal. El inventario oficial sigue guardándose por piso para conservar trazabilidad.
+- Migración aditiva: `20260928183000_auditoria_caja_estacionamiento`.
+- Release objetivo: **v1.20.0**.
+
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
 
 - Mantiene el alivio de capacidad de 1.19.2 y corrige la regresión de alarmas cuando la pestaña del Libro está oculta.

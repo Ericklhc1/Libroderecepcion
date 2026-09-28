@@ -2391,7 +2391,16 @@ export async function closeShift(
 
   // La base de datos conserva el trigger como última barrera, pero el flujo
   // normal debe fallar antes con una regla de negocio legible para Recepción.
+  // En una apertura excepcional la entrega pudo quedar ENVIADA antes de que
+  // Caja/custodia estuvieran listas, por eso el cierre vuelve a validar las
+  // mismas barreras que el envío normal y no confía sólo en el estado ENVIADA.
   if (await isCashEnabled()) {
+    if (shift.handoverOut) {
+      const closeBlockers = await cashBlockersForSending(shift.handoverOut.id);
+      if (closeBlockers.length > 0) {
+        throw new RuleError(closeBlockers.join(' '));
+      }
+    }
     await assertShiftCashClosed(shift.id);
   }
 

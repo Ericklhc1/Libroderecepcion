@@ -80,6 +80,13 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 27/09/2026 · Libro 1.19.4 · reconciliación de alarmas
+
+- El pulso oculto no asume que `dispatched === 0` significa que el cliente está sincronizado.
+- Si otra pestaña o el stream ya materializó una alarma, el pulso detecta la notificación ALARMA no leída y devuelve el snapshot para que esta pestaña también la muestre.
+- Cuando no hay alarma vencida ni ALARMA no leída, conserva la ruta barata sin cargar el feed completo.
+- Sin migración ni cambios de negocio. Release: **v1.19.4**.
+
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
 
 - Mantiene el alivio de capacidad de 1.19.2 y corrige la regresión de alarmas cuando la pestaña del Libro está oculta.

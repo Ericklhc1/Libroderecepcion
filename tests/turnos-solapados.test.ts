@@ -3,12 +3,14 @@ import { ShiftStatus, ShiftType } from '@prisma/client';
 import {
   closeShift,
   confirmHandoverReviewStep,
+  confirmReceptionReviewStep,
   getMyActiveShift,
   getPendingHandover,
   openShift,
   prepareHandover,
   receiveHandover,
   sendHandover,
+  startReceptionShift,
 } from '@/server/services/shifts';
 import {
   ROLE_KEYS,
@@ -105,15 +107,27 @@ describe('relevo secuencial de Recepción', () => {
     ).rejects.toThrow(/entrega.*pendiente de recepción/i);
 
     expect((await getPendingHandover())?.id).toBe(handover.id);
+
+    const incoming = await startReceptionShift(entrante, {
+      handoverId: handover.id,
+      type: ShiftType.NOCHE,
+    });
+    expect(incoming.status).toBe(ShiftStatus.INICIADO);
+
+    const claimed = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(claimed.toShiftId).toBe(incoming.id);
+    expect((await getMyActiveShift(entrante.id))?.status).toBe(ShiftStatus.INICIADO);
+
+    await confirmReceptionReviewStep(entrante, { handoverId: handover.id, step: 'BRIEFING' });
+    await confirmReceptionReviewStep(entrante, { handoverId: handover.id, step: 'CUSTODY' });
+    await confirmReceptionReviewStep(entrante, { handoverId: handover.id, step: 'FINAL' });
     await receiveHandover(entrante, { handoverId: handover.id });
+
     const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe('RECIBIDA');
-    expect(received.toShiftId).toBeNull();
+    expect(received.toShiftId).toBe(incoming.id);
 
-    const { shift: incoming } = await openShift(entrante, { type: ShiftType.NOCHE });
-    expect(incoming.status).toBe(ShiftStatus.ACTIVO);
-
-    const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(linked.toShiftId).toBe(incoming.id);
+    const active = await prisma.shift.findUniqueOrThrow({ where: { id: incoming.id } });
+    expect(active.status).toBe(ShiftStatus.ACTIVO);
   });
 });

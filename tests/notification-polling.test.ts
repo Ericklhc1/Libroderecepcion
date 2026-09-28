@@ -33,8 +33,10 @@ describe('notificaciones realtime resistentes a deployments', () => {
     expect(center).toContain("fetch('/api/alarms/pulse'");
     expect(center).toContain('startHiddenAlarmPulse();');
     expect(pulse).toContain('dispatchDueAlarmsForUser(user.id');
-    expect(pulse).toContain('if (dispatched === 0)');
+    expect(pulse).toContain('hasUnreadOperationalAlarmNotification(user.id)');
+    expect(pulse).toContain('if (!hasUnreadAlarm)');
     expect(pulse).toContain('getNotificationFeedForUser(user.id)');
+    expect(pulse).toContain('dispatched > 0 ||');
   });
 
   it('el stream es dinámico, SSE, no-cache y exige sesión válida', () => {

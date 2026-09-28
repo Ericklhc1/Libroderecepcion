@@ -218,8 +218,18 @@ export async function endShiftParticipation(
 /** Turno operativo en curso. El servicio de apertura garantiza uno a la vez en Recepción. */
 export async function getCurrentShift(): Promise<ShiftWithDetail | null> {
   return prisma.shift.findFirst({
-    where: { status: { in: OCCUPYING_SHIFT_STATUSES } },
+    where: {
+      archivedAt: null,
+      status: { in: OCCUPYING_SHIFT_STATUSES },
+      assignments: {
+        some: {
+          activatedAt: { not: null },
+          leftAt: null,
+        },
+      },
+    },
     include: shiftInclude,
+    orderBy: [{ actualStart: 'desc' }, { createdAt: 'desc' }],
   });
 }
 
@@ -313,8 +323,10 @@ export async function getPendingCashHandover(targetShiftId?: string | null) {
  * vez, la pregunta ya no es «cuál tomo» sino «hay uno abierto y estoy dentro».
  */
 export type ShiftDesk = {
-  /** El turno en curso, si hay. */
+  /** El turno propio del usuario, si está participando. */
   current: ShiftWithDetail | null;
+  /** Turno operativo global vigente, aunque el usuario todavía no esté dentro. */
+  operationalCurrent: ShiftWithDetail | null;
   /** Si el usuario es parte del turno en curso. */
   iAmIn: boolean;
   /** Entrega operativa esperando recepción. */
@@ -329,8 +341,9 @@ export type ShiftDesk = {
 };
 
 export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
-  const [current, awaitingReceipt] = await Promise.all([
+  const [current, operationalCurrent, awaitingReceipt] = await Promise.all([
     getMyActiveShift(user.id),
+    getCurrentShift(),
     getShiftsAwaitingReceipt(),
   ]);
   const [pending, cashPending] = await Promise.all([
@@ -341,6 +354,7 @@ export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
 
   return {
     current,
+    operationalCurrent,
     iAmIn: Boolean(current),
     pending,
     cashPending,
@@ -1482,6 +1496,18 @@ export async function addShiftMember(
     )
   ) {
     return;
+  }
+
+  if (
+    actor.id === input.userId &&
+    !actorIsIn &&
+    !actorSupervises &&
+    shift.status !== ShiftStatus.INICIADO &&
+    shift.status !== ShiftStatus.ACTIVO
+  ) {
+    throw new RuleError(
+      'No puedes sumarte a un turno que ya está en cierre. Debes incorporarte mientras está iniciado o activo.',
+    );
   }
 
   const role =

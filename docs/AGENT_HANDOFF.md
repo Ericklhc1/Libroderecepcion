@@ -1,5 +1,14 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 28/09/2026 · Libro 1.19.5 · cierre de turno desbloqueado
+
+- Corrige el cierre formal que quedaba atrapado en `ENTREGA_ENVIADA`: la Server Action pedía semánticamente `shift.manage` y el gate de Recepción bloqueaba ese permiso durante `CLOSING`, aunque el recepcionista fuera dueño del turno.
+- `closeShiftAction` usa ahora `shift.close`; el servicio conserva la comprobación final de propietario o `shift.manage` para Supervisión.
+- Si una regla de negocio rechaza el cierre, el modal se cierra y deja visible el error real en pantalla en vez de parecer que el botón no hizo nada.
+- Prueba de regresión añadida en `tests/reception-shift-gate.test.ts`.
+- Sin migración ni cambios de datos. Release objetivo: **v1.19.5**.
+
+
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo
 
 - Corrige la regresión detectada después del hotfix de capacidad 1.19.2: una pestaña oculta ya no pierde el despacho oportuno de timers/recordatorios.

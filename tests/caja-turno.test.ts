@@ -285,7 +285,7 @@ describe('caja en la entrega de turno', () => {
     const emergency = await openOperationalShift(entrante, {
       type: ShiftType.NOCHE,
       continuity: true,
-      emergencyReason: 'FALLA_TECNICA',
+      emergencyReason: 'FALLA_TECNICA_CIERRE',
       emergencyAccepted: true,
     });
     expect(emergency.shift.status).toBe('ACTIVO');

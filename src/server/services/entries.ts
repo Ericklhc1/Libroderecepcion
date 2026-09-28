@@ -32,7 +32,7 @@ export const entryInclude = {
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true, key: true } },
-  shift: { select: { id: true, type: true, date: true } },
+  shift: { select: { id: true, humanId: true, type: true, date: true } },
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
 
@@ -170,11 +170,10 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         text: [
           `${label} REGISTRADA`,
           `Referencia: #${created.humanId}`,
-          `ID: ${created.id}`,
           `Título: ${created.title}`,
           `Fecha/hora: ${operationalMailTimestamp(created.occurredAt)}`,
-          `Registrado por: ${user.name} (ID ${user.id})`,
-          `Turno: ${created.shift ? `${created.shift.type} · ${created.shift.id}` : 'sin turno asociado'}`,
+          `Registrado por: ${user.name} (@${user.username})`,
+          `Turno: ${created.shift ? `#${created.shift.humanId} · ${created.shift.type}` : 'sin turno asociado'}`,
           `Estado: ${created.status}`,
           `Prioridad: ${created.priority}`,
           `Gravedad: ${created.severity ?? 'no aplica'}`,

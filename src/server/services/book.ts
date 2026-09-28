@@ -239,7 +239,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
-          ...(seq !== null ? [{ seq }] : []),
+          ...(seq !== null ? [{ humanId: seq }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { description: { contains: q, mode: 'insensitive' } },
           { tags: { has: q.toLowerCase() } },
@@ -406,6 +406,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     if (q) {
       and.push({
         OR: [
+          ...(seq !== null ? [{ humanId: seq }] : []),
           { title: { contains: q, mode: 'insensitive' } },
           { message: { contains: q, mode: 'insensitive' } },
           { entry: { title: { contains: q, mode: 'insensitive' } } },
@@ -439,7 +440,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     return rows.map((row) => ({
       kind: 'alert' as const,
       id: row.id,
-      ref: 'Alerta',
+      ref: `#${row.humanId}`,
       kindLabel: 'Alerta',
       typeLabel: ALERT_TYPE_LABEL[row.type],
       title: row.title,

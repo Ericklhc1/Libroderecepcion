@@ -32,9 +32,9 @@ export function ReceptionOperationGate({
         }
       : mode === 'HANDOVER_PENDING'
         ? {
-            title: 'Entrega de turno pendiente',
-            body: 'El turno saliente ya cerró. El recuento de recepción se hace dentro de esa entrega, no en la Caja general. Recuenta el fondo fijo y valida las garantías antes de confirmar la recepción.',
-            action: 'Ir al recuento de la entrega',
+            title: 'Entrega lista para recibir',
+            body: 'El turno saliente ya cerró. Inicia la recepción desde Mi turno: tu turno quedará INICIADO y el Libro te llevará por entrega, Caja, garantías y custodia sin pasar por Caja general.',
+            action: 'Iniciar recepción de turno',
           }
         : mode === 'RECEIVING'
           ? {
@@ -63,11 +63,9 @@ export function ReceptionOperationGate({
 
         <Link
           href={
-            mode === 'HANDOVER_PENDING' && handoverId
-              ? `/turno/entrega/${handoverId}#recuento-caja`
-              : mode === 'NO_SHIFT'
-                ? '/turno#abrir-turno'
-                : '/turno'
+            mode === 'HANDOVER_PENDING' || mode === 'NO_SHIFT'
+              ? '/turno#abrir-turno'
+              : '/turno'
           }
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700"
         >

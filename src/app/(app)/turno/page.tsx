@@ -339,18 +339,21 @@ export default async function ShiftPage({
                 ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">
                     <p className="font-medium text-petrol-900">
-                      Turno saliente cerrado · liana disponible
+                      Turno saliente cerrado · entrega lista para recibir
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      La entrega no está asignada a ningún turno entrante. Revísala, recuenta Caja
-                      si corresponde y confirma la recepción. Después podrás iniciar tu propio turno.
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Inicia tu turno para tomar formalmente esta entrega. Quedará en estado
+                      INICIADO mientras sigues el recorrido de recepción: revisar entrega,
+                      recontar Caja y garantías, recibir custodia, revisar y confirmar.
                     </p>
-                    <Link
-                      href={`/turno/entrega/${(cashIncoming ?? incoming)!.id}`}
-                      className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
-                    >
-                      Revisar y recibir entrega
-                    </Link>
+                    <div className="mt-3 max-w-md">
+                      <OpenShiftForm
+                        suggestedType={desk.suggestedType}
+                        guided={guidedShiftExperience}
+                        guidanceSession={guidanceSession}
+                        receiving
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -501,45 +504,26 @@ export default async function ShiftPage({
               <div className="border-t border-slate-200 bg-gold-50/60 px-4 py-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-petrol-900">
                   <Inbox className="h-4 w-4" aria-hidden="true" />
-                  Confirmar recepción
+                  Recepción de turno en curso
                 </h3>
-                {cashIncoming ? (
+                {cashIncoming || incoming ? (
                   <>
-                    <p className="mt-1 text-sm text-slate-700">
-                      El turno saliente ya está cerrado y dejó la Caja declarada. Recuéntala
-                      físicamente y valida las garantías antes de confirmar la recepción.
+                    <p className="mt-1 text-sm leading-5 text-slate-700">
+                      Tu turno está INICIADO, pero la operación permanece bloqueada hasta completar
+                      la recepción. Todo el recorrido se hace aquí, dentro de Turno; no vayas a Caja
+                      general para recibir el relevo.
                     </p>
                     <Link
-                      href={`/turno/entrega/${cashIncoming.id}`}
+                      href={`/turno/entrega/${(cashIncoming ?? incoming)!.id}?recepcion=1`}
                       className="mt-3 inline-flex rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
                     >
-                      Recontar y recibir Caja
+                      CONTINUAR RECEPCIÓN DEL TURNO
                     </Link>
-                  </>
-                ) : incoming ? (
-                  <>
-                    <p className="mt-1 text-sm text-slate-700">
-                      Entrega de {incoming.issuedBy.name} · turno{' '}
-                      {SHIFT_TYPE_LABEL[incoming.fromShift.type]} ·{' '}
-                      <Link
-                        href={`/turno/entrega/${incoming.id}`}
-                        className="font-medium text-petrol-700 hover:underline"
-                      >
-                        ver los {incoming.items.length} puntos
-                      </Link>
-                    </p>
-                    <div className="mt-3 max-w-lg">
-                      <ReceiveHandoverForm
-                        shiftId={shift.id}
-                        handoverId={incoming.id}
-                        hasHandover
-                      />
-                    </div>
                   </>
                 ) : shift.status === ShiftStatus.INICIADO ? (
                   <>
                     <p className="mt-1 text-sm text-slate-700">
-                      No hay Caja ni entrega pendiente para este turno.
+                      Este turno quedó INICIADO sin una entrega enlazada. Actívalo sólo como recuperación administrativa.
                     </p>
                     <div className="mt-3 max-w-lg">
                       <ReceiveHandoverForm shiftId={shift.id} hasHandover={false} />

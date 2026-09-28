@@ -152,14 +152,20 @@ describe('jornada operativa transversal de punta a punta', () => {
     // una instrucción imposible. Queda fuera de turno.
     expect((await getReceptionOperationGate(outgoing)).mode).toBe('NO_SHIFT');
 
-    // 5. Para quien sí puede tomar la liana, la entrega pendiente bloquea la
-    // operación general hasta recibir/recontar el relevo.
+    // 5. Para quien sí puede tomar la liana, primero aparece la entrega
+    // pendiente. Al iniciar su turno pasa a RECEIVING y sigue bloqueado hasta
+    // recontar/confirmar todo el relevo.
     expect((await getReceptionOperationGate(incoming)).mode).toBe('HANDOVER_PENDING');
 
-    // El entrante no puede saltarse el recuento/recepción.
-    await expect(
-      openShiftAs(incoming, { type: ShiftType.NOCHE }),
-    ).rejects.toThrow(/pendiente de recepción/i);
+    const nightShift = await openShiftAs(incoming, { type: ShiftType.NOCHE });
+    expect(nightShift.status).toBe(ShiftStatus.INICIADO);
+    expect((await getReceptionOperationGate(incoming)).mode).toBe('RECEIVING');
+
+    const claimed = await prisma.shiftHandover.findUniqueOrThrow({
+      where: { id: handover.id },
+    });
+    expect(claimed.toShiftId).toBe(nightShift.id);
+    expect(claimed.status).toBe('ENVIADA');
 
     const receivedCash = await receiveShiftCash(incoming, {
       handoverId: handover.id,
@@ -168,13 +174,13 @@ describe('jornada operativa transversal de punta a punta', () => {
     expect(receivedCash.discrepancies).toEqual([]);
 
     await receiveHandover(incoming, { handoverId: handover.id });
-    const nightShift = await openShiftAs(incoming, { type: ShiftType.NOCHE });
     expect((await getReceptionOperationGate(incoming)).mode).toBe('ACTIVE');
 
     const linked = await prisma.shiftHandover.findUniqueOrThrow({
       where: { id: handover.id },
     });
     expect(linked.toShiftId).toBe(nightShift.id);
+    expect(linked.status).toBe('RECIBIDA');
 
     // 6. Sólo queda una participación operativa viva: la del entrante.
     const liveAssignments = await prisma.shiftAssignment.findMany({

@@ -38,11 +38,11 @@ import {
  *
  * 1. **Dos ventanas fijas.** Cubierto en `shift-state.test.ts` (dominio puro).
  * 2. **Nada preestablecido.** Abrir el turno es un solo gesto, sin programar.
- * 3. **Relevo secuencial.** El saliente cierra; la entrega se recibe sin
- *    preasignación y sólo después se abre el turno que continúa.
+ * 3. **Relevo secuencial.** El saliente cierra; el entrante abre INICIADO,
+ *    reclama la entrega y sólo pasa a ACTIVO después de confirmarla.
  * 4. **Una sola participación activa por persona.** La base lo garantiza.
  * 5. **La entrega pendiente se conserva.** Después del cierre saliente queda
- *    disponible en bandeja para cualquier receptor autorizado.
+ *    disponible hasta que un turno entrante la reclama de forma atómica.
  */
 describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
   beforeAll(async () => {
@@ -246,7 +246,7 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     ).rejects.toThrow(/no participa en la operación/);
   });
 
-  it('el relevo completo funciona: cierre, recepción libre y apertura del siguiente turno', async () => {
+  it('el relevo completo funciona: cierre, turno INICIADO, recepción y activación', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
 
@@ -266,29 +266,25 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     const enBandeja = await getShiftsAwaitingReceipt();
     expect(enBandeja).toHaveLength(1);
     expect(enBandeja[0]!.id).toBe(primero.id);
+    expect((await getPendingHandover())?.id).toBe(draft.id);
 
-    const paraRecibir = await getPendingHandover();
-    expect(paraRecibir?.id).toBe(draft.id);
+    const { shift: segundo, joined } = await openShift(entrante, { type: ShiftType.NOCHE });
+    expect(joined).toBe(false);
+    expect(segundo.status).toBe(ShiftStatus.INICIADO);
 
-    await expect(
-      openShift(entrante, { type: ShiftType.NOCHE }),
-    ).rejects.toThrow(/entrega.*pendiente de recepción/i);
+    const reclamada = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(reclamada.status).toBe(HandoverStatus.ENVIADA);
+    expect(reclamada.toShiftId).toBe(segundo.id);
+    expect(reclamada.receivedById).toBeNull();
 
     await receiveHandover(entrante, {
       handoverId: draft.id,
       observations: 'Recibido conforme.',
     });
 
-    const recibidaSinTurno = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: draft.id } });
-    expect(recibidaSinTurno.status).toBe(HandoverStatus.RECIBIDA);
-    expect(recibidaSinTurno.receivedById).toBe(entrante.id);
-    expect(recibidaSinTurno.toShiftId).toBeNull();
-
-    const { shift: segundo, joined } = await openShift(entrante, { type: ShiftType.NOCHE });
-    expect(joined).toBe(false);
-    expect(segundo.status).toBe(ShiftStatus.ACTIVO);
-
     const recibida = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(recibida.status).toBe(HandoverStatus.RECIBIDA);
+    expect(recibida.receivedById).toBe(entrante.id);
     expect(recibida.toShiftId).toBe(segundo.id);
 
     const activo = await getCurrentShift();
@@ -307,7 +303,7 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(activo.status).toBe(ShiftStatus.ACTIVO);
   });
 
-  it('Supervisión puede recibir la liana y otro recepcionista abrir el turno que continúa', async () => {
+  it('Supervisión no puede recibir por fuera del turno receptor ya iniciado', async () => {
     const saliente = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Erick' });
     const entrante = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
@@ -319,17 +315,16 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 
-    await receiveHandover(supervisor, { handoverId: handover.id });
-    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(received.status).toBe(HandoverStatus.RECIBIDA);
-    expect(received.receivedById).toBe(supervisor.id);
-    expect(received.toShiftId).toBeNull();
-
     const { shift: segundo } = await openShift(entrante, { type: ShiftType.NOCHE });
-    expect(segundo.status).toBe(ShiftStatus.ACTIVO);
+    expect(segundo.status).toBe(ShiftStatus.INICIADO);
 
+    await expect(
+      receiveHandover(supervisor, { handoverId: handover.id }),
+    ).rejects.toThrow(/vinculada a otro turno receptor/i);
+
+    await receiveHandover(entrante, { handoverId: handover.id });
     const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(linked.receivedById).toBe(supervisor.id);
+    expect(linked.receivedById).toBe(entrante.id);
     expect(linked.toShiftId).toBe(segundo.id);
   });
 
@@ -344,6 +339,7 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     await sendHandover(saliente, { shiftId: primero.id });
     await closeShift(saliente, { shiftId: primero.id });
 
+    await openShift(entrante, { type: ShiftType.NOCHE });
     await receiveHandover(entrante, { handoverId: draft.id });
 
     await expect(

@@ -395,3 +395,13 @@ Production.
 - En adelante, resolver una alerta `shift-validation:*` valida también su tarea vinculada para evitar el estado contradictorio «alerta resuelta + tarea pendiente».
 - Migración: `20260927214500_regularizar_turnos_26_27_sept`.
 
+## Actualización 27/09/2026 · v1.19.0 · recepción guiada dentro de Turno
+
+- El relevo normal cambia a: saliente CERRADO → entrante abre INICIADO → entrega se enlaza → recuento/custodia → recepción confirmada → entrante ACTIVO.
+- El servicio ya no permite recibir Caja ni custodia antes de que exista el turno receptor enlazado.
+- La custodia declarada por el saliente es barrera real: todos esos elementos deben quedar físicamente confirmados antes de `receiveHandover()`.
+- `/turno/entrega/[id]` presenta recepción en cinco pasos y reutiliza la misma evidencia de Caja/custodia sin enviar al usuario a `/caja`.
+- La apertura de emergencia conserva activación inmediata; la regularización posterior puede enlazar su entrega al turno de emergencia activo.
+- Se corrige el texto del botón que sólo cierra el modal: ahora dice «VOLVER Y ESPERAR EL CIERRE DEL SALIENTE».
+- Sin migración de esquema. Versión objetivo: **1.19.0**.
+

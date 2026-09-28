@@ -198,7 +198,7 @@ describe('caja en la entrega de turno', () => {
     expect(counts).toHaveLength(1);
   });
 
-  it('el receptor recuenta Caja después del cierre, recibe la entrega y recién entonces abre su turno', async () => {
+  it('el receptor inicia su turno, recuenta Caja y queda ACTIVO sólo al confirmar la entrega', async () => {
     await seedFunds();
     const manana = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, manana.id);
@@ -214,9 +214,13 @@ describe('caja en la entrega de turno', () => {
     await sendHandover(saliente, { shiftId: manana.id });
     await closeShift(saliente, { shiftId: manana.id });
 
-    await expect(
-      openShiftAs(entrante, { type: ShiftType.NOCHE }),
-    ).rejects.toThrow(/entrega.*pendiente de recepción/i);
+    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
+    expect(tarde.status).toBe('INICIADO');
+
+    const claimed = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    expect(claimed.status).toBe(HandoverStatus.ENVIADA);
+    expect(claimed.receivedAt).toBeNull();
+    expect(claimed.toShiftId).toBe(tarde.id);
 
     const result = await receiveShiftCash(entrante, {
       handoverId: handover.id,
@@ -224,27 +228,19 @@ describe('caja en la entrega de turno', () => {
     });
     expect(result.discrepancies).toEqual([]);
 
-    const sent = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(sent.status).toBe(HandoverStatus.ENVIADA);
-    expect(sent.receivedAt).toBeNull();
-    expect(sent.toShiftId).toBeNull();
-
     const outgoing = await prisma.shift.findUniqueOrThrow({ where: { id: manana.id } });
     expect(outgoing.status).toBe('CERRADO');
 
     await receiveHandover(entrante, { handoverId: handover.id });
     const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
-    expect(received.toShiftId).toBeNull();
+    expect(received.toShiftId).toBe(tarde.id);
 
-    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
-    expect(tarde.status).toBe('ACTIVO');
-
-    const linked = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
-    expect(linked.toShiftId).toBe(tarde.id);
+    const active = await prisma.shift.findUniqueOrThrow({ where: { id: tarde.id } });
+    expect(active.status).toBe('ACTIVO');
   });
 
-  it('la diferencia se calcula, genera alerta y la entrega sigue sin preasignar un turno', async () => {
+  it('la diferencia se calcula y genera alerta dentro del turno receptor INICIADO', async () => {
     await seedFunds();
     const shift = await openShift(saliente, ShiftType.DIA);
     const handover = await prepareHandover(saliente, shift.id);
@@ -266,6 +262,9 @@ describe('caja en la entrega de turno', () => {
     await confirmReview(saliente, handover.id);
     await sendHandover(saliente, { shiftId: shift.id });
     await closeShift(saliente, { shiftId: shift.id });
+
+    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
+    expect(tarde.status).toBe('INICIADO');
 
     const result = await receiveShiftCash(entrante, {
       handoverId: handover.id,
@@ -290,10 +289,10 @@ describe('caja en la entrega de turno', () => {
     });
     const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
-    expect(received.toShiftId).toBeNull();
+    expect(received.toShiftId).toBe(tarde.id);
 
-    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
-    expect(tarde.status).toBe('ACTIVO');
+    const active = await prisma.shift.findUniqueOrThrow({ where: { id: tarde.id } });
+    expect(active.status).toBe('ACTIVO');
 
     const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'CashCount'
@@ -538,7 +537,7 @@ describe('elementos que viajan con la caja', () => {
     expect(await cashBlockersForSending(handover.id)).toEqual([]);
   });
 
-  it('los elementos físicos pendientes quedan documentados sin saltarse el relevo secuencial', async () => {
+  it('la custodia física declarada bloquea la activación hasta que el receptor la confirme', async () => {
     await seedFunds();
     await seedElement('Radio de turno');
 
@@ -559,26 +558,41 @@ describe('elementos que viajan con la caja', () => {
     const sent = await sendHandover(saliente, { shiftId: manana.id });
     await closeShift(saliente, { shiftId: manana.id });
 
+    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
+    expect(tarde.status).toBe('INICIADO');
+
     await receiveShiftCash(entrante, {
       handoverId: handover.id,
       quantities,
     });
 
+    expect(await cashBlockersForReceiving(handover.id)).toEqual([
+      expect.stringMatching(/Radio de turno/),
+    ]);
+
+    await expect(
+      receiveHandover(entrante, { handoverId: sent.id }),
+    ).rejects.toThrow(/Confirma físicamente la custodia/i);
+
+    await markHandoverElements(entrante, {
+      handoverId: handover.id,
+      field: 'confirmed',
+      marks: { [state.elements[0]!.id]: true },
+    });
     expect(await cashBlockersForReceiving(handover.id)).toEqual([]);
 
-    await receiveHandover(entrante, {
-      handoverId: sent.id,
-    });
+    await receiveHandover(entrante, { handoverId: sent.id });
+
     const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: sent.id } });
     expect(received.status).toBe(HandoverStatus.RECIBIDA);
-    expect(received.toShiftId).toBeNull();
-
-    const tarde = await openShiftAs(entrante, { type: ShiftType.NOCHE });
-    expect(tarde.status).toBe('ACTIVO');
+    expect(received.toShiftId).toBe(tarde.id);
 
     const after = await getHandoverCashState(handover.id);
     expect(after.elements[0]?.declared).toBe(true);
-    expect(after.elements[0]?.confirmed).toBe(false);
+    expect(after.elements[0]?.confirmed).toBe(true);
+
+    const active = await prisma.shift.findUniqueOrThrow({ where: { id: tarde.id } });
+    expect(active.status).toBe('ACTIVO');
   });
 
   it('marcar un elemento de otra entrega no hace nada', async () => {
@@ -588,12 +602,12 @@ describe('elementos que viajan con la caja', () => {
 
     const result = await markHandoverElements(saliente, {
       handoverId: handover.id,
-      field: 'confirmed',
+      field: 'declared',
       marks: { 'id-de-otra-entrega': true },
     });
 
     expect(result.updated).toBe(0);
     const state = await getHandoverCashState(handover.id);
-    expect(state.elements.every((element) => !element.confirmed)).toBe(true);
+    expect(state.elements.every((element) => !element.declared)).toBe(true);
   });
 });

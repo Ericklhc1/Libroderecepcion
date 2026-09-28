@@ -140,7 +140,7 @@ function gateMessage(mode: ReceptionOperationMode): string {
     return 'Debes iniciar tu turno antes de interactuar con la operación.';
   }
   if (mode === 'HANDOVER_PENDING') {
-    return 'Hay una entrega cerrada pendiente. Recibe la entrega y recuenta Caja antes de iniciar el turno siguiente.';
+    return 'Hay una entrega cerrada pendiente. Inicia la recepción desde Mi turno para tomarla y completar el relevo.';
   }
   if (mode === 'RECEIVING') {
     return 'Hay una recepción de turno pendiente. Completa la validación desde Mi turno antes de operar.';
@@ -162,7 +162,12 @@ export async function assertReceptionOperationPermission(
     throw new RuleError(gateMessage(gate.mode));
   }
 
-  if (gate.mode === 'HANDOVER_PENDING' || gate.mode === 'RECEIVING') {
+  if (gate.mode === 'HANDOVER_PENDING') {
+    if (permission === 'shift.start' || RECEIVE_ONLY_PERMISSIONS.has(permission)) return;
+    throw new RuleError(gateMessage(gate.mode));
+  }
+
+  if (gate.mode === 'RECEIVING') {
     if (RECEIVE_ONLY_PERMISSIONS.has(permission)) return;
     throw new RuleError(gateMessage(gate.mode));
   }

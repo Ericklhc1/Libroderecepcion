@@ -308,20 +308,13 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
   /*
     Gerencia dirige y controla la operación sin convertirse en operador de
-    Recepción. Puede crear/asignar acciones, administrar seguimientos,
+    Recepción. Puede crear y asignar acciones, administrar seguimientos,
     comunicar lineamientos y consultar la capa de Supervisión.
 
-    Conserva además la reparación global auditada de conflictos.
-    1) actuar sobre aquello de lo que es RESPONSABLE, comprobando propiedad;
-    2) `conflict.resolve_all`, una reparación global auditada compartida con
-       Supervisor y Administrador de sistema.
-
-    Esta segunda excepción NO concede check-in/check-out, llaves, importación,
-    turnos ni edición general de registros.
-
-    `operational: true` en el rol, porque tiene que poder figurar como
-    responsable. No puede tomar turnos: le faltan `shift.start`,
-    `shift.receive` y `shift.handover`.
+    `operational: true` porque puede figurar como responsable. Deliberadamente
+    no recibe permisos de iniciar/recibir/entregar/cerrar turno, escribir Caja,
+    operar llaves ni editar reservas. `conflict.resolve_all` sigue siendo una
+    reparación global auditada, no una operación habitual.
   */
   [ROLE_KEYS.MANAGEMENT]: [
     'guest.view',

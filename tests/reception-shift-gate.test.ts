@@ -181,7 +181,7 @@ describe('Recepción · relevo secuencial', () => {
     expect(source).toContain('Receptor de la entrega');
     expect(source).toContain('Validación / auditoría de cierre');
     expect(source).toContain('Erick Herrera o auditor designado');
-    expect(source).toContain('Imprimir informe Caja entrega/recepción');
+    expect(source).toContain('Imprimir informe de turno');
   });
 });
 

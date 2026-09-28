@@ -741,6 +741,12 @@ model ShiftHandover {
   pendingsReviewedAt   DateTime?
   finalReviewAt        DateTime?
   urgentAcknowledgedAt DateTime?
+  /// Barreras persistidas de la recepción guiada. El turno entrante permanece
+  /// INICIADO hasta completar estas confirmaciones y la recepción final.
+  receiverBriefingReviewedAt DateTime?
+  receiverCustodyReviewedAt  DateTime?
+  receiverFinalReviewAt      DateTime?
+  receiverUrgentAcknowledgedAt DateTime?
   notes                String?
   receiverObservations String?
   issuerSessionId      String?

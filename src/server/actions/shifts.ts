@@ -432,7 +432,7 @@ export async function closeShiftAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const input = parseOrThrow(closeSchema, formDataToObject(formData));
-    const user = await requirePermissionOrOwner('shift.manage', async () => {
+    const user = await requirePermissionOrOwner('shift.close', async () => {
       const shift = await prisma.shift.findUnique({
         where: { id: input.shiftId },
         select: { assignments: { select: { userId: true } } },

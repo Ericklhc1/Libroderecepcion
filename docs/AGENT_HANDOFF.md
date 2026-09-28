@@ -1,5 +1,13 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.2 · alivio de capacidad Vercel
+
+- Hotfix P0 de infraestructura: los streams de Chat y Notificaciones reducen drásticamente la frecuencia de consultas internas.
+- Notificaciones: 2 s → 15 s. Chat: 1,5 s → 10 s. Presencia de Chat: 45 s → 90 s.
+- Los streams se suspenden automáticamente en pestañas ocultas y reconectan al volver a primer plano.
+- Sin cambios de esquema, datos, permisos, turnos o Caja; sin migración.
+- Release: **v1.19.2**.
+
 ## Actualización 27/09/2026 · Libro 1.19.1 · sincronización canónica
 
 - Patch documental únicamente: actualiza `PROJECT_CONTEXT.md` y este relevo con el estado publicado en 1.19.0.
@@ -152,7 +160,7 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-27**.
-- Versión vigente en Production: **v1.19.1**.
+- Versión vigente en Production: **v1.19.2**.
 - Siguiente versión: definir según el próximo cambio aprobado.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.

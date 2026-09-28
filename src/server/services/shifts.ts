@@ -2465,7 +2465,7 @@ export async function closeShift(
         await notify(
           successor.assignments.map((assignment) => ({
             userId: assignment.userId,
-            type: NotificationType.INFORMATIVA,
+            type: NotificationType.ACCION_REQUERIDA,
             title: 'Emergencia regularizada',
             body: 'El turno que originó la emergencia ya cerró. Tu turno continúa normalmente; completa la recepción pendiente desde Mi turno.',
             link: '/turno',

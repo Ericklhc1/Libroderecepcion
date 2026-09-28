@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import {
   dispatchDueAlarmsForUser,
-  hasUnreadOperationalAlarmNotification,
+  getUnreadOperationalAlarmNotificationId,
 } from '@/server/services/operational-alarms';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 
@@ -18,7 +18,7 @@ const headers = { 'Cache-Control': 'no-store' };
  * No mantiene un stream abierto ni carga el feed completo salvo que realmente
  * haya una alarma vencida que deba materializarse para esta persona.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json(
@@ -34,14 +34,17 @@ export async function GET() {
     );
   }
 
+  const knownAlarmId = new URL(request.url).searchParams.get('knownAlarmId') || null;
   const dispatched = await dispatchDueAlarmsForUser(user.id, new Date());
-  const hasUnreadAlarm =
-    dispatched > 0 || (await hasUnreadOperationalAlarmNotification(user.id));
+  const activeAlarmId = await getUnreadOperationalAlarmNotificationId(user.id);
 
-  if (!hasUnreadAlarm) {
-    return NextResponse.json({ dispatched }, { headers });
+  // El feed completo sólo viaja cuando el estado de la alarma cambió para
+  // esta pestaña. Así también propagamos reconocimientos/posposiciones hechos
+  // en otra pestaña sin reconsultar todo cada 30 segundos.
+  if (activeAlarmId === knownAlarmId) {
+    return NextResponse.json({ dispatched, activeAlarmId }, { headers });
   }
 
   const snapshot = await getNotificationFeedForUser(user.id);
-  return NextResponse.json({ dispatched, snapshot }, { headers });
+  return NextResponse.json({ dispatched, activeAlarmId, snapshot }, { headers });
 }

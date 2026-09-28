@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
-import { dispatchDueAlarmsForUser } from '@/server/services/operational-alarms';
+import {
+  dispatchDueAlarmsForUser,
+  hasUnreadOperationalAlarmNotification,
+} from '@/server/services/operational-alarms';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 
 export const runtime = 'nodejs';
@@ -32,8 +35,11 @@ export async function GET() {
   }
 
   const dispatched = await dispatchDueAlarmsForUser(user.id, new Date());
-  if (dispatched === 0) {
-    return NextResponse.json({ dispatched: 0 }, { headers });
+  const hasUnreadAlarm =
+    dispatched > 0 || (await hasUnreadOperationalAlarmNotification(user.id));
+
+  if (!hasUnreadAlarm) {
+    return NextResponse.json({ dispatched }, { headers });
   }
 
   const snapshot = await getNotificationFeedForUser(user.id);

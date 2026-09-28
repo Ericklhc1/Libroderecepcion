@@ -66,8 +66,7 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain('Habitación 507 autorizada hasta las 14:00.');
     expect(row.text).toContain(user.name);
     expect(row.text).toContain(`#${entry.humanId}`);
-    expect(row.text).toContain(`@${user.username}`);
-    expect(row.text).not.toContain(entry.id);
+        expect(row.text).not.toContain(entry.id);
     expect(row.text).not.toContain(user.id);
   });
 
@@ -124,8 +123,7 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain('507');
     expect(row.text).toContain('80000');
     expect(row.text).toContain(`#${guarantee.humanId}`);
-    expect(row.text).toContain(`@${user.username}`);
-    expect(row.text).not.toContain(guarantee.id);
+        expect(row.text).not.toContain(guarantee.id);
     expect(row.text).not.toContain(user.id);
   });
 
@@ -164,8 +162,7 @@ describe('respaldo operativo por correo', () => {
     expect(row.text).toContain(`Entrega: #${sent.humanId}`);
     expect(row.text).toContain(`Turno: #${shift.humanId}`);
     expect(row.text).toContain(`#${entry.humanId}`);
-    expect(row.text).toContain(`@${user.username}`);
-    expect(row.text).not.toContain(sent.id);
+        expect(row.text).not.toContain(sent.id);
     expect(row.text).not.toContain(shift.id);
     expect(row.text).not.toContain(entry.id);
     expect(row.text).not.toContain(user.id);

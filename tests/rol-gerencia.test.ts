@@ -13,31 +13,34 @@ import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
- * Gerencia de operaciones: consulta, salvo como responsable y la reparación
- * global de conflictos expresamente autorizada.
+ * Gerencia de operaciones dirige, delega y controla, pero no opera el mesón.
  *
- * Lo que estas pruebas protegen es la frontera. Que no se le cuele un permiso
- * de escritura por descuido al agregar uno nuevo al catálogo, que pueda
- * figurar como responsable, y que no pueda tomar un turno aunque su rol sea
- * operativo.
+ * La frontera es por tipo de acción: puede crear/asignar trabajo, seguirlo,
+ * comunicar lineamientos y analizar; no puede tomar turnos, mover Caja,
+ * custodiar llaves ni editar reservas.
  */
-
-/** Permisos que NO son de lectura. Si Gerencia tuviera uno, deja de ser consulta. */
-const SOLO_LECTURA: PermissionKey[] = [
-  'guest.view',
-  'supervision.view',
-  'metrics.view',
-  'room.view',
-  'audit.view',
-  'cash.view',
+const DIRECCION_GERENCIA: PermissionKey[] = [
+  'reservation.center.view',
+  'supervision.center.view',
+  'supervision.task.assign',
+  'supervision.followup.manage',
+  'supervision.audit.reserved',
+  'supervision.performance.view',
+  'supervision.history.view',
+  'task.create',
+  'task.assign',
+  'followup.create',
+  'followup.manage',
+  'announcement.manage',
+  'conflict.resolve_all',
 ];
 
 describe('rol de gerencia', () => {
-  it('sólo tiene una excepción de escritura: resolver conflictos globales', () => {
+  it('tiene capacidades explícitas de dirección operativa', () => {
     const suyos = ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT];
-    const escritura = suyos.filter((p) => !SOLO_LECTURA.includes(p));
-
-    expect(escritura).toEqual(['conflict.resolve_all']);
+    for (const permission of DIRECCION_GERENCIA) {
+      expect(suyos, `Gerencia debería tener ${permission}`).toContain(permission);
+    }
   });
 
   it('no puede operar turnos, llaves ni habitaciones', () => {
@@ -53,11 +56,13 @@ describe('rol de gerencia', () => {
       'key.stock',
       'room.reset',
       'pms.import',
-      'announcement.manage',
       'user.manage',
       'role.manage',
       'entry.delete',
-      'task.assign',
+      'guest.manage',
+      'cash.manual_in',
+      'cash.manual_out',
+      'cash.audit',
     ] as PermissionKey[]) {
       expect(suyos, `Gerencia no debería tener ${prohibido}`).not.toContain(prohibido);
     }

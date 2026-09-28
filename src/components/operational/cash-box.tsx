@@ -317,6 +317,7 @@ export function CashBox({
   role,
   formalClosure,
   canReopen = false,
+  view = 'all',
 }: {
   handoverId: string;
   shiftId: string;
@@ -324,6 +325,7 @@ export function CashBox({
   denominations: DenominationOption[];
   previous: Record<string, number>;
   role: 'emisor' | 'receptor' | 'lector';
+  view?: 'all' | 'count' | 'custody' | 'summary';
   formalClosure: {
     humanId: number;
     closedAt: string;
@@ -333,6 +335,10 @@ export function CashBox({
   canReopen?: boolean;
 }) {
   if (!state.enabled) return null;
+
+  const showOverview = view === 'all' || view === 'summary';
+  const showCount = view === 'all' || view === 'count';
+  const showCustody = view === 'all' || view === 'custody';
 
   return (
     <Card>
@@ -347,6 +353,7 @@ export function CashBox({
           Estos fondos se configuran desde Administración → Parámetros.
         </p>
 
+        {showOverview ? (
         <div className="grid gap-4 md:grid-cols-2">
           <section>
             <h3 className="text-sm font-semibold text-petrol-900">Declarado al entregar</h3>
@@ -382,8 +389,9 @@ export function CashBox({
             )}
           </section>
         </div>
+        ) : null}
 
-        {state.discrepancies.length > 0 ? (
+        {(showOverview || showCount) && state.discrepancies.length > 0 ? (
           <div className="rounded-lg bg-orange-50 p-3 ring-1 ring-orange-200">
             <p className="text-sm font-semibold text-orange-900">Los dos conteos no coinciden</p>
             <ul className="mt-1 space-y-0.5 text-sm text-orange-800">
@@ -398,6 +406,7 @@ export function CashBox({
           </div>
         ) : null}
 
+        {showOverview || showCount ? (
         <section>
           <h3 className="text-sm font-semibold text-petrol-900">Garantías en efectivo bajo custodia</h3>
           {state.cashGuarantees.length === 0 ? (
@@ -435,8 +444,9 @@ export function CashBox({
             El monto mostrado es el saldo reembolsable todavía bajo custodia. Durante el arqueo cada garantía vigente debe validarse físicamente por separado; nunca se suma al conteo por denominación del fondo fijo.
           </p>
         </section>
+        ) : null}
 
-        {state.elements.length > 0 ? (
+        {(showOverview || showCustody) && state.elements.length > 0 ? (
           <section>
             <h3 className="text-sm font-semibold text-petrol-900">Elementos físicos</h3>
             {role === 'lector' ? (
@@ -460,7 +470,7 @@ export function CashBox({
           </section>
         ) : null}
 
-        {state.transfers.length > 0 ? (
+        {showOverview && state.transfers.length > 0 ? (
           <section>
             <h3 className="text-sm font-semibold text-petrol-900">Transferencias a Tesorería</h3>
             <ul className="mt-1 space-y-1 text-sm text-slate-600">
@@ -479,7 +489,7 @@ export function CashBox({
           </section>
         ) : null}
 
-        {role !== 'lector' ? (
+        {showCount && role !== 'lector' ? (
           <div
             id={role === 'receptor' ? 'recuento-caja' : undefined}
             className="scroll-mt-32 border-t border-slate-100 pt-3 no-print"
@@ -497,7 +507,7 @@ export function CashBox({
           </div>
         ) : null}
 
-        {role === 'emisor' && state.declared ? (
+        {(view === 'all' || view === 'count') && role === 'emisor' && state.declared ? (
           <section className="rounded-xl bg-gold-50 p-3 ring-1 ring-gold-200 no-print">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -543,7 +553,7 @@ export function CashBox({
           </section>
         ) : null}
 
-        {role === 'emisor' ? (
+        {view === 'all' && role === 'emisor' ? (
           <>
             <div className="border-t border-slate-100 pt-3 no-print">
               <h3 className="mb-2 text-sm font-semibold text-petrol-900">Dólar operativo</h3>

@@ -1,5 +1,11 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.1 · sincronización canónica
+
+- Patch documental únicamente: actualiza `PROJECT_CONTEXT.md` y este relevo con el estado publicado en 1.19.0.
+- Sin cambios funcionales, de permisos, esquema o migraciones.
+- Production pasa a **v1.19.1** manteniendo la misma lógica operativa de 1.19.0.
+
 ## Actualización 27/09/2026 · Libro 1.19.0 · recepción guiada y emergencia única
 
 - Recepción entrante persistente en cinco pasos: entrega → Caja/garantías → custodia → revisión final → activar.
@@ -10,7 +16,7 @@
 - La entrega excepcional queda enlazada al mismo turno de emergencia; regularizarla no crea un turno adicional.
 - Recontar Caja o modificar custodia invalida confirmaciones de recepción posteriores.
 - Migración: `20260928011000_recepcion_turno_guiada`.
-- Production: **v1.19.0**, commit de release `6a171274`, desplegado en Vercel `gru1`.
+- Release funcional base: **v1.19.0**, commit `6a171274`; v1.19.1 sólo sincroniza documentación canónica.
 
 ## Actualización 27/09/2026 · Libro 1.17.2 · Chat anclado al borde derecho
 
@@ -146,7 +152,7 @@
 ## Estado actual
 
 - Fecha de referencia: **2026-09-27**.
-- Versión vigente en Production: **v1.19.0**.
+- Versión vigente en Production: **v1.19.1**.
 - Siguiente versión: definir según el próximo cambio aprobado.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.

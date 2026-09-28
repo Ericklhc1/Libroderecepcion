@@ -556,7 +556,8 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('Gestionar tarea');
     expect(page).toContain('ValidateCorrectiveMeasureDialog');
     expect(page).toContain('auditOperationalPendingCount');
-    expect(auditDashboard).toContain('Resolver / retirar');
+    expect(auditDashboard).toContain('AuditItemReviewDialog');
+    expect(auditActions).toContain('Resolver / retirar');
     expect(auditDashboard).toContain('Avance de check-outs');
     expect(auditDashboard).toContain('Evidencia fija · revisión operativa actualizable');
     expect(auditActions).toContain('No aplica · retirar del pendiente');

@@ -12,10 +12,12 @@ import {
 import {
   closeShift,
   confirmHandoverReviewStep,
+  confirmReceptionReviewStep,
   prepareHandover,
   receiveHandover,
   receiveShiftCash,
   sendHandover,
+  startReceptionShift,
 } from '@/server/services/shifts';
 import { saveCashCount } from '@/server/services/cash';
 import { closeShiftCash } from '@/server/services/cash-closure';
@@ -161,20 +163,46 @@ describe('jornada operativa transversal de punta a punta', () => {
       openShiftAs(incoming, { type: ShiftType.NOCHE }),
     ).rejects.toThrow(/pendiente de recepción/i);
 
+    const nightShiftStarted = await startReceptionShift(incoming, {
+      handoverId: handover.id,
+      type: ShiftType.NOCHE,
+    });
+    expect(nightShiftStarted.status).toBe('INICIADO');
+    expect((await getReceptionOperationGate(incoming)).mode).toBe('RECEIVING');
+
+    await confirmReceptionReviewStep(incoming, {
+      handoverId: handover.id,
+      step: 'BRIEFING',
+    });
+
     const receivedCash = await receiveShiftCash(incoming, {
       handoverId: handover.id,
       quantities,
     });
     expect(receivedCash.discrepancies).toEqual([]);
+    expect(receivedCash.shiftId).toBe(nightShiftStarted.id);
 
+    await confirmReceptionReviewStep(incoming, {
+      handoverId: handover.id,
+      step: 'CUSTODY',
+    });
+    await confirmReceptionReviewStep(incoming, {
+      handoverId: handover.id,
+      step: 'FINAL',
+    });
     await receiveHandover(incoming, { handoverId: handover.id });
-    const nightShift = await openShiftAs(incoming, { type: ShiftType.NOCHE });
+
+    const nightShift = await prisma.shift.findUniqueOrThrow({
+      where: { id: nightShiftStarted.id },
+    });
+    expect(nightShift.status).toBe('ACTIVO');
     expect((await getReceptionOperationGate(incoming)).mode).toBe('ACTIVE');
 
     const linked = await prisma.shiftHandover.findUniqueOrThrow({
       where: { id: handover.id },
     });
     expect(linked.toShiftId).toBe(nightShift.id);
+    expect(linked.status).toBe('RECIBIDA');
 
     // 6. Sólo queda una participación operativa viva: la del entrante.
     const liveAssignments = await prisma.shiftAssignment.findMany({

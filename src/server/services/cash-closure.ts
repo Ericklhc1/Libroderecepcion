@@ -308,6 +308,10 @@ export async function reopenShiftCash(
   const closure = await getShiftCashClosure(params.shiftId);
   if (!closure) throw new NotFoundError('Ese turno no tiene un cierre de Caja.');
   if (closure.reopenedAt) return;
+  const shift = await prisma.shift.findUnique({
+    where: { id: params.shiftId },
+    select: { humanId: true },
+  });
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -331,14 +335,14 @@ export async function reopenShiftCash(
     await queueOperationalMail(tx, {
       eventKey: `cash-closure-reopened:${closure.id}`,
       recipients: [SUPERVISION_BACKUP_EMAIL],
-      subject: `[Libro Operativo] REAPERTURA DE CAJA · turno ${params.shiftId}`,
+      subject: `[Libro Operativo] REAPERTURA CAJA #${closure.humanId} · turno ${shift ? `#${shift.humanId}` : 'sin referencia'}`,
       text: [
         'CIERRE FORMAL DE CAJA REABIERTO',
-        `ID cierre: ${closure.id}`,
-        `ID turno: ${params.shiftId}`,
+        `Cierre de caja: #${closure.humanId}`,
+        `Turno: ${shift ? `#${shift.humanId}` : 'sin referencia'}`,
         `Caja cerrada originalmente: ${operationalMailTimestamp(closure.closedAt)}`,
         `Caja reabierta: ${operationalMailTimestamp(now)}`,
-        `Reabierta por: ${user.name} (ID ${user.id})`,
+        `Reabierta por: ${user.name} (@${user.username})`,
         `Motivo: ${reason}`,
         'Efecto: el cierre anterior se conserva en auditoría y Caja debe volver a arquearse/cerrarse antes de enviar la entrega.',
       ].join('\n'),

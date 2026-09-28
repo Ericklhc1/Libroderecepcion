@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-28** · Auditorías/Caja/Servicios/Llaves · versión propuesta **v1.20.0**
+Actualizado: **2026-09-28** · Supervisión operativa y accionable · versión propuesta **v1.22.0**
 
 ## Estados canónicos
 
@@ -27,19 +27,22 @@ Actualizado: **2026-09-28** · Auditorías/Caja/Servicios/Llaves · versión pro
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
 | Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado del runtime operativo |
-| Centro de Supervisión | `PRODUCTION` | #91 · v1.2.0 | Turno independiente, tareas, auditorías, medidas e indicadores explicables; desplegado en Vercel Production |
+| Centro de Supervisión | `EN_DESARROLLO` | v1.22.0 | Convierte la auditoría diaria y las señales del Centro en superficies operativas accionables, con revisión auditada separada de la evidencia |
 
 ## Iteración actual
 
-**Libro 1.20.0** · rama **`feat/auditorias-caja-estacionamiento-llaves-1-20-0`**
+**Libro 1.22.0** · rama **`feat/supervision-operativa-1-22-0`**
 
-Objetivo: cerrar cuatro incoherencias operativas detectadas en producción sin reconstruir módulos:
-- auditorías sorpresa con distribución real y resultado consultable;
-- arqueos imprimibles con snapshot de denominaciones;
-- tickets de estacionamiento sobre la infraestructura de folios;
-- consulta de llaves de los pisos 4, 5 y 6 en una sola vista.
+Objetivo: aplicar una sola regla al Centro de Supervisión: todo lo operativo que aparece debe poder gestionarse desde ahí o llevar explícitamente a la superficie correcta.
 
-Incluye una migración exclusivamente aditiva. Los datos históricos se conservan.
+Incluye:
+- revisión operativa editable y auditada sobre informes PMS, sin alterar la evidencia importada;
+- resolver / «No aplica» / reabrir controles y hallazgos;
+- actualización manual de check-outs pendientes durante el turno;
+- recarga del Formulario de Auditoría que reemplaza controles/hallazgos obsoletos;
+- cierre de Supervisión basado en pendientes efectivos;
+- accesos explícitos de gestión en señales, auditorías abiertas y medidas correctivas;
+- migración aditiva para `SupervisionAuditImport.reviewState`.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;

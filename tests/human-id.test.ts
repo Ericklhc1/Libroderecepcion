@@ -1,5 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EntryType, Priority, SupervisionVisibility } from '@prisma/client';
+import {
+  AlertLevel,
+  AlertStatus,
+  AlertType,
+  EntryType,
+  Priority,
+  SupervisionVisibility,
+} from '@prisma/client';
 import {
   ROLE_KEYS,
   createUser,
@@ -11,6 +18,7 @@ import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import { searchOperationalRecords } from '@/server/services/global-search';
+import { getBookItems } from '@/server/services/book';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 describe('identificadores humanos globales', () => {
@@ -144,6 +152,44 @@ describe('identificadores humanos globales', () => {
     const byResponsible = await searchOperationalRecords(receptionist, 'Jaime Correlativo');
     expect(byResponsible.some((row) => row.humanId === guarantee.humanId)).toBe(true);
   });
+  it('el Libro busca tareas y alertas por el humanId global, no por correlativos locales antiguos', async () => {
+    const task = await createTask(receptionist, {
+      title: 'Tarea sólo por correlativo global',
+      priority: Priority.MEDIA,
+      tags: [],
+      checklist: [],
+    });
+    const alert = await prisma.alert.create({
+      data: {
+        type: AlertType.OTRO,
+        level: AlertLevel.ATENCION,
+        status: AlertStatus.NUEVA,
+        title: 'Alerta sólo por correlativo global',
+        createdById: receptionist.id,
+      },
+    });
+
+    const taskResult = await getBookItems({
+      q: String(task.humanId),
+      kinds: ['task'],
+    });
+    const alertResult = await getBookItems({
+      q: `#${alert.humanId}`,
+      kinds: ['alert'],
+    });
+
+    expect(taskResult.items).toHaveLength(1);
+    expect(taskResult.items[0]).toMatchObject({
+      id: task.id,
+      ref: `#${task.humanId}`,
+    });
+    expect(alertResult.items).toHaveLength(1);
+    expect(alertResult.items[0]).toMatchObject({
+      id: alert.id,
+      ref: `#${alert.humanId}`,
+    });
+  });
+
   it('no expone seguimientos privados de otra persona en la búsqueda global', async () => {
     const followUp = await createFollowUp(supervisor, {
       action: 'Revisión reservada de Supervisión',

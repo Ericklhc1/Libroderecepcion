@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ClipboardCheck, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, ClipboardCheck, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
@@ -25,6 +25,7 @@ import {
   NewSupervisionNoteDialog,
   StartSupervisionShiftDialog,
   StopFollowingSupervisionForm,
+  ValidateCorrectiveMeasureDialog,
 } from '@/components/supervision/center-actions';
 import { CloseAnnouncementDialog, NewAnnouncementDialog } from './announcements';
 import { formatDateTime } from '@/lib/format';
@@ -44,6 +45,7 @@ import {
   hotelDateKey,
   hotelWallDateTime,
 } from '@/domain/time';
+import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -83,13 +85,22 @@ function ReviewBlock({
                     {row.meta ? <span className="mt-0.5 block text-xs text-slate-500">{row.meta}</span> : null}
                   </span>
                 </Link>
-                {canFollow && row.sourceEntity && row.sourceId && row.sourceEntity !== 'FollowUp' ? (
-                  followedSourceKeys.has(`${row.sourceEntity}:${row.sourceId}`) ? (
-                    <Chip>Siguiendo</Chip>
-                  ) : (
-                    <FollowSupervisionSourceForm sourceEntity={row.sourceEntity} sourceId={row.sourceId} />
-                  )
-                ) : null}
+                <div className="flex shrink-0 flex-col items-end gap-1.5 no-print">
+                  <Link
+                    href={row.href}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-xs font-semibold text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50"
+                  >
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    Gestionar
+                  </Link>
+                  {canFollow && row.sourceEntity && row.sourceId && row.sourceEntity !== 'FollowUp' ? (
+                    followedSourceKeys.has(`${row.sourceEntity}:${row.sourceId}`) ? (
+                      <Chip>Siguiendo</Chip>
+                    ) : (
+                      <FollowSupervisionSourceForm sourceEntity={row.sourceEntity} sourceId={row.sourceId} />
+                    )
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -176,16 +187,20 @@ export default async function SupervisionCenterPage({
   const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
   const continuityOpen = center.counts.myTasks + center.counts.myFollowUps;
   const auditPendingCount = center.auditImports.reduce((sum, auditImport) => {
-    if (!Array.isArray(auditImport.checks)) return sum;
+    const checks = Array.isArray(auditImport.checks)
+      ? (auditImport.checks as Array<{ key: string; done: boolean | null }>)
+      : [];
+    const findings = Array.isArray(auditImport.findings)
+      ? (auditImport.findings as Array<{ key: string }>)
+      : [];
     return (
       sum +
-      auditImport.checks.filter(
-        (item) =>
-          Boolean(item) &&
-          typeof item === 'object' &&
-          !Array.isArray(item) &&
-          (item as Record<string, unknown>).done !== true,
-      ).length
+      auditOperationalPendingCount({
+        metrics: auditImport.metrics,
+        checks,
+        findings,
+        reviewState: auditImport.reviewState,
+      })
     );
   }, 0);
   const followedSourceKeys = new Set(
@@ -327,6 +342,7 @@ export default async function SupervisionCenterPage({
         rows={center.auditImports}
         defaultBusinessDate={defaultAuditBusinessDate}
         canUpload={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
+        canManage={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -392,7 +408,7 @@ export default async function SupervisionCenterPage({
             count={center.counts.auditsOpen}
             action={<Link href="/supervision/auditorias" className="text-xs font-medium text-petrol-600 hover:underline">Abrir módulo</Link>}
           />
-          {audits.length === 0 ? <EmptyState message="No hay auditorías abiertas." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{audits.map((audit) => <li key={audit.id} className="px-4 py-3"><Badge tone={audit.status === 'PREPARACION' ? 'pendiente' : 'curso'}>{audit.status === 'PREPARACION' ? 'Preparación reservada' : 'En curso'}</Badge><p className="mt-1 font-medium text-petrol-900">{audit.templateName}</p><p className="text-xs text-slate-500">{audit.runBy.name} · {audit._count.findings} hallazgo(s)</p></li>)}</ul></CardScroll>}
+          {audits.length === 0 ? <EmptyState message="No hay auditorías abiertas." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{audits.map((audit) => <li key={audit.id} className="flex items-start justify-between gap-3 px-4 py-3"><div className="min-w-0"><Badge tone={audit.status === 'PREPARACION' ? 'pendiente' : 'curso'}>{audit.status === 'PREPARACION' ? 'Preparación reservada' : 'En curso'}</Badge><p className="mt-1 font-medium text-petrol-900">#{audit.humanId} · {audit.templateName}</p><p className="text-xs text-slate-500">{audit.runBy.name} · {audit._count.findings} hallazgo(s)</p></div><Link href={`/supervision/auditorias?q=${audit.humanId}`} className="shrink-0 text-xs font-semibold text-petrol-700 hover:underline">Gestionar</Link></li>)}</ul></CardScroll>}
         </Card>
         <Card className="flex h-[26rem] flex-col overflow-hidden">
           <CardHeader
@@ -400,7 +416,7 @@ export default async function SupervisionCenterPage({
             count={center.counts.measuresOpen}
             action={center.counts.measuresOpen > measures.length ? <span className="text-xs text-slate-500">Muestra visible: {measures.length}</span> : null}
           />
-          {measures.length === 0 ? <EmptyState message="No hay medidas correctivas pendientes." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{measures.map((measure) => <li key={measure.id} className="px-4 py-3"><Badge tone={measure.status === 'BLOQUEADA' ? 'critico' : 'atencion'}>{measure.status.toLocaleLowerCase('es-CL')}</Badge><p className="mt-1 font-medium text-petrol-900">{measure.title}</p><p className="text-xs text-slate-500">{measure.assignee.name}{measure.dueAt ? ` · vence ${formatDateTime(measure.dueAt)}` : ''}</p></li>)}</ul></CardScroll>}
+          {measures.length === 0 ? <EmptyState message="No hay medidas correctivas pendientes." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{measures.map((measure) => <li key={measure.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"><div className="min-w-0"><Badge tone={measure.status === 'BLOQUEADA' ? 'critico' : measure.status === 'REALIZADA' ? 'curso' : 'atencion'}>{measure.status.toLocaleLowerCase('es-CL')}</Badge><p className="mt-1 font-medium text-petrol-900">{measure.title}</p><p className="text-xs text-slate-500">{measure.assignee.name}{measure.dueAt ? ` · vence ${formatDateTime(measure.dueAt)}` : ''}</p></div><div className="flex shrink-0 flex-wrap gap-2 no-print">{measure.taskId ? <Link href={`/tareas/${measure.taskId}`} className="text-xs font-semibold text-petrol-700 hover:underline">Gestionar tarea</Link> : null}{isSupervisor && measure.status === 'REALIZADA' ? <ValidateCorrectiveMeasureDialog measureId={measure.id} /> : null}</div></li>)}</ul></CardScroll>}
         </Card>
       </div>
 

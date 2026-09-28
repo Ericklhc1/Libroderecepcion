@@ -528,10 +528,12 @@ describe('Centro de Supervisión', () => {
     expect(procedures?.formula).toMatch(/excluye.*No aplica/i);
   });
 
-  it('mantiene navegación y rejillas adaptables en el Centro', async () => {
-    const [page, nav] = await Promise.all([
+  it('mantiene navegación, acciones reales y rejillas adaptables en el Centro', async () => {
+    const [page, nav, auditDashboard, auditActions] = await Promise.all([
       readFile('src/app/(app)/supervision/page.tsx', 'utf8'),
       readFile('src/components/layout/nav-items.ts', 'utf8'),
+      readFile('src/components/supervision/audit-dashboard.tsx', 'utf8'),
+      readFile('src/components/supervision/audit-review-actions.tsx', 'utf8'),
     ]);
     expect(nav).toContain('Centro de Supervisión');
     expect(page).toContain('sm:grid-cols-2');
@@ -550,6 +552,16 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('href="#auditoria-diaria"');
     expect(page).toContain('FollowSupervisionSourceForm');
     expect(page).toContain('StopFollowingSupervisionForm');
+    expect(page).toContain('Gestionar');
+    expect(page).toContain('Gestionar tarea');
+    expect(page).toContain('ValidateCorrectiveMeasureDialog');
+    expect(page).toContain('auditOperationalPendingCount');
+    expect(auditDashboard).toContain('AuditItemReviewDialog');
+    expect(auditActions).toContain('Resolver / retirar');
+    expect(auditDashboard).toContain('Avance de check-outs');
+    expect(auditDashboard).toContain('Evidencia fija · revisión operativa actualizable');
+    expect(auditActions).toContain('No aplica · retirar del pendiente');
+    expect(auditActions).toContain('Usar valor del informe');
     expect(page).not.toContain('Entregas de Supervisión pendientes de recibir');
   });
 });

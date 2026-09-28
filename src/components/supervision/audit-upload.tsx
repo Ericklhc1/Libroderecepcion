@@ -80,8 +80,9 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
         <div className="flex gap-2">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-700" aria-hidden="true" />
           <p>
-            Los PDF se leen uno por uno y se descartan inmediatamente. El Libro conserva sólo los datos
-            normalizados que alimentan Supervisión y el cierre del turno; no conserva el archivo ni su texto completo.
+            Los PDF se leen uno por uno y se descartan inmediatamente. Una nueva carga del mismo tipo
+            actualiza la fotografía del informe. Después puedes resolver, retirar o ajustar los pendientes
+            desde el propio panel sin alterar la evidencia original ni su trazabilidad.
           </p>
         </div>
       </div>

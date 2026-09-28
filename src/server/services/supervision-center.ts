@@ -14,6 +14,7 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
+import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
 
 const OPEN_SUPERVISION_STATUSES = [
   SupervisionShiftStatus.ACTIVO,
@@ -117,6 +118,7 @@ async function buildSupervisionSnapshot(
       where: { supervisionShiftId: shift.id, deletedAt: null },
       select: {
         id: true,
+        humanId: true,
         templateName: true,
         status: true,
         severity: true,
@@ -135,6 +137,7 @@ async function buildSupervisionSnapshot(
         checks: true,
         findings: true,
         warnings: true,
+        reviewState: true,
         sourceFiles: true,
         createdAt: true,
         updatedAt: true,
@@ -148,6 +151,7 @@ async function buildSupervisionSnapshot(
       },
       select: {
         id: true,
+        taskId: true,
         title: true,
         status: true,
         dueAt: true,
@@ -165,7 +169,7 @@ async function buildSupervisionSnapshot(
 
   return JSON.parse(
     JSON.stringify({
-      version: 1,
+      version: 2,
       capturedAt: new Date(),
       shift: {
         id: shift.id,
@@ -198,6 +202,23 @@ async function buildSupervisionSnapshot(
         dailyAuditFindings: auditImports.reduce((sum, item) => {
           const findings = Array.isArray(item.findings) ? item.findings : [];
           return sum + findings.length;
+        }, 0),
+        dailyAuditPending: auditImports.reduce((sum, item) => {
+          const checks = Array.isArray(item.checks)
+            ? (item.checks as Array<{ key: string; done: boolean | null }>)
+            : [];
+          const findings = Array.isArray(item.findings)
+            ? (item.findings as Array<{ key: string }>)
+            : [];
+          return (
+            sum +
+            auditOperationalPendingCount({
+              metrics: item.metrics,
+              checks,
+              findings,
+              reviewState: item.reviewState,
+            })
+          );
         }, 0),
         correctiveMeasuresOpen: correctiveMeasures.filter(
           (measure) => !['VALIDADA', 'CANCELADA'].includes(measure.status),
@@ -671,7 +692,16 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
               ],
             }),
       },
-      include: { runBy: { select: { name: true } }, _count: { select: { findings: true } } },
+      select: {
+        id: true,
+        humanId: true,
+        templateName: true,
+        status: true,
+        scope: true,
+        startedAt: true,
+        runBy: { select: { name: true } },
+        _count: { select: { findings: true } },
+      },
       orderBy: { startedAt: 'asc' },
       take: 12,
     }),
@@ -685,7 +715,15 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       : Promise.resolve([]),
     prisma.correctiveMeasure.findMany({
       where: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } },
-      include: { assignee: { select: { name: true } } },
+      select: {
+        id: true,
+        taskId: true,
+        title: true,
+        action: true,
+        status: true,
+        dueAt: true,
+        assignee: { select: { name: true } },
+      },
       orderBy: { dueAt: 'asc' },
       take: 12,
     }),

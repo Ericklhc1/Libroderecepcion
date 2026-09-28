@@ -80,6 +80,19 @@ El libro proyecta cuatro de ellas (`OperationalEntry`, `Task`, `FollowUp`,
 `Alert`) sobre un tipo común `BookItem`: una sola línea temporal, cada objeto
 conserva su modelo y sus reglas.
 
+## Actualización 28/09/2026 · Libro 1.22.0 · Supervisión operativa y accionable
+
+- Principio de UX: si el Centro de Supervisión muestra un asunto operativo, debe ofrecer una acción real o un acceso explícito a su superficie de gestión; los indicadores puramente informativos se distinguen como resumen.
+- Auditoría diaria de informes PMS separa **evidencia importada** de **estado operativo de revisión**. El PDF original no se altera.
+- Los controles incompletos pueden marcarse **Resuelto** o **No aplica** con trazabilidad; pueden reabrirse.
+- Los hallazgos independientes pueden resolverse o retirarse del pendiente con motivo.
+- Check-outs pendientes admite un valor operativo actualizado durante el turno, conservando a la vista el valor original del informe. Una nueva carga de SALIDAS vuelve a ser la fuente vigente y limpia el ajuste manual anterior.
+- Recargar el Formulario de Auditoría reemplaza sus controles/hallazgos previos; ya no deja puntos antiguos de Gastro u otros controles como falsos pendientes persistentes.
+- El cierre del turno de Supervisión usa los pendientes operativos efectivos, no los «No» históricos del PDF.
+- Auditorías abiertas, medidas correctivas y señales del Libro muestran acceso explícito **Gestionar**; una medida realizada puede validarse desde el Centro.
+- Migración aditiva: `20260928203000_supervision_audit_review_state`.
+- Release objetivo: **v1.22.0**.
+
 ## Actualización 28/09/2026 · Libro 1.20.0 · auditorías accionables, arqueos imprimibles y servicios
 
 - Auditorías sorpresa: el cierre ya no guarda una etiqueta inerte. «Persona» exige destinatario y crea notificación; «Supervisión» distribuye al equipo supervisor; «Operativo» publica mediante notificaciones al equipo operativo. «Reservado» no distribuye.

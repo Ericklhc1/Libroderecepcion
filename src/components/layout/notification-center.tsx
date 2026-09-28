@@ -159,10 +159,7 @@ export function NotificationCenter({
   );
 
   useEffect(() => {
-    const source = new EventSource('/api/notifications/stream');
-
-    source.onopen = () => setConnection('live');
-    source.onerror = () => setConnection('reconnecting');
+    let source: EventSource | null = null;
 
     const onNotifications = (event: Event) => {
       try {
@@ -176,13 +173,39 @@ export function NotificationCenter({
 
     const onWarning = () => setConnection('reconnecting');
 
-    source.addEventListener('notifications', onNotifications);
-    source.addEventListener('stream-warning', onWarning);
-
-    return () => {
+    const disconnect = () => {
+      if (!source) return;
       source.removeEventListener('notifications', onNotifications);
       source.removeEventListener('stream-warning', onWarning);
       source.close();
+      source = null;
+    };
+
+    const connect = () => {
+      if (document.visibilityState !== 'visible' || source) return;
+      setConnection('connecting');
+      const nextSource = new EventSource('/api/notifications/stream');
+      nextSource.onopen = () => setConnection('live');
+      nextSource.onerror = () => setConnection('reconnecting');
+      nextSource.addEventListener('notifications', onNotifications);
+      nextSource.addEventListener('stream-warning', onWarning);
+      source = nextSource;
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        connect();
+      } else {
+        disconnect();
+      }
+    };
+
+    connect();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      disconnect();
     };
   }, [applySnapshot]);
 

@@ -1,5 +1,17 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 27/09/2026 · Libro 1.19.0 · recepción guiada y emergencia única
+
+- Recepción entrante persistente en cinco pasos: entrega → Caja/garantías → custodia → revisión final → activar.
+- El turno receptor permanece `INICIADO` hasta completar el relevo; durante ese estado la operación general queda cerrada por el gate.
+- Un usuario que está fuera ve el turno operativo vigente y puede incorporarse desde `/turno`; no debe abrir otro turno para reforzar el mesón.
+- Emergencia: máximo una operativa a la vez. La restricción existe en servicio y PostgreSQL.
+- Al cerrar el turno de origen, la emergencia se libera automáticamente y el turno vigente continúa normal, conservando `emergencySourceShiftId` y `emergencyResolvedAt`.
+- La entrega excepcional queda enlazada al mismo turno de emergencia; regularizarla no crea un turno adicional.
+- Recontar Caja o modificar custodia invalida confirmaciones de recepción posteriores.
+- Migración: `20260928011000_recepcion_turno_guiada`.
+- Production: **v1.19.0**, commit de release `6a171274`, desplegado en Vercel `gru1`.
+
 ## Actualización 27/09/2026 · Libro 1.17.2 · Chat anclado al borde derecho
 
 - La pestaña cerrada de **Chat operativo** queda pegada al borde inferior derecho del viewport, también en escritorio.
@@ -133,9 +145,9 @@
 
 ## Estado actual
 
-- Fecha de referencia: **2026-09-21**.
-- Versión en Production al iniciar el Centro de Supervisión: **v1.1.6**.
-- Siguiente versión propuesta: **v1.2.0**.
+- Fecha de referencia: **2026-09-27**.
+- Versión vigente en Production: **v1.19.0**.
+- Siguiente versión: definir según el próximo cambio aprobado.
 - Código fuente de verdad: GitHub `Ericklhc1/Libroderecepcion`.
 - Rama de release: `main`, protegida por ruleset y Compuerta obligatoria.
 - Hosting único de Production: Vercel `libroderecepcion`, región `gru1`.

@@ -169,7 +169,7 @@ async function buildSupervisionSnapshot(
 
   return JSON.parse(
     JSON.stringify({
-      version: 1,
+      version: 2,
       capturedAt: new Date(),
       shift: {
         id: shift.id,

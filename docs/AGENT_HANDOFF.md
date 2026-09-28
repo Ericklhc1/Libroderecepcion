@@ -1,5 +1,17 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 28/09/2026 · Libro 1.22.0 · Central de Reservas, Gerencia y correo individual
+
+- Nuevo rol de sistema `CENTRAL_RESERVAS` / «Ejecutivo/a de Central de Reservas». Trabaja reservas, novedades, tareas, alertas y seguimientos sin permisos de turnos de Recepción, movimientos de Caja, llaves ni administración técnica.
+- Nueva ruta `/central-reservas`: bandeja previa a la operación con reservas que requieren acción, llegadas en 24/72 h, cambios recientes, garantías/saldos pendientes y continuidad vinculada. Reutiliza `ReservationReference`, tareas, alertas y seguimientos; **no crea un PMS paralelo**.
+- Gerencia de operaciones pasa de consulta casi pasiva a dirección transversal: Centro de Supervisión, asignación de acciones, seguimientos, comunicados, rendimiento, historial, auditoría y Caja en lectura. Sigue sin iniciar/recibir/entregar/cerrar turnos, escribir Caja, operar llaves ni editar reservas.
+- `User.email` vuelve como canal opcional de avisos, nunca como identidad. El login continúa exclusivamente por `username`; el correo puede repetirse.
+- Cada usuario puede registrar su correo y activar/desactivar avisos en `/perfil`; Administración también puede gestionarlo desde Usuarios.
+- El despachador único de notificaciones añade correo mediante `OperationalMailOutbox`. Chat y timers/alarmas quedan fuera del correo para evitar ruido. Las notificaciones internas siguen siendo la fuente inmediata dentro del Libro.
+- Las credenciales iniciales se envían al correo individual cuando existe; si no, se conserva la casilla de credenciales del hotel como respaldo.
+- Migración aditiva: `20260928213000_central_reservas_gerencia_correo_usuario`.
+- Release objetivo: **v1.22.0**.
+
 ## Actualización 28/09/2026 · Libro 1.20.0 · auditorías accionables, arqueos imprimibles y servicios
 
 - Auditorías sorpresa: el cierre ya no guarda una etiqueta inerte. «Persona» exige destinatario y crea notificación; «Supervisión» distribuye al equipo supervisor; «Operativo» publica mediante notificaciones al equipo operativo. «Reservado» no distribuye.

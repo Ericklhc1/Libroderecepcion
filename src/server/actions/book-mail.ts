@@ -124,7 +124,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
     });
     if (!row) return null;
     return {
-      ref: 'Seguimiento',
+      ref: `#${row.humanId}`,
       type: 'Seguimiento',
       title: row.action,
       status: human(row.status) ?? row.status,
@@ -151,7 +151,7 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
   });
   if (!row) return null;
   return {
-    ref: 'Alerta',
+    ref: `#${row.humanId}`,
     type: human(row.type) ?? 'Alerta',
     title: row.title,
     status: human(row.status) ?? row.status,

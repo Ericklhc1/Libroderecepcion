@@ -120,6 +120,21 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(guard.match(/assertReceptionOperationPermission/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
+  it('el cierre usa shift.close y no vuelve a bloquear al dueño con shift.manage', () => {
+    const actions = readFileSync('src/server/actions/shifts.ts', 'utf8');
+    const start = actions.indexOf('export async function closeShiftAction');
+    const end = actions.indexOf('const handoverNoteSchema', start);
+    const closeAction = actions.slice(start, end);
+
+    expect(closeAction).toContain("requirePermissionOrOwner('shift.close'");
+    expect(closeAction).not.toContain("requirePermissionOrOwner('shift.manage'");
+
+    const form = readFileSync('src/components/ui/form.tsx', 'utf8');
+    const shiftActions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
+    expect(form).toContain('onError?: (state: Extract<ActionState, { ok: false }>) => void');
+    expect(shiftActions).toContain('onError={() => setOpen(false)}');
+  });
+
   it('las acciones operativas con guard propio también pasan por el gate', () => {
     const keyInventory = readFileSync('src/server/actions/key-inventory.ts', 'utf8');
     const comments = readFileSync('src/server/actions/comments.ts', 'utf8');

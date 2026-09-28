@@ -69,7 +69,9 @@ export default async function KeysPage({
 }) {
   const user = await requirePageAnyPermission(['key.assign', 'key.inventory', 'key.stock']);
   const params = await searchParams;
-  const requestedFloor = Number(readOne(params.piso) || '4');
+  const floorParam = readOne(params.piso) || '4';
+  const allFloors = floorParam === 'todos';
+  const requestedFloor = Number(floorParam);
   const floor = isInventoryFloor(requestedFloor) ? requestedFloor : 4;
   const q = readOne(params.q).trim();
   const statusRaw = readOne(params.estado);
@@ -78,8 +80,26 @@ export default async function KeysPage({
     : null;
 
   const [inventory, recentCounts] = await Promise.all([
-    getPhysicalKeyInventory({ floor, query: q, status }),
-    listRecentPhysicalKeyCounts(floor),
+    allFloors
+      ? Promise.all(
+          ([4, 5, 6] as const).map((value) =>
+            getPhysicalKeyInventory({ floor: value, query: q, status }),
+          ),
+        ).then((floors) => ({
+          floor: 4 as const,
+          rooms: floors.flatMap((item) => item.rooms),
+          summary: floors.reduce(
+            (acc, item) => ({
+              expected: acc.expected + item.summary.expected,
+              registered: acc.registered + item.summary.registered,
+              outOfService: acc.outOfService + item.summary.outOfService,
+              lost: acc.lost + item.summary.lost,
+            }),
+            { expected: 0, registered: 0, outOfService: 0, lost: 0 },
+          ),
+        }))
+      : getPhysicalKeyInventory({ floor, query: q, status }),
+    allFloors ? Promise.resolve([]) : listRecentPhysicalKeyCounts(floor),
   ]);
 
   const canAssign = hasPermission(user, 'key.assign');
@@ -160,17 +180,27 @@ export default async function KeysPage({
       </header>
 
       <nav className="flex flex-wrap gap-2" aria-label="Pisos">
-        {[4, 5, 6].map((value) => (
+        <Link
+          href="/llaves?piso=todos"
+          className={
+            allFloors
+              ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
+              : 'rounded-lg bg-white px-4 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50'
+          }
+        >
+          Todos los pisos · {KEY_INVENTORY_MINIMUM_TOTAL} hab.
+        </Link>
+        {([4, 5, 6] as const).map((value) => (
           <Link
             key={value}
             href={`/llaves?piso=${value}`}
             className={
-              value === floor
+              !allFloors && value === floor
                 ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
                 : 'rounded-lg bg-white px-4 py-2 text-sm font-medium text-petrol-700 ring-1 ring-slate-300 hover:bg-slate-50'
             }
           >
-            Piso {value} · {KEY_INVENTORY_MINIMUM_BY_FLOOR[value as 4 | 5 | 6]} hab.
+            Piso {value} · {KEY_INVENTORY_MINIMUM_BY_FLOOR[value]} hab.
           </Link>
         ))}
       </nav>
@@ -178,9 +208,9 @@ export default async function KeysPage({
       <ListFilterBar
         searchValue={q}
         searchPlaceholder="Buscar habitación o código de llave…"
-        clearHref={`/llaves?piso=${floor}`}
+        clearHref={allFloors ? '/llaves?piso=todos' : `/llaves?piso=${floor}`}
       >
-        <input type="hidden" name="piso" value={floor} />
+        <input type="hidden" name="piso" value={allFloors ? 'todos' : floor} />
         <label className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
           <select name="estado" defaultValue={status ?? ''} className="input-base w-full">
@@ -197,9 +227,9 @@ export default async function KeysPage({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Mínimo hotel" value={KEY_INVENTORY_MINIMUM_TOTAL} hint="89 habitaciones" />
         <StatTile
-          label={`Mínimo piso ${floor}`}
+          label={allFloors ? 'Mínimo selección' : `Mínimo piso ${floor}`}
           value={inventory.summary.expected}
-          hint={`${KEY_INVENTORY_MINIMUM_BY_FLOOR[floor]} habitaciones`}
+          hint={allFloors ? 'Pisos 4, 5 y 6' : `${KEY_INVENTORY_MINIMUM_BY_FLOOR[floor]} habitaciones`}
         />
         <StatTile label="Registradas" value={inventory.summary.registered} />
         <StatTile
@@ -219,7 +249,16 @@ export default async function KeysPage({
         />
       </div>
 
-      {canInventory ? (
+      {canInventory && allFloors ? (
+        <Card>
+          <CardHeader title="Inventario oficial por piso" />
+          <div className="flex items-start gap-3 px-4 py-5 text-sm text-slate-600">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+            La vista «Todos los pisos» es de consulta. Para guardar un inventario físico oficial,
+            selecciona Piso 4, 5 o 6: cada conteo conserva su responsable, fecha y trazabilidad.
+          </div>
+        </Card>
+      ) : canInventory ? (
         <Card>
           <CardHeader
             title={`Tomar inventario · Piso ${floor}`}
@@ -322,7 +361,7 @@ export default async function KeysPage({
       ) : null}
 
       <Card>
-        <CardHeader title={`Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />
+        <CardHeader title={allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />
         {inventory.rooms.length === 0 ? (
           <EmptyState
             message="No hay habitaciones que coincidan con los filtros."

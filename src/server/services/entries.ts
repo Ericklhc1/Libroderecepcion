@@ -172,7 +172,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           `Referencia: #${created.humanId}`,
           `Título: ${created.title}`,
           `Fecha/hora: ${operationalMailTimestamp(created.occurredAt)}`,
-          `Registrado por: ${user.name} (@${user.username})`,
+          `Registrado por: ${user.name}`,
           `Turno: ${created.shift ? `#${created.shift.humanId} · ${created.shift.type}` : 'sin turno asociado'}`,
           `Estado: ${created.status}`,
           `Prioridad: ${created.priority}`,

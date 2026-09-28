@@ -275,7 +275,9 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
   return dispatched;
 }
 
-export async function hasUnreadOperationalAlarmNotification(userId: string): Promise<boolean> {
+export async function getUnreadOperationalAlarmNotificationId(
+  userId: string,
+): Promise<string | null> {
   const row = await prisma.notification.findFirst({
     where: {
       userId,
@@ -283,9 +285,10 @@ export async function hasUnreadOperationalAlarmNotification(userId: string): Pro
       readAt: null,
       entity: 'OperationalAlarmRecipient',
     },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true },
   });
-  return Boolean(row);
+  return row?.id ?? null;
 }
 
 export async function acknowledgeOperationalAlarm(user: CurrentUser, recipientId: string) {

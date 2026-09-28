@@ -1894,19 +1894,26 @@ export async function sendHandover(
       eventKey: `handover-sent:${sent.id}`,
       recipients: [SUPERVISION_BACKUP_EMAIL, RECEPTION_BACKUP_EMAIL],
       subject:
-        `[Libro Operativo] ENTREGA TURNO ${SHIFT_TYPE_LABEL[shift.type]} · ` +
-        `${formatCalendarDate(shift.date)} · ${user.name}`,
+        `[Libro Operativo] ENTREGA #${sent.humanId} · TURNO #${shift.humanId} · ` +
+        `${SHIFT_TYPE_LABEL[shift.type]} · ${formatCalendarDate(shift.date)} · ${user.name}`,
       text: [
         'ENTREGA DE TURNO ENVIADA',
-        `ID entrega: ${sent.id}`,
-        `ID turno: ${shift.id}`,
-        `Turno: ${SHIFT_TYPE_LABEL[shift.type]}`,
+        `Entrega: #${sent.humanId}`,
+        `Turno: #${shift.humanId} · ${SHIFT_TYPE_LABEL[shift.type]}`,
         `Fecha operativa: ${formatCalendarDate(shift.date)}`,
         `Enviado: ${operationalMailTimestamp(now)}`,
-        `Enviado por: ${user.name} (ID ${user.id})`,
+        `Enviado por: ${user.name} (@${user.username})`,
         `Caja: cierre formal confirmado antes del envío`,
-        `Turno de emergencia: ${shift.emergency ? 'sí' : 'no'}`,
-        ...(shift.emergencyReason ? [`Motivo de emergencia: ${shift.emergencyReason}`] : []),
+        `Emergencia: ${!shift.emergency ? 'no' : shift.emergencyReleasedAt ? 'regularizada' : 'activa'}`,
+        ...(shift.emergencyReason ? [`Motivo original: ${shift.emergencyReason}`] : []),
+        ...(shift.emergencyReleasedAt
+          ? [
+              `Regularizada: ${operationalMailTimestamp(shift.emergencyReleasedAt)}`,
+              ...(shift.emergencyReleaseReason
+                ? [`Regularización: ${shift.emergencyReleaseReason}`]
+                : []),
+            ]
+          : []),
         `Urgentes: ${items.filter((item) => item.level === HandoverLevel.URGENTE).length}`,
         `Importantes: ${items.filter((item) => item.level === HandoverLevel.IMPORTANTE).length}`,
         `Informativos: ${items.filter((item) => item.level === HandoverLevel.INFORMATIVO).length}`,
@@ -1918,9 +1925,6 @@ export async function sendHandover(
           : items.flatMap((item, index) => [
               `${index + 1}. [${item.level}] ${item.section} · ${item.title}`,
               item.detail ? `   ${item.detail}` : '   Sin detalle adicional.',
-              item.refType || item.refId
-                ? `   Referencia: ${item.refType ?? '-'} · ${item.refId ?? '-'}`
-                : '   Referencia: sin referencia',
             ])),
       ].join('\n'),
     });

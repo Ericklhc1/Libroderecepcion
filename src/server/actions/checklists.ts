@@ -191,6 +191,7 @@ export async function finishChecklistRunAction(
         notes: zOptionalString,
         resultSummary: zOptionalString,
         disclosure: z.enum(['RESERVADO', 'PERSONA', 'SUPERVISION', 'OPERATIVO']).default('RESERVADO'),
+        recipientId: zOptionalString,
       }),
       formDataToObject(formData),
     );
@@ -200,6 +201,7 @@ export async function finishChecklistRunAction(
       notes: input.notes ?? null,
       resultSummary: input.resultSummary ?? null,
       disclosure: input.disclosure,
+      recipientId: input.recipientId ?? null,
     });
     refresh();
 
@@ -208,12 +210,13 @@ export async function finishChecklistRunAction(
       message:
         result.failures === 0
           ? result.observations > 0
-            ? `Cierre registrado sin incumplimientos y con ${result.observations} observación(es).`
-            : 'Cierre registrado sin incumplimientos ni observaciones.'
+            ? `Cierre registrado sin incumplimientos y con ${result.observations} observación(es).` + (result.recipients > 0 ? ` Resultado enviado a ${result.recipients} destinatario(s).` : '')
+            : 'Cierre registrado sin incumplimientos ni observaciones.' + (result.recipients > 0 ? ` Resultado enviado a ${result.recipients} destinatario(s).` : '')
           : `Cierre registrado con ${result.failures} incumplimiento(s) y ${result.observations} observación(es)` +
             (result.criticalFailures > 0
               ? `, ${result.criticalFailures} de los incumplimientos son críticos.`
-              : '.'),
+              : '.') +
+            (result.recipients > 0 ? ` Resultado enviado a ${result.recipients} destinatario(s).` : ''),
     };
   });
 }

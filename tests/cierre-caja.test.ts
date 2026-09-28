@@ -211,6 +211,7 @@ describe('cierre de Caja previo al cierre del turno', () => {
     expect(audit.expectedAmount.toNumber()).toBe(100_000);
     expect(audit.countedAmount.toNumber()).toBe(100_000);
     expect(audit.difference.toNumber()).toBe(0);
+    expect(audit.denominationSnapshot).toEqual([]);
     expect(audit.guaranteeSnapshot).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: guarantee.id, amount: 50_000 }),

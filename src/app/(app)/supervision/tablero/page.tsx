@@ -286,7 +286,7 @@ export default async function AssignmentBoardPage({
           <CardHeader
             title={`Ronda en curso: ${myRun.templateName}`}
             count={myRun.items.length}
-            action={pendingInRun === 0 ? <FinishRunDialog runId={myRun.id} /> : null}
+            action={pendingInRun === 0 ? <FinishRunDialog runId={myRun.id} users={board.assignees} /> : null}
           />
           <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
             {pendingInRun > 0

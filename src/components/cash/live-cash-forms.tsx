@@ -9,6 +9,7 @@ import { Dialog } from '@/components/ui/dialog';
 import {
   createCashDifferenceRegularizationAction,
   createGymPassAction,
+  createParkingPassAction,
   createManualCashMovementAction,
   markCashMovementAsRegularizationAction,
   returnCashGuaranteeAction,
@@ -65,6 +66,44 @@ export function CreateGymPassForm({
 
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Generando…">Generar folio</SubmitButton>
+      </div>
+    </ActionForm>
+  );
+}
+
+export function CreateParkingPassForm({
+  defaultServiceDate,
+}: {
+  defaultServiceDate: string;
+}) {
+  return (
+    <ActionForm action={createParkingPassAction} className="space-y-3" resetOnSuccess>
+      <Field label="Fecha del ticket" name="serviceDate" required>
+        <Input name="serviceDate" type="date" required defaultValue={defaultServiceDate} />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Habitación" name="roomNumber" required>
+          <Input name="roomNumber" required maxLength={20} placeholder="Ej.: 512" autoComplete="off" />
+        </Field>
+        <Field label="Huésped" name="guestName" required>
+          <Input name="guestName" required maxLength={160} placeholder="Nombre del huésped" autoComplete="off" />
+        </Field>
+      </div>
+      <Field label="Patente / matrícula" name="vehiclePlate" required>
+        <Input
+          name="vehiclePlate"
+          required
+          maxLength={20}
+          placeholder="Ej.: ABCD12"
+          autoCapitalize="characters"
+          autoComplete="off"
+        />
+      </Field>
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        El recepcionista y el turno se registran automáticamente. El ticket no modifica el saldo de Caja.
+      </p>
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Generando…">Generar ticket</SubmitButton>
       </div>
     </ActionForm>
   );

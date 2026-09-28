@@ -286,7 +286,7 @@ export function MarkItemForm({
   );
 }
 
-export function FinishRunDialog({ runId }: { runId: string }) {
+export function FinishRunDialog({ runId, users }: { runId: string; users: Option[] }) {
   return (
     <Dialog
       trigger="Cerrar la auditoría"
@@ -304,16 +304,31 @@ export function FinishRunDialog({ runId }: { runId: string }) {
         <Field label="Resultado objetivo" name="resultSummary">
           <Textarea name="resultSummary" rows={3} maxLength={2000} />
         </Field>
-        <Field label="Comunicación de resultados" name="disclosure">
+        <Field
+          label="Qué debe ocurrir al cerrar"
+          name="disclosure"
+          hint="La opción elegida sí distribuye el resultado. Reservado no envía avisos."
+        >
           <Select
             name="disclosure"
             defaultValue="RESERVADO"
             options={[
-              { value: 'RESERVADO', label: 'Reservado' },
-              { value: 'PERSONA', label: 'Comunicar a una persona' },
-              { value: 'SUPERVISION', label: 'Compartir con Supervisión' },
-              { value: 'OPERATIVO', label: 'Compartir como resultado operativo' },
+              { value: 'RESERVADO', label: 'Guardar como reservado' },
+              { value: 'PERSONA', label: 'Enviar a una persona' },
+              { value: 'SUPERVISION', label: 'Enviar al equipo de Supervisión' },
+              { value: 'OPERATIVO', label: 'Publicar al equipo operativo' },
             ]}
+          />
+        </Field>
+        <Field
+          label="Persona destinataria"
+          name="recipientId"
+          hint="Sólo se usa con «Enviar a una persona»; en ese caso es obligatorio."
+        >
+          <Select
+            name="recipientId"
+            placeholder="Selecciona una persona"
+            options={users}
           />
         </Field>
         <SubmitButton variant="gold" pendingLabel="Cerrando…">

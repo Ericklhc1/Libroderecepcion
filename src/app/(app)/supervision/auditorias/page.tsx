@@ -102,7 +102,7 @@ export default async function SurpriseAuditsPage({
   const visibleRuns = runs.filter(
     (run) =>
       (!status || run.status === status) &&
-      matches(run.templateName, run.runBy.name, run.notes, run.resultSummary),
+      matches(run.humanId, run.templateName, run.runBy.name, run.notes, run.resultSummary),
   );
   const visibleFindings = findings.filter((finding) =>
     matches(finding.title, finding.description, finding.audit.templateName, finding.severity),
@@ -137,7 +137,7 @@ export default async function SurpriseAuditsPage({
 
       {myRun ? (
         <Card>
-          <CardHeader title={`Auditoría en curso: ${myRun.templateName}`} count={myRun.items.length} action={isSupervisor && pending === 0 ? <FinishRunDialog runId={myRun.id} /> : null} />
+          <CardHeader title={`Auditoría en curso: ${myRun.templateName}`} count={myRun.items.length} action={isSupervisor && pending === 0 ? <FinishRunDialog runId={myRun.id} users={options.users} /> : null} />
           <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">{pending > 0 ? `Quedan ${pending} punto(s) sin revisar.` : 'Todos los puntos fueron revisados. Define la comunicación y cierra.'}</p>
           <CardScroll><ul className="divide-y divide-slate-100">{myRun.items.map((item) => <li key={item.id} className="px-4 py-3"><Badge tone={RESULT_TONE[item.result]}>{RESULT_LABEL[item.result]}</Badge>{isSupervisor ? <div className="mt-2"><MarkItemForm itemId={item.id} result={item.result} observation={item.observation} evidence={item.evidence} critical={item.critical} text={item.text} /></div> : <p className="mt-2 text-sm text-petrol-900">{item.text}</p>}</li>)}</ul></CardScroll>
         </Card>
@@ -150,7 +150,48 @@ export default async function SurpriseAuditsPage({
         </Card>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
           <CardHeader title="Historial de auditorías" count={visibleRuns.length} />
-          {visibleRuns.length === 0 ? <EmptyState message="No hay auditorías con esos filtros." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{visibleRuns.map((run) => { const failures = run.items.filter((item) => item.result === 'FALLA' || item.result === 'INCUMPLIMIENTO'); return <li key={run.id} className="px-4 py-3"><div className="flex flex-wrap gap-2"><p className="font-medium text-petrol-900">{run.templateName}</p><Badge tone={run.status === 'CERRADA' ? 'resuelto' : run.status === 'PREPARACION' ? 'pendiente' : 'curso'}>{run.status === 'CERRADA' ? 'Cerrada' : run.status === 'PREPARACION' ? 'Preparación reservada' : 'En curso'}</Badge>{failures.length ? <Badge tone="critico">{failures.length} incumplimiento(s)</Badge> : null}</div><p className="mt-1 text-xs text-slate-500">{run.runBy.name} · {formatDateTime(run.startedAt)}{run.finishedAt ? ` → ${formatDateTime(run.finishedAt)}` : ''} · {run.disclosure.toLocaleLowerCase('es-CL')}</p></li>; })}</ul></CardScroll>}
+          {visibleRuns.length === 0 ? <EmptyState message="No hay auditorías con esos filtros." /> : <CardScroll className="flex-1" maxHeight="max-h-none"><ul className="divide-y divide-slate-100">{visibleRuns.map((run) => {
+              const failures = run.items.filter((item) => item.result === 'FALLA' || item.result === 'INCUMPLIMIENTO');
+              return (
+                <li key={run.id} className="px-4 py-3">
+                  <div className="flex flex-wrap gap-2">
+                    <p className="font-medium text-petrol-900">#{run.humanId} · {run.templateName}</p>
+                    <Badge tone={run.status === 'CERRADA' ? 'resuelto' : run.status === 'PREPARACION' ? 'pendiente' : 'curso'}>
+                      {run.status === 'CERRADA' ? 'Cerrada' : run.status === 'PREPARACION' ? 'Preparación reservada' : 'En curso'}
+                    </Badge>
+                    {failures.length ? <Badge tone="critico">{failures.length} incumplimiento(s)</Badge> : null}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {run.runBy.name} · {formatDateTime(run.startedAt)}
+                    {run.finishedAt ? ` → ${formatDateTime(run.finishedAt)}` : ''} · {run.disclosure.toLocaleLowerCase('es-CL')}
+                  </p>
+                  <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold text-petrol-700">Ver resultado y evidencia</summary>
+                    <div className="mt-3 space-y-3 text-sm">
+                      {run.scope ? <p><span className="font-semibold">Alcance:</span> {run.scope}</p> : null}
+                      {run.sample ? <p><span className="font-semibold">Muestra:</span> {run.sample}</p> : null}
+                      <p>
+                        <span className="font-semibold">Resultado:</span>{' '}
+                        {run.resultSummary || (run.status === 'CERRADA' ? 'Cierre sin resumen adicional.' : 'Pendiente de cierre.')}
+                      </p>
+                      {run.notes ? <p><span className="font-semibold">Observaciones:</span> {run.notes}</p> : null}
+                      <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+                        {run.items.map((item) => (
+                          <li key={item.id} className="px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone={RESULT_TONE[item.result]}>{RESULT_LABEL[item.result]}</Badge>
+                              <span className="font-medium text-petrol-900">{item.text}</span>
+                            </div>
+                            {item.observation ? <p className="mt-1 text-xs text-slate-600">{item.observation}</p> : null}
+                            {item.evidence ? <p className="mt-1 text-xs text-slate-500">Evidencia: {item.evidence}</p> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}</ul></CardScroll>}
         </Card>
       </div>
 

@@ -305,9 +305,16 @@ export async function saveLiveCashAudit(
     currency: string;
     countedAmount: number;
     guaranteeIds: string[];
+    denominationSnapshot?: Array<{
+      id: string;
+      value: number;
+      medium: string;
+      quantity: number;
+      subtotal: number;
+    }>;
     notes?: string | null;
   },
-): Promise<{ expected: number; difference: number; guaranteeCount: number }> {
+): Promise<{ id: string; expected: number; difference: number; guaranteeCount: number }> {
   if (params.countedAmount < 0 || !Number.isFinite(params.countedAmount)) {
     throw new RuleError('El monto contado no es válido.');
   }
@@ -368,14 +375,17 @@ export async function saveLiveCashAudit(
     guestName: row.guestName ?? null,
   }));
   const guaranteeSnapshotJson = JSON.stringify(guaranteeSnapshot);
+  const denominationSnapshot = params.denominationSnapshot ?? [];
+  const denominationSnapshotJson = JSON.stringify(denominationSnapshot);
 
   await prisma.$executeRaw`
     INSERT INTO "CashAudit" (
       "id", "currency", "expectedAmount", "countedAmount", "difference",
-      "countedById", "notes", "guaranteeSnapshot"
+      "countedById", "notes", "guaranteeSnapshot", "denominationSnapshot"
     ) VALUES (
       ${id}, ${currency}, ${expected}, ${params.countedAmount}, ${difference},
-      ${user.id}, ${params.notes?.trim() || null}, ${guaranteeSnapshotJson}::jsonb
+      ${user.id}, ${params.notes?.trim() || null}, ${guaranteeSnapshotJson}::jsonb,
+      ${denominationSnapshotJson}::jsonb
     )
   `;
   await recordAudit({
@@ -391,9 +401,10 @@ export async function saveLiveCashAudit(
       fundCounted: params.countedAmount,
       difference,
       guarantees: guaranteeSnapshot,
+      denominations: denominationSnapshot,
     },
   });
-  return { expected, difference, guaranteeCount: guaranteeSnapshot.length };
+  return { id, expected, difference, guaranteeCount: guaranteeSnapshot.length };
 }
 
 export async function getLiveCashState(
@@ -537,6 +548,7 @@ export async function getLiveCashState(
         difference: true,
         notes: true,
         guaranteeSnapshot: true,
+        denominationSnapshot: true,
         createdAt: true,
         countedBy: { select: { name: true } },
       },

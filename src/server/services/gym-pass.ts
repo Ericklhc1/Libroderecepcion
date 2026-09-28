@@ -16,8 +16,10 @@ export type GymPassRow = {
   folio: number;
   formattedFolio: string;
   serviceDate: Date;
+  serviceType: 'GIMNASIO' | 'ESTACIONAMIENTO';
   roomNumber: string;
   guestName: string;
+  vehiclePlate: string | null;
   receptionistName: string;
   status: 'EMITIDO' | 'ANULADO';
   issuedAt: Date;
@@ -54,18 +56,24 @@ function normalizeServiceDate(value: string | Date): Date {
   return date;
 }
 
-export async function createGymPass(
+async function createServicePass(
   user: CurrentUser,
   params: {
+    serviceType: 'GIMNASIO' | 'ESTACIONAMIENTO';
     serviceDate: string | Date;
     roomNumber: string;
     guestName: string;
+    vehiclePlate?: string | null;
   },
 ): Promise<{ id: string; humanId: number; folio: number; formattedFolio: string }> {
   const roomNumber = params.roomNumber.trim();
   const guestName = params.guestName.trim();
+  const vehiclePlate = params.vehiclePlate?.trim().toUpperCase() || null;
   if (!roomNumber) throw new RuleError('Indica la habitación.');
   if (!guestName) throw new RuleError('Indica el huésped.');
+  if (params.serviceType === 'ESTACIONAMIENTO' && !vehiclePlate) {
+    throw new RuleError('Indica la patente o matrícula del vehículo.');
+  }
 
   const shift = await getMyOpenShift(user.id);
   if (!shift) {
@@ -74,14 +82,17 @@ export async function createGymPass(
 
   const serviceDate = normalizeServiceDate(params.serviceDate);
   const id = randomUUID();
+  const serviceLabel = params.serviceType === 'ESTACIONAMIENTO' ? 'estacionamiento' : 'gimnasio';
 
   const pass = await prisma.$transaction(async (tx) => {
     const created = await tx.gymPass.create({
       data: {
         id,
         serviceDate,
+        serviceType: params.serviceType,
         roomNumber,
         guestName,
+        vehiclePlate,
         receptionistId: user.id,
         shiftId: shift.id,
       },
@@ -92,6 +103,7 @@ export async function createGymPass(
         serviceDate: true,
         roomNumber: true,
         guestName: true,
+        vehiclePlate: true,
       },
     });
 
@@ -102,14 +114,17 @@ export async function createGymPass(
         action: AuditAction.CREAR,
         user,
         summary:
-          `Folio de gimnasio #${created.humanId} · ` +
-          `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}`,
+          `Folio de ${serviceLabel} #${created.humanId} · ` +
+          `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}` +
+          (created.vehiclePlate ? ` · ${created.vehiclePlate}` : ''),
         after: {
           humanId: created.humanId,
           folio: formatGymFolio(created.folio),
+          serviceType: params.serviceType,
           serviceDate: calendarDateKey(created.serviceDate),
           roomNumber: created.roomNumber,
           guestName: created.guestName,
+          vehiclePlate: created.vehiclePlate,
           receptionistId: user.id,
           receptionistName: user.name,
           shiftId: shift.id,
@@ -129,6 +144,25 @@ export async function createGymPass(
   };
 }
 
+export async function createGymPass(
+  user: CurrentUser,
+  params: { serviceDate: string | Date; roomNumber: string; guestName: string },
+) {
+  return createServicePass(user, { ...params, serviceType: 'GIMNASIO' });
+}
+
+export async function createParkingPass(
+  user: CurrentUser,
+  params: {
+    serviceDate: string | Date;
+    roomNumber: string;
+    guestName: string;
+    vehiclePlate: string;
+  },
+) {
+  return createServicePass(user, { ...params, serviceType: 'ESTACIONAMIENTO' });
+}
+
 export async function voidGymPass(
   user: CurrentUser,
   params: { id: string; reason: string },
@@ -146,6 +180,8 @@ export async function voidGymPass(
       serviceDate: true,
       roomNumber: true,
       guestName: true,
+      serviceType: true,
+      vehiclePlate: true,
       shiftId: true,
       operationalEntryId: true,
       currency: true,
@@ -159,6 +195,7 @@ export async function voidGymPass(
   if (pass.status === 'ANULADO') throw new RuleError('Ese folio ya está anulado.');
 
   const formattedFolio = `#${pass.humanId}`;
+  const serviceLabel = pass.serviceType === 'ESTACIONAMIENTO' ? 'estacionamiento' : 'gimnasio';
 
   await prisma.$transaction(async (tx) => {
     await tx.gymPass.update({
@@ -222,7 +259,7 @@ export async function voidGymPass(
         entityId: pass.id,
         action: AuditAction.CAMBIO_ESTADO,
         user,
-        summary: `Folio de gimnasio ${formattedFolio} anulado: ${reason}`,
+        summary: `Folio de ${serviceLabel} ${formattedFolio} anulado: ${reason}`,
         before: { status: pass.status },
         after: { status: 'ANULADO', reason },
       },
@@ -231,11 +268,14 @@ export async function voidGymPass(
   });
 }
 
-export async function listGymPasses(params: {
-  from?: string | Date | null;
-  to?: string | Date | null;
-  limit?: number;
-} = {}): Promise<GymPassSummary> {
+async function listPasses(
+  serviceType: 'GIMNASIO' | 'ESTACIONAMIENTO',
+  params: {
+    from?: string | Date | null;
+    to?: string | Date | null;
+    limit?: number;
+  } = {},
+): Promise<GymPassSummary> {
   const from = params.from ? normalizeServiceDate(params.from) : null;
   const to = params.to ? normalizeServiceDate(params.to) : null;
   if (from && to && from.getTime() > to.getTime()) {
@@ -246,6 +286,7 @@ export async function listGymPasses(params: {
 
   const passes = await prisma.gymPass.findMany({
     where: {
+      serviceType,
       ...(from || to
         ? {
             serviceDate: {
@@ -268,8 +309,10 @@ export async function listGymPasses(params: {
     folio: pass.folio,
     formattedFolio: `#${pass.humanId}`,
     serviceDate: pass.serviceDate,
+    serviceType: pass.serviceType === 'ESTACIONAMIENTO' ? 'ESTACIONAMIENTO' : 'GIMNASIO',
     roomNumber: pass.roomNumber,
     guestName: pass.guestName,
+    vehiclePlate: pass.vehiclePlate,
     receptionistName: pass.receptionist.name,
     status: pass.status === 'ANULADO' ? 'ANULADO' : 'EMITIDO',
     issuedAt: pass.issuedAt,
@@ -282,4 +325,16 @@ export async function listGymPasses(params: {
     emitted: rows.filter((row) => row.status === 'EMITIDO').length,
     voided: rows.filter((row) => row.status === 'ANULADO').length,
   };
+}
+
+export async function listGymPasses(
+  params: { from?: string | Date | null; to?: string | Date | null; limit?: number } = {},
+) {
+  return listPasses('GIMNASIO', params);
+}
+
+export async function listParkingPasses(
+  params: { from?: string | Date | null; to?: string | Date | null; limit?: number } = {},
+) {
+  return listPasses('ESTACIONAMIENTO', params);
 }

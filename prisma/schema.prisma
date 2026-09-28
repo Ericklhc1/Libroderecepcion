@@ -2597,8 +2597,10 @@ model CashAudit {
   notes          String?
   /// Garantías en efectivo que fueron verificadas físicamente durante este arqueo.
   /// Se guardan como snapshot para que el historial no cambie si luego se devuelven o aplican.
-  guaranteeSnapshot Json?
-  createdAt      DateTime @default(now())
+  guaranteeSnapshot    Json?
+  /// Desglose exacto de billetes/monedas del momento del arqueo para impresión histórica.
+  denominationSnapshot Json?
+  createdAt             DateTime @default(now())
   countedBy      User     @relation("cashAuditCountedBy", fields: [countedById], references: [id])
 
   @@index([createdAt])
@@ -2615,8 +2617,12 @@ model GymPass {
   folio                  Int                   @unique @default(autoincrement())
   /// Fecha del servicio que selecciona Recepción; distinta del timestamp técnico de emisión.
   serviceDate            DateTime              @db.Date
+  /// GIMNASIO o ESTACIONAMIENTO. Se conserva en esta tabla porque ambos son folios operativos equivalentes.
+  serviceType            String                @default("GIMNASIO")
   roomNumber             String
   guestName              String
+  /// Patente/matrícula del vehículo. Sólo se exige para ESTACIONAMIENTO.
+  vehiclePlate           String?
   receptionistId         String
   shiftId                String?
 
@@ -2643,6 +2649,7 @@ model GymPass {
   shift                  Shift?                @relation(fields: [shiftId], references: [id])
 
   @@index([serviceDate])
+  @@index([serviceType, serviceDate])
   @@index([issuedAt])
   @@index([reservationReferenceId])
   @@index([roomId])

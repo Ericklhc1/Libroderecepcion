@@ -9,6 +9,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
 import { displayUsername } from '@/domain/username';
 import { logoutAction } from '@/server/actions/auth';
+import { updateMyEmailPreferencesAction } from '@/server/actions/profile';
+import { ActionForm, Checkbox, Field, Input } from '@/components/ui/form';
+import { SubmitButton } from '@/components/ui/button';
 import { avatarGlyph } from '@/domain/chat';
 
 export const metadata = { title: 'Mi perfil' };
@@ -107,6 +110,36 @@ export default async function ProfilePage() {
             </button>
           </form>
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Avisos por correo" />
+        <ActionForm action={updateMyEmailPreferencesAction} className="space-y-3 px-4 py-4">
+          <Field
+            label="Correo"
+            name="email"
+            hint="Se usa para novedades del Libro; tu usuario de acceso no cambia."
+          >
+            <Input
+              name="email"
+              type="email"
+              autoComplete="email"
+              defaultValue={record.email ?? ''}
+              maxLength={254}
+              placeholder="nombre@hotel.cl"
+            />
+          </Field>
+          <Checkbox
+            name="emailNotificationsEnabled"
+            label="Recibir novedades del Libro por correo"
+            defaultChecked={record.emailNotificationsEnabled}
+          />
+          <p className="text-xs text-slate-500">
+            Chat y timers no se envían por correo para evitar ruido. Las notificaciones internas
+            continúan funcionando aunque desactives este canal.
+          </p>
+          <SubmitButton pendingLabel="Guardando…">Guardar correo y avisos</SubmitButton>
+        </ActionForm>
       </Card>
 
       {record.role.operational ? (

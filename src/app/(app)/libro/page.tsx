@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { getBookItems, type BookFilters } from '@/server/services/book';
 import { getFormOptions } from '@/server/services/options';
@@ -36,6 +36,12 @@ export default async function BookPage({
   const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
   const parsedFilters = parseBookFilters(params);
   const receptionDesk = isReceptionDeskRole(user.roleKey);
+  const reportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    const single = Array.isArray(value) ? value[0] : value;
+    if (single && key !== 'pagina') reportParams.set(key, single);
+  }
+  reportParams.set('vista', 'novedades');
 
   const filters: BookFilters = {
     ...parsedFilters,
@@ -95,7 +101,17 @@ export default async function BookPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ViewTabs label="Vista operativa" activeHref={activeTab} tabs={TABS} />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isEntryView ? (
+            <Link
+              href={`/api/libro/reporte?${reportParams.toString()}`}
+              target="_blank"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-petrol-700 underline-offset-2 hover:underline"
+            >
+              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              Ver / imprimir informe
+            </Link>
+          ) : null}
           <Link
             href="/historial"
             className="text-xs font-medium text-petrol-600 underline-offset-2 hover:underline"

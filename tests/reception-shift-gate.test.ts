@@ -17,7 +17,8 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(source).toContain("'shift.receive'");
     expect(source).toContain("'cash.count_receive'");
     expect(source).toContain('HandoverStatus.ENVIADA');
-    expect(source).toContain("gate.mode === 'HANDOVER_PENDING' || gate.mode === 'RECEIVING'");
+    expect(source).toContain("gate.mode === 'HANDOVER_PENDING'");
+    expect(source).toContain("gate.mode === 'RECEIVING'");
     expect(source).toContain("'shift.close'");
     expect(source).toContain('isReceptionDeskRole(user.roleKey)');
     expect(source).not.toContain("'shift.start',\n  'shift.receive'");
@@ -64,9 +65,9 @@ describe('Recepción · gate obligatorio de turno', () => {
       'utf8',
     );
 
-    expect(gateUi).toContain('#recuento-caja');
-    expect(gateUi).toContain('no en la Caja general');
-    expect(handover).toContain('Recepción de turno · paso');
+    expect(gateUi).toContain('/turno#abrir-turno');
+    expect(gateUi).toContain('sin pasar por Caja general');
+    expect(handover).toContain('Recepción guiada · paso');
     expect(handover).toContain('id="confirmar-recepcion"');
     expect(cashBox).toContain("'recuento-caja'");
     expect(cashBox).not.toContain('ReturnCashGuaranteeForm');
@@ -89,7 +90,7 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(actions).toContain('Ningún ingreso, egreso, garantía, devolución o transferencia ya realizada será borrado.');
   });
 
-  it('permite tomar la liana antes de abrir el turno siguiente', () => {
+  it('la entrega pendiente permite iniciar el turno receptor antes de recibirla', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',
       'utf8',
@@ -97,11 +98,11 @@ describe('Recepción · gate obligatorio de turno', () => {
 
     const pendingBranch = source.slice(
       source.indexOf("if (gate.mode === 'HANDOVER_PENDING'"),
-      source.indexOf("if (CLOSING_PERMISSIONS.has(permission))"),
+      source.indexOf("if (gate.mode === 'RECEIVING'"),
     );
 
+    expect(pendingBranch).toContain("permission === 'shift.start'");
     expect(pendingBranch).toContain('RECEIVE_ONLY_PERMISSIONS.has(permission)');
-    expect(pendingBranch).not.toContain("permission === 'shift.start'");
   });
 
   it('el guard de permisos aplica el gate también en acciones por propiedad', () => {

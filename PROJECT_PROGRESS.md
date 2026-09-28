@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-27** · Ajuste visual del Chat · versión propuesta **v1.17.2**
+Actualizado: **2026-09-28** · Auditorías/Caja/Servicios/Llaves · versión propuesta **v1.20.0**
 
 ## Estados canónicos
 
@@ -31,22 +31,21 @@ Actualizado: **2026-09-27** · Ajuste visual del Chat · versión propuesta **v1
 
 ## Iteración actual
 
-**Libro 1.17.2** · rama **`fix/chat-corner-1-17-2`**
+**Libro 1.20.0** · rama **`feat/auditorias-caja-estacionamiento-llaves-1-20-0`**
 
-Objetivo: corregir el anclaje visual del Chat operativo para que funcione como una pestaña de mensajería persistente pegada al borde inferior derecho, independiente de la barra lateral.
+Objetivo: cerrar cuatro incoherencias operativas detectadas en producción sin reconstruir módulos:
+- auditorías sorpresa con distribución real y resultado consultable;
+- arqueos imprimibles con snapshot de denominaciones;
+- tickets de estacionamiento sobre la infraestructura de folios;
+- consulta de llaves de los pisos 4, 5 y 6 en una sola vista.
 
-Incluye:
-- pestaña cerrada fija al extremo inferior derecho;
-- panel abierto alineado al mismo borde en tablet/escritorio;
-- conservación del panel completo en móvil pequeño;
-- regresión automatizada de clases de posicionamiento;
-- sin cambios de datos, permisos, API ni migraciones.
+Incluye una migración exclusivamente aditiva. Los datos históricos se conservan.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
-- despliegue Vercel del SHA fusionado;
-- smoke visual en escritorio y móvil.
+- migración automática en Vercel Production;
+- smoke de versión y rutas afectadas.
 
 ## Infraestructura vigente
 

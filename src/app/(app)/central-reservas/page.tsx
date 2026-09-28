@@ -52,14 +52,16 @@ export default async function CentralReservationsPage({
         reservation.checkIn &&
         reservation.checkIn >= snapshot.now &&
         reservation.checkIn <= snapshot.horizons.in24Hours &&
-        [ReservationStatus.PENDIENTE, ReservationStatus.CONFIRMADA].includes(reservation.status),
+        (reservation.status === ReservationStatus.PENDIENTE ||
+          reservation.status === ReservationStatus.CONFIRMADA),
     ).length,
     next72: snapshot.reservations.filter(
       (reservation) =>
         reservation.checkIn &&
         reservation.checkIn >= snapshot.now &&
         reservation.checkIn <= snapshot.horizons.in72Hours &&
-        [ReservationStatus.PENDIENTE, ReservationStatus.CONFIRMADA].includes(reservation.status),
+        (reservation.status === ReservationStatus.PENDIENTE ||
+          reservation.status === ReservationStatus.CONFIRMADA),
     ).length,
     recent: snapshot.reservations.filter(
       (reservation) => reservation.updatedAt >= snapshot.horizons.oneDayAgo,

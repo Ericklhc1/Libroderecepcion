@@ -363,23 +363,6 @@ export async function markRunItem(
         data: { deletedAt: new Date(), deletionReason: 'El punto dejó de presentar hallazgo.' },
       });
     }
-    if (recipientIds.length > 0) {
-      const body =
-        input.resultSummary?.trim() ||
-        `${failures.length} incumplimiento(s), ${observations.length} observación(es).`;
-      await tx.notification.createMany({
-        data: recipientIds.map((recipientId) => ({
-          userId: recipientId,
-          type: NotificationType.ACTUALIZACION_OPERATIVA,
-          title: `Resultado de auditoría #${run.humanId}: ${run.templateName}`,
-          body,
-          link: `/supervision/auditorias?q=${run.humanId}`,
-          entity: 'ChecklistRun',
-          entityId: run.id,
-        })),
-      });
-    }
-
     await recordAudit(
       {
         entity: 'ChecklistRun',
@@ -497,6 +480,23 @@ export async function finishRun(
         disclosure,
       },
     });
+    if (recipientIds.length > 0) {
+      const body =
+        input.resultSummary?.trim() ||
+        `${failures.length} incumplimiento(s), ${observations.length} observación(es).`;
+      await tx.notification.createMany({
+        data: recipientIds.map((recipientId) => ({
+          userId: recipientId,
+          type: NotificationType.ACTUALIZACION_OPERATIVA,
+          title: `Resultado de auditoría #${run.humanId}: ${run.templateName}`,
+          body,
+          link: `/supervision/auditorias?q=${run.humanId}`,
+          entity: 'ChecklistRun',
+          entityId: run.id,
+        })),
+      });
+    }
+
     await recordAudit(
       {
         entity: 'ChecklistRun',

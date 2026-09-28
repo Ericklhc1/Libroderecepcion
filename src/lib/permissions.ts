@@ -48,6 +48,7 @@ export const PERMISSIONS = {
   */
   'guest.view': { group: 'Huéspedes y reservas', name: 'Consultar huéspedes y reservas' },
   'guest.manage': { group: 'Huéspedes y reservas', name: 'Gestionar referencias de huésped y reserva' },
+  'reservation.center.view': { group: 'Central de Reservas', name: 'Ver la bandeja operativa de Central de Reservas' },
   'supervision.view': { group: 'Supervisión', name: 'Consultar el tablero de supervisión' },
   'supervision.center.view': { group: 'Centro de Supervisión', name: 'Ver el Centro de Supervisión' },
   'supervision.shift.manage': { group: 'Centro de Supervisión', name: 'Iniciar, entregar y finalizar turno de Supervisión' },
@@ -136,6 +137,7 @@ export const ROLE_KEYS = {
   SUPERVISOR: 'SUPERVISOR',
   RECEPTIONIST: 'RECEPCIONISTA',
   NIGHT_AUDITOR: 'AUDITOR_NOCTURNO',
+  RESERVATIONS_CENTER: 'CENTRAL_RESERVAS',
   MANAGEMENT: 'GERENCIA',
 } as const;
 
@@ -282,7 +284,34 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'nightaudit.run',
   ],
   /*
-    Gerencia es de CONSULTA y no opera el mesón. Tiene dos excepciones:
+    Central de Reservas trabaja antes y alrededor de la estadía. Puede mantener
+    referencias de reserva, convertir pendientes en tareas/seguimientos y
+    registrar novedades, pero no participa en turnos de Recepción, Caja ni
+    custodia de llaves.
+  */
+  [ROLE_KEYS.RESERVATIONS_CENTER]: [
+    'reservation.center.view',
+    'guest.view',
+    'guest.manage',
+    'room.view',
+    'metrics.view',
+    'entry.create',
+    'entry.edit',
+    'entry.close',
+    'task.create',
+    'task.assign',
+    'task.edit',
+    'task.close',
+    'followup.create',
+    'followup.manage',
+    'alert.manage',
+  ],
+  /*
+    Gerencia dirige y controla la operación sin convertirse en operador de
+    Recepción. Puede crear/asignar acciones, administrar seguimientos,
+    comunicar lineamientos y consultar la capa de Supervisión.
+
+    Conserva además la reparación global auditada de conflictos.
     1) actuar sobre aquello de lo que es RESPONSABLE, comprobando propiedad;
     2) `conflict.resolve_all`, una reparación global auditada compartida con
        Supervisor y Administrador de sistema.
@@ -296,11 +325,23 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   */
   [ROLE_KEYS.MANAGEMENT]: [
     'guest.view',
+    'reservation.center.view',
     'supervision.view',
+    'supervision.center.view',
+    'supervision.task.assign',
+    'supervision.followup.manage',
+    'supervision.audit.reserved',
+    'supervision.performance.view',
+    'supervision.history.view',
     'metrics.view',
     'room.view',
     'audit.view',
     'cash.view',
+    'task.create',
+    'task.assign',
+    'followup.create',
+    'followup.manage',
+    'announcement.manage',
     // Excepción expresa: reparación masiva auditada, no operación de mesón.
     'conflict.resolve_all',
   ],
@@ -341,8 +382,16 @@ export const ROLE_DEFINITIONS: Array<{
     key: ROLE_KEYS.MANAGEMENT,
     name: 'Gerencia de operaciones',
     description:
-      'Consulta toda la operación sin intervenirla. Puede actuar únicamente sobre lo que se le asigne como responsable, y sólo el Supervisor puede asignárselo.',
+      'Dirección operativa transversal: analiza, asigna acciones, administra seguimientos, comunica lineamientos y verifica cumplimiento sin operar turnos, Caja ni llaves.',
     level: 70,
+    operational: true,
+  },
+  {
+    key: ROLE_KEYS.RESERVATIONS_CENTER,
+    name: 'Ejecutivo/a de Central de Reservas',
+    description:
+      'Prepara y mantiene la información previa a la estadía, resuelve pendientes de reserva y coordina acciones con Recepción sin operar turnos, Caja ni llaves.',
+    level: 35,
     operational: true,
   },
   {

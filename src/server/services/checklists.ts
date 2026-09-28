@@ -490,7 +490,7 @@ export async function finishRun(
           type: NotificationType.ACTUALIZACION_OPERATIVA,
           title: `Resultado de auditoría #${run.humanId}: ${run.templateName}`,
           body,
-          link: `/supervision/auditorias?q=${run.humanId}`,
+          link: `/auditorias/resultados/${run.id}`,
           entity: 'ChecklistRun',
           entityId: run.id,
         })),

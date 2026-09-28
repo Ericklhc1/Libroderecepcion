@@ -83,8 +83,8 @@ conserva su modelo y sus reglas.
 ## Actualización 27/09/2026 · Libro 1.19.4 · reconciliación de alarmas
 
 - El pulso oculto no asume que `dispatched === 0` significa que el cliente está sincronizado.
-- Si otra pestaña o el stream ya materializó una alarma, el pulso detecta la notificación ALARMA no leída y devuelve el snapshot para que esta pestaña también la muestre.
-- Cuando no hay alarma vencida ni ALARMA no leída, conserva la ruta barata sin cargar el feed completo.
+- Cada pestaña informa el ID de la alarma activa que ya conoce. El pulso compara esa identidad con la ALARMA no leída vigente del servidor.
+- El snapshot completo sólo se devuelve cuando la identidad cambia: alarma nueva, alarma atendida/pospuesta/cancelada en otra pestaña o cambio a otra alarma pendiente. Si nada cambió, la respuesta sigue siendo mínima.
 - Sin migración ni cambios de negocio. Release: **v1.19.4**.
 
 ## Actualización 27/09/2026 · Libro 1.19.3 · alarmas ocultas de bajo costo

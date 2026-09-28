@@ -978,8 +978,17 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
     );
   }
 
-  // Sólo Caja bloquea la continuidad. Los elementos físicos quedan visibles
-  // como pendientes, pero se revisan después y no detienen al turno entrante.
+  const custodyPending = state.elements.filter(
+    (element) => element.declared && !element.confirmed,
+  );
+  if (custodyPending.length > 0) {
+    problems.push(
+      `Confirma físicamente la custodia recibida antes de abrir el turno: ${custodyPending
+        .map((element) => element.name)
+        .join(', ')}.`,
+    );
+  }
+
   return problems;
 }
 

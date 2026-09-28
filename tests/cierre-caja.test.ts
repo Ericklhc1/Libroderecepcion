@@ -63,6 +63,18 @@ describe('cierre de Caja previo al cierre del turno', () => {
       data: { status: ShiftStatus.ENTREGA_ENVIADA },
     });
 
+    const denomination = await prisma.cashDenomination.findFirstOrThrow({
+      where: { currency: 'CLP', value: 20_000, active: true },
+    });
+    const handover = await prisma.shiftHandover.findUniqueOrThrow({
+      where: { fromShiftId: shift.id },
+    });
+    await saveCashCount(recepcionista, {
+      handoverId: handover.id,
+      kind: 'DECLARADO',
+      quantities: { [denomination.id]: 5 },
+    });
+
     await expect(closeShift(recepcionista, { shiftId: shift.id })).rejects.toThrow(
       /cierre formal de Caja/i,
     );

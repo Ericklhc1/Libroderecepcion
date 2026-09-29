@@ -66,16 +66,18 @@ describe('recorrido guiado', () => {
     expect(component).toContain('dismissed || suspended || steps.length === 0 || !step');
   });
 
-  it('no pelea contra el scroll y ofrece salida explícita al interactuar', async () => {
+  it('no secuestra el scroll global y sólo vuelve al objetivo por acción explícita', async () => {
     const { readFileSync } = await import('node:fs');
     const component = readFileSync('src/components/layout/tutorial.tsx', 'utf8');
 
     expect(component).toContain("window.addEventListener('scroll', passiveMeasure, true)");
-    expect(component).toContain('ÚNICO desplazamiento automático del paso');
-    expect(component.match(/\.scrollIntoView\(/g)?.length).toBe(2);
+    expect(component).toContain('El recorrido nunca desplaza automáticamente la página');
+    expect(component).toContain('Medir sin mover el viewport');
+    expect(component).not.toContain('initialLocate');
+    expect(component.match(/\.scrollIntoView\(/g)?.length).toBe(1);
     expect(component).toContain('Te alejaste del punto señalado');
     expect(component).toContain('Volver al punto');
-    expect(component).toContain('¿Quieres interactuar con el Libro?');
+    expect(component).toContain('¿Quieres interactuar con la Central?');
     expect(component).toContain('Cerrar esta vez');
     expect(component).toContain('No volver a mostrar');
     expect(component).toContain('Puedes activarlo cuando quieras desde Mi perfil');

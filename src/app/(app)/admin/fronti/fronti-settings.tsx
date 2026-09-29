@@ -95,6 +95,8 @@ const NUMBER_META: Record<string, { min: number; max: number; suffix?: string }>
   'fronti.memoryContextLimit': { min: 1, max: 30, suffix: 'recuerdos' },
   'fronti.modelHistoryLimit': { min: 4, max: 30, suffix: 'mensajes' },
   'fronti.sessionActivityMinutes': { min: 5, max: 60, suffix: 'minutos' },
+  'fronti.proactiveCooldownHours': { min: 1, max: 72, suffix: 'horas' },
+  'fronti.proactiveMaxFindingsPerRun': { min: 1, max: 8, suffix: 'hallazgos' },
 };
 
 function labelFor(key: string): string {
@@ -111,6 +113,9 @@ function labelFor(key: string): string {
     'fronti.memoryContextLimit': 'Recuerdos por respuesta',
     'fronti.modelHistoryLimit': 'Historial enviado al modelo',
     'fronti.sessionActivityMinutes': 'Ventana de actividad de sesión',
+    'fronti.proactiveEnabled': 'Fronti proactivo',
+    'fronti.proactiveCooldownHours': 'Tiempo mínimo entre avisos iguales',
+    'fronti.proactiveMaxFindingsPerRun': 'Máximo por ejecución',
     'fronti.tool.room': 'Consultar habitaciones',
     'fronti.tool.priorities': 'Consultar prioridades',
     'fronti.tool.deadlines': 'Consultar vencimientos',

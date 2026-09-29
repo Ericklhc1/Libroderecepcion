@@ -29,7 +29,7 @@ Actualizado: **2026-09-29** · dropdowns compactos + legibilidad + centrado · v
 | Navegación horizontal compacta | `PRODUCTION` | v1.26.0 | Cabecera horizontal sin sidebar de escritorio |
 | Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
 | Identidad AROH Central IA | `PRODUCTION` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
-| Dropdowns compactos de módulos | `EN_DESARROLLO` | v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
+| Dropdowns compactos de módulos | `PR_ABIERTO` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
 
 ## Iteración actual
 

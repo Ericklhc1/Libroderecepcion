@@ -1,5 +1,14 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.26.2 · navegación desplegable compacta
+
+- La navegación secundaria de escritorio deja de abrir franjas tipo mega-menú a todo el ancho y pasa a **dropdowns compactos anclados al módulo**.
+- Los dropdowns usan tarjeta flotante, sombra suave, bordes redondeados, indicador de selección y animación breve respetando `prefers-reduced-motion`.
+- La tipografía de módulos y opciones sube aproximadamente un punto visual para mejorar legibilidad sin agrandar la cabecera.
+- Cabecera y navegación viven dentro de un contenedor centrado de ancho máximo; en pantallas muy anchas o con zoom reducido no se pegan a los extremos.
+- Si el ancho disponible no alcanza, la fila de módulos conserva desplazamiento horizontal; el dropdown usa portal para no quedar recortado por ese contenedor.
+- Sin migración de esquema ni cambios de datos. Release objetivo: **v1.26.2**.
+
 ## Actualización 29/09/2026 · AROH 1.26.1 · identidad final del producto
 
 - El nombre del producto/sistema es **AROH Central IA**.

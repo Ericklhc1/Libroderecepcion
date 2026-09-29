@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
-import { hotelDateKey } from '@/domain/time';
+import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   mergeSupervisionAuditReport,
   parseSupervisionReport,
@@ -19,7 +19,7 @@ function businessDateFrom(value: FormDataEntryValue | null, reportedBusinessDate
   if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new RuleError('La fecha auditada no es válida.');
   }
-  const resolved = raw || reportedBusinessDate || hotelDateKey();
+  const resolved = raw || reportedBusinessDate || calendarDateKey(hotelCalendarDate());
   return new Date(`${resolved}T00:00:00.000Z`);
 }
 

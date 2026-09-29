@@ -331,34 +331,48 @@ export function SupervisionOpeningPanel({
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">
-            <p className="text-sm font-semibold text-petrol-900">
-              Cierre y auditoría · {readiness.auditDateKey}
-            </p>
-            <p className="mt-1 text-xs text-slate-600">
-              Para recibir el día se esperan Formulario de auditoría, Cobros y Cargos diarios.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {readiness.reports.auditRequired.map((kind: string) => (
-                <Badge key={kind} tone={readiness.reports.auditKinds.includes(kind) ? 'resuelto' : 'pendiente'}>
-                  {readiness.reports.auditKinds.includes(kind) ? '✓ ' : '○ '}
-                  {readiness.reports.labels[kind] ?? kind}
-                </Badge>
-              ))}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-petrol-900">Continuidad desde el cierre anterior</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  La apertura toma el relevo formal del último turno de Recepción cerrado. Los informes
+                  históricos siguen disponibles como evidencia, pero no se mezclan como si fueran el
+                  dashboard de la jornada actual.
+                </p>
+              </div>
+              <Badge tone={readiness.reports.previousClosure?.ready ? 'resuelto' : 'pendiente'}>
+                {readiness.reports.previousClosure?.ready ? 'Cierre recibido' : 'Cierre pendiente'}
+              </Badge>
             </div>
-            {readiness.reports.missingAudit.length > 0 ? (
-              <p className="mt-2 text-xs text-amber-800">
-                Faltan: {readiness.reports.missingAudit
-                  .map((kind: string) => readiness.reports.labels[kind] ?? kind)
-                  .join(', ')}.
+            {readiness.reports.previousClosure ? (
+              <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+                <p className="font-medium text-petrol-900">
+                  Turno #{readiness.reports.previousClosure.humanId} · {readiness.reports.previousClosure.type}
+                  {' · '}{readiness.reports.previousClosure.businessDate}
+                </p>
+                <p className="mt-1">
+                  Entrega: {readiness.reports.previousClosure.handoverStatus ?? 'sin entrega'}
+                  {' · '}validación posterior: {
+                    readiness.reports.previousClosure.validationStatus === 'RESUELTA'
+                      ? 'validada'
+                      : readiness.reports.previousClosure.validationStatus
+                        ? 'pendiente'
+                        : 'sin registro'
+                  }.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-amber-800">
+                No se encontró un turno de Recepción cerrado anterior a esta apertura.
               </p>
-            ) : null}
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">
             <p className="font-medium text-petrol-900">Subir informes</p>
             <p className="mt-1 text-xs text-slate-500">
-              Puedes seleccionar varios PDF. La fecha se toma del propio informe y la evidencia
-              ya cargada para esa fecha se reutiliza con su trazabilidad.
+              Puedes seleccionar varios PDF. La fecha de origen se conserva para trazabilidad, pero
+              el tablero operativo muestra sólo la jornada que estás gestionando.
             </p>
             <div className="mt-3">
               <SupervisionAuditUpload

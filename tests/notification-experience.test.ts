@@ -8,16 +8,26 @@ describe('experiencia de notificaciones', () => {
     expect(source).toContain('knownVersions.current.set(item.id, item.createdAt)');
   });
 
-  it('mantiene avisos del dispositivo cuando la pestaña queda oculta', () => {
+  it('mantiene avisos del dispositivo y añade Web Push real con AROH cerrado', () => {
     const source = readFileSync('src/components/layout/notification-center.tsx', 'utf8');
     const helper = readFileSync('src/components/layout/device-notifications.ts', 'utf8');
     const worker = readFileSync('public/central-notifications-sw.js', 'utf8');
+    const push = readFileSync('src/server/services/web-push.ts', 'utf8');
+    const manifest = readFileSync('src/app/manifest.ts', 'utf8');
 
     expect(source).toContain('/api/notifications/stream?mode=background');
     expect(source).toContain('showDeviceNotification(item)');
+    expect(source).toContain('reconcileDeviceNotifications()');
     expect(helper).toContain('Notification.requestPermission()');
     expect(helper).toContain("serviceWorker.register('/central-notifications-sw.js'");
+    expect(helper).toContain('worker.pushManager.subscribe');
+    expect(helper).toContain('/api/push/subscriptions');
+    expect(worker).toContain("self.addEventListener('push'");
     expect(worker).toContain("self.addEventListener('notificationclick'");
+    expect(worker).toContain('/api/push/payload');
+    expect(push).toContain("setProtectedHeader({ alg: 'ES256', typ: 'JWT' })");
+    expect(push).toContain("Authorization: await vapidAuthorization");
+    expect(manifest).toContain("display: 'standalone'");
   });
 
   it('resuelve tareas simples sin obligar a tomar y validar antes', () => {

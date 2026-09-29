@@ -49,9 +49,6 @@ export async function POST(request: Request) {
     where: {
       userId: user.id,
       readAt: null,
-      // Una alarma no es una notificación descartable: sólo se apaga mediante
-      // DETENER o POSPONER, que además actualizan OperationalAlarmRecipient.
-      type: { not: 'ALARMA' },
       ...(parsed.id ? { id: parsed.id } : {}),
     },
     data: { readAt: new Date() },

@@ -6,6 +6,7 @@ import {
   queueOperationalMail,
   tryDeliverOperationalMail,
 } from '@/server/services/operational-mail';
+import { getNotificationEmailPolicy } from '@/server/services/notification-email-policy';
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
@@ -53,25 +54,17 @@ export async function notify(
   await dispatchExternal(list, client);
 }
 
-/**
- * El correo complementa, pero nunca reemplaza, la campana interna.
- *
- * Chat y alarmas se excluyen: son señales de alta frecuencia o de presencia
- * inmediata y convertirlas en correo produciría ruido. El resto de novedades
- * operativas se agrupa por usuario por cada despacho.
- */
-const EMAIL_EXCLUDED_TYPES = new Set<NotificationType>([
-  'CHAT_MENSAJE',
-  'ALARMA',
-]);
-
+/** El correo complementa, pero nunca reemplaza, la campana interna ni el push del navegador. */
 async function dispatchExternal(
   notifications: NotifyInput[],
   client: Client,
 ): Promise<void> {
-  const eligible = notifications.filter(
-    (notification) =>
-      !notification.isDemo && !EMAIL_EXCLUDED_TYPES.has(notification.type),
+  const candidates = notifications.filter((notification) => !notification.isDemo);
+  if (candidates.length === 0) return;
+
+  const policy = await getNotificationEmailPolicy();
+  const eligible = candidates.filter(
+    (notification) => policy[notification.type] !== 'DESACTIVADO',
   );
   if (eligible.length === 0) return;
 
@@ -82,15 +75,18 @@ async function dispatchExternal(
       active: true,
       deletedAt: null,
       email: { not: null },
-      emailNotificationsEnabled: true,
     },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, email: true, emailNotificationsEnabled: true },
   });
 
   const eventKeys: string[] = [];
   for (const user of users) {
     if (!user.email) continue;
-    const items = eligible.filter((notification) => notification.userId === user.id);
+    const items = eligible.filter(
+      (notification) =>
+        notification.userId === user.id &&
+        (policy[notification.type] === 'OBLIGATORIO' || user.emailNotificationsEnabled),
+    );
     if (items.length === 0) continue;
 
     const eventKey = `user-notification:${user.id}:${randomUUID()}`;
@@ -111,10 +107,10 @@ async function dispatchExternal(
         ...items.flatMap((item, index) => [
           `${index + 1}. ${item.title}`,
           ...(item.body ? [item.body] : []),
-          ...(item.link ? [`Abrir en el Libro: ${item.link}`] : []),
+          ...(item.link ? [`Abrir en la Central: ${item.link}`] : []),
           '',
         ]),
-        'Este correo es informativo. El estado vigente y la trazabilidad oficial permanecen en el Libro.',
+        'Este correo es informativo. El estado vigente y la trazabilidad oficial permanecen en la Central.',
       ].join('\n'),
     });
     eventKeys.push(eventKey);

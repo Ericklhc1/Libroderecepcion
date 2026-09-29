@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
-import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
+import { calendarDateKey } from '@/domain/time';
 import {
   mergeSupervisionAuditReport,
   parseSupervisionReport,
   SUPERVISION_AUDIT_PARSER_VERSION,
 } from '@/server/services/supervision-audit-import';
+import { resolveOperationalBusinessDate } from '@/server/services/shifts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,12 +15,16 @@ export const maxDuration = 60;
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
-function businessDateFrom(value: FormDataEntryValue | null, reportedBusinessDate: string | null): Date {
+function businessDateFrom(
+  value: FormDataEntryValue | null,
+  reportedBusinessDate: string | null,
+  operationalBusinessDate: Date,
+): Date {
   const raw = typeof value === 'string' ? value.trim() : '';
   if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new RuleError('La fecha auditada no es válida.');
   }
-  const resolved = raw || reportedBusinessDate || calendarDateKey(hotelCalendarDate());
+  const resolved = raw || reportedBusinessDate || calendarDateKey(operationalBusinessDate);
   return new Date(`${resolved}T00:00:00.000Z`);
 }
 
@@ -42,7 +47,12 @@ export async function POST(request: Request) {
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = await parseSupervisionReport(file.name, bytes);
-    const businessDate = businessDateFrom(formData.get('businessDate'), parsed.reportedBusinessDate);
+    const operationalBusinessDate = await resolveOperationalBusinessDate();
+    const businessDate = businessDateFrom(
+      formData.get('businessDate'),
+      parsed.reportedBusinessDate,
+      operationalBusinessDate,
+    );
     const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
 
     if (

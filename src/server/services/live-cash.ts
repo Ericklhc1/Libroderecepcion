@@ -29,7 +29,9 @@ export type CashMovementKind =
   | 'ANULACION_GIMNASIO'
   | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
-  | 'AJUSTE_SALIDA';
+  | 'AJUSTE_SALIDA'
+  | 'REGULARIZACION_ENTRADA'
+  | 'REGULARIZACION_SALIDA';
 export type LiveCashMovement = {
   id: string;
   humanId: number;
@@ -46,7 +48,7 @@ export type LiveCashMovement = {
   createdByName: string;
   createdAt: Date;
   effectiveAt: Date;
-  /** False cuando el movimiento sólo regulariza una diferencia física previa. */
+  /** False cuando un movimiento se conserva sólo como trazabilidad y no debe volver a impactar el esperado. */
   affectsExpected: boolean;
 };
 

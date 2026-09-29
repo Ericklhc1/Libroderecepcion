@@ -18,6 +18,8 @@ export type NotifyInput = {
   entity?: string | null;
   entityId?: string | null;
   isDemo?: boolean;
+  /** Sólo campana interna; evita convertir análisis proactivos en correo. */
+  internalOnly?: boolean;
 };
 
 /**
@@ -71,7 +73,9 @@ async function dispatchExternal(
 ): Promise<void> {
   const eligible = notifications.filter(
     (notification) =>
-      !notification.isDemo && !EMAIL_EXCLUDED_TYPES.has(notification.type),
+      !notification.isDemo &&
+      !notification.internalOnly &&
+      !EMAIL_EXCLUDED_TYPES.has(notification.type),
   );
   if (eligible.length === 0) return;
 

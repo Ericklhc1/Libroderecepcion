@@ -152,14 +152,17 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
   if (pathname === '/alertas') {
     return detail('avisos', 'Alertas', 'bandeja', 'Alertas programadas', [
       'consultar_contexto_pantalla',
-      'consultar_vencimientos',
+      'consultar_alertas',
     ]);
   }
   if (pathname === '/alertas/sistema') {
-    return detail('alertas', 'Señales internas', 'bandeja', 'Señales internas y compatibilidad', [
-      'consultar_contexto_pantalla',
-      'consultar_alertas',
-    ]);
+    return detail(
+      'senales-internas',
+      'Señales internas',
+      'bandeja',
+      'Autorizaciones y validaciones internas',
+      ['consultar_contexto_pantalla'],
+    );
   }
   if (pathname === '/historial') {
     return detail('historial', 'Historial', 'archivo', 'Historial y búsqueda', [

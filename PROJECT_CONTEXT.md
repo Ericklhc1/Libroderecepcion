@@ -1,4 +1,14 @@
-# Libro Operativo de Recepción — contexto técnico
+# Central de Operaciones · Hotel HW Libertad — contexto técnico
+
+## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa canónica e identidad
+
+- La plataforma pasa a llamarse **Central de Operaciones · Hotel HW Libertad**. «Libro/Novedades» queda como un módulo interno, no como nombre del producto completo.
+- La **fecha operativa canónica** la determina el ciclo real de Recepción: con turno abierto manda `Shift.date`; sin turno abierto, el último cierre DÍA conserva la fecha y el último cierre NOCHE avanza al día siguiente. La medianoche por sí sola no cambia la jornada.
+- Inicio y el dashboard de Supervisión usan esa fecha operativa. El dashboard de informes muestra únicamente la jornada vigente; los informes del cierre anterior sólo se reutilizan como evidencia de apertura cuando corresponde.
+- El parser de informes prioriza la fecha del nombre del PDF y encabezados reconocibles. Una fecha de huésped/reserva (por ejemplo 01/10) ya no puede convertirse silenciosamente en fecha del informe.
+- El cierre de Recepción mantiene una sola ruta canónica: vuelve a validar Caja/custodia antes del cierre formal y genera la validación posterior trazada; no se creó una segunda lógica de cierre.
+- Sin migración de esquema ni datos. El repositorio, proyecto Vercel y dominio actuales se conservan durante esta release; el **subdominio y la migración de URL se harán como fase separada** para evitar mezclar identidad con enrutamiento/DNS.
+- Release objetivo: **v1.25.0**.
 
 ## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
 

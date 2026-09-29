@@ -2,7 +2,6 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import {
-  AlertLevel,
   AuditAction,
   GuaranteeStatus,
   NotificationType,
@@ -13,7 +12,6 @@ import { ROLE_KEYS } from '@/lib/permissions';
 import { notify } from '@/server/notifications';
 import { recordAudit } from '@/server/audit';
 import { getSettingBool, getSettingNumber } from '@/server/services/settings';
-import { LIVE_ALERT_WHERE } from '@/server/services/alert-engine';
 import {
   chatWithFrontiProviderChain,
   resolveFrontiBackgroundProviderChainRuntime,
@@ -54,60 +52,10 @@ function clean(value: string, max = 900): string {
   return value.trim().replace(/\s+/g, ' ').slice(0, max);
 }
 
-function alertSeverity(level: AlertLevel): FrontiProactiveSeverity {
-  return level === AlertLevel.CRITICA ? 'CRITICA' : 'ALTA';
-}
-
 function money(value: { toString(): string } | null): number {
   if (!value) return 0;
   const parsed = Number(value.toString());
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-async function alertCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
-  const rows = await prisma.alert.findMany({
-    where: LIVE_ALERT_WHERE(now),
-    select: {
-      id: true,
-      humanId: true,
-      level: true,
-      title: true,
-      message: true,
-      dedupeKey: true,
-      entryId: true,
-      taskId: true,
-      handoverId: true,
-      guaranteeId: true,
-      updatedAt: true,
-    },
-    orderBy: [{ level: 'desc' }, { updatedAt: 'desc' }],
-    take: 30,
-  });
-
-  return rows
-    .filter((row) => row.level === AlertLevel.CRITICA || row.level === AlertLevel.ATENCION)
-    .map((row) => ({
-      key: `alert:${row.dedupeKey ?? row.id}:${row.level}`,
-      severity: alertSeverity(row.level),
-      area: 'Alertas operativas',
-      title: row.title,
-      evidence: clean(
-        [
-          `Alerta #${row.humanId}`,
-          row.message,
-          row.entryId ? `registro ${row.entryId}` : null,
-          row.taskId ? `tarea ${row.taskId}` : null,
-          row.handoverId ? `entrega ${row.handoverId}` : null,
-          row.guaranteeId ? `garantía ${row.guaranteeId}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-      ),
-      link: '/alertas',
-      entityType: 'Alert',
-      entityId: row.id,
-      detectedAt: row.updatedAt,
-    }));
 }
 
 async function reservationCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
@@ -282,14 +230,13 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
 export async function collectFrontiProactiveCandidates(
   now = new Date(),
 ): Promise<FrontiProactiveCandidate[]> {
-  const [alerts, reservations, observability] = await Promise.all([
-    alertCandidates(now),
+  const [reservations, observability] = await Promise.all([
     reservationCandidates(now),
     observabilityCandidates(now),
   ]);
 
   const unique = new Map<string, FrontiProactiveCandidate>();
-  for (const candidate of [...alerts, ...reservations, ...observability]) {
+  for (const candidate of [...reservations, ...observability]) {
     const id = signalId(candidate.key);
     const current = unique.get(id);
     if (

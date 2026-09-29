@@ -75,7 +75,7 @@ export default async function BookPage({
   const SPECIALIZED: Record<string, { href: string; label: string }> = {
     task: { href: '/tareas', label: 'Abrir vista de tareas' },
     followup: { href: '/seguimientos', label: 'Abrir vista de seguimientos' },
-    alert: { href: '/alertas', label: 'Abrir vista de alertas' },
+    alert: { href: '/alertas/sistema', label: 'Abrir señales internas' },
   };
   const specialized =
     clase === 'entry' && tipo === 'INCIDENCIA'

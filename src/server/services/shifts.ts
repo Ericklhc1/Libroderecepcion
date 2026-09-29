@@ -1744,7 +1744,7 @@ export async function receiveShiftCash(
             type: NotificationType.ACCION_REQUERIDA,
             title: 'Revisar diferencia de Caja',
             body: detail,
-            link: '/notificaciones?seccion=acciones',
+            link: `/alertas/sistema?alerta=${alert.id}`,
             entity: 'Alert',
             entityId: alert.id,
             isDemo: handover.isDemo,

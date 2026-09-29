@@ -150,10 +150,19 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
   if (pathname === '/alertas') {
-    return detail('alertas', 'Alertas', 'bandeja', 'Alertas operativas', [
+    return detail('avisos', 'Alertas', 'bandeja', 'Alertas programadas', [
       'consultar_contexto_pantalla',
       'consultar_alertas',
     ]);
+  }
+  if (pathname === '/alertas/sistema') {
+    return detail(
+      'senales-internas',
+      'Señales internas',
+      'bandeja',
+      'Autorizaciones y validaciones internas',
+      ['consultar_contexto_pantalla'],
+    );
   }
   if (pathname === '/historial') {
     return detail('historial', 'Historial', 'archivo', 'Historial y búsqueda', [
@@ -161,9 +170,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
   if (pathname === '/notificaciones') {
-    return detail('notificaciones', 'Notificaciones', filters.seccion || 'centro', 'Centro de notificaciones', [
+    return detail('notificaciones', 'Notificaciones', 'centro', 'Notificaciones', [
       'consultar_contexto_pantalla',
-      'consultar_alertas',
     ]);
   }
 
@@ -286,7 +294,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
   if (pathname === '/avisos') {
-    return detail('avisos', 'Timers y recordatorios', 'bandeja', 'Timers y recordatorios', [
+    return detail('avisos', 'Alertas', 'redireccion', 'Ruta anterior de alertas', [
       'consultar_contexto_pantalla',
       'consultar_vencimientos',
     ]);

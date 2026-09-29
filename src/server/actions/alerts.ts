@@ -23,7 +23,7 @@ import { flushOperationalMailOutbox } from '@/server/services/operational-mail';
 
 function refresh() {
   revalidatePath('/');
-  revalidatePath('/alertas');
+  revalidatePath('/alertas/sistema');
   revalidatePath('/notificaciones');
   revalidatePath('/libro');
   revalidatePath('/supervision');

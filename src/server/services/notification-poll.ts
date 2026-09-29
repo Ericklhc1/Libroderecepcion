@@ -1,52 +1,40 @@
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
-import { countLiveAlerts, runAlertEngine } from '@/server/services/alert-engine';
 import { runFrontiProactiveSweep } from '@/server/ai/fronti-proactive';
+import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 
-const ALERT_REFRESH_MS = 60_000;
 const FRONTI_PROACTIVE_REFRESH_MS = 5 * 60_000;
-let lastAlertRefresh = 0;
 let lastFrontiProactiveRefresh = 0;
 
 /**
- * Mantiene el motor de alertas fresco sin acoplar el cliente a una Server Action.
+ * El centro de notificaciones no ejecuta ni fabrica estados operativos.
  *
- * El sondeo del navegador usa un endpoint HTTP estable. Así, una pestaña que
- * permanezca abierta durante un nuevo deployment no conserva un identificador
- * compilado de Server Action que el deployment siguiente ya no conoce.
+ * Sólo mantiene Fronti proactivo fresco con limitación temporal. Las alertas
+ * programadas tienen su propio despachador y las notificaciones son avisos.
  */
-async function refreshAlertsIfDue(): Promise<void> {
+async function refreshFrontiIfDue(): Promise<void> {
   const now = Date.now();
-  if (now - lastAlertRefresh < ALERT_REFRESH_MS) return;
+  if (now - lastFrontiProactiveRefresh < FRONTI_PROACTIVE_REFRESH_MS) return;
 
-  lastAlertRefresh = now;
-  try {
-    await runAlertEngine(new Date(now));
-    if (now - lastFrontiProactiveRefresh >= FRONTI_PROACTIVE_REFRESH_MS) {
-      lastFrontiProactiveRefresh = now;
-      void runFrontiProactiveSweep({ trigger: 'notification-poll', now: new Date(now) }).catch(
-        (error) => {
-          lastFrontiProactiveRefresh = 0;
-          console.error('[fronti-proactivo] fallo desde sondeo', error);
-        },
-      );
-    }
-  } catch (error) {
-    lastAlertRefresh = 0;
-    console.error('[alertas] no se pudo refrescar el motor desde el sondeo', error);
-  }
+  lastFrontiProactiveRefresh = now;
+  void runFrontiProactiveSweep({ trigger: 'notification-poll', now: new Date(now) }).catch(
+    (error) => {
+      lastFrontiProactiveRefresh = 0;
+      console.error('[fronti-proactivo] fallo desde sondeo', error);
+    },
+  );
 }
 
 export async function getUnreadCountsForUser(userId: string): Promise<{
   notifications: number;
   alerts: number;
 }> {
-  await refreshAlertsIfDue();
+  await refreshFrontiIfDue();
 
   const [notifications, alerts] = await Promise.all([
     prisma.notification.count({ where: { userId, readAt: null } }),
-    countLiveAlerts(),
+    countMyActiveOperationalAlarms(userId),
   ]);
 
   return { notifications, alerts };

@@ -984,6 +984,7 @@ model Task {
   status              TaskStatus     @default(PENDIENTE)
   priority            Priority       @default(MEDIA)
   origin              TaskOrigin     @default(MANUAL)
+  startsAt             DateTime?
   dueAt               DateTime?
   tags                String[]       @default([])
   blockedReason       String?
@@ -1047,6 +1048,7 @@ model Task {
   correctiveMeasure CorrectiveMeasure?
 
   @@index([status, dueAt])
+  @@index([startsAt])
   @@index([createdAt])
   @@index([assigneeId, status])
   @@index([entryId])
@@ -1617,6 +1619,12 @@ model OperationalAlarm {
   createdBy     User                   @relation("operationalAlarmCreatedBy", fields: [createdById], references: [id])
   originShiftId String?
   originShift   Shift?                 @relation("operationalAlarmOriginShift", fields: [originShiftId], references: [id], onDelete: SetNull)
+  /// Objeto original al que llama la atención. No duplica su estado.
+  sourceEntity  String?
+  sourceId      String?
+  sourceLink    String?
+  /// Si existe, vuelve a notificar mientras el destinatario no la atienda.
+  repeatMinutes Int?
   status        OperationalAlarmStatus @default(ACTIVA)
   cancelledAt   DateTime?
   closedAt      DateTime?
@@ -1626,6 +1634,7 @@ model OperationalAlarm {
   recipients OperationalAlarmRecipient[]
 
   @@index([status, dueAt])
+  @@index([sourceEntity, sourceId, status])
   @@index([originShiftId, status])
   @@index([createdById, createdAt])
 }

@@ -227,7 +227,7 @@ describe('timers y recordatorios operativos', () => {
         title: 'Aviso para todos',
         dueAt: new Date(Date.now() + 10 * 60_000),
       }),
-    ).rejects.toThrow(/Sólo Supervisión puede emitir una alarma global/i);
+    ).rejects.toThrow(/Sólo Supervisión puede emitir una alerta global/i);
   });
 
   it('un recordatorio grupal se cierra sólo cuando todos sus destinatarios confirman', async () => {

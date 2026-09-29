@@ -35,7 +35,7 @@ export function shouldNavigateTutorial(
 /**
  * Recorrido de producto v1.5.0.
  *
- * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Avisos + Supervisión.
+ * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Alertas + Supervisión.
  * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
  * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
  */
@@ -108,11 +108,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   {
-    id: 'avisos',
-    title: 'Timers y recordatorios',
+    id: 'alertas',
+    title: 'Alertas',
     description:
-      'Programa alarmas individuales o grupales. Los timers nacidos dentro de un turno terminan con ese turno; los recordatorios continúan hasta que los atiendas.',
-    route: '/avisos',
+      'Programa llamadas de atención individuales, grupales o globales. Una alerta puede apuntar a una novedad o tarea sin duplicarla ni cambiar su estado.',
+    route: '/alertas',
     target: ROUTE_TARGET,
   },
   {

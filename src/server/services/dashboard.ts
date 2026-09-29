@@ -1,10 +1,10 @@
 import 'server-only';
 import {
+  AlertLevel,
   AlertStatus,
   EntryStatus,
   EntryType,
   FollowUpStatus,
-  type Prisma,
   Priority,
   ShiftStatus,
   TaskStatus,
@@ -13,7 +13,7 @@ import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { LIVE_ALERT_WHERE, runAlertEngine } from './alert-engine';
+import { runAlertEngine } from './alert-engine';
 import {
   getCurrentShift,
   getMyOpenShift,
@@ -22,8 +22,8 @@ import {
 } from './shifts';
 import { getShiftMetrics } from './metrics';
 import { ROLE_KEYS, isReceptionDeskRole } from '@/lib/permissions';
-import { getSettingNumber } from './settings';
 import { buildOperationalAttention } from '@/domain/operational-attention';
+import { countMyActiveOperationalAlarms } from './operational-alarms';
 
 let lastEngineRun = 0;
 const ENGINE_THROTTLE_MS = 60_000;
@@ -70,28 +70,13 @@ export async function getDashboardData(user: CurrentUser) {
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
   const businessDate = myShift?.date ?? await resolveOperationalBusinessDate(now);
-  const alertDashboardLimit = Math.max(
-    1,
-    Math.min(50, Math.trunc(await getSettingNumber('alerts.dashboardLimit', 10))),
-  );
-  const canValidateClosure =
-    user.roleKey === ROLE_KEYS.SUPERVISOR || user.isSystemAdmin;
   const receptionEntriesOnly = isReceptionDeskRole(user.roleKey);
-  const visibleAlertWhere: Prisma.AlertWhereInput = canValidateClosure
-    ? LIVE_ALERT_WHERE(now)
-    : {
-        AND: [
-          LIVE_ALERT_WHERE(now),
-          { NOT: { dedupeKey: { startsWith: 'shift-validation:' } } },
-        ],
-      };
 
   const [
     incoming,
     criticalEntries,
     overdueTasks,
     myTasks,
-    alerts,
     followUps,
     blockingOutgoing,
   ] = await Promise.all([
@@ -132,17 +117,6 @@ export async function getDashboardData(user: CurrentUser) {
       select: { id: true, dueAt: true },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 8,
-    }),
-    prisma.alert.findMany({
-      where: visibleAlertWhere,
-      select: {
-        id: true,
-        level: true,
-        title: true,
-        message: true,
-      },
-      orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
-      take: alertDashboardLimit,
     }),
     prisma.followUp.findMany({
       where: {
@@ -192,7 +166,6 @@ export async function getDashboardData(user: CurrentUser) {
     openTasks,
     openIncidents,
     liveAlerts,
-    criticalAlerts,
   ] = await Promise.all([
     // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
     // en curso, que puede ser el propio o ninguno.
@@ -223,18 +196,26 @@ export async function getDashboardData(user: CurrentUser) {
           : {}),
       },
     }),
-    prisma.alert.count({ where: visibleAlertWhere }),
-    prisma.alert.count({ where: { AND: [visibleAlertWhere, { level: 'CRITICA' }] } }),
+    countMyActiveOperationalAlarms(user.id),
   ]);
 
   const roomsNeedingAction: [] = [];
+  // Compatibilidad del contrato del dashboard: las Alert legadas ya no se
+  // proyectan en Inicio, pero el campo conserva su tipo para consumidores
+  // existentes mientras migran a OperationalAlarm.
+  const alerts: Array<{
+    id: string;
+    level: AlertLevel;
+    title: string;
+    message: string | null;
+  }> = [];
 
   const counters = {
     openEntries,
     openTasks,
     openIncidents,
     liveAlerts,
-    criticalAlerts,
+    criticalAlerts: 0,
     roomsNeedingAction: roomsNeedingAction.length,
   };
 

@@ -25,6 +25,10 @@ export type AlarmCreateInput = {
   note?: string | null;
   dueAt: Date;
   recipientIds?: string[];
+  sourceEntity?: string | null;
+  sourceId?: string | null;
+  sourceLink?: string | null;
+  repeatMinutes?: number | null;
 };
 
 export async function listAlarmCandidates() {
@@ -67,16 +71,16 @@ async function resolveRecipients(
       where: { active: true, deletedAt: null, role: { operational: true } },
       select: { id: true },
     });
-    if (users.length === 0) throw new RuleError('No hay usuarios activos para recibir la alarma.');
+    if (users.length === 0) throw new RuleError('No hay usuarios activos para recibir la alerta.');
     return users.map((row) => row.id);
   }
 
   const unique = Array.from(new Set(requestedIds.filter(Boolean)));
   if (scope === OperationalAlarmScope.INDIVIDUAL && unique.length !== 1) {
-    throw new RuleError('Una alarma individual debe tener exactamente una persona destinataria.');
+    throw new RuleError('Una alerta individual debe tener exactamente una persona destinataria.');
   }
   if (scope === OperationalAlarmScope.GRUPO && unique.length < 2) {
-    throw new RuleError('Una alarma grupal requiere al menos dos destinatarios.');
+    throw new RuleError('Una alerta grupal requiere al menos dos destinatarios.');
   }
 
   const valid = await prisma.user.findMany({
@@ -100,18 +104,25 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
     !user.permissions.includes('shift.manage') &&
     !user.isSystemAdmin
   ) {
-    throw new RuleError('Sólo Supervisión puede emitir una alarma global.');
+    throw new RuleError('Sólo Supervisión puede emitir una alerta global.');
   }
-  if (!input.title.trim()) throw new RuleError('Escribe qué debe recordar la alarma.');
+  if (!input.title.trim()) throw new RuleError('Escribe qué debe recordar la alerta.');
   if (input.dueAt.getTime() <= Date.now()) {
-    throw new RuleError('La alarma debe programarse para un momento futuro.');
+    throw new RuleError('La alerta debe programarse para un momento futuro.');
+  }
+  if (
+    input.repeatMinutes !== null &&
+    input.repeatMinutes !== undefined &&
+    (!Number.isInteger(input.repeatMinutes) || input.repeatMinutes < 5 || input.repeatMinutes > 10_080)
+  ) {
+    throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
   }
 
   const activeCount = await prisma.operationalAlarm.count({
     where: { createdById: user.id, status: OperationalAlarmStatus.ACTIVA },
   });
   if (activeCount >= MAX_ACTIVE_PER_CREATOR) {
-    throw new RuleError('Tienes demasiadas alarmas activas. Cierra o cancela alguna antes de crear otra.');
+    throw new RuleError('Tienes demasiadas alertas activas. Cierra o cancela alguna antes de crear otra.');
   }
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
@@ -144,6 +155,11 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         dueAt: input.dueAt,
         createdById: user.id,
         originShiftId: originShift?.id ?? null,
+        sourceEntity: input.sourceEntity?.trim() || null,
+        sourceId: input.sourceId?.trim() || null,
+        sourceLink: input.sourceLink?.trim() || null,
+        repeatMinutes:
+          input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes ?? null,
         recipients: {
           createMany: {
             data: recipientIds.map((userId) => ({ userId })),
@@ -168,6 +184,10 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
           scope: created.scope,
           dueAt: created.dueAt,
           originShiftId: created.originShiftId,
+          sourceEntity: created.sourceEntity,
+          sourceId: created.sourceId,
+          sourceLink: created.sourceLink,
+          repeatMinutes: created.repeatMinutes,
           recipients: created.recipients.map((row) => row.userId),
         },
       },
@@ -179,14 +199,116 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
   return alarm;
 }
 
+export async function updateOperationalAlarm(
+  user: CurrentUser,
+  input: {
+    id: string;
+    title: string;
+    note?: string | null;
+    dueAt: Date;
+    repeatMinutes?: number | null;
+  },
+) {
+  const alarm = await prisma.operationalAlarm.findUnique({
+    where: { id: input.id },
+  });
+  if (!alarm) throw new NotFoundError('La alerta ya no existe.');
+  if (
+    alarm.createdById !== user.id &&
+    !user.permissions.includes('shift.manage') &&
+    !user.isSystemAdmin
+  ) {
+    throw new RuleError('Sólo quien creó la alerta o Supervisión puede editarla.');
+  }
+  if (alarm.status !== OperationalAlarmStatus.ACTIVA) {
+    throw new RuleError('Sólo se pueden editar alertas activas.');
+  }
+  if (!input.title.trim()) throw new RuleError('Escribe el motivo de la alerta.');
+  if (input.dueAt.getTime() <= Date.now()) {
+    throw new RuleError('La alerta debe programarse para un momento futuro.');
+  }
+  if (
+    input.repeatMinutes !== null &&
+    input.repeatMinutes !== undefined &&
+    (!Number.isInteger(input.repeatMinutes) || input.repeatMinutes < 5 || input.repeatMinutes > 10_080)
+  ) {
+    throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.operationalAlarm.update({
+      where: { id: alarm.id },
+      data: {
+        title: input.title.trim(),
+        note: input.note?.trim() || null,
+        dueAt: input.dueAt,
+        repeatMinutes: input.repeatMinutes ?? null,
+      },
+    });
+    // Si ya se había disparado, editarla rearma a los destinatarios que todavía
+    // no la han atendido para que vuelva a dispararse en la nueva fecha.
+    await tx.operationalAlarmRecipient.updateMany({
+      where: { alarmId: alarm.id, acknowledgedAt: null },
+      data: { lastTriggeredAt: null, snoozedUntil: null },
+    });
+    await tx.notification.updateMany({
+      where: {
+        entity: 'OperationalAlarmRecipient',
+        entityId: {
+          in: (
+            await tx.operationalAlarmRecipient.findMany({
+              where: { alarmId: alarm.id },
+              select: { id: true },
+            })
+          ).map((row) => row.id),
+        },
+        readAt: null,
+      },
+      data: { readAt: new Date() },
+    });
+    await recordAudit(
+      {
+        entity: 'OperationalAlarm',
+        entityId: alarm.id,
+        action: AuditAction.EDITAR,
+        summary: `Alerta «${updated.title}» actualizada por ${user.name}`,
+        user,
+        before: {
+          title: alarm.title,
+          note: alarm.note,
+          dueAt: alarm.dueAt,
+          repeatMinutes: alarm.repeatMinutes,
+        },
+        after: {
+          title: updated.title,
+          note: updated.note,
+          dueAt: updated.dueAt,
+          repeatMinutes: updated.repeatMinutes,
+        },
+      },
+      tx,
+    );
+    return updated;
+  });
+}
+
+export async function countMyActiveOperationalAlarms(userId: string): Promise<number> {
+  return prisma.operationalAlarm.count({
+    where: {
+      status: OperationalAlarmStatus.ACTIVA,
+      recipients: { some: { userId, acknowledgedAt: null } },
+    },
+  });
+}
+
 export async function cancelOperationalAlarm(user: CurrentUser, alarmId: string) {
   const alarm = await prisma.operationalAlarm.findUnique({
     where: { id: alarmId },
     include: { recipients: { select: { id: true } } },
   });
-  if (!alarm) throw new NotFoundError('La alarma ya no existe.');
+  if (!alarm) throw new NotFoundError('La alerta ya no existe.');
   if (alarm.createdById !== user.id && !user.permissions.includes('shift.manage') && !user.isSystemAdmin) {
-    throw new RuleError('Sólo quien creó la alarma o Supervisión puede cancelarla.');
+    throw new RuleError('Sólo quien creó la alerta o Supervisión puede cancelarla.');
   }
   if (alarm.status !== OperationalAlarmStatus.ACTIVA) return alarm;
 
@@ -225,7 +347,6 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
     where: {
       userId,
       acknowledgedAt: null,
-      lastTriggeredAt: null,
       OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
       alarm: {
         status: OperationalAlarmStatus.ACTIVA,
@@ -240,22 +361,33 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
           title: true,
           note: true,
           dueAt: true,
+          sourceLink: true,
+          repeatMinutes: true,
           createdBy: { select: { name: true } },
         },
       },
     },
     orderBy: { alarm: { dueAt: 'asc' } },
-    take: 10,
+    take: 30,
+  });
+
+  const eligible = due.filter((recipient) => {
+    if (!recipient.lastTriggeredAt) return true;
+    const repeatMinutes = recipient.alarm.repeatMinutes;
+    if (!repeatMinutes) return false;
+    return (
+      recipient.lastTriggeredAt.getTime() + repeatMinutes * 60_000 <= now.getTime()
+    );
   });
 
   let dispatched = 0;
-  for (const recipient of due) {
+  for (const recipient of eligible.slice(0, 10)) {
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.operationalAlarmRecipient.updateMany({
         where: {
           id: recipient.id,
           acknowledgedAt: null,
-          lastTriggeredAt: null,
+          lastTriggeredAt: recipient.lastTriggeredAt,
           OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
           alarm: { status: OperationalAlarmStatus.ACTIVA },
         },
@@ -269,13 +401,20 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
           type: NotificationType.ALARMA,
           title: recipient.alarm.title,
           body: [
-            recipient.alarm.kind === OperationalAlarmKind.TIMER ? 'Timer finalizado.' : 'Recordatorio.',
+            recipient.alarm.kind === OperationalAlarmKind.TIMER
+              ? 'Timer finalizado.'
+              : recipient.lastTriggeredAt
+                ? 'Alerta repetida.'
+                : 'Alerta programada.',
             recipient.alarm.note,
+            recipient.alarm.repeatMinutes
+              ? `Se repetirá cada ${recipient.alarm.repeatMinutes} min hasta que la atiendas.`
+              : null,
             `Asignado por ${recipient.alarm.createdBy.name}.`,
           ]
             .filter(Boolean)
             .join(' '),
-          link: '/avisos',
+          link: recipient.alarm.sourceLink ?? '/alertas',
           entity: 'OperationalAlarmRecipient',
           entityId: recipient.id,
         },
@@ -294,7 +433,6 @@ export async function dispatchDueAlarmsForAllUsers(now = new Date()): Promise<{
   const dueUsers = await prisma.operationalAlarmRecipient.findMany({
     where: {
       acknowledgedAt: null,
-      lastTriggeredAt: null,
       OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
       alarm: {
         status: OperationalAlarmStatus.ACTIVA,
@@ -320,7 +458,7 @@ export async function acknowledgeOperationalAlarm(user: CurrentUser, recipientId
     include: { alarm: { include: { recipients: { select: { id: true, acknowledgedAt: true } } } } },
   });
   if (!recipient || recipient.userId !== user.id) {
-    throw new NotFoundError('Esa alarma no está asignada a tu cuenta.');
+    throw new NotFoundError('Esa alerta no está asignada a tu cuenta.');
   }
   if (recipient.acknowledgedAt) return recipient;
 
@@ -364,9 +502,9 @@ export async function snoozeOperationalAlarm(
     select: { id: true, userId: true, acknowledgedAt: true },
   });
   if (!recipient || recipient.userId !== user.id) {
-    throw new NotFoundError('Esa alarma no está asignada a tu cuenta.');
+    throw new NotFoundError('Esa alerta no está asignada a tu cuenta.');
   }
-  if (recipient.acknowledgedAt) throw new RuleError('La alarma ya fue detenida.');
+  if (recipient.acknowledgedAt) throw new RuleError('La alerta ya fue detenida.');
 
   const now = new Date();
   const snoozedUntil = new Date(now.getTime() + minutes * 60_000);

@@ -1,15 +1,28 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { TaskStatus } from '@prisma/client';
+import { OperationalAlarmStatus, TaskStatus } from '@prisma/client';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
+import { prisma } from '@/lib/prisma';
 import { getTask } from '@/server/services/tasks';
 import { getHistory } from '@/server/services/history';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
+import { ActionForm } from '@/components/ui/form';
+import { SubmitButton } from '@/components/ui/button';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
+import {
+  AlarmKindIcon,
+  LinkedAlertPrompt,
+  OperationalAlarmCreateForm,
+  OperationalAlertEditDialog,
+  OperationalAlertRecipientActions,
+} from '@/components/operational/operational-alarm-form';
+import { cancelOperationalAlarmAction } from '@/server/actions/operational-alarms';
+import { listAlarmCandidates } from '@/server/services/operational-alarms';
 import {
   AssignTaskDialog,
   ChecklistToggleForm,
@@ -43,14 +56,44 @@ export default async function TaskDetailPage({
   const task = await getTask(id).catch(() => null);
   if (!task) notFound();
 
-  const [history, options] = await Promise.all([
+  const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
     getHistory({ entity: 'Task', entityId: task.id }),
     getFormOptions(),
+    prisma.operationalAlarm.findMany({
+      where: { sourceEntity: 'Task', sourceId: task.id },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        recipients: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+      take: 50,
+    }),
+    listAlarmCandidates(),
   ]);
 
   const open = TASK_OPEN_STATUSES.includes(task.status);
+  const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
   const overdue = isOverdue(task.dueAt, open);
   const doneItems = task.checklist.filter((item) => item.done).length;
+  const myDueLinkedAlerts = linkedAlerts
+    .filter((alert) => alert.status === OperationalAlarmStatus.ACTIVA)
+    .flatMap((alert) => {
+      const recipient = alert.recipients.find(
+        (item) => item.userId === user.id && !item.acknowledgedAt,
+      );
+      return recipient
+        ? [{
+            id: alert.id,
+            recipientId: recipient.id,
+            title: alert.title,
+            note: alert.note,
+            dueAt: alert.dueAt.toISOString(),
+          }]
+        : [];
+    });
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -85,6 +128,7 @@ export default async function TaskDetailPage({
             <Badge tone={PRIORITY_TONE[task.priority]} withSymbol={false}>
               Prioridad {PRIORITY_LABEL[task.priority]}
             </Badge>
+            {scheduled ? <Chip>Programada</Chip> : null}
             <Chip>Origen: {TASK_ORIGIN_LABEL[task.origin]}</Chip>
           </div>
 
@@ -115,6 +159,14 @@ export default async function TaskDetailPage({
             <div>
               <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{task.department?.name ?? 'Sin área'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Inicio</dt>
+              <dd className="text-petrol-900">
+                {task.startsAt
+                  ? `${formatDateTime(task.startsAt)} (${relativeTime(task.startsAt)})`
+                  : 'Inmediato'}
+              </dd>
             </div>
             <div>
               <dt className="text-xs font-medium text-slate-500">Fecha límite</dt>
@@ -181,11 +233,11 @@ export default async function TaskDetailPage({
 
         {!task.deletedAt ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
-            {task.status === TaskStatus.PENDIENTE &&
+            {!scheduled && task.status === TaskStatus.PENDIENTE &&
                        (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
               <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar" />
             ) : null}
-            {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
+            {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
                 status={TaskStatus.COMPLETADA}
@@ -213,6 +265,7 @@ export default async function TaskDetailPage({
                   title: task.title,
                   description: task.description ?? '',
                   priority: task.priority,
+                  startsAt: toDateTimeInput(task.startsAt),
                   dueAt: toDateTimeInput(task.dueAt),
                   departmentId: task.departmentId,
                   tags: task.tags,
@@ -223,11 +276,108 @@ export default async function TaskDetailPage({
                 departments={options.departments}
               />
             ) : null}
+            <Dialog
+              title="Crear alerta para esta tarea"
+              description="Programa una llamada de atención vinculada a esta tarea. No cambia su estado."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              trigger="Crear alerta"
+            >
+              <OperationalAlarmCreateForm
+                currentUserId={user.id}
+                candidates={alertCandidates.map((candidate) => ({
+                  id: candidate.id,
+                  name: candidate.name,
+                  username: candidate.username,
+                  roleName: candidate.role.name,
+                }))}
+                source={{
+                  entity: 'Task',
+                  id: task.id,
+                  link: `/tareas/${task.id}`,
+                }}
+              />
+            </Dialog>
             {user.permissions.includes('entry.delete') ? (
               <DeleteTaskDialog taskId={task.id} />
             ) : null}
           </div>
         ) : null}
+      </Card>
+
+      <Card>
+        <CardHeader title="Alertas vinculadas" count={linkedAlerts.length} />
+        {linkedAlerts.length === 0 ? (
+          <EmptyState message="Esta tarea no tiene alertas programadas." />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {linkedAlerts.map((alert) => {
+              const myRecipient = alert.recipients.find((item) => item.userId === user.id);
+              const active = alert.status === OperationalAlarmStatus.ACTIVA;
+              const canEdit =
+                alert.createdById === user.id ||
+                user.permissions.includes('shift.manage') ||
+                user.isSystemAdmin;
+              return (
+                <li key={alert.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <span className="mt-0.5 rounded-lg bg-gold-50 p-2 text-gold-700">
+                      <AlarmKindIcon kind={alert.kind} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-petrol-900">{alert.title}</p>
+                        <Badge tone={active ? 'pendiente' : 'neutro'}>
+                          {active
+                            ? 'Activa'
+                            : alert.status === OperationalAlarmStatus.CANCELADA
+                              ? 'Eliminada'
+                              : 'Atendida'}
+                        </Badge>
+                      </div>
+                      {alert.note ? <p className="mt-0.5 text-sm text-slate-600">{alert.note}</p> : null}
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDateTime(alert.dueAt)} · creada por {alert.createdBy.name}
+                        {alert.repeatMinutes ? ` · repite cada ${alert.repeatMinutes} min` : ''}
+                      </p>
+                    </div>
+                    {active ? (
+                      <div className="flex flex-wrap gap-1.5 no-print">
+                        {myRecipient && !myRecipient.acknowledgedAt ? (
+                          <OperationalAlertRecipientActions recipientId={myRecipient.id} />
+                        ) : null}
+                        {canEdit && alert.kind !== 'TIMER' ? (
+                          <OperationalAlertEditDialog
+                            alert={{
+                              id: alert.id,
+                              title: alert.title,
+                              note: alert.note,
+                              dueAtLocal: toDateTimeInput(alert.dueAt),
+                              repeatMinutes: alert.repeatMinutes,
+                            }}
+                          />
+                        ) : null}
+                        {canEdit ? (
+                          <ActionForm
+                            action={cancelOperationalAlarmAction}
+                            hideSuccess
+                            refreshOnSuccess
+                            className="space-y-0"
+                          >
+                            <input type="hidden" name="alarmId" value={alert.id} />
+                            <SubmitButton variant="ghost" size="sm" pendingLabel="Eliminando…">
+                              Eliminar
+                            </SubmitButton>
+                          </ActionForm>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -249,7 +399,7 @@ export default async function TaskDetailPage({
             <ul className="space-y-1 px-4 py-3">
               {task.checklist.map((item) => (
                 <li key={item.id}>
-                  {task.deletedAt || !open ? (
+                  {task.deletedAt || !open || scheduled ? (
                     <span
                       className={`flex items-start gap-2 px-1 py-1 text-sm ${
                         item.done ? 'text-slate-400 line-through' : 'text-petrol-900'
@@ -277,6 +427,8 @@ export default async function TaskDetailPage({
         <CardHeader title="Comentarios" count={task._count.comments} />
         <Comments target={{ taskId: task.id }} />
       </Card>
+
+      <LinkedAlertPrompt alerts={myDueLinkedAlerts} />
     </div>
   );
 }

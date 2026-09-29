@@ -120,7 +120,14 @@ export function TaskForm({
         )}
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field
+          label="Inicio programado"
+          name="startsAt"
+          hint="Opcional. La tarea puede crearse hoy y comenzar más adelante."
+        >
+          <Input type="datetime-local" name="startsAt" />
+        </Field>
         <Field label="Fecha límite" name="dueAt">
           <Input type="datetime-local" name="dueAt" />
         </Field>

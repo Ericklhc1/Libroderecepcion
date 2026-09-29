@@ -81,6 +81,7 @@ export const taskCreateSchema = z.object({
   description: zOptionalString,
   assigneeId: zOptionalCuid,
   priority: z.nativeEnum(Priority).default(Priority.MEDIA),
+  startsAt: zOptionalDate,
   dueAt: zOptionalDate,
   departmentId: zOptionalCuid,
   entryId: zOptionalCuid,

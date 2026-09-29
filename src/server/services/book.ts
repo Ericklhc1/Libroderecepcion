@@ -32,8 +32,9 @@ import { RECEPTION_DESK_ROLE_KEYS } from '@/lib/permissions';
 /**
  * Libro Operativo v1.4.0.
  *
- * Proyecta únicamente continuidad del Libro: Novedades/Incidencias, Tareas,
- * Seguimientos y Alertas. No consulta PMS, huéspedes, reservas, habitaciones,
+ * Proyecta únicamente continuidad del Libro: Novedades/Incidencias, Tareas y
+ * Seguimientos. Las Alert legadas sólo aparecen si una vista técnica las pide
+ * expresamente; nunca se mezclan por defecto con el trabajo operativo. No consulta PMS,
  * estadías, multas ni otros módulos físicos.
  */
 export type BookKind = 'entry' | 'task' | 'followup' | 'alert';
@@ -126,7 +127,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
   const kinds: BookKind[] =
     filters.kinds && filters.kinds.length > 0
       ? filters.kinds
-      : ['entry', 'task', 'followup', 'alert'];
+      : ['entry', 'task', 'followup'];
 
   const q = textSearch(filters.q);
   const seq = numericRef(q);

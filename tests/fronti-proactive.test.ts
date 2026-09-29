@@ -29,10 +29,9 @@ describe('Fronti proactivo', () => {
     await seedCatalog();
   });
 
-  it('convierte una alerta crítica en un aviso proactivo sin cambiar el estado operativo', async () => {
-    await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
+  it('no convierte una señal Alert legada en hallazgo proactivo', async () => {
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Supervisión' });
-    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Sistema' });
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Sistema' });
     await prisma.user.update({
       where: { id: supervisor.id },
       data: { frontiAccessEnabled: true },
@@ -43,30 +42,25 @@ describe('Fronti proactivo', () => {
         type: AlertType.OTRO,
         level: AlertLevel.CRITICA,
         status: AlertStatus.NUEVA,
-        title: 'Garantía y salida requieren revisión',
-        message: 'La salida está próxima y existe una condición abierta.',
+        title: 'Señal técnica histórica',
+        message: 'Compatibilidad interna; no debe convertirse en una segunda alerta de Fronti.',
         auto: false,
       },
     });
 
     const candidates = await collectFrontiProactiveCandidates();
-    expect(candidates.some((candidate) => candidate.entityId === alert.id)).toBe(true);
+    expect(candidates.some((candidate) => candidate.entityId === alert.id)).toBe(false);
 
     const result = await runFrontiProactiveSweep({ trigger: 'test' });
     expect(result.enabled).toBe(true);
-    expect(result.analysed).toBeGreaterThanOrEqual(1);
-
-    const notifications = await prisma.notification.findMany({
-      where: {
-        type: NotificationType.FRONTI_HALLAZGO,
-        entity: 'FrontiProactiveSignal',
-      },
-      orderBy: { userId: 'asc' },
-    });
-    expect(new Set(notifications.map((item) => item.userId))).toEqual(
-      new Set([supervisor.id, admin.id]),
-    );
-    expect(notifications.every((item) => item.title.startsWith('Fronti ·'))).toBe(true);
+    expect(
+      await prisma.notification.count({
+        where: {
+          type: NotificationType.FRONTI_HALLAZGO,
+          entity: 'FrontiProactiveSignal',
+        },
+      }),
+    ).toBe(0);
 
     const untouched = await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } });
     expect(untouched.status).toBe(AlertStatus.NUEVA);
@@ -82,14 +76,13 @@ describe('Fronti proactivo', () => {
       name: 'Administrador',
     });
 
-    await prisma.alert.create({
+    await prisma.reservationReference.create({
       data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Señal sólo para cuentas con Fronti',
-        message: 'Prueba de asignación individual.',
-        auto: false,
+        code: 'FRONTI-ACCESS-1',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+        actionNote: 'Señal real para probar asignación individual de Fronti.',
       },
     });
 
@@ -165,14 +158,13 @@ describe('Fronti proactivo', () => {
       data: { frontiAccessEnabled: true },
     });
 
-    await prisma.alert.create({
+    await prisma.reservationReference.create({
       data: {
-        type: AlertType.OTRO,
-        level: AlertLevel.CRITICA,
-        status: AlertStatus.NUEVA,
-        title: 'Señal persistente',
-        message: 'La condición sigue abierta.',
-        auto: false,
+        code: 'FRONTI-COOLDOWN-1',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+        actionNote: 'La condición sigue abierta.',
       },
     });
 

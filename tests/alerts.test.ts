@@ -3,13 +3,9 @@ import {
   AlertLevel,
   AlertStatus,
   AlertType,
-  EntryStatus,
   EntryType,
   Priority,
   Severity,
-  ShiftStatus,
-  ShiftType,
-  TaskStatus,
 } from '@prisma/client';
 import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { countLiveAlerts, runAlertEngine } from '@/server/services/alert-engine';
@@ -21,15 +17,15 @@ import {
   snoozeAlert,
   softDeleteAlert,
 } from '@/server/services/alerts';
-import { changeEntryStatus, createEntry } from '@/server/services/entries';
-import { changeTaskStatus, createTask } from '@/server/services/tasks';
+import { createEntry } from '@/server/services/entries';
+import { createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import { followSupervisionSource } from '@/server/services/supervision-center';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000);
 
-describe('motor de alertas', () => {
+describe('motor de señales legadas', () => {
   let user: CurrentUser;
 
   beforeAll(async () => {
@@ -41,7 +37,7 @@ describe('motor de alertas', () => {
     user = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
   });
 
-  it('genera alerta por tarea vencida y no la duplica al reejecutarse', async () => {
+  it('una tarea vencida sigue siendo la misma tarea y no fabrica otra Alert', async () => {
     const task = await createTask(user, {
       title: 'Solicitar medio de pago alternativo',
       priority: Priority.ALTA,
@@ -50,61 +46,14 @@ describe('motor de alertas', () => {
       dueAt: hoursAgo(3),
     });
 
-    const first = await runAlertEngine();
-    expect(first.created).toBe(1);
-
-    const second = await runAlertEngine();
-    expect(second.created).toBe(0);
-
-    const alerts = await prisma.alert.findMany({ where: { taskId: task.id } });
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.type).toBe(AlertType.TAREA_VENCIDA);
-    expect(alerts[0]?.level).toBe(AlertLevel.CRITICA);
-    expect(alerts[0]?.auto).toBe(true);
-    expect(alerts[0]?.dedupeKey).toBe(`task-overdue:${task.id}`);
-  });
-
-  it('resuelve sola la alerta cuando la condición desaparece', async () => {
-    const task = await createTask(user, {
-      title: 'Tarea que se completará',
-      priority: Priority.MEDIA,
-      tags: [],
-      checklist: [],
-      dueAt: hoursAgo(2),
-    });
-    await runAlertEngine();
-
-    await changeTaskStatus(user, { id: task.id, status: TaskStatus.COMPLETADA });
     const result = await runAlertEngine();
 
-    expect(result.resolved).toBeGreaterThanOrEqual(1);
-    const alert = await prisma.alert.findFirstOrThrow({ where: { taskId: task.id } });
-    expect(alert.status).toBe(AlertStatus.RESUELTA);
-    expect(alert.resolutionNote).toContain('condición de origen ya no se cumple');
+    expect(result.created).toBe(0);
+    expect(result.reopened).toBe(0);
+    expect(await prisma.alert.count({ where: { taskId: task.id } })).toBe(0);
   });
 
-  it('reabre la alerta si la condición vuelve a cumplirse', async () => {
-    const task = await createTask(user, {
-      title: 'Tarea que se reabre',
-      priority: Priority.MEDIA,
-      tags: [],
-      checklist: [],
-      dueAt: hoursAgo(2),
-    });
-    await runAlertEngine();
-    await changeTaskStatus(user, { id: task.id, status: TaskStatus.COMPLETADA });
-    await runAlertEngine();
-
-    await changeTaskStatus(user, { id: task.id, status: TaskStatus.EN_CURSO });
-    const result = await runAlertEngine();
-
-    expect(result.reopened).toBe(1);
-    const alert = await prisma.alert.findFirstOrThrow({ where: { taskId: task.id } });
-    expect(alert.status).toBe(AlertStatus.NUEVA);
-    expect(alert.resolvedAt).toBeNull();
-  });
-
-  it('alerta por incidencia crítica abierta', async () => {
+  it('una incidencia crítica permanece en Novedades sin duplicarse como Alert', async () => {
     const incident = await createEntry(user, {
       type: EntryType.INCIDENCIA,
       title: 'Corte de agua en el ala norte',
@@ -116,57 +65,11 @@ describe('motor de alertas', () => {
     });
 
     await runAlertEngine();
-    const alert = await prisma.alert.findFirstOrThrow({
-      where: { entryId: incident.id, type: AlertType.INCIDENCIA_CRITICA },
-    });
-    expect(alert.level).toBe(AlertLevel.CRITICA);
 
-    await changeEntryStatus(user, {
-      id: incident.id,
-      status: EntryStatus.CERRADO,
-      resolution: 'Suministro restablecido.',
-    });
-    await runAlertEngine();
-
-    const closed = await prisma.alert.findFirstOrThrow({ where: { id: alert.id } });
-    expect(closed.status).toBe(AlertStatus.RESUELTA);
+    expect(await prisma.alert.count({ where: { entryId: incident.id } })).toBe(0);
   });
 
-  it('alerta por mantenimiento sin resolver pasadas 24 horas', async () => {
-    await createEntry(user, {
-      type: EntryType.MANTENIMIENTO,
-      title: 'Luminaria intermitente en el piso 2',
-      description: 'Pendiente recambio del balastro.',
-      priority: Priority.BAJA,
-      tags: [],
-      requiresFollowUp: false,
-      occurredAt: hoursAgo(30),
-    });
-
-    await runAlertEngine();
-    expect(
-      await prisma.alert.count({ where: { type: AlertType.MANTENIMIENTO_SIN_RESOLVER } }),
-    ).toBe(1);
-  });
-
-  it('no alerta por mantenimiento reciente', async () => {
-    await createEntry(user, {
-      type: EntryType.MANTENIMIENTO,
-      title: 'Grifo suelto en la 210',
-      description: 'Reportado hace un rato.',
-      priority: Priority.BAJA,
-      tags: [],
-      requiresFollowUp: false,
-      occurredAt: hoursAgo(2),
-    });
-
-    await runAlertEngine();
-    expect(
-      await prisma.alert.count({ where: { type: AlertType.MANTENIMIENTO_SIN_RESOLVER } }),
-    ).toBe(0);
-  });
-
-  it('marca el seguimiento como vencido y genera su alerta', async () => {
+  it('marca el seguimiento vencido sin crear una segunda entidad de alerta', async () => {
     const entry = await createEntry(user, {
       type: EntryType.NOVEDAD,
       title: 'Registro con seguimiento programado',
@@ -185,14 +88,40 @@ describe('motor de alertas', () => {
 
     const stored = await prisma.followUp.findUniqueOrThrow({ where: { id: followUp.id } });
     expect(stored.status).toBe('VENCIDO');
-    expect(
-      await prisma.alert.count({
-        where: { followUpId: followUp.id, type: AlertType.SEGUIMIENTO_VENCIDO },
-      }),
-    ).toBe(1);
+    expect(await prisma.alert.count({ where: { followUpId: followUp.id } })).toBe(0);
   });
 
-  it('alerta garantías propias de Caja y no genera alertas PMS', async () => {
+  it('cierra señales automáticas legadas pero conserva las manuales para compatibilidad', async () => {
+    const legacy = await prisma.alert.create({
+      data: {
+        type: AlertType.OTRO,
+        level: AlertLevel.CRITICA,
+        status: AlertStatus.NUEVA,
+        title: 'Señal automática histórica',
+        dedupeKey: 'legacy:auto:test',
+        auto: true,
+      },
+    });
+    const manual = await createManualAlert(user, {
+      type: AlertType.SALIDA_ANTICIPADA,
+      level: AlertLevel.ATENCION,
+      title: 'Validación manual de compatibilidad',
+    });
+
+    const result = await runAlertEngine();
+
+    expect(result.created).toBe(0);
+    expect(result.reopened).toBe(0);
+    expect(result.resolved).toBe(1);
+    expect((await prisma.alert.findUniqueOrThrow({ where: { id: legacy.id } })).status).toBe(
+      AlertStatus.RESUELTA,
+    );
+    expect((await prisma.alert.findUniqueOrThrow({ where: { id: manual.id } })).status).toBe(
+      AlertStatus.NUEVA,
+    );
+  });
+
+  it('una garantía pendiente no se duplica en Alert', async () => {
     await prisma.guarantee.create({
       data: {
         kind: 'EFECTIVO',
@@ -206,96 +135,9 @@ describe('motor de alertas', () => {
       },
     });
 
-    await prisma.reservationReference.create({
-      data: {
-        code: 'RES-LEGACY-90001',
-        status: 'PENDIENTE',
-        guaranteeStatus: 'PENDIENTE',
-        balanceDue: 120000,
-        requiresAction: true,
-        actionNote: 'Dato PMS legado.',
-      },
-    });
-
-    await runAlertEngine();
-    const types = (await prisma.alert.findMany({ select: { type: true } })).map((a) => a.type);
-
-    expect(types).toContain(AlertType.GARANTIA_PENDIENTE);
-    expect(types).not.toContain(AlertType.PAGO_PENDIENTE);
-    expect(types).not.toContain(AlertType.RESERVA_SIN_CONFIRMAR);
-    expect(types).not.toContain(AlertType.HUESPED_VIP);
-    expect(types).not.toContain(AlertType.TRASLADO_PENDIENTE);
-    expect(types).not.toContain(AlertType.TARJETA_INVALIDA);
-  });
-
-  it('mantiene recurrente la alerta de emergencia hasta cerrar el turno saliente', async () => {
-    const now = new Date();
-    const source = await prisma.shift.create({
-      data: {
-        date: new Date('2026-09-27T00:00:00.000Z'),
-        type: ShiftType.NOCHE,
-        status: ShiftStatus.ENTREGA_ENVIADA,
-        plannedStart: new Date(now.getTime() - 13 * 3600_000),
-        plannedEnd: new Date(now.getTime() - 60 * 60_000),
-        actualStart: new Date(now.getTime() - 12 * 3600_000),
-        createdById: user.id,
-        startedById: user.id,
-      },
-    });
-    await prisma.shift.create({
-      data: {
-        date: new Date('2026-09-27T00:00:00.000Z'),
-        type: ShiftType.DIA,
-        status: ShiftStatus.ACTIVO,
-        plannedStart: new Date(now.getTime() - 2 * 3600_000),
-        plannedEnd: new Date(now.getTime() + 10 * 3600_000),
-        actualStart: new Date(now.getTime() - 2 * 3600_000),
-        createdById: user.id,
-        startedById: user.id,
-        emergency: true,
-        emergencyReason:
-          'El recepcionista saliente no está disponible y no puede completar el cierre.',
-        emergencySourceShiftId: source.id,
-        emergencyAcknowledgedAt: new Date(now.getTime() - 2 * 3600_000),
-      },
-    });
-
-    await runAlertEngine(now);
-    const alert = await prisma.alert.findUniqueOrThrow({
-      where: { dedupeKey: `shift-emergency-source:${source.id}` },
-    });
-    expect(alert.level).toBe(AlertLevel.CRITICA);
-    expect(alert.auto).toBe(true);
-
-    await resolveAlert(user, { id: alert.id, note: 'Revisado, pero el saliente sigue abierto.' });
-    const rerun = await runAlertEngine(new Date(now.getTime() + 60_000));
-    expect(rerun.reopened).toBeGreaterThanOrEqual(1);
-    expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
-      AlertStatus.NUEVA,
-    );
-
-    await prisma.shift.update({
-      where: { id: source.id },
-      data: { status: ShiftStatus.CERRADO, actualEnd: new Date(now.getTime() + 2 * 60_000) },
-    });
-    await runAlertEngine(new Date(now.getTime() + 3 * 60_000));
-    expect((await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
-      AlertStatus.RESUELTA,
-    );
-  });
-
-  it('no toca las alertas manuales', async () => {
-    const manual = await createManualAlert(user, {
-      type: AlertType.SALIDA_ANTICIPADA,
-      level: AlertLevel.ATENCION,
-      title: 'Salida anticipada del grupo a las 06:00',
-    });
-
     await runAlertEngine();
 
-    const stored = await prisma.alert.findUniqueOrThrow({ where: { id: manual.id } });
-    expect(stored.status).toBe(AlertStatus.NUEVA);
-    expect(stored.auto).toBe(false);
+    expect(await prisma.alert.count({ where: { type: AlertType.GARANTIA_PENDIENTE } })).toBe(0);
   });
 });
 

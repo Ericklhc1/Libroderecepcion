@@ -488,8 +488,8 @@ describe('garantías', () => {
     expect(await listOpenGuarantees()).toHaveLength(0);
   });
 
-  describe('alertas', () => {
-    it('una garantía sin tomar genera GARANTIA_PENDIENTE, idempotente', async () => {
+  describe('sin duplicación en Alert', () => {
+    it('una garantía pendiente sigue en Caja sin fabricar GARANTIA_PENDIENTE', async () => {
       const r = await reserva();
       await createGuarantee(user, {
         reservationReferenceId: r.id,
@@ -500,15 +500,14 @@ describe('garantías', () => {
       });
 
       await runAlertEngine();
-      const primera = await prisma.alert.count({ where: { type: 'GARANTIA_PENDIENTE' } });
-      expect(primera).toBeGreaterThan(0);
+      expect(await prisma.alert.count({ where: { type: 'GARANTIA_PENDIENTE' } })).toBe(0);
+      expect(await listOpenGuarantees()).toHaveLength(1);
 
-      // Repetir el motor no duplica: el dedupeKey es estable.
       await runAlertEngine();
-      expect(await prisma.alert.count({ where: { type: 'GARANTIA_PENDIENTE' } })).toBe(primera);
+      expect(await prisma.alert.count({ where: { type: 'GARANTIA_PENDIENTE' } })).toBe(0);
     });
 
-    it('una garantía con fecha objetivo vencida genera alerta crítica y se resuelve sola', async () => {
+    it('una garantía vencida conserva su estado canónico sin crear otra alerta crítica', async () => {
       const ayer = new Date(Date.now() - 24 * 3_600_000);
       const { id } = await createGuarantee(user, {
         kind: 'TARJETA',
@@ -520,20 +519,15 @@ describe('garantías', () => {
       });
 
       await runAlertEngine();
-      const alerta = await prisma.alert.findFirst({
-        where: { type: 'GARANTIA_SIN_RESOLVER_EN_SALIDA' },
-      });
-      expect(alerta).not.toBeNull();
-      expect(alerta?.level).toBe('CRITICA');
-      expect(alerta?.guaranteeId).toBe(id);
+      expect(
+        await prisma.alert.count({ where: { type: 'GARANTIA_SIN_RESOLVER_EN_SALIDA' } }),
+      ).toBe(0);
 
-      // Resolver la garantía apaga la alerta sin que nadie la toque.
       await changeGuaranteeState(user, { id, state: GuaranteeState.DEVUELTA });
       await runAlertEngine();
-      const despues = await prisma.alert.findFirstOrThrow({
-        where: { type: 'GARANTIA_SIN_RESOLVER_EN_SALIDA' },
-      });
-      expect(despues.status).toBe('RESUELTA');
+      expect(
+        await prisma.alert.count({ where: { type: 'GARANTIA_SIN_RESOLVER_EN_SALIDA' } }),
+      ).toBe(0);
     });
 
     it('un saldo PMS pendiente no genera alertas operativas', async () => {

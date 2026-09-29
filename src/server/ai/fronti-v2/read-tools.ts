@@ -7,13 +7,13 @@ import {
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
-import { LIVE_ALERT_WHERE } from '@/server/services/alert-engine';
 import { getShiftDesk } from '@/server/services/shifts';
 import { listOpenGuarantees } from '@/server/services/guarantees';
 import { getSupervisionData } from '@/server/services/supervision';
 import { getSupervisionCenterSummary } from '@/server/services/supervision-center';
 import { listOperationalUsers } from '@/server/services/users';
 import { getAllSettings } from '@/server/services/settings';
+import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 
 const READ_TOOL_NAMES = new Set([
   'consultar_turnos',
@@ -341,35 +341,32 @@ async function supervisionTool(user: CurrentUser) {
 }
 
 async function alertsTool(user: CurrentUser, args: Record<string, unknown>) {
-  requireAnyPermission(
-    user,
-    ['alert.manage', 'metrics.view'],
-    'No tienes permiso para consultar alertas.',
-  );
   const limit = limitArg(args);
-  const now = new Date();
-  const rows = await prisma.alert.findMany({
-    where: LIVE_ALERT_WHERE(now),
-    select: {
-      id: true,
-      type: true,
-      level: true,
-      title: true,
-      message: true,
-      status: true,
-      dueAt: true,
-      snoozedUntil: true,
-      auto: true,
-      createdAt: true,
-      entry: { select: { id: true, humanId: true, title: true } },
-      task: { select: { id: true, humanId: true, title: true } },
-      followUp: { select: { id: true, action: true } },
-      department: { select: { name: true } },
-    },
-    orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
-    take: limit,
-  });
-  return { generatedAt: now, items: rows };
+  const rows = await listMyOperationalAlarms(user.id, limit);
+  return {
+    generatedAt: new Date(),
+    semantics:
+      'Alertas son llamadas de atención programables. No sustituyen ni duplican novedades, tareas o seguimientos.',
+    items: rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      scope: row.scope,
+      title: row.title,
+      note: row.note,
+      dueAt: row.dueAt,
+      status: row.status,
+      sourceEntity: row.sourceEntity,
+      sourceId: row.sourceId,
+      sourceLink: row.sourceLink,
+      createdBy: row.createdBy.name,
+      recipients: row.recipients.map((recipient) => ({
+        userId: recipient.userId,
+        name: recipient.user.name,
+        acknowledgedAt: recipient.acknowledgedAt,
+        snoozedUntil: recipient.snoozedUntil,
+      })),
+    })),
+  };
 }
 
 async function auditTool(user: CurrentUser, args: Record<string, unknown>) {

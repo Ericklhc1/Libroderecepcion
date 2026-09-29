@@ -310,7 +310,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
             humanId: audit.humanId,
             expectedAmount: Number(audit.expectedAmount),
             countedAmount: Number(audit.countedAmount),
-            difference,
+            difference: Number(audit.difference),
             notes: audit.notes,
             createdAt: audit.createdAt,
           }

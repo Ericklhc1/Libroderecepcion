@@ -31,9 +31,12 @@ import {
 } from './fronti-config';
 import {
   assertFrontiToolEnabled,
+  frontiToolMode,
   selectFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
+import { executeFrontiPageContextTool } from './fronti-v2/page-context-tool';
+import type { FrontiRuntimeContext } from './fronti-v2/context-builder';
 import {
   recordFrontiAgentRun,
   startFrontiAgentRun,
@@ -780,22 +783,26 @@ async function executeTool(
   name: string,
   args: Record<string, unknown>,
   config: FrontiConfig,
+  runtimeContext: FrontiRuntimeContext | null,
 ) {
   assertFrontiToolEnabled(config, name);
 
   if (isReceptionDeskRole(user.roleKey) && name !== 'reportar_hallazgo') {
     const gate = await getReceptionOperationGate(user);
-    if (gate.mode !== 'ACTIVE') {
+    const mode = frontiToolMode(name);
+    if (gate.mode !== 'ACTIVE' && mode !== 'read') {
       throw new Error(
         gate.mode === 'NO_SHIFT'
-          ? 'Debes iniciar tu turno antes de consultar o modificar la operación con Fronti.'
+          ? 'Debes iniciar tu turno antes de ejecutar acciones operativas con Fronti. Las consultas de lectura siguen disponibles.'
           : gate.mode === 'RECEIVING'
-            ? 'Primero recuenta Caja y confirma la recepción de tu turno. Fronti no puede operar la Central mientras la recepción está pendiente.'
-            : 'Tu turno está en cierre. Completa Caja, entrega y cierre antes de volver a usar Fronti sobre la operación.',
+            ? 'Primero recuenta Caja y confirma la recepción de tu turno antes de ejecutar acciones con Fronti. Las consultas de lectura siguen disponibles.'
+            : 'Tu turno está en cierre. Completa Caja, entrega y cierre antes de ejecutar nuevas acciones con Fronti. Las consultas de lectura siguen disponibles.',
       );
     }
   }
   switch (name) {
+    case 'consultar_contexto_pantalla':
+      return executeFrontiPageContextTool(user, runtimeContext?.page ?? null);
     case 'consultar_habitacion':
       return roomTool(user, args);
     case 'consultar_prioridades':
@@ -873,7 +880,7 @@ function systemInstructions(config: FrontiConfig): string {
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
     'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
     'Sigue las instrucciones operativas del usuario usando herramientas: puedes consultar transversalmente Turnos, Novedades, Caja, Garantías, Llaves, Tareas, Seguimientos, Supervisión, Alertas, Auditoría, Usuarios y configuración cuando sus permisos lo permitan; también puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs. ' +
-    'Para consultas amplias, combina varias herramientas antes de responder y diferencia hechos actuales de memoria conversacional. Si recibes contexto de pantalla, úsalo para resolver referencias como «esta habitación» o «esta tarea», pero verifica la entidad real antes de escribir. ' +
+    'Para consultas amplias, combina varias herramientas antes de responder y diferencia hechos actuales de memoria conversacional. Si recibes contexto de pantalla, úsalo como parte natural de la conversación. Para referencias como «aquí», «esto», «esta pantalla», «este registro», «esta habitación», «esta reserva» o «esta tarea», consulta primero consultar_contexto_pantalla y después profundiza con la herramienta especializada si hace falta. ' +
     `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
     'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
     'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
@@ -882,8 +889,12 @@ function systemInstructions(config: FrontiConfig): string {
   );
 }
 
-function chatTools(config: FrontiConfig, userMessage: string): FrontiToolDefinition[] {
-  return selectFrontiToolDefinitions(config, userMessage).map((definition) => ({
+function chatTools(
+  config: FrontiConfig,
+  userMessage: string,
+  runtimeContext: FrontiRuntimeContext | null,
+): FrontiToolDefinition[] {
+  return selectFrontiToolDefinitions(config, userMessage, runtimeContext?.page ?? null).map((definition) => ({
     type: 'function',
     function: {
       name: definition.name,
@@ -912,6 +923,7 @@ function messagesAsChat(
 export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
+  runtimeContext: FrontiRuntimeContext | null = null,
 ): Promise<AssistantResult> {
   const telemetry = startFrontiAgentRun(user.id);
   const startedAt = telemetry.startedAt.getTime();
@@ -935,7 +947,7 @@ export async function runReceptionAssistant(
     let activeProviders = [...providers];
     const latestUserMessage =
       [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-    const tools = chatTools(config, latestUserMessage);
+    const tools = chatTools(config, latestUserMessage, runtimeContext);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
 
@@ -1018,7 +1030,13 @@ export async function runReceptionAssistant(
         }
 
         try {
-          const result = await executeTool(user, call.function.name, args, config);
+          const result = await executeTool(
+            user,
+            call.function.name,
+            args,
+            config,
+            runtimeContext,
+          );
           toolTrace.push({ name: call.function.name, ok: true });
           let modelResult: unknown = result;
           if (

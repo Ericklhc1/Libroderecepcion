@@ -76,9 +76,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
   const badges = { '/supervision': alerts, '/libro': myOpenTasks };
-  const frontiVisible =
-    canUseFronti(user, frontiConfig.enabled) &&
-    (!user.roleOperational || user.isSystemAdmin);
+  const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (
     <div className="min-h-screen bg-slate-100">

@@ -1,5 +1,18 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.27.0 · Fronti contextual transversal
+
+- Fronti recibe contexto determinístico de **todas las rutas autenticadas** de AROH Central IA: módulo, sección, filtros visibles, título y entidad dinámica cuando la URL identifica un objeto concreto.
+- Nuevo lector `consultar_contexto_pantalla`: obtiene una fotografía viva y autorizada de la pantalla actual usando servicios reales del sistema. No genera SQL ni persiste resúmenes duplicados.
+- Detalles contextualizados: novedades/incidencias, tareas, reservas, habitaciones, arqueos, entregas de turno y resultados de auditoría; las pantallas de Caja, Reservas, Llaves, Avisos, Indicadores, Supervisión, Notificaciones, Historial, Perfil y Administración tienen lectores específicos o reutilizan las herramientas determinísticas existentes.
+- Las preguntas deícticas («¿qué falta aquí?», «revisa esto», «¿y ahora?») heredan automáticamente las capacidades pertinentes del módulo actual en vez de depender sólo de palabras literales escritas por el usuario.
+- Los filtros de URL forman parte del contexto, pero se excluyen nombres sensibles como token, cookie, sesión, credenciales, claves y contraseñas.
+- Fronti standalone se muestra a cualquier cuenta que cumpla la política existente `fronti.enabled + frontiAccessEnabled`; ya no se oculta adicionalmente por ser un rol operativo.
+- En perfiles de Recepción, las **consultas de lectura** siguen disponibles durante NO_SHIFT, recepción y cierre para explicar la situación. Las propuestas/escrituras continúan bloqueadas por el gate operativo hasta que corresponda.
+- Se mantiene seguridad por permisos del usuario y confirmación de acciones sensibles. No se amplían permisos por estar Fronti abierto en una pantalla.
+- Esta release **no implementa Fronti proactivo/event-driven** ni acciones autónomas de fondo; esa capa queda separada para revisión posterior.
+- Sin migración Prisma ni cambios masivos de datos. Release objetivo: **v1.27.0**.
+
 ## Actualización 29/09/2026 · AROH 1.26.3 · panel de soporte fuera del header sticky
 
 - Se corrige el drawer **Reportar / solicitar**: antes se renderizaba como `fixed` dentro de la cabecera `sticky` con `backdrop-blur`, por lo que el navegador lo tomaba respecto de ese contenedor y quedaba recortado a la altura del header.

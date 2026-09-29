@@ -1,5 +1,18 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.27.0 · Fronti contextual transversal
+
+- Rama: `feature/fronti-contextual-v1-27-0`.
+- `fronti-v2/page-context.ts` cataloga cada `src/app/(app)/**/page.tsx`; una prueba recorre el árbol real y falla si aparece una pantalla autenticada sin mapa contextual.
+- `consultar_contexto_pantalla` es una herramienta read-only nativa que resuelve módulo, sección, filtros y entidad abierta, y consulta una fotografía compacta desde servicios reales respetando permisos.
+- El cliente envía `pathname + search + hash + document.title`; el servidor infiere entidades dinámicas y sanea query params sensibles.
+- El selector de herramientas combina intención textual + `recommendedTools` del módulo actual para resolver referencias como «aquí/esto/esta pantalla».
+- `runReceptionAssistant` recibe el `FrontiRuntimeContext` y lo conserva también cuando Fronti participa dentro del chat.
+- El gate de Recepción permite herramientas `mode: read` fuera de `ACTIVE`; propuestas/escrituras siguen bloqueadas. No relajar esta separación.
+- La visibilidad standalone depende sólo de `canUseFronti(...)`; el rollout por usuario se conserva.
+- NO incluir proactividad/eventos/background agents en esta release. Alcance exclusivo: contextualidad transversal bajo demanda.
+- Sin migración. Release objetivo `v1.27.0`; antes de merge: Compuerta completa y después health/smoke/tag de Production.
+
 ## 29/09/2026 · AROH 1.26.3 · hotfix panel Reportar / solicitar
 
 - El panel de soporte debe montarse en `document.body` mediante `createPortal`.

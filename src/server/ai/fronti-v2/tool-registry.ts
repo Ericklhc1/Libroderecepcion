@@ -4,6 +4,7 @@ import {
   frontiToolSettingForFunction,
   type FrontiConfig,
 } from '@/server/ai/fronti-config';
+import type { FrontiResolvedPageContext } from './page-context';
 
 export type FrontiToolRegistryEntry = {
   type: 'function';
@@ -16,6 +17,21 @@ export type FrontiToolRegistryEntry = {
 };
 
 export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
+  {
+    type: 'function',
+    name: 'consultar_contexto_pantalla',
+    description:
+      'Lee el contexto vivo de la pantalla actual de Central de Operaciones: módulo, sección, filtros, entidad abierta y una fotografía compacta de las fuentes reales visibles para el usuario. Úsala para referencias como “aquí”, “esto”, “esta pantalla”, “este registro”, “qué falta acá” o “qué ves”. No modifica nada.',
+    strict: true,
+    mode: 'read',
+    area: 'contexto',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
   {
     type: 'function',
     name: 'consultar_habitacion',
@@ -481,6 +497,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
 ] as const;
 
 const ALWAYS_AVAILABLE = new Set([
+  'consultar_contexto_pantalla',
   'consultar_estado_operativo',
   'consultar_caja',
   'consultar_llaves',
@@ -531,10 +548,24 @@ function addMany(target: Set<string>, names: readonly string[]): void {
 export function selectFrontiToolDefinitions(
   config: FrontiConfig,
   userMessage: string,
+  pageContext: FrontiResolvedPageContext | null = null,
 ): readonly FrontiToolRegistryEntry[] {
   const enabled = enabledFrontiToolDefinitions(config);
   const text = normalizedIntent(userMessage);
   const wanted = new Set<string>();
+
+  if (pageContext) {
+    wanted.add('consultar_contexto_pantalla');
+  }
+
+  const contextualReference =
+    /\baqui\b|\baca\b|\besto\b|\besta pantalla\b|\beste registro\b|\besta tarea\b|\besta reserva\b|\besta garantia\b|\besta caja\b|\beste turno\b|\bque ves\b|\bque falta\b|\bque hago\b|\bcomo seguimos\b|\brevisa esto\b|\brevisa aqui\b/.test(
+      text,
+    );
+
+  if (pageContext && (contextualReference || text.length < 42)) {
+    addMany(wanted, pageContext.recommendedTools);
+  }
 
   const broad =
     /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|toda la central|que falta|cosas raras/.test(
@@ -610,6 +641,10 @@ export function assertFrontiToolEnabled(
   if (!key || !config.tools[key]) {
     throw new Error('Esta capacidad de Fronti está desactivada por el Administrador de sistema.');
   }
+}
+
+export function frontiToolMode(functionName: string): FrontiToolRegistryEntry['mode'] | null {
+  return FRONTI_TOOL_REGISTRY.find((definition) => definition.name === functionName)?.mode ?? null;
 }
 
 export function frontiToolCatalog() {

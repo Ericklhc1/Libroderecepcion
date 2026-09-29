@@ -42,6 +42,9 @@ const requestSchema = z
     pageContext: z
       .object({
         pathname: z.string().trim().min(1).max(500),
+        search: z.string().trim().max(2000).nullable().optional(),
+        hash: z.string().trim().max(200).nullable().optional(),
+        title: z.string().trim().max(240).nullable().optional(),
         entityType: z.string().trim().max(120).nullable().optional(),
         entityId: z.string().trim().max(200).nullable().optional(),
         label: z.string().trim().max(300).nullable().optional(),
@@ -214,6 +217,9 @@ export async function POST(request: Request) {
         body.pageContext
           ? {
               pathname: body.pageContext.pathname,
+              search: body.pageContext.search ?? '',
+              hash: body.pageContext.hash ?? '',
+              title: body.pageContext.title ?? null,
               entityType: body.pageContext.entityType ?? null,
               entityId: body.pageContext.entityId ?? null,
               label: body.pageContext.label ?? null,
@@ -256,7 +262,7 @@ export async function POST(request: Request) {
       maxChars: 6_500,
     });
     const modelMessages = [identity, runtime, ...recentContext];
-    const result = await runReceptionAssistant(user, modelMessages);
+    const result = await runReceptionAssistant(user, modelMessages, runtimeContext);
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);
     if (context.persist) {

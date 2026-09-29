@@ -263,7 +263,12 @@ export function FrontiAssistant() {
     try {
       const payload = await request({
         message: content,
-        pageContext: { pathname },
+        pageContext: {
+          pathname,
+          search: window.location.search,
+          hash: window.location.hash,
+          title: document.title,
+        },
       });
       if (payload.reset) {
         setMessages([

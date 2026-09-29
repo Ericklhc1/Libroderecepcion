@@ -24,11 +24,14 @@ export type CashDirection = 'ENTRADA' | 'SALIDA';
 export type CashMovementKind =
   | 'GARANTIA_INGRESO'
   | 'GARANTIA_DEVOLUCION'
+  | 'GARANTIA_COBRO'
   | 'VENTA_GIMNASIO'
   | 'ANULACION_GIMNASIO'
   | 'TESORERIA'
   | 'AJUSTE_ENTRADA'
-  | 'AJUSTE_SALIDA';
+  | 'AJUSTE_SALIDA'
+  | 'REGULARIZACION_ENTRADA'
+  | 'REGULARIZACION_SALIDA';
 export type LiveCashMovement = {
   id: string;
   humanId: number;
@@ -45,7 +48,7 @@ export type LiveCashMovement = {
   createdByName: string;
   createdAt: Date;
   effectiveAt: Date;
-  /** False cuando el movimiento sólo regulariza una diferencia física previa. */
+  /** False cuando un movimiento se conserva sólo como trazabilidad y no debe volver a impactar el esperado. */
   affectsExpected: boolean;
 };
 
@@ -180,6 +183,7 @@ export async function recordGuaranteeCashIn(
     reservationReferenceId?: string | null;
     reservationCode?: string | null;
     reference?: string | null;
+    roomNumber?: string | null;
     roomId?: string | null;
     stayId?: string | null;
     guestId?: string | null;
@@ -271,10 +275,78 @@ export async function recordGuaranteeCashOut(
   });
 }
 
+export async function recordGuaranteeChargeOut(
+  tx: Tx,
+  params: {
+    user: CurrentUser;
+    guaranteeId: string;
+    reservationReferenceId?: string | null;
+    reservationCode?: string | null;
+    reference?: string | null;
+    roomId?: string | null;
+    stayId?: string | null;
+    guestId?: string | null;
+    currency: string;
+    amount: number;
+    shiftId?: string | null;
+    notes?: string | null;
+  },
+): Promise<void> {
+  const hasIn = await cashMovementExists(tx, {
+    guaranteeId: params.guaranteeId,
+    kind: 'GARANTIA_INGRESO',
+  });
+  if (!hasIn) return;
+  if (
+    await cashMovementExists(tx, {
+      guaranteeId: params.guaranteeId,
+      kind: 'GARANTIA_COBRO',
+    })
+  ) return;
+
+  const originalContext = await tx.cashMovement.findFirst({
+    where: {
+      guaranteeId: params.guaranteeId,
+      kind: 'GARANTIA_INGRESO',
+      voidedAt: null,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { roomId: true, stayId: true, guestId: true },
+  });
+
+  await insertCashMovement(tx, {
+    userId: params.user.id,
+    kind: 'GARANTIA_COBRO',
+    direction: 'SALIDA',
+    currency: params.currency,
+    amount: params.amount,
+    shiftId: params.shiftId ?? null,
+    roomId: originalContext?.roomId ?? params.roomId ?? null,
+    stayId: originalContext?.stayId ?? params.stayId ?? null,
+    guestId: originalContext?.guestId ?? params.guestId ?? null,
+    reservationReferenceId: params.reservationReferenceId ?? null,
+    guaranteeId: params.guaranteeId,
+    reference:
+      [
+        params.roomNumber?.trim() ? `Hab. ${params.roomNumber.trim()}` : null,
+        params.reference?.trim() ||
+          (params.reservationCode ? `Cobro garantía ${params.reservationCode}` : 'Cobro de garantía'),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    notes:
+      params.notes?.trim() ||
+      'Garantía cobrada/aplicada: deja de estar bajo custodia de Recepción y no pasa a saldo operacional de Caja.',
+  });
+}
+
 export async function assertGuaranteeCanBeDeleted(guaranteeId: string): Promise<void> {
   const hasIn = await cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_INGRESO' });
-  const hasOut = await cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_DEVOLUCION' });
-  if (hasIn && !hasOut) {
+  const [hasReturn, hasCharge] = await Promise.all([
+    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_DEVOLUCION' }),
+    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_COBRO' }),
+  ]);
+  if (hasIn && !hasReturn && !hasCharge) {
     throw new RuleError(
       'Esta garantía tiene efectivo en caja. Devuélvela o resuélvela antes de eliminarla.',
     );

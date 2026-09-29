@@ -306,7 +306,7 @@ export function LinkedAlertPrompt({
     dueAt: string;
   }>;
 }) {
-  const due = alerts.find((alert) => new Date(alert.dueAt).getTime() <= Date.now());
+  const due = alerts[0] ?? null;
   if (!due) return null;
 
   return (

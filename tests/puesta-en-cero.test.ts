@@ -133,6 +133,50 @@ describe('dejar el sistema en cero', () => {
     expect(despues.notifications).toBe(0);
   });
 
+  it('elimina reportes de soporte y no deja que bloqueen el borrado de usuarios', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción con reporte',
+    });
+
+    const request = await prisma.supportRequest.create({
+      data: {
+        correlationId: '11111111-1111-4111-8111-111111111111',
+        kind: 'ERROR',
+        subject: 'Reporte previo al reinicio',
+        description: 'Debe desaparecer con la puesta en cero.',
+        requestedById: receptionist.id,
+        requesterName: receptionist.name,
+        requesterUser: receptionist.username,
+        requesterRole: 'Recepcionista',
+        context: {},
+        attachments: {
+          create: {
+            kind: 'CAPTURA',
+            storageKey: 'support/test/captura/puesta-en-cero.jpg',
+            fileName: 'puesta-en-cero.jpg',
+            mimeType: 'image/jpeg',
+            size: 256,
+          },
+        },
+      },
+    });
+
+    const preview = await getResetPreview();
+    expect(preview.supportRequests).toBe(1);
+    expect(preview.supportAttachments).toBe(1);
+
+    await runFactoryReset(admin, {
+      phrase: RESET_PHRASE,
+      scope: { includeStays: true, includeUsers: true },
+    });
+
+    expect(await prisma.supportRequest.count()).toBe(0);
+    expect(await prisma.supportRequestAttachment.count()).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: receptionist.id } })).toBeNull();
+    expect(request.id).toBeTruthy();
+  });
+
   it('incluye turnos, entregas y notas del Centro de Supervisión', async () => {
     const supervisor = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,

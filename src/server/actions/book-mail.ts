@@ -180,7 +180,7 @@ function render(record: MailRecord, note: string | null) {
   ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 
   const text = [
-    'LIBRO OPERATIVO DE RECEPCIÓN',
+    'CENTRAL DE OPERACIONES · HOTEL HW LIBERTAD',
     `${record.ref} · ${record.type}`,
     record.title,
     '',
@@ -194,7 +194,7 @@ function render(record: MailRecord, note: string | null) {
     .map(([label, value]) => `<tr><td style="padding:6px 10px;color:#64748b;font-size:12px;width:145px;vertical-align:top">${escapeHtml(label)}</td><td style="padding:6px 10px;color:#173442;font-size:13px;font-weight:600">${escapeHtml(value ?? '')}</td></tr>`)
     .join('');
 
-  const html = `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#173442"><div style="max-width:760px;margin:0 auto;padding:24px"><div style="background:#173442;padding:16px 20px;border-radius:12px 12px 0 0"><div style="color:#d8ad52;font-size:12px;font-weight:700;letter-spacing:.08em">HOTEL HW LIBERTAD</div><div style="color:#fff;font-size:18px;font-weight:700;margin-top:4px">Libro Operativo de Recepción</div></div><div style="background:#fff;padding:20px;border-radius:0 0 12px 12px"><div style="font-size:12px;color:#64748b;font-weight:700">${escapeHtml(record.ref)} · ${escapeHtml(record.type)}</div><h1 style="font-size:20px;margin:6px 0 16px;color:#173442">${escapeHtml(record.title)}</h1><table style="width:100%;border-collapse:collapse;background:#f8fafc;border-radius:8px">${table}</table>${record.detail ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">DETALLE</div><div style="white-space:pre-wrap;font-size:14px;line-height:1.5">${escapeHtml(record.detail)}</div></div>` : ''}${note ? `<div style="margin-top:18px;padding:12px 14px;background:#fff8e8;border-left:4px solid #d8ad52"><div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:5px">COMENTARIO PARA EL DESTINATARIO</div><div style="white-space:pre-wrap;font-size:14px">${escapeHtml(note)}</div></div>` : ''}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px">Enviado desde el Libro Operativo de Recepción · Hotel HW Libertad</div></div></div></body></html>`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#173442"><div style="max-width:760px;margin:0 auto;padding:24px"><div style="background:#173442;padding:16px 20px;border-radius:12px 12px 0 0"><div style="color:#d8ad52;font-size:12px;font-weight:700;letter-spacing:.08em">HOTEL HW LIBERTAD</div><div style="color:#fff;font-size:18px;font-weight:700;margin-top:4px">Central de Operaciones</div></div><div style="background:#fff;padding:20px;border-radius:0 0 12px 12px"><div style="font-size:12px;color:#64748b;font-weight:700">${escapeHtml(record.ref)} · ${escapeHtml(record.type)}</div><h1 style="font-size:20px;margin:6px 0 16px;color:#173442">${escapeHtml(record.title)}</h1><table style="width:100%;border-collapse:collapse;background:#f8fafc;border-radius:8px">${table}</table>${record.detail ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">DETALLE</div><div style="white-space:pre-wrap;font-size:14px;line-height:1.5">${escapeHtml(record.detail)}</div></div>` : ''}${note ? `<div style="margin-top:18px;padding:12px 14px;background:#fff8e8;border-left:4px solid #d8ad52"><div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:5px">COMENTARIO PARA EL DESTINATARIO</div><div style="white-space:pre-wrap;font-size:14px">${escapeHtml(note)}</div></div>` : ''}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px">Enviado desde Central de Operaciones · Hotel HW Libertad</div></div></div></body></html>`;
 
   return { text, html };
 }
@@ -213,7 +213,7 @@ export async function sendBookItemMailAction(
     const body = render(record, input.note);
     const result = await sendMail({
       to: input.to,
-      subject: `[Libro Operativo] ${record.ref} · ${record.title}`.slice(0, 180),
+      subject: `[Central de Operaciones] ${record.ref} · ${record.title}`.slice(0, 180),
       text: body.text,
       html: body.html,
     });

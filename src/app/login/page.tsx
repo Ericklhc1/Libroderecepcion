@@ -33,8 +33,8 @@ export default async function LoginPage() {
             <BookOpen className="h-6 w-6" aria-hidden="true" />
           </span>
           <div>
-            <p className="text-xs font-medium text-gold-300">{hotelName}</p>
-            <h1 className="text-lg font-semibold">Libro Operativo de Recepción</h1>
+            <p className="text-xs font-medium text-gold-300">Central de Operaciones</p>
+            <h1 className="text-lg font-semibold">{hotelName}</h1>
           </div>
         </div>
 

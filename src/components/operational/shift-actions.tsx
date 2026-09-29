@@ -162,7 +162,7 @@ export function OpenShiftForm({
         session={guidanceSession}
         buttonLabel="Abrir mi turno"
         title="Vas a iniciar tu turno"
-        description="El Libro te habilitará la operación y desde aquí irá marcando qué paso corresponde."
+        description="La Central te habilitará la operación y desde aquí irá marcando qué paso corresponde."
         steps={[
           'Confirma el turno sugerido según la hora.',
           'Al abrirlo, Novedades, Caja y Llaves quedan disponibles para tu cuenta.',
@@ -393,7 +393,7 @@ export function StartReceptionShiftForm({
         session={guidanceSession}
         buttonLabel="INICIAR RECEPCIÓN DE TURNO"
         title="Vas a recibir el turno anterior"
-        description="El Libro abrirá tu turno en modo RECEPCIÓN. La operación seguirá bloqueada hasta completar el relevo."
+        description="La Central abrirá tu turno en modo RECEPCIÓN. La operación seguirá bloqueada hasta completar el relevo."
         steps={[
           'Revisar entrega: lee los pendientes, prioridades y puntos urgentes.',
           'Recontar Caja: cuenta CLP/USD y valida físicamente las garantías.',
@@ -511,7 +511,7 @@ export function PrepareHandoverForm({
         session={guidanceSession}
         buttonLabel="INICIAR CIERRE DE TURNO"
         title="Vas a iniciar el cierre"
-        description="Desde este punto el sistema cambia de operación a cierre. El Libro te llevará por una pantalla a la vez."
+        description="Desde este punto el sistema cambia de operación a cierre. La Central te llevará por una pantalla a la vez."
         steps={[
           'Caja, garantías y elementos: cuenta, valida y deja Caja formalmente cerrada.',
           'Novedades y pendientes: revisa lo que seguirá vigente después de tu turno.',

@@ -29,7 +29,7 @@ export class OperationalBriefError extends Error {
  * Genera una lectura breve de la bandeja determinística de atención.
  *
  * La IA no consulta tablas ni decide el orden: recibe sólo los elementos ya
- * derivados por reglas del Libro y explica el panorama. Si OpenAI falla, la
+ * derivados por reglas de la Central y explica el panorama. Si OpenAI falla, la
  * bandeja sigue estando disponible en Inicio.
  */
 export async function generateOperationalBrief(user: CurrentUser) {
@@ -72,7 +72,7 @@ export async function generateOperationalBrief(user: CurrentUser) {
           role: 'system',
           content:
             'Eres la capa de briefing operativo de Recepción del Hotel HW Libertad. ' +
-            'Recibirás una lista YA PRIORIZADA por reglas determinísticas del Libro. ' +
+            'Recibirás una lista YA PRIORIZADA por reglas determinísticas de Central de Operaciones. ' +
             'No cambies el orden, no inventes hechos, huéspedes, montos, reservas ni estados. ' +
             'Resume en español claro y ejecutivo qué exige atención ahora y por qué. ' +
             'Devuelve exactamente un punto por cada elemento recibido, en el mismo orden, sin agruparlos. ' +

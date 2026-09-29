@@ -42,10 +42,7 @@ import {
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
 import {
-  addCalendarDateDays,
   addHotelCalendarDays,
-  calendarDateKey,
-  hotelCalendarDate,
   hotelDateKey,
   hotelWallDateTime,
 } from '@/domain/time';
@@ -146,8 +143,6 @@ export default async function SupervisionCenterPage({
   const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
   const canFollow = hasPermission(user, 'supervision.followup.manage');
   const canAnnounce = hasPermission(user, 'announcement.manage');
-  const defaultAuditBusinessDate = calendarDateKey(addCalendarDateDays(hotelCalendarDate(), -1));
-
   const [center, review, options, announcements, operationalUsers, performance] = await Promise.all([
     getSupervisionCenterSummary(user),
     getSupervisionData(),
@@ -367,7 +362,7 @@ export default async function SupervisionCenterPage({
 
       <SupervisionAuditDashboard
         rows={center.auditImports}
-        defaultBusinessDate={defaultAuditBusinessDate}
+        defaultBusinessDate={center.businessDateKey}
         canUpload={
           isSupervisor &&
           Boolean(center.currentShift) &&

@@ -92,9 +92,9 @@ export async function deliverCredentials(input: {
 
   const result = await sendMail({
     to: recipient,
-    subject: `Credenciales de acceso · ${input.name} · Libro Operativo de Recepción`,
+    subject: `Credenciales de acceso · ${input.name} · Central de Operaciones`,
     text: [
-      `Se creó una cuenta en el Libro Operativo de Recepción de ${input.hotelName}.`,
+      `Se creó una cuenta en Central de Operaciones · ${input.hotelName}.`,
       '',
       `Nombre:         ${input.name}`,
       `Usuario:        @${input.username}`,

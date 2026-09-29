@@ -9,7 +9,7 @@ export const TERMS_SECTIONS = [
   {
     title: '1. Finalidad de la plataforma',
     paragraphs: [
-      'El Libro Operativo de Recepción es una plataforma interna de apoyo a la operación hotelera. Centraliza información, seguimiento, trazabilidad y acciones operativas, pero no sustituye las políticas internas, el PMS ni las instrucciones formales de la organización.',
+      'Central de Operaciones · Hotel HW Libertad es una plataforma interna de apoyo a la operación hotelera. Centraliza información, seguimiento, trazabilidad y acciones operativas, pero no sustituye las políticas internas, el PMS ni las instrucciones formales de la organización.',
     ],
   },
   {

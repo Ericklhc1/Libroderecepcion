@@ -30,7 +30,7 @@ export default async function AcceptTermsPage() {
             <BookOpen className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <p className="text-xs font-medium text-slate-500">Libro Operativo de Recepción</p>
+            <p className="text-xs font-medium text-slate-500">Central de Operaciones · Hotel HW Libertad</p>
             <h1 className="text-xl font-semibold text-petrol-950">{TERMS_TITLE}</h1>
           </div>
         </header>

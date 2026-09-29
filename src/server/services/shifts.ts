@@ -16,7 +16,7 @@ import {
 import type { Prisma, ShiftType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
-import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
+import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { assertShiftAssignable } from '@/server/services/users';
@@ -58,6 +58,49 @@ import {
 /** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
   return hotelCalendarDate(now);
+}
+
+/**
+ * Fecha operativa canónica de Recepción.
+ *
+ * El cambio de día no lo decide la medianoche ni un informe importado:
+ * lo decide el ciclo real de turnos. Mientras exista un turno operativo,
+ * su `Shift.date` manda. Entre turnos, el último cierre determina la fecha
+ * siguiente: cerrar NOCHE abre el día calendario siguiente; cerrar DÍA
+ * conserva la misma fecha para el turno nocturno.
+ */
+export async function resolveOperationalBusinessDate(now = new Date()): Promise<Date> {
+  const activeShift = await prisma.shift.findFirst({
+    where: {
+      archivedAt: null,
+      status: {
+        in: [
+          ShiftStatus.INICIADO,
+          ShiftStatus.ACTIVO,
+          ShiftStatus.PREPARANDO_ENTREGA,
+          ShiftStatus.ENTREGA_ENVIADA,
+        ],
+      },
+    },
+    select: { date: true },
+    orderBy: [{ actualStart: 'desc' }, { createdAt: 'desc' }],
+  });
+  if (activeShift) return activeShift.date;
+
+  const lastClosedShift = await prisma.shift.findFirst({
+    where: {
+      archivedAt: null,
+      status: ShiftStatus.CERRADO,
+      actualEnd: { not: null },
+    },
+    select: { date: true, type: true },
+    orderBy: { actualEnd: 'desc' },
+  });
+
+  if (!lastClosedShift) return hotelCalendarDate(now);
+  return lastClosedShift.type === 'NOCHE'
+    ? addCalendarDateDays(lastClosedShift.date, 1)
+    : lastClosedShift.date;
 }
 
 export const shiftInclude = {

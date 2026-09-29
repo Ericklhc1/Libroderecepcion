@@ -74,7 +74,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_estado_operativo',
     description:
-      'Construye una vista transversal del estado actual del Libro usando las áreas que la cuenta puede consultar: prioridades, Caja y Llaves. Úsala para preguntas amplias como “qué está pasando”, “qué falta”, “dame un panorama” o “qué cosas raras hay”. No modifica nada.',
+      'Construye una vista transversal del estado actual de Central de Operaciones usando las áreas que la cuenta puede consultar: prioridades, Caja y Llaves. Úsala para preguntas amplias como “qué está pasando”, “qué falta”, “dame un panorama” o “qué cosas raras hay”. No modifica nada.',
     strict: true,
     mode: 'read',
     area: 'sistema',
@@ -146,7 +146,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_novedades',
     description:
-      'Consulta novedades e incidencias del Libro con responsable, prioridad, estado, habitación y vencimiento. No modifica nada.',
+      'Consulta novedades e incidencias de la Central con responsable, prioridad, estado, habitación y vencimiento. No modifica nada.',
     strict: true,
     mode: 'read',
     area: 'novedades',
@@ -290,7 +290,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_configuracion_operativa',
     description:
-      'Consulta parámetros configurables del Libro. Sólo está disponible para quien tenga permiso de configuración del sistema y no expone credenciales.',
+      'Consulta parámetros configurables de Central de Operaciones. Sólo está disponible para quien tenga permiso de configuración del sistema y no expone credenciales.',
     strict: true,
     mode: 'read',
     area: 'configuracion',
@@ -356,7 +356,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'proponer_registro',
     description:
-      'Prepara una novedad o incidencia del Libro. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
+      'Prepara una novedad o incidencia de la Central. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
     strict: true,
     mode: 'propose',
     area: 'novedades',
@@ -537,7 +537,7 @@ export function selectFrontiToolDefinitions(
   const wanted = new Set<string>();
 
   const broad =
-    /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|que falta|cosas raras/.test(
+    /que esta pasando|que pasa hoy|panorama|estado operativo|todo el libro|toda la central|que falta|cosas raras/.test(
       text,
     );
 

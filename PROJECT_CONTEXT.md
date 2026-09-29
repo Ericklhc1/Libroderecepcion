@@ -11,7 +11,7 @@
 - La carga de apertura autodetecta la fecha de cada PDF, por lo que admite cierres de ayer junto con fotografías operativas de hoy y reutiliza evidencia válida por fecha operativa.
 - El lector PDF conserva anotaciones de enlace sobre el ID FNS. En entradas/salidas, un ID enlazado aporta señal `PENDIENTE` de confianza alta; un ID no enlazado sólo se considera `PROCESADO_PROBABLE` si el mismo PDF demuestra una convención mixta. La señal nunca confirma automáticamente check-in/check-out. Color y subrayado no se usan todavía como regla hasta validarlos contra informes reales de cada formato.
 - `SupervisionShift.openingState` conserva la fotografía de Caja, garantías, llaves, informes y pendientes recibidos; `openingCompletedAt` marca la confirmación final.
-- Migración aditiva: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
+- Migraciones aditivas: `20260929110000_supervision_apertura_operativa` + `20260929110500_supervision_apertura_unique_index`. Release objetivo: **v1.24.0**.
 
 Memoria breve del proyecto. Sirve para no volver a analizar toda la aplicación
 en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.

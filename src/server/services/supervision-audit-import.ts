@@ -125,9 +125,31 @@ function matchNumber(text: string, pattern: RegExp, parser = numberEs): number |
 
 function kindOf(fileName: string, text: string): SupervisionReportKind {
   const name = fileName.toLocaleLowerCase('es-CL');
+  const hasReservationIdentity =
+    /(?:\bID\b|localizador|reserva(?:ci[oó]n)?)/i.test(text) &&
+    /habitaci[oó]n|\broom\b/i.test(text);
+
   if (/formulario auditor[ií]a/i.test(text)) return 'AUDITORIA_FORMULARIO';
-  if (name.includes('habitaciones con actividad') || name.includes('actividad') || /habitaciones con actividad/i.test(text)) return 'ACTIVIDAD';
-  if (name.includes('entradas') || /informe de entradas|\bentradas\b.*check.?in/i.test(text)) return 'ENTRADAS';
+
+  // El nombre del archivo nunca basta para acreditar un informe operativo:
+  // un PDF escaneado o ajeno llamado "actividad.pdf" no puede abrir Supervisión.
+  if (
+    /habitaciones con actividad/i.test(text) ||
+    ((name.includes('habitaciones con actividad') || name.includes('actividad')) &&
+      hasReservationIdentity &&
+      /check.?in|check.?out|ocupad[ao]|in.?house/i.test(text))
+  ) {
+    return 'ACTIVIDAD';
+  }
+  if (
+    /informe de entradas/i.test(text) ||
+    (name.includes('entradas') &&
+      hasReservationIdentity &&
+      /entrada|llegada|check.?in|arrival/i.test(text))
+  ) {
+    return 'ENTRADAS';
+  }
+
   if (/operaciones de caja reservas/i.test(text) || /totales por forma de pago/i.test(text)) return 'COBROS';
   if (/ingresos totales por canal/i.test(text)) return 'VENTAS_CANAL';
   if (/producci[oó]n por habitaci[oó]n/i.test(text)) return 'PRODUCCION_HABITACION';

@@ -1,5 +1,13 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## Actualización 29/09/2026 · AROH 1.25.4 · identidad final del producto
+
+- Producto: **AROH Central IA**. El alojamiento se muestra debajo como contexto de propiedad, por ejemplo **Hotel HW Libertad**.
+- No volver a usar «Central de Operaciones» como nombre de producto. «Libro/Novedades» permanece como módulo interno.
+- Branding alineado en navegación, login, instalación, metadatos, correos, Fronti, términos, arqueos e icono accesible.
+- No renombrar todavía repositorio, proyecto Vercel ni dominio; el cambio de subdominio se trata por separado.
+- Sin migración Prisma. Release objetivo: **v1.25.4**.
+
 ## Actualización 29/09/2026 · AROH 1.25.0 · jornada operativa y cambio de identidad
 
 - Producto: **AROH Central IA · Hotel HW Libertad**. No renombrar todavía repo, proyecto Vercel ni dominio; el cambio de subdominio es una migración separada.

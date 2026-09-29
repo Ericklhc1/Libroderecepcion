@@ -7,6 +7,7 @@ import {
   AuditAction,
   EntryStatus,
   EntryType,
+  GuaranteeKind,
   GuaranteeState,
   NotificationType,
   Priority,
@@ -144,12 +145,12 @@ async function applyAuthorizedManualMovement(
   input: ManualMovementInput,
   shiftId: string | null,
   effectiveAt: Date,
-  options: { affectsExpected?: boolean } = {},
+  options: { affectsExpected?: boolean; regularization?: boolean } = {},
 ) {
   const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
   const affectsExpected = options.affectsExpected ?? true;
-  const regularization = !affectsExpected;
+  const regularization = options.regularization ?? !affectsExpected;
 
   return prisma.$transaction(async (tx) => {
     const movementId = await insertCashMovement(tx, {
@@ -173,7 +174,7 @@ async function applyAuthorizedManualMovement(
           ? `Regularización de diferencia · ${input.reference}`
           : `${verb} de Caja · ${input.reference}`,
         description: regularization
-          ? `${verb} físico de ${input.currency} ${input.amount} para regularizar una diferencia previa. Concepto: ${input.reference}. No modifica el efectivo esperado.` +
+          ? `${verb} físico de ${input.currency} ${input.amount} para regularizar una diferencia previa. Concepto: ${input.reference}. ${affectsExpected ? 'Actualiza el efectivo esperado sin tratarse como ingreso/egreso operacional nuevo.' : 'No modifica el efectivo esperado porque reclasifica una diferencia ya contabilizada.'}` +
             (input.notes ? ` Observaciones: ${input.notes}` : '')
           : `${verb} de ${input.currency} ${input.amount}. Concepto: ${input.reference}.` +
             (input.notes ? ` Observaciones: ${input.notes}` : ''),
@@ -191,7 +192,9 @@ async function applyAuthorizedManualMovement(
         ],
         requiresFollowUp: false,
         resolution: regularization
-          ? 'Regularización registrada con trazabilidad; no altera el efectivo esperado.'
+          ? affectsExpected
+            ? 'Regularización registrada con trazabilidad; corrige el efectivo esperado.'
+            : 'Regularización registrada con trazabilidad; no altera el efectivo esperado.'
           : shiftId
             ? 'Movimiento registrado con trazabilidad financiera.'
             : 'Movimiento registrado sin turno abierto; excepción derivada a Supervisión.',
@@ -426,7 +429,7 @@ export async function createCashDifferenceRegularizationAction(
       input,
       shift?.id ?? null,
       effectiveAt,
-      { affectsExpected: false },
+      { affectsExpected: true, regularization: true },
     );
     await tryDeliverOperationalMail(`cash-movement:${movementId}`);
 
@@ -438,7 +441,7 @@ export async function createCashDifferenceRegularizationAction(
     return {
       ok: true as const,
       message:
-        `Regularización registrada: ${input.direction === 'ENTRADA' ? '+' : '−'}${input.currency} ${input.amount.toLocaleString('es-CL')}. El movimiento queda trazado y no modifica el efectivo esperado.`,
+        `Regularización registrada: ${input.direction === 'ENTRADA' ? '+' : '−'}${input.currency} ${input.amount.toLocaleString('es-CL')}. El movimiento queda trazado y corrige el efectivo esperado.`,
       id: movementId,
     };
   });
@@ -503,6 +506,85 @@ export async function returnCashGuaranteeAction(
     return {
       ok: true as const,
       message: 'Garantía devuelta. El efectivo salió de Caja y quedó registrado con trazabilidad.',
+    };
+  });
+}
+
+const chargeGuaranteeSchema = z.object({
+  guaranteeId: z.string().min(1),
+  concept: z
+    .string()
+    .trim()
+    .min(3, 'Indica el concepto por el que se cobra la garantía.')
+    .max(160),
+  notes: z.string().trim().max(1000).optional().transform((value) => value || null),
+  confirmed: z
+    .string()
+    .optional()
+    .transform((value) => value === '1' || value === 'true' || value === 'on')
+    .refine(Boolean, 'Confirma que la garantía no será devuelta y se aplicará al concepto indicado.'),
+});
+
+export async function chargeCashGuaranteeAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('cash.guarantee_out');
+    const input = parseOrThrow(chargeGuaranteeSchema, formDataToObject(formData));
+
+    const guarantee = await prisma.guarantee.findFirst({
+      where: { id: input.guaranteeId, deletedAt: null },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        amount: true,
+        appliedAmount: true,
+        currency: true,
+        roomNumber: true,
+      },
+    });
+    if (!guarantee) throw new RuleError('Esa garantía ya no existe.');
+    if (guarantee.kind !== GuaranteeKind.EFECTIVO) {
+      throw new RuleError('Este flujo de cobro corresponde únicamente a garantías en efectivo.');
+    }
+    if (
+      guarantee.state !== GuaranteeState.VIGENTE &&
+      guarantee.state !== GuaranteeState.APLICADA_PARCIALMENTE
+    ) {
+      throw new RuleError('Esa garantía ya no está vigente para cobro.');
+    }
+
+    const total = Number(guarantee.amount);
+    const applied = Number(guarantee.appliedAmount ?? 0);
+    const penaltyAmount = Math.max(0, total - applied);
+    if (!(penaltyAmount > 0)) {
+      throw new RuleError('La garantía no tiene saldo pendiente para cobrar.');
+    }
+
+    await changeGuaranteeState(user, {
+      id: guarantee.id,
+      state: GuaranteeState.MULTA,
+      penaltyAmount,
+      applicationReason: input.concept,
+      settlementConcept: input.concept,
+      notes: input.notes,
+      removeSettledCash: true,
+    });
+    await tryDeliverOperationalMail(`guarantee-charge:${guarantee.id}:MULTA`);
+
+    revalidatePath('/caja');
+    revalidatePath('/turno');
+    revalidatePath('/libro');
+    revalidatePath('/historial');
+    revalidatePath('/supervision');
+
+    return {
+      ok: true as const,
+      message:
+        `Garantía cobrada: ${guarantee.currency} ${total.toLocaleString('es-CL')}` +
+        `${guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}. Queda en reportería y deja de formar parte de Caja viva.`,
     };
   });
 }

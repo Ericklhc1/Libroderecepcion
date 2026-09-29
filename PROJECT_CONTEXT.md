@@ -9,7 +9,7 @@
 - `support.recipient` se mantiene como **copia de aviso por SMTP**. Si SMTP falla, el registro no se pierde.
 - Los binarios de adjuntos no se guardan en Neon: la bandeja conserva sus nombres y el contenido continúa por el canal de correo vigente.
 - Fronti cataloga `/admin/soporte` como pantalla administrativa contextual.
-- Migración aditiva: `20260929145000_support_inbox`. Release objetivo: **v1.29.0**.
+- Migración aditiva: `20260929183500_support_inbox`. Release objetivo: **v1.29.0**.
 
 ## Actualización 29/09/2026 · AROH 1.28.0 · usuarios ocultos
 

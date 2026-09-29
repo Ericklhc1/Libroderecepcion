@@ -74,6 +74,9 @@ type StayDraft = {
   pmsStatus: string | null;
   sourceReport: PmsReportKind;
   status: RoomStayStatus | null;
+  /** Señal visual del PMS; es evidencia, no una confirmación del Libro. */
+  pmsProcessingSignal: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+  pmsProcessingConfidence: 'ALTA' | 'MEDIA' | null;
   /* Lo que aporta «Habitaciones con actividad». Los tres informes antiguos no
      traen nada de esto y lo dejan en nulo. */
   guestCount: number | null;
@@ -118,6 +121,19 @@ export type ActivitySummary = {
   occupied: number;
   arrivals: number;
   departures: number;
+  /** Señal visual detectada en los IDs del PDF; nunca cambia el estado automáticamente. */
+  pmsProcessing: {
+    pending: number;
+    processedProbable: number;
+    unknown: number;
+    rows: Array<{
+      reservationId: string;
+      roomNumber: string | null;
+      status: RoomStayStatus | null;
+      signal: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+      confidence: 'ALTA' | 'MEDIA' | null;
+    }>;
+  };
   /** Habitaciones con salida Y entrada el mismo día: la cola. */
   turnarounds: Array<{ roomNumber: string; leaving: string; arriving: string }>;
   /** Reservas que el sistema no había visto nunca. */
@@ -161,6 +177,8 @@ function toDraft(stay: NormalizedStay, businessDate: Date | null): StayDraft {
     pmsStatus: stay.pmsStatus,
     sourceReport: stay.sourceReport as PmsReportKind,
     status: stay.operationalStatus as RoomStayStatus | null,
+    pmsProcessingSignal: stay.pmsProcessingSignal,
+    pmsProcessingConfidence: stay.pmsProcessingConfidence,
     guestCount: stay.guestCount,
     /*
       El importe se separa en cifra y moneda al guardarlo. Van juntos siempre:
@@ -298,6 +316,8 @@ export async function prepareImport(
       stay.roomNumber,
       stay.businessDate,
       stay.status,
+      stay.pmsProcessingSignal,
+      stay.pmsProcessingConfidence,
       stay.arrivalDate,
       stay.departureDate,
       stay.guestNames,
@@ -673,6 +693,10 @@ export function summarizeActivity(
   let arrivals = 0;
   let departures = 0;
   let withBalance = 0;
+  let processingPending = 0;
+  let processingProcessedProbable = 0;
+  let processingUnknown = 0;
+  const processingRows: ActivitySummary['pmsProcessing']['rows'] = [];
 
   const pendingByCurrency: Record<'CLP' | 'USD', number> = { CLP: 0, USD: 0 };
   const totalByCurrency: Record<'CLP' | 'USD', number> = { CLP: 0, USD: 0 };
@@ -693,6 +717,19 @@ export function summarizeActivity(
     if (stay.status === RoomStayStatus.IN_HOUSE) occupied += 1;
     else if (stay.status === RoomStayStatus.CHECK_IN) arrivals += 1;
     else if (stay.status === RoomStayStatus.CHECK_OUT) departures += 1;
+
+    if (stay.status === RoomStayStatus.CHECK_IN || stay.status === RoomStayStatus.CHECK_OUT) {
+      if (stay.pmsProcessingSignal === 'PENDIENTE') processingPending += 1;
+      else if (stay.pmsProcessingSignal === 'PROCESADO_PROBABLE') processingProcessedProbable += 1;
+      else processingUnknown += 1;
+      processingRows.push({
+        reservationId: stay.reservationId,
+        roomNumber: stay.roomNumber,
+        status: stay.status,
+        signal: stay.pmsProcessingSignal,
+        confidence: stay.pmsProcessingConfidence,
+      });
+    }
 
     /*
       Los importes se acumulan POR MONEDA. El informe trae pesos y dólares a la
@@ -761,6 +798,12 @@ export function summarizeActivity(
     occupied,
     arrivals,
     departures,
+    pmsProcessing: {
+      pending: processingPending,
+      processedProbable: processingProcessedProbable,
+      unknown: processingUnknown,
+      rows: processingRows,
+    },
     turnarounds,
     newReservations,
     knownReservations: codes.size - newReservations,

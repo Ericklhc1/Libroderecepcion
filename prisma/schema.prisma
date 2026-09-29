@@ -795,8 +795,10 @@ model HandoverItem {
 
 // ========================= CENTRO DE SUPERVISIÓN =========================
 
-/// Jornada administrativa del Supervisor. Es deliberadamente independiente
-/// del turno operativo: no participa en caja, llaves, habitaciones ni PMS.
+/// Jornada administrativa del Supervisor. Sigue siendo un agregado independiente
+/// del turno operativo de Recepción: no toma propiedad de Caja, llaves, habitaciones
+/// ni PMS. Su apertura sí verifica y fotografía esas fuentes reales para dejar
+/// constancia de qué estado operacional recibió el Supervisor, sin duplicarlas.
 model SupervisionShift {
   id           String                 @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))

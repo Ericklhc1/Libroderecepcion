@@ -92,7 +92,9 @@ export default async function AlertsPage({
   };
 
   if (q) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
     where.AND = [
+      ...existingAnd,
       {
         OR: [
           ...(humanId !== null ? [{ humanId }] : []),
@@ -115,7 +117,10 @@ export default async function AlertsPage({
     getFormOptions(),
     prisma.alert.groupBy({
       by: ['status'],
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        AND: [{ OR: accessibleKinds }],
+      },
       _count: { _all: true },
     }),
   ]);

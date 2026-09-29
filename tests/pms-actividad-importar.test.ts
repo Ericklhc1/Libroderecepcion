@@ -46,6 +46,8 @@ function draft(input: {
   paymentType?: string | null;
   paymentTypeRaw?: string | null;
   pmsStatus?: string;
+  pmsProcessingSignal?: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+  pmsProcessingConfidence?: 'ALTA' | 'MEDIA' | null;
   issues?: string[];
 }) {
   return {
@@ -62,6 +64,8 @@ function draft(input: {
     pmsStatus: input.pmsStatus ?? null,
     sourceReport: 'ACTIVIDAD' as const,
     status: input.status,
+    pmsProcessingSignal: input.pmsProcessingSignal ?? null,
+    pmsProcessingConfidence: input.pmsProcessingConfidence ?? null,
     guestCount: input.guestCount ?? null,
     totalAmount: input.total ?? null,
     pendingAmount: input.pending ?? null,

@@ -39,10 +39,12 @@ function isInViewport(rect: DOMRect): boolean {
 /**
  * Recorrido guiado sin secuestrar el scroll.
  *
- * El paso puede hacer un único desplazamiento inicial para mostrar el objetivo.
- * Después, cualquier scroll del usuario sólo recalcula la posición del foco:
- * nunca vuelve a llamar scrollIntoView. Así se evita el bucle que antes hacía
- * "pelear" la página contra el dedo/rueda.
+ * El recorrido nunca desplaza automáticamente la página.
+ *
+ * Cada paso sólo mide el objetivo visible. Si el usuario se aleja, el foco se
+ * oculta y se ofrece "Volver al punto"; únicamente ese botón puede pedir un
+ * scroll programático. Así el tutorial no puede secuestrar el desplazamiento
+ * vertical de ninguna pantalla.
  *
  * Si la persona intenta interactuar con el Libro durante el recorrido, la
  * interacción se intercepta antes de llegar a la interfaz y se pregunta si
@@ -144,9 +146,6 @@ export function TutorialTour({
       return;
     }
 
-    let initialTimer: ReturnType<typeof setTimeout> | null = null;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-
     const measure = () => {
       const target = visibleTarget(step.target);
       if (!target) {
@@ -164,18 +163,6 @@ export function TutorialTour({
       );
     };
 
-    const initialLocate = () => {
-      const target = visibleTarget(step.target);
-      if (!target) {
-        measure();
-        return;
-      }
-
-      // ÚNICO desplazamiento automático del paso.
-      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-      settleTimer = setTimeout(measure, 260);
-    };
-
     const passiveMeasure = () => {
       if (scrollRaf.current !== null) cancelAnimationFrame(scrollRaf.current);
       scrollRaf.current = requestAnimationFrame(() => {
@@ -184,13 +171,12 @@ export function TutorialTour({
       });
     };
 
-    initialTimer = setTimeout(initialLocate, 180);
+    // Medir sin mover el viewport: el usuario conserva siempre su posición.
+    passiveMeasure();
     window.addEventListener('resize', passiveMeasure);
     window.addEventListener('scroll', passiveMeasure, true);
 
     return () => {
-      if (initialTimer) clearTimeout(initialTimer);
-      if (settleTimer) clearTimeout(settleTimer);
       if (scrollRaf.current !== null) cancelAnimationFrame(scrollRaf.current);
       scrollRaf.current = null;
       window.removeEventListener('resize', passiveMeasure);
@@ -393,10 +379,10 @@ export function TutorialTour({
               </span>
               <div>
                 <h2 id="tutorial-interaction-title" className="font-semibold text-petrol-950">
-                  ¿Quieres interactuar con el Libro?
+                  ¿Quieres interactuar con la Central?
                 </h2>
                 <p className="mt-1 text-sm leading-5 text-slate-600">
-                  Hemos detectado que quieres usar la interfaz mientras el tutorial está activo.
+                  Hemos detectado que quieres usar la Central mientras el tutorial está activo.
                   Puedes cerrarlo sólo por esta vez o dejar de mostrarlo automáticamente.
                 </p>
               </div>

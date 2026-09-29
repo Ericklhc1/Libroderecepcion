@@ -1,5 +1,17 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.31.0 · Fronti proactivo y diagnóstico real de proveedores
+
+- Fronti incorpora una capa **proactiva de fondo** sobre señales ya detectadas de forma determinística. La IA explica, correlaciona y sugiere revisión humana; **no modifica por sí sola** Caja, turnos, garantías, reservas, llaves ni estados operativos.
+- El barrido proactivo cruza alertas activas, reservas próximas o con acción pendiente y señales repetidas de observabilidad. Los hallazgos se deduplican y respetan una ventana de enfriamiento para evitar ruido.
+- Configuración administrable: `fronti.proactiveEnabled`, `fronti.proactiveCooldownHours` y `fronti.proactiveMaxFindingsPerRun`.
+- La cadena de fondo prioriza capacidad liviana y sin costo monetario adicional: Cloudflare Workers AI → Groq 20B → Groq 120B. Si la inferencia falla, queda una explicación determinística conservadora y la operación continúa.
+- Vercel Pro se aprovecha para ejecutar el respaldo periódico de Fronti y aumentar la frecuencia de rescate de correo operativo. Los cron comparten autenticación centralizada y admiten `CRON_SECRET`.
+- El diagnóstico de Cloudflare ya no interpreta automáticamente un 401/403 como «clave mala»: distingue acceso denegado por permisos/cuenta/alcance y lee también el formato `errors[]` del proveedor.
+- Administración > Fronti muestra el origen efectivo de la credencial, el origen del Account ID de Cloudflare y permite **Probar inferencia real** sin reemplazar secretos.
+- La proactividad complementa la capa contextual transversal de v1.27.0; no crea un segundo motor de reglas ni duplica datos operativos.
+- Sin migración Prisma ni cambios masivos de datos. Release objetivo: **v1.31.0**.
+
 ## Actualización 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
 
 - Las capturas y archivos de **Reportar / solicitar** se archivan en **Cloudflare R2 privado**; Neon guarda sólo metadatos y la relación con el `SupportRequest`.

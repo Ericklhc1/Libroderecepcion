@@ -197,6 +197,10 @@ type ChatCompletionPayload = {
     code?: string;
     type?: string;
   };
+  errors?: Array<{
+    message?: string;
+    code?: string | number;
+  }>;
 };
 
 
@@ -426,8 +430,12 @@ async function parseFailure(
 
   try {
     const payload = (await response.json()) as ChatCompletionPayload;
-    code = payload.error?.code ?? payload.error?.type ?? null;
-    message = payload.error?.message ?? null;
+    const cloudflareError = payload.errors?.[0];
+    code =
+      payload.error?.code ??
+      payload.error?.type ??
+      (cloudflareError?.code !== undefined ? String(cloudflareError.code) : null);
+    message = payload.error?.message ?? cloudflareError?.message ?? null;
   } catch {
     // Un proxy puede devolver HTML. El estado HTTP sigue siendo suficiente.
   }

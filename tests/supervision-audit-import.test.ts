@@ -110,6 +110,15 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
     });
   });
 
+  it('prioriza la fecha del archivo y no una fecha de huésped del contenido', () => {
+    const parsed = parseSupervisionReportText(
+      'In house 29-9-26.pdf',
+      'Reserva 7527001 llegada 01/10/2026 In house - Hotel HW LIBERTAD - 29/09/2026 Habitaciones in-house 26',
+    );
+
+    expect(parsed.reportedBusinessDate).toBe('2026-09-29');
+  });
+
   it('normaliza In house y detecta un informe de cargos sin actividad', () => {
     const inHouse = parseSupervisionReportText(
       'In house 27-9-26.pdf',

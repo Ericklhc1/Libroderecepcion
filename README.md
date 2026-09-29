@@ -11,7 +11,7 @@ en el siguiente relevo.
 
 ## Production
 
-Versión de esta rama: **v1.25.0**.
+Versión de esta rama: **v1.26.1**.
 
 Flujo único: `GitHub main → Vercel Production → Neon production`.
 Toda actualización entra por PR a `main`, debe superar la Compuerta y aumentar la versión SemVer. Una vez que Vercel sirve el SHA y la versión esperados, GitHub crea el tag `vX.Y.Z`.

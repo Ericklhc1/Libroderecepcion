@@ -482,7 +482,12 @@ export async function changeTaskStatus(
     await notify(
       Array.from(targets).map((userId) => ({
         userId,
-        type: NotificationType.ACCION_REQUERIDA,
+        type:
+          input.status === TaskStatus.DEVUELTA ||
+          input.status === TaskStatus.BLOQUEADA ||
+          input.status === TaskStatus.PENDIENTE
+            ? NotificationType.ACCION_REQUERIDA
+            : NotificationType.ACTUALIZACION_OPERATIVA,
         title: `Tarea ${TASK_STATUS_LABEL[input.status].toLowerCase()}: ${updated.title}`,
         body: `Actualizada por ${user.name}.`,
         link: `/tareas/${updated.id}`,

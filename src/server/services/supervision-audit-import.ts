@@ -44,7 +44,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.24.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.25.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
@@ -349,13 +349,41 @@ function normalizeReportedDate(dayRaw: string, monthRaw: string, yearRaw: string
 }
 
 function reportedBusinessDate(fileName: string, text: string): string | null {
-  for (const source of [text.slice(0, 800), fileName]) {
-    const match = source.match(/(?:^|\D)(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\D|$)/);
-    if (!match?.[1] || !match[2] || !match[3]) continue;
-    const normalized = normalizeReportedDate(match[1], match[2], match[3]);
+  const datePattern = /(?:^|\D)(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\D|$)/;
+
+  // El nombre del archivo es la fuente más estable: los PDF operativos de FNS
+  // llevan la fecha de emisión. Antes se buscaba primero en el texto y podía
+  // capturarse la llegada/salida de un huésped (por ejemplo 01/10) como si
+  // fuera la fecha del informe.
+  const fileMatch = fileName.match(datePattern);
+  if (fileMatch?.[1] && fileMatch[2] && fileMatch[3]) {
+    const normalized = normalizeReportedDate(fileMatch[1], fileMatch[2], fileMatch[3]);
     if (normalized) return normalized;
   }
-  return null;
+
+  const header = text.slice(0, 800);
+  const anchoredHeader = header.match(
+    /(?:hotel\s+hw\s+libertad|informe(?:\s+de)?|reporte(?:\s+diario)?|formulario\s+auditor[ií]a|in\s*house)[^\d]{0,80}(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/i,
+  );
+  if (anchoredHeader?.[1] && anchoredHeader[2] && anchoredHeader[3]) {
+    const normalized = normalizeReportedDate(anchoredHeader[1], anchoredHeader[2], anchoredHeader[3]);
+    if (normalized) return normalized;
+  }
+
+  // Último recurso: sólo aceptamos una fecha genérica si es la única del
+  // encabezado. Si hay varias, es mejor pedir/usar la fecha operativa vigente
+  // que inventar cuál corresponde al informe.
+  const candidates = Array.from(
+    header.matchAll(/(?:^|\D)(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\D|$)/g),
+  )
+    .map((match) =>
+      match[1] && match[2] && match[3]
+        ? normalizeReportedDate(match[1], match[2], match[3])
+        : null,
+    )
+    .filter((value): value is string => Boolean(value));
+
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {

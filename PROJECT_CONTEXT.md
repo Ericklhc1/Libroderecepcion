@@ -1,8 +1,8 @@
-# Central de Operaciones · Hotel HW Libertad — contexto técnico
+# AROH Central IA · Hotel HW Libertad — contexto técnico
 
-## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa canónica e identidad
+## Actualización 29/09/2026 · AROH 1.25.0 · jornada operativa canónica e identidad
 
-- La plataforma pasa a llamarse **Central de Operaciones · Hotel HW Libertad**. «Libro/Novedades» queda como un módulo interno, no como nombre del producto completo.
+- La plataforma pasa a llamarse **AROH Central IA · Hotel HW Libertad**. «Libro/Novedades» queda como un módulo interno, no como nombre del producto completo.
 - La **fecha operativa canónica** la determina el ciclo real de Recepción: con turno abierto manda `Shift.date`; sin turno abierto, el último cierre DÍA conserva la fecha y el último cierre NOCHE avanza al día siguiente. La medianoche por sí sola no cambia la jornada.
 - Inicio y el dashboard de Supervisión usan esa fecha operativa. El dashboard de informes muestra únicamente la jornada vigente; los informes del cierre anterior sólo se reutilizan como evidencia de apertura cuando corresponde.
 - El parser de informes prioriza la fecha del nombre del PDF y encabezados reconocibles. Una fecha de huésped/reserva (por ejemplo 01/10) ya no puede convertirse silenciosamente en fecha del informe.

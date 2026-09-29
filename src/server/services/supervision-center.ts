@@ -15,7 +15,7 @@ import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
-import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
+import { calendarDateKey, hotelCalendarDate, hotelDayStart } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
   REQUIRED_SUPERVISION_OPENING_REPORTS,
@@ -166,7 +166,8 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   });
   if (!shift) throw new RuleError('No tienes una apertura de Supervisión en preparación.');
 
-  const businessDate = addCalendarDateDays(hotelCalendarDate(), -1);
+  const businessDate = hotelCalendarDate();
+  const openingDayStart = hotelDayStart();
   const [
     cashState,
     cashFunds,
@@ -207,7 +208,10 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     listRecentPhysicalKeyCounts(5, 1),
     listRecentPhysicalKeyCounts(6, 1),
     prisma.supervisionAuditImport.findMany({
-      where: { businessDate },
+      // La apertura puede mezclar informes que describen ayer con fotografías de hoy
+      // (por ejemplo In House). Para no obligar a falsear fechas, cuenta como evidencia
+      // de apertura todo informe cargado durante el día calendario actual del hotel.
+      where: { createdAt: { gte: openingDayStart } },
       select: {
         id: true,
         reportKinds: true,

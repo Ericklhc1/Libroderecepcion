@@ -50,7 +50,7 @@ Incluye:
 - apertura protegida por `support.view` mediante GET firmado temporal;
 - bandeja con nombre, tipo y tamaño del archivo;
 - inventario compatible con reportes v1.29.0;
-- correo sólo como respaldo cuando el archivado directo no resulta;
+- SMTP continúa como aviso; el binario viaja por correo sólo como respaldo cuando el archivado directo no resulta;
 - el binario archivado deja de duplicarse como base64 hacia Vercel.
 
 PENDIENTE antes de Production:

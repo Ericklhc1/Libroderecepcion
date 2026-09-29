@@ -368,6 +368,7 @@ export function EmailNotificationPolicyForm({
     label: string;
     mode: 'OBLIGATORIO' | 'PREFERENCIA' | 'DESACTIVADO';
     defaultMode: 'OBLIGATORIO' | 'PREFERENCIA' | 'DESACTIVADO';
+    locked: boolean;
   }>;
 }) {
   return (
@@ -391,13 +392,20 @@ export function EmailNotificationPolicyForm({
               <span className="block text-sm font-medium text-petrol-900">{row.label}</span>
               <span className="mt-0.5 block text-xs text-slate-500">
                 {row.type.replaceAll('_', ' ').toLowerCase()}
-                {row.mode !== row.defaultMode ? ' · personalizado' : ' · valor recomendado'}
+                {row.locked
+                  ? row.mode === 'OBLIGATORIO'
+                    ? ' · obligatorio por diseño'
+                    : ' · canal inmediato, sin correo'
+                  : row.mode !== row.defaultMode
+                    ? ' · personalizado'
+                    : ' · valor recomendado'}
               </span>
             </span>
             <select
               name={`policy_${row.type}`}
               defaultValue={row.mode}
-              className="input-base w-full"
+              disabled={row.locked}
+              className="input-base w-full disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
             >
               <option value="OBLIGATORIO">Obligatorio por correo</option>
               <option value="PREFERENCIA">Según preferencia del usuario</option>

@@ -6,6 +6,7 @@ import {
 } from '@/domain/assistant-status';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
+  getFrontiProviderCredentialView,
   probeFrontiProvider,
   resolveFrontiProviderChainRuntime,
 } from '@/server/ai/fronti-provider';
@@ -21,7 +22,16 @@ let cached:
       provider: string;
       model: string;
       chain: Array<{ provider: string; model: string }>;
-      checks: Array<{ provider: string; model: string; ok: boolean; failure?: AssistantFailure }>;
+      checks: Array<{
+        provider: string;
+        model: string;
+        ok: boolean;
+        failure?: AssistantFailure;
+        probe: 'catalog';
+        credentialSource: string;
+        cloudflareAccountIdSource: string | null;
+        baseUrlConfigured: boolean;
+      }>;
       health: AssistantHealth;
     }
   | null = null;
@@ -30,7 +40,16 @@ async function probeAssistant(): Promise<{
   provider: string;
   model: string;
   chain: Array<{ provider: string; model: string }>;
-  checks: Array<{ provider: string; model: string; ok: boolean; failure?: AssistantFailure }>;
+  checks: Array<{
+    provider: string;
+    model: string;
+    ok: boolean;
+    failure?: AssistantFailure;
+    probe: 'catalog';
+    credentialSource: string;
+    cloudflareAccountIdSource: string | null;
+    baseUrlConfigured: boolean;
+  }>;
   health: AssistantHealth;
 }> {
   const config = await getFrontiConfig();
@@ -49,16 +68,23 @@ async function probeAssistant(): Promise<{
   }
 
   const results = await Promise.all(
-    chain.map(async (provider) => ({
-      provider,
-      result: await probeFrontiProvider(provider),
-    })),
+    chain.map(async (provider) => {
+      const [result, credential] = await Promise.all([
+        probeFrontiProvider(provider),
+        getFrontiProviderCredentialView(provider.provider),
+      ]);
+      return { provider, result, credential };
+    }),
   );
-  const checks = results.map(({ provider, result }) => ({
+  const checks = results.map(({ provider, result, credential }) => ({
     provider: provider.provider,
     model: provider.model,
     ok: result.ok,
     ...(!result.ok ? { failure: result.failure } : {}),
+    probe: 'catalog' as const,
+    credentialSource: credential.effectiveCredentialSource,
+    cloudflareAccountIdSource: credential.cloudflareAccountIdSource,
+    baseUrlConfigured: credential.baseUrlConfigured,
   }));
   const firstHealthy = results.find(({ result }) => result.ok);
   if (firstHealthy) {
@@ -116,6 +142,10 @@ export async function GET() {
       healthyProviders,
       degradedProviders,
       degraded: cached.health.estado === 'OK' && degradedProviders.length > 0,
+      diagnosticNote:
+        degradedProviders.some((item) => item.provider === 'cloudflare')
+          ? 'La sonda automática de Cloudflare valida el catálogo de modelos. Un 401/403 puede significar credencial, permisos Workers AI o account ID; no demuestra por sí solo que la clave sea incorrecta. La prueba de inferencia real se hace desde Administración > Fronti.'
+          : null,
       agentVersion: FRONTI_AGENT_VERSION,
       ...cached.health,
     },

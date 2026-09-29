@@ -206,11 +206,11 @@ export function SupportRequestPanel({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50 xl:inline-flex"
+        className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50 lg:inline-flex"
         aria-label="Reportar error o solicitar función"
       >
         <MessageSquareWarning className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-        <span>Reportar / solicitar</span>
+        <span className="hidden xl:inline">Reportar / solicitar</span>
       </button>
 
       {open ? (

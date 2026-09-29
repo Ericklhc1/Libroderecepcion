@@ -32,7 +32,7 @@ Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata 
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
 | Panel Reportar / solicitar | `PRODUCTION` | #190 · v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 | Fronti contextual transversal | `PRODUCTION` | #188 · v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
-| Bandeja interna de soporte | `EN_DESARROLLO` | v1.28.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Bandeja interna de soporte | `PR_ABIERTO` | #192 · v1.28.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 

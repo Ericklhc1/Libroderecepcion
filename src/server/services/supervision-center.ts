@@ -193,6 +193,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
 
   const businessDate = hotelCalendarDate();
   const auditDate = addCalendarDateDays(businessDate, -1);
+  const monthStart = new Date(
+    Date.UTC(businessDate.getUTCFullYear(), businessDate.getUTCMonth(), 1),
+  );
 
   const [
     cashState,
@@ -206,6 +209,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     supervision,
     myTasks,
     myFollowUps,
+    previousReceptionShift,
   ] = await Promise.all([
     getLiveCashState({ movementLimit: 1, auditLimit: 1 }),
     prisma.cashFund.findMany({
@@ -236,7 +240,15 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     prisma.supervisionAuditImport.findMany({
       // Reutiliza evidencia válida aunque la haya cargado otro turno de Supervisión:
       // importa la fecha operativa que declara el informe, no cuándo se subió.
-      where: { businessDate: { in: [businessDate, auditDate] } },
+      where: {
+        OR: [
+          { businessDate: { in: [businessDate, auditDate] } },
+          {
+            businessDate: { gte: monthStart, lte: businessDate },
+            reportKinds: { has: 'VENTAS_PERIODO' },
+          },
+        ],
+      },
       select: {
         id: true,
         reportKinds: true,
@@ -282,7 +294,30 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       },
       orderBy: [{ priority: 'desc' }, { scheduledAt: 'asc' }, { createdAt: 'asc' }],
     }),
+    prisma.shift.findFirst({
+      where: {
+        status: 'CERRADO',
+        archivedAt: null,
+        actualEnd: { lte: shift.startedAt },
+      },
+      select: {
+        id: true,
+        humanId: true,
+        type: true,
+        date: true,
+        actualEnd: true,
+        handoverOut: { select: { id: true, status: true, receivedAt: true } },
+      },
+      orderBy: { actualEnd: 'desc' },
+    }),
   ]);
+
+  const previousClosureValidation = previousReceptionShift
+    ? await prisma.alert.findUnique({
+        where: { dedupeKey: `shift-validation:${previousReceptionShift.id}` },
+        select: { id: true, status: true, resolvedAt: true },
+      })
+    : null;
 
   const latestAuditByCurrency = new Map<string, (typeof cashAudits)[number]>();
   for (const audit of cashAudits) {
@@ -350,7 +385,21 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
 
   const todayKinds = kindsForDate(todayKey);
   const auditKinds = kindsForDate(auditDateKey);
-  const presentReportKinds = Array.from(new Set([...todayKinds, ...auditKinds]));
+  const monthlyKinds = Array.from(
+    new Set(
+      reportRows
+        .filter(
+          (row) =>
+            row.businessDate >= monthStart &&
+            row.businessDate <= businessDate &&
+            row.reportKinds.includes('VENTAS_PERIODO'),
+        )
+        .flatMap((row) => row.reportKinds.filter((kind) => kind === 'VENTAS_PERIODO')),
+    ),
+  );
+  const presentReportKinds = Array.from(
+    new Set([...todayKinds, ...auditKinds, ...monthlyKinds]),
+  );
 
   // ACTIVIDAD es la fotografía operacional principal. El trío histórico
   // Entradas + In House + Salidas queda como respaldo, no como requisito adicional.
@@ -363,8 +412,12 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   const missingAuditReports = REQUIRED_SUPERVISION_AUDIT_REPORTS.filter(
     (kind) => !auditKinds.includes(kind),
   );
-  const auditReady = missingAuditReports.length === 0;
-  const reportsReady = occupancyReady && auditReady;
+  const previousClosureReady = Boolean(
+    previousReceptionShift?.actualEnd &&
+    previousReceptionShift.handoverOut?.status === 'RECIBIDA',
+  );
+  const auditReady = previousClosureReady;
+  const reportsReady = occupancyReady && previousClosureReady;
 
   const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
     (kind) => !presentReportKinds.includes(kind),
@@ -513,6 +566,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       presentKinds: presentReportKinds,
       todayKinds,
       auditKinds,
+      monthlyKinds,
       operationalPrimary: SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
       operationalFallback: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
       occupancyReady,
@@ -525,13 +579,29 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
       missingOptional: missingOptionalReports,
       labels: SUPERVISION_REPORT_LABELS,
-      sources: reportRows.map((row) => ({
-        id: row.id,
-        reportKinds: row.reportKinds,
-        businessDate: calendarDateKey(row.businessDate),
-        updatedAt: row.updatedAt,
-        uploadedBy: row.uploadedBy.name,
-      })),
+      previousClosure: previousReceptionShift
+        ? {
+            id: previousReceptionShift.id,
+            humanId: previousReceptionShift.humanId,
+            type: previousReceptionShift.type,
+            businessDate: calendarDateKey(previousReceptionShift.date),
+            actualEnd: previousReceptionShift.actualEnd,
+            handoverStatus: previousReceptionShift.handoverOut?.status ?? null,
+            receivedAt: previousReceptionShift.handoverOut?.receivedAt ?? null,
+            validationStatus: previousClosureValidation?.status ?? null,
+            validatedAt: previousClosureValidation?.resolvedAt ?? null,
+            ready: previousClosureReady,
+          }
+        : null,
+      sources: reportRows
+        .filter((row) => calendarDateKey(row.businessDate) === todayKey)
+        .map((row) => ({
+          id: row.id,
+          reportKinds: row.reportKinds,
+          businessDate: calendarDateKey(row.businessDate),
+          updatedAt: row.updatedAt,
+          uploadedBy: row.uploadedBy.name,
+        })),
     },
     blockers: {
       cash: missingCashCurrencies.length,
@@ -612,6 +682,18 @@ async function materializeOpeningReportEvidence(
         findingsByKey.clear();
         review.checks = {};
         review.findings = {};
+      }
+      if (row.reportKinds.includes('VENTAS_PERIODO')) {
+        for (const key of [...findingsByKey.keys()]) {
+          if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+            findingsByKey.delete(key);
+          }
+        }
+        for (const key of Object.keys(review.findings)) {
+          if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+            delete review.findings[key];
+          }
+        }
       }
 
       for (const item of jsonList<{
@@ -757,6 +839,7 @@ export async function completeSupervisionOpening(
         auditReady: readiness.reports.auditReady,
         reportsReady: readiness.reports.reportsReady,
         pmsProcessing: readiness.reports.pmsProcessing,
+        previousClosure: readiness.reports.previousClosure,
         contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,
@@ -1456,12 +1539,27 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       take: 12,
     }),
     currentShift
-      ? prisma.supervisionAuditImport.findMany({
-          where: { supervisionShiftId: currentShift.id },
-          include: { uploadedBy: { select: { id: true, name: true } } },
-          orderBy: { businessDate: 'desc' },
-          take: 7,
-        })
+      ? (() => {
+          const opening =
+            currentShift.openingState &&
+            !Array.isArray(currentShift.openingState) &&
+            typeof currentShift.openingState === 'object'
+              ? (currentShift.openingState as Record<string, unknown>)
+              : {};
+          const key =
+            typeof opening.businessDate === 'string'
+              ? opening.businessDate
+              : calendarDateKey(hotelCalendarDate());
+          return prisma.supervisionAuditImport.findMany({
+            where: {
+              supervisionShiftId: currentShift.id,
+              businessDate: new Date(`${key}T00:00:00.000Z`),
+            },
+            include: { uploadedBy: { select: { id: true, name: true } } },
+            orderBy: { updatedAt: 'desc' },
+            take: 7,
+          });
+        })()
       : Promise.resolve([]),
     prisma.correctiveMeasure.findMany({
       where: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } },

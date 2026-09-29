@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · Apertura operacional de Supervisión · versión propuesta **v1.24.0**
+Actualizado: **2026-09-29** · Ventas por período e inteligencia de conciliación · versión propuesta **v1.25.0**
 
 ## Estados canónicos
 
@@ -27,33 +27,31 @@ Actualizado: **2026-09-29** · Apertura operacional de Supervisión · versión 
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
 | Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado del runtime operativo |
-| Centro de Supervisión | `PR_ABIERTO` | v1.24.0 · PR #177 | Apertura guiada: pendientes + Caja/garantías + llaves + informes antes de activar el turno |
+| Centro de Supervisión | `PRODUCTION` | v1.24.0 · PR #177 | Apertura guiada publicada: pendientes + Caja/garantías + llaves + informes antes de activar el turno |
 | Central de Reservas | `EN_DESARROLLO` | v1.23.0 | Bandeja previa a la operación + rol específico, sin duplicar PMS |
 | Correo individual | `EN_DESARROLLO` | v1.23.0 | Correo opcional por usuario + preferencias + outbox de novedades |
 
 ## Iteración actual
 
-**Libro 1.24.0** · rama **`feat/apertura-supervision-1-24-0`** · PR **#177**
+**Libro 1.25.0** · rama **`feat/ventas-periodo-inteligencia-1-25-0`**
 
-Objetivo: convertir el inicio de Supervisión en una recepción operacional comprobable, no en una declaración libre de prioridades.
+Objetivo: sustituir Ventas por canal por una fotografía mensual de **Ventas por período** y convertir el conjunto de informes de Supervisión en un sistema de conciliación cruzada, sin duplicidades ni conclusiones automáticas no demostradas.
 
 Incluye:
-- estado `PREPARACION` antes de `ACTIVO`;
-- pendientes reales visibles antes de asumir;
-- arqueo personal obligatorio por fondo activo y validación física de garantías en efectivo;
-- revisión de garantías/custodias y último inventario de llaves;
-- evidencia PMS idónea sin redundancia: **Habitaciones con actividad** o el respaldo **Entradas + In House + Salidas** para el estado de hoy, más Formulario de auditoría + Cobros + Cargos diarios del cierre anterior;
-- Ventas por canal, Producción por habitación y Revenue como gestión no bloqueante;
-- contingencia escrita si el PMS no entrega la evidencia completa, sin relajar la barrera de Caja/garantías;
-- señal conservadora de trámite por ID enlazado en PDF, sin auto-confirmar check-in/check-out;
-- fecha de informe autodetectada para mezclar cierres de ayer con fotografías de hoy;
-- snapshot de apertura y prioridades generadas desde el estado real.
+- Ventas por período del mes actual como informe de gestión no bloqueante;
+- centros de coste y métricas diarias estructuradas;
+- cortesías como señal crítica de revisión;
+- detección de PDF parcial/truncado sin completar columnas inexistentes;
+- conciliaciones internas del propio informe;
+- cruces con Formulario de auditoría, Producción por habitación, In House, señales de movimientos PMS, inventario activo del Libro y multas por blancos;
+- hallazgos agregados con claves estables para no generar spam;
+- recarga mensual idempotente que sustituye la fotografía y reevalúa discrepancias.
 
 PENDIENTE antes de Production:
-- compuerta completa verde;
+- PR y compuerta completa verde;
 - merge a `main`;
-- migración automática en Vercel Production;
-- smoke de versión, Centro de Supervisión y flujo de apertura.
+- despliegue Vercel;
+- smoke del Centro de Supervisión y parser 1.25.0.
 
 ## Infraestructura vigente
 
@@ -61,7 +59,7 @@ Flujo único:
 
 `rama de trabajo → PR/Compuerta → main → Vercel Production → Neon production`
 
-- Previews nuevos de Vercel están desactivados por `vercel.json`.
+- Vercel está en **Pro**. Los previews siguen desactivados deliberadamente por `vercel.json` hasta disponer de una base de datos aislada de Production.
 - Los previews históricos no son fuente de verdad.
 - Neon debe quedar con una única rama `production`.
 - No existe staging alojado.
@@ -74,7 +72,7 @@ Flujo único:
 | Bloqueo | Efecto | Tratamiento |
 |---|---|---|
 | Neon Free | No permite proteger la rama Production y limita retención/historial | Mantener una sola rama y respaldos externos |
-| Límite diario de deployments Vercel Free | Puede frenar builds si se acumulan previews históricos | Sólo `main` despliega automáticamente; evitar despliegues innecesarios |
+| Vercel Pro sin staging DB aislada | Los previews podrían tocar Production si se habilitan sin separar datos | Mantener previews desactivados hasta disponer de base aislada |
 
 ## Regla de mantenimiento
 

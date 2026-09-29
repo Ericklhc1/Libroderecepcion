@@ -1,6 +1,10 @@
 import 'server-only';
 
-import { AuditAction, SupervisionShiftStatus, type Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  SupervisionShiftStatus,
+  type Prisma,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { readPdfFragments } from '@/server/pms/read-pdf';
 import { readStructuredReport } from '@/domain/pms/layout';
@@ -15,6 +19,11 @@ import {
   sourceDepartureTotal,
   type AuditReviewStatus,
 } from '@/domain/supervision-audit-review';
+import {
+  parseSalesPeriodReport,
+  salesPeriodFindings,
+  type SalesPeriodMetrics,
+} from '@/domain/supervision-sales-period';
 
 export type SupervisionReportKind =
   | 'AUDITORIA_FORMULARIO'
@@ -22,6 +31,7 @@ export type SupervisionReportKind =
   | 'ENTRADAS'
   | 'COBROS'
   | 'VENTAS_CANAL'
+  | 'VENTAS_PERIODO'
   | 'PRODUCCION_HABITACION'
   | 'SALIDAS'
   | 'REVENUE'
@@ -44,7 +54,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.24.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.25.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
@@ -62,7 +72,8 @@ const REPORT_LABELS: Record<SupervisionReportKind, string> = {
   ACTIVIDAD: 'Habitaciones con actividad',
   ENTRADAS: 'Entradas / Check-ins',
   COBROS: 'Cobros',
-  VENTAS_CANAL: 'Ventas por canal',
+  VENTAS_CANAL: 'Ventas por canal (legado)',
+  VENTAS_PERIODO: 'Ventas por período',
   PRODUCCION_HABITACION: 'Producción por habitación',
   SALIDAS: 'Salidas',
   REVENUE: 'Revenue',
@@ -98,10 +109,6 @@ function linesFromFragments(
       .replace(/\s+/g, ' ')
       .trim(),
   );
-}
-
-function compactText(lines: string[]): string {
-  return lines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function numberEs(raw: string | undefined | null): number | null {
@@ -156,6 +163,7 @@ function kindOf(fileName: string, text: string): SupervisionReportKind {
   }
 
   if (/operaciones de caja reservas/i.test(text) || /totales por forma de pago/i.test(text)) return 'COBROS';
+  if (/informe detalle ventas periodo/i.test(text)) return 'VENTAS_PERIODO';
   if (/ingresos totales por canal/i.test(text)) return 'VENTAS_CANAL';
   if (/producci[oó]n por habitaci[oó]n/i.test(text)) return 'PRODUCCION_HABITACION';
   if (/informe de salidas/i.test(text)) return 'SALIDAS';
@@ -247,6 +255,8 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
         },
       };
     }
+    case 'VENTAS_PERIODO':
+      return {};
     case 'VENTAS_CANAL': {
       const total = text.match(
         /Total\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+([\d.,]+)\s*%\s+(\d+)\s+(\d+)\s+(\d+)/i,
@@ -362,6 +372,7 @@ const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {
   ACTIVIDAD: 1,
   ENTRADAS: 1,
   VENTAS_CANAL: 8,
+  VENTAS_PERIODO: 1,
   COBROS: 4,
   PRODUCCION_HABITACION: 3,
   SALIDAS: 5,
@@ -405,6 +416,7 @@ export function parseSupervisionReportText(
   const text = rawText.replace(/\s+/g, ' ').trim();
   const kind = kindOf(fileName, text);
   const warnings: string[] = [];
+  const salesPeriod = kind === 'VENTAS_PERIODO' ? parseSalesPeriodReport(rawText) : null;
 
   if (!text) {
     warnings.push(
@@ -418,12 +430,22 @@ export function parseSupervisionReportText(
   }
 
   const checks = kind === 'AUDITORIA_FORMULARIO' ? auditChecks(text) : [];
-  const findings = kind === 'AUDITORIA_FORMULARIO' ? findingsFromAudit(text, checks) : [];
-  const metrics = metricsFor(kind, text, checks);
-  const completeness = completenessFor(kind, metrics, checks);
+  const findings =
+    kind === 'AUDITORIA_FORMULARIO'
+      ? findingsFromAudit(text, checks)
+      : salesPeriod
+        ? salesPeriodFindings(salesPeriod)
+        : [];
+  const metrics = salesPeriod ? { salesPeriod } : metricsFor(kind, text, checks);
+  const completeness =
+    salesPeriod
+      ? { found: salesPeriod.visibleDays, expected: salesPeriod.expectedVisibleDays }
+      : completenessFor(kind, metrics, checks);
   if (completeness && completeness.found < completeness.expected) {
     warnings.push(
-      `Formato parcialmente reconocido: se extrajeron ${completeness.found} de ${completeness.expected} campos/control(es) esperados para ${REPORT_LABELS[kind]}.`,
+      kind === 'VENTAS_PERIODO'
+        ? `Ventas por período: el PDF contiene ${completeness.found} día(s) completos de ${completeness.expected} esperados hasta la fecha de generación. No se completaron fechas por inferencia.`
+        : `Formato parcialmente reconocido: se extrajeron ${completeness.found} de ${completeness.expected} campos/control(es) esperados para ${REPORT_LABELS[kind]}.`,
     );
   }
 
@@ -452,8 +474,8 @@ export async function parseSupervisionReport(
     );
   }
 
-  const text = compactText(linesFromFragments(fragments));
-  const parsed = parseSupervisionReportText(fileName, text);
+  const lines = linesFromFragments(fragments);
+  const parsed = parseSupervisionReportText(fileName, lines.join('\n'));
 
   // Para los informes que describen movimientos de habitaciones, reutilizamos
   // el lector PMS estructurado. Así la apertura no se limita a saber que el
@@ -514,6 +536,387 @@ function mergeByKey<T extends { key: string }>(a: T[], b: T[]): T[] {
   return [...map.values()];
 }
 
+type PmsProcessingRow = {
+  reservationId: string;
+  roomNumber: string | null;
+  status: 'CHECK_IN' | 'CHECK_OUT';
+  signal: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+  confidence: 'ALTA' | 'MEDIA' | null;
+};
+
+function pmsProcessingRows(metrics: Record<string, unknown>): PmsProcessingRow[] {
+  const processing = metrics.pmsProcessing;
+  if (!processing || Array.isArray(processing) || typeof processing !== 'object') return [];
+  const rows = (processing as Record<string, unknown>).rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row): row is PmsProcessingRow => {
+    if (!row || Array.isArray(row) || typeof row !== 'object') return false;
+    const item = row as Record<string, unknown>;
+    return (
+      typeof item.reservationId === 'string' &&
+      (item.status === 'CHECK_IN' || item.status === 'CHECK_OUT')
+    );
+  });
+}
+
+function mergedMetrics(
+  existingValue: Prisma.JsonValue | null | undefined,
+  incoming: Record<string, unknown>,
+  kind: SupervisionReportKind,
+): Prisma.InputJsonObject {
+  const existing = jsonObject(existingValue);
+  const merged = { ...existing, ...incoming } as Record<string, unknown>;
+  const incomingRows = pmsProcessingRows(incoming);
+  if (incomingRows.length === 0) return merged as Prisma.InputJsonObject;
+
+  const existingRows = pmsProcessingRows(existing);
+  const replacedStatuses = new Set(incomingRows.map((row) => row.status));
+  const rows =
+    kind === 'ACTIVIDAD'
+      ? incomingRows
+      : [
+          ...existingRows.filter((row) => !replacedStatuses.has(row.status)),
+          ...incomingRows,
+        ];
+
+  const unique = new Map<string, PmsProcessingRow>();
+  for (const row of rows) {
+    unique.set(`${row.status}:${row.reservationId}`, row);
+  }
+  const allRows = [...unique.values()];
+  merged.pmsProcessing = {
+    pending: allRows.filter((row) => row.signal === 'PENDIENTE').length,
+    processedProbable: allRows.filter((row) => row.signal === 'PROCESADO_PROBABLE').length,
+    unknown: allRows.filter((row) => row.signal === null).length,
+    rows: allRows,
+  };
+  return merged as Prisma.InputJsonObject;
+}
+
+function auditOwnedFinding(key: string): boolean {
+  return key.startsWith('check:') || key.startsWith('pms-pending:');
+}
+
+function sameFinding(a: SupervisionAuditFinding | undefined, b: SupervisionAuditFinding | undefined): boolean {
+  return Boolean(
+    a &&
+    b &&
+    a.key === b.key &&
+    a.severity === b.severity &&
+    a.title === b.title &&
+    a.detail === b.detail,
+  );
+}
+
+function salesPeriodFromMetrics(value: Prisma.JsonValue | null | undefined): SalesPeriodMetrics | null {
+  const root = jsonObject(value);
+  const candidate = root.salesPeriod;
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object') return null;
+  const period = candidate as unknown as SalesPeriodMetrics;
+  if (
+    typeof period.periodStart !== 'string' ||
+    typeof period.periodEnd !== 'string' ||
+    !Array.isArray(period.daily)
+  ) {
+    return null;
+  }
+  return period;
+}
+
+function dateAtUtc(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function dateKeyUtc(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function nextUtcDay(date: Date): Date {
+  return new Date(date.getTime() + 86_400_000);
+}
+
+function jsonNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function formatCrossDates(rows: Array<{ date: string; detail?: string }>, limit = 6): string {
+  const shown = rows
+    .slice(0, limit)
+    .map((row) => (row.detail ? `${row.date} (${row.detail})` : row.date));
+  return rows.length > limit
+    ? `${shown.join(', ')} y ${rows.length - limit} día(s) más`
+    : shown.join(', ');
+}
+
+async function reconcileSalesPeriodImports(
+  tx: Prisma.TransactionClient,
+  shiftId: string,
+): Promise<void> {
+  const salesRows = await tx.supervisionAuditImport.findMany({
+    where: {
+      supervisionShiftId: shiftId,
+      reportKinds: { has: 'VENTAS_PERIODO' },
+    },
+    select: {
+      id: true,
+      metrics: true,
+      findings: true,
+      reviewState: true,
+    },
+  });
+  if (!salesRows.length) return;
+
+  const activeRoomCount = await tx.room.count({ where: { active: true } });
+
+  for (const salesRow of salesRows) {
+    const salesPeriod = salesPeriodFromMetrics(salesRow.metrics);
+    if (!salesPeriod || !salesPeriod.visibleThrough) continue;
+
+    const from = dateAtUtc(salesPeriod.periodStart);
+    const through = dateAtUtc(salesPeriod.visibleThrough);
+    const evidenceRows = await tx.supervisionAuditImport.findMany({
+      where: {
+        businessDate: { gte: from, lte: through },
+      },
+      select: {
+        id: true,
+        businessDate: true,
+        metrics: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    type DayEvidence = {
+      auditActivity?: Record<string, unknown>;
+      roomProduction?: Record<string, unknown>;
+      inHouse?: Record<string, unknown>;
+      pmsProcessing?: Record<string, unknown>;
+    };
+    const byDate = new Map<string, DayEvidence>();
+    for (const row of evidenceRows) {
+      const key = dateKeyUtc(row.businessDate);
+      const evidence = byDate.get(key) ?? {};
+      const metrics = jsonObject(row.metrics);
+      const take = (name: keyof DayEvidence) => {
+        if (evidence[name]) return;
+        const section = metrics[name];
+        if (section && !Array.isArray(section) && typeof section === 'object') {
+          evidence[name] = section as Record<string, unknown>;
+        }
+      };
+      take('auditActivity');
+      take('roomProduction');
+      take('inHouse');
+      take('pmsProcessing');
+      byDate.set(key, evidence);
+    }
+
+    const cross: SupervisionAuditFinding[] = [];
+
+    const roomInventoryMismatch = salesPeriod.daily
+      .filter(
+        (day) =>
+          activeRoomCount > 0 &&
+          day.totalRooms !== null &&
+          day.blockedRooms !== null &&
+          day.totalRooms + day.blockedRooms !== activeRoomCount,
+      )
+      .map((day) => ({
+        date: day.date,
+        detail: `${day.totalRooms ?? '—'} vendibles + ${day.blockedRooms ?? '—'} bloqueadas ≠ ${activeRoomCount}`,
+      }));
+    if (roomInventoryMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:room-inventory',
+        severity: 'ALTA',
+        title: 'Inventario PMS no concilia con habitaciones activas del Libro',
+        detail: `El hotel tiene ${activeRoomCount} habitaciones activas en el Libro. Diferencias: ${formatCrossDates(roomInventoryMismatch)}.`,
+      });
+    }
+
+    const auditMismatch: Array<{ date: string; detail: string }> = [];
+    const productionMismatch: Array<{ date: string; detail: string }> = [];
+    const movementMismatch: Array<{ date: string; detail: string }> = [];
+    const inHouseMismatch: Array<{ date: string; detail: string }> = [];
+
+    for (const day of salesPeriod.daily) {
+      const evidence = byDate.get(day.date);
+      if (!evidence) continue;
+
+      const audit = evidence.auditActivity;
+      if (audit) {
+        const differences: string[] = [];
+        const entries = jsonNumber(audit.entries);
+        const departures = jsonNumber(audit.departures);
+        const breakfasts = jsonNumber(audit.breakfasts);
+        const occupancy = jsonNumber(audit.occupancyPct);
+        if (entries !== null && day.checkIns !== null && entries !== day.checkIns) {
+          differences.push(`check-in ${entries}≠${day.checkIns}`);
+        }
+        if (departures !== null && day.checkOuts !== null && departures !== day.checkOuts) {
+          differences.push(`check-out ${departures}≠${day.checkOuts}`);
+        }
+        if (breakfasts !== null && day.breakfasts !== null && breakfasts !== day.breakfasts) {
+          differences.push(`desayunos ${breakfasts}≠${day.breakfasts}`);
+        }
+        if (
+          occupancy !== null &&
+          day.occupancyPct !== null &&
+          Math.abs(occupancy - day.occupancyPct) > 0.1
+        ) {
+          differences.push(`OCC ${occupancy}%≠${day.occupancyPct}%`);
+        }
+        if (differences.length) auditMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const production = evidence.roomProduction;
+      if (production) {
+        const differences: string[] = [];
+        const rooms = jsonNumber(production.occupiedRoomsWithCost);
+        const totalClp = jsonNumber(production.totalClp);
+        if (rooms !== null && day.occupiedWithCost !== null && rooms !== day.occupiedWithCost) {
+          differences.push(`hab. con coste ${rooms}≠${day.occupiedWithCost}`);
+        }
+        if (
+          totalClp !== null &&
+          day.roomRevenueClp !== null &&
+          Math.abs(totalClp - day.roomRevenueClp) > 2
+        ) {
+          differences.push(
+            `producción ${Math.round(totalClp).toLocaleString('es-CL')}≠${Math.round(day.roomRevenueClp).toLocaleString('es-CL')}`,
+          );
+        }
+        if (differences.length) productionMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const processing = evidence.pmsProcessing;
+      if (processing && Array.isArray(processing.rows)) {
+        const rows = processing.rows.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+        );
+        const checkIns = rows.filter((item) => item.status === 'CHECK_IN').length;
+        const checkOuts = rows.filter((item) => item.status === 'CHECK_OUT').length;
+        const differences: string[] = [];
+        if (day.checkIns !== null && checkIns > 0 && checkIns !== day.checkIns) {
+          differences.push(`check-in PDF ${checkIns}≠ventas ${day.checkIns}`);
+        }
+        if (day.checkOuts !== null && checkOuts > 0 && checkOuts !== day.checkOuts) {
+          differences.push(`check-out PDF ${checkOuts}≠ventas ${day.checkOuts}`);
+        }
+        if (differences.length) movementMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const inHouse = evidence.inHouse;
+      if (inHouse) {
+        const rooms = jsonNumber(inHouse.rooms);
+        if (
+          rooms !== null &&
+          day.occupiedRooms !== null &&
+          Math.abs(rooms - day.occupiedRooms) > 2
+        ) {
+          inHouseMismatch.push({
+            date: day.date,
+            detail: `In House ${rooms} vs ocupadas ${day.occupiedRooms}`,
+          });
+        }
+      }
+    }
+
+    if (auditMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:audit-activity',
+        severity: 'ALTA',
+        title: 'Formulario de auditoría y ventas por período discrepan',
+        detail: `Diferencias en actividad diaria: ${formatCrossDates(auditMismatch)}.`,
+      });
+    }
+    if (productionMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:room-production',
+        severity: 'ALTA',
+        title: 'Producción por habitación no concilia con ventas por período',
+        detail: `Diferencias en: ${formatCrossDates(productionMismatch)}.`,
+      });
+    }
+    if (movementMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:pms-movements',
+        severity: 'MEDIA',
+        title: 'Movimientos PMS no coinciden entre informes',
+        detail: `Check-in/check-out difieren en: ${formatCrossDates(movementMismatch)}. La señal de enlaces sigue siendo auxiliar y no cambia estados automáticamente.`,
+      });
+    }
+    if (inHouseMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:in-house',
+        severity: 'MEDIA',
+        title: 'In House y ocupación del período no coinciden',
+        detail: `Diferencias superiores a 2 habitaciones en: ${formatCrossDates(inHouseMismatch)}. Revisa la hora de emisión de ambos informes antes de concluir un error.`,
+      });
+    }
+
+    const pmsLinenFines = salesPeriod.daily.reduce(
+      (sum, day) => sum + (day.costCenters.multasBlancos ?? 0),
+      0,
+    );
+    const linenFines = await tx.$queryRaw<Array<{ amount: unknown }>>`
+      SELECT DISTINCT ON (f."id") f."amount"
+        FROM "Fine" f
+        JOIN "AuditLog" a
+          ON a."entity" = 'Fine'
+         AND a."entityId" = f."id"
+         AND a."action" = 'CAMBIO_ESTADO'
+         AND a."after"->>'status' = 'COBRADA'
+       WHERE f."deletedAt" IS NULL
+         AND f."kind"::text = 'BLANCO'
+         AND f."currency" = 'CLP'
+         AND a."createdAt" >= ${from}
+         AND a."createdAt" < ${nextUtcDay(through)}
+       ORDER BY f."id", a."createdAt" DESC
+    `;
+    const libroLinenFines = linenFines.reduce(
+      (sum, fine) => sum + (fine.amount ? Number(fine.amount) : 0),
+      0,
+    );
+    if (Math.abs(pmsLinenFines - libroLinenFines) > 2) {
+      cross.push({
+        key: 'cross:sales-period:linen-fines',
+        severity: libroLinenFines === 0 || pmsLinenFines === 0 ? 'ALTA' : 'MEDIA',
+        title: 'Multas por blancos del PMS no concilian con el Libro',
+        detail: `Ventas por período muestra ${Math.round(pmsLinenFines).toLocaleString('es-CL')} en “Multas por Blancos”; el Libro suma ${Math.round(libroLinenFines).toLocaleString('es-CL')} en multas BLANCO cobradas dentro del mismo tramo visible. Revisa fecha de registro, estado y trazabilidad.`,
+      });
+    }
+
+    const allExistingFindings = jsonArray<SupervisionAuditFinding>(salesRow.findings);
+    const existingFindings = allExistingFindings.filter(
+      (finding) => !finding.key.startsWith('cross:sales-period:'),
+    );
+    const previousCross = new Map(
+      allExistingFindings
+        .filter((finding) => finding.key.startsWith('cross:sales-period:'))
+        .map((finding) => [finding.key, finding]),
+    );
+    const nextCross = new Map(cross.map((finding) => [finding.key, finding]));
+    const review = parseSupervisionAuditReviewState(salesRow.reviewState);
+    for (const key of Object.keys(review.findings)) {
+      if (!key.startsWith('cross:sales-period:')) continue;
+      if (!sameFinding(previousCross.get(key), nextCross.get(key))) {
+        delete review.findings[key];
+      }
+    }
+
+    await tx.supervisionAuditImport.update({
+      where: { id: salesRow.id },
+      data: {
+        findings: mergeByKey(existingFindings, cross) as unknown as Prisma.InputJsonArray,
+        reviewState: JSON.parse(JSON.stringify(review)) as Prisma.InputJsonObject,
+      },
+    });
+  }
+}
+
 export async function mergeSupervisionAuditReport(
   user: CurrentUser,
   input: {
@@ -554,10 +957,11 @@ export async function mergeSupervisionAuditReport(
       },
     });
 
-    const metrics = {
-      ...jsonObject(existing?.metrics),
-      ...input.parsed.metrics,
-    } as Prisma.InputJsonObject;
+    const metrics = mergedMetrics(
+      existing?.metrics,
+      input.parsed.metrics,
+      input.parsed.kind,
+    );
     const checks =
       input.parsed.kind === 'AUDITORIA_FORMULARIO'
         ? input.parsed.checks
@@ -565,21 +969,47 @@ export async function mergeSupervisionAuditReport(
             jsonArray<SupervisionAuditCheck>(existing?.checks),
             input.parsed.checks,
           );
+    const existingFindings = jsonArray<SupervisionAuditFinding>(existing?.findings);
     const findings =
       input.parsed.kind === 'AUDITORIA_FORMULARIO'
-        ? input.parsed.findings
-        : mergeByKey(
-            jsonArray<SupervisionAuditFinding>(existing?.findings),
+        ? mergeByKey(
+            existingFindings.filter((finding) => !auditOwnedFinding(finding.key)),
             input.parsed.findings,
-          );
+          )
+        : input.parsed.kind === 'VENTAS_PERIODO'
+          ? mergeByKey(
+              existingFindings.filter(
+                (finding) =>
+                  !finding.key.startsWith('sales-period:') &&
+                  !finding.key.startsWith('cross:sales-period:'),
+              ),
+              input.parsed.findings,
+            )
+          : mergeByKey(existingFindings, input.parsed.findings);
     const reviewState = parseSupervisionAuditReviewState(existing?.reviewState);
+    if (input.parsed.kind === 'AUDITORIA_FORMULARIO') {
+      for (const key of Object.keys(reviewState.findings)) {
+        if (auditOwnedFinding(key)) delete reviewState.findings[key];
+      }
+    }
+    if (input.parsed.kind === 'VENTAS_PERIODO') {
+      for (const key of Object.keys(reviewState.findings)) {
+        if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+          delete reviewState.findings[key];
+        }
+      }
+    }
     // Un informe SALIDAS recién cargado es una nueva fotografía de origen:
     // sustituye cualquier ajuste manual previo del contador, para no ocultar datos más frescos.
     if (input.parsed.kind === 'SALIDAS') {
       delete reviewState.metrics.departuresPending;
     }
     const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
-    const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
+    const existingWarnings =
+      input.parsed.kind === 'VENTAS_PERIODO'
+        ? (existing?.warnings ?? []).filter((warning) => !warning.startsWith('Ventas por período:'))
+        : (existing?.warnings ?? []);
+    const warnings = Array.from(new Set([...existingWarnings, ...input.parsed.warnings]));
     const existingSourceFiles = jsonArray<{
       sha256: string;
       size: number;
@@ -645,7 +1075,22 @@ export async function mergeSupervisionAuditReport(
       },
       tx,
     );
-    return saved;
+
+    if (
+      [
+        'VENTAS_PERIODO',
+        'AUDITORIA_FORMULARIO',
+        'ACTIVIDAD',
+        'ENTRADAS',
+        'SALIDAS',
+        'PRODUCCION_HABITACION',
+        'IN_HOUSE',
+      ].includes(input.parsed.kind)
+    ) {
+      await reconcileSalesPeriodImports(tx, shift.id);
+    }
+
+    return tx.supervisionAuditImport.findUniqueOrThrow({ where: { id: saved.id } });
   });
 }
 

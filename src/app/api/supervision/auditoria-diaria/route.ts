@@ -42,10 +42,30 @@ export async function POST(request: Request) {
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = await parseSupervisionReport(file.name, bytes);
-    const businessDate = businessDateFrom(formData.get('businessDate'), parsed.reportedBusinessDate);
+    // Ventas por período es una fotografía mensual: se ancla al inicio validado
+    // del período, no a la primera fecha incidental encontrada en el PDF.
+    const salesPeriod =
+      parsed.kind === 'VENTAS_PERIODO' &&
+      parsed.metrics.salesPeriod &&
+      !Array.isArray(parsed.metrics.salesPeriod) &&
+      typeof parsed.metrics.salesPeriod === 'object'
+        ? (parsed.metrics.salesPeriod as Record<string, unknown>)
+        : null;
+    const periodStart =
+      typeof salesPeriod?.periodStart === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(salesPeriod.periodStart)
+        ? salesPeriod.periodStart
+        : null;
+    const requestedBusinessDate =
+      parsed.kind === 'VENTAS_PERIODO' ? null : formData.get('businessDate');
+    const businessDate = businessDateFrom(
+      requestedBusinessDate,
+      parsed.kind === 'VENTAS_PERIODO' ? periodStart : parsed.reportedBusinessDate,
+    );
     const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
 
     if (
+      parsed.kind !== 'VENTAS_PERIODO' &&
       typeof formData.get('businessDate') === 'string' &&
       String(formData.get('businessDate')).trim() &&
       parsed.reportedBusinessDate &&

@@ -1,12 +1,25 @@
 # Libro Operativo de Recepción — contexto técnico
 
+## Actualización 29/09/2026 · Libro 1.25.0 · Ventas por período e inteligencia de conciliación
+
+- **Ventas por período** sustituye a **Ventas por canal** como informe de gestión mensual de Supervisión. `VENTAS_CANAL` se conserva sólo para leer históricos.
+- El Libro reconoce el período declarado y reutiliza la fotografía vigente del **mes actual** aunque el archivo se haya cargado con fecha del primer día del mes. Recargar el informe actualiza el snapshot: no crea un segundo mes ni duplica hallazgos.
+- Del informe se estructuran por día los centros de coste **Alojamiento, Eventos, Spa, Multas, Multas por Fumar, Multas por Blancos, Varios y Tasas**, además de inventario/ocupación, cortesías, day use, bloqueos, ADR, OCC, RREV, check-in, check-out, no-show, cancelaciones y desayunos.
+- **Cortesía > 0** es un hallazgo de severidad alta para revisión de autorización y motivo; el sistema no la convierte por sí solo en fraude o error.
+- Si el PDF declara un período más amplio que las columnas realmente legibles, queda marcado como **parcial/truncado**. Nunca se inventan ni completan fechas que el archivo no contiene.
+- Se aplican conciliaciones determinísticas internas: libres + ocupadas = total; con coste + cortesía = ocupadas; centros de coste vs total; Alojamiento/RREV; ADR y porcentajes de ocupación.
+- Se aplican cruces entre fuentes cuando existe evidencia comparable: Ventas por período ↔ Formulario de auditoría ↔ Producción por habitación ↔ In House ↔ movimientos PMS ↔ inventario activo del Libro ↔ multas por blancos registradas.
+- Las discrepancias se agrupan por regla estable para **evitar spam**. Una recarga sustituye los hallazgos de esa fotografía y vuelve a ejecutar los cruces; no deja anomalías obsoletas.
+- Los cruces son evidencia para Supervisión, no decisiones automáticas: una diferencia genera revisión y trazabilidad, pero no cambia estancias, Caja, multas ni estados PMS por inferencia.
+- Sin nueva tabla ni migración: los datos estructurados y hallazgos viven en `SupervisionAuditImport`. Release objetivo: **v1.25.0**.
+
 ## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
 
 - Iniciar Supervisión deja de ser un bloc de prioridades: crea una fase `PREPARACION` y el turno sólo pasa a `ACTIVO` tras completar la recepción operacional.
 - La apertura muestra pendientes reales y genera desde ellos las prioridades, sin duplicar novedades, tareas, seguimientos ni señales.
 - El Supervisor debe realizar su propio arqueo por cada fondo de Caja activo; las garantías en efectivo se validan físicamente dentro del mismo arqueo. Una diferencia sólo permite continuar si queda explicada.
 - La apertura muestra garantías/custodias abiertas y el último inventario de llaves de pisos 4, 5 y 6; exige confirmación explícita de revisión.
-- Evidencia PMS de apertura: para la fotografía operacional de hoy se prefiere **Habitaciones con actividad**; si no está disponible, el respaldo equivalente es **Entradas + In House + Salidas**. Para recibir el cierre del día anterior se esperan **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por canal, Producción por habitación y Revenue quedan como gestión diaria no bloqueante.
+- Evidencia PMS de apertura: para la fotografía operacional de hoy se prefiere **Habitaciones con actividad**; si no está disponible, el respaldo equivalente es **Entradas + In House + Salidas**. Para recibir el cierre del día anterior se esperan **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por período del mes actual, Producción por habitación y Revenue quedan como gestión diaria no bloqueante.
 - La falta de un informe por caída o indisponibilidad del PMS no deja al hotel sin Supervisión: exige una contingencia escrita y auditada. Caja/garantías sí permanecen como barrera obligatoria.
 - La carga de apertura autodetecta la fecha de cada PDF, por lo que admite cierres de ayer junto con fotografías operativas de hoy y reutiliza evidencia válida por fecha operativa.
 - El lector PDF conserva anotaciones de enlace sobre el ID FNS. En entradas/salidas, un ID enlazado aporta señal `PENDIENTE` de confianza alta; un ID no enlazado sólo se considera `PROCESADO_PROBABLE` si el mismo PDF demuestra una convención mixta. La señal nunca confirma automáticamente check-in/check-out. Color y subrayado no se usan todavía como regla hasta validarlos contra informes reales de cada formato.

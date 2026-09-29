@@ -196,11 +196,55 @@ describe('Apertura operacional de Supervisión', () => {
     expect(updated.openingCompletedAt).not.toBeNull();
     expect(updated.priorities).toEqual(
       expect.arrayContaining([
-        'Completar Ventas por canal',
+        'Completar Ventas por período',
         'Completar Producción por habitación',
         'Completar Revenue',
       ]),
     );
+  });
+
+  it('reutiliza Ventas por período del mes actual aunque su fecha sea el primer día del mes', async () => {
+    const shift = await beginSupervisionOpening(supervisor);
+    const today = hotelCalendarDate();
+    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+
+    await addEvidence({
+      shiftId: shift.id,
+      businessDate: monthStart,
+      kinds: ['VENTAS_PERIODO'],
+      metrics: {
+        salesPeriod: {
+          periodStart: monthStart.toISOString().slice(0, 10),
+          periodEnd: monthEnd.toISOString().slice(0, 10),
+          generatedAt: null,
+          visibleThrough: today.toISOString().slice(0, 10),
+          visibleDays: 1,
+          expectedVisibleDays: 1,
+          truncated: false,
+          daily: [],
+          totals: {
+            courtesyRooms: 0,
+            dayUse: 0,
+            blockedRoomDays: 0,
+            costCentersClp: {
+              alojamiento: 0,
+              eventos: 0,
+              spa: 0,
+              multas: 0,
+              multasFumar: 0,
+              multasBlancos: 0,
+              varios: 0,
+              tasas: 0,
+            },
+          },
+        },
+      },
+    });
+
+    const readiness = await getSupervisionOpeningReadiness(supervisor);
+    expect(readiness.reports.monthlyKinds).toContain('VENTAS_PERIODO');
+    expect(readiness.reports.missingOptional).not.toContain('VENTAS_PERIODO');
   });
 
   it('invalida el arqueo si cambia el fondo fijo después del conteo', async () => {

@@ -181,6 +181,13 @@ describe('respaldo operativo por correo', () => {
       where: { id: user.id },
       data: { email, emailNotificationsEnabled: false },
     });
+    await prisma.systemSetting.create({
+      data: {
+        key: 'notification.email.INCIDENCIA_CRITICA',
+        value: 'DESACTIVADO',
+        category: 'notificaciones-correo',
+      },
+    });
 
     await notify({
       userId: user.id,

@@ -35,7 +35,7 @@ Actualizado: **2026-09-29** · adjuntos persistentes de soporte · versión cand
 | Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
 | Bandeja interna de soporte | `PRODUCTION` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 | Adjuntos persistentes de soporte | `PR_ABIERTO` | #198 · v1.30.0 | R2 privado + metadatos Neon + acceso autenticado desde la bandeja |
-| Adjuntos consultables de soporte | `EN_DESARROLLO` | v1.30.0 | Binarios privados en R2 + metadatos en Neon + acceso firmado desde la bandeja; fallback SMTP |
+| Adjuntos consultables de soporte | `PR_ABIERTO` | #198 · v1.30.0 | Binarios privados en R2 + metadatos en Neon + acceso firmado desde la bandeja; fallback SMTP |
 
 ## Iteración actual
 

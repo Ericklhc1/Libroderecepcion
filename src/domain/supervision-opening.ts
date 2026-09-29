@@ -25,7 +25,7 @@ export const REQUIRED_SUPERVISION_OPENING_REPORTS = [
 ] as const;
 
 export const OPTIONAL_SUPERVISION_OPENING_REPORTS = [
-  'VENTAS_CANAL',
+  'VENTAS_PERIODO',
   'PRODUCCION_HABITACION',
   'REVENUE',
 ] as const;
@@ -38,7 +38,8 @@ export const SUPERVISION_REPORT_LABELS: Record<string, string> = {
   SALIDAS: 'Salidas / Check-outs',
   COBROS: 'Cobros',
   CARGOS_DIARIOS: 'Cargos diarios',
-  VENTAS_CANAL: 'Ventas por canal',
+  VENTAS_CANAL: 'Ventas por canal (legado)',
+  VENTAS_PERIODO: 'Ventas por período',
   PRODUCCION_HABITACION: 'Producción por habitación',
   REVENUE: 'Revenue',
   CIERRE_CAJA: 'Cierre de caja',

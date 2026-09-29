@@ -147,10 +147,16 @@ async function applyAuthorizedManualMovement(
   effectiveAt: Date,
   options: { affectsExpected?: boolean; regularization?: boolean } = {},
 ) {
-  const kind = input.direction === 'ENTRADA' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
   const verb = input.direction === 'ENTRADA' ? 'Ingreso' : 'Egreso';
   const affectsExpected = options.affectsExpected ?? true;
   const regularization = options.regularization ?? !affectsExpected;
+  const kind = regularization
+    ? input.direction === 'ENTRADA'
+      ? 'REGULARIZACION_ENTRADA'
+      : 'REGULARIZACION_SALIDA'
+    : input.direction === 'ENTRADA'
+      ? 'AJUSTE_ENTRADA'
+      : 'AJUSTE_SALIDA';
 
   return prisma.$transaction(async (tx) => {
     const movementId = await insertCashMovement(tx, {

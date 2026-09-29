@@ -203,9 +203,10 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           userId,
           type: NotificationType.TAREA_ASIGNADA,
           title: `Nueva tarea asignada: ${created.title}`,
-          body: created.dueAt
-            ? `Vence el ${formatDateTime(created.dueAt)}.`
-            : 'Sin fecha límite.',
+          body: [
+            created.startsAt ? `Comienza el ${formatDateTime(created.startsAt)}.` : 'Disponible de inmediato.',
+            created.dueAt ? `Vence el ${formatDateTime(created.dueAt)}.` : 'Sin fecha límite.',
+          ].join(' '),
           link: `/tareas/${created.id}`,
           entity: 'Task',
           entityId: created.id,
@@ -411,6 +412,19 @@ export async function changeTaskStatus(
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   if (current.status === input.status) return current;
+
+  const startsInFuture = Boolean(current.startsAt && current.startsAt > new Date());
+  const startsWork =
+    input.status === TaskStatus.ACEPTADA ||
+    input.status === TaskStatus.EN_CURSO ||
+    input.status === TaskStatus.REALIZADA ||
+    input.status === TaskStatus.COMPLETADA ||
+    input.status === TaskStatus.VALIDADA;
+  if (startsInFuture && startsWork) {
+    throw new RuleError(
+      `Esta tarea está programada para comenzar el ${formatDateTime(current.startsAt!)}. Si debe empezar antes, edita su inicio programado.`,
+    );
+  }
 
   if (!(TASK_TRANSITIONS[current.status] ?? []).includes(input.status)) {
     throw new RuleError(

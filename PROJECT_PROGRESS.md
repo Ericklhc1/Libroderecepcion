@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata **v1.29.0**
+Actualizado: **2026-09-29** · adjuntos consultables de soporte · versión candidata **v1.30.0**
 
 ## Estados canónicos
 
@@ -33,30 +33,30 @@ Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata 
 | Panel Reportar / solicitar | `PRODUCTION` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 | Fronti contextual transversal | `PRODUCTION` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
 | Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
-| Bandeja interna de soporte | `PR_ABIERTO` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Bandeja interna de soporte | `PRODUCTION` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Adjuntos consultables de soporte | `EN_DESARROLLO` | v1.30.0 | Binarios privados en R2 + metadatos en Neon + acceso firmado desde la bandeja; fallback SMTP |
 
 ## Iteración actual
 
-**AROH 1.29.0** · rama **`feat/support-inbox-1-29-0`**
+**AROH 1.30.0** · rama **`feat/support-attachments-1-30-0`**
 
-Objetivo: convertir **Reportar / solicitar** en un flujo trazable dentro de AROH, sin depender del correo como única evidencia.
+Objetivo: hacer que capturas y archivos de **Reportar / solicitar** puedan consultarse directamente desde la bandeja sin guardar blobs en PostgreSQL y sin convertir R2 en una dependencia del registro.
 
 Incluye:
-- modelo `SupportRequest` persistente en Neon;
-- bandeja `/admin/soporte` con búsqueda, filtros, contexto y trazabilidad;
-- permisos `support.view` y `support.manage`;
-- Administrador de sistema habilitado por defecto y demás roles sólo por concesión explícita;
-- estados y resolución auditada;
-- SMTP conservado como copia de aviso;
-- Fronti contextualizado también dentro de la bandeja;
-- sin blobs en Neon: los adjuntos se mantienen en el canal de correo actual.
+- `SupportRequestAttachment` para metadatos en Neon;
+- subida directa navegador → R2 mediante PUT firmado;
+- enlaces de bandeja protegidos por `support.view` y GET firmado temporal;
+- compatibilidad histórica con los nombres de adjuntos de v1.29.0;
+- fallback seguro: si el archivado falla, el reporte se registra igual y SMTP conserva el adjunto cuando puede enviarse;
+- corrección de Puesta en cero / purga demo para que los reportes no bloqueen la eliminación de usuarios;
+- regresiones para persistencia, permisos, fallback y reset.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - migración Production;
 - despliegue Vercel Production;
-- verificación de la bandeja, permisos y envío.
+- verificación de versión, runtime y comportamiento del almacenamiento.
 
 ## Infraestructura vigente
 
@@ -67,7 +67,7 @@ PENDIENTE antes de Production:
 - CI usa PostgreSQL efímero y nunca Neon Production.
 - Neon debe mantener una única rama alojada `production`.
 - Toda actualización de Production incrementa SemVer.
-- El subdominio nuevo se configurará después de estabilizar v1.29.0; no se cambia DNS dentro de este PR.
+- El subdominio nuevo se configurará después de estabilizar v1.30.0; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 
@@ -75,6 +75,7 @@ PENDIENTE antes de Production:
 |---|---|---|
 | Neon Free | Protección/retención limitadas | Una sola rama + respaldos externos |
 | Límite diario de deployments Vercel Free | Puede frenar builds por exceso de despliegues | Sólo `main` despliega automáticamente |
+| R2 backend desde Vercel | HEAD firmado falla por transporte/TLS; no hay jurisdicción autenticada | Mantener gate degradado del Chat; soporte usa subida directa del navegador con fallback SMTP |
 
 ## Regla de mantenimiento
 

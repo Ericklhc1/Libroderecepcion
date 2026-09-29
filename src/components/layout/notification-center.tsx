@@ -29,6 +29,7 @@ import {
   getDeviceNotificationState,
   reconcileDeviceNotifications,
   showDeviceNotification,
+  testDevicePush,
   type DeviceNotificationState,
 } from './device-notifications';
 
@@ -87,6 +88,8 @@ export function NotificationCenter({
   const [devicePermission, setDevicePermission] =
     useState<DeviceNotificationState>('unsupported');
   const [deviceEnabled, setDeviceEnabled] = useState(false);
+  const [pushTestBusy, setPushTestBusy] = useState(false);
+  const [pushTestMessage, setPushTestMessage] = useState<string | null>(null);
 
   const mutedRef = useRef(false);
   const profileSoundEnabledRef = useRef(true);
@@ -510,6 +513,18 @@ export function NotificationCenter({
     setDeviceEnabled(enabled);
   };
 
+  const testPush = async () => {
+    if (!deviceEnabled || pushTestBusy) return;
+    setPushTestBusy(true);
+    setPushTestMessage(null);
+    try {
+      const result = await testDevicePush();
+      setPushTestMessage(result.message);
+    } finally {
+      setPushTestBusy(false);
+    }
+  };
+
   return (
     <>
       {activeAlarm ? createPortal(
@@ -733,9 +748,19 @@ export function NotificationCenter({
 
             <div className="border-b border-slate-100 px-4 py-2.5 text-xs">
               {deviceEnabled ? (
-                <p className="font-medium text-emerald-700">
-                  Push del sistema activo en este dispositivo.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-emerald-700">
+                    Push del sistema activo en este dispositivo.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={pushTestBusy}
+                    onClick={() => void testPush()}
+                    className="rounded-lg border border-emerald-200 px-2.5 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                  >
+                    {pushTestBusy ? 'Enviando…' : 'Probar push'}
+                  </button>
+                </div>
               ) : devicePermission === 'requires-install' ? (
                 <p className="leading-5 text-amber-700">
                   En iPhone/iPad: abre AROH, usa Compartir → Añadir a pantalla de inicio,
@@ -756,6 +781,9 @@ export function NotificationCenter({
                   teléfono incluso con AROH cerrado.
                 </p>
               )}
+              {pushTestMessage ? (
+                <p className="mt-1.5 leading-5 text-slate-600">{pushTestMessage}</p>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">

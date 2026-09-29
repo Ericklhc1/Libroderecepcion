@@ -90,7 +90,9 @@ export function NotificationCenter({
   const mutedRef = useRef(false);
   const profileSoundEnabledRef = useRef(true);
   const notificationToneRef = useRef<ChatNotificationTone>('chime');
-  const knownIds = useRef(new Set(initialSnapshot.items.map((item) => item.id)));
+  const knownVersions = useRef(
+    new Map(initialSnapshot.items.map((item) => [item.id, item.createdAt])),
+  );
   const blockingAnnouncementSignature = useRef(
     initialSnapshot.blockingAnnouncementIds.join('|'),
   );
@@ -148,10 +150,15 @@ export function NotificationCenter({
   const applySnapshot = useCallback(
     (snapshot: NotificationFeedSnapshot, announceNew: boolean) => {
       const fresh = announceNew
-        ? snapshot.items.filter((item) => !item.readAt && !knownIds.current.has(item.id))
+        ? snapshot.items.filter(
+            (item) =>
+              !item.readAt && knownVersions.current.get(item.id) !== item.createdAt,
+          )
         : [];
 
-      for (const item of snapshot.items) knownIds.current.add(item.id);
+      for (const item of snapshot.items) {
+        knownVersions.current.set(item.id, item.createdAt);
+      }
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);

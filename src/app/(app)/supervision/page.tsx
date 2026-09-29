@@ -368,8 +368,17 @@ export default async function SupervisionCenterPage({
       <SupervisionAuditDashboard
         rows={center.auditImports}
         defaultBusinessDate={defaultAuditBusinessDate}
-        canUpload={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
-        canManage={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
+        canUpload={
+          isSupervisor &&
+          Boolean(center.currentShift) &&
+          center.currentShift?.status !== 'ENTREGADO' &&
+          hasPermission(user, 'supervision.audit.create')
+        }
+        canManage={
+          isSupervisor &&
+          center.currentShift?.status === 'ACTIVO' &&
+          hasPermission(user, 'supervision.audit.create')
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-2">

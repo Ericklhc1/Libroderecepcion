@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { FrontiConfig } from '@/server/ai/fronti-config';
-import { selectFrontiToolDefinitions } from '@/server/ai/fronti-v2/tool-registry';
+import type { PermissionKey } from '@/lib/permissions';
+import {
+  enabledFrontiToolDefinitions,
+  filterFrontiToolDefinitionsForUser,
+  selectFrontiToolDefinitions,
+} from '@/server/ai/fronti-v2/tool-registry';
 
 const config: FrontiConfig = {
   enabled: true,
@@ -50,6 +55,37 @@ describe('FRONTI alpha.5 · capacidad y presupuesto', () => {
     expect(names).toContain('consultar_garantias');
     expect(names).not.toContain('proponer_registro');
     expect(names).not.toContain('proponer_checkouts');
+  });
+
+  it('no expone herramientas que excedan los permisos del usuario que invoca a Fronti', () => {
+    const names = filterFrontiToolDefinitionsForUser(
+      {
+        isSystemAdmin: false,
+        permissions: ['room.view', 'task.create'] as PermissionKey[],
+      },
+      enabledFrontiToolDefinitions(config),
+    ).map((tool) => tool.name);
+
+    expect(names).toContain('consultar_habitacion');
+    expect(names).toContain('proponer_recordatorio');
+    expect(names).toContain('consultar_estado_operativo');
+    expect(names).not.toContain('consultar_caja');
+    expect(names).not.toContain('consultar_auditoria');
+    expect(names).not.toContain('consultar_configuracion_operativa');
+    expect(names).not.toContain('proponer_multa');
+  });
+
+  it('mantiene todas las herramientas habilitadas para Administrador de sistema', () => {
+    const enabled = enabledFrontiToolDefinitions(config);
+    const visible = filterFrontiToolDefinitionsForUser(
+      {
+        isSystemAdmin: true,
+        permissions: [] as PermissionKey[],
+      },
+      enabled,
+    );
+
+    expect(visible.map((tool) => tool.name)).toEqual(enabled.map((tool) => tool.name));
   });
 
   it('usa Groq -> Cloudflare -> Groq y limita salida', () => {

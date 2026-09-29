@@ -43,6 +43,7 @@ export type TaskCreateInput = {
   description?: string | null;
   assigneeId?: string | null;
   priority: Prisma.TaskCreateInput['priority'];
+  startsAt?: Date | null;
   dueAt?: Date | null;
   departmentId?: string | null;
   entryId?: string | null;
@@ -73,6 +74,10 @@ function inferOrigin(input: TaskCreateInput): TaskOrigin {
 }
 
 export async function createTask(user: CurrentUser, input: TaskCreateInput) {
+  if (input.startsAt && input.dueAt && input.dueAt <= input.startsAt) {
+    throw new RuleError('La fecha límite debe ser posterior al inicio programado.');
+  }
+
   const targetType = input.targetType ?? TaskTargetType.PERSONA;
   const participantIds = new Set<string>(input.collaboratorIds ?? []);
   let assigneeId = input.assigneeId ?? null;
@@ -124,6 +129,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         description: input.description ?? null,
         assigneeId,
         priority: input.priority,
+        startsAt: input.startsAt ?? null,
         dueAt: input.dueAt ?? null,
         departmentId: input.departmentId ?? null,
         entryId: input.entryId ?? null,
@@ -178,6 +184,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           title: created.title,
           assigneeId: created.assigneeId,
           priority: created.priority,
+          startsAt: created.startsAt,
           dueAt: created.dueAt,
           origin: created.origin,
           targetType: created.targetType,
@@ -221,6 +228,7 @@ const TASK_EDITABLE = [
   'title',
   'description',
   'priority',
+  'startsAt',
   'dueAt',
   'departmentId',
   'tags',
@@ -236,6 +244,13 @@ export async function updateTask(
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
+
+  const nextStartsAt = 'startsAt' in input ? input.startsAt ?? null : current.startsAt;
+  const nextDueAt = 'dueAt' in input ? input.dueAt ?? null : current.dueAt;
+  if (nextStartsAt && nextDueAt && nextDueAt <= nextStartsAt) {
+    throw new RuleError('La fecha límite debe ser posterior al inicio programado.');
+  }
+
   if (
     current.status === TaskStatus.VALIDADA ||
     current.status === TaskStatus.COMPLETADA ||

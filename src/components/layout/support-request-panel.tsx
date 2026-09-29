@@ -229,6 +229,10 @@ export function SupportRequestPanel({
         }
       }
 
+      const storedKinds = new Set(storedAttachments.map((item) => item.kind));
+      const emailScreenshot = storedKinds.has('CAPTURA') ? null : screenshot;
+      const emailAttachment = storedKinds.has('ARCHIVO') ? null : attachment;
+
       const response = await fetch('/api/soporte/solicitud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -237,8 +241,10 @@ export function SupportRequestPanel({
           kind,
           subject: subject.trim(),
           description: description.trim(),
-          screenshot,
-          attachment,
+          // Si el binario ya quedó en R2 no vuelve a viajar como base64 hacia Vercel.
+          // El correo conserva sólo el fallback de los archivos que no lograron archivarse.
+          screenshot: emailScreenshot,
+          attachment: emailAttachment,
           storedAttachments,
           context: {
             pathname: window.location.pathname,
@@ -466,7 +472,7 @@ export function SupportRequestPanel({
               ) : null}
 
               <div className="mt-4 rounded-xl bg-petrol-50 px-3 py-2.5 text-xs leading-4 text-petrol-800 ring-1 ring-petrol-100">
-                Se enviarán automáticamente: referencia de soporte, módulo/ruta, versión, alojamiento, navegador/plataforma, zona horaria, tamaño de ventana y estado de turno cuando corresponda. No se adjunta contenido de otros módulos por detrás.
+                Se enviarán automáticamente: referencia de soporte, módulo/ruta, versión, alojamiento, navegador/plataforma, zona horaria, tamaño de ventana y estado de turno cuando corresponda. Las capturas y archivos se archivan de forma privada para consultarlos desde la bandeja; si ese archivado falla, el sistema conserva el envío por correo como respaldo.
               </div>
 
               {state.status === 'ok' ? (

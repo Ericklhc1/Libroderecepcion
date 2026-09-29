@@ -4,7 +4,11 @@ import { useState } from 'react';
 import { ShieldAlert, TriangleAlert } from 'lucide-react';
 import { ActionForm, Checkbox, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
-import { saveMailConfigAction, sendMailTestAction } from '@/server/actions/mail';
+import {
+  saveMailConfigAction,
+  saveNotificationEmailPolicyAction,
+  sendMailTestAction,
+} from '@/server/actions/mail';
 import {
   INBOUND_PORT_HINTS,
   INBOUND_PROTOCOL_LABELS,
@@ -351,6 +355,61 @@ export function MailTestForm({ defaultTo }: { defaultTo: string }) {
       <SubmitButton variant="secondary" pendingLabel="Enviando…">
         Enviar correo de prueba
       </SubmitButton>
+    </ActionForm>
+  );
+}
+
+
+export function EmailNotificationPolicyForm({
+  rows,
+}: {
+  rows: Array<{
+    type: string;
+    label: string;
+    mode: 'OBLIGATORIO' | 'PREFERENCIA' | 'DESACTIVADO';
+    defaultMode: 'OBLIGATORIO' | 'PREFERENCIA' | 'DESACTIVADO';
+  }>;
+}) {
+  return (
+    <ActionForm action={saveNotificationEmailPolicyAction} refreshOnSuccess className="space-y-4">
+      <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+        <p>
+          <strong>Obligatorio</strong>: si la persona tiene correo registrado, se envía aunque haya
+          desactivado los avisos opcionales. <strong>Según preferencia</strong>: respeta su
+          interruptor personal. <strong>Sin correo</strong>: queda sólo en la Central y en los canales
+          inmediatos.
+        </p>
+      </div>
+
+      <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+        {rows.map((row) => (
+          <label
+            key={row.type}
+            className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_13rem] sm:items-center"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-petrol-900">{row.label}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                {row.type.replaceAll('_', ' ').toLowerCase()}
+                {row.mode !== row.defaultMode ? ' · personalizado' : ' · valor recomendado'}
+              </span>
+            </span>
+            <select
+              name={`policy_${row.type}`}
+              defaultValue={row.mode}
+              className="input-base w-full"
+            >
+              <option value="OBLIGATORIO">Obligatorio por correo</option>
+              <option value="PREFERENCIA">Según preferencia del usuario</option>
+              <option value="DESACTIVADO">Sin correo</option>
+            </select>
+          </label>
+        ))}
+      </div>
+
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Guardando política…">Guardar política de avisos</SubmitButton>
+      </div>
     </ActionForm>
   );
 }

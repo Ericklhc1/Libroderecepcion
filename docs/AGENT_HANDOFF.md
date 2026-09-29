@@ -1,5 +1,16 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.27.0 · usuarios ocultos
+
+- `User.hiddenFromSelectors` es una propiedad administrativa independiente de `active` y del rol.
+- Una cuenta oculta conserva login, permisos, operación propia, historial, trazabilidad y destinatarios automáticos/globales; **no equivale a inactiva**.
+- `listOperationalUsers()` es la regla canónica para selectores generales y excluye cuentas ocultas.
+- También se bloquean vías directas que podían saltarse el selector: incorporación manual a turnos, nuevos chats/grupos, alarmas individuales/grupales y menciones `@usuario`.
+- Las referencias históricas y conversaciones ya existentes conservan el nombre del usuario; los broadcasts de equipo/globales siguen incluyéndolo.
+- Administración muestra el estado **Oculto** y permite activarlo/desactivarlo sin cerrar sesiones.
+- Migración aditiva: `20260929170000_usuario_oculto_operacion`. Release objetivo: **v1.27.0**.
+
+
 ## 29/09/2026 · AROH 1.26.3 · hotfix panel Reportar / solicitar
 
 - El panel de soporte debe montarse en `document.body` mediante `createPortal`.

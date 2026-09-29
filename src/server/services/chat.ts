@@ -14,6 +14,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import { canUseFronti } from '@/server/ai/fronti-access';
 import { NotFoundError, RuleError } from '@/server/errors';
+import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
 import {
   createR2PresignedPutUrl,
   deleteR2Object,
@@ -1245,6 +1246,12 @@ export async function sendChatMessage(
       }
     }
 
+    scheduleWebPushForUsers(
+      recipients
+        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+        .map((recipient) => recipient.userId),
+    );
+
     return message;
   });
 
@@ -1541,6 +1548,12 @@ export async function finalizeChatAttachmentUpload(
       });
     }
 
+    scheduleWebPushForUsers(
+      recipients
+        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+        .map((recipient) => recipient.userId),
+    );
+
     return message;
   });
 }
@@ -1708,6 +1721,12 @@ export async function createChatAttachmentMessage(
           },
         });
       }
+
+      scheduleWebPushForUsers(
+        recipients
+          .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+          .map((recipient) => recipient.userId),
+      );
 
       return message;
     });
@@ -1904,6 +1923,12 @@ export async function sendCustomStickerMessage(
       },
       update: { usedAt: now },
     });
+
+    scheduleWebPushForUsers(
+      recipients
+        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+        .map((recipient) => recipient.userId),
+    );
 
     return message;
   });

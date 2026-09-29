@@ -1,5 +1,18 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.32.0 · Web Push nativo y PWA
+
+- AROH incorpora **Web Push real** mediante Push API + Service Worker + VAPID propio: las notificaciones pueden llegar al sistema operativo aunque la pestaña de AROH esté cerrada.
+- Cada navegador/dispositivo autorizado registra una `PushSubscription` vinculada a la cuenta. El usuario concede o retira el permiso desde la campana con ondas; no se activa silenciosamente.
+- El push transporta una **señal vacía**. El servicio push de Apple/Google/Mozilla no recibe el texto operativo: el Service Worker despierta y recupera el contenido desde AROH con la sesión vigente.
+- Windows/macOS/Android usan Web Push en navegadores compatibles. En iPhone/iPad se declara AROH como PWA `standalone`; iOS/iPadOS requiere añadir la web a la pantalla de inicio y conceder permiso desde la app instalada.
+- Se cubren notificaciones centrales, chat/menciones, respuestas de Fronti, resultados de auditoría y alarmas. Las rutas que crean notificaciones fuera del despachador común programan push explícitamente.
+- Las alarmas vencidas ya no dependen de una pestaña abierta: `/api/cron/web-push` corre cada minuto en Vercel Pro, materializa alarmas pendientes y rescata entregas push.
+- Las llaves VAPID se generan una sola vez, la privada queda cifrada con `AUTH_SECRET`, y una inconsistencia no provoca rotación automática que invalide dispositivos.
+- Los endpoints de alta/baja de dispositivos exigen sesión vigente, términos aceptados y mismo origen. Suscripciones expiradas 404/410 se eliminan automáticamente.
+- Se conserva el sistema previo como respaldo: toast, sonido y sondeo cuando AROH está abierto.
+- Healthcheck técnico: `/api/health/push`. Migración aditiva: `20260929201000_web_push_subscriptions`. Release objetivo: **v1.32.0**.
+
 ## Actualización 29/09/2026 · AROH 1.31.0 · Fronti proactivo y diagnóstico real de proveedores
 
 - Fronti incorpora una capa **proactiva de fondo** sobre señales ya detectadas de forma determinística. La IA explica, correlaciona y sugiere revisión humana; **no modifica por sí sola** Caja, turnos, garantías, reservas, llaves ni estados operativos.

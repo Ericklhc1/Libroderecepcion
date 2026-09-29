@@ -9,6 +9,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { RuleError, NotFoundError } from '@/server/errors';
+import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
 import { getFrontiConfig } from './fronti-config';
 import { canUseFronti } from './fronti-access';
 import {
@@ -188,6 +189,12 @@ async function persistFrontiChatMessage(input: {
         },
       });
     }
+
+    scheduleWebPushForUsers(
+      recipients
+        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+        .map((recipient) => recipient.userId),
+    );
 
     return created;
   });

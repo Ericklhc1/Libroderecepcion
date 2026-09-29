@@ -27,7 +27,9 @@ import {
   disableDeviceNotifications,
   enableDeviceNotifications,
   getDeviceNotificationState,
+  reconcileDeviceNotifications,
   showDeviceNotification,
+  testDevicePush,
   type DeviceNotificationState,
 } from './device-notifications';
 
@@ -86,6 +88,8 @@ export function NotificationCenter({
   const [devicePermission, setDevicePermission] =
     useState<DeviceNotificationState>('unsupported');
   const [deviceEnabled, setDeviceEnabled] = useState(false);
+  const [pushTestBusy, setPushTestBusy] = useState(false);
+  const [pushTestMessage, setPushTestMessage] = useState<string | null>(null);
 
   const mutedRef = useRef(false);
   const profileSoundEnabledRef = useRef(true);
@@ -131,6 +135,14 @@ export function NotificationCenter({
     setDevicePermission(state.permission);
     setDeviceEnabled(state.enabled);
     deviceEnabledRef.current = state.enabled;
+
+    if (state.enabled) {
+      void reconcileDeviceNotifications().then((healthy) => {
+        if (!healthy) return;
+        setDeviceEnabled(true);
+        deviceEnabledRef.current = true;
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -488,7 +500,7 @@ export function NotificationCenter({
 
   const toggleDeviceNotifications = async () => {
     if (deviceEnabled) {
-      disableDeviceNotifications();
+      await disableDeviceNotifications();
       deviceEnabledRef.current = false;
       setDeviceEnabled(false);
       return;
@@ -499,6 +511,18 @@ export function NotificationCenter({
     const enabled = permission === 'granted';
     deviceEnabledRef.current = enabled;
     setDeviceEnabled(enabled);
+  };
+
+  const testPush = async () => {
+    if (!deviceEnabled || pushTestBusy) return;
+    setPushTestBusy(true);
+    setPushTestMessage(null);
+    try {
+      const result = await testDevicePush();
+      setPushTestMessage(result.message);
+    } finally {
+      setPushTestBusy(false);
+    }
   };
 
   return (
@@ -586,17 +610,21 @@ export function NotificationCenter({
           }`}
           aria-label={
             deviceEnabled
-              ? 'Notificaciones del dispositivo activas. Desactivarlas'
+              ? 'Push del sistema activo. Desactivarlo'
               : devicePermission === 'denied'
                 ? 'Notificaciones del dispositivo bloqueadas por el navegador'
-                : 'Activar notificaciones del dispositivo'
+                : devicePermission === 'requires-install'
+                  ? 'En iPhone/iPad, añade AROH a la pantalla de inicio para activar push'
+                  : 'Activar push del sistema'
           }
           title={
             deviceEnabled
-              ? 'Avisos del dispositivo activos'
+              ? 'Push del sistema activo'
               : devicePermission === 'denied'
                 ? 'Permiso bloqueado en el navegador'
-                : 'Activar avisos del dispositivo'
+                : devicePermission === 'requires-install'
+                  ? 'iPhone/iPad: Añadir a pantalla de inicio'
+                  : 'Activar push del sistema'
           }
         >
           <BellRing className="h-5 w-5" aria-hidden="true" />
@@ -716,6 +744,46 @@ export function NotificationCenter({
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
+            </div>
+
+            <div className="border-b border-slate-100 px-4 py-2.5 text-xs">
+              {deviceEnabled ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-emerald-700">
+                    Push del sistema activo en este dispositivo.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={pushTestBusy}
+                    onClick={() => void testPush()}
+                    className="rounded-lg border border-emerald-200 px-2.5 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                  >
+                    {pushTestBusy ? 'Enviando…' : 'Probar push'}
+                  </button>
+                </div>
+              ) : devicePermission === 'requires-install' ? (
+                <p className="leading-5 text-amber-700">
+                  En iPhone/iPad: abre AROH, usa Compartir → Añadir a pantalla de inicio,
+                  entra desde el icono de AROH y activa la campana con ondas.
+                </p>
+              ) : devicePermission === 'denied' ? (
+                <p className="leading-5 text-red-700">
+                  El sistema operativo o navegador bloqueó las notificaciones. Debes
+                  habilitarlas en los permisos del sitio/dispositivo.
+                </p>
+              ) : devicePermission === 'unsupported' ? (
+                <p className="leading-5 text-slate-500">
+                  Este navegador no ofrece Web Push compatible.
+                </p>
+              ) : (
+                <p className="leading-5 text-slate-500">
+                  Activa la campana con ondas para recibir avisos de Windows, macOS o
+                  teléfono incluso con AROH cerrado.
+                </p>
+              )}
+              {pushTestMessage ? (
+                <p className="mt-1.5 leading-5 text-slate-600">{pushTestMessage}</p>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">

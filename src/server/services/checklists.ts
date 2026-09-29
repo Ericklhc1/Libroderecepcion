@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
+import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { assertAssignable } from './users';
 
@@ -513,6 +514,10 @@ export async function finishRun(
     );
     return result;
   });
+
+  if (recipientIds.length > 0) {
+    scheduleWebPushForUsers(recipientIds);
+  }
 
   return {
     run: closed,

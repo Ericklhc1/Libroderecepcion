@@ -101,7 +101,7 @@ function minIso(a: string, b: string): string {
 }
 
 function numericTokens(line: string): number[] {
-  return Array.from(line.matchAll(/(?<![\d.])(\d{1,3}(?:\.\d{3})+|\d+)(?![\d.])/g))
+  return Array.from(line.matchAll(/(?<![\d.])(-?\d{1,3}(?:\.\d{3})+|-?\d+)(?![\d.])/g))
     .map((match) => Number((match[1] ?? '').replace(/\./g, '')))
     .filter((value) => Number.isFinite(value));
 }
@@ -116,20 +116,47 @@ function findLine(lines: string[], predicate: (line: string, index: number) => b
   return lines.findIndex(predicate);
 }
 
+function continuationNumbers(
+  line: string,
+  continuationPrefix?: string,
+): number[] {
+  const source =
+    continuationPrefix && line.toLocaleLowerCase('es-CL').startsWith(continuationPrefix.toLocaleLowerCase('es-CL'))
+      ? line.slice(continuationPrefix.length)
+      : line;
+
+  if (!continuationPrefix) {
+    const residue = source
+      .replace(/CL\$/gi, '')
+      .replace(/US\$/gi, '')
+      .replace(/-?\d{1,3}(?:\.\d{3})+|-?\d+/g, '')
+      .replace(/[\s.,:%$()/-]/g, '');
+    if (residue.length > 0) return [];
+  }
+
+  return numericTokens(source);
+}
+
 function seriesAt(
   lines: string[],
   index: number,
   prefix: string,
   count: number,
-  options: { allowNextLine?: boolean } = {},
+  options: { continuationPrefix?: string; allowNumericContinuation?: boolean } = {},
 ): Array<number | null> {
   if (index < 0 || !lines[index]) return Array.from({ length: count }, () => null);
   const line = lines[index]!;
   const own = numericTokens(line.slice(prefix.length));
   const values = [...own];
-  if (options.allowNextLine !== false && values.length < count && lines[index + 1]) {
-    values.push(...numericTokens(lines[index + 1]!));
+
+  if (
+    values.length < count &&
+    lines[index + 1] &&
+    (options.allowNumericContinuation || options.continuationPrefix)
+  ) {
+    values.push(...continuationNumbers(lines[index + 1]!, options.continuationPrefix));
   }
+
   return Array.from({ length: count }, (_, i) => values[i] ?? null);
 }
 
@@ -145,10 +172,6 @@ function percentSeriesAt(
 
 function valueAt(values: Array<number | null>, index: number): number | null {
   return values[index] ?? null;
-}
-
-function sumNonNull(values: Array<number | null>): number {
-  return values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
 function costCenterTotals(days: SalesPeriodDay[]): Record<keyof SalesPeriodCostCenters, number> {
@@ -220,8 +243,8 @@ export function parseSalesPeriodReport(rawText: string): SalesPeriodMetrics | nu
   const breakfastsIndex = findLine(lines, (line) => /^Desayuno\b/i.test(line));
   const totalAccommodationIndex = findLine(lines, (line) => /^TOTAL\s+CL\$/i.test(line));
 
-  const hotelTotal = seriesAt(lines, hotelIndex, 'Hotel HW', count);
-  const accommodation = seriesAt(lines, accommodationIndex, 'Alojamiento', count);
+  const hotelTotal = seriesAt(lines, hotelIndex, 'Hotel HW', count, { continuationPrefix: 'LIBERTAD' });
+  const accommodation = seriesAt(lines, accommodationIndex, 'Alojamiento', count, { allowNumericContinuation: true });
   const events = seriesAt(lines, eventsIndex, 'Eventos', count);
   const spa = seriesAt(lines, spaIndex, 'Spa', count);
   const fines = seriesAt(lines, finesIndex, 'Multas', count);
@@ -242,15 +265,15 @@ export function parseSalesPeriodReport(rawText: string): SalesPeriodMetrics | nu
   const adr = seriesAt(lines, adrIndex, 'ADR', count);
   const occupancy = percentSeriesAt(lines, occupancyIndex, count);
   const paidOccupancy = percentSeriesAt(lines, paidOccupancyIndex, count);
-  const roomRevenue = seriesAt(lines, roomRevenueIndex, 'RREV', count);
+  const roomRevenue = seriesAt(lines, roomRevenueIndex, 'RREV', count, { allowNumericContinuation: true });
   const checkIns = seriesAt(lines, checkInIndex, 'Check-in', count);
   const checkOuts = seriesAt(lines, checkOutIndex, 'Check-out', count);
   const noShows = seriesAt(lines, noShowIndex, 'No Show', count);
   const cancellations = seriesAt(lines, cancellationsIndex, 'Canceladas', count);
   const breakfasts = seriesAt(lines, breakfastsIndex, 'Desayuno', count);
-  const totalAccommodation = seriesAt(lines, totalAccommodationIndex, 'TOTAL', count);
+  const totalAccommodation = seriesAt(lines, totalAccommodationIndex, 'TOTAL', count, { allowNumericContinuation: true });
 
-  const daily: SalesPeriodDay[] = dates.map((date, index) => ({
+  const parsedDaily: SalesPeriodDay[] = dates.map((date, index) => ({
     date,
     hotelTotalClp: valueAt(hotelTotal, index),
     costCenters: {
@@ -285,6 +308,26 @@ export function parseSalesPeriodReport(rawText: string): SalesPeriodMetrics | nu
     totalAccommodationClp: valueAt(totalAccommodation, index),
   }));
 
+  const completeDay = (day: SalesPeriodDay) =>
+    day.hotelTotalClp !== null &&
+    Object.values(day.costCenters).every((value) => value !== null) &&
+    day.totalRooms !== null &&
+    day.freeRooms !== null &&
+    day.occupiedRooms !== null &&
+    day.occupiedWithCost !== null &&
+    day.courtesyRooms !== null &&
+    day.blockedRooms !== null &&
+    day.adrClp !== null &&
+    day.occupancyPct !== null &&
+    day.paidOccupancyPct !== null &&
+    day.roomRevenueClp !== null &&
+    day.checkIns !== null &&
+    day.checkOuts !== null &&
+    day.totalAccommodationClp !== null;
+
+  const firstIncomplete = parsedDaily.findIndex((day) => !completeDay(day));
+  const daily = parsedDaily.slice(0, firstIncomplete >= 0 ? firstIncomplete : parsedDaily.length);
+
   const generatedLine = lines.find((line) => /^Informe generado el\b/i.test(line));
   const generatedMatch = generatedLine?.match(
     /(\d{1,2}\/\d{1,2}\/\d{4})(?:\s+(\d{1,2}:\d{2}:\d{2}))?/,
@@ -294,7 +337,7 @@ export function parseSalesPeriodReport(rawText: string): SalesPeriodMetrics | nu
     ? minIso(periodEnd, generatedDate < periodStart ? periodStart : generatedDate)
     : periodEnd;
   const expectedVisibleDays = inclusiveDays(periodStart, expectedThrough);
-  const visibleThrough = dates.at(-1) ?? null;
+  const visibleThrough = daily.at(-1)?.date ?? null;
   const truncated = daily.length < expectedVisibleDays;
 
   return {
@@ -310,9 +353,9 @@ export function parseSalesPeriodReport(rawText: string): SalesPeriodMetrics | nu
     truncated,
     daily,
     totals: {
-      courtesyRooms: sumNonNull(courtesyRooms),
-      dayUse: sumNonNull(dayUse),
-      blockedRoomDays: sumNonNull(blockedRooms),
+      courtesyRooms: daily.reduce((sum, day) => sum + (day.courtesyRooms ?? 0), 0),
+      dayUse: daily.reduce((sum, day) => sum + (day.dayUse ?? 0), 0),
+      blockedRoomDays: daily.reduce((sum, day) => sum + (day.blockedRooms ?? 0), 0),
       costCentersClp: costCenterTotals(daily),
     },
   };

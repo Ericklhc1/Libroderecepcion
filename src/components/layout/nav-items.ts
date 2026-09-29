@@ -351,7 +351,7 @@ const SYSTEM: NavItem[] = [
     href: '/admin',
     label: 'Administración',
     icon: 'admin',
-    anyOf: [...TECHNICAL_ADMIN_PERMISSIONS],
+    anyOf: [...TECHNICAL_ADMIN_PERMISSIONS, 'support.view'],
     menu: [
       {
         title: 'Administración',
@@ -372,6 +372,12 @@ const SYSTEM: NavItem[] = [
             label: 'Roles y permisos',
             description: 'Matriz de autorizaciones.',
             anyOf: ['role.manage'],
+          },
+          {
+            href: '/admin/soporte',
+            label: 'Reportes y solicitudes',
+            description: 'Bandeja de problemas y funciones solicitadas.',
+            anyOf: ['support.view'],
           },
         ],
       },

@@ -1,5 +1,15 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.25.4 · identidad final del producto
+
+- Nombre del producto: **AROH Central IA**.
+- En la cabecera global, **AROH Central IA** aparece como identidad principal y el **nombre del alojamiento** debajo como contexto de propiedad.
+- «Central de Operaciones» deja de ser el nombre del producto; puede usarse sólo como descripción funcional genérica cuando corresponda.
+- «Libro/Novedades» continúa como módulo interno y no como marca de la plataforma.
+- Se alinea la identidad en UI, metadatos, correos, avisos, Fronti, términos, documentos imprimibles e icono accesible.
+- Sin cambios de esquema ni datos. Repositorio, proyecto Vercel y dominio se mantienen; la migración de subdominio sigue siendo una fase separada.
+- Release objetivo: **v1.25.4**.
+
 ## Actualización 29/09/2026 · AROH 1.25.0 · jornada operativa canónica e identidad
 
 - La plataforma pasa a llamarse **AROH Central IA · Hotel HW Libertad**. «Libro/Novedades» queda como un módulo interno, no como nombre del producto completo.

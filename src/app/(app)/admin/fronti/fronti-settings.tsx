@@ -9,6 +9,7 @@ import {
   saveFrontiProviderCredentialAction,
   saveFrontiSettingAction,
   setFrontiUserAccessAction,
+  testFrontiProviderAction,
 } from '@/server/actions/fronti';
 
 export type FrontiUserAccessRow = {
@@ -213,6 +214,14 @@ export type FrontiProviderCredentialRow = {
   hasStoredSecret: boolean;
   storedSecretUnreadable: boolean;
   envConfigured: boolean;
+  effectiveCredentialSource: 'stored' | 'environment' | 'stored-unreadable' | 'none';
+  cloudflareAccountIdSource:
+    | 'CLOUDFLARE_ACCOUNT_ID'
+    | 'R2_ACCOUNT_ID'
+    | 'R2_ACCOUND_ID'
+    | 'none'
+    | null;
+  baseUrlConfigured: boolean;
   active: boolean;
 };
 
@@ -231,13 +240,26 @@ export function FrontiProviderCredentials({
     <div className="divide-y divide-slate-100">
       {credentials.map((credential) => {
         const usableStored = credential.hasStoredSecret && !credential.storedSecretUnreadable;
-        const source = usableStored
-          ? 'Guardada cifrada en el Libro'
-          : credential.envConfigured
-            ? 'Variable de entorno'
-            : credential.provider === 'vllm'
-              ? 'Sin token guardado · puede ser opcional'
-              : 'Sin credencial';
+        const source =
+          credential.effectiveCredentialSource === 'stored'
+            ? 'Guardada cifrada en la Central · tiene prioridad'
+            : credential.effectiveCredentialSource === 'environment'
+              ? 'Variable de entorno de Vercel'
+              : credential.effectiveCredentialSource === 'stored-unreadable'
+                ? 'Credencial guardada no legible'
+                : credential.provider === 'vllm'
+                  ? 'Sin token guardado · puede ser opcional'
+                  : 'Sin credencial';
+        const cloudflareAccountNote =
+          credential.provider === 'cloudflare'
+            ? credential.cloudflareAccountIdSource === 'R2_ACCOUND_ID'
+              ? 'Account ID: alias heredado R2_ACCOUND_ID. Conviene migrarlo a CLOUDFLARE_ACCOUNT_ID.'
+              : credential.cloudflareAccountIdSource === 'R2_ACCOUNT_ID'
+                ? 'Account ID reutilizado desde R2_ACCOUNT_ID.'
+                : credential.cloudflareAccountIdSource === 'CLOUDFLARE_ACCOUNT_ID'
+                  ? 'Account ID dedicado de Cloudflare configurado.'
+                  : 'Falta Account ID de Cloudflare.'
+            : null;
         return (
           <div key={credential.provider} className="space-y-3 px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -247,6 +269,14 @@ export function FrontiProviderCredentials({
                   {credential.active ? ' · activo' : ''}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-600">{source}</p>
+                {cloudflareAccountNote ? (
+                  <p className="mt-1 text-xs text-slate-500">{cloudflareAccountNote}</p>
+                ) : null}
+                {!credential.baseUrlConfigured ? (
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    El proveedor no tiene una ruta de conexión completa; una clave válida no bastaría.
+                  </p>
+                ) : null}
                 {credential.storedSecretUnreadable ? (
                   <p className="mt-1 text-xs font-medium text-amber-700">
                     Hay una credencial guardada que ya no puede descifrarse. Reemplázala.
@@ -286,14 +316,27 @@ export function FrontiProviderCredentials({
               </div>
             </ActionForm>
 
-            {credential.hasStoredSecret || credential.storedSecretUnreadable ? (
-              <ActionForm action={clearFrontiProviderCredentialAction} className="space-y-0">
+            <div className="flex flex-wrap gap-2">
+              <ActionForm action={testFrontiProviderAction} className="space-y-0">
                 <input type="hidden" name="provider" value={credential.provider} />
-                <SubmitButton size="sm" variant="secondary" pendingLabel="Eliminando…">
-                  Quitar credencial guardada
+                <SubmitButton
+                  size="sm"
+                  variant="secondary"
+                  pendingLabel="Probando inferencia…"
+                  disabled={!credential.baseUrlConfigured}
+                >
+                  Probar inferencia real
                 </SubmitButton>
               </ActionForm>
-            ) : null}
+              {credential.hasStoredSecret || credential.storedSecretUnreadable ? (
+                <ActionForm action={clearFrontiProviderCredentialAction} className="space-y-0">
+                  <input type="hidden" name="provider" value={credential.provider} />
+                  <SubmitButton size="sm" variant="secondary" pendingLabel="Eliminando…">
+                    Quitar credencial guardada
+                  </SubmitButton>
+                </ActionForm>
+              ) : null}
+            </div>
           </div>
         );
       })}

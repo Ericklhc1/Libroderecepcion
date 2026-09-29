@@ -3,6 +3,7 @@
 import type { ChatNotificationTone } from '@/domain/chat';
 
 let audioContext: AudioContext | null = null;
+let notificationBus: GainNode | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -19,8 +20,25 @@ function getAudioContext(): AudioContext | null {
   }
 }
 
+function getNotificationBus(context: AudioContext): AudioNode {
+  if (notificationBus) return notificationBus;
+
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.value = -18;
+  compressor.knee.value = 16;
+  compressor.ratio.value = 8;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.2;
+
+  notificationBus = context.createGain();
+  notificationBus.gain.value = 1.35;
+  notificationBus.connect(compressor).connect(context.destination);
+  return notificationBus;
+}
+
 export function primeNotificationAudio(): void {
-  getAudioContext();
+  const context = getAudioContext();
+  if (context) getNotificationBus(context);
 }
 
 function playNote(
@@ -30,6 +48,7 @@ function playNote(
   duration: number,
   peak: number,
   waveform: OscillatorType = 'triangle',
+  output?: AudioNode,
 ) {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -41,7 +60,7 @@ function playNote(
   gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), startAt + 0.012);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
-  oscillator.connect(gain).connect(context.destination);
+  oscillator.connect(gain).connect(output ?? context.destination);
   oscillator.start(startAt);
   oscillator.stop(startAt + duration + 0.03);
 }
@@ -98,9 +117,9 @@ function patternFor(tone: ChatNotificationTone, urgent: boolean): TonePattern {
 }
 
 /**
- * Tono deliberadamente alto: recepción es un ambiente con conversación,
- * teléfonos y movimiento. La salida sigue dentro de rango digital seguro,
- * pero deja de ser un "ping" tímido de fondo.
+ * Tono de operación: recepción es un ambiente con conversación, teléfonos y
+ * movimiento. Se usa compresión + capa armónica para aprovechar mejor el nivel
+ * disponible del navegador sin intentar sobrepasar el volumen físico del equipo.
  */
 export function playChime(
   urgent = false,
@@ -110,7 +129,8 @@ export function playChime(
   if (!context) return;
 
   const now = context.currentTime + 0.01;
-  const peak = urgent ? 0.5 : 0.38;
+  const peak = urgent ? 0.86 : 0.68;
+  const output = getNotificationBus(context);
 
   for (const note of patternFor(tone, urgent)) {
     playNote(
@@ -120,6 +140,19 @@ export function playChime(
       note.duration,
       peak,
       note.waveform ?? 'triangle',
+      output,
+    );
+
+    // Una capa armónica corta aumenta presencia en parlantes pequeños de
+    // notebook/teléfono sin depender de subir artificialmente el volumen del SO.
+    playNote(
+      context,
+      note.frequency * 2,
+      now + note.offset + 0.006,
+      Math.max(0.08, note.duration * 0.82),
+      peak * 0.28,
+      'sine',
+      output,
     );
   }
 }

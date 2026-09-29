@@ -118,7 +118,7 @@ export default async function ProfilePage() {
           <Field
             label="Correo"
             name="email"
-            hint="Se usa para novedades del Libro; tu usuario de acceso no cambia."
+            hint="Se usa para avisos de la Central; tu usuario de acceso no cambia."
           >
             <Input
               name="email"
@@ -131,12 +131,13 @@ export default async function ProfilePage() {
           </Field>
           <Checkbox
             name="emailNotificationsEnabled"
-            label="Recibir novedades del Libro por correo"
+            label="Recibir avisos opcionales de la Central por correo"
             defaultChecked={record.emailNotificationsEnabled}
           />
           <p className="text-xs text-slate-500">
-            Chat y timers no se envían por correo para evitar ruido. Las notificaciones internas
-            continúan funcionando aunque desactives este canal.
+            Este interruptor controla sólo los avisos opcionales. Los eventos que Administración
+            marque como obligatorios se enviarán igualmente al correo registrado. Chat y alarmas
+            siguen priorizando aviso interno y notificación del dispositivo.
           </p>
           <SubmitButton pendingLabel="Guardando…">Guardar correo y avisos</SubmitButton>
         </ActionForm>

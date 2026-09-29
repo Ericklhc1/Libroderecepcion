@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlarmClock,
   Bell,
+  BellRing,
   CheckCheck,
   ExternalLink,
   Volume2,
@@ -22,6 +23,13 @@ import {
 } from '@/domain/notifications';
 import { playChime, primeNotificationAudio } from './notification-chime';
 import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
+import {
+  disableDeviceNotifications,
+  enableDeviceNotifications,
+  getDeviceNotificationState,
+  showDeviceNotification,
+  type DeviceNotificationState,
+} from './device-notifications';
 
 const MUTE_KEY = 'libro.avisoSonoro.silenciado';
 const KEEP_ALIVE_MS = 4 * 60_000;
@@ -75,16 +83,22 @@ export function NotificationCenter({
   const [audioReady, setAudioReady] = useState(false);
   const [toast, setToast] = useState<NotificationFeedItem | null>(null);
   const [alarmBusy, setAlarmBusy] = useState(false);
+  const [devicePermission, setDevicePermission] =
+    useState<DeviceNotificationState>('unsupported');
+  const [deviceEnabled, setDeviceEnabled] = useState(false);
 
   const mutedRef = useRef(false);
   const profileSoundEnabledRef = useRef(true);
   const notificationToneRef = useRef<ChatNotificationTone>('chime');
-  const knownIds = useRef(new Set(initialSnapshot.items.map((item) => item.id)));
+  const knownVersions = useRef(
+    new Map(initialSnapshot.items.map((item) => [item.id, item.createdAt])),
+  );
   const blockingAnnouncementSignature = useRef(
     initialSnapshot.blockingAnnouncementIds.join('|'),
   );
   const lastActivityAt = useRef(Date.now());
   const lastKeepAliveAt = useRef(0);
+  const deviceEnabledRef = useRef(false);
 
   useEffect(() => {
     mutedRef.current = muted;
@@ -113,6 +127,17 @@ export function NotificationCenter({
   }, []);
 
   useEffect(() => {
+    const state = getDeviceNotificationState();
+    setDevicePermission(state.permission);
+    setDeviceEnabled(state.enabled);
+    deviceEnabledRef.current = state.enabled;
+  }, []);
+
+  useEffect(() => {
+    deviceEnabledRef.current = deviceEnabled;
+  }, [deviceEnabled]);
+
+  useEffect(() => {
     const prime = () => primeNotificationAudio();
     window.addEventListener('pointerdown', prime, { once: true });
     window.addEventListener('keydown', prime, { once: true });
@@ -125,10 +150,15 @@ export function NotificationCenter({
   const applySnapshot = useCallback(
     (snapshot: NotificationFeedSnapshot, announceNew: boolean) => {
       const fresh = announceNew
-        ? snapshot.items.filter((item) => !item.readAt && !knownIds.current.has(item.id))
+        ? snapshot.items.filter(
+            (item) =>
+              !item.readAt && knownVersions.current.get(item.id) !== item.createdAt,
+          )
         : [];
 
-      for (const item of snapshot.items) knownIds.current.add(item.id);
+      for (const item of snapshot.items) {
+        knownVersions.current.set(item.id, item.createdAt);
+      }
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);
@@ -147,12 +177,20 @@ export function NotificationCenter({
 
       if (fresh.length > 0) {
         const newest = fresh[0];
-        if (newest) {
-          if (newest.type !== 'ALARMA') {
-            setToast(newest);
-            if (!mutedRef.current && profileSoundEnabledRef.current) {
-              playChime(isUrgent(newest), notificationToneRef.current);
-            }
+
+        if (
+          document.visibilityState !== 'visible' &&
+          deviceEnabledRef.current
+        ) {
+          for (const item of fresh.slice(0, 3)) {
+            void showDeviceNotification(item);
+          }
+        }
+
+        if (newest && newest.type !== 'ALARMA') {
+          setToast(newest);
+          if (!mutedRef.current && profileSoundEnabledRef.current) {
+            playChime(isUrgent(newest), notificationToneRef.current);
           }
         }
       }
@@ -189,11 +227,14 @@ export function NotificationCenter({
       const nextController = new AbortController();
       controller = nextController;
       const hidden = document.visibilityState !== 'visible';
+      const backgroundPush = hidden && deviceEnabledRef.current;
 
       try {
         const response = await fetch(
           hidden
-            ? '/api/notifications/stream?mode=alarm'
+            ? backgroundPush
+              ? '/api/notifications/stream?mode=background'
+              : '/api/notifications/stream?mode=alarm'
             : '/api/notifications/stream',
           {
             cache: 'no-store',
@@ -207,7 +248,7 @@ export function NotificationCenter({
         }
         if (!response.ok) throw new Error('No se pudieron actualizar las notificaciones.');
 
-        if (hidden) {
+        if (hidden && !backgroundPush) {
           const payload = (await response.json()) as {
             dispatched: number;
             snapshot?: NotificationFeedSnapshot;
@@ -217,7 +258,7 @@ export function NotificationCenter({
           const snapshot = (await response.json()) as NotificationFeedSnapshot;
           if (!active) return;
           applySnapshot(snapshot, true);
-          setConnection('live');
+          if (!hidden) setConnection('live');
         }
       } catch (error) {
         const aborted =
@@ -445,6 +486,21 @@ export function NotificationCenter({
     }
   };
 
+  const toggleDeviceNotifications = async () => {
+    if (deviceEnabled) {
+      disableDeviceNotifications();
+      deviceEnabledRef.current = false;
+      setDeviceEnabled(false);
+      return;
+    }
+
+    const permission = await enableDeviceNotifications();
+    setDevicePermission(permission);
+    const enabled = permission === 'granted';
+    deviceEnabledRef.current = enabled;
+    setDeviceEnabled(enabled);
+  };
+
   return (
     <>
       {activeAlarm ? createPortal(
@@ -518,6 +574,40 @@ export function NotificationCenter({
           <Volume2 className="h-5 w-5" aria-hidden="true" />
         )}
       </button>
+
+      {devicePermission !== 'unsupported' ? (
+        <button
+          type="button"
+          onClick={() => void toggleDeviceNotifications()}
+          className={`relative rounded-lg p-2 transition-colors ${
+            deviceEnabled
+              ? 'text-emerald-700 hover:bg-emerald-50'
+              : 'text-slate-400 hover:bg-slate-100'
+          }`}
+          aria-label={
+            deviceEnabled
+              ? 'Notificaciones del dispositivo activas. Desactivarlas'
+              : devicePermission === 'denied'
+                ? 'Notificaciones del dispositivo bloqueadas por el navegador'
+                : 'Activar notificaciones del dispositivo'
+          }
+          title={
+            deviceEnabled
+              ? 'Avisos del dispositivo activos'
+              : devicePermission === 'denied'
+                ? 'Permiso bloqueado en el navegador'
+                : 'Activar avisos del dispositivo'
+          }
+        >
+          <BellRing className="h-5 w-5" aria-hidden="true" />
+          {deviceEnabled ? (
+            <span
+              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white"
+              aria-hidden="true"
+            />
+          ) : null}
+        </button>
+      ) : null}
 
       <button
         type="button"

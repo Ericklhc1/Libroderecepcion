@@ -431,7 +431,7 @@ export async function changeEntryStatus(
     await notify(
       Array.from(interested).map((userId) => ({
         userId,
-        type: NotificationType.ACCION_REQUERIDA,
+        type: NotificationType.ACTUALIZACION_OPERATIVA,
         title: `#${updated.humanId} pasó a ${ENTRY_STATUS_LABEL[input.status]}`,
         body: updated.title,
         link: `/libro/${updated.id}`,

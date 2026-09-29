@@ -1,12 +1,22 @@
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Info, XCircle } from 'lucide-react';
+import { NotificationType } from '@prisma/client';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getMailConfigView } from '@/server/services/mail-settings';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MailForm, MailTestForm } from '@/components/admin/mail-form';
+import {
+  EmailNotificationPolicyForm,
+  MailForm,
+  MailTestForm,
+} from '@/components/admin/mail-form';
 import { formatDateTime } from '@/lib/format';
 import type { InboundProtocolValue } from '@/domain/mail-config';
+import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
+import {
+  DEFAULT_NOTIFICATION_EMAIL_POLICY,
+  getNotificationEmailPolicy,
+} from '@/server/services/notification-email-policy';
 
 export const metadata = { title: 'Correo' };
 export const dynamic = 'force-dynamic';
@@ -19,7 +29,10 @@ const SOURCE_LABELS = {
 
 export default async function MailConfigPage() {
   await requirePagePermission('system.configure');
-  const config = await getMailConfigView();
+  const [config, notificationEmailPolicy] = await Promise.all([
+    getMailConfigView(),
+    getNotificationEmailPolicy(),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -141,6 +154,25 @@ export default async function MailConfigPage() {
               smtpPasswordUnreadable: config.smtpPasswordUnreadable,
               inboundPasswordUnreadable: config.inboundPasswordUnreadable,
             }}
+          />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Qué notificaciones salen por correo" />
+        <div className="space-y-3 px-4 py-4">
+          <p className="text-sm text-slate-600">
+            La Central separa avisos operativos obligatorios de novedades opcionales. El correo
+            registrado es el destino individual; la preferencia de cada usuario sólo puede silenciar
+            lo que aquí figure como «Según preferencia».
+          </p>
+          <EmailNotificationPolicyForm
+            rows={Object.values(NotificationType).map((type) => ({
+              type,
+              label: NOTIFICATION_TYPE_LABEL[type],
+              mode: notificationEmailPolicy[type],
+              defaultMode: DEFAULT_NOTIFICATION_EMAIL_POLICY[type],
+            }))}
           />
         </div>
       </Card>

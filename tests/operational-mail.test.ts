@@ -33,6 +33,9 @@ describe('respaldo operativo por correo', () => {
   beforeEach(async () => {
     await resetOperationalData();
     await seedCatalog();
+    await prisma.systemSetting.deleteMany({
+      where: { key: { startsWith: 'notification.email.' } },
+    });
   });
 
   it('encola una novedad con detalle para Supervisión', async () => {
@@ -159,6 +162,62 @@ describe('respaldo operativo por correo', () => {
       userId: user.id,
       type: NotificationType.TAREA_ASIGNADA,
       title: 'No debe salir por correo',
+    });
+
+    expect(
+      await prisma.operationalMailOutbox.count({
+        where: { recipients: { has: email } },
+      }),
+    ).toBe(0);
+  });
+
+  it('envía una notificación obligatoria aunque el usuario desactive avisos opcionales', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción correo obligatorio',
+    });
+    const email = 'obligatorio@example.com';
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email, emailNotificationsEnabled: false },
+    });
+
+    await notify({
+      userId: user.id,
+      type: NotificationType.INCIDENCIA_CRITICA,
+      title: 'Incidencia crítica obligatoria',
+      body: 'Requiere atención inmediata.',
+    });
+
+    const row = await prisma.operationalMailOutbox.findFirstOrThrow({
+      where: { recipients: { has: email } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row.subject).toContain('Incidencia crítica obligatoria');
+  });
+
+  it('la consola puede desactivar el correo para un tipo que normalmente respeta preferencia', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción política personalizada',
+    });
+    const email = 'politica@example.com';
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email, emailNotificationsEnabled: true },
+    });
+    await prisma.systemSetting.create({
+      data: {
+        key: 'notification.email.TAREA_ASIGNADA',
+        value: 'DESACTIVADO',
+        category: 'notificaciones-correo',
+      },
+    });
+
+    await notify({
+      userId: user.id,
+      type: NotificationType.TAREA_ASIGNADA,
+      title: 'No debe enviarse por política',
     });
 
     expect(

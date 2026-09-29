@@ -23,6 +23,7 @@ import {
   operationalStartedAtFromEpoch,
   recordOperationalEvent,
 } from '@/server/observability/operational';
+import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 function refreshKeys() {
   revalidatePath('/llaves');
@@ -166,6 +167,9 @@ export async function savePhysicalKeyCountAction(
         status: 'SUCCESS',
         metadata: { floor, hasDifference: true },
       });
+    }
+    if (hasDifference) {
+      scheduleFrontiProactiveSweep('key-inventory-difference');
     }
 
     refreshKeys();

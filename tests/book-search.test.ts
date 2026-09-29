@@ -84,13 +84,13 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     return { incident, novedad, task, followUp, alert, maintenance };
   }
 
-  it('unifica registros, tareas, seguimientos y alertas en un solo flujo', async () => {
+  it('mantiene el Libro normal en registros, tareas y seguimientos', async () => {
     await seedBook();
     const result = await getBookItems({});
 
     const kinds = new Set(result.items.map((item) => item.kind));
-    expect(kinds).toEqual(new Set(['entry', 'task', 'followup', 'alert']));
-    expect(result.items).toHaveLength(5);
+    expect(kinds).toEqual(new Set(['entry', 'task', 'followup']));
+    expect(result.items).toHaveLength(4);
 
     const times = result.items.map((item) => item.date.getTime());
     expect([...times].sort((a, b) => b - a)).toEqual(times);

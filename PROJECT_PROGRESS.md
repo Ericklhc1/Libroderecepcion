@@ -33,7 +33,7 @@ Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata 
 | Panel Reportar / solicitar | `PRODUCTION` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 | Fronti contextual transversal | `PRODUCTION` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
 | Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
-| Bandeja interna de soporte | `EN_DESARROLLO` | v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Bandeja interna de soporte | `PR_ABIERTO` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 

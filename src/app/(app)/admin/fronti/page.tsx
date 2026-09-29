@@ -92,6 +92,17 @@ const GROUPS = [
       'fronti.tool.fine',
     ],
   },
+  {
+    id: 'proactivo',
+    title: 'Análisis proactivo',
+    description: 'Fronti agrupa señales determinísticas nuevas en pocos problemas probables. No modifica datos ni ejecuta acciones.',
+    icon: Sparkles,
+    keys: [
+      'fronti.proactive.enabled',
+      'fronti.proactive.minSeverity',
+      'fronti.proactive.maxSignals',
+    ],
+  },
 ] as const;
 
 function byKey(settings: FrontiSettingRow[]) {

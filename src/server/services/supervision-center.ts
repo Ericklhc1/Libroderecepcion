@@ -312,6 +312,13 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     }),
   ]);
 
+  const previousClosureValidation = previousReceptionShift
+    ? await prisma.alert.findUnique({
+        where: { dedupeKey: `shift-validation:${previousReceptionShift.id}` },
+        select: { id: true, status: true, resolvedAt: true },
+      })
+    : null;
+
   const latestAuditByCurrency = new Map<string, (typeof cashAudits)[number]>();
   for (const audit of cashAudits) {
     const currency = audit.currency.toUpperCase();
@@ -581,6 +588,8 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
             actualEnd: previousReceptionShift.actualEnd,
             handoverStatus: previousReceptionShift.handoverOut?.status ?? null,
             receivedAt: previousReceptionShift.handoverOut?.receivedAt ?? null,
+            validationStatus: previousClosureValidation?.status ?? null,
+            validatedAt: previousClosureValidation?.resolvedAt ?? null,
             ready: previousClosureReady,
           }
         : null,
@@ -830,6 +839,7 @@ export async function completeSupervisionOpening(
         auditReady: readiness.reports.auditReady,
         reportsReady: readiness.reports.reportsReady,
         pmsProcessing: readiness.reports.pmsProcessing,
+        previousClosure: readiness.reports.previousClosure,
         contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,

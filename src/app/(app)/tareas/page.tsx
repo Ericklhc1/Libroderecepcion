@@ -66,7 +66,7 @@ export default async function TasksPage({
         entry: { select: { id: true, humanId: true } },
         _count: { select: { checklist: true, comments: true } },
       },
-      orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' }],
+      orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' }],
       take: 200,
     }),
     getFormOptions(),
@@ -144,6 +144,7 @@ export default async function TasksPage({
             <ul className="divide-y divide-slate-100">
             {tasks.map((task) => {
               const open = TASK_OPEN_STATUSES.includes(task.status);
+              const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
               const overdue = isOverdue(task.dueAt, open);
               return (
                 <li key={task.id} className="px-4 py-3">
@@ -157,6 +158,7 @@ export default async function TasksPage({
                         <Badge tone={PRIORITY_TONE[task.priority]} withSymbol={false}>
                           {PRIORITY_LABEL[task.priority]}
                         </Badge>
+                        {scheduled ? <Chip>Programada</Chip> : null}
                         <Chip>{TASK_ORIGIN_LABEL[task.origin]}</Chip>
                         {task.entry ? <Chip>Registro #{task.entry.humanId}</Chip> : null}
                       </div>
@@ -166,6 +168,7 @@ export default async function TasksPage({
                       <p className="mt-0.5 text-xs text-slate-500">
                         {task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar'}
                         {task.department ? ` · ${task.department.name}` : ''}
+                        {task.startsAt ? ` · inicia ${relativeTime(task.startsAt)}` : ''}
                         {task.dueAt
                           ? ` · ${overdue ? 'venció' : 'vence'} ${relativeTime(task.dueAt)}`
                           : ' · sin fecha límite'}

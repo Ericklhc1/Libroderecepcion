@@ -23,12 +23,15 @@ describe('versionado de Production', () => {
     expect(config.git?.deploymentEnabled).toEqual({ '**': false, main: true });
   });
 
-  it('el cron de respaldo por correo respeta la frecuencia diaria de Vercel Hobby', () => {
+  it('los crons operativos aprovechan Vercel Pro sin ejecutar cada minuto', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf-8')) as {
       crons?: Array<{ path: string; schedule: string }>;
     };
     expect(
       config.crons?.find((cron) => cron.path === '/api/cron/operational-mail')?.schedule,
-    ).toBe('5 10 * * *');
+    ).toBe('5,20,35,50 * * * *');
+    expect(
+      config.crons?.find((cron) => cron.path === '/api/cron/fronti-proactive')?.schedule,
+    ).toBe('2,17,32,47 * * * *');
   });
 });

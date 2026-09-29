@@ -808,11 +808,38 @@ export async function executeFrontiPageContextTool(
           onlyOpen: page.filters.estado !== 'cerrados',
         }),
       };
-    case 'alertas':
+    case 'senales-internas': {
+      requireAny(
+        user,
+        ['alert.manage', 'cash.approve', 'shift.manage', 'supervision.view'],
+        'No tienes permiso para consultar señales internas.',
+      );
+      const rows = await prisma.alert.findMany({
+        where: { deletedAt: null, status: { not: 'RESUELTA' } },
+        select: {
+          id: true,
+          humanId: true,
+          title: true,
+          message: true,
+          status: true,
+          level: true,
+          dedupeKey: true,
+          entryId: true,
+          handoverId: true,
+          createdAt: true,
+        },
+        orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
+        take: 30,
+      });
       return {
         ...base,
-        snapshot: await safeRead(user, 'consultar_alertas', { limit: 30 }),
+        snapshot: {
+          semantics:
+            'Señales internas de compatibilidad para autorizaciones y validaciones. No son Alertas programables del usuario.',
+          items: rows,
+        },
       };
+    }
     case 'notificaciones':
       return {
         ...base,

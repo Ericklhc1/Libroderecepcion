@@ -38,8 +38,6 @@ export function canFrontiUseTool(
   user: FrontiPermissionSubject,
   name: string,
 ): boolean {
-  if (user.isSystemAdmin) return true;
-
   switch (name) {
     case 'consultar_contexto_pantalla':
     case 'consultar_estado_operativo':

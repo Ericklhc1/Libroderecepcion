@@ -18,6 +18,8 @@ import {
 } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import {
+  beginSupervisionOpening,
+  completeSupervisionOpening,
   createSupervisionNote,
   deliverSupervisionShift,
   finishSupervisionShift,
@@ -25,7 +27,6 @@ import {
   receiveSupervisionHandover,
   restoreSupervisionNote,
   softDeleteSupervisionNote,
-  startSupervisionShift,
 } from '@/server/services/supervision-center';
 import {
   reviewSupervisionAuditItem,
@@ -52,15 +53,50 @@ export async function startSupervisionShiftAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('supervision.shift.manage');
+    const shift = await beginSupervisionOpening(user);
+    refresh();
+    return {
+      ok: true as const,
+      message: 'Apertura de Supervisión iniciada. Completa la recepción operacional para activar tu turno.',
+      id: shift.id,
+    };
+  });
+}
+
+export async function completeSupervisionOpeningAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('supervision.shift.manage');
     const input = parseOrThrow(
-      z.object({ priorities: zOptionalString }),
+      z.object({
+        shiftId: z.string().min(1),
+        reviewedPending: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que revisaste el estado operativo recibido.' }),
+        }),
+        reviewedGuarantees: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que verificaste garantías y custodias.' }),
+        }),
+        reviewedKeys: z.literal('on', {
+          errorMap: () => ({ message: 'Confirma que revisaste el inventario y excepciones de llaves.' }),
+        }),
+      }),
       formDataToObject(formData),
     );
-    const shift = await startSupervisionShift(user, {
-      priorities: (input.priorities ?? '').split('\n'),
+
+    const shift = await completeSupervisionOpening(user, {
+      shiftId: input.shiftId,
+      reviewedPending: true,
+      reviewedGuarantees: true,
+      reviewedKeys: true,
     });
     refresh();
-    return { ok: true as const, message: 'Turno de Supervisión iniciado.', id: shift.id };
+    return {
+      ok: true as const,
+      message: 'Turno de Supervisión iniciado con recepción operacional confirmada.',
+      id: shift.id,
+    };
   });
 }
 

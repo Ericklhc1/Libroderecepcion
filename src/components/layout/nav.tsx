@@ -237,7 +237,7 @@ export function DesktopNav({
               ref={menuRef}
               role="menu"
               aria-label={`Opciones de ${openItem.label}`}
-              className="nav-dropdown-enter fixed z-[70] overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl"
+              className="nav-dropdown-enter fixed z-[70] rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl"
               style={{
                 left: menuPosition.left,
                 top: menuPosition.top,

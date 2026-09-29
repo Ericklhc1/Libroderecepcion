@@ -186,6 +186,21 @@ export const DEFAULT_SETTINGS = {
     category: 'fronti',
     description: 'Ventana de actividad reciente usada por el cliente para mantener viva la sesión.',
   },
+  'fronti.proactive.enabled': {
+    value: true,
+    category: 'fronti-proactivo',
+    description: 'Analiza en segundo plano las señales determinísticas nuevas de Supervisión y genera un briefing agrupado.',
+  },
+  'fronti.proactive.minSeverity': {
+    value: 'MEDIA',
+    category: 'fronti-proactivo',
+    description: 'Severidad mínima de señal que entra al análisis proactivo: BAJA, MEDIA o ALTA.',
+  },
+  'fronti.proactive.maxSignals': {
+    value: 24,
+    category: 'fronti-proactivo',
+    description: 'Máximo de señales determinísticas que Fronti puede recibir en un análisis proactivo.',
+  },
   'fronti.tool.room': {
     value: true,
     category: 'fronti-capacidades',

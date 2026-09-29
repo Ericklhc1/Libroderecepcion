@@ -37,6 +37,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   TESORERIA: 'Transferencia a Tesorería',
   AJUSTE_ENTRADA: 'Ingreso manual',
   AJUSTE_SALIDA: 'Egreso manual',
+  REGULARIZACION_ENTRADA: 'Regularización · entrada',
+  REGULARIZACION_SALIDA: 'Regularización · salida',
 };
 
 function amount(currency: string, value: number) {

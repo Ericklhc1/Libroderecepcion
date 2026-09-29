@@ -183,7 +183,7 @@ export default async function TasksPage({
                     </Link>
 
                     <div className="flex flex-wrap gap-1.5 no-print">
-                      {task.status === TaskStatus.PENDIENTE &&
+                      {!scheduled && task.status === TaskStatus.PENDIENTE &&
                        (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
                         <QuickStatusForm
                           taskId={task.id}
@@ -192,7 +192,7 @@ export default async function TasksPage({
                           variant="secondary"
                         />
                       ) : null}
-                      {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
+                      {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
                         <QuickStatusForm
                           taskId={task.id}
                           status={TaskStatus.COMPLETADA}

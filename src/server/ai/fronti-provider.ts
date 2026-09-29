@@ -12,6 +12,34 @@ import { normalizeFrontiToolsForProvider } from './fronti-v2/provider-schema';
 
 export type FrontiProviderName = 'groq' | 'cloudflare' | 'vllm' | 'openai';
 
+export type FrontiCredentialSource =
+  | 'stored'
+  | 'environment'
+  | 'stored-unreadable'
+  | 'none';
+
+export type CloudflareAccountIdSource =
+  | 'CLOUDFLARE_ACCOUNT_ID'
+  | 'R2_ACCOUNT_ID'
+  | 'R2_ACCOUND_ID'
+  | 'none';
+
+function cloudflareAccount(runtime: ReturnType<typeof env>): {
+  accountId: string;
+  source: CloudflareAccountIdSource;
+} {
+  if (runtime.CLOUDFLARE_ACCOUNT_ID) {
+    return { accountId: runtime.CLOUDFLARE_ACCOUNT_ID, source: 'CLOUDFLARE_ACCOUNT_ID' };
+  }
+  if (runtime.R2_ACCOUNT_ID) {
+    return { accountId: runtime.R2_ACCOUNT_ID, source: 'R2_ACCOUNT_ID' };
+  }
+  if (runtime.R2_ACCOUND_ID) {
+    return { accountId: runtime.R2_ACCOUND_ID, source: 'R2_ACCOUND_ID' };
+  }
+  return { accountId: '', source: 'none' };
+}
+
 const SECRET_PURPOSE_PREFIX = 'fronti/provider/';
 const SECRET_SETTING_PREFIX = '__secret.fronti.provider.';
 
@@ -91,27 +119,44 @@ export async function getFrontiProviderCredentialView(
   hasStoredSecret: boolean;
   storedSecretUnreadable: boolean;
   envConfigured: boolean;
+  effectiveCredentialSource: FrontiCredentialSource;
+  cloudflareAccountIdSource: CloudflareAccountIdSource | null;
+  baseUrlConfigured: boolean;
 }> {
   const stored = await readStoredProviderSecret(provider);
   const runtime = env();
-  const cloudflareAccountId =
-    runtime.CLOUDFLARE_ACCOUNT_ID ??
-    runtime.R2_ACCOUNT_ID ??
-    runtime.R2_ACCOUND_ID ??
-    null;
+  const cloudflare = cloudflareAccount(runtime);
   const envConfigured =
     provider === 'groq'
       ? Boolean(runtime.GROQ_API_KEY)
       : provider === 'cloudflare'
-        ? Boolean(runtime.CLOUDFLARE_AI_API_TOKEN && cloudflareAccountId)
+        ? Boolean(runtime.CLOUDFLARE_AI_API_TOKEN && cloudflare.accountId)
         : provider === 'openai'
           ? Boolean(runtime.OPENAI_API_KEY)
           : Boolean(runtime.FRONTI_API_KEY);
+
+  const effectiveCredentialSource: FrontiCredentialSource = stored.value
+    ? 'stored'
+    : stored.present && !stored.value && !envConfigured
+      ? 'stored-unreadable'
+      : envConfigured
+        ? 'environment'
+        : 'none';
+
+  const baseUrlConfigured =
+    provider === 'cloudflare'
+      ? Boolean(cloudflare.accountId)
+      : provider === 'vllm'
+        ? Boolean(runtime.FRONTI_BASE_URL)
+        : true;
 
   return {
     hasStoredSecret: stored.present && stored.value !== null,
     storedSecretUnreadable: stored.present && stored.value === null,
     envConfigured,
+    effectiveCredentialSource,
+    cloudflareAccountIdSource: provider === 'cloudflare' ? cloudflare.source : null,
+    baseUrlConfigured,
   };
 }
 
@@ -152,6 +197,10 @@ type ChatCompletionPayload = {
     code?: string;
     type?: string;
   };
+  errors?: Array<{
+    message?: string;
+    code?: string | number;
+  }>;
 };
 
 
@@ -217,11 +266,7 @@ export function resolveFrontiProvider(input: {
   }
 
   if (input.provider === 'cloudflare') {
-    const accountId =
-      runtime.CLOUDFLARE_ACCOUNT_ID ??
-      runtime.R2_ACCOUNT_ID ??
-      runtime.R2_ACCOUND_ID ??
-      '';
+    const { accountId } = cloudflareAccount(runtime);
     return {
       provider: 'cloudflare',
       baseUrl: accountId
@@ -298,6 +343,35 @@ export async function resolveFrontiProviderChainRuntime(input: {
   return [groq120b, cloudflare, groq20b].filter(providerIsConfigured);
 }
 
+export async function resolveFrontiBackgroundProviderChainRuntime(input: {
+  reasoningEffort?: 'low' | 'medium' | 'high';
+} = {}): Promise<FrontiProviderConfig[]> {
+  /*
+   * Fronti proactivo usa primero los proveedores más livianos y conserva
+   * Groq 120B como último rescate. La detección sigue siendo determinística:
+   * el modelo sólo explica/correlaciona una señal ya detectada.
+   */
+  const reasoningEffort = input.reasoningEffort ?? 'low';
+  const [cloudflare, groq20b, groq120b] = await Promise.all([
+    resolveFrontiProviderRuntime({
+      provider: 'cloudflare',
+      model: CLOUDFLARE_FALLBACK_MODEL,
+      reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'groq',
+      model: GROQ_FALLBACK_MODEL,
+      reasoningEffort,
+    }),
+    resolveFrontiProviderRuntime({
+      provider: 'groq',
+      model: GROQ_PRIMARY_MODEL,
+      reasoningEffort,
+    }),
+  ]);
+  return [cloudflare, groq20b, groq120b].filter(providerIsConfigured);
+}
+
 export async function resolveFrontiAuxiliaryProviderRuntime(): Promise<FrontiProviderConfig | null> {
   const [cloudflare, groq] = await Promise.all([
     resolveFrontiProviderRuntime({
@@ -350,20 +424,24 @@ async function wait(ms: number): Promise<void> {
 
 async function parseFailure(
   response: Response,
+  provider?: FrontiProviderName,
 ): Promise<{ failure: AssistantFailure; detail?: string }> {
   let code: string | null = null;
   let message: string | null = null;
 
   try {
     const payload = (await response.json()) as ChatCompletionPayload;
-    code = payload.error?.code ?? payload.error?.type ?? null;
-    message = payload.error?.message ?? null;
+    const cloudflareError = payload.errors?.[0];
+    const rawCode = payload.error?.code ?? payload.error?.type ?? cloudflareError?.code ?? null;
+    code = rawCode === null || rawCode === undefined ? null : String(rawCode);
+    message = payload.error?.message ?? cloudflareError?.message ?? null;
   } catch {
     // Un proxy puede devolver HTML. El estado HTTP sigue siendo suficiente.
   }
 
   return {
     failure: classifyAssistantFailure({
+      provider,
       status: response.status,
       code,
       message,
@@ -460,7 +538,7 @@ async function chatWithOpenAIResponses(args: {
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, args.provider.provider);
     throw new FrontiProviderError(failure.failure, undefined, failure.detail);
   }
 
@@ -606,7 +684,7 @@ export async function chatWithFrontiProvider(args: {
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, args.provider.provider);
     throw new FrontiProviderError(failure.failure, undefined, failure.detail);
   }
 
@@ -709,7 +787,7 @@ export async function probeFrontiProvider(
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, provider.provider);
     return { ok: false, failure: failure.failure };
   }
 

@@ -14,7 +14,13 @@ type UploadResult = {
   error?: string;
 };
 
-export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusinessDate: string }) {
+export function SupervisionAuditUpload({
+  defaultBusinessDate,
+  automaticBusinessDate = false,
+}: {
+  defaultBusinessDate: string;
+  automaticBusinessDate?: boolean;
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [businessDate, setBusinessDate] = useState(defaultBusinessDate);
@@ -36,7 +42,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
       try {
         const body = new FormData();
         body.set('file', file);
-        body.set('businessDate', businessDate);
+        if (!automaticBusinessDate) body.set('businessDate', businessDate);
         const response = await fetch('/api/supervision/auditoria-diaria', {
           method: 'POST',
           body,
@@ -87,17 +93,23 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[12rem_1fr]">
-        <label>
-          <span className="mb-1 block text-xs font-medium text-slate-500">Fecha auditada</span>
-          <input
-            type="date"
-            value={businessDate}
-            onChange={(event) => setBusinessDate(event.currentTarget.value)}
-            required
-            className="input-base w-full"
-          />
-        </label>
+      <div className={automaticBusinessDate ? 'grid gap-3' : 'grid gap-3 md:grid-cols-[12rem_1fr]'}>
+        {!automaticBusinessDate ? (
+          <label>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Fecha auditada</span>
+            <input
+              type="date"
+              value={businessDate}
+              onChange={(event) => setBusinessDate(event.currentTarget.value)}
+              required
+              className="input-base w-full"
+            />
+          </label>
+        ) : (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+            La fecha se toma del propio informe. Puedes mezclar cierres de ayer y fotografías operativas de hoy.
+          </p>
+        )}
         <label>
           <span className="mb-1 block text-xs font-medium text-slate-500">Informes PDF</span>
           <input
@@ -121,7 +133,7 @@ export function SupervisionAuditUpload({ defaultBusinessDate }: { defaultBusines
         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400 disabled:opacity-60"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
-        {busy ? (current ? `Leyendo ${current}…` : 'Procesando…') : 'CARGAR AUDITORÍA'}
+        {busy ? (current ? `Leyendo ${current}…` : 'Procesando…') : automaticBusinessDate ? 'CARGAR INFORMES' : 'CARGAR AUDITORÍA'}
       </button>
 
       {results.length > 0 ? (

@@ -90,6 +90,14 @@ export function CreateUserDialog({
           label="Enviar avisos opcionales por correo"
           defaultChecked
         />
+        <Checkbox
+          name="hiddenFromSelectors"
+          label="Usuario oculto: no aparece en listas, asignaciones ni turnos"
+        />
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          Ocultarlo no desactiva la cuenta: podrá iniciar sesión, trabajar, recibir avisos globales
+          y conservará toda su trazabilidad. Sólo deja de ser seleccionable por otras personas.
+        </p>
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
           Si registras un correo, la clave temporal se envía allí. Sin correo, se usa la casilla
           de respaldo <strong>{credentialsMailTo}</strong>. El usuario de acceso sigue siendo @usuario.
@@ -114,6 +122,7 @@ export function EditUserDialog({
     departmentId: string | null;
     email: string | null;
     emailNotificationsEnabled: boolean;
+    hiddenFromSelectors: boolean;
     phone: string | null;
     active: boolean;
   };
@@ -163,9 +172,18 @@ export function EditUserDialog({
         </Field>
         <Checkbox
           name="emailNotificationsEnabled"
-          label="Enviar novedades del Libro por correo"
+          label="Enviar novedades de la Central por correo"
           defaultChecked={user.emailNotificationsEnabled}
         />
+        <Checkbox
+          name="hiddenFromSelectors"
+          label="Usuario oculto: no aparece en listas, asignaciones ni turnos"
+          defaultChecked={user.hiddenFromSelectors}
+        />
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          La cuenta seguirá completamente activa y operativa. El ocultamiento sólo evita que
+          otras personas puedan seleccionarla en directorios y formularios operativos.
+        </p>
         <Checkbox name="active" label="Cuenta activa" defaultChecked={user.active} />
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>

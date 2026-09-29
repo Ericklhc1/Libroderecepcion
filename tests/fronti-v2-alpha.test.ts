@@ -30,13 +30,15 @@ describe('FRONTI v2 alpha', () => {
 
   it('inyecta contexto estructurado de usuario, turno, pantalla y reloj', () => {
     const source = readFileSync('src/server/ai/fronti-v2/context-builder.ts', 'utf8');
+    const pageContext = readFileSync('src/server/ai/fronti-v2/page-context.ts', 'utf8');
     expect(source).toContain('FrontiRuntimeContext');
     expect(source).toContain('permissions: [...user.permissions].sort()');
     expect(source).toContain('getMyOpenShift(user.id)');
-    expect(source).toContain('pathname');
     expect(source).toContain('resolveFrontiPageContext');
-    expect(source).toContain('recommendedTools');
     expect(source).toContain('HOTEL_TIMEZONE');
+    expect(pageContext).toContain('pathname: string');
+    expect(pageContext).toContain('filters: Record<string, string>');
+    expect(pageContext).toContain('recommendedTools: string[]');
   });
 
   it('mantiene lectura transversal determinística y sin SQL generado por el modelo', () => {

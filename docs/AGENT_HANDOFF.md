@@ -1,8 +1,8 @@
-# Relevo de agentes — Central de Operaciones · Hotel HW Libertad
+# Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
-## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa y cambio de identidad
+## Actualización 29/09/2026 · AROH 1.25.0 · jornada operativa y cambio de identidad
 
-- Producto: **Central de Operaciones · Hotel HW Libertad**. No renombrar todavía repo, proyecto Vercel ni dominio; el cambio de subdominio es una migración separada.
+- Producto: **AROH Central IA · Hotel HW Libertad**. No renombrar todavía repo, proyecto Vercel ni dominio; el cambio de subdominio es una migración separada.
 - Fuente única de fecha operativa: `resolveOperationalBusinessDate()` en `services/shifts.ts`. Turno abierto → `Shift.date`; último cierre DÍA → misma fecha; último cierre NOCHE → día siguiente; sin historial → calendario del hotel.
 - `getDashboardData` y Supervisión consumen esa fecha. `getSupervisionCenterSummary` limita `SupervisionAuditImport` a la jornada vigente.
 - La apertura de Supervisión sí puede consultar jornada vigente + cierre anterior para probar continuidad; esa excepción no debe volver a contaminar el dashboard diario.

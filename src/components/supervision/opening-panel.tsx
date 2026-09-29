@@ -270,13 +270,13 @@ export function SupervisionOpeningPanel({
               el respaldo válido es Entradas + In House + Salidas.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge tone={readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? 'resuelto' : 'neutral'}>
+              <Badge tone={readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? 'resuelto' : 'neutro'}>
                 {readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? '✓ ' : '○ '}
                 {readiness.reports.labels[readiness.reports.operationalPrimary]}
               </Badge>
               <span className="self-center text-xs text-slate-500">o</span>
               {readiness.reports.operationalFallback.map((kind: string) => (
-                <Badge key={kind} tone={readiness.reports.todayKinds.includes(kind) ? 'resuelto' : 'neutral'}>
+                <Badge key={kind} tone={readiness.reports.todayKinds.includes(kind) ? 'resuelto' : 'neutro'}>
                   {readiness.reports.todayKinds.includes(kind) ? '✓ ' : '○ '}
                   {readiness.reports.labels[kind] ?? kind}
                 </Badge>
@@ -294,11 +294,11 @@ export function SupervisionOpeningPanel({
                   <Badge tone={readiness.reports.pmsProcessing.pending > 0 ? 'pendiente' : 'resuelto'}>
                     {readiness.reports.pmsProcessing.pending} pendiente(s) según enlace
                   </Badge>
-                  <Badge tone="neutral">
+                  <Badge tone="neutro">
                     {readiness.reports.pmsProcessing.processedProbable} procesado(s) probable(s)
                   </Badge>
                   {readiness.reports.pmsProcessing.unknown > 0 ? (
-                    <Badge tone="neutral">
+                    <Badge tone="neutro">
                       {readiness.reports.pmsProcessing.unknown} sin señal visual
                     </Badge>
                   ) : null}

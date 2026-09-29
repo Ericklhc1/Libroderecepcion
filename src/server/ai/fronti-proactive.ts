@@ -308,16 +308,71 @@ export async function collectFrontiProactiveCandidates(
   );
 }
 
-async function recipients(): Promise<string[]> {
+type FrontiProactiveRecipient = {
+  id: string;
+  roleKey: string;
+  frontiAccessEnabled: boolean;
+  permissions: Set<string>;
+};
+
+async function recipients(): Promise<FrontiProactiveRecipient[]> {
   const rows = await prisma.user.findMany({
     where: {
       active: true,
       deletedAt: null,
       role: { key: { in: [ROLE_KEYS.SUPERVISOR, ROLE_KEYS.SYSTEM_ADMIN] } },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      frontiAccessEnabled: true,
+      role: {
+        select: {
+          key: true,
+          permissions: {
+            select: { permission: { select: { key: true } } },
+          },
+        },
+      },
+    },
   });
-  return rows.map((row) => row.id);
+
+  return rows
+    .filter(
+      (row) =>
+        row.role.key === ROLE_KEYS.SYSTEM_ADMIN ||
+        row.frontiAccessEnabled,
+    )
+    .map((row) => ({
+      id: row.id,
+      roleKey: row.role.key,
+      frontiAccessEnabled: row.frontiAccessEnabled,
+      permissions: new Set(row.role.permissions.map((item) => item.permission.key)),
+    }));
+}
+
+function canReceiveCandidate(
+  recipient: FrontiProactiveRecipient,
+  candidate: FrontiProactiveCandidate,
+): boolean {
+  if (candidate.link.startsWith('/central-reservas')) {
+    return recipient.permissions.has('reservation.center.view');
+  }
+
+  if (candidate.link.startsWith('/supervision/salud')) {
+    return recipient.permissions.has('supervision.center.view');
+  }
+
+  if (candidate.link.startsWith('/llaves')) {
+    return (
+      recipient.permissions.has('key.assign') ||
+      recipient.permissions.has('key.inventory') ||
+      recipient.permissions.has('key.stock')
+    );
+  }
+
+  // /alertas es visible para cualquier usuario autenticado; el alcance del
+  // barrido sigue limitado a Supervisor/Admin con Fronti habilitado.
+  return true;
 }
 
 async function isCoolingDown(
@@ -427,8 +482,8 @@ export async function runFrontiProactiveSweep(input: {
     1,
     Math.min(8, Math.trunc(await getSettingNumber('fronti.proactiveMaxFindingsPerRun', 4))),
   );
-  const userIds = await recipients();
-  if (!userIds.length) {
+  const recipientPool = await recipients();
+  if (!recipientPool.length) {
     return {
       enabled: true,
       candidates: 0,
@@ -448,6 +503,14 @@ export async function runFrontiProactiveSweep(input: {
 
   for (const candidate of candidates.slice(0, maxFindings)) {
     const id = signalId(candidate.key);
+    const userIds = recipientPool
+      .filter((recipient) => canReceiveCandidate(recipient, candidate))
+      .map((recipient) => recipient.id);
+
+    if (!userIds.length) {
+      continue;
+    }
+
     if (await isCoolingDown(id, userIds, cutoff)) {
       skippedCooldown += 1;
       continue;

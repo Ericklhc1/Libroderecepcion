@@ -338,6 +338,7 @@ export default async function TaskDetailPage({
                       {alert.note ? <p className="mt-0.5 text-sm text-slate-600">{alert.note}</p> : null}
                       <p className="mt-1 text-xs text-slate-500">
                         {formatDateTime(alert.dueAt)} · creada por {alert.createdBy.name}
+                        {alert.repeatMinutes ? ` · repite cada ${alert.repeatMinutes} min` : ''}
                       </p>
                     </div>
                     {active ? (
@@ -352,6 +353,7 @@ export default async function TaskDetailPage({
                               title: alert.title,
                               note: alert.note,
                               dueAtLocal: toDateTimeInput(alert.dueAt),
+                              repeatMinutes: alert.repeatMinutes,
                             }}
                           />
                         ) : null}

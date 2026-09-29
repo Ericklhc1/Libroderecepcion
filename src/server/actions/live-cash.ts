@@ -400,7 +400,7 @@ export async function createManualCashMovementAction(
         type: NotificationType.ACCION_REQUERIDA,
         title: `Autorizar ${verb.toLowerCase()} de Caja`,
         body: `${input.currency} ${input.amount.toLocaleString('es-CL')} · ${input.reference}`,
-        link: '/notificaciones?seccion=acciones',
+        link: `/alertas/sistema?alerta=${request.alert.id}`,
         entity: 'Alert',
         entityId: request.alert.id,
       })),

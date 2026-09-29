@@ -28,6 +28,7 @@ export type AlarmCreateInput = {
   sourceEntity?: string | null;
   sourceId?: string | null;
   sourceLink?: string | null;
+  repeatMinutes?: number | null;
 };
 
 export async function listAlarmCandidates() {
@@ -109,6 +110,13 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
   if (input.dueAt.getTime() <= Date.now()) {
     throw new RuleError('La alerta debe programarse para un momento futuro.');
   }
+  if (
+    input.repeatMinutes !== null &&
+    input.repeatMinutes !== undefined &&
+    (!Number.isInteger(input.repeatMinutes) || input.repeatMinutes < 5 || input.repeatMinutes > 10_080)
+  ) {
+    throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
+  }
 
   const activeCount = await prisma.operationalAlarm.count({
     where: { createdById: user.id, status: OperationalAlarmStatus.ACTIVA },
@@ -150,6 +158,8 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         sourceEntity: input.sourceEntity?.trim() || null,
         sourceId: input.sourceId?.trim() || null,
         sourceLink: input.sourceLink?.trim() || null,
+        repeatMinutes:
+          input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes ?? null,
         recipients: {
           createMany: {
             data: recipientIds.map((userId) => ({ userId })),
@@ -177,6 +187,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
           sourceEntity: created.sourceEntity,
           sourceId: created.sourceId,
           sourceLink: created.sourceLink,
+          repeatMinutes: created.repeatMinutes,
           recipients: created.recipients.map((row) => row.userId),
         },
       },
@@ -195,6 +206,7 @@ export async function updateOperationalAlarm(
     title: string;
     note?: string | null;
     dueAt: Date;
+    repeatMinutes?: number | null;
   },
 ) {
   const alarm = await prisma.operationalAlarm.findUnique({
@@ -215,6 +227,13 @@ export async function updateOperationalAlarm(
   if (input.dueAt.getTime() <= Date.now()) {
     throw new RuleError('La alerta debe programarse para un momento futuro.');
   }
+  if (
+    input.repeatMinutes !== null &&
+    input.repeatMinutes !== undefined &&
+    (!Number.isInteger(input.repeatMinutes) || input.repeatMinutes < 5 || input.repeatMinutes > 10_080)
+  ) {
+    throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
+  }
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.operationalAlarm.update({
@@ -223,6 +242,7 @@ export async function updateOperationalAlarm(
         title: input.title.trim(),
         note: input.note?.trim() || null,
         dueAt: input.dueAt,
+        repeatMinutes: input.repeatMinutes ?? null,
       },
     });
     // Si ya se había disparado, editarla rearma a los destinatarios que todavía
@@ -253,8 +273,18 @@ export async function updateOperationalAlarm(
         action: AuditAction.EDITAR,
         summary: `Alerta «${updated.title}» actualizada por ${user.name}`,
         user,
-        before: { title: alarm.title, note: alarm.note, dueAt: alarm.dueAt },
-        after: { title: updated.title, note: updated.note, dueAt: updated.dueAt },
+        before: {
+          title: alarm.title,
+          note: alarm.note,
+          dueAt: alarm.dueAt,
+          repeatMinutes: alarm.repeatMinutes,
+        },
+        after: {
+          title: updated.title,
+          note: updated.note,
+          dueAt: updated.dueAt,
+          repeatMinutes: updated.repeatMinutes,
+        },
       },
       tx,
     );
@@ -317,7 +347,6 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
     where: {
       userId,
       acknowledgedAt: null,
-      lastTriggeredAt: null,
       OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
       alarm: {
         status: OperationalAlarmStatus.ACTIVA,
@@ -333,22 +362,32 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
           note: true,
           dueAt: true,
           sourceLink: true,
+          repeatMinutes: true,
           createdBy: { select: { name: true } },
         },
       },
     },
     orderBy: { alarm: { dueAt: 'asc' } },
-    take: 10,
+    take: 30,
+  });
+
+  const eligible = due.filter((recipient) => {
+    if (!recipient.lastTriggeredAt) return true;
+    const repeatMinutes = recipient.alarm.repeatMinutes;
+    if (!repeatMinutes) return false;
+    return (
+      recipient.lastTriggeredAt.getTime() + repeatMinutes * 60_000 <= now.getTime()
+    );
   });
 
   let dispatched = 0;
-  for (const recipient of due) {
+  for (const recipient of eligible.slice(0, 10)) {
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.operationalAlarmRecipient.updateMany({
         where: {
           id: recipient.id,
           acknowledgedAt: null,
-          lastTriggeredAt: null,
+          lastTriggeredAt: recipient.lastTriggeredAt,
           OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
           alarm: { status: OperationalAlarmStatus.ACTIVA },
         },
@@ -362,8 +401,15 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
           type: NotificationType.ALARMA,
           title: recipient.alarm.title,
           body: [
-            recipient.alarm.kind === OperationalAlarmKind.TIMER ? 'Timer finalizado.' : 'Recordatorio.',
+            recipient.alarm.kind === OperationalAlarmKind.TIMER
+              ? 'Timer finalizado.'
+              : recipient.lastTriggeredAt
+                ? 'Alerta repetida.'
+                : 'Alerta programada.',
             recipient.alarm.note,
+            recipient.alarm.repeatMinutes
+              ? `Se repetirá cada ${recipient.alarm.repeatMinutes} min hasta que la atiendas.`
+              : null,
             `Asignado por ${recipient.alarm.createdBy.name}.`,
           ]
             .filter(Boolean)
@@ -387,7 +433,6 @@ export async function dispatchDueAlarmsForAllUsers(now = new Date()): Promise<{
   const dueUsers = await prisma.operationalAlarmRecipient.findMany({
     where: {
       acknowledgedAt: null,
-      lastTriggeredAt: null,
       OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
       alarm: {
         status: OperationalAlarmStatus.ACTIVA,

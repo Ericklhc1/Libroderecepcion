@@ -183,6 +183,7 @@ export async function recordGuaranteeCashIn(
     reservationReferenceId?: string | null;
     reservationCode?: string | null;
     reference?: string | null;
+    roomNumber?: string | null;
     roomId?: string | null;
     stayId?: string | null;
     guestId?: string | null;
@@ -326,8 +327,13 @@ export async function recordGuaranteeChargeOut(
     reservationReferenceId: params.reservationReferenceId ?? null,
     guaranteeId: params.guaranteeId,
     reference:
-      params.reference?.trim() ||
-      (params.reservationCode ? `Cobro garantía ${params.reservationCode}` : 'Cobro de garantía'),
+      [
+        params.roomNumber?.trim() ? `Hab. ${params.roomNumber.trim()}` : null,
+        params.reference?.trim() ||
+          (params.reservationCode ? `Cobro garantía ${params.reservationCode}` : 'Cobro de garantía'),
+      ]
+        .filter(Boolean)
+        .join(' · '),
     notes:
       params.notes?.trim() ||
       'Garantía cobrada/aplicada: deja de estar bajo custodia de Recepción y no pasa a saldo operacional de Caja.',

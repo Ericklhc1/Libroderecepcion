@@ -21,7 +21,7 @@ import {
 import { getMyOpenShift } from './shifts';
 import {
   assertGuaranteeCanBeDeleted,
-  recordGuaranteeCashChargeOut,
+  recordGuaranteeChargeOut,
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
@@ -387,7 +387,7 @@ export async function changeGuaranteeState(
       }
 
       if (settledOutsideCash > 0) {
-        await recordGuaranteeCashChargeOut(tx, {
+        await recordGuaranteeChargeOut(tx, {
           user,
           guaranteeId: guarantee.id,
           reservationReferenceId: guarantee.reservationReferenceId,

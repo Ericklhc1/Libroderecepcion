@@ -233,11 +233,11 @@ export default async function TaskDetailPage({
 
         {!task.deletedAt ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
-            {task.status === TaskStatus.PENDIENTE &&
+            {!scheduled && task.status === TaskStatus.PENDIENTE &&
                        (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
               <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar" />
             ) : null}
-            {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
+            {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
                 status={TaskStatus.COMPLETADA}
@@ -399,7 +399,7 @@ export default async function TaskDetailPage({
             <ul className="space-y-1 px-4 py-3">
               {task.checklist.map((item) => (
                 <li key={item.id}>
-                  {task.deletedAt || !open ? (
+                  {task.deletedAt || !open || scheduled ? (
                     <span
                       className={`flex items-start gap-2 px-1 py-1 text-sm ${
                         item.done ? 'text-slate-400 line-through' : 'text-petrol-900'

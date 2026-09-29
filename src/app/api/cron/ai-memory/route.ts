@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
+import { isAuthorizedCronRequest } from '@/server/cron-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,8 +10,7 @@ export const dynamic = 'force-dynamic';
  * retención, también elimina registros creados con una configuración anterior.
  */
 export async function GET(request: Request) {
-  const userAgent = request.headers.get('user-agent') ?? '';
-  if (!userAgent.startsWith('vercel-cron/')) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
   }
 

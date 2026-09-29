@@ -9,7 +9,7 @@ export const TERMS_SECTIONS = [
   {
     title: '1. Finalidad de la plataforma',
     paragraphs: [
-      'Central de Operaciones · Hotel HW Libertad es una plataforma interna de apoyo a la operación hotelera. Centraliza información, seguimiento, trazabilidad y acciones operativas, pero no sustituye las políticas internas, el PMS ni las instrucciones formales de la organización.',
+      'AROH Central IA · Hotel HW Libertad es una plataforma interna de apoyo a la operación hotelera. Centraliza información, seguimiento, trazabilidad y acciones operativas, pero no sustituye las políticas internas, el PMS ni las instrucciones formales de la organización.',
     ],
   },
   {
@@ -63,7 +63,7 @@ export const TERMS_SECTIONS = [
   {
     title: '9. Aceptación',
     paragraphs: [
-      'Al aceptar estos términos, el usuario declara haberlos leído y comprender que el Libro Operativo es una herramienta interna de apoyo, sujeta a controles de seguridad, auditoría y mejora continua.',
+      'Al aceptar estos términos, el usuario declara haberlos leído y comprender que AROH Central IA es una herramienta interna de apoyo, sujeta a controles de seguridad, auditoría y mejora continua.',
     ],
   },
 ] as const;

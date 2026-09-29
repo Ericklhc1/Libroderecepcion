@@ -90,9 +90,10 @@ async function deliverRow(id: string): Promise<boolean> {
 /**
  * Intento inmediato y silencioso. Nunca hace fallar la operación del hotel.
  *
- * Vercel Hobby sólo permite cron diario. Para no esperar al cron ante un fallo
- * transitorio, cada nuevo hecho operativo intenta además rescatar unas pocas
- * filas vencidas de la outbox. El cron diario queda como red de seguridad.
+ * Con Vercel Pro el rescate programado corre varias veces por hora. Se
+ * conserva además el rescate oportunista tras nueva actividad: reduce la
+ * latencia ante fallos transitorios y mantiene la outbox fuera del camino
+ * crítico de Recepción.
  */
 export async function tryDeliverOperationalMail(eventKey: string): Promise<void> {
   try {

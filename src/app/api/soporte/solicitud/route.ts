@@ -50,11 +50,13 @@ function decodeAttachment(input: z.infer<typeof attachmentSchema>): MailAttachme
   }
 
   const match = input.dataUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/);
-  if (!match || match[1] !== input.type) {
+  const mediaType = match?.[1];
+  const encoded = match?.[2];
+  if (!mediaType || !encoded || mediaType !== input.type) {
     throw new Error('El archivo adjunto no tiene un formato válido.');
   }
 
-  const content = Buffer.from(match[2], 'base64');
+  const content = Buffer.from(encoded, 'base64');
   if (content.length > 3 * 1024 * 1024) {
     throw new Error('El archivo adjunto supera 3 MB.');
   }

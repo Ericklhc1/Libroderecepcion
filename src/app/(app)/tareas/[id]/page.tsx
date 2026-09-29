@@ -49,6 +49,7 @@ export default async function TaskDetailPage({
   ]);
 
   const open = TASK_OPEN_STATUSES.includes(task.status);
+  const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
   const overdue = isOverdue(task.dueAt, open);
   const doneItems = task.checklist.filter((item) => item.done).length;
 
@@ -85,6 +86,7 @@ export default async function TaskDetailPage({
             <Badge tone={PRIORITY_TONE[task.priority]} withSymbol={false}>
               Prioridad {PRIORITY_LABEL[task.priority]}
             </Badge>
+            {scheduled ? <Chip>Programada</Chip> : null}
             <Chip>Origen: {TASK_ORIGIN_LABEL[task.origin]}</Chip>
           </div>
 
@@ -115,6 +117,14 @@ export default async function TaskDetailPage({
             <div>
               <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{task.department?.name ?? 'Sin área'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Inicio</dt>
+              <dd className="text-petrol-900">
+                {task.startsAt
+                  ? `${formatDateTime(task.startsAt)} (${relativeTime(task.startsAt)})`
+                  : 'Inmediato'}
+              </dd>
             </div>
             <div>
               <dt className="text-xs font-medium text-slate-500">Fecha límite</dt>
@@ -213,6 +223,7 @@ export default async function TaskDetailPage({
                   title: task.title,
                   description: task.description ?? '',
                   priority: task.priority,
+                  startsAt: toDateTimeInput(task.startsAt),
                   dueAt: toDateTimeInput(task.dueAt),
                   departmentId: task.departmentId,
                   tags: task.tags,

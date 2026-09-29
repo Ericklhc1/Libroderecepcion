@@ -1,11 +1,27 @@
-export const REQUIRED_SUPERVISION_OPENING_REPORTS = [
-  'AUDITORIA_FORMULARIO',
-  'ACTIVIDAD',
+export const SUPERVISION_OPERATIONAL_PRIMARY_REPORT = 'ACTIVIDAD' as const;
+
+export const SUPERVISION_OPERATIONAL_FALLBACK_REPORTS = [
   'ENTRADAS',
   'IN_HOUSE',
   'SALIDAS',
+] as const;
+
+export const REQUIRED_SUPERVISION_AUDIT_REPORTS = [
+  'AUDITORIA_FORMULARIO',
   'COBROS',
   'CARGOS_DIARIOS',
+] as const;
+
+/**
+ * Catálogo informativo completo de evidencia de apertura.
+ *
+ * ACTIVIDAD reemplaza al trío ENTRADAS + IN_HOUSE + SALIDAS como fotografía
+ * operacional del día. No se exigen los cuatro a la vez.
+ */
+export const REQUIRED_SUPERVISION_OPENING_REPORTS = [
+  ...REQUIRED_SUPERVISION_AUDIT_REPORTS,
+  SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
+  ...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
 ] as const;
 
 export const OPTIONAL_SUPERVISION_OPENING_REPORTS = [

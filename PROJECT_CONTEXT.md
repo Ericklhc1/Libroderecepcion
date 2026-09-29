@@ -1,5 +1,14 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
+
+- Las capturas y archivos de **Reportar / solicitar** se archivan en **Cloudflare R2 privado**; Neon guarda sólo metadatos y la relación con el `SupportRequest`.
+- La subida usa una URL PUT temporal firmada y ocurre **directamente desde el navegador a R2**. Si el archivo ya quedó archivado, no vuelve a viajar como base64 hacia Vercel.
+- La bandeja `/admin/soporte` lista los adjuntos persistentes y los abre mediante una ruta autenticada que exige `support.view`; la ruta genera una URL GET temporal firmada y redirige al navegador, sin proxificar el binario por Vercel.
+- El diseño evita depender de la conectividad servidor→R2, que mantiene antecedentes de fallos TLS en Vercel. Si la subida directa falla, el reporte igual se persiste y el archivo conserva el correo como canal de respaldo.
+- `attachmentNames` se conserva como inventario/histórico; `SupportRequestAttachment` representa sólo objetos realmente archivados.
+- No se guardan blobs en PostgreSQL. Migración aditiva: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
 ## Actualización 29/09/2026 · AROH 1.30.0 · adjuntos consultables de soporte
 
 - **Reportar / solicitar** puede archivar la captura y el archivo adjunto en Cloudflare R2 privado; Neon guarda sólo metadatos en `SupportRequestAttachment`.

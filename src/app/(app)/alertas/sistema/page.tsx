@@ -58,8 +58,7 @@ export default async function AlertsPage({
   const estado = typeof params.estado === 'string' ? params.estado : 'activas';
   const now = new Date();
 
-  const accessibleKinds: Prisma.AlertWhereInput[] = [
-    ...(canManage ? [{}] : []),
+  const restrictedKinds: Prisma.AlertWhereInput[] = [
     ...(canApproveCash
       ? [
           { dedupeKey: { startsWith: 'cash-transfer:' } },
@@ -73,10 +72,13 @@ export default async function AlertsPage({
         ]
       : []),
   ];
+  const accessFilter: Prisma.AlertWhereInput | null = canManage
+    ? null
+    : { OR: restrictedKinds };
 
   const where: Prisma.AlertWhereInput = {
     deletedAt: null,
-    AND: [{ OR: accessibleKinds }],
+    ...(accessFilter ? { AND: [accessFilter] } : {}),
     ...(estado === 'activas'
       ? {
           OR: [
@@ -119,7 +121,7 @@ export default async function AlertsPage({
       by: ['status'],
       where: {
         deletedAt: null,
-        AND: [{ OR: accessibleKinds }],
+        ...(accessFilter ? { AND: [accessFilter] } : {}),
       },
       _count: { _all: true },
     }),

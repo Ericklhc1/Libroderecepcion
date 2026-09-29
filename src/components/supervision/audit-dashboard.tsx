@@ -98,7 +98,8 @@ const KIND_LABEL: Record<string, string> = {
   ACTIVIDAD: 'Actividad',
   ENTRADAS: 'Entradas',
   COBROS: 'Cobros',
-  VENTAS_CANAL: 'Ventas',
+  VENTAS_CANAL: 'Ventas canal · legado',
+  VENTAS_PERIODO: 'Ventas período',
   PRODUCCION_HABITACION: 'Producción',
   SALIDAS: 'Salidas',
   REVENUE: 'Revenue',
@@ -148,6 +149,9 @@ export function SupervisionAuditDashboard({
           const payments = section(row.metrics, 'payments');
           const production = section(row.metrics, 'roomProduction');
           const sales = section(row.metrics, 'salesChannels');
+          const salesPeriod = section(row.metrics, 'salesPeriod');
+          const salesPeriodTotals = object(salesPeriod.totals ?? null);
+          const salesCostCenters = object(salesPeriodTotals.costCentersClp ?? null);
           const revenue = section(row.metrics, 'revenue');
           const audit = section(row.metrics, 'audit');
           const auditActivity = section(row.metrics, 'auditActivity');
@@ -178,6 +182,10 @@ export function SupervisionAuditDashboard({
           const paymentClp = numberValue(payments.clpAmount);
           const productionRooms = numberValue(production.occupiedRoomsWithCost);
           const salesNet = numberValue(sales.netClp);
+          const salesPeriodVisibleDays = numberValue(salesPeriod.visibleDays);
+          const salesPeriodExpectedDays = numberValue(salesPeriod.expectedVisibleDays);
+          const salesPeriodCourtesy = numberValue(salesPeriodTotals.courtesyRooms);
+          const salesPeriodTruncated = salesPeriod.truncated === true;
           const occupancy = numberValue(revenue.occupancyPct);
           const auditOccupancy = numberValue(auditActivity.occupancyPct);
           const noDailyCharges = charges.noData === true;
@@ -242,7 +250,24 @@ export function SupervisionAuditDashboard({
                   />
                   <StatTile label="Cobros CLP" value={clp(paymentClp)} tone="neutral" />
                   <StatTile label="Hab. con producción" value={productionRooms ?? '—'} tone="neutral" />
-                  <StatTile label="Venta neta canales" value={clp(salesNet)} tone="neutral" />
+                  {salesPeriodVisibleDays !== null ? (
+                    <>
+                      <StatTile
+                        label="Cortesías período"
+                        value={salesPeriodCourtesy ?? 0}
+                        tone={(salesPeriodCourtesy ?? 0) > 0 ? 'alert' : 'good'}
+                        hint={(salesPeriodCourtesy ?? 0) > 0 ? 'Requiere autorización y revisión' : 'Sin cortesías detectadas'}
+                      />
+                      <StatTile
+                        label="Cobertura ventas"
+                        value={salesPeriodExpectedDays === null ? salesPeriodVisibleDays : `${salesPeriodVisibleDays}/${salesPeriodExpectedDays}`}
+                        tone={salesPeriodTruncated ? 'alert' : 'good'}
+                        hint={salesPeriodTruncated ? 'El PDF no contiene todos los días esperados' : 'Cobertura disponible'}
+                      />
+                    </>
+                  ) : salesNet !== null ? (
+                    <StatTile label="Venta neta canales · legado" value={clp(salesNet)} tone="neutral" />
+                  ) : null}
                   <StatTile label="OCC forecast" value={decimal(occupancy, '%')} tone="neutral" />
                   <StatTile label="OCC actividad" value={decimal(auditOccupancy, '%')} tone="neutral" />
                   <StatTile
@@ -251,6 +276,51 @@ export function SupervisionAuditDashboard({
                     tone={noDailyCharges ? 'good' : 'neutral'}
                   />
                 </div>
+
+                {salesPeriodVisibleDays !== null ? (
+                  <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-petrol-900">Ventas por período · mes en curso</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          ${salesPeriodVisibleDays} día(s) legibles
+                          {salesPeriodExpectedDays !== null ? ` de ${salesPeriodExpectedDays} esperados` : ''}
+                          {typeof salesPeriod.visibleThrough === 'string' ? ` · hasta ${salesPeriod.visibleThrough}` : ''}.
+                        </p>
+                      </div>
+                      <Badge tone={(salesPeriodCourtesy ?? 0) > 0 ? 'critico' : salesPeriodTruncated ? 'pendiente' : 'resuelto'}>
+                        {(salesPeriodCourtesy ?? 0) > 0
+                          ? `${salesPeriodCourtesy} cortesía(s)`
+                          : salesPeriodTruncated
+                            ? 'Cobertura parcial'
+                            : 'Sin cortesías'}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ['Alojamiento', salesCostCenters.alojamiento],
+                        ['Spa', salesCostCenters.spa],
+                        ['Multas', salesCostCenters.multas],
+                        ['Multas fumar', salesCostCenters.multasFumar],
+                        ['Multas blancos', salesCostCenters.multasBlancos],
+                        ['Eventos', salesCostCenters.eventos],
+                        ['Varios', salesCostCenters.varios],
+                        ['Tasas', salesCostCenters.tasas],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200">
+                          <p className="text-xs text-slate-500">{label}</p>
+                          <p className="mt-0.5 text-sm font-semibold text-petrol-900">
+                            {clp(numberValue(value as Prisma.JsonValue))}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      El Libro cruza estas cifras con inventario activo, auditoría, producción por habitación,
+                      movimientos PMS, In House y multas por blancos registradas.
+                    </p>
+                  </div>
+                ) : null}
 
                 {importedDeparturesPending !== null ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3 ring-1 ring-slate-200">

@@ -18,9 +18,7 @@ import { auditOperationalPendingCount } from '@/domain/supervision-audit-review'
 import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
-  REQUIRED_SUPERVISION_AUDIT_REPORTS,
-  SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
-  SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
+  REQUIRED_SUPERVISION_OPENING_REPORTS,
   SUPERVISION_REPORT_LABELS,
 } from '@/domain/supervision-opening';
 import { getLiveCashState } from '@/server/services/live-cash';
@@ -343,20 +341,10 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   const auditKinds = kindsForDate(auditDateKey);
   const presentReportKinds = Array.from(new Set([...todayKinds, ...auditKinds]));
 
-  // "Habitaciones con actividad" es el informe principal y sustituye al trío
-  // histórico. Exigir los cuatro a la vez sería burocracia sin información nueva.
-  const occupancyReady =
-    todayKinds.includes(SUPERVISION_OPERATIONAL_PRIMARY_REPORT) ||
-    SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.every((kind) => todayKinds.includes(kind));
-  const missingOperationalFallback = occupancyReady
-    ? []
-    : SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.filter((kind) => !todayKinds.includes(kind));
-
-  const missingAuditReports = REQUIRED_SUPERVISION_AUDIT_REPORTS.filter(
-    (kind) => !auditKinds.includes(kind),
+  const missingRequiredReports = REQUIRED_SUPERVISION_OPENING_REPORTS.filter(
+    (kind) => !presentReportKinds.includes(kind),
   );
-  const auditReady = missingAuditReports.length === 0;
-  const reportsReady = occupancyReady && auditReady;
+  const reportsReady = missingRequiredReports.length === 0;
 
   const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
     (kind) => !presentReportKinds.includes(kind),
@@ -461,13 +449,8 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       presentKinds: presentReportKinds,
       todayKinds,
       auditKinds,
-      operationalPrimary: SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
-      operationalFallback: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
-      occupancyReady,
-      missingOperationalFallback,
-      auditRequired: [...REQUIRED_SUPERVISION_AUDIT_REPORTS],
-      missingAudit: missingAuditReports,
-      auditReady,
+      required: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
+      missingRequired: missingRequiredReports,
       reportsReady,
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
       missingOptional: missingOptionalReports,
@@ -482,9 +465,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     },
     blockers: {
       cash: missingCashCurrencies.length,
-      // Los informes incompletos exigen contingencia documentada, pero no dejan
-      // al hotel sin Supervisión si el PMS o una exportación falla.
-      reports: reportsReady ? 0 : 1,
+      reports: missingRequiredReports.length,
     },
   };
 }
@@ -498,7 +479,6 @@ export async function completeSupervisionOpening(
     reviewedPending: boolean;
     reviewedGuarantees: boolean;
     reviewedKeys: boolean;
-    reportContingencyReason?: string | null;
   },
 ) {
   assertSupervisor(user);
@@ -520,10 +500,11 @@ export async function completeSupervisionOpening(
       `Hay diferencias de Caja sin observación en: ${readiness.cash.unexplainedDifferences.join(', ')}.`,
     );
   }
-  const reportContingencyReason = input.reportContingencyReason?.trim() || null;
-  if (!readiness.reports.reportsReady && (!reportContingencyReason || reportContingencyReason.length < 8)) {
+  if (readiness.reports.missingRequired.length > 0) {
     throw new RuleError(
-      'Falta evidencia PMS de apertura. Carga los informes disponibles o registra una contingencia con el motivo.',
+      `Faltan informes operativos obligatorios: ${readiness.reports.missingRequired
+        .map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind)
+        .join(', ')}.`,
     );
   }
 
@@ -559,10 +540,9 @@ export async function completeSupervisionOpening(
       reports: {
         todayKinds: readiness.reports.todayKinds,
         auditKinds: readiness.reports.auditKinds,
-        occupancyReady: readiness.reports.occupancyReady,
-        auditReady: readiness.reports.auditReady,
+        presentKinds: readiness.reports.presentKinds,
+        missingRequired: readiness.reports.missingRequired,
         reportsReady: readiness.reports.reportsReady,
-        contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,
       },
@@ -611,7 +591,7 @@ export async function completeSupervisionOpening(
           cashAudits: readiness.cash.currencies.map((row) => row.audit?.id).filter(Boolean),
           reportKinds: readiness.reports.presentKinds,
           reportsReady: readiness.reports.reportsReady,
-          reportContingencyReason,
+          missingRequiredReports: readiness.reports.missingRequired,
           pendingReviewed: readiness.pendingTotal,
         },
       },

@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · hotfix panel Reportar / solicitar · versión candidata **v1.26.3**
+Actualizado: **2026-09-29** · usuarios ocultos operativos · versión candidata **v1.27.0**
 
 ## Estados canónicos
 
@@ -30,27 +30,29 @@ Actualizado: **2026-09-29** · hotfix panel Reportar / solicitar · versión can
 | Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
 | Identidad AROH Central IA | `PRODUCTION` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
-| Panel Reportar / solicitar | `EN_DESARROLLO` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
+| Panel Reportar / solicitar | `PRODUCTION` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
+| Usuarios ocultos | `PR_ABIERTO` | v1.27.0 · `feature/usuarios-ocultos-v1-27-0` | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
 
 ## Iteración actual
 
-**AROH 1.26.3** · rama **`fix/support-panel-portal-1-26-3`**
+**AROH 1.27.0** · rama **`feature/usuarios-ocultos-v1-27-0`**
 
-Objetivo: corregir el drawer **Reportar / solicitar**, que quedaba limitado a la altura de la cabecera por vivir dentro del header sticky con backdrop-filter.
+Objetivo: permitir que Administración marque una cuenta como **Oculta** sin desactivarla ni alterar su rol.
 
 Incluye:
-- render del overlay mediante `createPortal(..., document.body)`;
-- overlay real de viewport completo con `fixed inset-0`;
-- drawer lateral de altura completa, con formulario desplazable;
-- conservación del bloqueo de scroll, cierre por Escape y clic exterior;
-- prueba de regresión específica para impedir que vuelva a quedar atrapado por el shell;
-- sin migración de esquema ni datos.
+- nuevo campo aditivo `User.hiddenFromSelectors`, predeterminado en `false`;
+- checkbox y distintivo **Oculto** en Administración → Usuarios;
+- exclusión de selectores generales, responsables, incorporación manual a turnos, Supervisión, Chat nuevo, alarmas individuales/grupales y menciones por `@usuario`;
+- conservación de login, permisos, operación propia, historial y trazabilidad;
+- conservación deliberada de destinatarios automáticos/globales y de referencias ya existentes;
+- regresiones para operación propia, avisos globales y menciones;
+- migración `20260929170000_usuario_oculto_operacion`.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
-- merge a `main`;
+- revisión/merge del PR a `main`;
 - despliegue Vercel Production;
-- segunda verificación del código desplegado.
+- verificación de la migración y comportamiento desplegado.
 
 ## Infraestructura vigente
 

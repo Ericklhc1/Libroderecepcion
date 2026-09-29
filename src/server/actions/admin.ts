@@ -87,6 +87,7 @@ export async function createUserAction(
         username,
         email: input.email ?? null,
         emailNotificationsEnabled: input.emailNotificationsEnabled,
+        hiddenFromSelectors: input.hiddenFromSelectors,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -120,6 +121,7 @@ export async function createUserAction(
         username,
         email: user.email,
         emailNotificationsEnabled: user.emailNotificationsEnabled,
+        hiddenFromSelectors: user.hiddenFromSelectors,
         roleId: role.id,
         role: role.name,
       },
@@ -178,6 +180,7 @@ export async function updateUserAction(
         name: input.name,
         email: input.email ?? null,
         emailNotificationsEnabled: input.emailNotificationsEnabled,
+        hiddenFromSelectors: input.hiddenFromSelectors,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
@@ -197,12 +200,13 @@ export async function updateUserAction(
         name: input.name,
         email: input.email ?? null,
         emailNotificationsEnabled: input.emailNotificationsEnabled,
+        hiddenFromSelectors: input.hiddenFromSelectors,
         roleId: input.roleId,
         departmentId: input.departmentId,
         phone: input.phone,
         active: input.active,
       },
-      ['name', 'email', 'emailNotificationsEnabled', 'roleId', 'departmentId', 'phone', 'active'],
+      ['name', 'email', 'emailNotificationsEnabled', 'hiddenFromSelectors', 'roleId', 'departmentId', 'phone', 'active'],
     );
 
     await recordAudit({

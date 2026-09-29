@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { AuditAction, SupervisionShiftStatus, type Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  FineKind,
+  FineStatus,
+  SupervisionShiftStatus,
+  type Prisma,
+} from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { readPdfFragments } from '@/server/pms/read-pdf';
 import { readStructuredReport } from '@/domain/pms/layout';
@@ -105,10 +111,6 @@ function linesFromFragments(
       .replace(/\s+/g, ' ')
       .trim(),
   );
-}
-
-function compactText(lines: string[]): string {
-  return lines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function numberEs(raw: string | undefined | null): number | null {
@@ -536,6 +538,301 @@ function mergeByKey<T extends { key: string }>(a: T[], b: T[]): T[] {
   return [...map.values()];
 }
 
+function salesPeriodFromMetrics(value: Prisma.JsonValue | null | undefined): SalesPeriodMetrics | null {
+  const root = jsonObject(value);
+  const candidate = root.salesPeriod;
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object') return null;
+  const period = candidate as unknown as SalesPeriodMetrics;
+  if (
+    typeof period.periodStart !== 'string' ||
+    typeof period.periodEnd !== 'string' ||
+    !Array.isArray(period.daily)
+  ) {
+    return null;
+  }
+  return period;
+}
+
+function dateAtUtc(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function dateKeyUtc(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function nextUtcDay(date: Date): Date {
+  return new Date(date.getTime() + 86_400_000);
+}
+
+function jsonNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function formatCrossDates(rows: Array<{ date: string; detail?: string }>, limit = 6): string {
+  const shown = rows
+    .slice(0, limit)
+    .map((row) => (row.detail ? `${row.date} (${row.detail})` : row.date));
+  return rows.length > limit
+    ? `${shown.join(', ')} y ${rows.length - limit} día(s) más`
+    : shown.join(', ');
+}
+
+async function reconcileSalesPeriodImports(
+  tx: Prisma.TransactionClient,
+  shiftId: string,
+): Promise<void> {
+  const salesRows = await tx.supervisionAuditImport.findMany({
+    where: {
+      supervisionShiftId: shiftId,
+      reportKinds: { has: 'VENTAS_PERIODO' },
+    },
+    select: {
+      id: true,
+      metrics: true,
+      findings: true,
+      reviewState: true,
+    },
+  });
+  if (!salesRows.length) return;
+
+  const activeRoomCount = await tx.room.count({ where: { active: true } });
+
+  for (const salesRow of salesRows) {
+    const salesPeriod = salesPeriodFromMetrics(salesRow.metrics);
+    if (!salesPeriod || !salesPeriod.visibleThrough) continue;
+
+    const from = dateAtUtc(salesPeriod.periodStart);
+    const through = dateAtUtc(salesPeriod.visibleThrough);
+    const evidenceRows = await tx.supervisionAuditImport.findMany({
+      where: {
+        businessDate: { gte: from, lte: through },
+      },
+      select: {
+        id: true,
+        businessDate: true,
+        metrics: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    type DayEvidence = {
+      auditActivity?: Record<string, unknown>;
+      roomProduction?: Record<string, unknown>;
+      inHouse?: Record<string, unknown>;
+      pmsProcessing?: Record<string, unknown>;
+    };
+    const byDate = new Map<string, DayEvidence>();
+    for (const row of evidenceRows) {
+      if (row.id === salesRow.id) continue;
+      const key = dateKeyUtc(row.businessDate);
+      const evidence = byDate.get(key) ?? {};
+      const metrics = jsonObject(row.metrics);
+      const take = (name: keyof DayEvidence) => {
+        if (evidence[name]) return;
+        const section = metrics[name];
+        if (section && !Array.isArray(section) && typeof section === 'object') {
+          evidence[name] = section as Record<string, unknown>;
+        }
+      };
+      take('auditActivity');
+      take('roomProduction');
+      take('inHouse');
+      take('pmsProcessing');
+      byDate.set(key, evidence);
+    }
+
+    const cross: SupervisionAuditFinding[] = [];
+
+    const roomInventoryMismatch = salesPeriod.daily
+      .filter(
+        (day) =>
+          activeRoomCount > 0 &&
+          day.totalRooms !== null &&
+          day.blockedRooms !== null &&
+          day.totalRooms + day.blockedRooms !== activeRoomCount,
+      )
+      .map((day) => ({
+        date: day.date,
+        detail: `${day.totalRooms ?? '—'} vendibles + ${day.blockedRooms ?? '—'} bloqueadas ≠ ${activeRoomCount}`,
+      }));
+    if (roomInventoryMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:room-inventory',
+        severity: 'ALTA',
+        title: 'Inventario PMS no concilia con habitaciones activas del Libro',
+        detail: `El hotel tiene ${activeRoomCount} habitaciones activas en el Libro. Diferencias: ${formatCrossDates(roomInventoryMismatch)}.`,
+      });
+    }
+
+    const auditMismatch: Array<{ date: string; detail: string }> = [];
+    const productionMismatch: Array<{ date: string; detail: string }> = [];
+    const movementMismatch: Array<{ date: string; detail: string }> = [];
+    const inHouseMismatch: Array<{ date: string; detail: string }> = [];
+
+    for (const day of salesPeriod.daily) {
+      const evidence = byDate.get(day.date);
+      if (!evidence) continue;
+
+      const audit = evidence.auditActivity;
+      if (audit) {
+        const differences: string[] = [];
+        const entries = jsonNumber(audit.entries);
+        const departures = jsonNumber(audit.departures);
+        const breakfasts = jsonNumber(audit.breakfasts);
+        const occupancy = jsonNumber(audit.occupancyPct);
+        if (entries !== null && day.checkIns !== null && entries !== day.checkIns) {
+          differences.push(`check-in ${entries}≠${day.checkIns}`);
+        }
+        if (departures !== null && day.checkOuts !== null && departures !== day.checkOuts) {
+          differences.push(`check-out ${departures}≠${day.checkOuts}`);
+        }
+        if (breakfasts !== null && day.breakfasts !== null && breakfasts !== day.breakfasts) {
+          differences.push(`desayunos ${breakfasts}≠${day.breakfasts}`);
+        }
+        if (
+          occupancy !== null &&
+          day.occupancyPct !== null &&
+          Math.abs(occupancy - day.occupancyPct) > 0.1
+        ) {
+          differences.push(`OCC ${occupancy}%≠${day.occupancyPct}%`);
+        }
+        if (differences.length) auditMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const production = evidence.roomProduction;
+      if (production) {
+        const differences: string[] = [];
+        const rooms = jsonNumber(production.occupiedRoomsWithCost);
+        const totalClp = jsonNumber(production.totalClp);
+        if (rooms !== null && day.occupiedWithCost !== null && rooms !== day.occupiedWithCost) {
+          differences.push(`hab. con coste ${rooms}≠${day.occupiedWithCost}`);
+        }
+        if (
+          totalClp !== null &&
+          day.roomRevenueClp !== null &&
+          Math.abs(totalClp - day.roomRevenueClp) > 2
+        ) {
+          differences.push(
+            `producción ${Math.round(totalClp).toLocaleString('es-CL')}≠${Math.round(day.roomRevenueClp).toLocaleString('es-CL')}`,
+          );
+        }
+        if (differences.length) productionMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const processing = evidence.pmsProcessing;
+      if (processing && Array.isArray(processing.rows)) {
+        const rows = processing.rows.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+        );
+        const checkIns = rows.filter((item) => item.status === 'CHECK_IN').length;
+        const checkOuts = rows.filter((item) => item.status === 'CHECK_OUT').length;
+        const differences: string[] = [];
+        if (day.checkIns !== null && checkIns > 0 && checkIns !== day.checkIns) {
+          differences.push(`check-in PDF ${checkIns}≠ventas ${day.checkIns}`);
+        }
+        if (day.checkOuts !== null && checkOuts > 0 && checkOuts !== day.checkOuts) {
+          differences.push(`check-out PDF ${checkOuts}≠ventas ${day.checkOuts}`);
+        }
+        if (differences.length) movementMismatch.push({ date: day.date, detail: differences.join(', ') });
+      }
+
+      const inHouse = evidence.inHouse;
+      if (inHouse) {
+        const rooms = jsonNumber(inHouse.rooms);
+        if (
+          rooms !== null &&
+          day.occupiedRooms !== null &&
+          Math.abs(rooms - day.occupiedRooms) > 2
+        ) {
+          inHouseMismatch.push({
+            date: day.date,
+            detail: `In House ${rooms} vs ocupadas ${day.occupiedRooms}`,
+          });
+        }
+      }
+    }
+
+    if (auditMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:audit-activity',
+        severity: 'ALTA',
+        title: 'Formulario de auditoría y ventas por período discrepan',
+        detail: `Diferencias en actividad diaria: ${formatCrossDates(auditMismatch)}.`,
+      });
+    }
+    if (productionMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:room-production',
+        severity: 'ALTA',
+        title: 'Producción por habitación no concilia con ventas por período',
+        detail: `Diferencias en: ${formatCrossDates(productionMismatch)}.`,
+      });
+    }
+    if (movementMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:pms-movements',
+        severity: 'MEDIA',
+        title: 'Movimientos PMS no coinciden entre informes',
+        detail: `Check-in/check-out difieren en: ${formatCrossDates(movementMismatch)}. La señal de enlaces sigue siendo auxiliar y no cambia estados automáticamente.`,
+      });
+    }
+    if (inHouseMismatch.length) {
+      cross.push({
+        key: 'cross:sales-period:in-house',
+        severity: 'MEDIA',
+        title: 'In House y ocupación del período no coinciden',
+        detail: `Diferencias superiores a 2 habitaciones en: ${formatCrossDates(inHouseMismatch)}. Revisa la hora de emisión de ambos informes antes de concluir un error.`,
+      });
+    }
+
+    const pmsLinenFines = salesPeriod.daily.reduce(
+      (sum, day) => sum + (day.costCenters.multasBlancos ?? 0),
+      0,
+    );
+    const linenFines = await tx.fine.findMany({
+      where: {
+        deletedAt: null,
+        kind: FineKind.BLANCO,
+        status: FineStatus.COBRADA,
+        currency: 'CLP',
+        createdAt: { gte: from, lt: nextUtcDay(through) },
+      },
+      select: { amount: true },
+    });
+    const libroLinenFines = linenFines.reduce(
+      (sum, fine) => sum + (fine.amount ? Number(fine.amount) : 0),
+      0,
+    );
+    if (pmsLinenFines > 0 && Math.abs(pmsLinenFines - libroLinenFines) > 2) {
+      cross.push({
+        key: 'cross:sales-period:linen-fines',
+        severity: libroLinenFines === 0 ? 'ALTA' : 'MEDIA',
+        title: 'Multas por blancos del PMS no concilian con el Libro',
+        detail: `Ventas por período muestra ${Math.round(pmsLinenFines).toLocaleString('es-CL')} en “Multas por Blancos”; el Libro suma ${Math.round(libroLinenFines).toLocaleString('es-CL')} en multas BLANCO cobradas dentro del mismo tramo visible. Revisa fecha de registro, estado y trazabilidad.`,
+      });
+    }
+
+    const existingFindings = jsonArray<SupervisionAuditFinding>(salesRow.findings).filter(
+      (finding) => !finding.key.startsWith('cross:sales-period:'),
+    );
+    const review = parseSupervisionAuditReviewState(salesRow.reviewState);
+    for (const key of Object.keys(review.findings)) {
+      if (key.startsWith('cross:sales-period:')) delete review.findings[key];
+    }
+
+    await tx.supervisionAuditImport.update({
+      where: { id: salesRow.id },
+      data: {
+        findings: mergeByKey(existingFindings, cross) as unknown as Prisma.InputJsonArray,
+        reviewState: JSON.parse(JSON.stringify(review)) as Prisma.InputJsonObject,
+      },
+    });
+  }
+}
+
 export async function mergeSupervisionAuditReport(
   user: CurrentUser,
   input: {
@@ -602,13 +899,24 @@ export async function mergeSupervisionAuditReport(
             )
           : mergeByKey(existingFindings, input.parsed.findings);
     const reviewState = parseSupervisionAuditReviewState(existing?.reviewState);
+    if (input.parsed.kind === 'VENTAS_PERIODO') {
+      for (const key of Object.keys(reviewState.findings)) {
+        if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+          delete reviewState.findings[key];
+        }
+      }
+    }
     // Un informe SALIDAS recién cargado es una nueva fotografía de origen:
     // sustituye cualquier ajuste manual previo del contador, para no ocultar datos más frescos.
     if (input.parsed.kind === 'SALIDAS') {
       delete reviewState.metrics.departuresPending;
     }
     const reportKinds = Array.from(new Set([...(existing?.reportKinds ?? []), input.parsed.kind]));
-    const warnings = Array.from(new Set([...(existing?.warnings ?? []), ...input.parsed.warnings]));
+    const existingWarnings =
+      input.parsed.kind === 'VENTAS_PERIODO'
+        ? (existing?.warnings ?? []).filter((warning) => !warning.startsWith('Ventas por período:'))
+        : (existing?.warnings ?? []);
+    const warnings = Array.from(new Set([...existingWarnings, ...input.parsed.warnings]));
     const existingSourceFiles = jsonArray<{
       sha256: string;
       size: number;
@@ -674,7 +982,22 @@ export async function mergeSupervisionAuditReport(
       },
       tx,
     );
-    return saved;
+
+    if (
+      [
+        'VENTAS_PERIODO',
+        'AUDITORIA_FORMULARIO',
+        'ACTIVIDAD',
+        'ENTRADAS',
+        'SALIDAS',
+        'PRODUCCION_HABITACION',
+        'IN_HOUSE',
+      ].includes(input.parsed.kind)
+    ) {
+      await reconcileSalesPeriodImports(tx, shift.id);
+    }
+
+    return tx.supervisionAuditImport.findUniqueOrThrow({ where: { id: saved.id } });
   });
 }
 

@@ -94,6 +94,7 @@ export default async function AlertsPage() {
                       {alarm.note ? <p className="mt-1 text-sm text-slate-600">{alarm.note}</p> : null}
                       <p className="mt-1 text-xs text-slate-500">
                         {formatDateTime(alarm.dueAt)} · creada por {alarm.createdBy.name}
+                        {alarm.repeatMinutes ? ` · repite cada ${alarm.repeatMinutes} min` : ''}
                       </p>
                       <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
                         <Users className="h-3.5 w-3.5" aria-hidden="true" />
@@ -123,6 +124,7 @@ export default async function AlertsPage() {
                             title: alarm.title,
                             note: alarm.note,
                             dueAtLocal: toDateTimeInput(alarm.dueAt),
+                            repeatMinutes: alarm.repeatMinutes,
                           }}
                         />
                       ) : null}

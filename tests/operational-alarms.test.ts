@@ -10,6 +10,7 @@ import {
   acknowledgeOperationalAlarm,
   createOperationalAlarm,
   dispatchDueAlarmsForUser,
+  listAlarmCandidates,
   snoozeOperationalAlarm,
 } from '@/server/services/operational-alarms';
 import {
@@ -184,6 +185,33 @@ describe('timers y recordatorios operativos', () => {
     expect(storedRecipient.acknowledgedAt).not.toBeNull();
     expect(storedAlarm.status).toBe(OperationalAlarmStatus.CERRADA);
     expect(storedAlarm.closedAt).not.toBeNull();
+  });
+
+  it('un usuario oculto no es seleccionable pero sí recibe avisos globales', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor alarmas',
+    });
+    const hidden = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Oculto alarmas',
+    });
+    await prisma.user.update({
+      where: { id: hidden.id },
+      data: { hiddenFromSelectors: true },
+    });
+
+    const candidates = await listAlarmCandidates();
+    expect(candidates.map((person) => person.id)).not.toContain(hidden.id);
+
+    const alarm = await createOperationalAlarm(supervisor, {
+      kind: OperationalAlarmKind.RECORDATORIO,
+      scope: OperationalAlarmScope.GLOBAL,
+      title: 'Aviso global',
+      dueAt: new Date(Date.now() + 10 * 60_000),
+    });
+
+    expect(alarm.recipients.map((recipient) => recipient.userId)).toContain(hidden.id);
   });
 
   it('una cuenta de Recepción no puede emitir una alarma global', async () => {

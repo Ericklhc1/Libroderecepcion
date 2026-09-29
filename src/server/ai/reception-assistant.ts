@@ -1,7 +1,14 @@
 import 'server-only';
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { EntryType, FollowUpStatus, Priority, Severity, TaskStatus } from '@prisma/client';
+import {
+  EntryType,
+  FollowUpStatus,
+  Priority,
+  Severity,
+  SupervisionVisibility,
+  TaskStatus,
+} from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
 import { prisma } from '@/lib/prisma';
@@ -31,6 +38,7 @@ import {
 } from './fronti-config';
 import {
   assertFrontiToolEnabled,
+  filterFrontiToolDefinitionsForUser,
   frontiToolMode,
   selectFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
@@ -300,9 +308,41 @@ async function prioritiesTool(user: CurrentUser) {
 }
 
 async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
-  if (!hasPermission(user, 'metrics.view') && !hasPermission(user, 'task.create')) {
+  const canTasks =
+    user.isSystemAdmin ||
+    ['task.create', 'task.assign', 'task.edit', 'task.close', 'metrics.view'].some((permission) =>
+      hasPermission(user, permission),
+    );
+  const canSeeAllTasks =
+    user.isSystemAdmin ||
+    hasPermission(user, 'task.assign') ||
+    hasPermission(user, 'metrics.view');
+  const canFollowUps =
+    user.isSystemAdmin ||
+    ['followup.create', 'followup.manage', 'metrics.view'].some((permission) =>
+      hasPermission(user, permission),
+    );
+  const canSeeSupervisionFollowUps =
+    user.isSystemAdmin ||
+    [
+      'supervision.view',
+      'supervision.center.view',
+      'supervision.followup.manage',
+    ].some((permission) => hasPermission(user, permission));
+  const canEntries =
+    user.isSystemAdmin ||
+    [
+      'entry.create',
+      'entry.edit',
+      'entry.close',
+      'metrics.view',
+      'supervision.view',
+    ].some((permission) => hasPermission(user, permission));
+
+  if (!canTasks && !canFollowUps && !canEntries) {
     throw new Error('No tienes permiso para consultar vencimientos operativos.');
   }
+
   const requested = Number(args.hours ?? 24);
   const hours = Number.isFinite(requested)
     ? Math.min(168, Math.max(1, Math.round(requested)))
@@ -311,57 +351,95 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
   const until = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
   const [tasks, followUps, entries] = await Promise.all([
-    prisma.task.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: TASK_OPEN_STATUSES },
-        dueAt: { not: null, lte: until },
-      },
-      select: {
-        id: true,
-        humanId: true,
-        title: true,
-        priority: true,
-        dueAt: true,
-        assignee: { select: { name: true } },
-      },
-      orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
-      take: 30,
-    }),
-    prisma.followUp.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
-        scheduledAt: { lte: until },
-      },
-      select: {
-        id: true,
-        action: true,
-        scheduledAt: true,
-        status: true,
-        owner: { select: { name: true } },
-        entry: { select: { humanId: true } },
-      },
-      orderBy: { scheduledAt: 'asc' },
-      take: 30,
-    }),
-    prisma.operationalEntry.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: ENTRY_OPEN_STATUSES },
-        dueAt: { not: null, lte: until },
-      },
-      select: {
-        id: true,
-        humanId: true,
-        title: true,
-        priority: true,
-        dueAt: true,
-        owner: { select: { name: true } },
-      },
-      orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
-      take: 30,
-    }),
+    canTasks
+      ? prisma.task.findMany({
+          where: {
+            deletedAt: null,
+            status: { in: TASK_OPEN_STATUSES },
+            dueAt: { not: null, lte: until },
+            ...(canSeeAllTasks
+              ? {}
+              : {
+                  OR: [
+                    { assigneeId: user.id },
+                    { participants: { some: { userId: user.id, removedAt: null } } },
+                  ],
+                }),
+          },
+          select: {
+            id: true,
+            humanId: true,
+            title: true,
+            priority: true,
+            dueAt: true,
+            assignee: { select: { name: true } },
+          },
+          orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
+          take: 30,
+        })
+      : Promise.resolve([]),
+    canFollowUps
+      ? prisma.followUp.findMany({
+          where: {
+            deletedAt: null,
+            status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+            scheduledAt: { lte: until },
+            OR: canSeeSupervisionFollowUps
+              ? [
+                  { visibility: SupervisionVisibility.OPERATIVO },
+                  { visibility: SupervisionVisibility.SUPERVISION },
+                  {
+                    visibility: SupervisionVisibility.PRIVADO,
+                    createdById: user.id,
+                  },
+                  {
+                    visibility: SupervisionVisibility.PRIVADO,
+                    ownerId: user.id,
+                  },
+                ]
+              : [
+                  { visibility: SupervisionVisibility.OPERATIVO },
+                  {
+                    visibility: SupervisionVisibility.PRIVADO,
+                    createdById: user.id,
+                  },
+                  {
+                    visibility: SupervisionVisibility.PRIVADO,
+                    ownerId: user.id,
+                  },
+                ],
+          },
+          select: {
+            id: true,
+            action: true,
+            scheduledAt: true,
+            status: true,
+            owner: { select: { name: true } },
+            entry: { select: { humanId: true } },
+          },
+          orderBy: { scheduledAt: 'asc' },
+          take: 30,
+        })
+      : Promise.resolve([]),
+    canEntries
+      ? prisma.operationalEntry.findMany({
+          where: {
+            deletedAt: null,
+            status: { in: ENTRY_OPEN_STATUSES },
+            dueAt: { not: null, lte: until },
+          },
+          select: {
+            id: true,
+            humanId: true,
+            title: true,
+            priority: true,
+            dueAt: true,
+            owner: { select: { name: true } },
+          },
+          orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
+          take: 30,
+        })
+      : Promise.resolve([]),
   ]);
 
   const items = [
@@ -891,10 +969,16 @@ function systemInstructions(config: FrontiConfig): string {
 
 function chatTools(
   config: FrontiConfig,
+  user: CurrentUser,
   userMessage: string,
   runtimeContext: FrontiRuntimeContext | null,
 ): FrontiToolDefinition[] {
-  return selectFrontiToolDefinitions(config, userMessage, runtimeContext?.page ?? null).map((definition) => ({
+  const selected = selectFrontiToolDefinitions(
+    config,
+    userMessage,
+    runtimeContext?.page ?? null,
+  );
+  return filterFrontiToolDefinitionsForUser(user, selected).map((definition) => ({
     type: 'function',
     function: {
       name: definition.name,
@@ -947,7 +1031,7 @@ export async function runReceptionAssistant(
     let activeProviders = [...providers];
     const latestUserMessage =
       [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-    const tools = chatTools(config, latestUserMessage, runtimeContext);
+    const tools = chatTools(config, user, latestUserMessage, runtimeContext);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
 

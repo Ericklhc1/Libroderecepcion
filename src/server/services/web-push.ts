@@ -89,8 +89,8 @@ function generateVapidPair(): VapidPair {
 
 export async function getOrCreateVapidPair(): Promise<VapidPair> {
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe(
-      "SELECT pg_advisory_xact_lock(hashtext('aroh-web-push-vapid'))",
+    await tx.$queryRawUnsafe<Array<{ locked: number }>>(
+      "SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext('aroh-web-push-vapid'))",
     );
 
     const rows = await tx.systemSetting.findMany({

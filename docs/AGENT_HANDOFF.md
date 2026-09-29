@@ -1,4 +1,15 @@
-# Relevo de agentes — Libro Operativo de Recepción
+# Relevo de agentes — Central de Operaciones · Hotel HW Libertad
+
+## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa y cambio de identidad
+
+- Producto: **Central de Operaciones · Hotel HW Libertad**. No renombrar todavía repo, proyecto Vercel ni dominio; el cambio de subdominio es una migración separada.
+- Fuente única de fecha operativa: `resolveOperationalBusinessDate()` en `services/shifts.ts`. Turno abierto → `Shift.date`; último cierre DÍA → misma fecha; último cierre NOCHE → día siguiente; sin historial → calendario del hotel.
+- `getDashboardData` y Supervisión consumen esa fecha. `getSupervisionCenterSummary` limita `SupervisionAuditImport` a la jornada vigente.
+- La apertura de Supervisión sí puede consultar jornada vigente + cierre anterior para probar continuidad; esa excepción no debe volver a contaminar el dashboard diario.
+- `reportedBusinessDate()` prioriza fecha de archivo y encabezado. La regresión cubre un PDF 29/09 que contiene una llegada 01/10.
+- Cierre de Recepción: conservar `closeShift()` como autoridad. Revalida `cashBlockersForSending` + `assertShiftCashClosed` y después crea la tarea de validación de cierre.
+- Pruebas nuevas: `tests/fecha-operativa-turnos.test.ts` y regresión de fecha en `tests/supervision-audit-import.test.ts`.
+- Release: **v1.25.0**, sin migración Prisma.
 
 ## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
 

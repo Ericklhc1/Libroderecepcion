@@ -1,5 +1,18 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.30.0 · Fronti proactivo
+
+- Rama: `feature/fronti-proactive-v1-30-0`; PR #196.
+- La detección permanece determinística. `fronti-proactive.ts` sólo selecciona señales ya verificables y Fronti genera explicación/recomendación; ninguna inferencia muta entidades operativas.
+- Destinatarios proactivos: Supervisor + Administrador de sistema. Dedupe por huella + `fronti.proactiveCooldownHours`; límite por ejecución configurable.
+- Fuentes actuales: alertas vivas, reservas relevantes con acción/garantía/saldo pendiente y telemetría repetida; diferencias de inventario disparan revisión inmediata.
+- `scheduleFrontiProactiveSweep()` usa `after()` best-effort y el cron `/api/cron/fronti-proactive` es el respaldo. No volver a poner IA en el camino crítico de Recepción.
+- Administración > Fronti permite prueba de **inferencia real** por proveedor y muestra si la credencial efectiva viene de Neon cifrado o del entorno.
+- Cloudflare: 401/403 se clasifica como `ACCESO_DENEGADO` cuando corresponde; revisar permiso Workers AI, alcance del token y Account ID antes de reemplazar la clave.
+- `R2_ACCOUND_ID` es alias heredado aceptado, no fuente preferida. Objetivo: `CLOUDFLARE_ACCOUNT_ID`.
+- Vercel Pro se aprovecha con cron frecuente; no introducir AI Gateway de pago en la cadena operativa mientras siga vigente la política de inferencia USD 0.
+- Release objetivo: **v1.30.0**, sin migración Prisma.
+
 ## 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
 
 - `Reportar / solicitar` persiste primero un `SupportRequest`; SMTP es aviso secundario.

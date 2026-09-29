@@ -7,11 +7,8 @@ import {
   completeSupervisionOpening,
   getSupervisionOpeningReadiness,
 } from '@/server/services/supervision-center';
-import {
-  REQUIRED_SUPERVISION_AUDIT_REPORTS,
-  SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
-} from '@/domain/supervision-opening';
-import { addCalendarDateDays, hotelCalendarDate } from '@/domain/time';
+import { REQUIRED_SUPERVISION_OPENING_REPORTS } from '@/domain/supervision-opening';
+import { hotelCalendarDate } from '@/domain/time';
 
 describe('Apertura operacional de Supervisión', () => {
   let supervisor: CurrentUser;
@@ -36,9 +33,8 @@ describe('Apertura operacional de Supervisión', () => {
 
     const readiness = await getSupervisionOpeningReadiness(supervisor);
     expect(readiness.shift.id).toBe(shift.id);
-    expect(readiness.reports.occupancyReady).toBe(false);
-    expect(readiness.reports.missingAudit).toEqual(
-      expect.arrayContaining([...REQUIRED_SUPERVISION_AUDIT_REPORTS]),
+    expect(readiness.reports.missingRequired).toEqual(
+      expect.arrayContaining([...REQUIRED_SUPERVISION_OPENING_REPORTS]),
     );
 
     await expect(beginSupervisionOpening(supervisor)).rejects.toThrow(
@@ -58,7 +54,6 @@ describe('Apertura operacional de Supervisión', () => {
         reviewedPending: true,
         reviewedGuarantees: true,
         reviewedKeys: true,
-        reportContingencyReason: 'PMS sin informes disponibles durante la apertura.',
       }),
     ).rejects.toThrow(/arquear personalmente la Caja/);
 
@@ -68,61 +63,19 @@ describe('Apertura operacional de Supervisión', () => {
     expect(persisted.status).toBe('PREPARACION');
   });
 
-  it('Habitaciones con actividad sustituye al trío Entradas + In House + Salidas', async () => {
-    await beginSupervisionOpening(supervisor);
-    const today = hotelCalendarDate();
-    const auditDate = addCalendarDateDays(today, -1);
-
-    await prisma.supervisionAuditImport.create({
-      data: {
-        supervisionShiftId: (await prisma.supervisionShift.findFirstOrThrow({
-          where: { supervisorId: supervisor.id, status: 'PREPARACION' },
-        })).id,
-        businessDate: today,
-        uploadedById: supervisor.id,
-        reportKinds: ['ACTIVIDAD'],
-        metrics: {},
-        checks: [],
-        findings: [],
-        warnings: [],
-        reviewState: {},
-        sourceFiles: [],
-      },
-    });
-    await prisma.supervisionAuditImport.create({
-      data: {
-        supervisionShiftId: (await prisma.supervisionShift.findFirstOrThrow({
-          where: { supervisorId: supervisor.id, status: 'PREPARACION' },
-        })).id,
-        businessDate: auditDate,
-        uploadedById: supervisor.id,
-        reportKinds: [...REQUIRED_SUPERVISION_AUDIT_REPORTS],
-        metrics: {},
-        checks: [],
-        findings: [],
-        warnings: [],
-        reviewState: {},
-        sourceFiles: [],
-      },
-    });
-
-    const readiness = await getSupervisionOpeningReadiness(supervisor);
-    expect(readiness.reports.occupancyReady).toBe(true);
-    expect(readiness.reports.missingOperationalFallback).toEqual([]);
-    expect(readiness.reports.auditReady).toBe(true);
-    expect(readiness.reports.reportsReady).toBe(true);
-  });
-
-  it('acepta el trío histórico cuando no existe Habitaciones con actividad', async () => {
+  it('exige los siete informes acordados y no admite sustituciones', async () => {
     const shift = await beginSupervisionOpening(supervisor);
     const today = hotelCalendarDate();
+    const incomplete = REQUIRED_SUPERVISION_OPENING_REPORTS.filter(
+      (kind) => kind !== 'ENTRADAS',
+    );
 
     await prisma.supervisionAuditImport.create({
       data: {
         supervisionShiftId: shift.id,
         businessDate: today,
         uploadedById: supervisor.id,
-        reportKinds: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
+        reportKinds: [...incomplete],
         metrics: {},
         checks: [],
         findings: [],
@@ -133,13 +86,14 @@ describe('Apertura operacional de Supervisión', () => {
     });
 
     const readiness = await getSupervisionOpeningReadiness(supervisor);
-    expect(readiness.reports.occupancyReady).toBe(true);
+    expect(readiness.reports.reportsReady).toBe(false);
+    expect(readiness.reports.missingRequired).toContain('ENTRADAS');
+    expect(readiness.blockers.reports).toBe(1);
   });
 
-  it('activa el turno después de Caja, fotografía de hoy, cierre de ayer y confirmaciones', async () => {
+  it('activa el turno sólo después de Caja, siete informes y confirmaciones', async () => {
     const shift = await beginSupervisionOpening(supervisor);
     const today = hotelCalendarDate();
-    const auditDate = addCalendarDateDays(today, -1);
 
     await prisma.cashFund.create({
       data: { currency: 'CLP', amount: 100_000, active: true },
@@ -161,21 +115,7 @@ describe('Apertura operacional de Supervisión', () => {
         supervisionShiftId: shift.id,
         businessDate: today,
         uploadedById: supervisor.id,
-        reportKinds: ['ACTIVIDAD'],
-        metrics: {},
-        checks: [],
-        findings: [],
-        warnings: [],
-        reviewState: {},
-        sourceFiles: [],
-      },
-    });
-    await prisma.supervisionAuditImport.create({
-      data: {
-        supervisionShiftId: shift.id,
-        businessDate: auditDate,
-        uploadedById: supervisor.id,
-        reportKinds: [...REQUIRED_SUPERVISION_AUDIT_REPORTS],
+        reportKinds: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
         metrics: {},
         checks: [],
         findings: [],
@@ -209,26 +149,53 @@ describe('Apertura operacional de Supervisión', () => {
     expect(snapshot).toHaveProperty('pending');
   });
 
-  it('permite contingencia PMS documentada sin saltarse Caja ni confirmaciones', async () => {
+  it('bloquea el inicio si falta cualquiera de los informes obligatorios', async () => {
     const shift = await beginSupervisionOpening(supervisor);
+    const today = hotelCalendarDate();
 
-    const updated = await completeSupervisionOpening(supervisor, {
-      shiftId: shift.id,
-      reviewedPending: true,
-      reviewedGuarantees: true,
-      reviewedKeys: true,
-      reportContingencyReason: 'FNS no está emitiendo informes; se actualizará al recuperarse.',
+    await prisma.supervisionAuditImport.create({
+      data: {
+        supervisionShiftId: shift.id,
+        businessDate: today,
+        uploadedById: supervisor.id,
+        reportKinds: ['ACTIVIDAD'],
+        metrics: {},
+        checks: [],
+        findings: [],
+        warnings: [],
+        reviewState: {},
+        sourceFiles: [],
+      },
     });
 
-    expect(updated.status).toBe('ACTIVO');
-    const snapshot = updated.openingState as {
-      reports?: { contingencyReason?: string | null };
-    };
-    expect(snapshot.reports?.contingencyReason).toMatch(/FNS no está emitiendo/);
+    await expect(
+      completeSupervisionOpening(supervisor, {
+        shiftId: shift.id,
+        reviewedPending: true,
+        reviewedGuarantees: true,
+        reviewedKeys: true,
+      }),
+    ).rejects.toThrow(/informes operativos obligatorios/);
   });
 
-  it('exige las confirmaciones humanas aunque exista contingencia técnica', async () => {
+  it('exige las confirmaciones humanas aunque los controles técnicos estén completos', async () => {
     const shift = await beginSupervisionOpening(supervisor);
+    const today = hotelCalendarDate();
+
+    await prisma.supervisionAuditImport.create({
+      data: {
+        supervisionShiftId: shift.id,
+        businessDate: today,
+        uploadedById: supervisor.id,
+        reportKinds: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
+        metrics: {},
+        checks: [],
+        findings: [],
+        warnings: [],
+        reviewState: {},
+        sourceFiles: [],
+      },
+    });
 
     await expect(
       completeSupervisionOpening(supervisor, {
@@ -236,7 +203,6 @@ describe('Apertura operacional de Supervisión', () => {
         reviewedPending: false,
         reviewedGuarantees: true,
         reviewedKeys: true,
-        reportContingencyReason: 'PMS temporalmente fuera de servicio.',
       }),
     ).rejects.toThrow(/confirmar la revisión operacional completa/);
   });

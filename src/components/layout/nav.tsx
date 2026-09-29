@@ -166,7 +166,7 @@ export function DesktopNav({
       </nav>
 
       {openItem?.menu?.length ? (
-        <div className="border-t border-slate-200 bg-slate-50/95 px-5 py-4 shadow-inner">
+        <div className="border-t border-slate-200 bg-slate-50/95 px-5 py-3 shadow-inner">
           <div
             className="grid gap-x-8 gap-y-4"
             style={{
@@ -186,19 +186,22 @@ export function DesktopNav({
                       <li key={subitem.href}>
                         <Link
                           href={subitem.href}
+                          title={subitem.description}
                           className={cn(
-                            'block rounded-lg px-2.5 py-2 transition-colors',
+                            'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
                             subActive
-                              ? 'bg-white text-petrol-900 ring-1 ring-slate-200'
+                              ? 'bg-white font-semibold text-petrol-900 ring-1 ring-slate-200'
                               : 'text-slate-700 hover:bg-white hover:text-petrol-900',
                           )}
                         >
-                          <span className="block text-sm font-semibold">{subitem.label}</span>
-                          {subitem.description ? (
-                            <span className="mt-0.5 block text-xs leading-4 text-slate-500">
-                              {subitem.description}
-                            </span>
-                          ) : null}
+                          <span
+                            className={cn(
+                              'h-1.5 w-1.5 shrink-0 rounded-full border',
+                              subActive ? 'border-gold-600 bg-gold-500' : 'border-slate-400',
+                            )}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate">{subitem.label}</span>
                         </Link>
                       </li>
                     );

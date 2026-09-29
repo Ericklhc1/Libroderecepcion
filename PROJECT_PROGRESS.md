@@ -1,4 +1,4 @@
-# Tablero de situación — Central de Operaciones · Hotel HW Libertad
+# Tablero de situación — AROH Central IA · Hotel HW Libertad
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
@@ -27,11 +27,11 @@ Actualizado: **2026-09-29** · jornada operativa canónica + nueva identidad · 
 | Central de Reservas | `PRODUCTION` | v1.23.0 | Bandeja previa a la operación + rol específico |
 | Correo individual | `PRODUCTION` | v1.23.0 | Correo opcional por usuario + preferencias + outbox |
 | Jornada operativa canónica | `EN_DESARROLLO` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
-| Identidad Central de Operaciones | `EN_DESARROLLO` | v1.25.0 | Branding en UI/correos/Fronti; dominio se migra después |
+| Identidad AROH Central IA | `EN_DESARROLLO` | v1.25.0 | Branding en UI/correos/Fronti; dominio se migra después |
 
 ## Iteración actual
 
-**Central 1.25.0** · rama **`feat/central-operaciones-dia-operativo-1-25-0`**
+**AROH 1.25.0** · rama **`feat/central-operaciones-dia-operativo-1-25-0`**
 
 Objetivo: que la operación diaria tenga **una sola fecha canónica** y que la plataforma adopte su nueva identidad sin mezclar todavía la migración de dominio.
 
@@ -42,7 +42,7 @@ Incluye:
 - informes visibles del dashboard limitados a la jornada vigente;
 - cierre anterior conservado únicamente como evidencia de apertura;
 - parser de PDF robustecido para no confundir fechas de huéspedes/reservas con la fecha del informe;
-- identidad visible **Central de Operaciones · Hotel HW Libertad**;
+- identidad visible **AROH Central IA · Hotel HW Libertad**;
 - sin migración de esquema ni datos.
 
 PENDIENTE antes de Production:

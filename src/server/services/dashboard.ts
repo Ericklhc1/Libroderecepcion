@@ -1,5 +1,6 @@
 import 'server-only';
 import {
+  AlertLevel,
   AlertStatus,
   EntryStatus,
   EntryType,
@@ -199,6 +200,15 @@ export async function getDashboardData(user: CurrentUser) {
   ]);
 
   const roomsNeedingAction: [] = [];
+  // Compatibilidad del contrato del dashboard: las Alert legadas ya no se
+  // proyectan en Inicio, pero el campo conserva su tipo para consumidores
+  // existentes mientras migran a OperationalAlarm.
+  const alerts: Array<{
+    id: string;
+    level: AlertLevel;
+    title: string;
+    message: string | null;
+  }> = [];
 
   const counters = {
     openEntries,
@@ -211,7 +221,12 @@ export async function getDashboardData(user: CurrentUser) {
 
   const attention = buildOperationalAttention({
     rooms: [],
-    alerts: [],
+    alerts: alerts.map((alert) => ({
+      id: alert.id,
+      level: alert.level,
+      title: alert.title,
+      message: alert.message,
+    })),
     overdueTasks: overdueTasks.map((task) => ({
       id: task.id,
       title: task.title,
@@ -240,7 +255,7 @@ export async function getDashboardData(user: CurrentUser) {
     criticalEntries,
     overdueTasks,
     myTasks,
-    alerts: [],
+    alerts,
     followUps,
     blockingOutgoing,
     roomsNeedingAction,

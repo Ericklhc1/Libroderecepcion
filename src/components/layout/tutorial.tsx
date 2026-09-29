@@ -31,7 +31,7 @@ function visibleTarget(selector?: string): HTMLElement | null {
 }
 
 function isInViewport(rect: DOMRect): boolean {
-  const topSafe = 72;
+  const topSafe = 112;
   const bottomSafe = window.innerHeight - 96;
   return rect.bottom > topSafe && rect.top < bottomSafe;
 }

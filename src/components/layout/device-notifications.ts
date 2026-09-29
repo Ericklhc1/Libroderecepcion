@@ -4,15 +4,39 @@ import type { NotificationFeedItem } from '@/domain/notifications';
 
 export const DEVICE_NOTIFICATIONS_KEY = 'central.deviceNotifications.enabled';
 
-export type DeviceNotificationState = 'unsupported' | NotificationPermission;
+export type DeviceNotificationState =
+  | 'unsupported'
+  | 'requires-install'
+  | NotificationPermission;
 
-function supported(): boolean {
+function isIosFamily(): boolean {
+  if (typeof navigator === 'undefined') return false;
   return (
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  );
+}
+
+function capability(): 'supported' | 'requires-install' | 'unsupported' {
+  if (typeof window === 'undefined') return 'unsupported';
+  if (isIosFamily() && !isStandaloneDisplay()) return 'requires-install';
+  return 'Notification' in window &&
     'serviceWorker' in navigator &&
     'PushManager' in window
-  );
+    ? 'supported'
+    : 'unsupported';
+}
+
+function supported(): boolean {
+  return capability() === 'supported';
 }
 
 function base64UrlToUint8Array(value: string): Uint8Array {
@@ -90,8 +114,9 @@ export function getDeviceNotificationState(): {
   permission: DeviceNotificationState;
   enabled: boolean;
 } {
-  if (!supported()) {
-    return { supported: false, permission: 'unsupported', enabled: false };
+  const state = capability();
+  if (state !== 'supported') {
+    return { supported: false, permission: state, enabled: false };
   }
   let enabled = false;
   try {
@@ -107,7 +132,8 @@ export function getDeviceNotificationState(): {
 }
 
 export async function enableDeviceNotifications(): Promise<DeviceNotificationState> {
-  if (!supported()) return 'unsupported';
+  const state = capability();
+  if (state !== 'supported') return state;
   const permission =
     Notification.permission === 'granted'
       ? 'granted'

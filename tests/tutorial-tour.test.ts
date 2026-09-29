@@ -39,7 +39,7 @@ describe('recorrido guiado', () => {
     expect(routes).toContain('/caja');
     expect(routes).toContain('/turno');
     expect(routes).toContain('/llaves');
-    expect(routes).toContain('/avisos');
+    expect(routes).toContain('/alertas');
     expect(routes).toContain('/supervision');
 
     for (const retired of [

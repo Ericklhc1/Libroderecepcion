@@ -2,9 +2,9 @@
 
 ## Identidad del proyecto
 
-Proyecto: **Libro Operativo de Recepción**
+Proyecto: **Central de Operaciones · Hotel HW Libertad**
 Repositorio: `Ericklhc1/Libroderecepcion`
-Aplicación interna para la operación de Recepción de Hotel HW Libertad.
+Plataforma interna para coordinar la operación del Hotel HW Libertad.
 
 Este archivo existe para que Copilot, Codex, Cursor y otros agentes trabajen bajo el mismo contrato.
 
@@ -36,7 +36,7 @@ Si dos niveles chocan, no improvises: explica el conflicto y corrige el document
 - Los estados históricos incoherentes se reparan mediante mecanismos administrativos auditados, no atajos ocultos.
 - Nada operativo se borra físicamente desde UI.
 - No cambies nombres de roles, estados o conceptos por estética.
-- No conviertas el Libro en un PMS paralelo.
+- No conviertas Central de Operaciones en un PMS paralelo.
 
 ## Calidad mínima
 

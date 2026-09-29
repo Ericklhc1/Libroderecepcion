@@ -7,7 +7,7 @@ import {
   ShieldCheck,
   WalletCards,
 } from 'lucide-react';
-import { ActionForm, Textarea } from '@/components/ui/form';
+import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -27,7 +27,8 @@ export function SupervisionOpeningPanel({
   readiness: SupervisionOpeningReadiness;
 }) {
   const cashBlocked = readiness.blockers.cash > 0;
-  const reportsIncomplete = !readiness.reports.reportsReady;
+  const reportsBlocked = readiness.blockers.reports > 0;
+  const blocked = cashBlocked || reportsBlocked;
 
   return (
     <section id="apertura-supervision" className="space-y-4">
@@ -251,96 +252,98 @@ export function SupervisionOpeningPanel({
           title="4 · Informes PMS"
           action={
             readiness.reports.reportsReady
-              ? <Badge tone="resuelto">Evidencia completa</Badge>
-              : <Badge tone="pendiente">Evidencia incompleta</Badge>
+              ? <Badge tone="resuelto">7/7 obligatorios</Badge>
+              : <Badge tone="critico">
+                  {readiness.reports.required.length - readiness.reports.missingRequired.length}/
+                  {readiness.reports.required.length} obligatorios
+                </Badge>
           }
         />
-        <div className="space-y-5 px-4 py-4">
-          <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Fotografía operacional · {readiness.businessDateKey}
+        <div className="space-y-4 px-4 py-4">
+          <div>
+            <p className="text-sm text-slate-600">
+              Para iniciar Supervisión deben estar cargados los siete informes operativos acordados.
+              Pueden corresponder al día actual o al cierre inmediato anterior; el Libro reconoce la
+              fecha del propio PDF.
             </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Preferido: <strong>{readiness.reports.labels[readiness.reports.operationalPrimary]}</strong>.
-              Ese informe ya contiene entradas, ocupadas y salidas. Sólo si no está disponible se exige
-              el respaldo completo Entradas + In House + Salidas.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Chip>
-                {readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? '✓ ' : '○ '}
-                {readiness.reports.labels[readiness.reports.operationalPrimary]}
-              </Chip>
-              {readiness.reports.operationalFallback.map((kind) => (
-                <Chip key={kind}>
-                  {readiness.reports.todayKinds.includes(kind) ? '✓ ' : '○ '}
-                  {readiness.reports.labels[kind] ?? kind}
-                </Chip>
-              ))}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {readiness.reports.required.map((kind: string) => {
+                const present = readiness.reports.presentKinds.includes(kind);
+                return (
+                  <div
+                    key={kind}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 ${
+                      present
+                        ? 'bg-emerald-50 text-emerald-900 ring-emerald-200'
+                        : 'bg-red-50 text-red-900 ring-red-200'
+                    }`}
+                  >
+                    {present ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    )}
+                    <span>{readiness.reports.labels[kind] ?? kind}</span>
+                  </div>
+                );
+              })}
             </div>
-            <p className="mt-2 text-xs font-medium text-slate-600">
-              Estado: {readiness.reports.occupancyReady ? '✓ fotografía operacional disponible' : 'pendiente'}.
-            </p>
-            <div className="mt-3">
-              <SupervisionAuditUpload defaultBusinessDate={readiness.businessDateKey} />
-            </div>
-          </section>
-
-          <section className="border-t border-slate-200 pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Cierre y auditoría · {readiness.auditDateKey}
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Este bloque sí corresponde al día cerrado anterior: Formulario de auditoría, Cobros y Cargos diarios.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {readiness.reports.auditRequired.map((kind) => (
-                <Chip key={kind}>
-                  {readiness.reports.auditKinds.includes(kind) ? '✓ ' : '○ '}
-                  {readiness.reports.labels[kind] ?? kind}
-                </Chip>
-              ))}
-            </div>
-            {readiness.reports.missingAudit.length > 0 ? (
-              <p className="mt-2 flex items-start gap-2 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                Faltan: {readiness.reports.missingAudit
-                  .map((kind) => readiness.reports.labels[kind] ?? kind)
+            {readiness.reports.missingRequired.length > 0 ? (
+              <p className="mt-3 text-xs text-red-800">
+                Faltan: {readiness.reports.missingRequired
+                  .map((kind: string) => readiness.reports.labels[kind] ?? kind)
                   .join(', ')}.
               </p>
-            ) : (
-              <p className="mt-2 flex items-center gap-2 text-xs text-emerald-800">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Cierre documental completo.
-              </p>
-            )}
-            <div className="mt-3">
-              <SupervisionAuditUpload defaultBusinessDate={readiness.auditDateKey} />
-            </div>
-          </section>
+            ) : null}
+          </div>
 
-          <section className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="font-medium text-petrol-900">Subir informes del inicio del día</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Puedes seleccionar varios PDF. La fecha se toma del propio informe y la evidencia ya
+              cargada para hoy o ayer se reutiliza, sin duplicar la operación.
+            </p>
+            <div className="mt-3">
+              <SupervisionAuditUpload
+                defaultBusinessDate={readiness.businessDateKey}
+                automaticBusinessDate
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
             <p className="font-semibold text-slate-700">Gestión · no bloquea la apertura</p>
             <p className="mt-1">
-              Ventas por canal, Producción por habitación y Revenue se mantienen como información de gestión.
-              Pendientes: {readiness.reports.missingOptional.length
-                ? readiness.reports.missingOptional.map((kind) => readiness.reports.labels[kind] ?? kind).join(', ')
+              Ventas por canal, Producción por habitación y Revenue quedan como compromisos del turno
+              si todavía faltan. Pendientes:{' '}
+              {readiness.reports.missingOptional.length
+                ? readiness.reports.missingOptional
+                    .map((kind: string) => readiness.reports.labels[kind] ?? kind)
+                    .join(', ')
                 : 'ninguno'}.
             </p>
-          </section>
+          </div>
         </div>
       </Card>
-
       <Card>
         <CardHeader title="5 · Confirmar recepción e iniciar" />
         <div className="space-y-4 px-4 py-4">
-          {cashBlocked ? (
+          {blocked ? (
             <div className="rounded-xl bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
-              <p className="font-semibold">Caja/garantías todavía bloquean la apertura.</p>
+              <p className="font-semibold">La apertura todavía tiene controles obligatorios pendientes.</p>
               {readiness.cash.missingCurrencies.length > 0 ? (
                 <p className="mt-1">Falta tu arqueo o validación vigente: {readiness.cash.missingCurrencies.join(', ')}.</p>
               ) : null}
               {readiness.cash.unexplainedDifferences.length > 0 ? (
                 <p className="mt-1">
                   Hay diferencias sin explicación: {readiness.cash.unexplainedDifferences.join(', ')}.
+                </p>
+              ) : null}
+              {readiness.reports.missingRequired.length > 0 ? (
+                <p className="mt-1">
+                  Faltan informes: {readiness.reports.missingRequired
+                    .map((kind: string) => readiness.reports.labels[kind] ?? kind)
+                    .join(', ')}.
                 </p>
               ) : null}
             </div>
@@ -366,24 +369,10 @@ export function SupervisionOpeningPanel({
               <span>Revisé el último inventario de llaves y conozco sus faltantes o excepciones vigentes.</span>
             </label>
 
-            {reportsIncomplete ? (
-              <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
-                <p className="text-sm font-semibold text-amber-950">Contingencia de PMS</p>
-                <p className="mt-1 text-xs text-amber-900">
-                  La falta de un informe no debe dejar al hotel sin Supervisión. Para iniciar sin evidencia completa,
-                  explica qué no está disponible y por qué. La excepción quedará en la apertura y en Auditoría.
-                </p>
-                <Textarea
-                  name="reportContingencyReason"
-                  rows={3}
-                  minLength={8}
-                  placeholder="Ej.: FNS no emite Habitaciones con actividad; se continúa con el estado disponible y se actualizará al recuperarse."
-                />
-              </div>
-            ) : null}
+
 
             <div className="flex justify-end">
-              <SubmitButton variant="gold" pendingLabel="Iniciando turno…" disabled={cashBlocked}>
+              <SubmitButton variant="gold" pendingLabel="Iniciando turno…" disabled={blocked}>
                 CONFIRMAR E INICIAR SUPERVISIÓN
               </SubmitButton>
             </div>

@@ -105,8 +105,13 @@ export default async function EntryDetailPage({
   const isIncident = entry.type === EntryType.INCIDENCIA;
   const open = ENTRY_OPEN_STATUSES.includes(entry.status);
   const overdue = isOverdue(entry.dueAt, open);
+  const pageOpenedAt = new Date();
   const myDueLinkedAlerts = linkedAlerts
-    .filter((alert) => alert.status === OperationalAlarmStatus.ACTIVA)
+    .filter(
+      (alert) =>
+        alert.status === OperationalAlarmStatus.ACTIVA &&
+        alert.dueAt <= pageOpenedAt,
+    )
     .flatMap((alert) => {
       const recipient = alert.recipients.find(
         (item) => item.userId === user.id && !item.acknowledgedAt,

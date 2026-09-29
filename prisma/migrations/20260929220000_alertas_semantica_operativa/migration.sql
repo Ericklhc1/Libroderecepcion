@@ -12,7 +12,8 @@ CREATE INDEX "Task_startsAt_idx" ON "Task"("startsAt");
 ALTER TABLE "OperationalAlarm"
   ADD COLUMN "sourceEntity" TEXT,
   ADD COLUMN "sourceId" TEXT,
-  ADD COLUMN "sourceLink" TEXT;
+  ADD COLUMN "sourceLink" TEXT,
+  ADD COLUMN "repeatMinutes" INTEGER;
 
 CREATE INDEX "OperationalAlarm_sourceEntity_sourceId_status_idx"
   ON "OperationalAlarm"("sourceEntity", "sourceId", "status");

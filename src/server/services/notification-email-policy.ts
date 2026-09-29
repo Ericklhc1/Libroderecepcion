@@ -8,6 +8,17 @@ import type { CurrentUser } from '@/server/auth/current-user';
 export const NOTIFICATION_EMAIL_MODES = ['OBLIGATORIO', 'PREFERENCIA', 'DESACTIVADO'] as const;
 export type NotificationEmailMode = (typeof NOTIFICATION_EMAIL_MODES)[number];
 
+export const FORCED_NOTIFICATION_EMAIL_POLICY: Partial<
+  Record<NotificationType, NotificationEmailMode>
+> = {
+  TAREA_VENCIDA: 'OBLIGATORIO',
+  INCIDENCIA_CRITICA: 'OBLIGATORIO',
+  ENTREGA_DISPONIBLE: 'OBLIGATORIO',
+  ACCION_REQUERIDA: 'OBLIGATORIO',
+  CHAT_MENSAJE: 'DESACTIVADO',
+  ALARMA: 'DESACTIVADO',
+};
+
 export const DEFAULT_NOTIFICATION_EMAIL_POLICY: Record<NotificationType, NotificationEmailMode> = {
   TAREA_ASIGNADA: 'PREFERENCIA',
   RESPONSABLE_CAMBIADO: 'PREFERENCIA',
@@ -30,6 +41,16 @@ function keyFor(type: NotificationType): string {
   return `${PREFIX}${type}`;
 }
 
+export function forcedNotificationEmailMode(
+  type: NotificationType,
+): NotificationEmailMode | null {
+  return FORCED_NOTIFICATION_EMAIL_POLICY[type] ?? null;
+}
+
+export function notificationEmailPolicyLocked(type: NotificationType): boolean {
+  return forcedNotificationEmailMode(type) !== null;
+}
+
 function asMode(value: Prisma.JsonValue | null | undefined): NotificationEmailMode | null {
   return typeof value === 'string' &&
     (NOTIFICATION_EMAIL_MODES as readonly string[]).includes(value)
@@ -47,7 +68,9 @@ export async function getNotificationEmailPolicy(): Promise<Record<NotificationT
   return Object.fromEntries(
     types.map((type) => [
       type,
-      overrides.get(keyFor(type)) ?? DEFAULT_NOTIFICATION_EMAIL_POLICY[type],
+      forcedNotificationEmailMode(type) ??
+        overrides.get(keyFor(type)) ??
+        DEFAULT_NOTIFICATION_EMAIL_POLICY[type],
     ]),
   ) as Record<NotificationType, NotificationEmailMode>;
 }
@@ -59,9 +82,24 @@ export async function saveNotificationEmailPolicy(
   const previous = await getNotificationEmailPolicy();
   const types = Object.values(NotificationType);
 
+  const effective = Object.fromEntries(
+    types.map((type) => [
+      type,
+      forcedNotificationEmailMode(type) ?? policy[type] ?? DEFAULT_NOTIFICATION_EMAIL_POLICY[type],
+    ]),
+  ) as Record<NotificationType, NotificationEmailMode>;
+
   await prisma.$transaction(async (tx) => {
+    const lockedKeys = types
+      .filter((type) => notificationEmailPolicyLocked(type))
+      .map(keyFor);
+    if (lockedKeys.length > 0) {
+      await tx.systemSetting.deleteMany({ where: { key: { in: lockedKeys } } });
+    }
+
     for (const type of types) {
-      const mode = policy[type];
+      if (notificationEmailPolicyLocked(type)) continue;
+      const mode = effective[type];
       await tx.systemSetting.upsert({
         where: { key: keyFor(type) },
         create: {
@@ -87,7 +125,7 @@ export async function saveNotificationEmailPolicy(
         user,
         summary: 'Política de correo de notificaciones actualizada',
         before: previous,
-        after: policy,
+        after: effective,
       },
       tx,
     );

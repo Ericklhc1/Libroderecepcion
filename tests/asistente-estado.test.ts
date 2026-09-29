@@ -15,6 +15,7 @@ import {
 const CAUSAS: AssistantFailure[] = [
   'SIN_CLAVE',
   'CLAVE_RECHAZADA',
+  'ACCESO_RECHAZADO',
   'MODELO_DESCONOCIDO',
   'CUOTA',
   'SATURADO',
@@ -30,11 +31,18 @@ describe('clasificación de fallos del asistente', () => {
     expect(classifyAssistantFailure({ network: true })).toBe('SIN_RESPUESTA');
   });
 
-  it('401 y 403 son clave rechazada, no caída del proveedor', () => {
-    // Importa la distinción: una la arregla el Administrador de sistema, la
-    // otra se espera. Antes las dos llegaban como el mismo texto crudo.
-    expect(classifyAssistantFailure({ status: 401 })).toBe('CLAVE_RECHAZADA');
-    expect(classifyAssistantFailure({ status: 403 })).toBe('CLAVE_RECHAZADA');
+  it('401 y 403 son acceso rechazado, no prueba automática de clave inválida', () => {
+    expect(classifyAssistantFailure({ status: 401 })).toBe('ACCESO_RECHAZADO');
+    expect(classifyAssistantFailure({ status: 403 })).toBe('ACCESO_RECHAZADO');
+  });
+
+  it('sólo llama clave rechazada cuando el proveedor lo identifica expresamente', () => {
+    expect(
+      classifyAssistantFailure({ status: 401, code: 'invalid_api_key' }),
+    ).toBe('CLAVE_RECHAZADA');
+    expect(
+      classifyAssistantFailure({ status: 401, code: 'authentication_error' }),
+    ).toBe('CLAVE_RECHAZADA');
   });
 
   /*
@@ -151,7 +159,7 @@ describe('lo que lee el mesón', () => {
   });
 
   it('los fallos definitivos no invitan a reintentar', () => {
-    for (const causa of ['SIN_CLAVE', 'CLAVE_RECHAZADA', 'MODELO_DESCONOCIDO', 'CUOTA'] as const) {
+    for (const causa of ['SIN_CLAVE', 'CLAVE_RECHAZADA', 'ACCESO_RECHAZADO', 'MODELO_DESCONOCIDO', 'CUOTA'] as const) {
       expect(ASSISTANT_FAILURE_IS_TEMPORARY[causa], causa).toBe(false);
     }
     for (const causa of ['SATURADO', 'CAIDO', 'SIN_RESPUESTA'] as const) {

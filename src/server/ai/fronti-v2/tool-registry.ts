@@ -4,6 +4,7 @@ import {
   frontiToolSettingForFunction,
   type FrontiConfig,
 } from '@/server/ai/fronti-config';
+import type { CurrentUser } from '@/server/auth/current-user';
 import type { FrontiResolvedPageContext } from './page-context';
 
 export type FrontiToolRegistryEntry = {
@@ -15,6 +16,129 @@ export type FrontiToolRegistryEntry = {
   mode: 'read' | 'propose' | 'system';
   area: string;
 };
+
+type FrontiPermissionSubject = Pick<CurrentUser, 'permissions' | 'isSystemAdmin'>;
+
+function hasAnyPermission(
+  user: FrontiPermissionSubject,
+  permissions: readonly string[],
+): boolean {
+  return permissions.some((permission) =>
+    user.permissions.some((value) => value === permission),
+  );
+}
+
+/**
+ * Fronti no tiene un rol propio: hereda exactamente la capacidad efectiva del
+ * usuario que lo invoca. Esta capa evita incluso mostrarle al modelo
+ * herramientas que esa cuenta no podría usar. La ejecución vuelve a validar
+ * permisos en los servicios como segunda barrera.
+ */
+export function canFrontiUseTool(
+  user: FrontiPermissionSubject,
+  name: string,
+): boolean {
+  if (user.isSystemAdmin) return true;
+
+  switch (name) {
+    case 'consultar_contexto_pantalla':
+    case 'consultar_estado_operativo':
+    case 'reportar_hallazgo':
+      return true;
+    case 'consultar_habitacion':
+      return hasAnyPermission(user, ['room.view']);
+    case 'consultar_prioridades':
+      return hasAnyPermission(user, ['metrics.view', 'room.view']);
+    case 'consultar_vencimientos':
+      return hasAnyPermission(user, [
+        'task.create',
+        'task.assign',
+        'task.edit',
+        'task.close',
+        'followup.create',
+        'followup.manage',
+        'entry.create',
+        'entry.edit',
+        'entry.close',
+        'metrics.view',
+        'supervision.view',
+      ]);
+    case 'consultar_caja':
+      return hasAnyPermission(user, ['cash.view']);
+    case 'consultar_llaves':
+      return hasAnyPermission(user, ['key.inventory']);
+    case 'consultar_turnos':
+      return hasAnyPermission(user, [
+        'shift.start',
+        'shift.receive',
+        'shift.handover',
+        'shift.close',
+        'shift.manage',
+        'metrics.view',
+      ]);
+    case 'consultar_novedades':
+      return hasAnyPermission(user, [
+        'entry.create',
+        'entry.edit',
+        'entry.close',
+        'metrics.view',
+        'supervision.view',
+      ]);
+    case 'consultar_garantias':
+      return hasAnyPermission(user, [
+        'cash.view',
+        'cash.guarantee_in',
+        'cash.guarantee_out',
+        'room.view',
+      ]);
+    case 'consultar_tareas':
+      return hasAnyPermission(user, [
+        'task.create',
+        'task.assign',
+        'task.edit',
+        'task.close',
+        'metrics.view',
+      ]);
+    case 'consultar_seguimientos':
+      return hasAnyPermission(user, [
+        'followup.create',
+        'followup.manage',
+        'metrics.view',
+      ]);
+    case 'consultar_supervision':
+      return hasAnyPermission(user, [
+        'supervision.center.view',
+        'supervision.view',
+      ]);
+    case 'consultar_alertas':
+      return hasAnyPermission(user, ['alert.manage', 'metrics.view']);
+    case 'consultar_auditoria':
+      return hasAnyPermission(user, ['audit.view']);
+    case 'consultar_usuarios':
+      return hasAnyPermission(user, ['user.manage', 'task.assign', 'shift.manage']);
+    case 'consultar_configuracion_operativa':
+      return hasAnyPermission(user, ['system.configure']);
+    case 'proponer_checkouts':
+      return hasAnyPermission(user, ['room.manage']);
+    case 'proponer_recordatorio':
+      return hasAnyPermission(user, ['task.create']);
+    case 'proponer_registro':
+      return hasAnyPermission(user, ['entry.create', 'incident.create']);
+    case 'proponer_resolver_tarea':
+      return hasAnyPermission(user, ['task.close']);
+    case 'proponer_multa':
+      return hasAnyPermission(user, ['incident.manage']);
+    default:
+      return false;
+  }
+}
+
+export function filterFrontiToolDefinitionsForUser(
+  user: FrontiPermissionSubject,
+  definitions: readonly FrontiToolRegistryEntry[],
+): readonly FrontiToolRegistryEntry[] {
+  return definitions.filter((definition) => canFrontiUseTool(user, definition.name));
+}
 
 export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
   {

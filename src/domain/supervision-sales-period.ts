@@ -116,10 +116,6 @@ function findLine(lines: string[], predicate: (line: string, index: number) => b
   return lines.findIndex(predicate);
 }
 
-function startsWith(line: string, prefix: string): boolean {
-  return line.toLocaleLowerCase('es-CL').startsWith(prefix.toLocaleLowerCase('es-CL'));
-}
-
 function seriesAt(
   lines: string[],
   index: number,

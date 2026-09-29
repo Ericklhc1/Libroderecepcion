@@ -444,6 +444,8 @@ model User {
   department         Department? @relation(fields: [departmentId], references: [id])
   phone              String?
   active             Boolean     @default(true)
+  /// Si es true, la cuenta funciona normalmente pero no aparece en selectores ni directorios operativos.
+  hiddenFromSelectors Boolean     @default(false)
   mustChangePassword Boolean     @default(false)
   lastLoginAt        DateTime?
   /// Cuándo terminó (o saltó) el recorrido guiado del primer ingreso.

@@ -83,10 +83,11 @@ function row(
     total: string;
     pendiente: string;
     pago: string;
+    linkedId?: boolean;
   },
 ): TextFragment[] {
   const out: TextFragment[] = [
-    { page: 1, y, x: X.id, text: cells.id },
+    { page: 1, y, x: X.id, text: cells.id, ...(cells.linkedId ? { isLink: true } : {}) },
     { page: 1, y, x: X.tipo, text: cells.tipo },
     { page: 1, y, x: X.canal, text: cells.canal },
     { page: 1, y, x: X.nombre, text: cells.nombre },
@@ -250,6 +251,60 @@ describe('el estado sale de cada fila, no del informe', () => {
   it('activityStatus no inventa nada', () => {
     expect(activityStatus(null)).toBeNull();
     expect(activityStatus('cualquier cosa')).toBeNull();
+  });
+});
+
+
+describe('la señal visual del ID se usa como evidencia, no como confirmación', () => {
+  it('un ID enlazado en una entrada o salida se marca pendiente con confianza alta', () => {
+    const { normalized } = read([
+      ...TITLE,
+      ...header(692),
+      ...row(659, { ...CASO_SALIDA, linkedId: true }),
+      ...row(639, CASO_ENTRADA),
+    ]);
+
+    expect(normalized.stays[0]).toMatchObject({
+      reservationId: CASO_SALIDA.id,
+      pmsProcessingSignal: 'PENDIENTE',
+      pmsProcessingConfidence: 'ALTA',
+    });
+  });
+
+  it('un ID sin enlace sólo se considera procesado probable si el mismo PDF demuestra la convención mixta', () => {
+    const { normalized } = read([
+      ...TITLE,
+      ...header(692),
+      ...row(659, { ...CASO_SALIDA, linkedId: true }),
+      ...row(639, CASO_ENTRADA),
+    ]);
+
+    expect(normalized.stays[1]).toMatchObject({
+      reservationId: CASO_ENTRADA.id,
+      pmsProcessingSignal: 'PROCESADO_PROBABLE',
+      pmsProcessingConfidence: 'MEDIA',
+    });
+  });
+
+  it('si el documento no contiene enlaces, no inventa que todo fue procesado', () => {
+    const { normalized } = read([
+      ...TITLE,
+      ...header(692),
+      ...row(659, CASO_SALIDA),
+      ...row(639, CASO_ENTRADA),
+    ]);
+
+    expect(normalized.stays.map((stay) => stay.pmsProcessingSignal)).toEqual([null, null]);
+  });
+
+  it('una habitación ocupada no recibe señal de trámite aunque el ID tenga enlace', () => {
+    const { normalized } = read([
+      ...TITLE,
+      ...header(692),
+      ...row(679, { ...CASO_OCUPADA, linkedId: true }),
+    ]);
+
+    expect(normalized.stays[0]?.pmsProcessingSignal).toBeNull();
   });
 });
 

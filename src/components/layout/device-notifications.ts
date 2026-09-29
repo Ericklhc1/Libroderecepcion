@@ -229,3 +229,25 @@ export async function showDeviceNotification(item: NotificationFeedItem): Promis
     // Toast + sonido siguen siendo el último fallback.
   }
 }
+
+
+export async function testDevicePush(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const response = await fetch('/api/push/test', {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    return {
+      ok: response.ok,
+      message: response.ok
+        ? 'Prueba enviada. Debe aparecer como notificación del sistema.'
+        : payload.error ?? 'No se pudo enviar la prueba push.',
+    };
+  } catch {
+    return { ok: false, message: 'No se pudo contactar el servicio push.' };
+  }
+}

@@ -184,6 +184,19 @@ describe('cabecera horizontal compacta', () => {
     expect(roots).not.toContain('/seguimientos');
     expect(roots).not.toContain('/alertas');
   });
+
+  it('usa dropdowns compactos, animados y centrados en vez de un mega menú de ancho completo', () => {
+    expect(nav).toContain("createPortal");
+    expect(nav).toContain("nav-dropdown-enter");
+    expect(nav).toContain("max-w-[1680px]");
+    expect(nav).toContain("w-max min-w-full");
+    expect(nav).toContain("text-[0.82rem]");
+    expect(nav).not.toContain("gridTemplateColumns");
+
+    expect(layout).toContain("max-w-[1680px]");
+    expect(layout).toContain("text-[0.7rem]");
+    expect(layout).toContain("text-[0.92rem]");
+  });
 });
 
 /**

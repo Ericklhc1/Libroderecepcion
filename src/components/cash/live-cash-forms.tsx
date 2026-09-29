@@ -7,6 +7,7 @@ import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form
 import { Button, SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
+  chargeCashGuaranteeAction,
   createCashDifferenceRegularizationAction,
   createGymPassAction,
   createParkingPassAction,
@@ -286,7 +287,7 @@ export function CashDifferenceRegularizationForm() {
       </Field>
 
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
-        Esta operación deja trazabilidad del dinero que vuelve o sale para corregir una diferencia previa, pero no crea un ingreso o egreso operativo nuevo ni modifica el efectivo esperado.
+        Esta operación corrige una diferencia física real: actualiza el efectivo esperado y deja trazabilidad, pero no se trata como un ingreso o egreso operacional nuevo.
       </p>
 
       <div className="flex justify-end">
@@ -697,6 +698,94 @@ export function ReturnCashGuaranteeForm({
         <div className="flex justify-end">
           <SubmitButton variant="danger" pendingLabel="Devolviendo…">
             CONFIRMAR DEVOLUCIÓN
+          </SubmitButton>
+        </div>
+      </ActionForm>
+    </Dialog>
+  );
+}
+
+export function ChargeCashGuaranteeForm({
+  guaranteeId,
+  humanId,
+  reference,
+  currency,
+  amount,
+  guestName,
+  roomNumber,
+}: {
+  guaranteeId: string;
+  humanId: number;
+  reference?: string | null;
+  currency: string;
+  amount: number;
+  guestName?: string | null;
+  roomNumber?: string | null;
+}) {
+  const label =
+    [`#${humanId}`, guestName, roomNumber ? `Hab. ${roomNumber}` : null, reference]
+      .filter(Boolean)
+      .join(' · ');
+
+  return (
+    <Dialog
+      title="Cobrar garantía en efectivo"
+      description="Registra que la garantía no se devuelve porque se aplica a un cobro. Queda en reportería y deja de formar parte de Caja viva."
+      triggerVariant="gold"
+      triggerSize="sm"
+      width="sm"
+      trigger="Cobrar garantía"
+    >
+      <ActionForm
+        action={chargeCashGuaranteeAction}
+        hideSuccess
+        refreshOnSuccess
+        closeOnSuccess
+        className="space-y-3"
+      >
+        <input type="hidden" name="guaranteeId" value={guaranteeId} />
+        <div className="rounded-xl bg-gold-50 px-3 py-3 ring-1 ring-gold-200">
+          <p className="text-sm font-semibold text-petrol-950">{label}</p>
+          <p className="mt-1 text-xl font-semibold tabular text-petrol-950">
+            {currency} {amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <Field
+          label="Concepto del cobro"
+          name="concept"
+          required
+          hint="Ej.: daño en habitación, pérdida de llave, consumo pendiente."
+        >
+          <Input
+            name="concept"
+            required
+            minLength={3}
+            maxLength={160}
+            placeholder="Indica por qué no se devuelve la garantía"
+          />
+        </Field>
+
+        <Field label="Comentario / respaldo" name="notes">
+          <Textarea
+            name="notes"
+            rows={3}
+            maxLength={1000}
+            placeholder="Detalle del daño, autorización, evidencia o cualquier antecedente útil."
+          />
+        </Field>
+
+        <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+          <input type="checkbox" name="confirmed" value="1" required className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Confirmo que esta garantía no será devuelta y que el monto se aplicará al concepto indicado.
+            El registro quedará asociado a la garantía y a su habitación.
+          </span>
+        </label>
+
+        <div className="flex justify-end">
+          <SubmitButton variant="gold" pendingLabel="Registrando cobro…">
+            CONFIRMAR COBRO
           </SubmitButton>
         </div>
       </ActionForm>

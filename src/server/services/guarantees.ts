@@ -21,6 +21,7 @@ import {
 import { getMyOpenShift } from './shifts';
 import {
   assertGuaranteeCanBeDeleted,
+  recordGuaranteeChargeOut,
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
 } from './live-cash';
@@ -241,6 +242,8 @@ export async function changeGuaranteeState(
     applicationReason?: string | null;
     penaltyAmount?: number | null;
     notes?: string | null;
+    removeSettledCash?: boolean;
+    settlementConcept?: string | null;
   },
 ): Promise<{ id: string }> {
   const shift = await getMyOpenShift(user.id);
@@ -322,6 +325,9 @@ export async function changeGuaranteeState(
     }
 
     const returnsRemainder = to === 'DEVUELTA' || to === 'MULTA';
+    const settledOutsideCash = input.removeSettledCash
+      ? Math.min(total, aplicado + multa)
+      : 0;
 
     await tx.guarantee.update({
       where: { id: guarantee.id },
@@ -379,17 +385,40 @@ export async function changeGuaranteeState(
           shiftId: shift?.id ?? null,
         });
       }
+
+      if (settledOutsideCash > 0) {
+        await recordGuaranteeChargeOut(tx, {
+          user,
+          guaranteeId: guarantee.id,
+          reservationReferenceId: guarantee.reservationReferenceId,
+          reservationCode: guarantee.reservationReference?.code ?? null,
+          reference: `Cobro garantía · ${input.settlementConcept?.trim() || input.applicationReason?.trim() || reference}`,
+          roomNumber: guarantee.roomNumber,
+          stayId: guarantee.stayId,
+          currency: guarantee.currency,
+          amount: settledOutsideCash,
+          shiftId: shift?.id ?? null,
+          notes:
+            input.notes ??
+            'Garantía cobrada/aplicada: se registra para reportería y deja de formar parte de Caja viva.',
+        });
+      }
     }
 
     await syncReservationSummary(tx, guarantee.reservationReferenceId);
 
-    if (returnsRemainder && refundable > 0) {
+    if ((returnsRemainder && refundable > 0) || settledOutsideCash > 0) {
+      const isCharge = settledOutsideCash > 0;
       await queueOperationalMail(tx, {
-        eventKey: `guarantee-return:${guarantee.id}:${to}`,
+        eventKey: isCharge
+          ? `guarantee-charge:${guarantee.id}:${to}`
+          : `guarantee-return:${guarantee.id}:${to}`,
         recipients: [SUPERVISION_BACKUP_EMAIL],
-        subject: `[Libro Operativo] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
+        subject: isCharge
+          ? `[Central de Operaciones] GARANTÍA COBRADA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${settledOutsideCash}`
+          : `[Central de Operaciones] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
         text: [
-          'DEVOLUCIÓN / CIERRE DE GARANTÍA',
+          isCharge ? 'COBRO / CIERRE DE GARANTÍA' : 'DEVOLUCIÓN / CIERRE DE GARANTÍA',
           `ID: ${guarantee.id}`,
           `Fecha/hora: ${operationalMailTimestamp(new Date())}`,
           `Procesado por: ${user.name} (ID ${user.id})`,
@@ -401,6 +430,8 @@ export async function changeGuaranteeState(
           `Monto aplicado: ${guarantee.currency} ${aplicado}`,
           `Multa: ${guarantee.currency} ${multa}`,
           `Monto devuelto: ${guarantee.currency} ${refundable}`,
+          `Monto cobrado/aplicado fuera de Caja viva: ${guarantee.currency} ${settledOutsideCash}`,
+          `Concepto de cobro: ${input.settlementConcept ?? input.applicationReason ?? 'no aplica'}`,
           `Referencia: ${guarantee.reference ?? guarantee.reservationReference?.code ?? 'sin referencia'}`,
           `Huésped: ${guarantee.guestName ?? 'sin huésped'}`,
           `Habitación: ${guarantee.roomNumber ?? 'sin habitación'}`,
@@ -426,6 +457,10 @@ export async function changeGuaranteeState(
       state: result.to,
       appliedAmount: input.appliedAmount ?? null,
       penaltyAmount: input.penaltyAmount ?? null,
+      applicationReason: input.applicationReason ?? null,
+      settlementConcept: input.settlementConcept ?? null,
+      removeSettledCash: input.removeSettledCash ?? false,
+      notes: input.notes ?? null,
     },
   });
 

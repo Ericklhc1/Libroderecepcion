@@ -357,6 +357,49 @@ describe('garantías', () => {
     expect(clp?.expected).toBe(125_000);
   });
 
+  it('cobrar una garantía en efectivo la saca de Caja viva y conserva el cobro en reportería', async () => {
+    await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped cobro',
+      roomNumber: '517',
+      reference: 'Garantía habitación 517',
+      kind: 'EFECTIVO',
+      amount: 50_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await changeGuaranteeState(user, {
+      id,
+      state: GuaranteeState.MULTA,
+      penaltyAmount: 50_000,
+      applicationReason: 'Daño en habitación',
+      settlementConcept: 'Daño en habitación',
+      notes: 'Lámpara dañada',
+      removeSettledCash: true,
+    });
+
+    const charge = await prisma.cashMovement.findFirstOrThrow({
+      where: { guaranteeId: id, kind: 'GARANTIA_COBRO' },
+    });
+    expect(charge.direction).toBe('SALIDA');
+    expect(charge.amount.toNumber()).toBe(50_000);
+    expect(charge.reference).toContain('Daño en habitación');
+
+    const state = await getLiveCashState();
+    const clp = state.currencies.find((row) => row.currency === 'CLP');
+    expect(state.cashGuarantees.find((row) => row.id === id)).toBeUndefined();
+    expect(clp?.guaranteeCustody).toBe(0);
+    expect(clp?.operational).toBe(0);
+    expect(clp?.expected).toBe(100_000);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entity: 'Guarantee', entityId: id, action: 'CAMBIO_ESTADO' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(JSON.stringify(audit.after)).toContain('Daño en habitación');
+  });
+
   it('no se puede aplicar ni multar más de lo tomado', async () => {
     const r = await reserva();
     const { id } = await createGuarantee(user, {

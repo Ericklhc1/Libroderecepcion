@@ -28,7 +28,12 @@ export type AlarmCreateInput = {
 
 export async function listAlarmCandidates() {
   return prisma.user.findMany({
-    where: { active: true, deletedAt: null, role: { operational: true } },
+    where: {
+      active: true,
+      deletedAt: null,
+      hiddenFromSelectors: false,
+      role: { operational: true },
+    },
     select: { id: true, name: true, username: true, role: { select: { name: true } } },
     orderBy: [{ name: 'asc' }],
   });
@@ -74,7 +79,12 @@ async function resolveRecipients(
   }
 
   const valid = await prisma.user.findMany({
-    where: { id: { in: unique }, active: true, deletedAt: null },
+    where: {
+      id: { in: unique },
+      active: true,
+      deletedAt: null,
+      hiddenFromSelectors: false,
+    },
     select: { id: true },
   });
   if (valid.length !== unique.length) {

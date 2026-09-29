@@ -8,7 +8,7 @@ describe('bandeja interna de soporte', () => {
   const action = readFileSync('src/server/actions/support.ts', 'utf8');
   const nav = readFileSync('src/components/layout/nav-items.ts', 'utf8');
   const migration = readFileSync(
-    'prisma/migrations/20260929145000_support_inbox/migration.sql',
+    'prisma/migrations/20260929183500_support_inbox/migration.sql',
     'utf8',
   );
 

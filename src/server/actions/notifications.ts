@@ -14,10 +14,8 @@ import { getUnreadCountsForUser } from '@/server/services/notification-poll';
  * navegar. Para que una notificación **suene** cuando llega hay que saberlo sin
  * que nadie navegue, y de eso se encarga esta consulta.
  *
- * Antes de contar, mantiene fresco el motor automático como máximo una vez por
- * minuto. Después hace los dos `count` en paralelo. Devuelve también las
- * alertas vivas porque recordatorios, seguimientos y reglas operativas llegan
- * como alerta, no como notificación.
+ * El contador refleja avisos recibidos y alertas programadas pendientes del
+ * usuario. Leer una notificación nunca modifica el estado del objeto original.
  */
 export async function getUnreadCounts(): Promise<{
   notifications: number;

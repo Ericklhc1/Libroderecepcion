@@ -18,7 +18,7 @@ import {
   getCurrentShift,
   getMyOpenShift,
   getPendingHandover,
-  operationalDate,
+  resolveOperationalBusinessDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
 import { ROLE_KEYS, isReceptionDeskRole } from '@/lib/permissions';
@@ -69,6 +69,7 @@ export async function getDashboardData(user: CurrentUser) {
 
   const now = new Date();
   const myShift = await getMyOpenShift(user.id);
+  const businessDate = myShift?.date ?? await resolveOperationalBusinessDate(now);
   const alertDashboardLimit = Math.max(
     1,
     Math.min(50, Math.trunc(await getSettingNumber('alerts.dashboardLimit', 10))),
@@ -279,7 +280,7 @@ export async function getDashboardData(user: CurrentUser) {
     roomsNeedingAction,
     attention,
     counters,
-    today: operationalDate(now),
+    today: businessDate,
   };
 }
 

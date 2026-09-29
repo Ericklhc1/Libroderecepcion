@@ -46,7 +46,7 @@ function isInViewport(rect: DOMRect): boolean {
  * scroll programático. Así el tutorial no puede secuestrar el desplazamiento
  * vertical de ninguna pantalla.
  *
- * Si la persona intenta interactuar con el Libro durante el recorrido, la
+ * Si la persona intenta interactuar con la Central durante el recorrido, la
  * interacción se intercepta antes de llegar a la interfaz y se pregunta si
  * quiere cerrar el tutorial sólo por esta vez o no volver a mostrarlo.
  */

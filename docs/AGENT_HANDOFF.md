@@ -1,5 +1,16 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
+
+- El botón «Iniciar turno» ahora abre una preparación guiada; ya no activa Supervisión ni acepta prioridades libres.
+- `SupervisionShiftStatus.PREPARACION` representa esa fase. El turno se activa únicamente con `completeSupervisionOpening`.
+- Gate de apertura: arqueo personal de cada fondo activo, diferencias explicadas, siete informes PMS obligatorios y confirmación humana de pendientes, garantías/custodias y llaves.
+- La Caja reutiliza `CashAudit` y su validación física de garantías en efectivo; no existe una segunda caja de Supervisor.
+- Los informes de apertura pueden mezclar fechas. La API autodetecta la fecha cuando el asistente no la fuerza y la preparación considera los informes cargados durante el día hotelero actual.
+- Informes obligatorios: Formulario de auditoría, Habitaciones con actividad, Entradas, In House, Salidas, Cobros y Cargos diarios. No bloqueantes: Ventas por canal, Producción por habitación y Revenue.
+- La apertura guarda snapshot estructurado en `openingState`; las prioridades se generan desde objetos reales pendientes y los informes de gestión faltantes.
+- Migración: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
+
 ## Actualización 28/09/2026 · Libro 1.23.0 · Central de Reservas, Gerencia y correo individual
 
 - Nuevo rol de sistema `CENTRAL_RESERVAS` / «Ejecutivo/a de Central de Reservas». Trabaja reservas, novedades, tareas, alertas y seguimientos sin permisos de turnos de Recepción, movimientos de Caja, llaves ni administración técnica.

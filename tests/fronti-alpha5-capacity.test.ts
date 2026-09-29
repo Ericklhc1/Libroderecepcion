@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { FrontiConfig } from '@/server/ai/fronti-config';
-import type { PermissionKey } from '@/lib/permissions';
+import { ROLE_KEYS, ROLE_PERMISSIONS, type PermissionKey } from '@/lib/permissions';
 import {
   enabledFrontiToolDefinitions,
   filterFrontiToolDefinitionsForUser,
@@ -75,17 +75,19 @@ describe('FRONTI alpha.5 · capacidad y presupuesto', () => {
     expect(names).not.toContain('proponer_multa');
   });
 
-  it('mantiene todas las herramientas habilitadas para Administrador de sistema', () => {
+  it('el Administrador de sistema tampoco recibe operaciones excluidas de su perfil', () => {
     const enabled = enabledFrontiToolDefinitions(config);
     const visible = filterFrontiToolDefinitionsForUser(
       {
         isSystemAdmin: true,
-        permissions: [] as PermissionKey[],
+        permissions: ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN],
       },
       enabled,
-    );
+    ).map((tool) => tool.name);
 
-    expect(visible.map((tool) => tool.name)).toEqual(enabled.map((tool) => tool.name));
+    expect(visible).toContain('consultar_configuracion_operativa');
+    expect(visible).toContain('consultar_auditoria');
+    expect(visible).not.toContain('proponer_checkouts');
   });
 
   it('usa Groq -> Cloudflare -> Groq y limita salida', () => {

@@ -292,7 +292,7 @@ async function prioritiesTool(user: CurrentUser) {
       href: item.href,
     })),
     instruction:
-      'Este orden ya fue calculado por el motor determinístico de Central de Operaciones. No lo reordenes ni inventes prioridades nuevas.',
+      'Este orden ya fue calculado por el motor determinístico de AROH Central IA. No lo reordenes ni inventes prioridades nuevas.',
   };
 }
 
@@ -522,7 +522,7 @@ async function operationalStateTool(user: CurrentUser) {
     supervision,
     alerts,
     instruction:
-      'Snapshot operativo transversal de Central de Operaciones. Resume primero lo importante. Distingue datos confirmados de inferencias. Si necesitas explicar una causa específica con más detalle, consulta sólo el área necesaria.',
+      'Snapshot operativo transversal de AROH Central IA. Resume primero lo importante. Distingue datos confirmados de inferencias. Si necesitas explicar una causa específica con más detalle, consulta sólo el área necesaria.',
   };
 }
 
@@ -866,8 +866,8 @@ export class AssistantError extends Error {
 
 function systemInstructions(config: FrontiConfig): string {
   return (
-    `Eres ${config.displayName}, el asistente operativo de Central de Operaciones · Hotel HW Libertad. ` +
-    'Responde siempre en español claro, breve y operativo. Para datos de la Central usa las herramientas disponibles; para preguntas de conocimiento general puedes responder con conocimiento del modelo sin fingir que el dato debería existir en la Central. Si una pregunta externa depende de información reciente que no puedes verificar, dilo brevemente. ' +
+    `Eres ${config.displayName}, el asistente operativo de AROH Central IA · Hotel HW Libertad. ` +
+    'Responde siempre en español claro, breve y operativo. Para datos de AROH usa las herramientas disponibles; para preguntas de conocimiento general puedes responder con conocimiento del modelo sin fingir que el dato debería existir en AROH. Si una pregunta externa depende de información reciente que no puedes verificar, dilo brevemente. ' +
     'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
     'La respuesta vive en una burbuja estrecha: prefiere párrafos cortos, negritas y viñetas. No uses tablas Markdown salvo que el usuario pida explícitamente una tabla, columnas o un cuadro comparativo. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +

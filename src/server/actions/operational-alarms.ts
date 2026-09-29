@@ -18,6 +18,7 @@ import { parseHotelDateTimeLocal } from '@/domain/time';
 import {
   cancelOperationalAlarm,
   createOperationalAlarm,
+  updateOperationalAlarm,
 } from '@/server/services/operational-alarms';
 
 const createSchema = z.object({
@@ -37,9 +38,27 @@ const createSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .transform((value) => (Array.isArray(value) ? value : value ? [value] : [])),
+  sourceEntity: z.string().trim().max(80).optional().transform((value) => value || null),
+  sourceId: z.string().trim().max(120).optional().transform((value) => value || null),
+  sourceLink: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value) => value || null)
+    .refine((value) => value === null || value.startsWith('/'), {
+      message: 'El vínculo de origen debe ser una ruta interna de AROH.',
+    }),
 });
 
 const cancelSchema = z.object({ alarmId: z.string().min(1) });
+
+const updateSchema = z.object({
+  alarmId: z.string().min(1),
+  title: z.string().trim().min(2, 'Escribe el motivo de la alerta.').max(160),
+  note: z.string().trim().max(500).optional().transform((value) => value || null),
+  dueAtLocal: z.string().trim().min(1, 'Indica fecha y hora.'),
+});
 
 export async function createOperationalAlarmAction(
   _state: ActionState | null,
@@ -69,16 +88,45 @@ export async function createOperationalAlarmAction(
       note: input.note,
       dueAt,
       recipientIds: input.recipientIds,
+      sourceEntity: input.sourceEntity,
+      sourceId: input.sourceId,
+      sourceLink: input.sourceLink,
     });
-    revalidatePath('/avisos');
+    revalidatePath('/alertas');
+    if (input.sourceLink) revalidatePath(input.sourceLink);
     return {
       ok: true as const,
       id: alarm.id,
       message:
         input.kind === OperationalAlarmKind.TIMER
           ? 'Timer iniciado.'
-          : 'Recordatorio programado.',
+          : 'Alerta programada.',
     };
+  });
+}
+
+export async function updateOperationalAlarmAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requireUser();
+    const input = parseOrThrow(updateSchema, formDataToObject(formData));
+    let dueAt: Date;
+    try {
+      dueAt = parseHotelDateTimeLocal(input.dueAtLocal);
+    } catch {
+      throw new RuleError('La fecha y hora de la alerta no es válida.');
+    }
+    const updated = await updateOperationalAlarm(user, {
+      id: input.alarmId,
+      title: input.title,
+      note: input.note,
+      dueAt,
+    });
+    revalidatePath('/alertas');
+    if (updated.sourceLink) revalidatePath(updated.sourceLink);
+    return { ok: true as const, id: updated.id, message: 'Alerta actualizada.' };
   });
 }
 
@@ -90,7 +138,7 @@ export async function cancelOperationalAlarmAction(
     const user = await requireUser();
     const input = parseOrThrow(cancelSchema, formDataToObject(formData));
     await cancelOperationalAlarm(user, input.alarmId);
-    revalidatePath('/avisos');
-    return { ok: true as const, message: 'Alarma cancelada.' };
+    revalidatePath('/alertas');
+    return { ok: true as const, message: 'Alerta eliminada de la operación activa.' };
   });
 }

@@ -1,5 +1,16 @@
 # Libro Operativo de Recepción — contexto técnico
 
+## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
+
+- Iniciar Supervisión deja de ser un bloc de prioridades: crea una fase `PREPARACION` y el turno sólo pasa a `ACTIVO` tras completar la recepción operacional.
+- La apertura muestra pendientes reales y genera desde ellos las prioridades, sin duplicar novedades, tareas, seguimientos ni señales.
+- El Supervisor debe realizar su propio arqueo por cada fondo de Caja activo; las garantías en efectivo se validan físicamente dentro del mismo arqueo. Una diferencia sólo permite continuar si queda explicada.
+- La apertura muestra garantías/custodias abiertas y el último inventario de llaves de pisos 4, 5 y 6; exige confirmación explícita de revisión.
+- Informes bloqueantes para iniciar: Formulario de auditoría, Habitaciones con actividad, Entradas, In House, Salidas, Cobros y Cargos diarios. Ventas por canal, Producción por habitación y Revenue quedan como gestión diaria no bloqueante.
+- La carga de apertura autodetecta la fecha de cada PDF, por lo que admite cierres de ayer junto con fotografías operativas de hoy. Los informes ya cargados durante el mismo día del hotel se reutilizan.
+- `SupervisionShift.openingState` conserva la fotografía de Caja, garantías, llaves, informes y pendientes recibidos; `openingCompletedAt` marca la confirmación final.
+- Migración aditiva: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
+
 Memoria breve del proyecto. Sirve para no volver a analizar toda la aplicación
 en cada sesión. **Mantener corto.** La documentación larga vive en `docs/`.
 

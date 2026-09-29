@@ -598,14 +598,18 @@ export function NotificationCenter({
               ? 'Push del sistema activo. Desactivarlo'
               : devicePermission === 'denied'
                 ? 'Notificaciones del dispositivo bloqueadas por el navegador'
-                : 'Activar push del sistema'
+                : devicePermission === 'requires-install'
+                  ? 'En iPhone/iPad, añade AROH a la pantalla de inicio para activar push'
+                  : 'Activar push del sistema'
           }
           title={
             deviceEnabled
               ? 'Push del sistema activo'
               : devicePermission === 'denied'
                 ? 'Permiso bloqueado en el navegador'
-                : 'Activar push del sistema'
+                : devicePermission === 'requires-install'
+                  ? 'iPhone/iPad: Añadir a pantalla de inicio'
+                  : 'Activar push del sistema'
           }
         >
           <BellRing className="h-5 w-5" aria-hidden="true" />
@@ -725,6 +729,33 @@ export function NotificationCenter({
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
+            </div>
+
+            <div className="border-b border-slate-100 px-4 py-2.5 text-xs">
+              {deviceEnabled ? (
+                <p className="font-medium text-emerald-700">
+                  Push del sistema activo en este dispositivo.
+                </p>
+              ) : devicePermission === 'requires-install' ? (
+                <p className="leading-5 text-amber-700">
+                  En iPhone/iPad: abre AROH, usa Compartir → Añadir a pantalla de inicio,
+                  entra desde el icono de AROH y activa la campana con ondas.
+                </p>
+              ) : devicePermission === 'denied' ? (
+                <p className="leading-5 text-red-700">
+                  El sistema operativo o navegador bloqueó las notificaciones. Debes
+                  habilitarlas en los permisos del sitio/dispositivo.
+                </p>
+              ) : devicePermission === 'unsupported' ? (
+                <p className="leading-5 text-slate-500">
+                  Este navegador no ofrece Web Push compatible.
+                </p>
+              ) : (
+                <p className="leading-5 text-slate-500">
+                  Activa la campana con ondas para recibir avisos de Windows, macOS o
+                  teléfono incluso con AROH cerrado.
+                </p>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">

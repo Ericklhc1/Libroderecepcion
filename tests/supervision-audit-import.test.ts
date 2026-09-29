@@ -184,6 +184,30 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
     );
   });
 
+  it('no acredita Actividad o Entradas sólo por el nombre de un PDF ilegible', () => {
+    const emptyActivity = parseSupervisionReportText('Habitaciones con actividad 29-09-26.pdf', '');
+    expect(emptyActivity.kind).toBe('DESCONOCIDO');
+    expect(emptyActivity.warnings.join(' ')).toMatch(/no contiene texto legible/i);
+
+    const unrelatedEntries = parseSupervisionReportText(
+      'Entradas 29-09-26.pdf',
+      'Documento administrativo sin reservas, habitaciones ni llegadas.',
+    );
+    expect(unrelatedEntries.kind).toBe('DESCONOCIDO');
+
+    const validActivity = parseSupervisionReportText(
+      'Habitaciones con actividad 29-09-26.pdf',
+      'Habitaciones con actividad ID Reserva Habitación Tipo 7526721 509 Check-out 7527640 606 Ocupada',
+    );
+    expect(validActivity.kind).toBe('ACTIVIDAD');
+
+    const validEntries = parseSupervisionReportText(
+      'Entradas 29-09-26.pdf',
+      'Informe operativo ID Reserva Habitación Llegada 7529001 501 Check-in',
+    );
+    expect(validEntries.kind).toBe('ENTRADAS');
+  });
+
   it('no inventa datos cuando el cierre de caja es un escaneo sin texto', () => {
     const parsed = parseSupervisionReportText('Cierre de caja 26-9-26.pdf', '');
     expect(parsed.kind).toBe('CIERRE_CAJA');
@@ -469,6 +493,6 @@ describe('dashboard de auditoría diaria de Supervisión', () => {
           'Informe de cargos diarios Ningún dato disponible en esta tabla',
         ),
       }),
-    ).rejects.toThrow(/Inicia tu turno de Supervisión/i);
+    ).rejects.toThrow(/apertura de Supervisión/i);
   });
 });

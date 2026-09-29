@@ -70,7 +70,7 @@ export function CreateUserDialog({
         <Field
           label="Correo"
           name="email"
-          hint="Recibirá credenciales y novedades del Libro. No se usa para iniciar sesión."
+          hint="Recibirá credenciales y avisos de la Central. No se usa para iniciar sesión."
         >
           <Input name="email" type="email" autoComplete="email" maxLength={254} />
         </Field>
@@ -87,7 +87,7 @@ export function CreateUserDialog({
         </Field>
         <Checkbox
           name="emailNotificationsEnabled"
-          label="Enviar novedades del Libro por correo"
+          label="Enviar avisos opcionales por correo"
           defaultChecked
         />
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
@@ -130,7 +130,7 @@ export function EditUserDialog({
         <Field
           label="Correo"
           name="email"
-          hint="Canal individual para novedades; no cambia el usuario de acceso."
+          hint="Canal individual para avisos; no cambia el usuario de acceso."
         >
           <Input
             name="email"

@@ -27,6 +27,8 @@ describe('experiencia de notificaciones', () => {
     expect(worker).toContain('/api/push/payload');
     expect(push).toContain("setProtectedHeader({ alg: 'ES256', typ: 'JWT' })");
     expect(push).toContain("Authorization: await vapidAuthorization");
+    expect(push).toContain("SELECT 1::int AS locked FROM pg_advisory_xact_lock");
+    expect(push).not.toContain("SELECT pg_advisory_xact_lock(hashtext('aroh-web-push-vapid'))");
     expect(manifest).toContain("display: 'standalone'");
   });
 

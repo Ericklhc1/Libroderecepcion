@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { EntryType, FollowUpStatus } from '@prisma/client';
+import { EntryType, FollowUpStatus, OperationalAlarmStatus } from '@prisma/client';
 import { ArrowLeft, CalendarClock, Trash2 } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
@@ -21,6 +21,17 @@ import {
 } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
 import { createTaskAction } from '@/server/actions/tasks';
+import {
+  AlarmKindIcon,
+  LinkedAlertPrompt,
+  OperationalAlarmCreateForm,
+  OperationalAlertEditDialog,
+  OperationalAlertRecipientActions,
+} from '@/components/operational/operational-alarm-form';
+import { cancelOperationalAlarmAction } from '@/server/actions/operational-alarms';
+import { listAlarmCandidates } from '@/server/services/operational-alarms';
+import { ActionForm } from '@/components/ui/form';
+import { SubmitButton } from '@/components/ui/button';
 import {
   ENTRY_OPEN_STATUSES,
   ENTRY_STATUS_LABEL,
@@ -53,7 +64,7 @@ export default async function EntryDetailPage({
   const entry = await getEntry(id).catch(() => null);
   if (!entry) notFound();
 
-  const [followUps, tasks, history, options] = await Promise.all([
+  const [followUps, tasks, linkedAlerts, alertCandidates, history, options] = await Promise.all([
     prisma.followUp.findMany({
       where: {
         entryId: entry.id,
@@ -71,6 +82,22 @@ export default async function EntryDetailPage({
       include: { assignee: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.operationalAlarm.findMany({
+      where: {
+        sourceEntity: 'OperationalEntry',
+        sourceId: entry.id,
+      },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        recipients: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+      take: 50,
+    }),
+    listAlarmCandidates(),
     getHistory({ entity: 'OperationalEntry', entityId: entry.id }),
     getFormOptions(),
   ]);
@@ -78,6 +105,22 @@ export default async function EntryDetailPage({
   const isIncident = entry.type === EntryType.INCIDENCIA;
   const open = ENTRY_OPEN_STATUSES.includes(entry.status);
   const overdue = isOverdue(entry.dueAt, open);
+  const myDueLinkedAlerts = linkedAlerts
+    .filter((alert) => alert.status === OperationalAlarmStatus.ACTIVA)
+    .flatMap((alert) => {
+      const recipient = alert.recipients.find(
+        (item) => item.userId === user.id && !item.acknowledgedAt,
+      );
+      return recipient
+        ? [{
+            id: alert.id,
+            recipientId: recipient.id,
+            title: alert.title,
+            note: alert.note,
+            dueAt: alert.dueAt.toISOString(),
+          }]
+        : [];
+    });
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -224,6 +267,29 @@ export default async function EntryDetailPage({
               </Dialog>
             ) : null}
 
+            <Dialog
+              title="Crear alerta para este asunto"
+              description="Programa una llamada de atención. No crea otra novedad ni cambia el estado de este registro."
+              triggerVariant="secondary"
+              triggerSize="sm"
+              trigger="Crear alerta"
+            >
+              <OperationalAlarmCreateForm
+                currentUserId={user.id}
+                candidates={alertCandidates.map((candidate) => ({
+                  id: candidate.id,
+                  name: candidate.name,
+                  username: candidate.username,
+                  roleName: candidate.role.name,
+                }))}
+                source={{
+                  entity: 'OperationalEntry',
+                  id: entry.id,
+                  link: `/libro/${entry.id}`,
+                }}
+              />
+            </Dialog>
+
             {user.permissions.includes('entry.delete') ? (
               <DeleteEntryDialog entryId={entry.id} label="Eliminar" />
             ) : null}
@@ -332,6 +398,85 @@ export default async function EntryDetailPage({
           </Card>
 
           <Card>
+            <CardHeader title="Alertas vinculadas" count={linkedAlerts.length} />
+            {linkedAlerts.length === 0 ? (
+              <EmptyState message="Este asunto no tiene alertas programadas." />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {linkedAlerts.map((alert) => {
+                  const myRecipient = alert.recipients.find((item) => item.userId === user.id);
+                  const active = alert.status === OperationalAlarmStatus.ACTIVA;
+                  const canEdit =
+                    alert.createdById === user.id ||
+                    user.permissions.includes('shift.manage') ||
+                    user.isSystemAdmin;
+                  return (
+                    <li key={alert.id} className="px-4 py-3">
+                      <div className="flex flex-wrap items-start gap-3">
+                        <span className="mt-0.5 rounded-lg bg-gold-50 p-2 text-gold-700">
+                          <AlarmKindIcon kind={alert.kind} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-petrol-900">{alert.title}</p>
+                            <Badge tone={active ? 'pendiente' : 'neutro'}>
+                              {active
+                                ? 'Activa'
+                                : alert.status === OperationalAlarmStatus.CANCELADA
+                                  ? 'Eliminada'
+                                  : 'Atendida'}
+                            </Badge>
+                          </div>
+                          {alert.note ? (
+                            <p className="mt-0.5 text-sm text-slate-600">{alert.note}</p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDateTime(alert.dueAt)} · creada por {alert.createdBy.name}
+                          </p>
+                        </div>
+                        {active ? (
+                          <div className="flex flex-wrap gap-1.5 no-print">
+                            {myRecipient && !myRecipient.acknowledgedAt ? (
+                              <OperationalAlertRecipientActions recipientId={myRecipient.id} />
+                            ) : null}
+                            {canEdit && alert.kind !== 'TIMER' ? (
+                              <OperationalAlertEditDialog
+                                alert={{
+                                  id: alert.id,
+                                  title: alert.title,
+                                  note: alert.note,
+                                  dueAtLocal: toDateTimeInput(alert.dueAt),
+                                }}
+                              />
+                            ) : null}
+                            {canEdit ? (
+                              <ActionForm
+                                action={cancelOperationalAlarmAction}
+                                hideSuccess
+                                refreshOnSuccess
+                                className="space-y-0"
+                              >
+                                <input type="hidden" name="alarmId" value={alert.id} />
+                                <SubmitButton
+                                  variant="ghost"
+                                  size="sm"
+                                  pendingLabel="Eliminando…"
+                                >
+                                  Eliminar
+                                </SubmitButton>
+                              </ActionForm>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+
+          <Card>
             <CardHeader title="Tareas asignadas" count={tasks.length} />
             {tasks.length === 0 ? (
               <EmptyState message="No se asignaron tareas desde este asunto." />
@@ -379,6 +524,8 @@ export default async function EntryDetailPage({
           </p>
         </div>
       </div>
+
+      <LinkedAlertPrompt alerts={myDueLinkedAlerts} />
     </div>
   );
 }

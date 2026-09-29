@@ -3,6 +3,8 @@ import 'server-only';
 import { AuditAction, SupervisionShiftStatus, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { readPdfFragments } from '@/server/pms/read-pdf';
+import { readStructuredReport } from '@/domain/pms/layout';
+import { normalizeReport } from '@/domain/pms/normalize';
 import { RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -448,7 +450,50 @@ export async function parseSupervisionReport(
   }
 
   const text = compactText(linesFromFragments(fragments));
-  return parseSupervisionReportText(fileName, text);
+  const parsed = parseSupervisionReportText(fileName, text);
+
+  // Para los informes que describen movimientos de habitaciones, reutilizamos
+  // el lector PMS estructurado. Así la apertura no se limita a saber que el
+  // archivo existe: conserva una señal por ID sobre lo que FNS parece tener
+  // pendiente/procesado. La señal NO cambia el estado operativo del Libro.
+  if (['ACTIVIDAD', 'ENTRADAS', 'SALIDAS'].includes(parsed.kind)) {
+    const structured = readStructuredReport(fragments);
+    const normalized = normalizeReport(structured);
+    if (normalized) {
+      const actionRows = normalized.stays
+        .filter(
+          (stay) =>
+            stay.operationalStatus === 'CHECK_IN' ||
+            stay.operationalStatus === 'CHECK_OUT',
+        )
+        .map((stay) => ({
+          reservationId: stay.reservationId,
+          roomNumber: stay.roomNumber,
+          status: stay.operationalStatus,
+          signal: stay.pmsProcessingSignal,
+          confidence: stay.pmsProcessingConfidence,
+        }));
+
+      parsed.metrics = {
+        ...parsed.metrics,
+        pmsProcessing: {
+          pending: actionRows.filter((row) => row.signal === 'PENDIENTE').length,
+          processedProbable: actionRows.filter((row) => row.signal === 'PROCESADO_PROBABLE').length,
+          unknown: actionRows.filter((row) => row.signal === null).length,
+          rows: actionRows,
+        },
+      };
+
+      if (actionRows.some((row) => row.signal === 'PROCESADO_PROBABLE')) {
+        parsed.warnings = Array.from(new Set([
+          ...parsed.warnings,
+          'FNS presenta IDs enlazados y no enlazados en el mismo informe. Los no enlazados se muestran como procesados probables, pero requieren verificación humana.',
+        ]));
+      }
+    }
+  }
+
+  return parsed;
 }
 
 function jsonObject(value: Prisma.JsonValue | null | undefined): Record<string, unknown> {

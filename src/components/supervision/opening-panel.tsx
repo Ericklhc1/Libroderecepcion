@@ -27,8 +27,8 @@ export function SupervisionOpeningPanel({
   readiness: SupervisionOpeningReadiness;
 }) {
   const cashBlocked = readiness.blockers.cash > 0;
-  const reportsBlocked = readiness.blockers.reports > 0;
-  const blocked = cashBlocked || reportsBlocked;
+  const reportsIncomplete = !readiness.reports.reportsReady;
+  const blocked = cashBlocked;
 
   return (
     <section id="apertura-supervision" className="space-y-4">
@@ -252,45 +252,58 @@ export function SupervisionOpeningPanel({
           title="4 · Informes PMS"
           action={
             readiness.reports.reportsReady
-              ? <Badge tone="resuelto">7/7 obligatorios</Badge>
-              : <Badge tone="critico">
-                  {readiness.reports.required.length - readiness.reports.missingRequired.length}/
-                  {readiness.reports.required.length} obligatorios
-                </Badge>
+              ? <Badge tone="resuelto">Evidencia operativa completa</Badge>
+              : <Badge tone="pendiente">Evidencia incompleta</Badge>
           }
         />
-        <div className="space-y-4 px-4 py-4">
-          <div>
-            <p className="text-sm text-slate-600">
-              Para iniciar Supervisión deben estar cargados los siete informes operativos acordados.
-              Pueden corresponder al día actual o al cierre inmediato anterior; el Libro reconoce la
-              fecha del propio PDF.
+        <div className="space-y-5 px-4 py-4">
+          <div className="rounded-xl bg-petrol-50 p-3 ring-1 ring-petrol-100">
+            <p className="text-sm font-semibold text-petrol-900">
+              Fotografía operacional de hoy · {readiness.businessDateKey}
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {readiness.reports.required.map((kind: string) => {
-                const present = readiness.reports.presentKinds.includes(kind);
-                return (
-                  <div
-                    key={kind}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 ${
-                      present
-                        ? 'bg-emerald-50 text-emerald-900 ring-emerald-200'
-                        : 'bg-red-50 text-red-900 ring-red-200'
-                    }`}
-                  >
-                    {present ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    )}
-                    <span>{readiness.reports.labels[kind] ?? kind}</span>
-                  </div>
-                );
-              })}
+            <p className="mt-1 text-xs text-petrol-800">
+              Preferido: <strong>{readiness.reports.labels[readiness.reports.operationalPrimary]}</strong>.
+              Ese informe ya reúne entradas, ocupadas y salidas. Si no está disponible,
+              el respaldo válido es Entradas + In House + Salidas.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge tone={readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? 'resuelto' : 'neutral'}>
+                {readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? '✓ ' : '○ '}
+                {readiness.reports.labels[readiness.reports.operationalPrimary]}
+              </Badge>
+              <span className="self-center text-xs text-slate-500">o</span>
+              {readiness.reports.operationalFallback.map((kind: string) => (
+                <Badge key={kind} tone={readiness.reports.todayKinds.includes(kind) ? 'resuelto' : 'neutral'}>
+                  {readiness.reports.todayKinds.includes(kind) ? '✓ ' : '○ '}
+                  {readiness.reports.labels[kind] ?? kind}
+                </Badge>
+              ))}
             </div>
-            {readiness.reports.missingRequired.length > 0 ? (
-              <p className="mt-3 text-xs text-red-800">
-                Faltan: {readiness.reports.missingRequired
+            {!readiness.reports.occupancyReady ? (
+              <p className="mt-2 text-xs text-amber-800">
+                Falta la fotografía operacional de hoy.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="text-sm font-semibold text-petrol-900">
+              Cierre y auditoría · {readiness.auditDateKey}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              Para recibir el día se esperan Formulario de auditoría, Cobros y Cargos diarios.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {readiness.reports.auditRequired.map((kind: string) => (
+                <Badge key={kind} tone={readiness.reports.auditKinds.includes(kind) ? 'resuelto' : 'pendiente'}>
+                  {readiness.reports.auditKinds.includes(kind) ? '✓ ' : '○ '}
+                  {readiness.reports.labels[kind] ?? kind}
+                </Badge>
+              ))}
+            </div>
+            {readiness.reports.missingAudit.length > 0 ? (
+              <p className="mt-2 text-xs text-amber-800">
+                Faltan: {readiness.reports.missingAudit
                   .map((kind: string) => readiness.reports.labels[kind] ?? kind)
                   .join(', ')}.
               </p>
@@ -298,10 +311,10 @@ export function SupervisionOpeningPanel({
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">
-            <p className="font-medium text-petrol-900">Subir informes del inicio del día</p>
+            <p className="font-medium text-petrol-900">Subir informes</p>
             <p className="mt-1 text-xs text-slate-500">
-              Puedes seleccionar varios PDF. La fecha se toma del propio informe y la evidencia ya
-              cargada para hoy o ayer se reutiliza, sin duplicar la operación.
+              Puedes seleccionar varios PDF. La fecha se toma del propio informe y la evidencia
+              ya cargada para esa fecha se reutiliza con su trazabilidad.
             </p>
             <div className="mt-3">
               <SupervisionAuditUpload
@@ -325,12 +338,13 @@ export function SupervisionOpeningPanel({
           </div>
         </div>
       </Card>
+
       <Card>
         <CardHeader title="5 · Confirmar recepción e iniciar" />
         <div className="space-y-4 px-4 py-4">
-          {blocked ? (
+          {cashBlocked ? (
             <div className="rounded-xl bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
-              <p className="font-semibold">La apertura todavía tiene controles obligatorios pendientes.</p>
+              <p className="font-semibold">Caja/garantías todavía no están conformes.</p>
               {readiness.cash.missingCurrencies.length > 0 ? (
                 <p className="mt-1">Falta tu arqueo o validación vigente: {readiness.cash.missingCurrencies.join(', ')}.</p>
               ) : null}
@@ -339,13 +353,7 @@ export function SupervisionOpeningPanel({
                   Hay diferencias sin explicación: {readiness.cash.unexplainedDifferences.join(', ')}.
                 </p>
               ) : null}
-              {readiness.reports.missingRequired.length > 0 ? (
-                <p className="mt-1">
-                  Faltan informes: {readiness.reports.missingRequired
-                    .map((kind: string) => readiness.reports.labels[kind] ?? kind)
-                    .join(', ')}.
-                </p>
-              ) : null}
+
             </div>
           ) : null}
 
@@ -369,7 +377,22 @@ export function SupervisionOpeningPanel({
               <span>Revisé el último inventario de llaves y conozco sus faltantes o excepciones vigentes.</span>
             </label>
 
-
+            {reportsIncomplete ? (
+              <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                <p className="text-sm font-semibold text-amber-950">Contingencia de PMS / informes</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  No se bloquea la Supervisión por una falla externa del PMS. Para continuar sin
+                  evidencia completa debes dejar el motivo; quedará guardado en la apertura.
+                </p>
+                <Textarea
+                  name="reportContingencyReason"
+                  rows={3}
+                  minLength={8}
+                  required
+                  placeholder="Ej.: PMS sin disponibilidad desde las 07:05; informe pendiente de emisión."
+                />
+              </div>
+            ) : null}
 
             <div className="flex justify-end">
               <SubmitButton variant="gold" pendingLabel="Iniciando turno…" disabled={blocked}>

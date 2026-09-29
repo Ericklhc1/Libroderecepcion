@@ -289,6 +289,47 @@ export function SupervisionOpeningPanel({
                 Falta la fotografía operacional de hoy.
               </p>
             ) : null}
+
+            {readiness.reports.pmsProcessing.rows.length > 0 ? (
+              <div className="mt-3 rounded-lg bg-white p-3 ring-1 ring-petrol-100">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={readiness.reports.pmsProcessing.pending > 0 ? 'pendiente' : 'resuelto'}>
+                    {readiness.reports.pmsProcessing.pending} pendiente(s) según enlace
+                  </Badge>
+                  <Badge tone="neutral">
+                    {readiness.reports.pmsProcessing.processedProbable} procesado(s) probable(s)
+                  </Badge>
+                  {readiness.reports.pmsProcessing.unknown > 0 ? (
+                    <Badge tone="neutral">
+                      {readiness.reports.pmsProcessing.unknown} sin señal visual
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  Esta lectura usa la anotación de enlace del ID FNS como evidencia. No confirma
+                  automáticamente check-in ni check-out; sirve para dirigir la revisión del turno.
+                </p>
+                <div className="mt-2 max-h-44 overflow-y-auto">
+                  <ul className="divide-y divide-slate-100 text-xs">
+                    {readiness.reports.pmsProcessing.rows.map((row) => (
+                      <li key={`${row.reservationId}:${row.status}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                        <span className="font-medium text-petrol-900">
+                          {row.status === 'CHECK_IN' ? 'Entrada' : 'Salida'} · ID {row.reservationId}
+                          {row.roomNumber ? ` · Hab. ${row.roomNumber}` : ''}
+                        </span>
+                        <span className="text-slate-500">
+                          {row.signal === 'PENDIENTE'
+                            ? 'Pendiente · confianza alta'
+                            : row.signal === 'PROCESADO_PROBABLE'
+                              ? 'Procesado probable · verificar'
+                              : 'Sin señal'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">

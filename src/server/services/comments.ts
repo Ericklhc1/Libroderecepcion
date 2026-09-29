@@ -114,7 +114,7 @@ export async function addComment(
     if (!alert) throw new NotFoundError('La alerta no existe.');
     if (alert.createdById) recipients.add(alert.createdById);
     summaryRef = `alerta "${alert.title}"`;
-    link = '/alertas';
+    link = '/alertas/sistema';
   } else if (input.handoverId) {
     const handover = await prisma.shiftHandover.findUnique({
       where: { id: input.handoverId },

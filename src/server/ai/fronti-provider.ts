@@ -197,6 +197,10 @@ type ChatCompletionPayload = {
     code?: string;
     type?: string;
   };
+  errors?: Array<{
+    message?: string;
+    code?: string | number;
+  }>;
 };
 
 
@@ -420,20 +424,24 @@ async function wait(ms: number): Promise<void> {
 
 async function parseFailure(
   response: Response,
+  provider?: FrontiProviderName,
 ): Promise<{ failure: AssistantFailure; detail?: string }> {
   let code: string | null = null;
   let message: string | null = null;
 
   try {
     const payload = (await response.json()) as ChatCompletionPayload;
-    code = payload.error?.code ?? payload.error?.type ?? null;
-    message = payload.error?.message ?? null;
+    const cloudflareError = payload.errors?.[0];
+    const rawCode = payload.error?.code ?? payload.error?.type ?? cloudflareError?.code ?? null;
+    code = rawCode === null || rawCode === undefined ? null : String(rawCode);
+    message = payload.error?.message ?? cloudflareError?.message ?? null;
   } catch {
     // Un proxy puede devolver HTML. El estado HTTP sigue siendo suficiente.
   }
 
   return {
     failure: classifyAssistantFailure({
+      provider,
       status: response.status,
       code,
       message,
@@ -530,7 +538,7 @@ async function chatWithOpenAIResponses(args: {
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, args.provider.provider);
     throw new FrontiProviderError(failure.failure, undefined, failure.detail);
   }
 
@@ -779,7 +787,7 @@ export async function probeFrontiProvider(
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, provider.provider);
     return { ok: false, failure: failure.failure };
   }
 

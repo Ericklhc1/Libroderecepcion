@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { BookOpen, LogOut, Search, UserRound } from 'lucide-react';
+import { BookOpen, Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
@@ -11,15 +11,13 @@ import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countLiveAlerts } from '@/server/services/alert-engine';
 import { visibleNavGroups } from '@/components/layout/nav-items';
-import { MobileNav, SidebarNav } from '@/components/layout/nav';
+import { DesktopNav, MobileNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
 import { TutorialTour } from '@/components/layout/tutorial';
 import { guidedTourSteps } from '@/domain/tutorial-tour';
 import { getBlockingAnnouncements } from '@/server/services/announcements';
-import { QuickActions } from '@/components/layout/quick-actions';
-import { logoutAction } from '@/server/actions/auth';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
@@ -29,6 +27,12 @@ import { AiAttribution } from '@/components/ai/ai-attribution';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
 import { canUseFronti } from '@/server/ai/fronti-access';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
+import {
+  AccountMenu,
+  FrontiLauncher,
+  PropertyMenu,
+} from '@/components/layout/topbar-menus';
+import { SupportRequestPanel } from '@/components/layout/support-request-panel';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -50,79 +54,56 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     frontiConfig,
     receptionGate,
   ] = await Promise.all([
-      getSettingString('hotel.name', 'Hotel'),
-      countLiveAlerts(),
-      getNotificationFeedForUser(user.id),
-      prisma.task.count({
-        where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
-      }),
-      getBlockingAnnouncements(user.id),
-      prisma.user.findUnique({
-        where: { id: user.id },
-        select: { tutorialDoneAt: true },
-      }),
-      user.roleOperational && !user.isSystemAdmin
-        ? getChatUnreadCount(user.id)
-        : Promise.resolve(0),
-      getFrontiConfig(),
-      getReceptionOperationGate(user),
-    ]);
+    getSettingString('hotel.name', 'Hotel'),
+    countLiveAlerts(),
+    getNotificationFeedForUser(user.id),
+    prisma.task.count({
+      where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
+    }),
+    getBlockingAnnouncements(user.id),
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: { tutorialDoneAt: true },
+    }),
+    user.roleOperational && !user.isSystemAdmin
+      ? getChatUnreadCount(user.id)
+      : Promise.resolve(0),
+    getFrontiConfig(),
+    getReceptionOperationGate(user),
+  ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
-
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
   const badges = { '/supervision': alerts, '/libro': myOpenTasks };
+  const frontiVisible =
+    canUseFronti(user, frontiConfig.enabled) &&
+    (!user.roleOperational || user.isSystemAdmin);
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-petrol-900 lg:flex no-print">
-        <div className="flex items-center gap-3 border-b border-petrol-800 px-4 py-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
-            <BookOpen className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[0.65rem] font-medium text-gold-300">Central de Operaciones</p>
-            <p className="truncate text-sm font-semibold text-white">{hotelName}</p>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          <SidebarNav groups={groups} badges={badges} />
-        </div>
-
-        <div className="border-t border-petrol-800 px-3 py-3">
-          <Link href="/perfil" className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-petrol-800/60">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-petrol-700 text-xs font-semibold text-gold-200">
-              {initials(user.name)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-white">{user.name}</span>
-              <span className="block truncate text-xs text-petrol-200">{user.roleName}</span>
-            </span>
-          </Link>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-petrol-200 hover:bg-petrol-800/60 hover:text-white"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              Cerrar sesión
-            </button>
-          </form>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div className="min-h-screen bg-slate-100">
+      <div className="flex min-w-0 flex-col">
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur no-print">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <Link href="/" className="flex items-center gap-2 lg:hidden">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-petrol-800 text-gold-300">
-                <BookOpen className="h-4 w-4" aria-hidden="true" />
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <Link href="/" className="flex shrink-0 items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
+                <BookOpen className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="hidden min-w-0 xl:block">
+                <span className="block truncate text-[0.62rem] font-semibold uppercase tracking-wide text-gold-700">
+                  Central de Operaciones
+                </span>
+                <span className="block max-w-44 truncate text-sm font-semibold text-petrol-950">
+                  {hotelName}
+                </span>
               </span>
             </Link>
 
-            <form action="/buscar" className="relative min-w-0 flex-1 max-w-xl" data-tour="global-search">
+            <form
+              action="/buscar"
+              className="relative min-w-[11rem] flex-1 xl:max-w-2xl"
+              data-tour="global-search"
+            >
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                 aria-hidden="true"
@@ -132,18 +113,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 name="q"
                 placeholder="Buscar #ID, habitación, huésped, responsable o texto…"
                 aria-label="Búsqueda global"
-                className="input-base pl-9"
+                className="input-base h-9 pl-9"
               />
             </form>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {frontiVisible ? <FrontiLauncher displayName={frontiConfig.displayName} /> : null}
+              <PropertyMenu hotelName={hotelName} />
+              <AccountMenu
+                userName={user.name}
+                roleName={user.roleName}
+                initialsText={initials(user.name)}
+              />
+
               <NotificationCenter initialSnapshot={notificationFeed} />
               {user.roleOperational && !user.isSystemAdmin ? (
                 <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
               ) : null}
+
               <div data-tour="help-center">
-                <HelpCenter permissions={user.permissions} />
+                <HelpCenter permissions={user.permissions} userId={user.id} />
               </div>
+
+              <SupportRequestPanel version={packageJson.version} hotelName={hotelName} />
+
               <Link
                 href="/perfil"
                 className="rounded-lg p-2 text-petrol-700 hover:bg-petrol-50 lg:hidden"
@@ -154,30 +147,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          <div className="overflow-x-auto border-t border-slate-100 px-4 py-2" data-tour="quick-actions">
-            <QuickActions user={user} compact />
-          </div>
+          <DesktopNav groups={groups} badges={badges} />
         </header>
 
         <main className="min-w-0 flex-1 px-4 pb-24 pt-4 lg:pb-8">{children}</main>
         <div className="px-4 pb-24 lg:pb-4">
           <AiAttribution />
-          <p className="mt-1 text-center text-[0.65rem] text-slate-400">Central de Operaciones v{packageJson.version}</p>
+          <p className="mt-1 text-center text-[0.65rem] text-slate-400">
+            Central de Operaciones v{packageJson.version}
+          </p>
         </div>
       </div>
 
       <MobileNav items={items} badges={badges} />
-      {canUseFronti(user, frontiConfig.enabled) &&
-      (!user.roleOperational || user.isSystemAdmin) ? (
-        <ReceptionAssistant />
-      ) : null}
+
+      {frontiVisible ? <ReceptionAssistant /> : null}
 
       <ReceptionOperationGate
         mode={receptionGate.mode}
         handoverId={receptionGate.handoverId}
       />
 
-      {blocking.length > 0 ? <AnnouncementGate announcements={blocking} userName={user.name} /> : null}
+      {blocking.length > 0 ? (
+        <AnnouncementGate announcements={blocking} userName={user.name} />
+      ) : null}
 
       {!tutorialDone && blocking.length === 0 ? (
         <TutorialTour

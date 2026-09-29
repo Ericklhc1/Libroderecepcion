@@ -191,6 +191,24 @@ export const DEFAULT_SETTINGS = {
     category: 'fronti',
     description: 'Ventana de actividad reciente usada por el cliente para mantener viva la sesión.',
   },
+  'fronti.proactiveEnabled': {
+    value: true,
+    category: 'fronti',
+    description:
+      'Permite que Fronti analice en segundo plano señales operativas ya detectadas por reglas determinísticas y avise a Supervisión/Administración.',
+  },
+  'fronti.proactiveCooldownHours': {
+    value: 24,
+    category: 'fronti',
+    description:
+      'Horas mínimas antes de repetir el mismo hallazgo proactivo mientras la condición siga abierta.',
+  },
+  'fronti.proactiveMaxFindingsPerRun': {
+    value: 4,
+    category: 'fronti',
+    description:
+      'Máximo de hallazgos que Fronti explica en una ejecución de segundo plano para evitar ruido y consumo innecesario.',
+  },
   'fronti.tool.room': {
     value: true,
     category: 'fronti-capacidades',

@@ -39,6 +39,10 @@ describe('Central 1.26.0 · shell horizontal', () => {
     expect(panel).toContain('Solicitar función');
     expect(panel).toContain('getDisplayMedia');
     expect(panel).toContain('/api/soporte/solicitud');
+    expect(panel).toContain("import { createPortal } from 'react-dom'");
+    expect(panel).toContain('open && mounted ? createPortal(');
+    expect(panel).toContain('document.body');
+    expect(panel).toContain('fixed inset-0 z-[130]');
     expect(route).toContain('CONTEXTO AUTOMÁTICO');
     expect(route).toContain("getSettingString('support.recipient'");
     expect(settings).toContain("'support.recipient'");

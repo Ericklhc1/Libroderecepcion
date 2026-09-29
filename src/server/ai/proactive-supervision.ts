@@ -319,12 +319,16 @@ export async function runProactiveSupervisionAnalysis(): Promise<{
   return summary;
 }
 
-export async function getLatestProactiveBriefForUser(userId: string) {
+export async function getLatestProactiveBriefForUser(
+  userId: string,
+  since?: Date | null,
+) {
   return prisma.notification.findFirst({
     where: {
       userId,
       type: NotificationType.FRONTI_HALLAZGO,
       entity: 'FrontiProactiveBrief',
+      ...(since ? { createdAt: { gte: since } } : {}),
     },
     select: {
       id: true,

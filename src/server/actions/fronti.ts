@@ -47,6 +47,7 @@ const NUMBER_LIMITS: Partial<Record<SettingKey, { min: number; max: number }>> =
   'fronti.memoryContextLimit': { min: 1, max: 30 },
   'fronti.modelHistoryLimit': { min: 4, max: 30 },
   'fronti.sessionActivityMinutes': { min: 5, max: 60 },
+  'fronti.proactive.maxSignals': { min: 5, max: 50 },
 };
 
 function parseValue(key: SettingKey, raw: string): unknown {
@@ -86,6 +87,9 @@ function parseValue(key: SettingKey, raw: string): unknown {
   }
   if (key === 'fronti.reasoningEffort' && !['low', 'medium', 'high'].includes(value)) {
     throw new RuleError('El esfuerzo de razonamiento debe ser low, medium o high.');
+  }
+  if (key === 'fronti.proactive.minSeverity' && !['BAJA', 'MEDIA', 'ALTA'].includes(value)) {
+    throw new RuleError('La severidad mínima debe ser BAJA, MEDIA o ALTA.');
   }
   return value;
 }

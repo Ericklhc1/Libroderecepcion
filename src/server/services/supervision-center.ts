@@ -14,7 +14,10 @@ import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
-import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
+import {
+  auditOperationalPendingCount,
+  parseSupervisionAuditReviewState,
+} from '@/domain/supervision-audit-review';
 import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
@@ -493,6 +496,132 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
 
 export type SupervisionOpeningReadiness = Awaited<ReturnType<typeof getSupervisionOpeningReadiness>>;
 
+function jsonRecord(value: Prisma.JsonValue | null | undefined): Record<string, Prisma.JsonValue> {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return {};
+  return value as Record<string, Prisma.JsonValue>;
+}
+
+function jsonList<T>(value: Prisma.JsonValue | null | undefined): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function mergeByJsonKey<T extends { key: string }>(rows: T[][]): T[] {
+  const merged = new Map<string, T>();
+  for (const list of rows) {
+    for (const item of list) merged.set(item.key, item);
+  }
+  return [...merged.values()];
+}
+
+async function materializeOpeningReportEvidence(
+  tx: Prisma.TransactionClient,
+  shiftId: string,
+  userId: string,
+  sourceIds: string[],
+): Promise<void> {
+  if (!sourceIds.length) return;
+  const sources = await tx.supervisionAuditImport.findMany({
+    where: { id: { in: sourceIds } },
+    orderBy: { updatedAt: 'asc' },
+  });
+  if (!sources.length) return;
+
+  const byDate = new Map<string, typeof sources>();
+  for (const source of sources) {
+    const key = calendarDateKey(source.businessDate);
+    const list = byDate.get(key) ?? [];
+    list.push(source);
+    byDate.set(key, list);
+  }
+
+  for (const rows of byDate.values()) {
+    const businessDate = rows[0]?.businessDate;
+    if (!businessDate) continue;
+    const current = await tx.supervisionAuditImport.findUnique({
+      where: {
+        supervisionShiftId_businessDate: {
+          supervisionShiftId: shiftId,
+          businessDate,
+        },
+      },
+    });
+    const all = current && !rows.some((row) => row.id === current.id) ? [...rows, current] : rows;
+    all.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
+
+    const metrics: Record<string, Prisma.JsonValue> = {};
+    for (const row of all) Object.assign(metrics, jsonRecord(row.metrics));
+
+    const checks = mergeByJsonKey(
+      all.map((row) =>
+        jsonList<{ key: string; label: string; done: boolean | null; observation: string | null }>(
+          row.checks,
+        ),
+      ),
+    );
+    const findings = mergeByJsonKey(
+      all.map((row) =>
+        jsonList<{ key: string; severity: 'BAJA' | 'MEDIA' | 'ALTA'; title: string; detail: string }>(
+          row.findings,
+        ),
+      ),
+    );
+
+    const review = {
+      checks: {} as Record<string, unknown>,
+      findings: {} as Record<string, unknown>,
+      metrics: {} as Record<string, unknown>,
+    };
+    for (const row of all) {
+      const parsed = parseSupervisionAuditReviewState(row.reviewState);
+      Object.assign(review.checks, parsed.checks);
+      Object.assign(review.findings, parsed.findings);
+      if (parsed.metrics.departuresPending) {
+        review.metrics.departuresPending = parsed.metrics.departuresPending;
+      }
+    }
+
+    const sourceFiles = new Map<string, unknown>();
+    for (const row of all) {
+      for (const file of jsonList<Record<string, unknown>>(row.sourceFiles)) {
+        const sha = typeof file.sha256 === 'string' ? file.sha256 : JSON.stringify(file);
+        sourceFiles.set(sha, file);
+      }
+    }
+    const reportKinds = Array.from(new Set(all.flatMap((row) => row.reportKinds)));
+    const warnings = Array.from(new Set(all.flatMap((row) => row.warnings)));
+
+    await tx.supervisionAuditImport.upsert({
+      where: {
+        supervisionShiftId_businessDate: {
+          supervisionShiftId: shiftId,
+          businessDate,
+        },
+      },
+      update: {
+        reportKinds,
+        metrics: metrics as Prisma.InputJsonObject,
+        checks: JSON.parse(JSON.stringify(checks)) as Prisma.InputJsonArray,
+        findings: JSON.parse(JSON.stringify(findings)) as Prisma.InputJsonArray,
+        warnings,
+        reviewState: JSON.parse(JSON.stringify(review)) as Prisma.InputJsonObject,
+        sourceFiles: JSON.parse(JSON.stringify([...sourceFiles.values()])) as Prisma.InputJsonArray,
+      },
+      create: {
+        supervisionShiftId: shiftId,
+        businessDate,
+        uploadedById: userId,
+        reportKinds,
+        metrics: metrics as Prisma.InputJsonObject,
+        checks: JSON.parse(JSON.stringify(checks)) as Prisma.InputJsonArray,
+        findings: JSON.parse(JSON.stringify(findings)) as Prisma.InputJsonArray,
+        warnings,
+        reviewState: JSON.parse(JSON.stringify(review)) as Prisma.InputJsonObject,
+        sourceFiles: JSON.parse(JSON.stringify([...sourceFiles.values()])) as Prisma.InputJsonArray,
+      },
+    });
+  }
+}
+
 export async function completeSupervisionOpening(
   user: CurrentUser,
   input: {
@@ -589,6 +718,13 @@ export async function completeSupervisionOpening(
     if (current.status !== SupervisionShiftStatus.PREPARACION) {
       throw new RuleError('Esta apertura ya fue iniciada o cerrada.');
     }
+
+    await materializeOpeningReportEvidence(
+      tx,
+      current.id,
+      user.id,
+      readiness.reports.sources.map((source) => source.id),
+    );
 
     const shift = await tx.supervisionShift.update({
       where: { id: current.id },

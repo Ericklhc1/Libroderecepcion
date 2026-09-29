@@ -117,6 +117,15 @@ describe('clasificación de fallos del asistente', () => {
     expect(classifyAssistantFailure({ status: 422 })).toBe('PETICION_INVALIDA');
   });
 
+  it('un fallo de tool choice que menciona «model» no se confunde con modelo inexistente', () => {
+    expect(
+      classifyAssistantFailure({
+        status: 400,
+        message: 'Tool choice is none, but model called a tool',
+      }),
+    ).toBe('PETICION_INVALIDA');
+  });
+
   it('los 5xx son caída del proveedor', () => {
     for (const status of [500, 502, 503]) {
       expect(classifyAssistantFailure({ status })).toBe('CAIDO');

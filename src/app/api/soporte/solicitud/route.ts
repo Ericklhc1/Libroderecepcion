@@ -123,6 +123,15 @@ export async function POST(request: Request) {
       throw new Error('Hay referencias de adjuntos duplicadas.');
     }
 
+    const allAttachmentNames = Array.from(
+      new Set([
+        ...storedAttachments.map((item) => item.fileName),
+        ...attachments.map((item) => item.filename),
+      ]),
+    );
+    const storedAttachmentNames = storedAttachments.map((item) => item.fileName);
+    const emailAttachmentNames = attachments.map((item) => item.filename);
+
     const label = payload.kind === 'ERROR' ? 'Reporte de problema' : 'Solicitud de función';
     const route = payload.context.pathname + payload.context.search;
 
@@ -145,7 +154,7 @@ export async function POST(request: Request) {
           shiftId: operationGate.shiftId ?? null,
           handoverId: operationGate.handoverId ?? null,
         },
-        attachmentNames: attachments.map((item) => item.filename),
+        attachmentNames: allAttachmentNames,
         attachments:
           storedAttachments.length > 0
             ? {
@@ -193,10 +202,15 @@ export async function POST(request: Request) {
           'DESCRIPCIÓN',
           payload.description,
           '',
-          attachments.length > 0
-            ? `Adjuntos: ${attachments.map((item) => item.filename).join(', ')}`
-            : 'Adjuntos: ninguno',
-          `Archivados en bandeja: ${storedAttachments.length}`,
+          allAttachmentNames.length > 0
+            ? `Adjuntos declarados: ${allAttachmentNames.join(', ')}`
+            : 'Adjuntos declarados: ninguno',
+          storedAttachmentNames.length > 0
+            ? `Disponibles en bandeja: ${storedAttachmentNames.join(', ')}`
+            : 'Disponibles en bandeja: ninguno',
+          emailAttachmentNames.length > 0
+            ? `Incluidos como respaldo en este correo: ${emailAttachmentNames.join(', ')}`
+            : 'Incluidos como respaldo en este correo: ninguno',
           '',
           'Bandeja interna: /admin/soporte',
         ].join('\n'),

@@ -10,7 +10,11 @@
     },
     {
       "path": "/api/cron/operational-mail",
-      "schedule": "5 10 * * *"
+      "schedule": "5,20,35,50 * * * *"
+    },
+    {
+      "path": "/api/cron/fronti-proactive",
+      "schedule": "2,17,32,47 * * * *"
     }
   ],
   "git": {

@@ -79,6 +79,18 @@ const GROUPS = [
     keys: ['fronti.sessionActivityMinutes'],
   },
   {
+    id: 'proactividad',
+    title: 'Proactividad',
+    description:
+      'Analiza señales determinísticas en segundo plano, controla repetición y limita cuántos hallazgos explica por ejecución.',
+    icon: Sparkles,
+    keys: [
+      'fronti.proactiveEnabled',
+      'fronti.proactiveCooldownHours',
+      'fronti.proactiveMaxFindingsPerRun',
+    ],
+  },
+  {
     id: 'capacidades',
     title: 'Capacidades',
     description: 'Define qué herramientas operativas se ofrecen a Fronti. Los permisos del usuario siguen aplicándose siempre.',

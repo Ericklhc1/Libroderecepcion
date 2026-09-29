@@ -126,16 +126,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 initialsText={initials(user.name)}
               />
 
-              <NotificationCenter initialSnapshot={notificationFeed} />
-              {user.roleOperational && !user.isSystemAdmin ? (
-                <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
-              ) : null}
-
               <div data-tour="help-center">
                 <HelpCenter permissions={user.permissions} userId={user.id} />
               </div>
 
               <SupportRequestPanel version={packageJson.version} hotelName={hotelName} />
+
+              <NotificationCenter initialSnapshot={notificationFeed} />
+              {user.roleOperational && !user.isSystemAdmin ? (
+                <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
+              ) : null}
 
               <Link
                 href="/perfil"

@@ -551,14 +551,6 @@ function jsonList<T>(value: Prisma.JsonValue | null | undefined): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function mergeByJsonKey<T extends { key: string }>(rows: T[][]): T[] {
-  const merged = new Map<string, T>();
-  for (const list of rows) {
-    for (const item of list) merged.set(item.key, item);
-  }
-  return [...merged.values()];
-}
-
 async function materializeOpeningReportEvidence(
   tx: Prisma.TransactionClient,
   shiftId: string,

@@ -74,7 +74,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_estado_operativo',
     description:
-      'Construye una vista transversal del estado actual de Central de Operaciones usando las áreas que la cuenta puede consultar: prioridades, Caja y Llaves. Úsala para preguntas amplias como “qué está pasando”, “qué falta”, “dame un panorama” o “qué cosas raras hay”. No modifica nada.',
+      'Construye una vista transversal del estado actual de AROH Central IA usando las áreas que la cuenta puede consultar: prioridades, Caja y Llaves. Úsala para preguntas amplias como “qué está pasando”, “qué falta”, “dame un panorama” o “qué cosas raras hay”. No modifica nada.',
     strict: true,
     mode: 'read',
     area: 'sistema',
@@ -290,7 +290,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_configuracion_operativa',
     description:
-      'Consulta parámetros configurables de Central de Operaciones. Sólo está disponible para quien tenga permiso de configuración del sistema y no expone credenciales.',
+      'Consulta parámetros configurables de AROH Central IA. Sólo está disponible para quien tenga permiso de configuración del sistema y no expone credenciales.',
     strict: true,
     mode: 'read',
     area: 'configuracion',

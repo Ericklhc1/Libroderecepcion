@@ -1,5 +1,15 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.28.0 · usuarios ocultos
+
+- Administración incorpora **Usuario oculto** como estado de visibilidad, separado de cuenta activa/inactiva y del rol.
+- Un usuario oculto puede iniciar sesión y operar con normalidad; conserva permisos, trazabilidad, registros históricos y recepción de avisos automáticos/globales.
+- No aparece como persona seleccionable en formularios operativos, responsables, participantes nuevos, turnos, Chat, alarmas individuales/grupales, Supervisión ni menciones por `@usuario`.
+- El historial no se reescribe: asignaciones, autores, conversaciones y acciones ya existentes siguen mostrando a la persona.
+- La regla canónica de selectores generales vive en `listOperationalUsers()`; flujos globales no deben reutilizar ese filtro si necesitan alcanzar a todo el equipo activo.
+- Migración aditiva `20260929173000_usuario_oculto_operacion`. Release objetivo: **v1.28.0**.
+
+
 ## Actualización 29/09/2026 · AROH 1.27.0 · Fronti contextual transversal
 
 - Fronti recibe contexto determinístico de **todas las rutas autenticadas** de AROH Central IA: módulo, sección, filtros visibles, título y entidad dinámica cuando la URL identifica un objeto concreto.

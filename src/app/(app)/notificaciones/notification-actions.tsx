@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { markNotificationsReadAction } from '@/server/actions/notifications';
@@ -40,5 +42,57 @@ export function MarkOneReadForm({ id }: { id: string }) {
       <input type="hidden" name="id" value={id} />
       <MarkOneReadButton />
     </ActionForm>
+  );
+}
+
+
+export function OpenNotificationButton({
+  id,
+  href,
+  unread,
+}: {
+  id: string;
+  href: string;
+  unread: boolean;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const open = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (unread) {
+        const response = await fetch('/api/notifications/read', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id }),
+        });
+        if (response.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+      }
+    } finally {
+      if (/^https?:\/\//i.test(href)) {
+        window.location.assign(href);
+      } else {
+        router.push(href);
+      }
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void open()}
+      className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline disabled:opacity-60"
+    >
+      {busy ? 'Abriendo…' : 'Abrir'}
+    </button>
   );
 }

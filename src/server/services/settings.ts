@@ -8,6 +8,11 @@ export const DEFAULT_SETTINGS = {
     category: 'general',
     description: 'Nombre del hotel que se muestra en la cabecera.',
   },
+  'support.recipient': {
+    value: 'eherrera@hoteleshw.com',
+    category: 'general',
+    description: 'Correo que recibe reportes de error y solicitudes de función enviados desde la Central.',
+  },
   'shift.handoverReminderMinutes': {
     value: 60,
     category: 'turnos',

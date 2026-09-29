@@ -145,7 +145,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: 'incidencia',
     question: '¿Cómo registro una incidencia?',
     steps: [
-      'Desde cualquier pantalla, usa «Nueva incidencia» en la barra de acciones.',
+      'Entra a Novedades y usa «Nueva incidencia» en la cabecera del módulo.',
       'Indica la habitación o el área: sin eso nadie sabe dónde ir.',
       'Describe qué pasó y qué hiciste de inmediato.',
     ],

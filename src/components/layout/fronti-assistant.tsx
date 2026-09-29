@@ -141,6 +141,16 @@ export function FrontiAssistant() {
   }, [hydrated, open]);
 
   useEffect(() => {
+    const openFromHeader = () => {
+      setOpen(true);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+
+    window.addEventListener('fronti:open', openFromHeader);
+    return () => window.removeEventListener('fronti:open', openFromHeader);
+  }, []);
+
+  useEffect(() => {
     const markActivity = () => {
       lastActivityRef.current = Date.now();
     };
@@ -491,7 +501,7 @@ export function FrontiAssistant() {
             setOpen(true);
             requestAnimationFrame(() => inputRef.current?.focus());
           }}
-          className="pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:bottom-4 lg:right-4"
+          className="pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
           aria-label={`Abrir ${config.displayName}`}
           title={config.displayName}
         >

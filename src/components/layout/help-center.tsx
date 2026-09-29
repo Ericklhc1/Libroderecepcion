@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { ArrowRight, CircleHelp, Search, X } from 'lucide-react';
+import { ArrowRight, CircleHelp, Compass, Search, X } from 'lucide-react';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { runHelpActionAction } from '@/server/actions/help';
+import { restartTutorialAction } from '@/server/actions/tutorial';
 import { HELP_ACTIONS, searchHelp, type HelpTopic } from '@/domain/help';
 import type { PermissionKey } from '@/lib/permissions';
 
@@ -19,7 +20,13 @@ import type { PermissionKey } from '@/lib/permissions';
  * aparecen/desaparecen sus barras, evitando que la cabecera quede fuera de la
  * pantalla.
  */
-export function HelpCenter({ permissions }: { permissions: PermissionKey[] }) {
+export function HelpCenter({
+  permissions,
+  userId,
+}: {
+  permissions: PermissionKey[];
+  userId: string;
+}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
@@ -51,12 +58,13 @@ export function HelpCenter({ permissions }: { permissions: PermissionKey[] }) {
       onClick={() => setOpen(true)}
       className={
         open
-          ? 'rounded-lg bg-petrol-50 p-2 text-petrol-800'
-          : 'rounded-lg p-2 text-petrol-700 transition-colors hover:bg-petrol-50'
+          ? 'inline-flex h-9 items-center gap-2 rounded-lg border border-petrol-100 bg-petrol-50 px-2.5 text-sm font-medium text-petrol-800'
+          : 'inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50'
       }
       aria-label={open ? 'Central de ayuda' : 'Abrir la central de ayuda'}
     >
-      <CircleHelp className="h-5 w-5" aria-hidden="true" />
+      <CircleHelp className="h-4 w-4" aria-hidden="true" />
+      <span className="hidden xl:inline">Ayuda</span>
     </button>
   );
 
@@ -98,6 +106,32 @@ export function HelpCenter({ permissions }: { permissions: PermissionKey[] }) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-petrol-50 px-3 py-3 ring-1 ring-petrol-100">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-petrol-900">Recorrido paso a paso</p>
+              <p className="mt-0.5 text-xs leading-4 text-slate-600">
+                Vuelve a recorrer la Central según los permisos de tu cuenta.
+              </p>
+            </div>
+            <ActionForm
+              action={restartTutorialAction}
+              className="space-y-0"
+              onSuccess={() => {
+                window.sessionStorage.removeItem(`libro:tutorial:dismissed:${userId}`);
+                window.location.reload();
+              }}
+            >
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Preparando…">
+                <Compass className="h-3.5 w-3.5" aria-hidden="true" />
+                Iniciar recorrido
+              </SubmitButton>
+            </ActionForm>
+          </div>
+
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Procedimientos
+          </p>
+
           {results.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-sm font-medium text-petrol-900">

@@ -153,32 +153,44 @@ describe('visibilidad por rol', () => {
   });
 });
 
-describe('barra lateral fija', () => {
-  /*
-    Error real: el aside no tenía altura acotada, así que su overflow interno
-    nunca podía activarse y el menú se iba con el scroll de la página.
-  */
+describe('cabecera horizontal compacta', () => {
   const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
-  const aside = layout.slice(layout.indexOf('<aside'), layout.indexOf('</aside>'));
+  const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
 
-  it('el aside se fija a la ventana y acota su altura', () => {
-    expect(aside).toMatch(/sticky/);
-    expect(aside).toMatch(/h-screen/);
-    expect(aside).toMatch(/top-0/);
+  it('usa la navegación horizontal en escritorio y retira el sidebar del shell', () => {
+    expect(layout).toContain('<DesktopNav groups={groups} badges={badges} />');
+    expect(layout).not.toContain('<SidebarNav');
+    expect(layout).not.toContain('<aside');
+    expect(nav).toContain('export function DesktopNav');
   });
 
-  it('ningún ancestro del aside recorta el desplazamiento', () => {
-    // `sticky` deja de funcionar si un padre tiene overflow distinto de visible.
-    const beforeAside = layout.slice(0, layout.indexOf('<aside'));
-    expect(beforeAside).not.toMatch(/className="[^"]*overflow-(hidden|y-auto|x-auto|auto)/);
+  it('la cabecera global conserva sólo utilidades globales', () => {
+    expect(layout).toContain('data-tour="global-search"');
+    expect(layout).toContain('<PropertyMenu');
+    expect(layout).toContain('<AccountMenu');
+    expect(layout).toContain('<SupportRequestPanel');
+    expect(layout).not.toContain('<QuickActions');
+  });
+
+  it('los módulos pueden desplegar navegación secundaria sin convertirla en módulos raíz', () => {
+    const novedades = NAV_ITEMS.find((item) => item.href === '/libro?clase=entry');
+    const submenu = novedades?.menu?.flatMap((section) => section.items.map((item) => item.href)) ?? [];
+    expect(submenu).toContain('/tareas');
+    expect(submenu).toContain('/seguimientos');
+    expect(submenu).toContain('/alertas');
+
+    const roots = NAV_ITEMS.map((item) => item.href);
+    expect(roots).not.toContain('/tareas');
+    expect(roots).not.toContain('/seguimientos');
+    expect(roots).not.toContain('/alertas');
   });
 });
 
 /**
  * Ningún destino puede quedar inalcanzable desde el teléfono.
  *
- * El menú lateral está oculto por debajo de `lg`, así que la barra inferior es
- * la ÚNICA puerta en móvil. Pintaba cinco elementos y los cuatro de consulta
+ * La navegación horizontal es de escritorio; en móvil, la barra inferior es
+ * la puerta principal. Pintaba cinco elementos y los cuatro de consulta
  * más Administración no tenían ninguna otra: Llaves, Huéspedes, Historial,
  * Indicadores y Administración no se podían abrir desde un teléfono.
  *
@@ -229,7 +241,7 @@ describe('todo el menú es alcanzable en móvil', () => {
  * Cerrar sesión, en cualquier pantalla.
  *
  * Fallo real reportado: «no hay botón de cerrar sesión». Existía, pero vivía
- * **sólo** dentro del `<aside>`, que es `hidden lg:flex`, así que por debajo de
+ * **sólo** dentro del antiguo sidebar de escritorio, así que por debajo de
  * 1024 px no había ninguna forma de salir —ni el perfil la ofrecía—.
  *
  * Es el mismo descuido que dejó cinco destinos inalcanzables en el teléfono, y
@@ -265,32 +277,9 @@ describe('cerrar sesión es alcanzable en cualquier pantalla', () => {
     expect(layout).toMatch(/href="\/perfil"[\s\S]{0,200}lg:hidden/);
   });
 
-  /*
-    La prueba que habría cazado el fallo: si el ÚNICO `logoutAction` del layout
-    está dentro del aside oculto, no hay salida en móvil. Se exige que exista
-    en otro sitio además del aside.
-  */
-  it('no depende sólo de la barra lateral, que se oculta en móvil', () => {
-    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
-    const asideStart = layout.indexOf('<aside');
-    const asideEnd = layout.indexOf('</aside>');
-    expect(asideStart).toBeGreaterThan(-1);
-
-    const dentroDelAside = layout.slice(asideStart, asideEnd);
-    // El aside sigue teniéndolo, que es lo cómodo en escritorio.
-    expect(dentroDelAside).toContain(LOGOUT);
-    // Y el aside sigue oculto bajo `lg`, así que no puede ser el único camino.
-    expect(dentroDelAside).toContain('lg:flex');
-
-    const fueraDelAside =
-      layout.slice(0, asideStart) + layout.slice(asideEnd);
-    const hayOtraPuerta =
-      fueraDelAside.includes(LOGOUT) ||
-      readFileSync('src/components/layout/nav.tsx', 'utf-8').includes(LOGOUT) ||
-      readFileSync('src/app/(app)/perfil/page.tsx', 'utf-8').includes(LOGOUT);
-    expect(
-      hayOtraPuerta,
-      'cerrar sesión sólo existe dentro del aside oculto: en móvil no hay salida',
-    ).toBe(true);
+  it('el menú de cuenta de escritorio también ofrece cerrar sesión', () => {
+    const account = readFileSync('src/components/layout/topbar-menus.tsx', 'utf-8');
+    expect(account).toContain(LOGOUT);
+    expect(account).toContain('Cerrar sesión');
   });
 });

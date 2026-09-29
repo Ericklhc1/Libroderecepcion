@@ -3,7 +3,7 @@
 > Estado real del desarrollo. La fuente de verdad técnica es `main` +
 > Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-28** · Central de Reservas, Gerencia y correo individual · versión propuesta **v1.23.0**
+Actualizado: **2026-09-29** · Apertura operacional de Supervisión · versión propuesta **v1.24.0**
 
 ## Estados canónicos
 
@@ -27,29 +27,33 @@ Actualizado: **2026-09-28** · Central de Reservas, Gerencia y correo individual
 | Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
 | Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
 | Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado del runtime operativo |
-| Centro de Supervisión | `PRODUCTION` | v1.22.0 | Auditoría diaria y señales accionables sobre evidencia preservada |
+| Centro de Supervisión | `PR_ABIERTO` | v1.24.0 · PR #177 | Apertura guiada: pendientes + Caja/garantías + llaves + informes antes de activar el turno |
 | Central de Reservas | `EN_DESARROLLO` | v1.23.0 | Bandeja previa a la operación + rol específico, sin duplicar PMS |
 | Correo individual | `EN_DESARROLLO` | v1.23.0 | Correo opcional por usuario + preferencias + outbox de novedades |
 
 ## Iteración actual
 
-**Libro 1.23.0** · rama **`feat/reservas-gerencia-correo-1-23-0`**
+**Libro 1.24.0** · rama **`feat/apertura-supervision-1-24-0`** · PR **#177**
 
-Objetivo: incorporar Central de Reservas como actor operativo previo a Recepción, ampliar Gerencia a dirección transversal sin convertirla en operador del mesón y habilitar correo individual de novedades.
+Objetivo: convertir el inicio de Supervisión en una recepción operacional comprobable, no en una declaración libre de prioridades.
 
 Incluye:
-- rol `CENTRAL_RESERVAS` y bandeja `/central-reservas`;
-- Gerencia con asignación, seguimientos, comunicados y consulta transversal;
-- límites explícitos: sin turnos de Recepción, escritura de Caja, llaves ni edición de reservas para Gerencia;
-- correo opcional y no único por usuario, editable por Administración y por el propio usuario;
-- entrega de notificaciones operativas por la outbox existente, excluyendo Chat y alarmas;
-- migración aditiva `20260928213000_central_reservas_gerencia_correo_usuario`.
+- estado `PREPARACION` antes de `ACTIVO`;
+- pendientes reales visibles antes de asumir;
+- arqueo personal obligatorio por fondo activo y validación física de garantías en efectivo;
+- revisión de garantías/custodias y último inventario de llaves;
+- evidencia PMS idónea sin redundancia: **Habitaciones con actividad** o el respaldo **Entradas + In House + Salidas** para el estado de hoy, más Formulario de auditoría + Cobros + Cargos diarios del cierre anterior;
+- Ventas por canal, Producción por habitación y Revenue como gestión no bloqueante;
+- contingencia escrita si el PMS no entrega la evidencia completa, sin relajar la barrera de Caja/garantías;
+- señal conservadora de trámite por ID enlazado en PDF, sin auto-confirmar check-in/check-out;
+- fecha de informe autodetectada para mezclar cierres de ayer con fotografías de hoy;
+- snapshot de apertura y prioridades generadas desde el estado real.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - migración automática en Vercel Production;
-- smoke de versión y rutas afectadas.
+- smoke de versión, Centro de Supervisión y flujo de apertura.
 
 ## Infraestructura vigente
 

@@ -16,6 +16,17 @@ import { hotelCalendarDate } from '@/domain/time';
 export type OperationalStatus = 'CHECK_IN' | 'IN_HOUSE' | 'CHECK_OUT';
 
 /**
+ * Señal visual del PMS, separada del estado confirmado por una persona.
+ *
+ * PENDIENTE: el identificador viene como enlace real en el PDF.
+ * PROCESADO_PROBABLE: el mismo documento mezcla IDs enlazados y no enlazados,
+ * y esta fila de entrada/salida está en el segundo grupo. Se llama "probable"
+ * porque todavía no dependemos de color ni subrayado para cambiar el estado
+ * operativo del Libro.
+ */
+export type PmsProcessingSignal = 'PENDIENTE' | 'PROCESADO_PROBABLE';
+
+/**
  * Estado que aporta cada informe, cuando lo aporta el informe entero.
  *
  * `ACTIVIDAD` no está acá a propósito: es el único informe cuyo estado NO lo
@@ -106,6 +117,9 @@ export type NormalizedStay = {
   pmsStatus: string | null;
   sourceReport: ReportKind;
   operationalStatus: OperationalStatus | null;
+  /** Señal visual del PMS; nunca confirma automáticamente una acción del Libro. */
+  pmsProcessingSignal: PmsProcessingSignal | null;
+  pmsProcessingConfidence: 'ALTA' | 'MEDIA' | null;
   /** Huéspedes que declara la fila. Sólo lo trae el informe de actividad. */
   guestCount: number | null;
   /** Importe total de la estancia, con su moneda. Nunca un número suelto. */
@@ -240,6 +254,14 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
   const reportDate = parseReportDate(report.reportDate);
   const reportStatus = STATUS_BY_REPORT[kind] ?? null;
 
+  const actionRows = report.records.filter((record) => {
+    const status = reportStatus ?? activityStatus(cell(record, 'pmsStatus'));
+    return status === 'CHECK_IN' || status === 'CHECK_OUT';
+  });
+  const hasLinkedActionIdentity = actionRows.some((record) => record.identityLinked);
+  const hasUnlinkedActionIdentity = actionRows.some((record) => !record.identityLinked);
+  const mixedLinkConvention = hasLinkedActionIdentity && hasUnlinkedActionIdentity;
+
   const stays = report.records.map((record): NormalizedStay => {
     const issues: string[] = [];
     const roomNumber = parseRoomNumber(cell(record, 'roomNumber'));
@@ -263,6 +285,22 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
       alguien decida, que es la regla: no corregir datos dudosos en silencio.
     */
     const fromRow = reportStatus ? null : activityStatus(rawType);
+    const operationalStatus = reportStatus ?? fromRow;
+    const pmsProcessingSignal: PmsProcessingSignal | null =
+      operationalStatus === 'CHECK_IN' || operationalStatus === 'CHECK_OUT'
+        ? record.identityLinked
+          ? 'PENDIENTE'
+          : mixedLinkConvention
+            ? 'PROCESADO_PROBABLE'
+            : null
+        : null;
+    const pmsProcessingConfidence =
+      pmsProcessingSignal === 'PENDIENTE'
+        ? 'ALTA' as const
+        : pmsProcessingSignal === 'PROCESADO_PROBABLE'
+          ? 'MEDIA' as const
+          : null;
+
     if (!reportStatus && !fromRow) {
       issues.push(
         rawType
@@ -316,7 +354,9 @@ export function normalizeReport(report: StructuredReport): NormalizedReport | nu
         La fila queda visible con su problema y NO puede transformarse en una
         estadía operativa hasta que el dato sea inequívoco.
       */
-      operationalStatus: reportStatus ?? fromRow,
+      operationalStatus,
+      pmsProcessingSignal,
+      pmsProcessingConfidence,
       guestCount: parseGuestCount(cell(record, 'guestCount')),
       totalAmount,
       pendingAmount,

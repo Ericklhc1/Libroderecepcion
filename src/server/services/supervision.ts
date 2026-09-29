@@ -10,6 +10,7 @@ import {
   ShiftStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import {
@@ -58,12 +59,16 @@ function dueText(date: Date | null, now: Date): string | null {
  * Proyecta excepciones de los brazos operativos del Libro hacia Supervisión:
  * Novedades, Caja, Turnos y Llaves. No copia esos objetos ni consulta PMS.
  */
-export async function getSupervisionData(): Promise<{
+export async function getSupervisionData(
+  options: { exhaustive?: boolean } = {},
+): Promise<{
   now: Date;
   blocks: SupervisionBlock[];
   total: number;
 }> {
   const now = new Date();
+  const exhaustive = options.exhaustive === true;
+  const take = (limit: number) => (exhaustive ? undefined : limit);
 
   const [
     criticalIncidents,
@@ -94,7 +99,7 @@ export async function getSupervisionData(): Promise<{
         department: { select: { name: true } },
       },
       orderBy: [{ severity: 'desc' }, { occurredAt: 'asc' }],
-      take: 20,
+      take: take(20),
     }),
     prisma.task.findMany({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
@@ -107,7 +112,7 @@ export async function getSupervisionData(): Promise<{
         department: { select: { name: true } },
       },
       orderBy: { dueAt: 'asc' },
-      take: 20,
+      take: take(20),
     }),
     prisma.followUp.findMany({
       where: {
@@ -125,7 +130,7 @@ export async function getSupervisionData(): Promise<{
         entry: { select: { id: true, humanId: true, title: true } },
       },
       orderBy: { scheduledAt: 'asc' },
-      take: 20,
+      take: take(20),
     }),
     prisma.operationalEntry.findMany({
       where: {
@@ -152,7 +157,7 @@ export async function getSupervisionData(): Promise<{
         department: { select: { name: true } },
       },
       orderBy: { occurredAt: 'asc' },
-      take: 20,
+      take: take(20),
     }),
     prisma.alert.findMany({
       where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA },
@@ -164,7 +169,7 @@ export async function getSupervisionData(): Promise<{
         entry: { select: { id: true } },
       },
       orderBy: { createdAt: 'asc' },
-      take: 20,
+      take: take(20),
     }),
     prisma.guarantee.findMany({
       where: {
@@ -194,7 +199,7 @@ export async function getSupervisionData(): Promise<{
         dueAt: true,
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
-      take: 20,
+      take: take(20),
     }),
     prisma.$queryRaw<
       Array<{
@@ -206,28 +211,50 @@ export async function getSupervisionData(): Promise<{
         roomNumber: string | null;
         reference: string | null;
       }>
-    >`
-      SELECT g."id", g."state"::text, g."currency", g."amount",
-             g."guestName", g."roomNumber", g."reference"
-      FROM "Guarantee" g
-      WHERE g."deletedAt" IS NULL
-        AND g."kind" = 'EFECTIVO'
-        AND g."state"::text IN ('DEVUELTA', 'MULTA')
-        AND EXISTS (
-          SELECT 1 FROM "CashMovement" m
-          WHERE m."guaranteeId" = g."id"
-            AND m."kind" = 'GARANTIA_INGRESO'
-            AND m."voidedAt" IS NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM "CashMovement" m
-          WHERE m."guaranteeId" = g."id"
-            AND m."kind" = 'GARANTIA_DEVOLUCION'
-            AND m."voidedAt" IS NULL
-        )
-      ORDER BY g."updatedAt" DESC
-      LIMIT 20
-    `,
+    >(exhaustive
+      ? Prisma.sql`
+          SELECT g."id", g."state"::text, g."currency", g."amount",
+                 g."guestName", g."roomNumber", g."reference"
+          FROM "Guarantee" g
+          WHERE g."deletedAt" IS NULL
+            AND g."kind" = 'EFECTIVO'
+            AND g."state"::text IN ('DEVUELTA', 'MULTA')
+            AND EXISTS (
+              SELECT 1 FROM "CashMovement" m
+              WHERE m."guaranteeId" = g."id"
+                AND m."kind" = 'GARANTIA_INGRESO'
+                AND m."voidedAt" IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM "CashMovement" m
+              WHERE m."guaranteeId" = g."id"
+                AND m."kind" = 'GARANTIA_DEVOLUCION'
+                AND m."voidedAt" IS NULL
+            )
+          ORDER BY g."updatedAt" DESC
+        `
+      : Prisma.sql`
+          SELECT g."id", g."state"::text, g."currency", g."amount",
+                 g."guestName", g."roomNumber", g."reference"
+          FROM "Guarantee" g
+          WHERE g."deletedAt" IS NULL
+            AND g."kind" = 'EFECTIVO'
+            AND g."state"::text IN ('DEVUELTA', 'MULTA')
+            AND EXISTS (
+              SELECT 1 FROM "CashMovement" m
+              WHERE m."guaranteeId" = g."id"
+                AND m."kind" = 'GARANTIA_INGRESO'
+                AND m."voidedAt" IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM "CashMovement" m
+              WHERE m."guaranteeId" = g."id"
+                AND m."kind" = 'GARANTIA_DEVOLUCION'
+                AND m."voidedAt" IS NULL
+            )
+          ORDER BY g."updatedAt" DESC
+          LIMIT 20
+        `),
         prisma.shiftHandover.findMany({
       where: { status: HandoverStatus.ENVIADA },
       select: {
@@ -238,7 +265,7 @@ export async function getSupervisionData(): Promise<{
         _count: { select: { items: true } },
       },
       orderBy: { issuedAt: 'asc' },
-      take: 10,
+      take: take(10),
     }),
     prisma.shift.findMany({
       where: {
@@ -254,7 +281,7 @@ export async function getSupervisionData(): Promise<{
         assignments: { select: { user: { select: { name: true } } }, take: 3 },
       },
       orderBy: { date: 'asc' },
-      take: 10,
+      take: take(10),
     }),
     // El último arqueo de cada divisa define si hoy existe una diferencia viva.
     prisma.cashAudit.findMany({
@@ -268,7 +295,7 @@ export async function getSupervisionData(): Promise<{
         countedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: take(20),
     }),
     // Se leen conteos recientes y luego se conserva sólo el último de cada piso.
     prisma.keyInventoryCount.findMany({
@@ -287,7 +314,7 @@ export async function getSupervisionData(): Promise<{
         },
       },
       orderBy: { countedAt: 'desc' },
-      take: 12,
+      take: take(12),
     }),
   ]);
 

@@ -22,7 +22,7 @@ import { matchColumn, type ColumnField } from './columns';
 export type ReportKind = 'ENTRADAS' | 'IN_HOUSE' | 'SALIDAS' | 'ACTIVIDAD';
 
 /** Un trozo de texto tal como lo entrega el PDF, con su posición. */
-export type TextFragment = { page: number; x: number; y: number; text: string };
+export type TextFragment = { page: number; x: number; y: number; text: string; isLink?: boolean };
 
 export type DetectedColumn = { field: ColumnField; header: string; x: number };
 
@@ -32,6 +32,8 @@ export type RawRecord = {
   extraGuests: string[];
   page: number;
   y: number;
+  /** El identificador de reserva está dentro de una anotación de enlace del PDF. */
+  identityLinked: boolean;
 };
 
 export type ReportSummary = { label: string; numbers: number[] };
@@ -51,7 +53,7 @@ export type StructuredReport = {
   ignoredLines: string[];
 };
 
-type Fragment = { x: number; text: string };
+type Fragment = { x: number; text: string; isLink?: boolean };
 type Line = { page: number; y: number; fragments: Fragment[] };
 
 /**
@@ -163,7 +165,7 @@ export function groupIntoLines(fragments: TextFragment[]): Line[] {
         anchor = item.y;
         lines.push(current);
       }
-      current.fragments.push({ x: item.x, text: item.text });
+      current.fragments.push({ x: item.x, text: item.text, ...(item.isLink ? { isLink: true } : {}) });
     }
   }
 
@@ -296,6 +298,17 @@ function splitIntoCells(
     cells[column.field] = previous ? `${previous} ${fragment.text}` : fragment.text;
   }
   return cells;
+}
+
+function identityIsLinked(
+  line: Line,
+  bounds: Array<{ field: ColumnField; lo: number; hi: number }>,
+): boolean {
+  return line.fragments.some((fragment) => {
+    if (!fragment.isLink) return false;
+    const column = bounds.find((bound) => fragment.x >= bound.lo && fragment.x < bound.hi);
+    return Boolean(column && IDENTITY_FIELDS.includes(column.field));
+  });
 }
 
 function lineText(line: Line): string {
@@ -459,7 +472,7 @@ export function readStructuredReport(fragments: TextFragment[]): StructuredRepor
     if (id && RESERVATION_ID.test(id)) {
       if (primaryId) cells.reservationId = primaryId.toUpperCase();
       if (secondaryId) cells.externalId = secondaryId.toUpperCase();
-      current = { cells, extraGuests: [], page: line.page, y: line.y };
+      current = { cells, extraGuests: [], page: line.page, y: line.y, identityLinked: identityIsLinked(line, bounds) };
       records.push(current);
       continue;
     }

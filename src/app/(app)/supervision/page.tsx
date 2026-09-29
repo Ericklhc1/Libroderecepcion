@@ -4,7 +4,10 @@ import { ArrowUpRight, ClipboardCheck, Gauge, NotebookPen, ShieldCheck } from 'l
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
-import { getSupervisionCenterSummary } from '@/server/services/supervision-center';
+import {
+  getSupervisionCenterSummary,
+  getSupervisionOpeningReadiness,
+} from '@/server/services/supervision-center';
 import { getTeamPerformance } from '@/server/services/performance';
 import { getFormOptions } from '@/server/services/options';
 import { listAnnouncements } from '@/server/services/announcements';
@@ -17,6 +20,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { CloseFollowUpDialog } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
 import { SupervisionAuditDashboard } from '@/components/supervision/audit-dashboard';
+import { SupervisionOpeningPanel } from '@/components/supervision/opening-panel';
 import { createTaskAction } from '@/server/actions/tasks';
 import {
   DeleteSupervisionNoteDialog,
@@ -153,6 +157,11 @@ export default async function SupervisionCenterPage({
     canPerformance ? getTeamPerformance(user, period) : Promise.resolve([]),
   ]);
 
+  const openingReadiness =
+    isSupervisor && center.currentShift?.status === 'PREPARACION'
+      ? await getSupervisionOpeningReadiness(user)
+      : null;
+
   const matches = (...values: Array<string | number | null | undefined>) =>
     !q || values.filter(Boolean).join(' ').toLocaleLowerCase('es-CL').includes(q);
   const inPeriod = (value: Date) => value >= period.from && value <= period.to;
@@ -271,24 +280,38 @@ export default async function SupervisionCenterPage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mi turno de Supervisión</p>
             {center.currentShift ? (
-              <>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Badge tone="curso">Gestionando</Badge>
-                  <span className="text-sm text-slate-600">{user.name} · iniciado {formatDateTime(center.currentShift.startedAt)}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {center.currentShift.priorities.length > 0
-                    ? center.currentShift.priorities.map((priority) => <Chip key={priority}>{priority}</Chip>)
-                    : <span className="text-sm text-slate-500">Sin prioridades declaradas.</span>}
-                </div>
-              </>
+              center.currentShift.status === 'PREPARACION' ? (
+                <>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <Badge tone="pendiente">Apertura en curso</Badge>
+                    <span className="text-sm text-slate-600">
+                      {user.name} · preparación iniciada {formatDateTime(center.currentShift.startedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">
+                    El turno aún no está activo. Completa la recepción operacional que aparece debajo.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <Badge tone="curso">Gestionando</Badge>
+                    <span className="text-sm text-slate-600">{user.name} · iniciado {formatDateTime(center.currentShift.startedAt)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {center.currentShift.priorities.length > 0
+                      ? center.currentShift.priorities.map((priority) => <Chip key={priority}>{priority}</Chip>)
+                      : <span className="text-sm text-slate-500">Sin pendientes operativos asumidos al abrir.</span>}
+                  </div>
+                </>
+              )
             ) : (
               <p className="mt-1 text-sm text-slate-600">No tienes un turno de Supervisión abierto.</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2 no-print">
             {isSupervisor && !center.currentShift ? <StartSupervisionShiftDialog /> : null}
-            {isSupervisor && center.currentShift ? (
+            {isSupervisor && center.currentShift && center.currentShift.status !== 'PREPARACION' ? (
               <FinishSupervisionShiftForm
                 shiftId={center.currentShift.id}
                 criticalCount={critical + pendingClosures}
@@ -299,6 +322,8 @@ export default async function SupervisionCenterPage({
           </div>
         </div>
       </Card>
+
+      {openingReadiness ? <SupervisionOpeningPanel readiness={openingReadiness} /> : null}
 
       <section id="continuidad" className="scroll-mt-4">
       <Card>
@@ -343,8 +368,17 @@ export default async function SupervisionCenterPage({
       <SupervisionAuditDashboard
         rows={center.auditImports}
         defaultBusinessDate={defaultAuditBusinessDate}
-        canUpload={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
-        canManage={isSupervisor && Boolean(center.currentShift) && hasPermission(user, 'supervision.audit.create')}
+        canUpload={
+          isSupervisor &&
+          Boolean(center.currentShift) &&
+          center.currentShift?.status !== 'ENTREGADO' &&
+          hasPermission(user, 'supervision.audit.create')
+        }
+        canManage={
+          isSupervisor &&
+          center.currentShift?.status === 'ACTIVO' &&
+          hasPermission(user, 'supervision.audit.create')
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-2">

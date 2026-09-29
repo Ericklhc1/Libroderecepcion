@@ -1,5 +1,17 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
+
+- El botón «Iniciar turno» ahora abre una preparación guiada; ya no activa Supervisión ni acepta prioridades libres.
+- `SupervisionShiftStatus.PREPARACION` representa esa fase. El turno se activa únicamente con `completeSupervisionOpening`.
+- Gate de apertura: arqueo personal de cada fondo activo, diferencias explicadas y confirmación humana de pendientes, garantías/custodias y llaves. Caja/garantías sí son barrera real.
+- La Caja reutiliza `CashAudit` y su validación física de garantías en efectivo; no existe una segunda caja de Supervisor.
+- Evidencia PMS: fotografía operacional de hoy mediante **Habitaciones con actividad** o, como respaldo equivalente, **Entradas + In House + Salidas**. El cierre del día anterior usa **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por canal, Producción por habitación y Revenue son gestión no bloqueante.
+- Los informes pueden mezclar fechas y se reutilizan por fecha operativa. Si el PMS no entrega evidencia completa, se puede iniciar sólo con una contingencia escrita y auditada; no se deja el hotel sin Supervisión por una falla externa.
+- El lector PDF detecta anotaciones de enlace sobre el ID FNS como señal auxiliar: enlace en una entrada/salida = `PENDIENTE` (alta); ausencia de enlace = `PROCESADO_PROBABLE` sólo si el mismo PDF demuestra la convención mixta. No auto-confirma movimientos; color/subrayado quedan pendientes de validación con archivos reales.
+- La apertura guarda snapshot estructurado en `openingState`; las prioridades se generan desde objetos reales pendientes y los informes de gestión faltantes.
+- Migraciones: `20260929110000_supervision_apertura_operativa` + `20260929110500_supervision_apertura_unique_index`. Release objetivo: **v1.24.0**.
+
 ## Actualización 28/09/2026 · Libro 1.23.0 · Central de Reservas, Gerencia y correo individual
 
 - Nuevo rol de sistema `CENTRAL_RESERVAS` / «Ejecutivo/a de Central de Reservas». Trabaja reservas, novedades, tareas, alertas y seguimientos sin permisos de turnos de Recepción, movimientos de Caja, llaves ni administración técnica.

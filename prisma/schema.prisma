@@ -143,6 +143,7 @@ enum SupervisionVisibility {
 }
 
 enum SupervisionShiftStatus {
+  PREPARACION
   ACTIVO
   ENTREGADO
   CERRADO
@@ -794,8 +795,10 @@ model HandoverItem {
 
 // ========================= CENTRO DE SUPERVISIÓN =========================
 
-/// Jornada administrativa del Supervisor. Es deliberadamente independiente
-/// del turno operativo: no participa en caja, llaves, habitaciones ni PMS.
+/// Jornada administrativa del Supervisor. Sigue siendo un agregado independiente
+/// del turno operativo de Recepción: no toma propiedad de Caja, llaves, habitaciones
+/// ni PMS. Su apertura sí verifica y fotografía esas fuentes reales para dejar
+/// constancia de qué estado operacional recibió el Supervisor, sin duplicarlas.
 model SupervisionShift {
   id           String                 @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -803,6 +806,9 @@ model SupervisionShift {
   supervisor   User                   @relation("supervisionShiftSupervisor", fields: [supervisorId], references: [id])
   status       SupervisionShiftStatus @default(ACTIVO)
   priorities   String[]               @default([])
+  /// Evidencia estructurada de la apertura: caja, garantías, llaves, informes y pendientes revisados.
+  openingState Json                   @default("{}")
+  openingCompletedAt DateTime?
   startedAt    DateTime               @default(now())
   deliveredAt  DateTime?
   finishedAt   DateTime?

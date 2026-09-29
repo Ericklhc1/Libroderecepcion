@@ -3,6 +3,8 @@ import 'server-only';
 import { AuditAction, SupervisionShiftStatus, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { readPdfFragments } from '@/server/pms/read-pdf';
+import { readStructuredReport } from '@/domain/pms/layout';
+import { normalizeReport } from '@/domain/pms/normalize';
 import { RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -16,6 +18,8 @@ import {
 
 export type SupervisionReportKind =
   | 'AUDITORIA_FORMULARIO'
+  | 'ACTIVIDAD'
+  | 'ENTRADAS'
   | 'COBROS'
   | 'VENTAS_CANAL'
   | 'PRODUCCION_HABITACION'
@@ -40,7 +44,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.22.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.24.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
@@ -55,6 +59,8 @@ export type ParsedSupervisionReport = {
 
 const REPORT_LABELS: Record<SupervisionReportKind, string> = {
   AUDITORIA_FORMULARIO: 'Formulario de auditoría',
+  ACTIVIDAD: 'Habitaciones con actividad',
+  ENTRADAS: 'Entradas / Check-ins',
   COBROS: 'Cobros',
   VENTAS_CANAL: 'Ventas por canal',
   PRODUCCION_HABITACION: 'Producción por habitación',
@@ -121,7 +127,34 @@ function matchNumber(text: string, pattern: RegExp, parser = numberEs): number |
 
 function kindOf(fileName: string, text: string): SupervisionReportKind {
   const name = fileName.toLocaleLowerCase('es-CL');
+  const hasReservationIdentity =
+    /(?:\bID\b|localizador|reserva(?:ci[oó]n)?)/i.test(text) &&
+    /habitaci[oó]n|\broom\b/i.test(text) &&
+    // Los informes FNS operativos traen IDs numéricos de reserva. Exigir al
+    // menos uno evita acreditar prosa que sólo mencione "reservas/habitaciones".
+    /\b\d{5,}\b/.test(text);
+
   if (/formulario auditor[ií]a/i.test(text)) return 'AUDITORIA_FORMULARIO';
+
+  // El nombre del archivo nunca basta para acreditar un informe operativo:
+  // un PDF escaneado o ajeno llamado "actividad.pdf" no puede abrir Supervisión.
+  if (
+    /habitaciones con actividad/i.test(text) ||
+    ((name.includes('habitaciones con actividad') || name.includes('actividad')) &&
+      hasReservationIdentity &&
+      /check.?in|check.?out|ocupad[ao]|in.?house/i.test(text))
+  ) {
+    return 'ACTIVIDAD';
+  }
+  if (
+    /informe de entradas/i.test(text) ||
+    (name.includes('entradas') &&
+      hasReservationIdentity &&
+      /entrada|llegada|check.?in|arrival/i.test(text))
+  ) {
+    return 'ENTRADAS';
+  }
+
   if (/operaciones de caja reservas/i.test(text) || /totales por forma de pago/i.test(text)) return 'COBROS';
   if (/ingresos totales por canal/i.test(text)) return 'VENTAS_CANAL';
   if (/producci[oó]n por habitaci[oó]n/i.test(text)) return 'PRODUCCION_HABITACION';
@@ -231,6 +264,10 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
         },
       };
     }
+    case 'ACTIVIDAD':
+      return { roomActivity: { recognized: true } };
+    case 'ENTRADAS':
+      return { entries: { recognized: true } };
     case 'COBROS':
       return {
         payments: {
@@ -322,6 +359,8 @@ function reportedBusinessDate(fileName: string, text: string): string | null {
 }
 
 const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {
+  ACTIVIDAD: 1,
+  ENTRADAS: 1,
   VENTAS_CANAL: 8,
   COBROS: 4,
   PRODUCCION_HABITACION: 3,
@@ -414,7 +453,50 @@ export async function parseSupervisionReport(
   }
 
   const text = compactText(linesFromFragments(fragments));
-  return parseSupervisionReportText(fileName, text);
+  const parsed = parseSupervisionReportText(fileName, text);
+
+  // Para los informes que describen movimientos de habitaciones, reutilizamos
+  // el lector PMS estructurado. Así la apertura no se limita a saber que el
+  // archivo existe: conserva una señal por ID sobre lo que FNS parece tener
+  // pendiente/procesado. La señal NO cambia el estado operativo del Libro.
+  if (['ACTIVIDAD', 'ENTRADAS', 'SALIDAS'].includes(parsed.kind)) {
+    const structured = readStructuredReport(fragments);
+    const normalized = normalizeReport(structured);
+    if (normalized) {
+      const actionRows = normalized.stays
+        .filter(
+          (stay) =>
+            stay.operationalStatus === 'CHECK_IN' ||
+            stay.operationalStatus === 'CHECK_OUT',
+        )
+        .map((stay) => ({
+          reservationId: stay.reservationId,
+          roomNumber: stay.roomNumber,
+          status: stay.operationalStatus,
+          signal: stay.pmsProcessingSignal,
+          confidence: stay.pmsProcessingConfidence,
+        }));
+
+      parsed.metrics = {
+        ...parsed.metrics,
+        pmsProcessing: {
+          pending: actionRows.filter((row) => row.signal === 'PENDIENTE').length,
+          processedProbable: actionRows.filter((row) => row.signal === 'PROCESADO_PROBABLE').length,
+          unknown: actionRows.filter((row) => row.signal === null).length,
+          rows: actionRows,
+        },
+      };
+
+      if (actionRows.some((row) => row.signal === 'PROCESADO_PROBABLE')) {
+        parsed.warnings = Array.from(new Set([
+          ...parsed.warnings,
+          'FNS presenta IDs enlazados y no enlazados en el mismo informe. Los no enlazados se muestran como procesados probables, pero requieren verificación humana.',
+        ]));
+      }
+    }
+  }
+
+  return parsed;
 }
 
 function jsonObject(value: Prisma.JsonValue | null | undefined): Record<string, unknown> {
@@ -454,13 +536,13 @@ export async function mergeSupervisionAuditReport(
     const shift = await tx.supervisionShift.findFirst({
       where: {
         supervisorId: user.id,
-        status: SupervisionShiftStatus.ACTIVO,
+        status: { in: [SupervisionShiftStatus.PREPARACION, SupervisionShiftStatus.ACTIVO] },
       },
       orderBy: { startedAt: 'desc' },
       select: { id: true },
     });
     if (!shift) {
-      throw new RuleError('Inicia tu turno de Supervisión antes de cargar informes de auditoría.');
+      throw new RuleError('Comienza la apertura de Supervisión antes de cargar los informes del día.');
     }
 
     const existing = await tx.supervisionAuditImport.findUnique({

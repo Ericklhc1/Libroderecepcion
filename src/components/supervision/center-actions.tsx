@@ -20,25 +20,20 @@ import { updateFollowUpAction } from '@/server/actions/followups';
 export function StartSupervisionShiftDialog() {
   return (
     <Dialog
-      title="Iniciar turno de Supervisión"
-      description="Tu turno marca cuándo ejerces Supervisión. Tus seguimientos y pendientes continúan aunque cierres la jornada."
+      title="Comenzar apertura de Supervisión"
+      description="Antes de activar tu turno revisarás el estado recibido, Caja, garantías, llaves e informes PMS. Las prioridades se construirán desde pendientes reales, no desde un bloc de notas."
       trigger="Iniciar turno"
       triggerVariant="gold"
+      width="sm"
     >
       <ActionForm action={startSupervisionShiftAction} closeOnSuccess refreshOnSuccess>
-        <Field
-          label="Prioridades del turno"
-          name="priorities"
-          hint="Una prioridad por línea. Puedes ajustarlas mediante los asuntos que registres."
-        >
-          <Textarea
-            name="priorities"
-            rows={5}
-            placeholder={'Validar cierres pendientes\nRevisar caja del turno diurno\nCerrar seguimiento de mantenimiento'}
-          />
-        </Field>
-        <div className="flex justify-end">
-          <SubmitButton pendingLabel="Iniciando…">Iniciar turno</SubmitButton>
+        <div className="space-y-3">
+          <div className="rounded-lg bg-petrol-50 px-3 py-3 text-sm text-petrol-900 ring-1 ring-petrol-100">
+            El turno quedará en <strong>preparación</strong> hasta completar la recepción operacional. No se considerará iniciado por abrir este formulario.
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton pendingLabel="Preparando apertura…">COMENZAR APERTURA</SubmitButton>
+          </div>
         </div>
       </ActionForm>
     </Dialog>

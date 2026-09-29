@@ -8,6 +8,7 @@ import { requirePermission } from '@/server/auth/guard';
 import { saveMailConfig, sendMailTest } from '@/server/services/mail-settings';
 import {
   NOTIFICATION_EMAIL_MODES,
+  forcedNotificationEmailMode,
   saveNotificationEmailPolicy,
   type NotificationEmailMode,
 } from '@/server/services/notification-email-policy';
@@ -122,6 +123,12 @@ export async function saveNotificationEmailPolicyAction(
     const policy = {} as Record<NotificationType, NotificationEmailMode>;
 
     for (const type of Object.values(NotificationType)) {
+      const forced = forcedNotificationEmailMode(type);
+      if (forced) {
+        policy[type] = forced;
+        continue;
+      }
+
       const raw = String(formData.get(`policy_${type}`) ?? '');
       if (!(NOTIFICATION_EMAIL_MODES as readonly string[]).includes(raw)) {
         throw new Error(`Política de correo inválida para ${type}.`);

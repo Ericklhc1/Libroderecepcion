@@ -18,12 +18,18 @@ import { auditOperationalPendingCount } from '@/domain/supervision-audit-review'
 import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
-  REQUIRED_SUPERVISION_OPENING_REPORTS,
+  REQUIRED_SUPERVISION_AUDIT_REPORTS,
+  SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
+  SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
   SUPERVISION_REPORT_LABELS,
 } from '@/domain/supervision-opening';
 import { getLiveCashState } from '@/server/services/live-cash';
 import { listOpenGuarantees } from '@/server/services/guarantees';
-import { listRecentPhysicalKeyCounts } from '@/server/services/key-inventory';
+import {
+  KEY_INVENTORY_MINIMUM_BY_FLOOR,
+  listRecentPhysicalKeyCounts,
+  type InventoryFloor,
+} from '@/server/services/key-inventory';
 import { getSupervisionData } from '@/server/services/supervision';
 
 const OPEN_SUPERVISION_STATUSES = [
@@ -237,7 +243,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       },
       orderBy: { updatedAt: 'desc' },
     }),
-    getSupervisionData(),
+    getSupervisionData({ exhaustive: true }),
     prisma.task.findMany({
       where: {
         deletedAt: null,
@@ -254,7 +260,6 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
         dueAt: true,
       },
       orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
-      take: 50,
     }),
     prisma.followUp.findMany({
       where: {
@@ -272,7 +277,6 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
         scheduledAt: true,
       },
       orderBy: [{ priority: 'desc' }, { scheduledAt: 'asc' }, { createdAt: 'asc' }],
-      take: 50,
     }),
   ]);
 
@@ -295,14 +299,17 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       Boolean(audit) &&
       snapshotIds.size === currentGuaranteeIds.size &&
       [...currentGuaranteeIds].every((id) => snapshotIds.has(id));
+    const fundAmount = Number(fund.amount);
+    const fundCurrent = Boolean(audit) && Number(audit?.expectedAmount) === fundAmount;
     const difference = audit ? Number(audit.difference) : null;
     const differenceExplained = difference === null || difference === 0 || Boolean(audit?.notes?.trim());
-    const ready = Boolean(audit) && guaranteesCurrent && differenceExplained;
+    const ready = Boolean(audit) && guaranteesCurrent && fundCurrent && differenceExplained;
 
     return {
       currency,
-      fund: Number(fund.amount),
+      fund: fundAmount,
       guaranteesCurrent,
+      fundCurrent,
       ready,
       audit: audit
         ? {
@@ -341,10 +348,19 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   const auditKinds = kindsForDate(auditDateKey);
   const presentReportKinds = Array.from(new Set([...todayKinds, ...auditKinds]));
 
-  const missingRequiredReports = REQUIRED_SUPERVISION_OPENING_REPORTS.filter(
-    (kind) => !presentReportKinds.includes(kind),
+  // ACTIVIDAD es la fotografía operacional principal. El trío histórico
+  // Entradas + In House + Salidas queda como respaldo, no como requisito adicional.
+  const occupancyReady =
+    todayKinds.includes(SUPERVISION_OPERATIONAL_PRIMARY_REPORT) ||
+    SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.every((kind) => todayKinds.includes(kind));
+  const missingOperationalFallback = occupancyReady
+    ? []
+    : SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.filter((kind) => !todayKinds.includes(kind));
+  const missingAuditReports = REQUIRED_SUPERVISION_AUDIT_REPORTS.filter(
+    (kind) => !auditKinds.includes(kind),
   );
-  const reportsReady = missingRequiredReports.length === 0;
+  const auditReady = missingAuditReports.length === 0;
+  const reportsReady = occupancyReady && auditReady;
 
   const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
     (kind) => !presentReportKinds.includes(kind),
@@ -399,9 +415,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     countedAt: count?.countedAt ?? null,
     countedBy: count?.countedBy.name ?? null,
     totals: count?.totals ?? {
-      expected: floor === 4 ? 29 : 30,
+      expected: KEY_INVENTORY_MINIMUM_BY_FLOOR[floor as InventoryFloor],
       found: 0,
-      missing: floor === 4 ? 29 : 30,
+      missing: KEY_INVENTORY_MINIMUM_BY_FLOOR[floor as InventoryFloor],
       surplus: 0,
       outOfService: 0,
     },
@@ -449,8 +465,13 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       presentKinds: presentReportKinds,
       todayKinds,
       auditKinds,
-      required: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
-      missingRequired: missingRequiredReports,
+      operationalPrimary: SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
+      operationalFallback: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
+      occupancyReady,
+      missingOperationalFallback,
+      auditRequired: [...REQUIRED_SUPERVISION_AUDIT_REPORTS],
+      missingAudit: missingAuditReports,
+      auditReady,
       reportsReady,
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
       missingOptional: missingOptionalReports,
@@ -465,7 +486,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     },
     blockers: {
       cash: missingCashCurrencies.length,
-      reports: missingRequiredReports.length,
+      reports: reportsReady ? 0 : 1,
     },
   };
 }
@@ -479,6 +500,7 @@ export async function completeSupervisionOpening(
     reviewedPending: boolean;
     reviewedGuarantees: boolean;
     reviewedKeys: boolean;
+    reportContingencyReason?: string | null;
   },
 ) {
   assertSupervisor(user);
@@ -500,11 +522,10 @@ export async function completeSupervisionOpening(
       `Hay diferencias de Caja sin observación en: ${readiness.cash.unexplainedDifferences.join(', ')}.`,
     );
   }
-  if (readiness.reports.missingRequired.length > 0) {
+  const reportContingencyReason = input.reportContingencyReason?.trim() || null;
+  if (!readiness.reports.reportsReady && (!reportContingencyReason || reportContingencyReason.length < 8)) {
     throw new RuleError(
-      `Faltan informes operativos obligatorios: ${readiness.reports.missingRequired
-        .map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind)
-        .join(', ')}.`,
+      'Falta evidencia PMS de apertura. Carga los informes disponibles o registra una contingencia con el motivo.',
     );
   }
 
@@ -541,8 +562,10 @@ export async function completeSupervisionOpening(
         todayKinds: readiness.reports.todayKinds,
         auditKinds: readiness.reports.auditKinds,
         presentKinds: readiness.reports.presentKinds,
-        missingRequired: readiness.reports.missingRequired,
+        occupancyReady: readiness.reports.occupancyReady,
+        auditReady: readiness.reports.auditReady,
         reportsReady: readiness.reports.reportsReady,
+        contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,
       },
@@ -591,7 +614,7 @@ export async function completeSupervisionOpening(
           cashAudits: readiness.cash.currencies.map((row) => row.audit?.id).filter(Boolean),
           reportKinds: readiness.reports.presentKinds,
           reportsReady: readiness.reports.reportsReady,
-          missingRequiredReports: readiness.reports.missingRequired,
+          reportContingencyReason,
           pendingReviewed: readiness.pendingTotal,
         },
       },

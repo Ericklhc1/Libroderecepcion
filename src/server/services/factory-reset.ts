@@ -67,6 +67,7 @@ export async function getResetPreview() {
     checklistTemplates,
     cashCounts,
     notifications,
+    pushSubscriptions,
     auditLogs,
     performanceObservations,
     correctiveMeasures,
@@ -104,6 +105,7 @@ export async function getResetPreview() {
     prisma.checklistTemplate.count(),
     prisma.cashCount.count(),
     prisma.notification.count(),
+    prisma.pushSubscription.count(),
     prisma.auditLog.count(),
     prisma.performanceObservation.count(),
     prisma.correctiveMeasure.count(),
@@ -143,6 +145,7 @@ export async function getResetPreview() {
     checklistTemplates,
     cashCounts,
     notifications,
+    pushSubscriptions,
     auditLogs,
     performanceObservations,
     correctiveMeasures,
@@ -219,6 +222,7 @@ export async function runFactoryReset(
         data: { stayId: null, status: 'DISPONIBLE', assignedAt: null, assignedById: null },
       });
 
+      count('Suscripciones push', await tx.pushSubscription.deleteMany());
       count('Notificaciones', await tx.notification.deleteMany());
       count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());
       count('Mensajes de Fronti', await tx.ai_message.deleteMany());

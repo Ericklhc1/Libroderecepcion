@@ -1,8 +1,8 @@
-# Tablero de situación — Central de Operaciones · Hotel HW Libertad
+# Tablero de situación — AROH Central IA · Hotel HW Libertad
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · jornada operativa canónica + nueva identidad · versión candidata **v1.25.0**
+Actualizado: **2026-09-29** · identidad AROH Central IA sobre navegación horizontal v1.26.0 · versión candidata **v1.26.1**
 
 ## Estados canónicos
 
@@ -26,30 +26,31 @@ Actualizado: **2026-09-29** · jornada operativa canónica + nueva identidad · 
 | Centro de Supervisión accionable | `PRODUCTION` | v1.24.0 · PR #177 | Apertura guiada y comprobable antes de activar Supervisión |
 | Central de Reservas | `PRODUCTION` | v1.23.0 | Bandeja previa a la operación + rol específico |
 | Correo individual | `PRODUCTION` | v1.23.0 | Correo opcional por usuario + preferencias + outbox |
-| Jornada operativa canónica | `EN_DESARROLLO` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
-| Identidad Central de Operaciones | `EN_DESARROLLO` | v1.25.0 | Branding en UI/correos/Fronti; dominio se migra después |
+| Navegación horizontal compacta | `PRODUCTION` | v1.26.0 | Cabecera horizontal + mega-menús; sin sidebar de escritorio |
+| Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
+| Identidad AROH Central IA | `EN_DESARROLLO` | v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
 
 ## Iteración actual
 
-**Central 1.25.0** · rama **`feat/central-operaciones-dia-operativo-1-25-0`**
+**AROH 1.26.1** · rama **`chore/aroh-central-ia-branding-1-26-1`**
 
-Objetivo: que la operación diaria tenga **una sola fecha canónica** y que la plataforma adopte su nueva identidad sin mezclar todavía la migración de dominio.
+Objetivo: consolidar **AROH Central IA** como nombre del producto sobre la cabecera horizontal vigente de v1.26.0, sin mezclar todavía la migración de dominio.
 
 Incluye:
-- turno operativo abierto → manda `Shift.date`;
-- sin turno abierto, último cierre DÍA → misma fecha; último cierre NOCHE → día siguiente;
-- Inicio y dashboard de Supervisión consumen esa fecha;
-- informes visibles del dashboard limitados a la jornada vigente;
-- cierre anterior conservado únicamente como evidencia de apertura;
-- parser de PDF robustecido para no confundir fechas de huéspedes/reservas con la fecha del informe;
-- identidad visible **Central de Operaciones · Hotel HW Libertad**;
+- cabecera global: **AROH Central IA** como identidad principal + alojamiento debajo;
+- login e instalación con la misma jerarquía;
+- metadatos del navegador e icono accesible;
+- correos, avisos y documentos imprimibles;
+- identidad contextual de Fronti y sus herramientas;
+- términos y documentación canónica;
+- «Libro/Novedades» conservado como módulo interno;
 - sin migración de esquema ni datos.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - despliegue Vercel Production;
-- smoke de versión, Inicio, Supervisión e informes diarios.
+- smoke de identidad, login y cabecera global.
 
 ## Infraestructura vigente
 
@@ -60,7 +61,7 @@ PENDIENTE antes de Production:
 - CI usa PostgreSQL efímero y nunca Neon Production.
 - Neon debe mantener una única rama alojada `production`.
 - Toda actualización de Production incrementa SemVer.
-- El subdominio nuevo se configurará después de estabilizar v1.25.0; no se cambia DNS dentro de este PR.
+- El subdominio nuevo se configurará después de estabilizar v1.26.1; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 

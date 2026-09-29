@@ -39,15 +39,16 @@ function supported(): boolean {
   return capability() === 'supported';
 }
 
-function base64UrlToUint8Array(value: string): Uint8Array {
+function base64UrlToArrayBuffer(value: string): ArrayBuffer {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = window.atob(base64);
-  const bytes = new Uint8Array(raw.length);
+  const buffer = new ArrayBuffer(raw.length);
+  const bytes = new Uint8Array(buffer);
   for (let index = 0; index < raw.length; index += 1) {
     bytes[index] = raw.charCodeAt(index);
   }
-  return bytes;
+  return buffer;
 }
 
 async function registration(): Promise<ServiceWorkerRegistration | null> {
@@ -102,7 +103,7 @@ async function ensurePushSubscription(
 
     subscription = await worker.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64UrlToUint8Array(payload.publicKey),
+      applicationServerKey: base64UrlToArrayBuffer(payload.publicKey),
     });
   }
 

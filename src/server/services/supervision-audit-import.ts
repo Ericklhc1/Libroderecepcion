@@ -129,7 +129,10 @@ function kindOf(fileName: string, text: string): SupervisionReportKind {
   const name = fileName.toLocaleLowerCase('es-CL');
   const hasReservationIdentity =
     /(?:\bID\b|localizador|reserva(?:ci[oó]n)?)/i.test(text) &&
-    /habitaci[oó]n|\broom\b/i.test(text);
+    /habitaci[oó]n|\broom\b/i.test(text) &&
+    // Los informes FNS operativos traen IDs numéricos de reserva. Exigir al
+    // menos uno evita acreditar prosa que sólo mencione "reservas/habitaciones".
+    /\b\d{5,}\b/.test(text);
 
   if (/formulario auditor[ií]a/i.test(text)) return 'AUDITORIA_FORMULARIO';
 

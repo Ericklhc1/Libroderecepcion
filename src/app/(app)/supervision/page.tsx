@@ -113,7 +113,8 @@ function ReviewBlock({
 
 function parsePeriod(params: RawSearchParams) {
   const now = new Date();
-  const defaultFrom = hotelWallDateTime(hotelDateKey(addHotelCalendarDays(now, -30)), 0);
+  const todayKey = hotelDateKey(now);
+  const defaultFrom = hotelWallDateTime(todayKey, 0);
   const parseKey = (value: unknown, endOfDay = false) => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
     const start = hotelWallDateTime(value, 0);
@@ -255,20 +256,31 @@ export default async function SupervisionCenterPage({
             <option value="ALTA">Alta</option><option value="CRITICA">Crítica</option>
           </select>
         </label>
-        <label>
-          <span className="mb-1 block text-xs font-medium text-slate-500">Historial desde</span>
-          <input className="input-base" type="date" name="desde" defaultValue={hotelDateKey(period.from)} />
-        </label>
-        <label>
-          <span className="mb-1 block text-xs font-medium text-slate-500">Historial hasta</span>
-          <input className="input-base" type="date" name="hasta" defaultValue={hotelDateKey(period.to)} />
-        </label>
+        <input type="hidden" name="desde" value={hotelDateKey(period.from)} />
+        <input type="hidden" name="hasta" value={hotelDateKey(period.to)} />
       </ListFilterBar>
-      <p className="-mt-2 text-xs text-slate-500">
-        La búsqueda recorre las secciones visibles. Prioridad filtra tus pendientes y seguimientos;
-        el período sólo acota notas, auditorías y rendimiento. Tareas, seguimientos y medidas abiertas
-        nunca desaparecen por ser antiguos.
-      </p>
+
+      <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-petrol-900">Período de análisis histórico</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Sólo afecta notas, auditorías y rendimiento. Los pendientes abiertos y seguimientos vigentes no se ocultan por fecha.
+          </p>
+        </div>
+        <form action="/supervision" method="get" className="flex flex-wrap items-end gap-2 no-print">
+          {q ? <input type="hidden" name="q" value={q} /> : null}
+          {priority ? <input type="hidden" name="prioridad" value={priority} /> : null}
+          <label>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
+            <input className="input-base" type="date" name="desde" defaultValue={hotelDateKey(period.from)} />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
+            <input className="input-base" type="date" name="hasta" defaultValue={hotelDateKey(period.to)} />
+          </label>
+          <button type="submit" className="btn-secondary h-10 px-3 text-sm">Aplicar período</button>
+        </form>
+      </div>
 
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">

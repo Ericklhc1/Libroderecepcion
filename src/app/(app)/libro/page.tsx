@@ -8,6 +8,7 @@ import { Card, CardScroll, EmptyState } from '@/components/ui/card';
 import { BookList } from '@/components/operational/book-row';
 import { Filters } from '@/components/operational/filters';
 import { ViewTabs } from '@/components/layout/view-tabs';
+import { QuickActions } from '@/components/layout/quick-actions';
 import {
   filterValues,
   pageHref,
@@ -86,17 +87,22 @@ export default async function BookPage({
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold text-petrol-900">
-          {isEntryView ? 'Novedades' : 'Libro operativo'}
-        </h1>
-        <p className="mt-0.5 text-sm text-slate-600">
-          {isEntryView
-            ? 'Sólo aparecen novedades e incidencias creadas por Recepción que siguen en gestión. Lo resuelto pasa al Historial.'
-            : clase === 'task'
-              ? 'Tus tareas operativas abiertas.'
-              : 'Vista especializada del Libro.'}
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-petrol-900">
+            {isEntryView ? 'Novedades' : 'Libro operativo'}
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-600">
+            {isEntryView
+              ? 'Sólo aparecen novedades e incidencias creadas por Recepción que siguen en gestión. Lo resuelto pasa al Historial.'
+              : clase === 'task'
+                ? 'Tus tareas operativas abiertas.'
+                : 'Vista especializada del Libro.'}
+          </p>
+        </div>
+        <div data-tour="module-actions">
+          <QuickActions user={user} compact />
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -169,7 +175,7 @@ export default async function BookPage({
         {result.items.length === 0 ? (
           <EmptyState
             message="No hay registros que coincidan con los filtros."
-            hint="Prueba con menos filtros o registra una nueva novedad desde las acciones rápidas."
+            hint="Prueba con menos filtros o registra una nueva novedad desde la cabecera de este módulo."
           />
         ) : (
           <CardScroll>

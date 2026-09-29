@@ -28,7 +28,7 @@ Actualizado: **2026-09-29** · identidad AROH Central IA sobre navegación horiz
 | Correo individual | `PRODUCTION` | v1.23.0 | Correo opcional por usuario + preferencias + outbox |
 | Navegación horizontal compacta | `PRODUCTION` | v1.26.0 | Cabecera horizontal + mega-menús; sin sidebar de escritorio |
 | Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
-| Identidad AROH Central IA | `EN_DESARROLLO` | v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
+| Identidad AROH Central IA | `PR_ABIERTO` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
 
 ## Iteración actual
 

@@ -35,7 +35,7 @@ export function shouldNavigateTutorial(
 /**
  * Recorrido de producto v1.5.0.
  *
- * El Libro gira alrededor de Turnos + Novedades + Caja + Llaves + Avisos + Supervisión.
+ * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Avisos + Supervisión.
  * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
  * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
  */
@@ -49,11 +49,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: ROUTE_TARGET,
   },
   {
-    id: 'acciones-rapidas',
-    title: 'Acciones rápidas',
+    id: 'acciones-modulo',
+    title: 'Acciones del módulo',
     description:
-      'Registra una novedad o incidencia sin abandonar lo que estabas revisando.',
-    target: '[data-tour="quick-actions"]',
+      'Las acciones operativas viven dentro del módulo que corresponde. En Novedades puedes registrar una novedad o incidencia sin recargar la cabecera global.',
+    route: '/libro?clase=entry',
+    target: '[data-tour="module-actions"]',
   },
   {
     id: 'busqueda',

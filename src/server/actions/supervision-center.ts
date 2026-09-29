@@ -81,6 +81,7 @@ export async function completeSupervisionOpeningAction(
         reviewedKeys: z.literal('on', {
           errorMap: () => ({ message: 'Confirma que revisaste el inventario y las excepciones de llaves.' }),
         }),
+        reportContingencyReason: zOptionalString,
       }),
       formDataToObject(formData),
     );
@@ -89,6 +90,7 @@ export async function completeSupervisionOpeningAction(
       reviewedPending: true,
       reviewedGuarantees: true,
       reviewedKeys: true,
+      reportContingencyReason: input.reportContingencyReason,
     });
     refresh();
     return {

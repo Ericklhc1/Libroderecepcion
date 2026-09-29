@@ -52,7 +52,7 @@ export function FrontiLauncher({ displayName }: { displayName: string }) {
       title={displayName}
     >
       <Sparkles className="h-4 w-4 text-gold-600" aria-hidden="true" />
-      <span>{displayName}</span>
+      <span className="hidden xl:inline">{displayName}</span>
     </button>
   );
 }

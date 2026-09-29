@@ -283,6 +283,7 @@ export async function recordGuaranteeChargeOut(
     reservationReferenceId?: string | null;
     reservationCode?: string | null;
     reference?: string | null;
+    roomNumber?: string | null;
     roomId?: string | null;
     stayId?: string | null;
     guestId?: string | null;

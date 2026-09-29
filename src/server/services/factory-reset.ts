@@ -82,6 +82,8 @@ export async function getResetPreview() {
     frontiConversations,
     frontiMemories,
     frontiConfirmations,
+    supportRequests,
+    supportAttachments,
     users,
     assignedKeys,
   ] = await Promise.all([
@@ -117,6 +119,8 @@ export async function getResetPreview() {
     prisma.ai_conversation.count(),
     prisma.ai_memory.count(),
     prisma.assistantActionReceipt.count(),
+    prisma.supportRequest.count(),
+    prisma.supportRequestAttachment.count(),
     prisma.user.count(),
     prisma.roomKey.count({ where: { stayId: { not: null } } }),
   ]);
@@ -154,6 +158,8 @@ export async function getResetPreview() {
     frontiConversations,
     frontiMemories,
     frontiConfirmations,
+    supportRequests,
+    supportAttachments,
     users,
     assignedKeys,
   };

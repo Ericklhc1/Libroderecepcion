@@ -3,7 +3,9 @@ import {
   AlertLevel,
   AlertStatus,
   AlertType,
+  GuaranteeStatus,
   NotificationType,
+  ReservationStatus,
 } from '@prisma/client';
 import {
   ROLE_KEYS,
@@ -31,6 +33,10 @@ describe('Fronti proactivo', () => {
     await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Supervisión' });
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Sistema' });
+    await prisma.user.update({
+      where: { id: supervisor.id },
+      data: { frontiAccessEnabled: true },
+    });
 
     const alert = await prisma.alert.create({
       data: {
@@ -66,9 +72,98 @@ describe('Fronti proactivo', () => {
     expect(untouched.status).toBe(AlertStatus.NUEVA);
   });
 
+  it('no envía Fronti proactivo a un Supervisor que no tiene Fronti asignado', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor sin Fronti',
+    });
+    const admin = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      name: 'Administrador',
+    });
+
+    await prisma.alert.create({
+      data: {
+        type: AlertType.OTRO,
+        level: AlertLevel.CRITICA,
+        status: AlertStatus.NUEVA,
+        title: 'Señal sólo para cuentas con Fronti',
+        message: 'Prueba de asignación individual.',
+        auto: false,
+      },
+    });
+
+    const result = await runFrontiProactiveSweep({ trigger: 'test-access' });
+    expect(result.notified).toBe(1);
+
+    const recipientIds = (
+      await prisma.notification.findMany({
+        where: {
+          type: NotificationType.FRONTI_HALLAZGO,
+          entity: 'FrontiProactiveSignal',
+        },
+        select: { userId: true },
+      })
+    ).map((item) => item.userId);
+
+    expect(recipientIds).toContain(admin.id);
+    expect(recipientIds).not.toContain(supervisor.id);
+  });
+
+  it('no filtra datos proactivos de un módulo cuyo permiso fue retirado al usuario', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor acotado',
+    });
+    const admin = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      name: 'Administrador',
+    });
+    await prisma.user.update({
+      where: { id: supervisor.id },
+      data: { frontiAccessEnabled: true },
+    });
+
+    await prisma.rolePermission.deleteMany({
+      where: {
+        roleId: supervisor.roleId,
+        permission: { key: 'reservation.center.view' },
+      },
+    });
+
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-PERM-1',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+        actionNote: 'No debe filtrarse a quien perdió el permiso.',
+      },
+    });
+
+    const result = await runFrontiProactiveSweep({ trigger: 'test-permission' });
+    expect(result.notified).toBe(1);
+
+    const notifications = await prisma.notification.findMany({
+      where: {
+        type: NotificationType.FRONTI_HALLAZGO,
+        entity: 'FrontiProactiveSignal',
+        link: { startsWith: '/central-reservas' },
+      },
+      select: { userId: true },
+    });
+
+    expect(notifications.map((item) => item.userId)).toEqual([admin.id]);
+    expect(notifications.some((item) => item.userId === supervisor.id)).toBe(false);
+  });
+
   it('deduplica la misma señal durante la ventana de enfriamiento', async () => {
-    await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    await prisma.user.update({
+      where: { id: supervisor.id },
+      data: { frontiAccessEnabled: true },
+    });
 
     await prisma.alert.create({
       data: {

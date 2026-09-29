@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Camera,
   CheckCircle2,
@@ -100,6 +101,7 @@ export function SupportRequestPanel({
   hotelName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [kind, setKind] = useState<RequestKind>('ERROR');
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
@@ -108,6 +110,8 @@ export function SupportRequestPanel({
   const [captureBusy, setCaptureBusy] = useState(false);
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -215,8 +219,8 @@ export function SupportRequestPanel({
         <span className="hidden xl:inline">Reportar / solicitar</span>
       </button>
 
-      {open ? (
-        <div className="fixed inset-0 z-[130] no-print">
+      {open && mounted ? createPortal(
+        <div className="fixed inset-0 z-[130] no-print overscroll-contain">
           <button
             type="button"
             className="absolute inset-0 bg-petrol-950/40"
@@ -415,7 +419,8 @@ export function SupportRequestPanel({
               </button>
             </form>
           </aside>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

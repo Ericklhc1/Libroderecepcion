@@ -1,5 +1,12 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.26.3 · hotfix panel Reportar / solicitar
+
+- El panel de soporte debe montarse en `document.body` mediante `createPortal`.
+- No volver a dejar overlays `position: fixed` como descendientes directos del header con `backdrop-filter`, porque ese ancestro puede convertirse en containing block y recortar el viewport.
+- La prueba en `tests/shell-horizontal.test.ts` protege esta invariante.
+- Sin migración Prisma. Release objetivo: **v1.26.3**.
+
 ## 29/09/2026 · AROH 1.26.2 · dropdowns de navegación
 
 - Mantener el shell horizontal de v1.26.x, pero la navegación secundaria usa dropdowns compactos; no reintroducir mega-menús de ancho completo.

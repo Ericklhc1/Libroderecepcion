@@ -1,5 +1,13 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.26.3 · panel de soporte fuera del header sticky
+
+- Se corrige el drawer **Reportar / solicitar**: antes se renderizaba como `fixed` dentro de la cabecera `sticky` con `backdrop-blur`, por lo que el navegador lo tomaba respecto de ese contenedor y quedaba recortado a la altura del header.
+- El panel ahora se monta con **React Portal en `document.body`**, igual que los overlays globales correctos del sistema.
+- Mantiene overlay de pantalla completa, cierre por Escape/clic exterior, formulario desplazable y bloqueo de scroll de fondo.
+- Se agrega regresión explícita para exigir portal + `fixed inset-0` en el componente de soporte.
+- Sin cambios de esquema ni datos. Release objetivo: **v1.26.3**.
+
 ## Actualización 29/09/2026 · AROH 1.26.2 · navegación desplegable compacta
 
 - La navegación secundaria de escritorio deja de abrir franjas tipo mega-menú a todo el ancho y pasa a **dropdowns compactos anclados al módulo**.

@@ -207,6 +207,7 @@ describe('Apertura operacional de Supervisión', () => {
     const shift = await beginSupervisionOpening(supervisor);
     const today = hotelCalendarDate();
     const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
 
     await addEvidence({
       shiftId: shift.id,
@@ -215,7 +216,7 @@ describe('Apertura operacional de Supervisión', () => {
       metrics: {
         salesPeriod: {
           periodStart: monthStart.toISOString().slice(0, 10),
-          periodEnd: today.toISOString().slice(0, 8) + '30',
+          periodEnd: monthEnd.toISOString().slice(0, 10),
           generatedAt: null,
           visibleThrough: today.toISOString().slice(0, 10),
           visibleDays: 1,

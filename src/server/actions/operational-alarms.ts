@@ -49,6 +49,12 @@ const createSchema = z.object({
     .refine((value) => value === null || value.startsWith('/'), {
       message: 'El vínculo de origen debe ser una ruta interna de AROH.',
     }),
+  repeatMinutes: z
+    .preprocess(
+      (value) => (value === '' || value === null || value === undefined ? 0 : value),
+      z.coerce.number().int().min(0).max(10_080),
+    )
+    .transform((value) => (value === 0 ? null : value)),
 });
 
 const cancelSchema = z.object({ alarmId: z.string().min(1) });
@@ -58,6 +64,12 @@ const updateSchema = z.object({
   title: z.string().trim().min(2, 'Escribe el motivo de la alerta.').max(160),
   note: z.string().trim().max(500).optional().transform((value) => value || null),
   dueAtLocal: z.string().trim().min(1, 'Indica fecha y hora.'),
+  repeatMinutes: z
+    .preprocess(
+      (value) => (value === '' || value === null || value === undefined ? 0 : value),
+      z.coerce.number().int().min(0).max(10_080),
+    )
+    .transform((value) => (value === 0 ? null : value)),
 });
 
 export async function createOperationalAlarmAction(
@@ -91,6 +103,7 @@ export async function createOperationalAlarmAction(
       sourceEntity: input.sourceEntity,
       sourceId: input.sourceId,
       sourceLink: input.sourceLink,
+      repeatMinutes: input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes,
     });
     revalidatePath('/alertas');
     if (input.sourceLink) revalidatePath(input.sourceLink);
@@ -123,6 +136,7 @@ export async function updateOperationalAlarmAction(
       title: input.title,
       note: input.note,
       dueAt,
+      repeatMinutes: input.repeatMinutes,
     });
     revalidatePath('/alertas');
     if (updated.sourceLink) revalidatePath(updated.sourceLink);

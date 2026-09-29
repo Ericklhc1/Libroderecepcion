@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowUpRight, ClipboardCheck, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, ClipboardCheck, Gauge, NotebookPen, ShieldCheck, Sparkles } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
@@ -50,6 +50,7 @@ import {
   hotelWallDateTime,
 } from '@/domain/time';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
+import { getLatestProactiveBriefForUser } from '@/server/ai/proactive-supervision';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -160,6 +161,10 @@ export default async function SupervisionCenterPage({
   const openingReadiness =
     isSupervisor && center.currentShift?.status === 'PREPARACION'
       ? await getSupervisionOpeningReadiness(user)
+      : null;
+  const proactiveBrief =
+    isSupervisor && center.currentShift?.status === 'ACTIVO'
+      ? await getLatestProactiveBriefForUser(user.id, center.currentShift.startedAt)
       : null;
 
   const matches = (...values: Array<string | number | null | undefined>) =>
@@ -324,6 +329,31 @@ export default async function SupervisionCenterPage({
       </Card>
 
       {openingReadiness ? <SupervisionOpeningPanel readiness={openingReadiness} /> : null}
+
+      {proactiveBrief ? (
+        <section id="fronti-proactivo" className="scroll-mt-4">
+          <Card>
+            <CardHeader
+              title="Fronti · análisis proactivo"
+              action={
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Sparkles className="h-3.5 w-3.5 text-gold-600" aria-hidden="true" />
+                  {formatDateTime(proactiveBrief.createdAt)}
+                </span>
+              }
+            />
+            <div className="px-4 py-4">
+              <p className="whitespace-pre-line text-sm leading-6 text-slate-700">
+                {proactiveBrief.body ?? 'Fronti agrupó señales del turno para revisión.'}
+              </p>
+              <p className="mt-3 text-xs text-slate-500">
+                Esta lectura interpreta señales ya detectadas por reglas del Libro. No modifica estados,
+                Caja, reservas, multas ni turnos y siempre requiere revisión humana.
+              </p>
+            </div>
+          </Card>
+        </section>
+      ) : null}
 
       <section id="continuidad" className="scroll-mt-4">
       <Card>

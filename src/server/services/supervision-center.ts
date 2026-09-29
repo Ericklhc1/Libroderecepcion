@@ -209,6 +209,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     supervision,
     myTasks,
     myFollowUps,
+    previousReceptionShift,
   ] = await Promise.all([
     getLiveCashState({ movementLimit: 1, auditLimit: 1 }),
     prisma.cashFund.findMany({
@@ -292,6 +293,22 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
         scheduledAt: true,
       },
       orderBy: [{ priority: 'desc' }, { scheduledAt: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.shift.findFirst({
+      where: {
+        status: 'CERRADO',
+        archivedAt: null,
+        actualEnd: { lte: shift.startedAt },
+      },
+      select: {
+        id: true,
+        humanId: true,
+        type: true,
+        date: true,
+        actualEnd: true,
+        handoverOut: { select: { id: true, status: true, receivedAt: true } },
+      },
+      orderBy: { actualEnd: 'desc' },
     }),
   ]);
 
@@ -388,8 +405,12 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   const missingAuditReports = REQUIRED_SUPERVISION_AUDIT_REPORTS.filter(
     (kind) => !auditKinds.includes(kind),
   );
-  const auditReady = missingAuditReports.length === 0;
-  const reportsReady = occupancyReady && auditReady;
+  const previousClosureReady = Boolean(
+    previousReceptionShift?.actualEnd &&
+    previousReceptionShift.handoverOut?.status === 'RECIBIDA',
+  );
+  const auditReady = previousClosureReady;
+  const reportsReady = occupancyReady && previousClosureReady;
 
   const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
     (kind) => !presentReportKinds.includes(kind),
@@ -551,13 +572,27 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
       missingOptional: missingOptionalReports,
       labels: SUPERVISION_REPORT_LABELS,
-      sources: reportRows.map((row) => ({
-        id: row.id,
-        reportKinds: row.reportKinds,
-        businessDate: calendarDateKey(row.businessDate),
-        updatedAt: row.updatedAt,
-        uploadedBy: row.uploadedBy.name,
-      })),
+      previousClosure: previousReceptionShift
+        ? {
+            id: previousReceptionShift.id,
+            humanId: previousReceptionShift.humanId,
+            type: previousReceptionShift.type,
+            businessDate: calendarDateKey(previousReceptionShift.date),
+            actualEnd: previousReceptionShift.actualEnd,
+            handoverStatus: previousReceptionShift.handoverOut?.status ?? null,
+            receivedAt: previousReceptionShift.handoverOut?.receivedAt ?? null,
+            ready: previousClosureReady,
+          }
+        : null,
+      sources: reportRows
+        .filter((row) => calendarDateKey(row.businessDate) === todayKey)
+        .map((row) => ({
+          id: row.id,
+          reportKinds: row.reportKinds,
+          businessDate: calendarDateKey(row.businessDate),
+          updatedAt: row.updatedAt,
+          uploadedBy: row.uploadedBy.name,
+        })),
     },
     blockers: {
       cash: missingCashCurrencies.length,
@@ -1494,12 +1529,27 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       take: 12,
     }),
     currentShift
-      ? prisma.supervisionAuditImport.findMany({
-          where: { supervisionShiftId: currentShift.id },
-          include: { uploadedBy: { select: { id: true, name: true } } },
-          orderBy: { businessDate: 'desc' },
-          take: 7,
-        })
+      ? (() => {
+          const opening =
+            currentShift.openingState &&
+            !Array.isArray(currentShift.openingState) &&
+            typeof currentShift.openingState === 'object'
+              ? (currentShift.openingState as Record<string, unknown>)
+              : {};
+          const key =
+            typeof opening.businessDate === 'string'
+              ? opening.businessDate
+              : calendarDateKey(hotelCalendarDate());
+          return prisma.supervisionAuditImport.findMany({
+            where: {
+              supervisionShiftId: currentShift.id,
+              businessDate: new Date(`${key}T00:00:00.000Z`),
+            },
+            include: { uploadedBy: { select: { id: true, name: true } } },
+            orderBy: { updatedAt: 'desc' },
+            take: 7,
+          });
+        })()
       : Promise.resolve([]),
     prisma.correctiveMeasure.findMany({
       where: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } },

@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -118,10 +118,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(reservations.filters.q).toBe('martinez');
   });
   it('mantiene lectura contextual disponible fuera de turno pero bloquea propuestas', () => {
-    const source = require('node:fs').readFileSync(
-      'src/server/ai/reception-assistant.ts',
-      'utf8',
-    );
+    const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf8');
     expect(source).toContain("const mode = frontiToolMode(name)");
     expect(source).toContain("gate.mode !== 'ACTIVE' && mode !== 'read'");
     expect(source).toContain('Las consultas de lectura siguen disponibles.');

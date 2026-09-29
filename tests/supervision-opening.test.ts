@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import type { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import {
   beginSupervisionOpening,
@@ -33,10 +34,10 @@ describe('Apertura operacional de Supervisión', () => {
     businessDate: Date;
     kinds: string[];
     uploadedById?: string;
-    metrics?: Record<string, unknown>;
-    checks?: unknown[];
-    findings?: unknown[];
-    reviewState?: Record<string, unknown>;
+    metrics?: Prisma.InputJsonObject;
+    checks?: Prisma.InputJsonArray;
+    findings?: Prisma.InputJsonArray;
+    reviewState?: Prisma.InputJsonObject;
   }) {
     return prisma.supervisionAuditImport.create({
       data: {

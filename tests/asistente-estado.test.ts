@@ -15,6 +15,7 @@ import {
 const CAUSAS: AssistantFailure[] = [
   'SIN_CLAVE',
   'CLAVE_RECHAZADA',
+  'ACCESO_DENEGADO',
   'MODELO_DESCONOCIDO',
   'CUOTA',
   'SATURADO',
@@ -35,6 +36,15 @@ describe('clasificación de fallos del asistente', () => {
     // otra se espera. Antes las dos llegaban como el mismo texto crudo.
     expect(classifyAssistantFailure({ status: 401 })).toBe('CLAVE_RECHAZADA');
     expect(classifyAssistantFailure({ status: 403 })).toBe('CLAVE_RECHAZADA');
+  });
+
+  it('Cloudflare no confunde permisos o alcance de cuenta con una clave incorrecta', () => {
+    expect(
+      classifyAssistantFailure({ provider: 'cloudflare', status: 401, code: '10000' }),
+    ).toBe('ACCESO_DENEGADO');
+    expect(
+      classifyAssistantFailure({ provider: 'cloudflare', status: 403 }),
+    ).toBe('ACCESO_DENEGADO');
   });
 
   /*
@@ -151,7 +161,7 @@ describe('lo que lee el mesón', () => {
   });
 
   it('los fallos definitivos no invitan a reintentar', () => {
-    for (const causa of ['SIN_CLAVE', 'CLAVE_RECHAZADA', 'MODELO_DESCONOCIDO', 'CUOTA'] as const) {
+    for (const causa of ['SIN_CLAVE', 'CLAVE_RECHAZADA', 'ACCESO_DENEGADO', 'MODELO_DESCONOCIDO', 'CUOTA'] as const) {
       expect(ASSISTANT_FAILURE_IS_TEMPORARY[causa], causa).toBe(false);
     }
     for (const causa of ['SATURADO', 'CAIDO', 'SIN_RESPUESTA'] as const) {

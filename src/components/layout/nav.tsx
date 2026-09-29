@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlarmClock,
   Banknote,
@@ -10,6 +10,7 @@ import {
   BedDouble,
   BookOpen,
   CalendarClock,
+  ChevronDown,
   DoorClosed,
   History,
   Home,
@@ -46,11 +47,169 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === target || pathname.startsWith(`${target}/`);
 }
 
+function badgeFor(
+  badges: Partial<Record<string, number>> | undefined,
+  href: string,
+): number | undefined {
+  const path = href.split(/[?#]/, 1)[0] ?? href;
+  return badges?.[href] ?? badges?.[path];
+}
+
 function Badge({ value }: { value: number }) {
   return (
     <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-semibold tabular text-petrol-950">
       {value > 99 ? '99+' : value}
     </span>
+  );
+}
+
+export function DesktopNav({
+  groups,
+  badges,
+}: {
+  groups: NavGroup[];
+  badges?: Partial<Record<string, number>>;
+}) {
+  const pathname = usePathname();
+  const [openHref, setOpenHref] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const items = groups.flatMap((group) => group.items);
+  const openItem = items.find((item) => item.href === openHref && item.menu?.length);
+
+  useEffect(() => {
+    setOpenHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!openHref) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenHref(null);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && rootRef.current?.contains(target)) return;
+      setOpenHref(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [openHref]);
+
+  return (
+    <div ref={rootRef} className="hidden lg:block">
+      <nav
+        aria-label="Navegación principal"
+        className="flex min-w-0 items-stretch overflow-x-auto border-t border-slate-100 bg-white px-3"
+      >
+        {items.map((item) => {
+          const Icon = ICONS[item.icon];
+          const active = isActive(pathname, item.href);
+          const badge = badgeFor(badges, item.href);
+          const hasMenu = Boolean(item.menu?.length);
+          const open = openHref === item.href;
+
+          const className = cn(
+            'relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-xs font-medium transition-colors',
+            active || open
+              ? 'bg-petrol-50 text-petrol-900'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-petrol-800',
+          );
+
+          if (!hasMenu) {
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={className}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
+                {badge && badge > 0 ? <Badge value={badge} /> : null}
+                {active ? (
+                  <span
+                    className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gold-500"
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </Link>
+            );
+          }
+
+          return (
+            <button
+              key={item.href}
+              type="button"
+              onClick={() => setOpenHref((value) => (value === item.href ? null : item.href))}
+              aria-expanded={open}
+              className={className}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{item.label}</span>
+              {badge && badge > 0 ? <Badge value={badge} /> : null}
+              <ChevronDown
+                className={cn('h-3.5 w-3.5 text-slate-400 transition-transform', open && 'rotate-180')}
+                aria-hidden="true"
+              />
+              {active ? (
+                <span
+                  className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gold-500"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+
+      {openItem?.menu?.length ? (
+        <div className="border-t border-slate-200 bg-slate-50/95 px-5 py-4 shadow-inner">
+          <div
+            className="grid gap-x-8 gap-y-4"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(openItem.menu.length, 4)}, minmax(0, 1fr))`,
+            }}
+          >
+            {openItem.menu.map((section) => (
+              <section key={section.title} className="min-w-0">
+                <h2 className="mb-2 text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">
+                  {section.title}
+                </h2>
+                <ul className="space-y-1">
+                  {section.items.map((subitem) => {
+                    const subActive =
+                      pathname === (subitem.href.split(/[?#]/, 1)[0] ?? subitem.href);
+                    return (
+                      <li key={subitem.href}>
+                        <Link
+                          href={subitem.href}
+                          className={cn(
+                            'block rounded-lg px-2.5 py-2 transition-colors',
+                            subActive
+                              ? 'bg-white text-petrol-900 ring-1 ring-slate-200'
+                              : 'text-slate-700 hover:bg-white hover:text-petrol-900',
+                          )}
+                        >
+                          <span className="block text-sm font-semibold">{subitem.label}</span>
+                          {subitem.description ? (
+                            <span className="mt-0.5 block text-xs leading-4 text-slate-500">
+                              {subitem.description}
+                            </span>
+                          ) : null}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -75,7 +234,7 @@ export function SidebarNav({
           {group.items.map((item) => {
             const Icon = ICONS[item.icon];
             const active = isActive(pathname, item.href);
-            const badge = badges?.[item.href];
+            const badge = badgeFor(badges, item.href);
             return (
               <Link
                 key={item.href}
@@ -179,7 +338,7 @@ export function MobileNav({
               {restItems.map((item) => {
                 const Icon = ICONS[item.icon];
                 const active = isActive(pathname, item.href);
-                const badge = badges?.[item.href];
+                const badge = badgeFor(badges, item.href);
                 return (
                   <li key={item.href}>
                     <Link
@@ -234,7 +393,7 @@ export function MobileNav({
       {mobileItems.map((item) => {
         const Icon = ICONS[item.icon];
         const active = isActive(pathname, item.href);
-        const badge = badges?.[item.href];
+        const badge = badgeFor(badges, item.href);
         return (
           <Link
             key={item.href}

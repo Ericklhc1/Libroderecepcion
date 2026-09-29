@@ -177,6 +177,12 @@ export default async function SupportInboxPage({
             const version = contextValue(row.context, 'version');
             const viewport = contextValue(row.context, 'viewport');
             const userAgent = contextValue(row.context, 'userAgent');
+            const archivedAttachmentNames = new Set(
+              row.attachments.map((item) => item.fileName),
+            );
+            const fallbackAttachmentNames = row.attachmentNames.filter(
+              (name) => !archivedAttachmentNames.has(name),
+            );
 
             return (
               <Card key={row.id}>
@@ -237,16 +243,24 @@ export default async function SupportInboxPage({
                               className="flex min-w-0 items-center gap-1.5 rounded-md bg-white px-2 py-1 text-petrol-700 ring-1 ring-slate-200 hover:bg-petrol-50"
                             >
                               <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                              <span className="min-w-0 flex-1 truncate">{item.fileName}</span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {item.kind === 'CAPTURA' ? 'Captura · ' : 'Archivo · '}
+                                {item.fileName}
+                              </span>
                               <span className="shrink-0 text-[10px] text-slate-500">{formatBytes(item.size)}</span>
                               <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                             </a>
                           ))}
+                          {fallbackAttachmentNames.length > 0 ? (
+                            <p className="px-1 text-[10px] leading-4 text-amber-700">
+                              Respaldo sólo por correo: {fallbackAttachmentNames.join(', ')}
+                            </p>
+                          ) : null}
                         </div>
                       ) : row.attachmentNames.length > 0 ? (
                         <p className="mt-0.5">
                           {row.attachmentNames.join(', ')}
-                          <span className="block text-[10px] text-slate-400">Referencia histórica; archivo no archivado internamente.</span>
+                          <span className="block text-[10px] text-slate-400">Referencia histórica o respaldo por correo; archivo no archivado internamente.</span>
                         </p>
                       ) : (
                         <p className="mt-0.5">Sin adjuntos</p>

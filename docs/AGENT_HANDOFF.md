@@ -1,12 +1,25 @@
 # Relevo de agentes — Libro Operativo de Recepción
 
+## Actualización 29/09/2026 · Libro 1.25.0 · Ventas por período e inteligencia de conciliación
+
+- **Ventas por período** sustituye a **Ventas por canal** como informe de gestión mensual de Supervisión. `VENTAS_CANAL` se conserva sólo para leer históricos.
+- El Libro reconoce el período declarado y reutiliza la fotografía vigente del **mes actual** aunque el archivo se haya cargado con fecha del primer día del mes. Recargar el informe actualiza el snapshot: no crea un segundo mes ni duplica hallazgos.
+- Del informe se estructuran por día los centros de coste **Alojamiento, Eventos, Spa, Multas, Multas por Fumar, Multas por Blancos, Varios y Tasas**, además de inventario/ocupación, cortesías, day use, bloqueos, ADR, OCC, RREV, check-in, check-out, no-show, cancelaciones y desayunos.
+- **Cortesía > 0** es un hallazgo de severidad alta para revisión de autorización y motivo; el sistema no la convierte por sí solo en fraude o error.
+- Si el PDF declara un período más amplio que las columnas realmente legibles, queda marcado como **parcial/truncado**. Nunca se inventan ni completan fechas que el archivo no contiene.
+- Se aplican conciliaciones determinísticas internas: libres + ocupadas = total; con coste + cortesía = ocupadas; centros de coste vs total; Alojamiento/RREV; ADR y porcentajes de ocupación.
+- Se aplican cruces entre fuentes cuando existe evidencia comparable: Ventas por período ↔ Formulario de auditoría ↔ Producción por habitación ↔ In House ↔ movimientos PMS ↔ inventario activo del Libro ↔ multas por blancos registradas.
+- Las discrepancias se agrupan por regla estable para **evitar spam**. Una recarga sustituye los hallazgos de esa fotografía y vuelve a ejecutar los cruces; no deja anomalías obsoletas.
+- Los cruces son evidencia para Supervisión, no decisiones automáticas: una diferencia genera revisión y trazabilidad, pero no cambia estancias, Caja, multas ni estados PMS por inferencia.
+- Sin nueva tabla ni migración: los datos estructurados y hallazgos viven en `SupervisionAuditImport`. Release objetivo: **v1.25.0**.
+
 ## Actualización 29/09/2026 · Libro 1.24.0 · Apertura operacional de Supervisión
 
 - El botón «Iniciar turno» ahora abre una preparación guiada; ya no activa Supervisión ni acepta prioridades libres.
 - `SupervisionShiftStatus.PREPARACION` representa esa fase. El turno se activa únicamente con `completeSupervisionOpening`.
 - Gate de apertura: arqueo personal de cada fondo activo, diferencias explicadas y confirmación humana de pendientes, garantías/custodias y llaves. Caja/garantías sí son barrera real.
 - La Caja reutiliza `CashAudit` y su validación física de garantías en efectivo; no existe una segunda caja de Supervisor.
-- Evidencia PMS: fotografía operacional de hoy mediante **Habitaciones con actividad** o, como respaldo equivalente, **Entradas + In House + Salidas**. El cierre del día anterior usa **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por canal, Producción por habitación y Revenue son gestión no bloqueante.
+- Evidencia PMS: fotografía operacional de hoy mediante **Habitaciones con actividad** o, como respaldo equivalente, **Entradas + In House + Salidas**. El cierre del día anterior usa **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por período del mes actual, Producción por habitación y Revenue son gestión no bloqueante.
 - Los informes pueden mezclar fechas y se reutilizan por fecha operativa. Si el PMS no entrega evidencia completa, se puede iniciar sólo con una contingencia escrita y auditada; no se deja el hotel sin Supervisión por una falla externa.
 - El lector PDF detecta anotaciones de enlace sobre el ID FNS como señal auxiliar: enlace en una entrada/salida = `PENDIENTE` (alta); ausencia de enlace = `PROCESADO_PROBABLE` sólo si el mismo PDF demuestra la convención mixta. No auto-confirma movimientos; color/subrayado quedan pendientes de validación con archivos reales.
 - La apertura guarda snapshot estructurado en `openingState`; las prioridades se generan desde objetos reales pendientes y los informes de gestión faltantes.

@@ -117,6 +117,16 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(reservations.sectionLabel).toBe('Llegadas próximas 24 h');
     expect(reservations.filters.q).toBe('martinez');
   });
+  it('mantiene lectura contextual disponible fuera de turno pero bloquea propuestas', () => {
+    const source = require('node:fs').readFileSync(
+      'src/server/ai/reception-assistant.ts',
+      'utf8',
+    );
+    expect(source).toContain("const mode = frontiToolMode(name)");
+    expect(source).toContain("gate.mode !== 'ACTIVE' && mode !== 'read'");
+    expect(source).toContain('Las consultas de lectura siguen disponibles.');
+  });
+
 });
 
 describe('Fronti contextual · selección de herramientas', () => {

@@ -27,6 +27,7 @@ import {
   disableDeviceNotifications,
   enableDeviceNotifications,
   getDeviceNotificationState,
+  reconcileDeviceNotifications,
   showDeviceNotification,
   type DeviceNotificationState,
 } from './device-notifications';
@@ -131,6 +132,14 @@ export function NotificationCenter({
     setDevicePermission(state.permission);
     setDeviceEnabled(state.enabled);
     deviceEnabledRef.current = state.enabled;
+
+    if (state.enabled) {
+      void reconcileDeviceNotifications().then((healthy) => {
+        if (!healthy) return;
+        setDeviceEnabled(true);
+        deviceEnabledRef.current = true;
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -488,7 +497,7 @@ export function NotificationCenter({
 
   const toggleDeviceNotifications = async () => {
     if (deviceEnabled) {
-      disableDeviceNotifications();
+      await disableDeviceNotifications();
       deviceEnabledRef.current = false;
       setDeviceEnabled(false);
       return;
@@ -586,17 +595,17 @@ export function NotificationCenter({
           }`}
           aria-label={
             deviceEnabled
-              ? 'Notificaciones del dispositivo activas. Desactivarlas'
+              ? 'Push del sistema activo. Desactivarlo'
               : devicePermission === 'denied'
                 ? 'Notificaciones del dispositivo bloqueadas por el navegador'
-                : 'Activar notificaciones del dispositivo'
+                : 'Activar push del sistema'
           }
           title={
             deviceEnabled
-              ? 'Avisos del dispositivo activos'
+              ? 'Push del sistema activo'
               : devicePermission === 'denied'
                 ? 'Permiso bloqueado en el navegador'
-                : 'Activar avisos del dispositivo'
+                : 'Activar push del sistema'
           }
         >
           <BellRing className="h-5 w-5" aria-hidden="true" />

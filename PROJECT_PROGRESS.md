@@ -42,7 +42,10 @@ Incluye:
 - pendientes reales visibles antes de asumir;
 - arqueo personal obligatorio por fondo activo y validación física de garantías en efectivo;
 - revisión de garantías/custodias y último inventario de llaves;
-- carga de siete informes operativos bloqueantes y tres informes de gestión no bloqueantes;
+- evidencia PMS idónea sin redundancia: **Habitaciones con actividad** o el respaldo **Entradas + In House + Salidas** para el estado de hoy, más Formulario de auditoría + Cobros + Cargos diarios del cierre anterior;
+- Ventas por canal, Producción por habitación y Revenue como gestión no bloqueante;
+- contingencia escrita si el PMS no entrega la evidencia completa, sin relajar la barrera de Caja/garantías;
+- señal conservadora de trámite por ID enlazado en PDF, sin auto-confirmar check-in/check-out;
 - fecha de informe autodetectada para mezclar cierres de ayer con fotografías de hoy;
 - snapshot de apertura y prioridades generadas desde el estado real.
 

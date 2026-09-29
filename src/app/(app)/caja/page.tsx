@@ -11,6 +11,7 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import {
   CashDifferenceRegularizationForm,
+  ChargeCashGuaranteeForm,
   CreateCashGuaranteeForm,
   CreateGymPassForm,
   CreateParkingPassForm,
@@ -30,6 +31,7 @@ export const dynamic = 'force-dynamic';
 const MOVEMENT_LABEL: Record<string, string> = {
   GARANTIA_INGRESO: 'Garantía recibida',
   GARANTIA_DEVOLUCION: 'Garantía devuelta',
+  GARANTIA_COBRO: 'Garantía cobrada',
   VENTA_GIMNASIO: 'Movimiento histórico',
   ANULACION_GIMNASIO: 'Reverso histórico',
   TESORERIA: 'Transferencia a Tesorería',
@@ -206,7 +208,7 @@ export default async function LiveCashPage({
           {canReconcileDifference ? (
             <Dialog
               title="Regularizar diferencia de Caja"
-              description="Úsalo cuando vuelve dinero que ya debía estar en Caja, o cuando sale un sobrante previamente detectado. Queda auditado sin crear un nuevo saldo esperado."
+              description="Úsalo cuando entra dinero que faltaba o sale un sobrante previamente detectado. Corrige el efectivo esperado y deja trazabilidad sin tratarlo como un ingreso o egreso operacional nuevo."
               triggerVariant="secondary"
               triggerSize="sm"
               width="sm"
@@ -419,14 +421,25 @@ export default async function LiveCashPage({
                             <Chip>{human(guarantee.state)}</Chip>
                           </div>
                           {canReturnGuarantee ? (
-                            <ReturnCashGuaranteeForm
-                              guaranteeId={guarantee.id}
-                              reference={guarantee.reference ?? guarantee.guestName}
-                              currency={guarantee.currency}
-                              amount={guarantee.amount}
-                              guestName={guarantee.guestName}
-                              roomNumber={guarantee.roomNumber}
-                            />
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <ChargeCashGuaranteeForm
+                                guaranteeId={guarantee.id}
+                                humanId={guarantee.humanId}
+                                reference={guarantee.reference ?? guarantee.guestName}
+                                currency={guarantee.currency}
+                                amount={guarantee.amount}
+                                guestName={guarantee.guestName}
+                                roomNumber={guarantee.roomNumber}
+                              />
+                              <ReturnCashGuaranteeForm
+                                guaranteeId={guarantee.id}
+                                reference={guarantee.reference ?? guarantee.guestName}
+                                currency={guarantee.currency}
+                                amount={guarantee.amount}
+                                guestName={guarantee.guestName}
+                                roomNumber={guarantee.roomNumber}
+                              />
+                            </div>
                           ) : null}
                         </div>
                       </div>

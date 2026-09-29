@@ -241,6 +241,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
         id: true,
         reportKinds: true,
         businessDate: true,
+        metrics: true,
         updatedAt: true,
         uploadedBy: { select: { name: true } },
       },
@@ -369,6 +370,50 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     (kind) => !presentReportKinds.includes(kind),
   );
 
+  type ProcessingRow = {
+    reservationId: string;
+    roomNumber: string | null;
+    status: 'CHECK_IN' | 'CHECK_OUT';
+    signal: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+    confidence: 'ALTA' | 'MEDIA' | null;
+  };
+  const processingRowsByKey = new Map<string, ProcessingRow>();
+  for (const report of reportRows.filter(
+    (row) => calendarDateKey(row.businessDate) === todayKey,
+  )) {
+    const processing = jsonRecord(jsonRecord(report.metrics).pmsProcessing);
+    for (const item of jsonList<Record<string, Prisma.JsonValue>>(processing.rows)) {
+      const reservationId = typeof item.reservationId === 'string' ? item.reservationId : null;
+      const status =
+        item.status === 'CHECK_IN' || item.status === 'CHECK_OUT'
+          ? item.status
+          : null;
+      if (!reservationId || !status) continue;
+      const key = `${reservationId}:${status}`;
+      if (processingRowsByKey.has(key)) continue;
+      processingRowsByKey.set(key, {
+        reservationId,
+        roomNumber: typeof item.roomNumber === 'string' ? item.roomNumber : null,
+        status,
+        signal:
+          item.signal === 'PENDIENTE' || item.signal === 'PROCESADO_PROBABLE'
+            ? item.signal
+            : null,
+        confidence:
+          item.confidence === 'ALTA' || item.confidence === 'MEDIA'
+            ? item.confidence
+            : null,
+      });
+    }
+  }
+  const processingRows = [...processingRowsByKey.values()];
+  const pmsProcessing = {
+    pending: processingRows.filter((row) => row.signal === 'PENDIENTE').length,
+    processedProbable: processingRows.filter((row) => row.signal === 'PROCESADO_PROBABLE').length,
+    unknown: processingRows.filter((row) => row.signal === null).length,
+    rows: processingRows,
+  };
+
   const signalRows: OpeningPendingRow[] = supervision.blocks.flatMap((block) =>
     block.rows.map((row) => ({
       key:
@@ -476,6 +521,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       missingAudit: missingAuditReports,
       auditReady,
       reportsReady,
+      pmsProcessing,
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
       missingOptional: missingOptionalReports,
       labels: SUPERVISION_REPORT_LABELS,
@@ -694,6 +740,7 @@ export async function completeSupervisionOpening(
         occupancyReady: readiness.reports.occupancyReady,
         auditReady: readiness.reports.auditReady,
         reportsReady: readiness.reports.reportsReady,
+        pmsProcessing: readiness.reports.pmsProcessing,
         contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,

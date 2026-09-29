@@ -116,6 +116,8 @@ export const PERMISSIONS = {
   'user.manage': { group: 'Administración', name: 'Administrar usuarios' },
   'role.manage': { group: 'Administración', name: 'Administrar roles y permisos' },
   'system.configure': { group: 'Administración', name: 'Configurar el sistema' },
+  'support.view': { group: 'Administración', name: 'Ver bandeja de reportes y solicitudes' },
+  'support.manage': { group: 'Administración', name: 'Gestionar reportes y solicitudes' },
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

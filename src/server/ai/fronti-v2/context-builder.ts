@@ -3,13 +3,13 @@ import 'server-only';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { env } from '@/lib/env';
 import { getMyOpenShift } from '@/server/services/shifts';
+import {
+  resolveFrontiPageContext,
+  type FrontiPageInput,
+  type FrontiResolvedPageContext,
+} from './page-context';
 
-export type FrontiPageContext = {
-  pathname: string;
-  entityType?: string | null;
-  entityId?: string | null;
-  label?: string | null;
-};
+export type FrontiPageContext = FrontiResolvedPageContext;
 
 export type FrontiRuntimeContext = {
   user: {
@@ -32,7 +32,7 @@ export type FrontiRuntimeContext = {
     actualStart: string | null;
     actualEnd: string | null;
   } | null;
-  page: FrontiPageContext | null;
+  page: FrontiResolvedPageContext | null;
   clock: {
     timezone: string;
     nowIso: string;
@@ -42,7 +42,7 @@ export type FrontiRuntimeContext = {
 
 export async function buildFrontiRuntimeContext(
   user: CurrentUser,
-  page: FrontiPageContext | null,
+  page: FrontiPageInput | null,
 ): Promise<FrontiRuntimeContext> {
   const shift = user.roleOperational ? await getMyOpenShift(user.id) : null;
   const timezone = env().HOTEL_TIMEZONE;
@@ -71,7 +71,7 @@ export async function buildFrontiRuntimeContext(
           actualEnd: shift.actualEnd?.toISOString() ?? null,
         }
       : null,
-    page,
+    page: page ? resolveFrontiPageContext(page) : null,
     clock: {
       timezone,
       nowIso: now.toISOString(),
@@ -85,6 +85,7 @@ export function runtimeContextMessage(context: FrontiRuntimeContext): string {
     'CONTEXTO DE EJECUCIÓN DE FRONTI V2 (estructurado; no reemplaza las fuentes de verdad):',
     JSON.stringify(context),
     'Usa este contexto para resolver referencias del usuario, decidir qué herramientas consultar y respetar sus permisos.',
-    'Los estados operativos cambiantes deben verificarse con herramientas del Libro antes de afirmarlos.',
+    'moduleLabel/sectionLabel indican exactamente dónde está el usuario; filters representan los filtros visibles de la URL y recommendedTools son las capacidades de lectura más pertinentes para esa pantalla.',
+    'Si el usuario dice «aquí», «esto», «esta pantalla», «este registro», «qué falta» o una referencia similar, interpreta primero el contexto de pantalla y verifica los estados cambiantes con herramientas antes de afirmarlos.',
   ].join('\n');
 }

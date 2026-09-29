@@ -7,6 +7,7 @@ import {
   tryDeliverOperationalMail,
 } from '@/server/services/operational-mail';
 import { getNotificationEmailPolicy } from '@/server/services/notification-email-policy';
+import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
@@ -51,6 +52,9 @@ export async function notify(
     console.error('[notificaciones] no se pudo notificar', error);
     return;
   }
+  scheduleWebPushForUsers(
+    list.filter((notification) => !notification.isDemo).map((notification) => notification.userId),
+  );
   await dispatchExternal(list, client);
 }
 

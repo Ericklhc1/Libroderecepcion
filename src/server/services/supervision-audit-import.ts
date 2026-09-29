@@ -2,8 +2,6 @@ import 'server-only';
 
 import {
   AuditAction,
-  FineKind,
-  FineStatus,
   SupervisionShiftStatus,
   type Prisma,
 } from '@prisma/client';
@@ -538,6 +536,78 @@ function mergeByKey<T extends { key: string }>(a: T[], b: T[]): T[] {
   return [...map.values()];
 }
 
+type PmsProcessingRow = {
+  reservationId: string;
+  roomNumber: string | null;
+  status: 'CHECK_IN' | 'CHECK_OUT';
+  signal: 'PENDIENTE' | 'PROCESADO_PROBABLE' | null;
+  confidence: 'ALTA' | 'MEDIA' | null;
+};
+
+function pmsProcessingRows(metrics: Record<string, unknown>): PmsProcessingRow[] {
+  const processing = metrics.pmsProcessing;
+  if (!processing || Array.isArray(processing) || typeof processing !== 'object') return [];
+  const rows = (processing as Record<string, unknown>).rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row): row is PmsProcessingRow => {
+    if (!row || Array.isArray(row) || typeof row !== 'object') return false;
+    const item = row as Record<string, unknown>;
+    return (
+      typeof item.reservationId === 'string' &&
+      (item.status === 'CHECK_IN' || item.status === 'CHECK_OUT')
+    );
+  });
+}
+
+function mergedMetrics(
+  existingValue: Prisma.JsonValue | null | undefined,
+  incoming: Record<string, unknown>,
+  kind: SupervisionReportKind,
+): Prisma.InputJsonObject {
+  const existing = jsonObject(existingValue);
+  const merged = { ...existing, ...incoming } as Record<string, unknown>;
+  const incomingRows = pmsProcessingRows(incoming);
+  if (incomingRows.length === 0) return merged as Prisma.InputJsonObject;
+
+  const existingRows = pmsProcessingRows(existing);
+  const replacedStatuses = new Set(incomingRows.map((row) => row.status));
+  const rows =
+    kind === 'ACTIVIDAD'
+      ? incomingRows
+      : [
+          ...existingRows.filter((row) => !replacedStatuses.has(row.status)),
+          ...incomingRows,
+        ];
+
+  const unique = new Map<string, PmsProcessingRow>();
+  for (const row of rows) {
+    unique.set(`${row.status}:${row.reservationId}`, row);
+  }
+  const allRows = [...unique.values()];
+  merged.pmsProcessing = {
+    pending: allRows.filter((row) => row.signal === 'PENDIENTE').length,
+    processedProbable: allRows.filter((row) => row.signal === 'PROCESADO_PROBABLE').length,
+    unknown: allRows.filter((row) => row.signal === null).length,
+    rows: allRows,
+  };
+  return merged as Prisma.InputJsonObject;
+}
+
+function auditOwnedFinding(key: string): boolean {
+  return key.startsWith('check:') || key.startsWith('pms-pending:');
+}
+
+function sameFinding(a: SupervisionAuditFinding | undefined, b: SupervisionAuditFinding | undefined): boolean {
+  return Boolean(
+    a &&
+    b &&
+    a.key === b.key &&
+    a.severity === b.severity &&
+    a.title === b.title &&
+    a.detail === b.detail,
+  );
+}
+
 function salesPeriodFromMetrics(value: Prisma.JsonValue | null | undefined): SalesPeriodMetrics | null {
   const root = jsonObject(value);
   const candidate = root.salesPeriod;
@@ -625,7 +695,6 @@ async function reconcileSalesPeriodImports(
     };
     const byDate = new Map<string, DayEvidence>();
     for (const row of evidenceRows) {
-      if (row.id === salesRow.id) continue;
       const key = dateKeyUtc(row.businessDate);
       const evidence = byDate.get(key) ?? {};
       const metrics = jsonObject(row.metrics);
@@ -792,35 +861,50 @@ async function reconcileSalesPeriodImports(
       (sum, day) => sum + (day.costCenters.multasBlancos ?? 0),
       0,
     );
-    const linenFines = await tx.fine.findMany({
-      where: {
-        deletedAt: null,
-        kind: FineKind.BLANCO,
-        status: FineStatus.COBRADA,
-        currency: 'CLP',
-        createdAt: { gte: from, lt: nextUtcDay(through) },
-      },
-      select: { amount: true },
-    });
+    const linenFines = await tx.$queryRaw<Array<{ amount: unknown }>>`
+      SELECT DISTINCT ON (f."id") f."amount"
+        FROM "Fine" f
+        JOIN "AuditLog" a
+          ON a."entity" = 'Fine'
+         AND a."entityId" = f."id"
+         AND a."action" = 'CAMBIO_ESTADO'
+         AND a."after"->>'status' = 'COBRADA'
+       WHERE f."deletedAt" IS NULL
+         AND f."kind"::text = 'BLANCO'
+         AND f."currency" = 'CLP'
+         AND a."createdAt" >= ${from}
+         AND a."createdAt" < ${nextUtcDay(through)}
+       ORDER BY f."id", a."createdAt" DESC
+    `;
     const libroLinenFines = linenFines.reduce(
       (sum, fine) => sum + (fine.amount ? Number(fine.amount) : 0),
       0,
     );
-    if (pmsLinenFines > 0 && Math.abs(pmsLinenFines - libroLinenFines) > 2) {
+    if (Math.abs(pmsLinenFines - libroLinenFines) > 2) {
       cross.push({
         key: 'cross:sales-period:linen-fines',
-        severity: libroLinenFines === 0 ? 'ALTA' : 'MEDIA',
+        severity: libroLinenFines === 0 || pmsLinenFines === 0 ? 'ALTA' : 'MEDIA',
         title: 'Multas por blancos del PMS no concilian con el Libro',
         detail: `Ventas por período muestra ${Math.round(pmsLinenFines).toLocaleString('es-CL')} en “Multas por Blancos”; el Libro suma ${Math.round(libroLinenFines).toLocaleString('es-CL')} en multas BLANCO cobradas dentro del mismo tramo visible. Revisa fecha de registro, estado y trazabilidad.`,
       });
     }
 
-    const existingFindings = jsonArray<SupervisionAuditFinding>(salesRow.findings).filter(
+    const allExistingFindings = jsonArray<SupervisionAuditFinding>(salesRow.findings);
+    const existingFindings = allExistingFindings.filter(
       (finding) => !finding.key.startsWith('cross:sales-period:'),
     );
+    const previousCross = new Map(
+      allExistingFindings
+        .filter((finding) => finding.key.startsWith('cross:sales-period:'))
+        .map((finding) => [finding.key, finding]),
+    );
+    const nextCross = new Map(cross.map((finding) => [finding.key, finding]));
     const review = parseSupervisionAuditReviewState(salesRow.reviewState);
     for (const key of Object.keys(review.findings)) {
-      if (key.startsWith('cross:sales-period:')) delete review.findings[key];
+      if (!key.startsWith('cross:sales-period:')) continue;
+      if (!sameFinding(previousCross.get(key), nextCross.get(key))) {
+        delete review.findings[key];
+      }
     }
 
     await tx.supervisionAuditImport.update({
@@ -873,10 +957,11 @@ export async function mergeSupervisionAuditReport(
       },
     });
 
-    const metrics = {
-      ...jsonObject(existing?.metrics),
-      ...input.parsed.metrics,
-    } as Prisma.InputJsonObject;
+    const metrics = mergedMetrics(
+      existing?.metrics,
+      input.parsed.metrics,
+      input.parsed.kind,
+    );
     const checks =
       input.parsed.kind === 'AUDITORIA_FORMULARIO'
         ? input.parsed.checks
@@ -887,7 +972,10 @@ export async function mergeSupervisionAuditReport(
     const existingFindings = jsonArray<SupervisionAuditFinding>(existing?.findings);
     const findings =
       input.parsed.kind === 'AUDITORIA_FORMULARIO'
-        ? input.parsed.findings
+        ? mergeByKey(
+            existingFindings.filter((finding) => !auditOwnedFinding(finding.key)),
+            input.parsed.findings,
+          )
         : input.parsed.kind === 'VENTAS_PERIODO'
           ? mergeByKey(
               existingFindings.filter(
@@ -899,6 +987,11 @@ export async function mergeSupervisionAuditReport(
             )
           : mergeByKey(existingFindings, input.parsed.findings);
     const reviewState = parseSupervisionAuditReviewState(existing?.reviewState);
+    if (input.parsed.kind === 'AUDITORIA_FORMULARIO') {
+      for (const key of Object.keys(reviewState.findings)) {
+        if (auditOwnedFinding(key)) delete reviewState.findings[key];
+      }
+    }
     if (input.parsed.kind === 'VENTAS_PERIODO') {
       for (const key of Object.keys(reviewState.findings)) {
         if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {

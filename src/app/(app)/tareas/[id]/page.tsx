@@ -181,13 +181,14 @@ export default async function TaskDetailPage({
 
         {!task.deletedAt ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
-            {task.status === TaskStatus.PENDIENTE ? (
+            {task.status === TaskStatus.PENDIENTE &&
+                       (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
               <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar" />
             ) : null}
             {open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
               <QuickStatusForm
                 taskId={task.id}
-                status={TaskStatus.REALIZADA}
+                status={TaskStatus.COMPLETADA}
                 label="Resolver"
                 variant="gold"
               />

@@ -240,9 +240,9 @@ export async function sendMailTest(
 
   const result = await sendMail({
     to,
-    subject: 'Prueba de configuración · Central de Operaciones',
+    subject: 'Prueba de configuración · AROH Central IA',
     text: [
-      'Este es un envío de prueba de Central de Operaciones · Hotel HW Libertad.',
+      'Este es un envío de prueba de AROH Central IA · Hotel HW Libertad.',
       '',
       `Lo pidió ${user.name} desde la consola de administración.`,
       'Si lo estás leyendo, el correo de salida está bien configurado.',

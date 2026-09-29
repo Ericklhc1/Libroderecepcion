@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { NotificationType } from '@prisma/client';
 import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
@@ -102,6 +103,33 @@ export async function sendMailTestAction(
       message: result.ok
         ? `Correo de prueba enviado a ${result.to}. Revisa la casilla.`
         : `No se pudo enviar: ${result.detail}`,
+    };
+  });
+}
+
+
+export async function saveNotificationEmailPolicyAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const actor = await requirePermission('system.configure');
+    const policy = {} as Record<NotificationType, NotificationEmailMode>;
+
+    for (const type of Object.values(NotificationType)) {
+      const raw = String(formData.get(`policy_${type}`) ?? '');
+      if (!(NOTIFICATION_EMAIL_MODES as readonly string[]).includes(raw)) {
+        throw new Error(`Política de correo inválida para ${type}.`);
+      }
+      policy[type] = raw as NotificationEmailMode;
+    }
+
+    await saveNotificationEmailPolicy(actor, policy);
+    revalidatePath('/admin/correo');
+
+    return {
+      ok: true as const,
+      message: 'Política de correo actualizada. Los avisos obligatorios ya no dependen de la preferencia individual.',
     };
   });
 }

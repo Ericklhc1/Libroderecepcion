@@ -6,8 +6,10 @@
 - La apertura muestra pendientes reales y genera desde ellos las prioridades, sin duplicar novedades, tareas, seguimientos ni señales.
 - El Supervisor debe realizar su propio arqueo por cada fondo de Caja activo; las garantías en efectivo se validan físicamente dentro del mismo arqueo. Una diferencia sólo permite continuar si queda explicada.
 - La apertura muestra garantías/custodias abiertas y el último inventario de llaves de pisos 4, 5 y 6; exige confirmación explícita de revisión.
-- Informes bloqueantes para iniciar: Formulario de auditoría, Habitaciones con actividad, Entradas, In House, Salidas, Cobros y Cargos diarios. Ventas por canal, Producción por habitación y Revenue quedan como gestión diaria no bloqueante.
-- La carga de apertura autodetecta la fecha de cada PDF, por lo que admite cierres de ayer junto con fotografías operativas de hoy. Los informes ya cargados durante el mismo día del hotel se reutilizan.
+- Evidencia PMS de apertura: para la fotografía operacional de hoy se prefiere **Habitaciones con actividad**; si no está disponible, el respaldo equivalente es **Entradas + In House + Salidas**. Para recibir el cierre del día anterior se esperan **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por canal, Producción por habitación y Revenue quedan como gestión diaria no bloqueante.
+- La falta de un informe por caída o indisponibilidad del PMS no deja al hotel sin Supervisión: exige una contingencia escrita y auditada. Caja/garantías sí permanecen como barrera obligatoria.
+- La carga de apertura autodetecta la fecha de cada PDF, por lo que admite cierres de ayer junto con fotografías operativas de hoy y reutiliza evidencia válida por fecha operativa.
+- El lector PDF conserva anotaciones de enlace sobre el ID FNS. En entradas/salidas, un ID enlazado aporta señal `PENDIENTE` de confianza alta; un ID no enlazado sólo se considera `PROCESADO_PROBABLE` si el mismo PDF demuestra una convención mixta. La señal nunca confirma automáticamente check-in/check-out. Color y subrayado no se usan todavía como regla hasta validarlos contra informes reales de cada formato.
 - `SupervisionShift.openingState` conserva la fotografía de Caja, garantías, llaves, informes y pendientes recibidos; `openingCompletedAt` marca la confirmación final.
 - Migración aditiva: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
 

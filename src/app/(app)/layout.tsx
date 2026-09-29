@@ -82,16 +82,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-100">
       <div className="flex min-w-0 flex-col">
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur no-print">
-          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+          <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
             <Link href="/" className="flex shrink-0 items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
                 <BookOpen className="h-5 w-5" aria-hidden="true" />
               </span>
               <span className="hidden min-w-0 xl:block">
-                <span className="block truncate text-[0.62rem] font-semibold uppercase tracking-wide text-gold-700">
+                <span className="block truncate text-[0.7rem] font-semibold uppercase tracking-wide text-gold-700">
                   AROH Central IA
                 </span>
-                <span className="block max-w-44 truncate text-sm font-semibold text-petrol-950">
+                <span className="block max-w-44 truncate text-[0.92rem] font-semibold text-petrol-950">
                   {hotelName}
                 </span>
               </span>

@@ -22,6 +22,12 @@ export const metadata: Metadata = {
   description:
     'AROH Central IA para Hotel HW Libertad: turnos, recepción, caja, novedades, supervisión, reservas, trazabilidad e informes.',
   robots: { index: false, follow: false },
+  applicationName: 'AROH Central IA',
+  appleWebApp: {
+    capable: true,
+    title: 'AROH Central IA',
+    statusBarStyle: 'default',
+  },
 };
 
 export const viewport: Viewport = {

@@ -316,6 +316,7 @@ async function detailSnapshot(
       description: task.description,
       status: task.status,
       priority: task.priority,
+      startsAt: task.startsAt,
       dueAt: task.dueAt,
       assignee: task.assignee?.name ?? null,
       department: task.department?.name ?? null,
@@ -899,6 +900,9 @@ export async function executeFrontiPageContextTool(
               title: alarm.title,
               note: alarm.note,
               dueAt: alarm.dueAt,
+              sourceEntity: alarm.sourceEntity,
+              sourceId: alarm.sourceId,
+              sourceLink: alarm.sourceLink,
               createdBy: alarm.createdBy.name,
               recipients: alarm.recipients.map((recipient) => ({
                 name: recipient.user.name,

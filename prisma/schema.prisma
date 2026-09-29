@@ -143,6 +143,7 @@ enum SupervisionVisibility {
 }
 
 enum SupervisionShiftStatus {
+  PREPARACION
   ACTIVO
   ENTREGADO
   CERRADO
@@ -803,6 +804,9 @@ model SupervisionShift {
   supervisor   User                   @relation("supervisionShiftSupervisor", fields: [supervisorId], references: [id])
   status       SupervisionShiftStatus @default(ACTIVO)
   priorities   String[]               @default([])
+  /// Evidencia estructurada de la apertura: caja, garantías, llaves, informes y pendientes revisados.
+  openingState Json                   @default("{}")
+  openingCompletedAt DateTime?
   startedAt    DateTime               @default(now())
   deliveredAt  DateTime?
   finishedAt   DateTime?

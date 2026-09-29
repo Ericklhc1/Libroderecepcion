@@ -59,10 +59,11 @@ CREDENTIALS_MAIL_TO="recepcion@hoteleshw.com"
 
 
 # ---------------------------------------------------------------------------
-# Multimedia del chat (opcional).
+# Multimedia del chat y adjuntos de soporte (opcional).
 #
 # Cloudflare R2: si las cuatro variables están presentes, se habilitan
-# capturas, imágenes, archivos, notas de voz y stickers personalizados.
+# capturas, imágenes, archivos, notas de voz, stickers personalizados y
+# adjuntos persistentes de Reportar / solicitar.
 # El bucket debe permanecer PRIVADO y permitir por CORS PUT desde el origen
 # web del Libro. Nunca expongas estas credenciales como NEXT_PUBLIC_*.
 # ---------------------------------------------------------------------------

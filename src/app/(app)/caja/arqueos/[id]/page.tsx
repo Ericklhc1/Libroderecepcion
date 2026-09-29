@@ -86,7 +86,7 @@ export default async function CashAuditPrintPage({
 
       <article className="print-report rounded-xl border border-slate-200 bg-white p-6 print:border-0 print:p-0">
         <header className="border-b border-slate-300 pb-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Central de Operaciones · Hotel HW Libertad</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">AROH Central IA · Hotel HW Libertad</p>
           <h1 className="mt-1 text-2xl font-semibold text-petrol-900">Arqueo de Caja #{audit.humanId}</h1>
           <div className="mt-3 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
             <p><span className="font-semibold text-slate-800">Divisa:</span> {audit.currency}</p>

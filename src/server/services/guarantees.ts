@@ -415,8 +415,8 @@ export async function changeGuaranteeState(
           : `guarantee-return:${guarantee.id}:${to}`,
         recipients: [SUPERVISION_BACKUP_EMAIL],
         subject: isCharge
-          ? `[Central de Operaciones] GARANTÍA COBRADA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${settledOutsideCash}`
-          : `[Central de Operaciones] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
+          ? `[AROH Central IA] GARANTÍA COBRADA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${settledOutsideCash}`
+          : `[AROH Central IA] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
         text: [
           isCharge ? 'COBRO / CIERRE DE GARANTÍA' : 'DEVOLUCIÓN / CIERRE DE GARANTÍA',
           `ID: ${guarantee.id}`,

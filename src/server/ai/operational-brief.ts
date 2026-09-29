@@ -72,7 +72,7 @@ export async function generateOperationalBrief(user: CurrentUser) {
           role: 'system',
           content:
             'Eres la capa de briefing operativo de Recepción del Hotel HW Libertad. ' +
-            'Recibirás una lista YA PRIORIZADA por reglas determinísticas de Central de Operaciones. ' +
+            'Recibirás una lista YA PRIORIZADA por reglas determinísticas de AROH Central IA. ' +
             'No cambies el orden, no inventes hechos, huéspedes, montos, reservas ni estados. ' +
             'Resume en español claro y ejecutivo qué exige atención ahora y por qué. ' +
             'Devuelve exactamente un punto por cada elemento recibido, en el mismo orden, sin agruparlos. ' +

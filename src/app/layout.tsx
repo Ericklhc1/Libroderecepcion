@@ -16,11 +16,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Central de Operaciones · Hotel HW Libertad',
-    template: '%s · Central de Operaciones · Hotel HW Libertad',
+    default: 'AROH Central IA · Hotel HW Libertad',
+    template: '%s · AROH Central IA · Hotel HW Libertad',
   },
   description:
-    'Central operativa digital del Hotel HW Libertad: turnos, recepción, caja, novedades, supervisión, reservas, trazabilidad e informes.',
+    'AROH Central IA para Hotel HW Libertad: turnos, recepción, caja, novedades, supervisión, reservas, trazabilidad e informes.',
   robots: { index: false, follow: false },
 };
 

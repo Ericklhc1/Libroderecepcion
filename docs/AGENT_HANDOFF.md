@@ -1,4 +1,13 @@
-# Relevo de agentes — Central de Operaciones · Hotel HW Libertad
+# Relevo de agentes — AROH Central IA · Hotel HW Libertad
+
+## 29/09/2026 · AROH 1.26.1 · identidad final del producto
+
+- Producto: **AROH Central IA**. El alojamiento se muestra debajo como contexto de propiedad.
+- La cabecera horizontal de v1.26.0 se conserva; sólo cambia la identidad visible de producto.
+- No volver a usar «Central de Operaciones» como marca del sistema. «Libro/Novedades» permanece como módulo interno.
+- Branding alineado en UI, metadatos, correos, Fronti, términos, arqueos e icono accesible.
+- No renombrar todavía repositorio, proyecto Vercel ni dominio; el subdominio se migra en una fase separada.
+- Sin migración Prisma. Release objetivo: **v1.26.1**.
 
 ## 29/09/2026 · Central 1.26.0 · shell horizontal y soporte
 

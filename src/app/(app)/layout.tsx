@@ -91,7 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
               <span className="hidden min-w-0 xl:block">
                 <span className="block truncate text-[0.62rem] font-semibold uppercase tracking-wide text-gold-700">
-                  Central de Operaciones
+                  AROH Central IA
                 </span>
                 <span className="block max-w-44 truncate text-sm font-semibold text-petrol-950">
                   {hotelName}
@@ -154,7 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="px-4 pb-24 lg:pb-4">
           <AiAttribution />
           <p className="mt-1 text-center text-[0.65rem] text-slate-400">
-            Central de Operaciones v{packageJson.version}
+            AROH Central IA v{packageJson.version}
           </p>
         </div>
       </div>

@@ -18,7 +18,11 @@ import {
   ResolveAlertQuickForm,
   Snooze30AlertForm,
 } from '@/components/operational/alert-actions';
-import { MarkAllReadForm, MarkOneReadForm } from './notification-actions';
+import {
+  MarkAllReadForm,
+  MarkOneReadForm,
+  OpenNotificationButton,
+} from './notification-actions';
 
 export const metadata = { title: 'Notificaciones' };
 export const dynamic = 'force-dynamic';
@@ -259,15 +263,16 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                     <p className="mt-0.5 text-sm text-slate-600">{notification.body}</p>
                   ) : null}
                   {notification.link ? (
-                    <Link
+                    <OpenNotificationButton
+                      id={notification.id}
                       href={notification.link}
-                      className="mt-1 inline-flex text-xs font-medium text-petrol-600 hover:underline"
-                    >
-                      Abrir
-                    </Link>
+                      unread={notification.readAt === null}
+                    />
                   ) : null}
                 </div>
-                {notification.readAt === null ? <MarkOneReadForm id={notification.id} /> : null}
+                {notification.readAt === null && !notification.link ? (
+                  <MarkOneReadForm id={notification.id} />
+                ) : null}
               </li>
             ))}
           </ul>

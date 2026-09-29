@@ -95,14 +95,14 @@ async function dispatchExternal(
       recipients: [user.email],
       subject:
         items.length === 1
-          ? `Central de Operaciones · ${items[0]!.title}`
-          : `Central de Operaciones · ${items.length} novedades nuevas`,
+          ? `AROH Central IA · ${items[0]!.title}`
+          : `AROH Central IA · ${items.length} novedades nuevas`,
       text: [
         `Hola ${user.name},`,
         '',
         items.length === 1
-          ? 'Tienes una nueva novedad en Central de Operaciones:'
-          : `Tienes ${items.length} novedades nuevas en Central de Operaciones:`,
+          ? 'Tienes una nueva novedad en AROH Central IA:'
+          : `Tienes ${items.length} novedades nuevas en AROH Central IA:`,
         '',
         ...items.flatMap((item, index) => [
           `${index + 1}. ${item.title}`,

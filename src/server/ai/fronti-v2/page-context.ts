@@ -368,6 +368,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     '/admin/parametros': ['parametros', 'Parámetros', ['consultar_contexto_pantalla', 'consultar_configuracion_operativa']],
     '/admin/puesta-en-cero': ['puesta-en-cero', 'Puesta en cero', ['consultar_contexto_pantalla']],
     '/admin/roles': ['roles', 'Roles y permisos', ['consultar_contexto_pantalla', 'consultar_usuarios']],
+    '/admin/soporte': ['soporte', 'Reportes y solicitudes', ['consultar_contexto_pantalla']],
     '/admin/turnos': ['turnos', 'Historial de turnos', ['consultar_contexto_pantalla', 'consultar_turnos', 'consultar_auditoria']],
     '/admin/usuarios': ['usuarios', 'Usuarios', ['consultar_contexto_pantalla', 'consultar_usuarios']],
   };

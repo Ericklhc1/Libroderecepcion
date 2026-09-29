@@ -11,9 +11,16 @@ import { RuleError } from '@/server/errors';
 import { DEFAULT_SETTINGS, type SettingKey } from '@/server/services/settings';
 import { ROLE_KEYS } from '@/lib/permissions';
 import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
+import { getFrontiConfig } from '@/server/ai/fronti-config';
 import {
+  CLOUDFLARE_FALLBACK_MODEL,
+  GROQ_FALLBACK_MODEL,
+  GROQ_PRIMARY_MODEL,
+  FrontiProviderError,
+  chatWithFrontiProvider,
   clearFrontiProviderSecret,
   getFrontiProviderCredentialView,
+  resolveFrontiProviderRuntime,
   saveFrontiProviderSecret,
   type FrontiProviderName,
 } from '@/server/ai/fronti-provider';
@@ -47,6 +54,8 @@ const NUMBER_LIMITS: Partial<Record<SettingKey, { min: number; max: number }>> =
   'fronti.memoryContextLimit': { min: 1, max: 30 },
   'fronti.modelHistoryLimit': { min: 4, max: 30 },
   'fronti.sessionActivityMinutes': { min: 5, max: 60 },
+  'fronti.proactiveCooldownHours': { min: 1, max: 72 },
+  'fronti.proactiveMaxFindingsPerRun': { min: 1, max: 8 },
 };
 
 function parseValue(key: SettingKey, raw: string): unknown {
@@ -314,5 +323,79 @@ export async function clearFrontiProviderCredentialAction(
       message:
         'Credencial guardada eliminada. Si existe una variable de entorno para ese proveedor, seguirá utilizándose.',
     };
+  });
+}
+
+
+export async function testFrontiProviderAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const actor = await requirePermission('system.configure');
+    const input = providerOnlySchema.parse({
+      provider: String(formData.get('provider') ?? ''),
+    });
+    const config = await getFrontiConfig();
+    const providerName = input.provider as FrontiProviderName;
+    const model =
+      providerName === 'cloudflare'
+        ? CLOUDFLARE_FALLBACK_MODEL
+        : providerName === 'groq'
+          ? (config.model.startsWith('openai/gpt-oss-') ? config.model : GROQ_PRIMARY_MODEL)
+          : providerName === 'openai'
+            ? config.model
+            : config.model || GROQ_FALLBACK_MODEL;
+    const runtime = await resolveFrontiProviderRuntime({
+      provider: providerName,
+      model,
+      reasoningEffort: 'low',
+    });
+
+    try {
+      const result = await chatWithFrontiProvider({
+        provider: runtime,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Prueba técnica de conectividad. Responde únicamente OK y no uses herramientas.',
+          },
+          { role: 'user', content: 'OK' },
+        ],
+        toolChoice: 'none',
+      });
+
+      await recordAudit({
+        entity: 'FrontiProviderCredential',
+        entityId: providerName,
+        action: AuditAction.CONFIGURAR,
+        summary: `Prueba de inferencia de Fronti correcta: ${providerName} · ${result.modelUsed}`,
+        user: actor,
+        after: { provider: providerName, model: result.modelUsed, ok: true },
+      });
+      return {
+        ok: true as const,
+        message: `Inferencia real correcta: ${providerName} respondió con ${result.modelUsed}.`,
+      };
+    } catch (error) {
+      const failure =
+        error instanceof FrontiProviderError ? error.failure : 'CAIDO';
+      const detail =
+        error instanceof FrontiProviderError && error.detail
+          ? ` · ${error.detail.slice(0, 280)}`
+          : '';
+      await recordAudit({
+        entity: 'FrontiProviderCredential',
+        entityId: providerName,
+        action: AuditAction.CONFIGURAR,
+        summary: `Prueba de inferencia de Fronti fallida: ${providerName} · ${failure}`,
+        user: actor,
+        after: { provider: providerName, ok: false, failure },
+      });
+      throw new RuleError(
+        `La inferencia real falló (${failure})${detail}. No se cambió ninguna credencial.`,
+      );
+    }
   });
 }

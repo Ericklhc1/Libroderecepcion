@@ -15,6 +15,7 @@ export async function listOperationalUsers() {
     where: {
       deletedAt: null,
       active: true,
+      hiddenFromSelectors: false,
       role: { operational: true },
     },
     select: {

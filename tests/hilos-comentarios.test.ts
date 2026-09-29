@@ -131,6 +131,15 @@ describe('menciones resueltas contra la base', () => {
     expect(r.usuarios[0]!.nombre).toBe('Elena Herrera');
   });
 
+  it('una cuenta oculta no se puede mencionar por nombre', async () => {
+    await prisma.user.update({
+      where: { id: mencionado.id },
+      data: { hiddenFromSelectors: true },
+    });
+    const r = await resolveMentions('@EHerrera ¿lo viste?');
+    expect(r.usuarios).toEqual([]);
+  });
+
   it('una cuenta desactivada no se menciona', async () => {
     // Mencionar a quien ya no trabaja acá generaría un aviso que nadie lee.
     await prisma.user.update({ where: { id: mencionado.id }, data: { active: false } });

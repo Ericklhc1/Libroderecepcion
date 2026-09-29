@@ -97,7 +97,12 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
     }),
         prisma.user.findMany({
-      where: { deletedAt: null, active: true, role: { operational: true } },
+      where: {
+        deletedAt: null,
+        active: true,
+        hiddenFromSelectors: false,
+        role: { operational: true },
+      },
       select: {
         id: true,
         name: true,

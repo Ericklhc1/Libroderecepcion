@@ -49,6 +49,7 @@ export async function resolveMentions(
           where: {
             active: true,
             deletedAt: null,
+            hiddenFromSelectors: false,
             username: { in: usuarios, mode: 'insensitive' },
           },
           select: { id: true, name: true, username: true },

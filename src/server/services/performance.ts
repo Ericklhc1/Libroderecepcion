@@ -44,7 +44,12 @@ export async function getTeamPerformance(
 ) {
   assertCanViewTeam(user);
   const people = await prisma.user.findMany({
-    where: { active: true, deletedAt: null, role: { operational: true } },
+    where: {
+      active: true,
+      deletedAt: null,
+      hiddenFromSelectors: false,
+      role: { operational: true },
+    },
     select: { id: true, name: true, role: { select: { name: true } } },
     orderBy: { name: 'asc' },
   });

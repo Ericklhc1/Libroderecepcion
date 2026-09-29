@@ -1,5 +1,12 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.32.1 · hotfix de inicialización Web Push
+
+- Corrige la creación/lectura del par VAPID en Production: el bloqueo asesor de PostgreSQL ya no devuelve una columna `void` que Prisma no puede deserializar.
+- Se conserva el mismo modelo Web Push de v1.32.0: suscripción por dispositivo, service worker, VAPID propio, cron de rescate y prueba real desde la campana.
+- No cambia la semántica de notificaciones ni permisos. Hotfix sin nueva migración.
+- Release objetivo: **v1.32.1**.
+
 ## Actualización 29/09/2026 · AROH 1.32.0 · Web Push nativo y PWA
 
 - AROH incorpora **Web Push real** mediante Push API + Service Worker + VAPID propio: las notificaciones pueden llegar al sistema operativo aunque la pestaña de AROH esté cerrada.

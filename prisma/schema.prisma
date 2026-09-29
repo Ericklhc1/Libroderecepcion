@@ -1528,6 +1528,11 @@ enum SupportRequestStatus {
   DESCARTADA
 }
 
+enum SupportRequestAttachmentKind {
+  CAPTURA
+  ARCHIVO
+}
+
 model SupportRequest {
   id              String               @id @default(cuid())
   correlationId   String               @unique
@@ -1543,6 +1548,7 @@ model SupportRequest {
   requesterEmail  String?
   context         Json
   attachmentNames String[]             @default([])
+  attachments     SupportRequestAttachment[]
   emailRecipient  String?
   emailSent       Boolean              @default(false)
   emailError      String?
@@ -1556,6 +1562,20 @@ model SupportRequest {
   @@index([status, createdAt])
   @@index([kind, createdAt])
   @@index([requestedById, createdAt])
+}
+
+model SupportRequestAttachment {
+  id               String                       @id @default(cuid())
+  supportRequestId String
+  supportRequest   SupportRequest               @relation(fields: [supportRequestId], references: [id], onDelete: Cascade)
+  kind             SupportRequestAttachmentKind
+  storageKey       String                       @unique
+  fileName         String
+  mimeType         String
+  size             Int
+  createdAt        DateTime                     @default(now())
+
+  @@index([supportRequestId, createdAt])
 }
 
 model OperationalAlarm {

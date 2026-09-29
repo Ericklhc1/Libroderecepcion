@@ -692,7 +692,7 @@ export async function executeFrontiPageContextTool(
           keys: inventory.keys
             .filter((key) => {
               if (!floor || floor === 'todos') return true;
-              return key.room?.number?.startsWith(floor) ?? false;
+              return key.roomNumber?.startsWith(floor) ?? false;
             })
             .slice(0, 120),
         },

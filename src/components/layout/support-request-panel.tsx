@@ -21,6 +21,14 @@ type AttachmentDraft = {
   dataUrl: string;
 };
 
+type StoredAttachmentDraft = {
+  kind: 'CAPTURA' | 'ARCHIVO';
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+};
+
 type SubmitState =
   | { status: 'idle' }
   | { status: 'sending' }
@@ -93,6 +101,52 @@ async function captureCurrentScreen(): Promise<AttachmentDraft> {
   }
 }
 
+async function archiveAttachment(
+  draft: AttachmentDraft,
+  kind: StoredAttachmentDraft['kind'],
+): Promise<StoredAttachmentDraft> {
+  const blob = await fetch(draft.dataUrl).then((response) => response.blob());
+  const initResponse = await fetch('/api/soporte/adjuntos/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: draft.name,
+      type: draft.type,
+      size: blob.size,
+      kind,
+    }),
+  });
+  const init = (await initResponse.json().catch(() => ({}))) as {
+    error?: string;
+    storageKey?: string;
+    fileName?: string;
+    mimeType?: string;
+    size?: number;
+    kind?: StoredAttachmentDraft['kind'];
+    uploadUrl?: string;
+  };
+  if (!initResponse.ok || !init.uploadUrl || !init.storageKey) {
+    throw new Error(init.error || 'No se pudo preparar el archivado interno.');
+  }
+
+  const upload = await fetch(init.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': init.mimeType || draft.type },
+    body: blob,
+  });
+  if (!upload.ok) {
+    throw new Error(`El almacenamiento interno respondió ${upload.status}.`);
+  }
+
+  return {
+    kind: init.kind || kind,
+    storageKey: init.storageKey,
+    fileName: init.fileName || draft.name,
+    mimeType: init.mimeType || draft.type,
+    size: init.size || blob.size,
+  };
+}
+
 export function SupportRequestPanel({
   version,
   hotelName,
@@ -162,6 +216,19 @@ export function SupportRequestPanel({
 
     setState({ status: 'sending' });
     try {
+      const drafts: Array<{ draft: AttachmentDraft; kind: StoredAttachmentDraft['kind'] }> = [];
+      if (screenshot) drafts.push({ draft: screenshot, kind: 'CAPTURA' });
+      if (attachment) drafts.push({ draft: attachment, kind: 'ARCHIVO' });
+
+      const storedAttachments: StoredAttachmentDraft[] = [];
+      for (const item of drafts) {
+        try {
+          storedAttachments.push(await archiveAttachment(item.draft, item.kind));
+        } catch {
+          // El reporte no depende del storage: conserva el envío principal y el correo.
+        }
+      }
+
       const response = await fetch('/api/soporte/solicitud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,6 +239,7 @@ export function SupportRequestPanel({
           description: description.trim(),
           screenshot,
           attachment,
+          storedAttachments,
           context: {
             pathname: window.location.pathname,
             search: window.location.search,
@@ -187,12 +255,29 @@ export function SupportRequestPanel({
           },
         }),
       });
-      const payload = (await response.json()) as { message?: string; error?: string };
+      const payload = (await response.json()) as {
+        message?: string;
+        error?: string;
+        mailSent?: boolean;
+        storedAttachmentCount?: number;
+      };
       if (!response.ok) throw new Error(payload.error || 'No se pudo enviar la solicitud.');
+
+      const storedCount = payload.storedAttachmentCount ?? storedAttachments.length;
+      const missedCount = Math.max(0, drafts.length - storedCount);
+      let message = payload.message || 'Solicitud enviada.';
+      if (storedCount > 0) {
+        message += ` ${storedCount === 1 ? 'El adjunto quedó' : 'Los adjuntos quedaron'} disponible${storedCount === 1 ? '' : 's'} en la bandeja.`;
+      }
+      if (missedCount > 0) {
+        message += payload.mailSent
+          ? ` ${missedCount === 1 ? 'Un adjunto no pudo' : `${missedCount} adjuntos no pudieron`} archivarse internamente, pero ${missedCount === 1 ? 'se incluyó' : 'se incluyeron'} en el correo.`
+          : ` ${missedCount === 1 ? 'Un adjunto no pudo' : `${missedCount} adjuntos no pudieron`} archivarse internamente y el correo tampoco salió; conserva el archivo para reintentarlo si hace falta.`;
+      }
 
       setState({
         status: 'ok',
-        message: payload.message || 'Solicitud enviada.',
+        message,
       });
       setSubject('');
       setDescription('');

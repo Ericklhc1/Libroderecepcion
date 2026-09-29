@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · usuarios ocultos operativos · versión candidata **v1.28.0**
+Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata **v1.29.0**
 
 ## Estados canónicos
 
@@ -32,28 +32,31 @@ Actualizado: **2026-09-29** · usuarios ocultos operativos · versión candidata
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
 | Panel Reportar / solicitar | `PRODUCTION` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 | Fronti contextual transversal | `PRODUCTION` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
-| Usuarios ocultos | `PR_ABIERTO` | v1.28.0 · `feature/usuarios-ocultos-v1-28-0` | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
+| Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
+| Bandeja interna de soporte | `EN_DESARROLLO` | v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 
-**AROH 1.28.0** · rama **`feature/usuarios-ocultos-v1-28-0`**
+**AROH 1.29.0** · rama **`feat/support-inbox-1-29-0`**
 
-Objetivo: permitir que Administración marque una cuenta como **Oculta** sin desactivarla ni alterar su rol.
+Objetivo: convertir **Reportar / solicitar** en un flujo trazable dentro de AROH, sin depender del correo como única evidencia.
 
 Incluye:
-- nuevo campo aditivo `User.hiddenFromSelectors`, predeterminado en `false`;
-- checkbox y distintivo **Oculto** en Administración → Usuarios;
-- exclusión de selectores generales, responsables, incorporación manual a turnos, Supervisión, Chat nuevo, alarmas individuales/grupales y menciones por `@usuario`;
-- conservación de login, permisos, operación propia, historial y trazabilidad;
-- conservación deliberada de destinatarios automáticos/globales y de referencias ya existentes;
-- regresiones para operación propia, avisos globales y menciones;
-- migración `20260929173000_usuario_oculto_operacion`.
+- modelo `SupportRequest` persistente en Neon;
+- bandeja `/admin/soporte` con búsqueda, filtros, contexto y trazabilidad;
+- permisos `support.view` y `support.manage`;
+- Administrador de sistema habilitado por defecto y demás roles sólo por concesión explícita;
+- estados y resolución auditada;
+- SMTP conservado como copia de aviso;
+- Fronti contextualizado también dentro de la bandeja;
+- sin blobs en Neon: los adjuntos se mantienen en el canal de correo actual.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
-- revisión/merge del PR a `main`;
+- merge a `main`;
+- migración Production;
 - despliegue Vercel Production;
-- verificación de la migración y comportamiento desplegado.
+- verificación de la bandeja, permisos y envío.
 
 ## Infraestructura vigente
 
@@ -64,7 +67,7 @@ PENDIENTE antes de Production:
 - CI usa PostgreSQL efímero y nunca Neon Production.
 - Neon debe mantener una única rama alojada `production`.
 - Toda actualización de Production incrementa SemVer.
-- El subdominio nuevo se configurará después de estabilizar v1.27.0; no se cambia DNS dentro de este PR.
+- El subdominio nuevo se configurará después de estabilizar v1.29.0; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 

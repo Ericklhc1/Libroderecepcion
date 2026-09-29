@@ -393,6 +393,7 @@ export async function changeGuaranteeState(
           reservationReferenceId: guarantee.reservationReferenceId,
           reservationCode: guarantee.reservationReference?.code ?? null,
           reference: `Cobro garantía · ${input.settlementConcept?.trim() || input.applicationReason?.trim() || reference}`,
+          roomNumber: guarantee.roomNumber,
           stayId: guarantee.stayId,
           currency: guarantee.currency,
           amount: settledOutsideCash,
@@ -417,7 +418,7 @@ export async function changeGuaranteeState(
           ? `[Central de Operaciones] GARANTÍA COBRADA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${settledOutsideCash}`
           : `[Central de Operaciones] DEVOLUCIÓN GARANTÍA · ${guaranteeLabel(guarantee)} · ${guarantee.currency} ${refundable}`,
         text: [
-          'DEVOLUCIÓN / CIERRE DE GARANTÍA',
+          isCharge ? 'COBRO / CIERRE DE GARANTÍA' : 'DEVOLUCIÓN / CIERRE DE GARANTÍA',
           `ID: ${guarantee.id}`,
           `Fecha/hora: ${operationalMailTimestamp(new Date())}`,
           `Procesado por: ${user.name} (ID ${user.id})`,

@@ -1,5 +1,14 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
+
+- Soporte reutiliza el R2 privado ya existente; no introducir blobs en Neon ni otro proveedor de almacenamiento.
+- `/api/soporte/adjuntos/init` sólo firma la subida. El navegador hace PUT directo a R2; no exigir `isR2Operational()` porque ese sondeo mide conectividad servidor→R2 y puede fallar aunque la transferencia directa del navegador sea viable.
+- Los objetos archivados se registran como `SupportRequestAttachment`; `attachmentNames` queda como inventario compatible con registros anteriores y con el respaldo por correo.
+- `/api/soporte/adjuntos/[attachmentId]` exige `support.view` y responde con redirect a GET temporal firmado; no volver a proxificar el binario por Vercel.
+- Si la subida directa falla, el `SupportRequest` no debe perderse: el archivo conserva el correo como respaldo.
+- Migración: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
 ## 29/09/2026 · AROH 1.30.0 · adjuntos de soporte
 
 - `SupportRequestAttachment` conserva metadatos; los binarios viven en R2 privado, nunca en Neon.

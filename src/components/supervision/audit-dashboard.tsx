@@ -308,7 +308,7 @@ export function SupervisionAuditDashboard({
                         ['Tasas', salesCostCenters.tasas],
                       ].map(([label, value]) => (
                         <div key={String(label)} className="rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200">
-                          <p className="text-xs text-slate-500">{label}</p>
+                          <p className="text-xs text-slate-500">{String(label)}</p>
                           <p className="mt-0.5 text-sm font-semibold text-petrol-900">
                             {clp(numberValue(value as Prisma.JsonValue))}
                           </p>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlarmClock,
@@ -85,7 +85,7 @@ export function DesktopNav({
   const items = groups.flatMap((group) => group.items);
   const openItem = items.find((item) => item.href === openHref && item.menu?.length);
 
-  function positionMenu(href: string) {
+  const positionMenu = useCallback((href: string) => {
     if (typeof window === 'undefined') return;
     const trigger = triggerRefs.current[href];
     if (!trigger) return;
@@ -105,16 +105,16 @@ export function DesktopNav({
       width,
       arrowLeft,
     });
-  }
+  }, []);
 
-  function closeMenu() {
+  const closeMenu = useCallback(() => {
     setOpenHref(null);
     setMenuPosition(null);
-  }
+  }, []);
 
   useEffect(() => {
     closeMenu();
-  }, [pathname]);
+  }, [pathname, closeMenu]);
 
   useEffect(() => {
     if (!openHref) return;
@@ -143,7 +143,7 @@ export function DesktopNav({
       window.removeEventListener('resize', onViewportChange);
       window.removeEventListener('scroll', onViewportChange, true);
     };
-  }, [openHref]);
+  }, [openHref, closeMenu, positionMenu]);
 
   return (
     <div

@@ -162,6 +162,7 @@ export function SupportRequestPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          correlationId: crypto.randomUUID(),
           kind,
           subject: subject.trim(),
           description: description.trim(),
@@ -172,6 +173,7 @@ export function SupportRequestPanel({
             search: window.location.search,
             href: window.location.href,
             userAgent: navigator.userAgent,
+            platform: navigator.platform || 'desconocida',
             language: navigator.language,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -375,7 +377,7 @@ export function SupportRequestPanel({
               ) : null}
 
               <div className="mt-4 rounded-xl bg-petrol-50 px-3 py-2.5 text-xs leading-4 text-petrol-800 ring-1 ring-petrol-100">
-                Se enviarán automáticamente: módulo/ruta, versión, alojamiento, navegador, zona horaria, tamaño de ventana y pantalla. No se adjunta contenido de otros módulos por detrás.
+                Se enviarán automáticamente: referencia de soporte, módulo/ruta, versión, alojamiento, navegador/plataforma, zona horaria, tamaño de ventana y estado de turno cuando corresponda. No se adjunta contenido de otros módulos por detrás.
               </div>
 
               {state.status === 'ok' ? (

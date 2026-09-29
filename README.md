@@ -1,4 +1,4 @@
-# Central de Operaciones · Hotel HW Libertad
+# AROH Central IA · Hotel HW Libertad
 
 Plataforma operativa interna del Hotel HW Libertad. Centraliza turnos,
 entregas, Novedades, Caja, llaves, Supervisión, Central de Reservas,

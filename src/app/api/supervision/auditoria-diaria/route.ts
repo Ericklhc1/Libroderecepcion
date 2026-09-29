@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
+import { calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   mergeSupervisionAuditReport,
   parseSupervisionReport,
@@ -13,12 +14,13 @@ export const maxDuration = 60;
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
-function businessDateFrom(value: FormDataEntryValue | null): Date {
+function businessDateFrom(value: FormDataEntryValue | null, reportedBusinessDate: string | null): Date {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+  if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new RuleError('La fecha auditada no es válida.');
   }
-  return new Date(`${raw}T00:00:00.000Z`);
+  const resolved = raw || reportedBusinessDate || calendarDateKey(hotelCalendarDate());
+  return new Date(`${resolved}T00:00:00.000Z`);
 }
 
 export async function POST(request: Request) {
@@ -38,12 +40,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const businessDate = businessDateFrom(formData.get('businessDate'));
-    const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = await parseSupervisionReport(file.name, bytes);
+    const businessDate = businessDateFrom(formData.get('businessDate'), parsed.reportedBusinessDate);
+    const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
 
-    if (parsed.reportedBusinessDate && parsed.reportedBusinessDate !== selectedBusinessDate) {
+    if (
+      typeof formData.get('businessDate') === 'string' &&
+      String(formData.get('businessDate')).trim() &&
+      parsed.reportedBusinessDate &&
+      parsed.reportedBusinessDate !== selectedBusinessDate
+    ) {
       throw new RuleError(
         `La fecha seleccionada es ${selectedBusinessDate}, pero el informe parece corresponder a ${parsed.reportedBusinessDate}. Corrige la fecha antes de cargarlo.`,
       );

@@ -4,10 +4,11 @@
 
 - El botón «Iniciar turno» ahora abre una preparación guiada; ya no activa Supervisión ni acepta prioridades libres.
 - `SupervisionShiftStatus.PREPARACION` representa esa fase. El turno se activa únicamente con `completeSupervisionOpening`.
-- Gate de apertura: arqueo personal de cada fondo activo, diferencias explicadas, siete informes PMS obligatorios y confirmación humana de pendientes, garantías/custodias y llaves.
+- Gate de apertura: arqueo personal de cada fondo activo, diferencias explicadas y confirmación humana de pendientes, garantías/custodias y llaves. Caja/garantías sí son barrera real.
 - La Caja reutiliza `CashAudit` y su validación física de garantías en efectivo; no existe una segunda caja de Supervisor.
-- Los informes de apertura pueden mezclar fechas. La API autodetecta la fecha cuando el asistente no la fuerza y la preparación considera los informes cargados durante el día hotelero actual.
-- Informes obligatorios: Formulario de auditoría, Habitaciones con actividad, Entradas, In House, Salidas, Cobros y Cargos diarios. No bloqueantes: Ventas por canal, Producción por habitación y Revenue.
+- Evidencia PMS: fotografía operacional de hoy mediante **Habitaciones con actividad** o, como respaldo equivalente, **Entradas + In House + Salidas**. El cierre del día anterior usa **Formulario de auditoría + Cobros + Cargos diarios**. Ventas por canal, Producción por habitación y Revenue son gestión no bloqueante.
+- Los informes pueden mezclar fechas y se reutilizan por fecha operativa. Si el PMS no entrega evidencia completa, se puede iniciar sólo con una contingencia escrita y auditada; no se deja el hotel sin Supervisión por una falla externa.
+- El lector PDF detecta anotaciones de enlace sobre el ID FNS como señal auxiliar: enlace en una entrada/salida = `PENDIENTE` (alta); ausencia de enlace = `PROCESADO_PROBABLE` sólo si el mismo PDF demuestra la convención mixta. No auto-confirma movimientos; color/subrayado quedan pendientes de validación con archivos reales.
 - La apertura guarda snapshot estructurado en `openingState`; las prioridades se generan desde objetos reales pendientes y los informes de gestión faltantes.
 - Migración: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
 

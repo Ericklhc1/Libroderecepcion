@@ -1,16 +1,17 @@
-# Libro Operativo de Recepción
+# Central de Operaciones · Hotel HW Libertad
 
-Sistema operativo digital para recepción hotelera. Reemplaza el libro de
-novedades en papel y centraliza turnos, entregas, novedades, incidencias,
-tareas, seguimientos, alertas, trazabilidad e indicadores.
+Plataforma operativa interna del Hotel HW Libertad. Centraliza turnos,
+entregas, Novedades, Caja, llaves, Supervisión, Central de Reservas,
+seguimientos, alertas, trazabilidad e informes.
 
-La prioridad del producto es que un recepcionista entienda en pocos segundos
-qué está pasando, qué debe hacer, qué quedó pendiente, qué está vencido y qué
-debe entregar al turno siguiente.
+«Libro/Novedades» permanece como una superficie concreta dentro de la Central;
+ya no es el nombre del producto completo. La prioridad sigue siendo que cada
+rol entienda en pocos segundos qué ocurre, qué debe hacer y qué debe continuar
+en el siguiente relevo.
 
 ## Production
 
-Versión actual: **v1.0.0**.
+Versión de esta rama: **v1.25.0**.
 
 Flujo único: `GitHub main → Vercel Production → Neon production`.
 Toda actualización entra por PR a `main`, debe superar la Compuerta y aumentar la versión SemVer. Una vez que Vercel sirve el SHA y la versión esperados, GitHub crea el tag `vX.Y.Z`.

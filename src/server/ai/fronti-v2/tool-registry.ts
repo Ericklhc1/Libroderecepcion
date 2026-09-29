@@ -109,7 +109,7 @@ export function canFrontiUseTool(
         'supervision.view',
       ]);
     case 'consultar_alertas':
-      return hasAnyPermission(user, ['alert.manage', 'metrics.view']);
+      return true;
     case 'consultar_auditoria':
       return hasAnyPermission(user, ['audit.view']);
     case 'consultar_usuarios':
@@ -373,7 +373,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'consultar_alertas',
     description:
-      'Consulta alertas operativas vivas con nivel, estado, origen y vencimiento. No modifica nada.',
+      'Consulta las alertas programables propias del usuario: fecha, destinatarios, estado y objeto original vinculado. Una alerta sólo llama la atención; no cambia la novedad, tarea o proceso de origen. No modifica nada.',
     strict: true,
     mode: 'read',
     area: 'alertas',

@@ -71,6 +71,28 @@ h4 {
   }
 }
 
+@keyframes nav-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.nav-dropdown-enter {
+  transform-origin: top center;
+  animation: nav-dropdown-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-dropdown-enter {
+    animation: none;
+  }
+}
+
 /*
   Impresión / PDF del cierre.
 

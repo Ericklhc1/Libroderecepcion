@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlarmClock,
   Banknote,
@@ -57,7 +58,7 @@ function badgeFor(
 
 function Badge({ value }: { value: number }) {
   return (
-    <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.65rem] font-semibold tabular text-petrol-950">
+    <span className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.72rem] font-semibold tabular text-petrol-950">
       {value > 99 ? '99+' : value}
     </span>
   );
@@ -72,146 +73,234 @@ export function DesktopNav({
 }) {
   const pathname = usePathname();
   const [openHref, setOpenHref] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    arrowLeft: number;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const items = groups.flatMap((group) => group.items);
   const openItem = items.find((item) => item.href === openHref && item.menu?.length);
 
-  useEffect(() => {
+  const positionMenu = useCallback((href: string) => {
+    if (typeof window === 'undefined') return;
+    const trigger = triggerRefs.current[href];
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const preferredLeft = rect.left + rect.width / 2 - width / 2;
+    const left = Math.max(12, Math.min(preferredLeft, window.innerWidth - width - 12));
+    const arrowLeft = Math.max(
+      18,
+      Math.min(rect.left + rect.width / 2 - left, width - 18),
+    );
+
+    setMenuPosition({
+      left,
+      top: rect.bottom + 8,
+      width,
+      arrowLeft,
+    });
+  }, []);
+
+  const closeMenu = useCallback(() => {
     setOpenHref(null);
-  }, [pathname]);
+    setMenuPosition(null);
+  }, []);
+
+  useEffect(() => {
+    closeMenu();
+  }, [pathname, closeMenu]);
 
   useEffect(() => {
     if (!openHref) return;
+
+    positionMenu(openHref);
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenHref(null);
+      if (event.key === 'Escape') closeMenu();
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
-      setOpenHref(null);
+      if (target && menuRef.current?.contains(target)) return;
+      closeMenu();
     };
+    const onViewportChange = () => positionMenu(openHref);
+
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
+
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
     };
-  }, [openHref]);
+  }, [openHref, closeMenu, positionMenu]);
 
   return (
-    <div ref={rootRef} className="hidden lg:block">
+    <div
+      ref={rootRef}
+      className="hidden border-t border-slate-100 bg-white lg:block"
+    >
       <nav
         aria-label="Navegación principal"
-        className="flex min-w-0 items-stretch overflow-x-auto border-t border-slate-100 bg-white px-3"
+        className="mx-auto w-full max-w-[1680px] overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {items.map((item) => {
-          const Icon = ICONS[item.icon];
-          const active = isActive(pathname, item.href);
-          const badge = badgeFor(badges, item.href);
-          const hasMenu = Boolean(item.menu?.length);
-          const open = openHref === item.href;
+        <div className="mx-auto flex w-max min-w-full items-stretch justify-center">
+          {items.map((item) => {
+            const Icon = ICONS[item.icon];
+            const active = isActive(pathname, item.href);
+            const badge = badgeFor(badges, item.href);
+            const hasMenu = Boolean(item.menu?.length);
+            const open = openHref === item.href;
 
-          const className = cn(
-            'relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-xs font-medium transition-colors',
-            active || open
-              ? 'bg-petrol-50 text-petrol-900'
-              : 'text-slate-600 hover:bg-slate-50 hover:text-petrol-800',
-          );
+            const className = cn(
+              'relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-[0.82rem] font-medium transition-[background-color,color] duration-150',
+              active || open
+                ? 'bg-petrol-50 text-petrol-900'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-petrol-800',
+            );
 
-          if (!hasMenu) {
+            if (!hasMenu) {
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={className}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{item.label}</span>
+                  {badge && badge > 0 ? <Badge value={badge} /> : null}
+                  {active ? (
+                    <span
+                      className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gold-500"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </Link>
+              );
+            }
+
             return (
-              <Link
+              <button
                 key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
+                ref={(node) => {
+                  triggerRefs.current[item.href] = node;
+                }}
+                type="button"
+                onClick={() => {
+                  if (open) {
+                    closeMenu();
+                    return;
+                  }
+                  setOpenHref(item.href);
+                  requestAnimationFrame(() => positionMenu(item.href));
+                }}
+                aria-expanded={open}
+                aria-haspopup="menu"
                 className={className}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{item.label}</span>
                 {badge && badge > 0 ? <Badge value={badge} /> : null}
+                <ChevronDown
+                  className={cn(
+                    'h-3.5 w-3.5 text-slate-400 transition-transform duration-200',
+                    open && 'rotate-180',
+                  )}
+                  aria-hidden="true"
+                />
                 {active ? (
                   <span
                     className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gold-500"
                     aria-hidden="true"
                   />
                 ) : null}
-              </Link>
+              </button>
             );
-          }
-
-          return (
-            <button
-              key={item.href}
-              type="button"
-              onClick={() => setOpenHref((value) => (value === item.href ? null : item.href))}
-              aria-expanded={open}
-              className={className}
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>{item.label}</span>
-              {badge && badge > 0 ? <Badge value={badge} /> : null}
-              <ChevronDown
-                className={cn('h-3.5 w-3.5 text-slate-400 transition-transform', open && 'rotate-180')}
-                aria-hidden="true"
-              />
-              {active ? (
-                <span
-                  className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gold-500"
-                  aria-hidden="true"
-                />
-              ) : null}
-            </button>
-          );
-        })}
+          })}
+        </div>
       </nav>
 
-      {openItem?.menu?.length ? (
-        <div className="border-t border-slate-200 bg-slate-50/95 px-5 py-3 shadow-inner">
-          <div
-            className="grid gap-x-8 gap-y-4"
-            style={{
-              gridTemplateColumns: `repeat(${Math.min(openItem.menu.length, 4)}, minmax(0, 1fr))`,
-            }}
-          >
-            {openItem.menu.map((section) => (
-              <section key={section.title} className="min-w-0">
-                <h2 className="mb-2 text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">
-                  {section.title}
-                </h2>
-                <ul className="space-y-1">
-                  {section.items.map((subitem) => {
-                    const subActive =
-                      pathname === (subitem.href.split(/[?#]/, 1)[0] ?? subitem.href);
-                    return (
-                      <li key={subitem.href}>
-                        <Link
-                          href={subitem.href}
-                          title={subitem.description}
-                          className={cn(
-                            'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
-                            subActive
-                              ? 'bg-white font-semibold text-petrol-900 ring-1 ring-slate-200'
-                              : 'text-slate-700 hover:bg-white hover:text-petrol-900',
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              'h-1.5 w-1.5 shrink-0 rounded-full border',
-                              subActive ? 'border-gold-600 bg-gold-500' : 'border-slate-400',
-                            )}
-                            aria-hidden="true"
-                          />
-                          <span className="truncate">{subitem.label}</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {openItem?.menu?.length && menuPosition && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label={`Opciones de ${openItem.label}`}
+              className="nav-dropdown-enter fixed z-[70] rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl"
+              style={{
+                left: menuPosition.left,
+                top: menuPosition.top,
+                width: menuPosition.width,
+              }}
+            >
+              <span
+                className="absolute -top-1.5 h-3 w-3 rotate-45 border-l border-t border-slate-200 bg-white"
+                style={{ left: menuPosition.arrowLeft - 6 }}
+                aria-hidden="true"
+              />
+              <div className="max-h-[min(70vh,34rem)] overflow-y-auto p-2">
+                {openItem.menu.map((section, sectionIndex) => (
+                  <section
+                    key={section.title}
+                    className={cn(
+                      'min-w-0',
+                      sectionIndex > 0 && 'mt-1 border-t border-slate-100 pt-1',
+                    )}
+                  >
+                    <h2 className="px-2 pb-1 pt-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      {section.title}
+                    </h2>
+                    <ul className="space-y-0.5">
+                      {section.items.map((subitem) => {
+                        const subActive =
+                          pathname === (subitem.href.split(/[?#]/, 1)[0] ?? subitem.href);
+                        return (
+                          <li key={subitem.href}>
+                            <Link
+                              href={subitem.href}
+                              title={subitem.description}
+                              role="menuitem"
+                              onClick={closeMenu}
+                              className={cn(
+                                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[0.82rem] transition-[background-color,color,box-shadow] duration-150',
+                                subActive
+                                  ? 'bg-petrol-50 font-semibold text-petrol-900 shadow-sm ring-1 ring-petrol-100'
+                                  : 'text-slate-700 hover:bg-slate-50 hover:text-petrol-900',
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'h-1.5 w-1.5 shrink-0 rounded-full border transition-colors',
+                                  subActive
+                                    ? 'border-gold-600 bg-gold-500'
+                                    : 'border-slate-300 bg-white',
+                                )}
+                                aria-hidden="true"
+                              />
+                              <span className="min-w-0 flex-1 truncate">{subitem.label}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

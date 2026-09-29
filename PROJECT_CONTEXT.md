@@ -1,5 +1,20 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.30.0 · Fronti proactivo y diagnóstico de proveedores
+
+- Fronti incorpora una capa **proactiva de fondo** sobre señales ya detectadas de forma determinística; la IA explica/correlaciona y propone revisión humana, pero **no cambia por sí sola** Caja, turnos, garantías, reservas, llaves ni estados operativos.
+- El barrido proactivo cruza alertas vivas, reservas próximas/con acción pendiente y señales de observabilidad repetidas. Los avisos se deduplican por huella y ventana de enfriamiento y se dirigen a Supervisión/Administrador.
+- Configuración nueva: `fronti.proactiveEnabled`, `fronti.proactiveCooldownHours` y `fronti.proactiveMaxFindingsPerRun`.
+- La cadena de fondo prioriza capacidad liviana/costo cero: Cloudflare Workers AI → Groq 20B → Groq 120B. Si la IA no responde, se conserva una explicación determinística mínima y la operación nunca se bloquea.
+- La sesión activa puede disparar revisión proactiva como máximo cada 5 minutos; Vercel Cron actúa como respaldo periódico incluso sin usuarios navegando.
+- El rescate de correo operativo deja de depender del cron diario y pasa a ejecutarse cada 15 minutos aprovechando la frecuencia disponible en Vercel Pro.
+- El diagnóstico de proveedor deja de interpretar todo 401/403 como «clave mala». `CLAVE_RECHAZADA` queda reservada para cuando el proveedor identifica expresamente la credencial; un rechazo genérico pasa a `ACCESO_RECHAZADO` porque puede ser credencial, permisos, cuenta o alcance.
+- Administración > Fronti muestra el origen efectivo de la credencial, el origen del Account ID de Cloudflare y permite **Probar inferencia real** sin sobrescribir secretos. Esto permite distinguir credencial, permisos, Account ID, modelo y petición.
+- Los errores de Cloudflare leen también el formato `errors[]` de su API, preservando el código/mensaje real para diagnóstico sin exponer secretos.
+- Los cron comparten autenticación centralizada y quedan preparados para `CRON_SECRET`; sin esa variable conservan compatibilidad con la firma de User-Agent de Vercel.
+- Se evaluó Vercel AI Gateway, pero no se incorpora a la ruta operativa mientras la política sea **costo monetario USD 0**: el gateway aporta enrutamiento/observabilidad, pero el consumo de modelos usa créditos o facturación del proveedor.
+- Sin migración Prisma ni modificación masiva de datos. Release objetivo: **v1.30.0**.
+
 ## Actualización 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
 
 - **Reportar / solicitar** persiste cada envío primero en Neon como `SupportRequest`; el correo deja de ser la única evidencia.

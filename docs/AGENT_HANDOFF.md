@@ -10,7 +10,7 @@
 - Los informes pueden mezclar fechas y se reutilizan por fecha operativa. Si el PMS no entrega evidencia completa, se puede iniciar sólo con una contingencia escrita y auditada; no se deja el hotel sin Supervisión por una falla externa.
 - El lector PDF detecta anotaciones de enlace sobre el ID FNS como señal auxiliar: enlace en una entrada/salida = `PENDIENTE` (alta); ausencia de enlace = `PROCESADO_PROBABLE` sólo si el mismo PDF demuestra la convención mixta. No auto-confirma movimientos; color/subrayado quedan pendientes de validación con archivos reales.
 - La apertura guarda snapshot estructurado en `openingState`; las prioridades se generan desde objetos reales pendientes y los informes de gestión faltantes.
-- Migración: `20260929110000_supervision_apertura_operativa`. Release objetivo: **v1.24.0**.
+- Migraciones: `20260929110000_supervision_apertura_operativa` + `20260929110500_supervision_apertura_unique_index`. Release objetivo: **v1.24.0**.
 
 ## Actualización 28/09/2026 · Libro 1.23.0 · Central de Reservas, Gerencia y correo individual
 

@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · Fronti contextual transversal · versión candidata **v1.27.0**
+Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata **v1.28.0**
 
 ## Estados canónicos
 
@@ -30,30 +30,31 @@ Actualizado: **2026-09-29** · Fronti contextual transversal · versión candida
 | Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
 | Identidad AROH Central IA | `PRODUCTION` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
-| Panel Reportar / solicitar | `EN_DESARROLLO` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
-| Fronti contextual transversal | `EN_DESARROLLO` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
+| Panel Reportar / solicitar | `PRODUCTION` | #190 · v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
+| Fronti contextual transversal | `PRODUCTION` | #188 · v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
+| Bandeja interna de soporte | `EN_DESARROLLO` | v1.28.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 
-**AROH 1.27.0** · rama **`feature/fronti-contextual-v1-27-0`**
+**AROH 1.28.0** · rama **`feat/support-inbox-1-28-0`**
 
-Objetivo: completar Fronti contextual en toda la aplicación sin convertirlo en un agente autónomo de fondo.
+Objetivo: convertir **Reportar / solicitar** en un flujo trazable dentro de AROH, sin depender del correo como única evidencia.
 
 Incluye:
-- catálogo determinístico de todas las rutas autenticadas;
-- contexto de módulo, sección, filtros y entidad dinámica;
-- lector `consultar_contexto_pantalla` con datos vivos desde servicios reales;
-- selección de herramientas sensible a la pantalla actual;
-- lectura contextual para perfiles operativos incluso durante recepción/cierre, manteniendo bloqueadas las propuestas mientras el gate no esté ACTIVE;
-- cobertura automática que falla si aparece una pantalla autenticada sin mapa de contexto;
-- sin migración de esquema ni cambios masivos de datos.
+- modelo `SupportRequest` persistente en Neon;
+- bandeja `/admin/soporte` con filtros y contexto;
+- permisos `support.view` y `support.manage`;
+- Administrador de sistema habilitado por defecto y demás roles sólo por concesión explícita;
+- estados y resolución auditada;
+- SMTP conservado como copia de aviso;
+- sin blobs en Neon: los adjuntos se mantienen en el canal de correo actual.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
+- migración Production;
 - despliegue Vercel Production;
-- health/smoke contextual en Production;
-- tag `v1.27.0`.
+- doble verificación de bandeja, permisos y ruta de envío.
 
 ## Infraestructura vigente
 
@@ -64,7 +65,7 @@ PENDIENTE antes de Production:
 - CI usa PostgreSQL efímero y nunca Neon Production.
 - Neon debe mantener una única rama alojada `production`.
 - Toda actualización de Production incrementa SemVer.
-- El subdominio nuevo se configurará después de estabilizar v1.27.0; no se cambia DNS dentro de este PR.
+- El subdominio nuevo se configurará después de estabilizar v1.28.0; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 

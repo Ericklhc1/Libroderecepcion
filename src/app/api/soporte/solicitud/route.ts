@@ -95,59 +95,99 @@ export async function POST(request: Request) {
     const label = payload.kind === 'ERROR' ? 'Reporte de problema' : 'Solicitud de función';
     const route = payload.context.pathname + payload.context.search;
 
-    const result = await sendMail({
-      to: recipient,
-      subject: `Central · ${label} · ${payload.subject}`,
-      text: [
-        label,
-        '',
-        `Asunto: ${payload.subject}`,
-        `Referencia: ${payload.correlationId}`,
-        `Fecha: ${new Date().toISOString()}`,
-        '',
-        'SOLICITANTE',
-        `Nombre: ${user.name}`,
-        `Usuario: ${account?.username ?? '—'}`,
-        `Rol: ${user.roleName}`,
-        `Correo: ${account?.email ?? 'sin correo registrado'}`,
-        '',
-        'CONTEXTO AUTOMÁTICO',
-        `Alojamiento: ${payload.context.hotelName}`,
-        `Versión: ${payload.context.version}`,
-        `Ruta: ${route}`,
-        `URL: ${payload.context.href}`,
-        `Navegador: ${payload.context.userAgent}`,
-        `Plataforma: ${payload.context.platform}`,
-        `Idioma: ${payload.context.language}`,
-        `Zona horaria: ${payload.context.timezone}`,
-        `Ventana: ${payload.context.viewport}`,
-        `Pantalla: ${payload.context.screen}`,
-        `Estado de turno: ${operationGate.mode}`,
-        `Turno activo: ${operationGate.shiftId ?? '—'}`,
-        `Entrega relacionada: ${operationGate.handoverId ?? '—'}`,
-        '',
-        'DESCRIPCIÓN',
-        payload.description,
-        '',
-        attachments.length > 0
-          ? `Adjuntos: ${attachments.map((item) => item.filename).join(', ')}`
-          : 'Adjuntos: ninguno',
-      ].join('\n'),
-      attachments,
+    /*
+     * La bandeja interna es la fuente de verdad. El correo queda como aviso
+     * secundario: una caída SMTP no puede hacer desaparecer un reporte que el
+     * usuario ya envió desde AROH.
+     */
+    const supportRequest = await prisma.supportRequest.create({
+      data: {
+        correlationId: payload.correlationId,
+        kind: payload.kind,
+        subject: payload.subject,
+        description: payload.description,
+        requestedById: user.id,
+        requesterName: user.name,
+        requesterUser: account?.username ?? '—',
+        requesterRole: user.roleName,
+        requesterEmail: account?.email ?? null,
+        context: {
+          ...payload.context,
+          route,
+          operationMode: operationGate.mode,
+          shiftId: operationGate.shiftId ?? null,
+          handoverId: operationGate.handoverId ?? null,
+        },
+        attachmentNames: attachments.map((item) => item.filename),
+        emailRecipient: recipient,
+      },
     });
 
-    if (!result.sent) {
-      return NextResponse.json(
-        { error: `No se pudo enviar la solicitud: ${result.reason}` },
-        { status: 503 },
-      );
+    let mailSent = false;
+    let mailError: string | null = null;
+    try {
+      const result = await sendMail({
+        to: recipient,
+        subject: `AROH · ${label} · ${payload.subject}`,
+        text: [
+          label,
+          '',
+          `Asunto: ${payload.subject}`,
+          `Referencia: ${payload.correlationId}`,
+          `Fecha: ${supportRequest.createdAt.toISOString()}`,
+          '',
+          'SOLICITANTE',
+          `Nombre: ${user.name}`,
+          `Usuario: ${account?.username ?? '—'}`,
+          `Rol: ${user.roleName}`,
+          `Correo: ${account?.email ?? 'sin correo registrado'}`,
+          '',
+          'CONTEXTO AUTOMÁTICO',
+          `Alojamiento: ${payload.context.hotelName}`,
+          `Versión: ${payload.context.version}`,
+          `Ruta: ${route}`,
+          `URL: ${payload.context.href}`,
+          `Navegador: ${payload.context.userAgent}`,
+          `Plataforma: ${payload.context.platform}`,
+          `Idioma: ${payload.context.language}`,
+          `Zona horaria: ${payload.context.timezone}`,
+          `Ventana: ${payload.context.viewport}`,
+          `Pantalla: ${payload.context.screen}`,
+          `Estado de turno: ${operationGate.mode}`,
+          `Turno activo: ${operationGate.shiftId ?? '—'}`,
+          `Entrega relacionada: ${operationGate.handoverId ?? '—'}`,
+          '',
+          'DESCRIPCIÓN',
+          payload.description,
+          '',
+          attachments.length > 0
+            ? `Adjuntos: ${attachments.map((item) => item.filename).join(', ')}`
+            : 'Adjuntos: ninguno',
+          '',
+          'Bandeja interna: /admin/soporte',
+        ].join('\n'),
+        attachments,
+      });
+      mailSent = result.sent;
+      mailError = result.sent ? null : result.reason;
+    } catch (error) {
+      mailError = error instanceof Error ? error.message : 'Error de correo no identificado.';
     }
+
+    await prisma.supportRequest.update({
+      where: { id: supportRequest.id },
+      data: {
+        emailSent: mailSent,
+        emailError: mailError,
+      },
+    });
 
     return NextResponse.json({
       message:
         payload.kind === 'ERROR'
-          ? `Reporte enviado. Referencia: ${payload.correlationId}`
-          : `Solicitud enviada. Referencia: ${payload.correlationId}`,
+          ? `Reporte registrado. Referencia: ${payload.correlationId}`
+          : `Solicitud registrada. Referencia: ${payload.correlationId}`,
+      mailSent,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

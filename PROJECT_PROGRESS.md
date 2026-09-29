@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata **v1.29.0**
+Actualizado: **2026-09-29** · Fronti proactivo + diagnóstico real · versión candidata **v1.30.0**
 
 ## Estados canónicos
 
@@ -32,31 +32,32 @@ Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata 
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
 | Panel Reportar / solicitar | `PRODUCTION` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 | Fronti contextual transversal | `PRODUCTION` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
+| Fronti proactivo | `PR_ABIERTO` | #196 · v1.30.0 | Señales determinísticas + explicación IA, dedupe, cron y diagnóstico real de proveedores |
 | Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
-| Bandeja interna de soporte | `PR_ABIERTO` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Bandeja interna de soporte | `PRODUCTION` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 
-**AROH 1.29.0** · rama **`feat/support-inbox-1-29-0`**
+**AROH 1.30.0** · rama **`feature/fronti-proactive-v1-30-0`** · PR **#196**
 
-Objetivo: convertir **Reportar / solicitar** en un flujo trazable dentro de AROH, sin depender del correo como única evidencia.
+Objetivo: completar Fronti proactivo sin convertir la IA en autoridad operacional y corregir el diagnóstico demasiado amplio de Cloudflare.
 
 Incluye:
-- modelo `SupportRequest` persistente en Neon;
-- bandeja `/admin/soporte` con búsqueda, filtros, contexto y trazabilidad;
-- permisos `support.view` y `support.manage`;
-- Administrador de sistema habilitado por defecto y demás roles sólo por concesión explícita;
-- estados y resolución auditada;
-- SMTP conservado como copia de aviso;
-- Fronti contextualizado también dentro de la bandeja;
-- sin blobs en Neon: los adjuntos se mantienen en el canal de correo actual.
+- barrido transversal de alertas, reservas y señales de observabilidad;
+- deduplicación, enfriamiento y límite de hallazgos por ejecución;
+- disparadores no bloqueantes + cron de respaldo;
+- prueba de inferencia real por proveedor desde Administración;
+- distinción `CLAVE_RECHAZADA` vs `ACCESO_DENEGADO` en Cloudflare;
+- trazabilidad del origen efectivo de credencial y Account ID;
+- cron frecuente aprovechando Vercel Pro;
+- política de costo operativo de IA USD 0 preservada.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
-- migración Production;
-- despliegue Vercel Production;
-- verificación de la bandeja, permisos y envío.
+- deployment Vercel Production;
+- smoke de `/api/health/asistente` y prueba de inferencia real;
+- confirmar causa concreta de la degradación Cloudflare antes de tocar la credencial.
 
 ## Infraestructura vigente
 
@@ -74,7 +75,7 @@ PENDIENTE antes de Production:
 | Bloqueo | Efecto | Tratamiento |
 |---|---|---|
 | Neon Free | Protección/retención limitadas | Una sola rama + respaldos externos |
-| Límite diario de deployments Vercel Free | Puede frenar builds por exceso de despliegues | Sólo `main` despliega automáticamente |
+| Despliegues y consumo Vercel | Evitar costo/CPU innecesario pese a Pro | Sólo `main` despliega automáticamente; observar Fluid/cron antes de ampliar procesos |
 
 ## Regla de mantenimiento
 

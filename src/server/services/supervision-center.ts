@@ -18,7 +18,7 @@ import {
   auditOperationalPendingCount,
   parseSupervisionAuditReviewState,
 } from '@/domain/supervision-audit-review';
-import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
+import { addCalendarDateDays, calendarDateKey } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
   REQUIRED_SUPERVISION_AUDIT_REPORTS,
@@ -34,6 +34,7 @@ import {
   type InventoryFloor,
 } from '@/server/services/key-inventory';
 import { getSupervisionData } from '@/server/services/supervision';
+import { resolveOperationalBusinessDate } from '@/server/services/shifts';
 
 const OPEN_SUPERVISION_STATUSES = [
   SupervisionShiftStatus.PREPARACION,
@@ -191,7 +192,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   });
   if (!shift) throw new RuleError('No tienes una apertura de Supervisión en preparación.');
 
-  const businessDate = hotelCalendarDate();
+  const businessDate = await resolveOperationalBusinessDate();
   const auditDate = addCalendarDateDays(businessDate, -1);
 
   const [
@@ -1359,9 +1360,10 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
   if (!user.permissions.includes('supervision.center.view')) {
     throw new RuleError('No tienes permiso para consultar el Centro de Supervisión.');
   }
-  const [currentShift, lastClosedShift] = await Promise.all([
+  const [currentShift, lastClosedShift, businessDate] = await Promise.all([
     getMyOpenSupervisionShift(user.id),
     getLastClosedSupervisionShift(user.id),
+    resolveOperationalBusinessDate(),
   ]);
   const now = new Date();
   const sinceLastShift = lastClosedShift?.finishedAt ?? null;
@@ -1457,9 +1459,12 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     }),
     currentShift
       ? prisma.supervisionAuditImport.findMany({
-          where: { supervisionShiftId: currentShift.id },
+          where: {
+            supervisionShiftId: currentShift.id,
+            businessDate,
+          },
           include: { uploadedBy: { select: { id: true, name: true } } },
-          orderBy: { businessDate: 'desc' },
+          orderBy: { updatedAt: 'desc' },
           take: 7,
         })
       : Promise.resolve([]),
@@ -1553,6 +1558,8 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
 
   return {
     now,
+    businessDate,
+    businessDateKey: calendarDateKey(businessDate),
     currentShift,
     lastClosedShift,
     sinceLastShift,

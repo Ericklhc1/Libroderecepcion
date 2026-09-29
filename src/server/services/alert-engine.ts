@@ -358,90 +358,24 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
 export async function runAlertEngine(
   now = new Date(),
 ): Promise<{ created: number; resolved: number; reopened: number }> {
-  const candidates = await collectAlertCandidates(now);
-  const keys = candidates.map((c) => c.dedupeKey);
-
-  const existing = await prisma.alert.findMany({
-    where: { auto: true, dedupeKey: { in: keys.length > 0 ? keys : ['__none__'] } },
-    select: { id: true, dedupeKey: true, status: true, level: true },
-  });
-  const existingByKey = new Map(existing.map((a) => [a.dedupeKey, a]));
-
-  let created = 0;
-  let reopened = 0;
-
-  for (const candidate of candidates) {
-    const current = existingByKey.get(candidate.dedupeKey);
-    if (!current) {
-      await prisma.alert
-        .create({
-          data: {
-            dedupeKey: candidate.dedupeKey,
-            type: candidate.type,
-            level: candidate.level,
-            title: candidate.title,
-            message: candidate.message,
-            dueAt: candidate.dueAt ?? null,
-            entryId: candidate.entryId ?? null,
-            taskId: candidate.taskId ?? null,
-            followUpId: candidate.followUpId ?? null,
-            handoverId: candidate.handoverId ?? null,
-            departmentId: candidate.departmentId ?? null,
-            guaranteeId: candidate.guaranteeId ?? null,
-            auto: true,
-            status: AlertStatus.NUEVA,
-          },
-        })
-        .then(() => {
-          created += 1;
-        })
-        .catch((error: unknown) => {
-          if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === 'P2002'
-          ) {
-            return;
-          }
-          throw error;
-        });
-      continue;
-    }
-
-    if (current.status === AlertStatus.RESUELTA) {
-      await prisma.alert.update({
-        where: { id: current.id },
-        data: {
-          status: AlertStatus.NUEVA,
-          resolvedAt: null,
-          resolvedById: null,
-          resolutionNote: null,
-          level: candidate.level,
-          title: candidate.title,
-          message: candidate.message,
-          deletedAt: null,
-        },
-      });
-      reopened += 1;
-    } else if (current.level !== candidate.level) {
-      await prisma.alert.update({
-        where: { id: current.id },
-        data: { level: candidate.level, title: candidate.title, message: candidate.message },
-      });
-    }
-  }
-
-  const staleWhere: Prisma.AlertWhereInput = {
-    auto: true,
-    deletedAt: null,
-    status: { not: AlertStatus.RESUELTA },
-    ...(keys.length > 0 ? { dedupeKey: { notIn: keys } } : {}),
-  };
+  /*
+   * AROH 1.33.0:
+   * el motor deja de fabricar Alert a partir de tareas, novedades, seguimientos
+   * o condiciones que ya tienen un objeto canónico. Conservamos esta función
+   * como capa de compatibilidad porque varios flujos históricos la invocan,
+   * pero sólo hace housekeeping y cierra señales automáticas legadas.
+   */
   const stale = await prisma.alert.updateMany({
-    where: staleWhere,
+    where: {
+      auto: true,
+      deletedAt: null,
+      status: { not: AlertStatus.RESUELTA },
+    },
     data: {
       status: AlertStatus.RESUELTA,
       resolvedAt: now,
-      resolutionNote: 'Resuelta automáticamente: la condición de origen ya no se cumple.',
+      resolutionNote:
+        'Resuelta por AROH 1.33.0: la condición se consulta y gestiona en su objeto original.',
     },
   });
 
@@ -459,7 +393,7 @@ export async function runAlertEngine(
     data: { completedAt: now },
   });
 
-  return { created, resolved: stale.count, reopened };
+  return { created: 0, resolved: stale.count, reopened: 0 };
 }
 
 /**

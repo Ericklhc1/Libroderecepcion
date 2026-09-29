@@ -130,6 +130,24 @@ export function OperationalAlarmCreateForm({
         </Field>
       )}
 
+      {kind === 'RECORDATORIO' ? (
+        <Field
+          label="Repetición"
+          name="repeatMinutes"
+          hint="Opcional. Si no la atienden, AROH volverá a avisar con este intervalo."
+        >
+          <select name="repeatMinutes" defaultValue="0" className="input-base">
+            <option value="0">No repetir</option>
+            <option value="15">Cada 15 minutos</option>
+            <option value="30">Cada 30 minutos</option>
+            <option value="60">Cada 1 hora</option>
+            <option value="120">Cada 2 horas</option>
+            <option value="240">Cada 4 horas</option>
+            <option value="1440">Cada día</option>
+          </select>
+        </Field>
+      ) : null}
+
       {scope !== 'GLOBAL' ? (
         <fieldset className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
           <legend className="px-1 text-sm font-semibold text-petrol-900">
@@ -201,6 +219,7 @@ export function OperationalAlertEditDialog({
     title: string;
     note: string | null;
     dueAtLocal: string;
+    repeatMinutes: number | null;
   };
 }) {
   return (
@@ -222,6 +241,25 @@ export function OperationalAlertEditDialog({
         </Field>
         <Field label="Fecha y hora" name="dueAtLocal" required>
           <Input name="dueAtLocal" type="datetime-local" defaultValue={alert.dueAtLocal} required />
+        </Field>
+        <Field
+          label="Repetición"
+          name="repeatMinutes"
+          hint="Mientras siga pendiente, AROH volverá a notificar con este intervalo."
+        >
+          <select
+            name="repeatMinutes"
+            defaultValue={String(alert.repeatMinutes ?? 0)}
+            className="input-base"
+          >
+            <option value="0">No repetir</option>
+            <option value="15">Cada 15 minutos</option>
+            <option value="30">Cada 30 minutos</option>
+            <option value="60">Cada 1 hora</option>
+            <option value="120">Cada 2 horas</option>
+            <option value="240">Cada 4 horas</option>
+            <option value="1440">Cada día</option>
+          </select>
         </Field>
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>

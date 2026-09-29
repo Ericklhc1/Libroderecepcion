@@ -16,6 +16,7 @@ import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
 import {
   DEFAULT_NOTIFICATION_EMAIL_POLICY,
   getNotificationEmailPolicy,
+  notificationEmailPolicyLocked,
 } from '@/server/services/notification-email-policy';
 
 export const metadata = { title: 'Correo' };
@@ -164,7 +165,8 @@ export default async function MailConfigPage() {
           <p className="text-sm text-slate-600">
             La Central separa avisos operativos obligatorios de novedades opcionales. El correo
             registrado es el destino individual; la preferencia de cada usuario sólo puede silenciar
-            lo que aquí figure como «Según preferencia».
+            lo que aquí figure como «Según preferencia». Los eventos críticos y de acción requerida
+            están bloqueados como obligatorios; chat y alarmas están bloqueados sin correo para evitar ruido.
           </p>
           <EmailNotificationPolicyForm
             rows={Object.values(NotificationType).map((type) => ({
@@ -172,6 +174,7 @@ export default async function MailConfigPage() {
               label: NOTIFICATION_TYPE_LABEL[type],
               mode: notificationEmailPolicy[type],
               defaultMode: DEFAULT_NOTIFICATION_EMAIL_POLICY[type],
+              locked: notificationEmailPolicyLocked(type),
             }))}
           />
         </div>

@@ -401,6 +401,8 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   };
 }
 
+export type SupervisionOpeningReadiness = Awaited<ReturnType<typeof getSupervisionOpeningReadiness>>;
+
 export async function completeSupervisionOpening(
   user: CurrentUser,
   input: {

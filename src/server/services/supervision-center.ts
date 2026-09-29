@@ -193,6 +193,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
 
   const businessDate = hotelCalendarDate();
   const auditDate = addCalendarDateDays(businessDate, -1);
+  const monthStart = new Date(
+    Date.UTC(businessDate.getUTCFullYear(), businessDate.getUTCMonth(), 1),
+  );
 
   const [
     cashState,
@@ -236,7 +239,15 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     prisma.supervisionAuditImport.findMany({
       // Reutiliza evidencia válida aunque la haya cargado otro turno de Supervisión:
       // importa la fecha operativa que declara el informe, no cuándo se subió.
-      where: { businessDate: { in: [businessDate, auditDate] } },
+      where: {
+        OR: [
+          { businessDate: { in: [businessDate, auditDate] } },
+          {
+            businessDate: { gte: monthStart, lte: businessDate },
+            reportKinds: { has: 'VENTAS_PERIODO' },
+          },
+        ],
+      },
       select: {
         id: true,
         reportKinds: true,
@@ -350,7 +361,21 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
 
   const todayKinds = kindsForDate(todayKey);
   const auditKinds = kindsForDate(auditDateKey);
-  const presentReportKinds = Array.from(new Set([...todayKinds, ...auditKinds]));
+  const monthlyKinds = Array.from(
+    new Set(
+      reportRows
+        .filter(
+          (row) =>
+            row.businessDate >= monthStart &&
+            row.businessDate <= businessDate &&
+            row.reportKinds.includes('VENTAS_PERIODO'),
+        )
+        .flatMap((row) => row.reportKinds.filter((kind) => kind === 'VENTAS_PERIODO')),
+    ),
+  );
+  const presentReportKinds = Array.from(
+    new Set([...todayKinds, ...auditKinds, ...monthlyKinds]),
+  );
 
   // ACTIVIDAD es la fotografía operacional principal. El trío histórico
   // Entradas + In House + Salidas queda como respaldo, no como requisito adicional.
@@ -513,6 +538,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       presentKinds: presentReportKinds,
       todayKinds,
       auditKinds,
+      monthlyKinds,
       operationalPrimary: SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
       operationalFallback: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
       occupancyReady,
@@ -612,6 +638,18 @@ async function materializeOpeningReportEvidence(
         findingsByKey.clear();
         review.checks = {};
         review.findings = {};
+      }
+      if (row.reportKinds.includes('VENTAS_PERIODO')) {
+        for (const key of [...findingsByKey.keys()]) {
+          if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+            findingsByKey.delete(key);
+          }
+        }
+        for (const key of Object.keys(review.findings)) {
+          if (key.startsWith('sales-period:') || key.startsWith('cross:sales-period:')) {
+            delete review.findings[key];
+          }
+        }
       }
 
       for (const item of jsonList<{

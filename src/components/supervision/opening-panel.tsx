@@ -1,379 +1,278 @@
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, FileUp, KeyRound, ShieldCheck, WalletCards } from 'lucide-react';
-import { ActionForm } from '@/components/ui/form';
+import { AlertTriangle, Banknote, CheckCircle2, KeyRound, ListChecks } from 'lucide-react';
+import { ActionForm, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
-import { Badge, Chip } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
 import { LiveCashAuditDialog } from '@/components/cash/live-cash-forms';
 import { SupervisionAuditUpload } from '@/components/supervision/audit-upload';
 import { completeSupervisionOpeningAction } from '@/server/actions/supervision-center';
-import type { SupervisionOpeningReadiness } from '@/server/services/supervision-center';
-import { formatDateTime } from '@/lib/format';
+import { calendarDateKey } from '@/domain/time';
+import { SUPERVISION_REPORT_LABELS } from '@/domain/supervision-opening';
+import type { SupervisionBlock } from '@/server/services/supervision';
+import type { LiveCashState } from '@/server/services/live-cash';
+import type { getSupervisionOpeningState } from '@/server/services/supervision-center';
 
-function reportStatus(present: string[], kind: string) {
-  return present.includes(kind);
-}
+type OpeningState = Awaited<ReturnType<typeof getSupervisionOpeningState>>;
 
-function keyTone(missing: number, outOfService: number) {
-  return missing > 0 || outOfService > 0 ? 'pendiente' : 'resuelto';
+function money(currency: string, value: number | null) {
+  if (value === null) return '—';
+  return `${currency} ${value.toLocaleString('es-CL', { maximumFractionDigits: currency === 'USD' ? 2 : 0 })}`;
 }
 
 export function SupervisionOpeningPanel({
-  readiness,
+  opening,
+  blocks,
+  cashState,
 }: {
-  readiness: SupervisionOpeningReadiness;
+  opening: OpeningState;
+  blocks: SupervisionBlock[];
+  cashState: LiveCashState;
 }) {
-  const blocked =
-    readiness.blockers.cash > 0 ||
-    readiness.blockers.reports > 0;
+  const today = calendarDateKey(opening.today);
+  const auditDate = calendarDateKey(opening.auditDate);
+  const pendingRows = blocks.flatMap((block) =>
+    block.rows.map((row) => ({ ...row, blockTitle: block.title })),
+  );
 
   return (
     <section id="apertura-supervision" className="space-y-4">
       <Card>
-        <CardHeader
-          title="Apertura operacional de Supervisión"
-          action={<Badge tone="pendiente">Preparación</Badge>}
-        />
+        <CardHeader title="Apertura de Supervisión" action={<Badge tone="pendiente">Preparación</Badge>} />
         <div className="space-y-3 px-4 py-4">
-          <div className="flex gap-3 rounded-xl bg-gold-50 px-3 py-3 ring-1 ring-gold-200">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold-700" aria-hidden="true" />
-            <div>
-              <p className="font-medium text-petrol-900">Tu turno todavía no está activo.</p>
-              <p className="mt-0.5 text-sm text-slate-600">
-                La apertura registra qué operación recibiste. Completa Caja, garantías, llaves,
-                informes y revisión de pendientes; sólo entonces podrás confirmar el inicio.
-              </p>
-            </div>
-          </div>
-
+          <p className="text-sm text-slate-700">
+            Tu turno todavía no está activo. La apertura confirma qué operación recibes,
+            comprueba Caja y garantías, revisa llaves y carga la evidencia del PMS antes
+            de registrar formalmente el inicio.
+          </p>
           <div className="grid gap-2 sm:grid-cols-4">
-            <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Pendientes visibles</p>
-              <p className="text-lg font-semibold text-petrol-900">{readiness.pendingTotal}</p>
+            <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Caja y garantías</p>
+              <p className="mt-1 font-semibold text-petrol-900">{opening.cashReady ? '✓ Conforme' : 'Pendiente'}</p>
             </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Arqueos requeridos</p>
-              <p className="text-lg font-semibold text-petrol-900">
-                {readiness.cash.currencies.length - readiness.cash.missingCurrencies.length}/{readiness.cash.currencies.length}
-              </p>
+            <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Informes operativos</p>
+              <p className="mt-1 font-semibold text-petrol-900">{opening.reports.reportsReady ? '✓ Completos' : 'Pendientes'}</p>
             </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Garantías abiertas</p>
-              <p className="text-lg font-semibold text-petrol-900">{readiness.guarantees.length}</p>
+            <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Señales por revisar</p>
+              <p className="mt-1 font-semibold text-petrol-900">{pendingRows.length}</p>
             </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Informes obligatorios</p>
-              <p className="text-lg font-semibold text-petrol-900">
-                {readiness.reports.required.length - readiness.reports.missingRequired.length}/{readiness.reports.required.length}
-              </p>
+            <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">Inventarios de hoy</p>
+              <p className="mt-1 font-semibold text-petrol-900">{opening.keys.filter((row) => row.freshToday).length}/3 pisos</p>
             </div>
           </div>
         </div>
       </Card>
 
       <Card>
-        <CardHeader
-          title="1 · Estado operativo recibido"
-          action={
-            readiness.pendingTotal > 0
-              ? <Badge tone="pendiente">{readiness.pendingTotal} asunto(s)</Badge>
-              : <Badge tone="resuelto">Sin pendientes</Badge>
-          }
-        />
-        {readiness.pendingRows.length === 0 ? (
-          <div className="px-4 py-4 text-sm text-slate-600">
-            No hay señales, tareas ni seguimientos abiertos que debas recibir en este momento.
-          </div>
-        ) : (
-          <div className="max-h-80 overflow-y-auto border-t border-slate-100">
-            <ul className="divide-y divide-slate-100">
-              {readiness.pendingRows.map((row) => (
-                <li key={row.key} className="flex items-start gap-3 px-4 py-3">
-                  <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600" aria-hidden="true" />
+        <CardHeader title="1 · Estado operativo recibido" count={pendingRows.length} />
+        <div className="px-4 pb-4">
+          {pendingRows.length === 0 ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+              No hay señales abiertas que el Centro de Supervisión marque para revisión.
+            </p>
+          ) : (
+            <div className="max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl ring-1 ring-slate-200">
+              {pendingRows.map((row) => (
+                <div key={`${row.blockTitle}:${row.id}`} className="flex items-start gap-3 px-3 py-3">
+                  <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-medium text-slate-500">{row.ref}</span>
-                      <Chip>{row.group}</Chip>
-                    </div>
-                    <p className="mt-1 text-sm font-medium text-petrol-900">{row.title}</p>
+                    <p className="text-xs font-medium text-slate-500">{row.blockTitle}</p>
+                    <p className="text-sm font-medium text-petrol-900">{row.ref ? `${row.ref} · ` : ''}{row.title}</p>
                     {row.detail ? <p className="mt-0.5 text-xs text-slate-600">{row.detail}</p> : null}
                   </div>
-                  <Link
-                    href={row.href}
-                    className="shrink-0 text-xs font-semibold text-petrol-700 hover:underline"
-                  >
-                    Revisar
+                  <Link href={row.href} className="shrink-0 text-xs font-semibold text-petrol-700 hover:underline">
+                    Gestionar
                   </Link>
-                </li>
+                </div>
               ))}
-            </ul>
-          </div>
-        )}
-        <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-          Al iniciar, estos asuntos se fotografían como el estado recibido y las prioridades del turno
-          se generan desde ellos. No se crean duplicados.
-        </p>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            Esta lista se vuelve a capturar al confirmar la apertura; no se duplica como tareas nuevas.
+          </p>
+        </div>
       </Card>
 
       <Card>
         <CardHeader title="2 · Caja y garantías" />
-        <div className="space-y-4 px-4 py-4">
-          {readiness.cash.currencies.length === 0 ? (
-            <p className="text-sm text-slate-600">Caja no está habilitada en la configuración del hotel.</p>
+        <div className="space-y-3 px-4 pb-4">
+          <p className="text-sm text-slate-600">
+            El Supervisor hace su propio arqueo. Las garantías en efectivo se validan físicamente,
+            una por una, dentro del mismo arqueo.
+          </p>
+          {opening.cash.length === 0 ? (
+            <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-600 ring-1 ring-slate-200">
+              Caja no está habilitada porque no hay fondos fijos activos.
+            </p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              {readiness.cash.currencies.map((cash) => {
-                const guarantees = readiness.cash.guarantees.filter(
-                  (guarantee) => guarantee.currency.toUpperCase() === cash.currency,
-                );
-                const denominations = readiness.cash.denominations.filter(
-                  (denomination) => denomination.currency.toUpperCase() === cash.currency,
-                );
-                const differenceNeedsNote =
-                  Boolean(cash.audit) &&
-                  cash.audit!.difference !== 0 &&
-                  !cash.audit!.notes?.trim();
-
+              {opening.cash.map((row) => {
+                const denoms = cashState.denominations
+                  .filter((item) => item.currency === row.currency)
+                  .map((item) => ({ id: item.id, value: item.value, medium: item.medium }));
+                const guarantees = cashState.cashGuarantees
+                  .filter((item) => item.currency === row.currency)
+                  .map((item) => ({
+                    id: item.id,
+                    amount: item.amount,
+                    guestName: item.guestName,
+                    roomNumber: item.roomNumber,
+                    reference: item.reference,
+                  }));
                 return (
-                  <div key={cash.currency} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div key={row.currency} className="rounded-xl p-3 ring-1 ring-slate-200">
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <WalletCards className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-                          <p className="font-semibold text-petrol-900">Caja {cash.currency}</p>
-                          {cash.audit && !differenceNeedsNote
-                            ? <Badge tone={cash.audit.difference === 0 ? 'resuelto' : 'atencion'}>Arqueada</Badge>
-                            : <Badge tone="critico">Pendiente</Badge>}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Fondo fijo: {cash.currency} {cash.fund.toLocaleString('es-CL')}
+                        <p className="flex items-center gap-2 font-semibold text-petrol-900">
+                          <Banknote className="h-4 w-4" aria-hidden="true" /> {row.currency}
                         </p>
-                        {cash.audit ? (
-                          <p className="mt-1 text-xs text-slate-600">
-                            Contado {cash.currency} {cash.audit.countedAmount.toLocaleString('es-CL')}
-                            {' · '}diferencia {cash.currency} {cash.audit.difference.toLocaleString('es-CL')}
-                            {' · '}{formatDateTime(cash.audit.createdAt)}
-                          </p>
-                        ) : null}
+                        <p className="mt-1 text-xs text-slate-500">
+                          Fondo {money(row.currency, row.fund)} · {row.guaranteeCount} garantía(s)
+                        </p>
                       </div>
-                      <LiveCashAuditDialog
-                        currency={cash.currency}
-                        fund={cash.fund}
-                        denominations={denominations}
-                        guarantees={guarantees}
-                      />
+                      <Badge tone={row.ready ? 'resuelto' : 'pendiente'}>{row.ready ? 'Validado' : 'Pendiente'}</Badge>
                     </div>
-                    {differenceNeedsNote ? (
-                      <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 ring-1 ring-red-200">
-                        La diferencia del arqueo debe quedar explicada antes de iniciar Supervisión.
+                    {row.auditId ? (
+                      <p className="mt-2 text-xs text-slate-600">
+                        Contado {money(row.currency, row.counted)} · diferencia {money(row.currency, row.difference)}
+                        {!row.guaranteesCurrent ? ' · las garantías cambiaron y debes recontar' : ''}
                       </p>
                     ) : null}
-                    <p className="mt-2 text-xs text-slate-500">
-                      {guarantees.length} garantía(s) en efectivo se validan físicamente dentro de este arqueo.
-                    </p>
+                    <div className="mt-3">
+                      <LiveCashAuditDialog currency={row.currency} fund={row.fund} denominations={denoms} guarantees={guarantees} />
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
-
-          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-medium text-petrol-900">Garantías y custodias abiertas</p>
-                <p className="text-xs text-slate-500">
-                  Revisa el estado vigente. Las garantías en efectivo se verifican físicamente al arquear Caja.
-                </p>
-              </div>
-              <Badge tone={readiness.guarantees.length > 0 ? 'pendiente' : 'resuelto'}>
-                {readiness.guarantees.length}
-              </Badge>
-            </div>
-            {readiness.guarantees.length > 0 ? (
-              <div className="mt-3 max-h-52 overflow-y-auto">
-                <ul className="divide-y divide-slate-200 text-sm">
-                  {readiness.guarantees.map((guarantee) => (
-                    <li key={guarantee.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                      <span className="text-petrol-900">
-                        #{guarantee.humanId} · {guarantee.guestName ?? guarantee.reference ?? 'Sin referencia'}
-                        {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
-                      </span>
-                      <span className="text-xs tabular text-slate-500">
-                        {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')} · {guarantee.kind.toLocaleLowerCase('es-CL')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="3 · Llaves y elementos críticos" />
-        <div className="grid gap-3 px-4 py-4 sm:grid-cols-3">
-          {readiness.keys.map((row) => (
-            <div key={row.floor} className="rounded-xl border border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 font-medium text-petrol-900">
-                  <KeyRound className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-                  Piso {row.floor}
+        <CardHeader title="3 · Llaves" />
+        <div className="space-y-3 px-4 pb-4">
+          <p className="text-sm text-slate-600">
+            No se obliga al Supervisor a volver a contar 89 llaves si Recepción ya tomó inventario:
+            sí debe revisar el inventario vigente y cualquier excepción antes de asumir.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {opening.keys.map((row) => (
+              <div key={row.floor} className="rounded-xl p-3 ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 font-medium text-petrol-900">
+                    <KeyRound className="h-4 w-4" aria-hidden="true" /> Piso {row.floor}
+                  </p>
+                  <Badge tone={row.missing > 0 ? 'critico' : row.freshToday ? 'resuelto' : 'pendiente'}>
+                    {row.countId ? `${row.found}/${row.expected}` : 'Sin inventario'}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {row.countedAt ? (row.freshToday ? 'Tomado hoy' : 'Inventario anterior') : 'Sin inventario registrado'}
+                  {row.countedBy ? ` · ${row.countedBy}` : ''}
                 </p>
-                <Badge tone={keyTone(row.totals.missing, row.totals.outOfService)}>
-                  {row.totals.found}/{row.totals.expected}
-                </Badge>
+                {row.missing > 0 ? <p className="mt-1 text-xs font-medium text-red-700">{row.missing} faltante(s).</p> : null}
               </div>
-              <p className="mt-2 text-xs text-slate-600">
-                Faltantes: {row.totals.missing} · Fuera de servicio: {row.totals.outOfService}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {row.countedAt
-                  ? `Último inventario: ${formatDateTime(row.countedAt)} · ${row.countedBy ?? 'sin usuario'}`
-                  : 'Sin inventario registrado.'}
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
+          <Link href="/libro" className="inline-flex text-sm font-semibold text-petrol-700 hover:underline">
+            Abrir inventario de llaves
+          </Link>
         </div>
-        <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-          La apertura no inventa un conteo nuevo: te obliga a revisar el último inventario y sus excepciones.
-          Si hay una anomalía, se gestiona en Llaves antes o durante el turno según su impacto.
-        </p>
       </Card>
 
       <Card>
-        <CardHeader
-          title="4 · Informes operativos PMS"
-          action={
-            readiness.reports.missingRequired.length > 0
-              ? <Badge tone="critico">{readiness.reports.missingRequired.length} obligatorio(s) pendiente(s)</Badge>
-              : <Badge tone="resuelto">Núcleo completo</Badge>
-          }
-        />
-        <div className="space-y-4 px-4 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Obligatorios para iniciar</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {readiness.reports.required.map((kind) => {
-                const present = reportStatus(readiness.reports.presentKinds, kind);
-                return (
-                  <div
-                    key={kind}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 ${
-                      present
-                        ? 'bg-emerald-50 text-emerald-900 ring-emerald-200'
-                        : 'bg-red-50 text-red-900 ring-red-200'
-                    }`}
-                  >
-                    {present
-                      ? <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      : <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />}
-                    <span>{readiness.reports.labels[kind] ?? kind}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Gestión diaria · no bloquean la apertura
+        <CardHeader title="4 · Informes PMS del inicio del día" />
+        <div className="space-y-5 px-4 pb-4">
+          <div className="rounded-xl bg-petrol-50 p-3 text-sm text-petrol-900 ring-1 ring-petrol-100">
+            <p className="font-semibold">Fotografía operativa actual · {today}</p>
+            <p className="mt-1 text-xs">
+              Preferido: <strong>Habitaciones con actividad</strong>. Ya contiene entradas, ocupadas y salidas;
+              no tiene sentido exigir además los tres informes antiguos. Si no está disponible,
+              el respaldo válido es Entradas + In House + Salidas.
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {readiness.reports.optional.map((kind) => (
-                <Chip key={kind}>
-                  {reportStatus(readiness.reports.presentKinds, kind) ? '✓ ' : '○ '}
-                  {readiness.reports.labels[kind] ?? kind}
-                </Chip>
-              ))}
+            <p className="mt-2 text-xs">Estado: {opening.reports.occupancyReady ? '✓ completo' : 'pendiente'}.</p>
+          </div>
+          <SupervisionAuditUpload defaultBusinessDate={today} />
+
+          <div className="border-t border-slate-200 pt-4">
+            <p className="font-semibold text-petrol-900">Cierre y auditoría · {auditDate}</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Para la apertura se exigen Formulario de auditoría, Cobros y Cargos diarios.
+            </p>
+            {opening.reports.missingAudit.length > 0 ? (
+              <p className="mt-2 flex items-start gap-2 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                Faltan: {opening.reports.missingAudit.map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind).join(', ')}.
+              </p>
+            ) : (
+              <p className="mt-2 flex items-center gap-2 text-xs text-emerald-800">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Evidencia obligatoria completa.
+              </p>
+            )}
+            <div className="mt-3">
+              <SupervisionAuditUpload defaultBusinessDate={auditDate} />
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="mb-3 flex items-center gap-2">
-              <FileUp className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-              <div>
-                <p className="font-medium text-petrol-900">Subir informes del inicio del día</p>
-                <p className="text-xs text-slate-500">
-                  El Libro reconoce el tipo y la fecha de cada PDF. Los informes ya cargados hoy cuentan para
-                  la apertura y no necesitas volver a subirlos en otro turno de Supervisión.
-                </p>
-              </div>
-            </div>
-            <SupervisionAuditUpload
-              defaultBusinessDate={readiness.businessDateKey}
-              automaticBusinessDate
-            />
+          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
+            <p className="font-semibold text-slate-700">Gestión, no bloqueo</p>
+            <p className="mt-1">
+              Ventas por canal, Producción por habitación y Revenue siguen siendo requeridos para gestión diaria,
+              pero no impiden abrir el turno. Pendientes: {opening.reports.missingManagement.length
+                ? opening.reports.missingManagement.map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind).join(', ')
+                : 'ninguno'}.
+            </p>
           </div>
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="5 · Confirmar recepción e iniciar turno" />
-        <div className="space-y-4 px-4 py-4">
-          {blocked ? (
-            <div className="rounded-xl bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
-              <p className="font-semibold">Todavía no puedes iniciar.</p>
-              {readiness.cash.missingCurrencies.length > 0 ? (
-                <p className="mt-1">Falta tu arqueo de Caja: {readiness.cash.missingCurrencies.join(', ')}.</p>
-              ) : null}
-              {readiness.cash.unexplainedDifferences.length > 0 ? (
-                <p className="mt-1">
-                  Hay diferencias de Caja sin explicación: {readiness.cash.unexplainedDifferences.join(', ')}.
-                </p>
-              ) : null}
-              {readiness.reports.missingRequired.length > 0 ? (
-                <p className="mt-1">
-                  Faltan informes: {readiness.reports.missingRequired
-                    .map((kind) => readiness.reports.labels[kind] ?? kind)
-                    .join(', ')}.
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-              <p className="font-semibold">Controles bloqueantes completos.</p>
-              <p className="mt-1">
-                Confirma lo revisado para convertir esta preparación en tu turno activo de Supervisión.
+        <CardHeader title="5 · Confirmar recepción e iniciar" />
+        <ActionForm action={completeSupervisionOpeningAction} className="space-y-3 px-4 pb-4" refreshOnSuccess>
+          <input type="hidden" name="shiftId" value={opening.shift.id} />
+
+          <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+            <input type="checkbox" name="reviewedPending" required className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Revisé los {pendingRows.length} asunto(s) visibles que recibo y conozco cuáles requieren gestión o seguimiento.</span>
+          </label>
+
+          <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+            <input type="checkbox" name="reviewedKeys" required className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Revisé el inventario de llaves y las excepciones visibles de los pisos 4, 5 y 6.</span>
+          </label>
+
+          {!opening.reports.reportsReady ? (
+            <div className="rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200">
+              <p className="text-sm font-semibold text-amber-950">Contingencia de PMS</p>
+              <p className="mt-1 text-xs text-amber-900">
+                El hotel no puede quedar sin Supervisión porque el PMS o un informe no esté disponible.
+                Si debes iniciar sin evidencia completa, explica la contingencia; quedará en Auditoría.
               </p>
+              <Textarea
+                name="reportContingencyReason"
+                rows={3}
+                minLength={8}
+                placeholder="Ej.: PMS sin disponibilidad desde las 07:05; informes pendientes de emisión."
+              />
             </div>
-          )}
+          ) : null}
 
-          <ActionForm action={completeSupervisionOpeningAction} refreshOnSuccess className="space-y-3">
-            <input type="hidden" name="shiftId" value={readiness.shift.id} />
+          {!opening.cashReady ? (
+            <p className="rounded-lg bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
+              Caja/garantías todavía no están conformes. Este control sí es bloqueante.
+            </p>
+          ) : null}
 
-            <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input type="checkbox" name="reviewedPending" required className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Revisé los asuntos pendientes, señales, tareas y seguimientos que recibo al comenzar.
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input type="checkbox" name="reviewedGuarantees" required className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Verifiqué las garantías y custodias abiertas; las garantías en efectivo fueron validadas físicamente durante mi arqueo.
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input type="checkbox" name="reviewedKeys" required className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Revisé el último inventario de llaves y conozco sus faltantes o excepciones vigentes.
-              </span>
-            </label>
-
-            <div className="flex justify-end">
-              <SubmitButton
-                variant="gold"
-                pendingLabel="Iniciando turno…"
-                disabled={blocked}
-              >
-                CONFIRMAR E INICIAR SUPERVISIÓN
-              </SubmitButton>
-            </div>
-          </ActionForm>
-        </div>
+          <div className="flex justify-end">
+            <SubmitButton variant="gold" pendingLabel="Confirmando apertura…" disabled={!opening.cashReady}>
+              CONFIRMAR E INICIAR TURNO
+            </SubmitButton>
+          </div>
+        </ActionForm>
       </Card>
     </section>
   );

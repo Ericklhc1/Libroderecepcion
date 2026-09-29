@@ -1,5 +1,18 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.30.0 · Fronti proactivo y diagnóstico real
+
+- Fronti incorpora una capa **proactiva/event-driven** separada de la ejecución operacional: las reglas determinísticas detectan la señal y Fronti sólo la explica, correlaciona y propone revisión humana.
+- El barrido proactivo consume alertas vivas, reservas con acción/garantía/saldo pendiente y señales de observabilidad repetidas; nunca modifica Caja, turnos, garantías, reservas ni estados operativos.
+- Los hallazgos se deduplican mediante huella y ventana de enfriamiento; se notifican únicamente a Supervisión y Administrador de sistema y quedan auditados.
+- La inferencia de fondo prioriza proveedor liviano y conserva fallback; si la IA no responde, el aviso usa texto determinístico conservador en vez de perder la señal.
+- Eventos relevantes disparan evaluación no bloqueante y Vercel Cron actúa como red de seguridad. En Pro, correo operativo y Fronti se programan cuatro veces por hora.
+- Administración > Fronti muestra el **origen efectivo de la credencial**, el origen del Account ID de Cloudflare y permite «Probar inferencia real» sin reemplazar secretos.
+- Cloudflare distingue ahora **credencial rechazada** de **acceso denegado**. Un 401/403 de Workers AI puede deberse a permisos, alcance o Account ID; el sistema ya no lo etiqueta automáticamente como clave inválida.
+- `R2_ACCOUND_ID` continúa aceptado sólo como alias heredado; la consola lo identifica para facilitar la migración a `CLOUDFLARE_ACCOUNT_ID`.
+- Se añade autenticación común de cron compatible con `CRON_SECRET`, manteniendo el User-Agent de Vercel como compatibilidad cuando el secreto aún no existe.
+- Sin migración Prisma. Release objetivo: **v1.30.0**.
+
 ## Actualización 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
 
 - **Reportar / solicitar** persiste cada envío primero en Neon como `SupportRequest`; el correo deja de ser la única evidencia.

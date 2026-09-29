@@ -17,6 +17,7 @@ import { getRoomDetail } from '@/server/services/rooms';
 import { getLiveCashState } from '@/server/services/live-cash';
 import { getKeyInventory } from '@/server/services/keys';
 import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
+import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getMetrics, defaultRange } from '@/server/services/metrics';
 import {
@@ -28,6 +29,17 @@ import { getDiagnosticReport } from '@/server/services/diagnostics';
 import { getMailConfigView } from '@/server/services/mail-settings';
 import { getNotificationEmailPolicy } from '@/server/services/notification-email-policy';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
+import { getTeamPerformance } from '@/server/services/performance';
+import {
+  buildSupervisorReport,
+  reportDateRange,
+  type SupervisorReportType,
+} from '@/server/services/supervisor-reports';
+import {
+  addHotelCalendarDays,
+  hotelDateKey,
+  hotelWallDateTime,
+} from '@/domain/time';
 import { executeFrontiV2ReadTool } from './read-tools';
 import type { FrontiResolvedPageContext } from './page-context';
 
@@ -308,7 +320,7 @@ async function detailSnapshot(
   if (page.entityType === 'ReservationCode') {
     requireAny(
       user,
-      ['room.view', 'guest.view', 'guest.manage', 'reservation.center.view'],
+      ['room.view', 'guest.view', 'guest.manage'],
       'No tienes permiso para consultar reservas.',
     );
     const reservation = await getReservationOperationalContextByCode(page.entityId);
@@ -442,6 +454,146 @@ async function detailSnapshot(
   }
 
   return null;
+}
+
+function performanceRange(page: FrontiResolvedPageContext) {
+  const now = new Date();
+  const fallback = hotelWallDateTime(hotelDateKey(addHotelCalendarDays(now, -30)), 0);
+  const parseKey = (value: string | undefined, endOfDay = false) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const start = hotelWallDateTime(value, 0);
+    return endOfDay
+      ? new Date(addHotelCalendarDays(start, 1).getTime() - 1)
+      : start;
+  };
+  return {
+    from: parseKey(page.filters.desde) ?? fallback,
+    to: parseKey(page.filters.hasta, true) ?? now,
+  };
+}
+
+async function supervisionSectionSnapshot(
+  user: CurrentUser,
+  page: FrontiResolvedPageContext,
+): Promise<unknown> {
+  if (page.sectionKey === 'salud') {
+    requireAny(
+      user,
+      ['supervision.center.view'],
+      'No tienes permiso para consultar Salud operativa.',
+    );
+    const period: OperationalHealthPeriod =
+      page.filters.periodo === '7d' || page.filters.periodo === '30d'
+        ? page.filters.periodo
+        : 'today';
+    return getOperationalHealth(operationalHealthRange(period));
+  }
+
+  if (page.sectionKey === 'rendimiento') {
+    requireAny(
+      user,
+      ['supervision.performance.view'],
+      'No tienes permiso para consultar Rendimiento operativo.',
+    );
+    const range = performanceRange(page);
+    const selected = page.filters.usuario ?? '';
+    const query = (page.filters.q ?? '').toLocaleLowerCase('es-CL');
+    const rows = await getTeamPerformance(user, range);
+    return {
+      range,
+      selectedUserId: selected || null,
+      query: query || null,
+      rows: rows
+        .filter(
+          (row) =>
+            (!selected || row.user.id === selected) &&
+            (!query ||
+              [row.user.name, row.user.role.name, ...row.indicators.map((item) => item.label)]
+                .join(' ')
+                .toLocaleLowerCase('es-CL')
+                .includes(query)),
+        )
+        .map((row) => ({
+          user: row.user,
+          context: row.context,
+          indicators: row.indicators.map((indicator) => ({
+            key: indicator.key,
+            label: indicator.label,
+            numerator: indicator.numerator,
+            denominator: indicator.denominator,
+            value: indicator.value,
+            formula: indicator.formula,
+            source: indicator.source,
+            kind: indicator.kind,
+          })),
+          observations: row.observations.slice(0, 10),
+        })),
+      note:
+        'Indicadores explicables sin nota global ni ranking. Conserva fórmula, base de casos y contexto.',
+    };
+  }
+
+  if (page.sectionKey === 'informes') {
+    requireAny(
+      user,
+      ['supervision.view'],
+      'No tienes permiso para consultar Informes de Supervisión.',
+    );
+    const range = reportDateRange(page.filters.desde, page.filters.hasta);
+    const requested = page.filters.reporte;
+    const types: SupervisorReportType[] =
+      requested === 'estado' || requested === 'gimnasio' || requested === 'multas'
+        ? [requested]
+        : ['estado', 'gimnasio', 'multas'];
+    const reports = await Promise.all(types.map((type) => buildSupervisorReport(type, range)));
+    return {
+      range,
+      reports: reports.map((report) => ({
+        type: report.type,
+        title: report.title,
+        total: report.total,
+        summary: report.summary,
+        sampleLines: report.lines.slice(0, 15),
+      })),
+    };
+  }
+
+  if (page.sectionKey === 'auditorias') {
+    requireAny(
+      user,
+      ['supervision.audit.reserved'],
+      'No tienes permiso para consultar Auditorías reservadas.',
+    );
+    const recent = await prisma.checklistRun.findMany({
+      where: { deletedAt: null, mode: 'AUDITORIA_SORPRESA' },
+      select: {
+        id: true,
+        humanId: true,
+        templateName: true,
+        status: true,
+        resultSummary: true,
+        severity: true,
+        disclosure: true,
+        startedAt: true,
+        finishedAt: true,
+        runBy: { select: { name: true } },
+        _count: { select: { items: true, findings: true } },
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    });
+    return {
+      supervision: await safeRead(user, 'consultar_supervision', {}),
+      recentAudits: recent,
+    };
+  }
+
+  requireAny(
+    user,
+    ['supervision.view', 'supervision.center.view'],
+    'No tienes permiso para consultar Supervisión.',
+  );
+  return safeRead(user, 'consultar_supervision', {});
 }
 
 async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext) {
@@ -665,6 +817,18 @@ export async function executeFrontiPageContextTool(
     case 'caja': {
       requireAny(user, ['cash.view'], 'No tienes permiso para consultar Caja.');
       const state = await getLiveCashState(15);
+      const serviceSection =
+        page.sectionKey === 'gimnasio' || page.pathname === '/caja/gimnasio'
+          ? 'GIMNASIO'
+          : page.sectionKey === 'estacionamiento'
+            ? 'ESTACIONAMIENTO'
+            : null;
+      const services =
+        serviceSection === 'GIMNASIO'
+          ? await listGymPasses({ limit: 60 })
+          : serviceSection === 'ESTACIONAMIENTO'
+            ? await listParkingPasses({ limit: 60 })
+            : null;
       return {
         ...base,
         snapshot: {
@@ -672,6 +836,15 @@ export async function executeFrontiPageContextTool(
           movements: state.movements.slice(0, 15),
           cashGuarantees: state.cashGuarantees.slice(0, 30),
           audits: state.audits.slice(0, 12),
+          service: services
+            ? {
+                type: serviceSection,
+                total: services.total,
+                emitted: services.emitted,
+                voided: services.voided,
+                rows: services.rows.slice(0, 30),
+              }
+            : null,
         },
       };
     }
@@ -738,54 +911,11 @@ export async function executeFrontiPageContextTool(
       const days = [7, 30, 90].includes(requested) ? requested : 30;
       return { ...base, snapshot: await getMetrics(defaultRange(days)) };
     }
-    case 'supervision': {
-      requireAny(
-        user,
-        ['supervision.view', 'supervision.center.view'],
-        'No tienes permiso para consultar Supervisión.',
-      );
-      if (page.sectionKey === 'salud') {
-        const period: OperationalHealthPeriod =
-          page.filters.periodo === '7d' || page.filters.periodo === '30d'
-            ? page.filters.periodo
-            : 'today';
-        return {
-          ...base,
-          snapshot: await getOperationalHealth(operationalHealthRange(period)),
-        };
-      }
-      if (page.sectionKey === 'auditorias') {
-        const recent = await prisma.checklistRun.findMany({
-          where: { deletedAt: null, mode: 'AUDITORIA_SORPRESA' },
-          select: {
-            id: true,
-            humanId: true,
-            templateName: true,
-            status: true,
-            resultSummary: true,
-            severity: true,
-            disclosure: true,
-            startedAt: true,
-            finishedAt: true,
-            runBy: { select: { name: true } },
-            _count: { select: { items: true, findings: true } },
-          },
-          orderBy: { startedAt: 'desc' },
-          take: 20,
-        });
-        return {
-          ...base,
-          snapshot: {
-            supervision: await safeRead(user, 'consultar_supervision', {}),
-            recentAudits: recent,
-          },
-        };
-      }
+    case 'supervision':
       return {
         ...base,
-        snapshot: await safeRead(user, 'consultar_supervision', {}),
+        snapshot: await supervisionSectionSnapshot(user, page),
       };
-    }
     case 'auditorias':
       return { ...base, snapshot: null };
     case 'administracion':

@@ -3,6 +3,18 @@ import {
   type PermissionKey,
 } from '@/lib/permissions';
 
+export type NavSubItem = {
+  href: string;
+  label: string;
+  description?: string;
+  anyOf?: PermissionKey[];
+};
+
+export type NavMenuSection = {
+  title: string;
+  items: NavSubItem[];
+};
+
 export type NavItem = {
   href: string;
   label: string;
@@ -23,6 +35,8 @@ export type NavItem = {
     | 'admin';
   anyOf?: PermissionKey[];
   mobile?: boolean;
+  /** Navegación secundaria de escritorio. Nunca concede permisos. */
+  menu?: NavMenuSection[];
 };
 
 export type NavGroup = { title: string | null; items: NavItem[] };
@@ -34,6 +48,55 @@ const PRIMARY: NavItem[] = [
     label: 'Novedades',
     icon: 'book',
     mobile: true,
+    menu: [
+      {
+        title: 'Operación',
+        items: [
+          {
+            href: '/libro?clase=entry',
+            label: 'Novedades',
+            description: 'Pendientes que continúan entre turnos.',
+          },
+          {
+            href: '/libro?clase=entry&tipo=INCIDENCIA',
+            label: 'Incidencias',
+            description: 'Casos que requieren gestión y resolución.',
+          },
+          {
+            href: '/libro?clase=task',
+            label: 'Mis tareas',
+            description: 'Trabajo operativo asignado a tu cuenta.',
+          },
+        ],
+      },
+      {
+        title: 'Continuidad',
+        items: [
+          { href: '/tareas', label: 'Tareas', description: 'Vista especializada de tareas.' },
+          {
+            href: '/seguimientos',
+            label: 'Seguimientos',
+            description: 'Continuidad personal y de Supervisión.',
+          },
+          { href: '/alertas', label: 'Alertas', description: 'Señales activas y validaciones.' },
+        ],
+      },
+      {
+        title: 'Consulta',
+        items: [
+          {
+            href: '/historial',
+            label: 'Historial',
+            description: 'Registros resueltos y consulta histórica.',
+          },
+          {
+            href: '/notificaciones',
+            label: 'Notificaciones',
+            description: 'Avisos que recibió tu cuenta.',
+          },
+        ],
+      },
+    ],
   },
   {
     href: '/central-reservas',
@@ -41,6 +104,54 @@ const PRIMARY: NavItem[] = [
     mobileLabel: 'Reservas',
     icon: 'guest',
     anyOf: ['reservation.center.view'],
+    menu: [
+      {
+        title: 'Preparación',
+        items: [
+          {
+            href: '/central-reservas',
+            label: 'Bandeja completa',
+            description: 'Señales previas a la operación.',
+          },
+          {
+            href: '/central-reservas?vista=accion',
+            label: 'Requieren acción',
+            description: 'Garantías, saldos y pendientes.',
+          },
+        ],
+      },
+      {
+        title: 'Llegadas',
+        items: [
+          {
+            href: '/central-reservas?vista=24h',
+            label: 'Próximas 24 h',
+            description: 'Llegadas más inmediatas.',
+          },
+          {
+            href: '/central-reservas?vista=72h',
+            label: 'Próximas 72 h',
+            description: 'Preparación de los próximos tres días.',
+          },
+          {
+            href: '/central-reservas?vista=recientes',
+            label: 'Cambios recientes',
+            description: 'Reservas modificadas en las últimas 24 h.',
+          },
+        ],
+      },
+      {
+        title: 'Referencias',
+        items: [
+          {
+            href: '/huespedes',
+            label: 'Huéspedes y reservas',
+            description: 'Consulta de referencias operativas existentes.',
+            anyOf: ['guest.view', 'guest.manage'],
+          },
+        ],
+      },
+    ],
   },
   {
     href: '/caja',
@@ -48,6 +159,44 @@ const PRIMARY: NavItem[] = [
     icon: 'cash',
     anyOf: ['cash.view'],
     mobile: true,
+    menu: [
+      {
+        title: 'Caja',
+        items: [
+          { href: '/caja', label: 'Vista completa', description: 'Estado de la Caja y fondos.' },
+          {
+            href: '/caja?seccion=garantias',
+            label: 'Garantías',
+            description: 'Custodia, devolución y cobro.',
+          },
+          {
+            href: '/caja?seccion=movimientos',
+            label: 'Movimientos',
+            description: 'Ingresos, egresos y transferencias.',
+          },
+          {
+            href: '/caja?seccion=auditorias',
+            label: 'Arqueos',
+            description: 'Conteos e historial imprimible.',
+          },
+        ],
+      },
+      {
+        title: 'Servicios',
+        items: [
+          {
+            href: '/caja?seccion=gimnasio',
+            label: 'Gimnasio',
+            description: 'Folios emitidos y anulados.',
+          },
+          {
+            href: '/caja?seccion=estacionamiento',
+            label: 'Estacionamiento',
+            description: 'Tickets e historial.',
+          },
+        ],
+      },
+    ],
   },
   {
     href: '/turno',
@@ -56,6 +205,35 @@ const PRIMARY: NavItem[] = [
     icon: 'shift',
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
     mobile: true,
+    menu: [
+      {
+        title: 'Turno',
+        items: [
+          {
+            href: '/turno',
+            label: 'Estado y continuidad',
+            description: 'Recepción, operación, entrega y cierre.',
+          },
+          {
+            href: '/turno#abrir-turno',
+            label: 'Abrir / recibir',
+            description: 'Punto de entrada cuando corresponde relevo.',
+            anyOf: ['shift.start', 'shift.receive'],
+          },
+        ],
+      },
+      {
+        title: 'Consulta',
+        items: [
+          {
+            href: '/admin/turnos',
+            label: 'Historial de turnos',
+            description: 'Trazabilidad y regularización autorizada.',
+            anyOf: ['shift.manage'],
+          },
+        ],
+      },
+    ],
   },
   {
     href: '/llaves',
@@ -63,18 +241,99 @@ const PRIMARY: NavItem[] = [
     icon: 'key',
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
     mobile: true,
+    menu: [
+      {
+        title: 'Inventario físico',
+        items: [
+          { href: '/llaves?piso=todos', label: 'Todos los pisos', description: 'Consulta de las 89 habitaciones.' },
+          { href: '/llaves?piso=4', label: 'Piso 4', description: 'Habitaciones 401–429.' },
+          { href: '/llaves?piso=5', label: 'Piso 5', description: 'Habitaciones 501–530.' },
+          { href: '/llaves?piso=6', label: 'Piso 6', description: 'Habitaciones 601–630.' },
+        ],
+      },
+    ],
   },
   {
     href: '/avisos',
     label: 'Timers y recordatorios',
     mobileLabel: 'Avisos',
     icon: 'alarm',
+    menu: [
+      {
+        title: 'Avisos',
+        items: [
+          {
+            href: '/avisos',
+            label: 'Timers y recordatorios',
+            description: 'Alarmas personales, grupales y globales.',
+          },
+          {
+            href: '/notificaciones',
+            label: 'Notificaciones',
+            description: 'Historial de avisos de tu cuenta.',
+          },
+          {
+            href: '/alertas',
+            label: 'Alertas operativas',
+            description: 'Señales que requieren atención.',
+          },
+        ],
+      },
+    ],
   },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',
     icon: 'supervision',
     anyOf: ['supervision.center.view'],
+    menu: [
+      {
+        title: 'Dirección operativa',
+        items: [
+          {
+            href: '/supervision',
+            label: 'Centro de Supervisión',
+            description: 'Pendientes, controles y continuidad.',
+          },
+          {
+            href: '/supervision/tablero',
+            label: 'Tablero de asignación',
+            description: 'Distribución y seguimiento del trabajo.',
+          },
+        ],
+      },
+      {
+        title: 'Control',
+        items: [
+          {
+            href: '/supervision/auditorias',
+            label: 'Auditorías',
+            description: 'Auditorías sorpresa y medidas correctivas.',
+          },
+          {
+            href: '/supervision/informes',
+            label: 'Informes',
+            description: 'Estado, gimnasio y multas.',
+          },
+          {
+            href: '/supervision/salud',
+            label: 'Salud operativa',
+            description: 'Señales técnicas y de flujo observadas.',
+          },
+        ],
+      },
+      {
+        title: 'Gestión',
+        items: [
+          {
+            href: '/supervision/rendimiento',
+            label: 'Rendimiento',
+            description: 'Indicadores del equipo sin rankings.',
+            anyOf: ['supervision.performance.view'],
+          },
+        ],
+      },
+    ],
   },
 ];
 
@@ -93,6 +352,53 @@ const SYSTEM: NavItem[] = [
     label: 'Administración',
     icon: 'admin',
     anyOf: [...TECHNICAL_ADMIN_PERMISSIONS],
+    menu: [
+      {
+        title: 'Administración',
+        items: [
+          {
+            href: '/admin',
+            label: 'Inicio de Administración',
+            description: 'Accesos técnicos disponibles para tu rol.',
+          },
+          {
+            href: '/admin/usuarios',
+            label: 'Usuarios',
+            description: 'Cuentas y perfiles.',
+            anyOf: ['user.manage'],
+          },
+          {
+            href: '/admin/roles',
+            label: 'Roles y permisos',
+            description: 'Matriz de autorizaciones.',
+            anyOf: ['role.manage'],
+          },
+        ],
+      },
+      {
+        title: 'Configuración',
+        items: [
+          {
+            href: '/admin/parametros',
+            label: 'Parámetros',
+            description: 'Configuración general y operativa.',
+            anyOf: ['system.configure'],
+          },
+          {
+            href: '/admin/correo',
+            label: 'Correo',
+            description: 'Servidor de salida y destinatarios.',
+            anyOf: ['system.configure'],
+          },
+          {
+            href: '/admin/fronti',
+            label: 'Fronti',
+            description: 'Configuración vigente del asistente.',
+            anyOf: ['system.configure'],
+          },
+        ],
+      },
+    ],
   },
 ];
 
@@ -104,17 +410,41 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 
-function allowed(item: NavItem, permissions: PermissionKey[]): boolean {
+function allowed(item: { anyOf?: PermissionKey[] }, permissions: PermissionKey[]): boolean {
   return !item.anyOf || item.anyOf.some((permission) => permissions.includes(permission));
 }
 
+function visibleMenu(
+  menu: NavMenuSection[] | undefined,
+  permissions: PermissionKey[],
+): NavMenuSection[] | undefined {
+  if (!menu) return undefined;
+
+  const sections = menu
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => allowed(item, permissions)),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  return sections.length > 0 ? sections : undefined;
+}
+
 export function visibleNavItems(permissions: PermissionKey[]): NavItem[] {
-  return NAV_ITEMS.filter((item) => allowed(item, permissions));
+  return NAV_ITEMS.filter((item) => allowed(item, permissions)).map((item) => ({
+    ...item,
+    menu: visibleMenu(item.menu, permissions),
+  }));
 }
 
 export function visibleNavGroups(permissions: PermissionKey[]): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     title: group.title,
-    items: group.items.filter((item) => allowed(item, permissions)),
+    items: group.items
+      .filter((item) => allowed(item, permissions))
+      .map((item) => ({
+        ...item,
+        menu: visibleMenu(item.menu, permissions),
+      })),
   })).filter((group) => group.items.length > 0);
 }

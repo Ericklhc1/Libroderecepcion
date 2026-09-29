@@ -219,6 +219,7 @@ export async function runFactoryReset(
       count('Memorias de Fronti', await tx.ai_memory.deleteMany());
       count('Conversaciones de Fronti', await tx.ai_conversation.deleteMany());
       count('Observaciones de rendimiento', await tx.performanceObservation.deleteMany());
+      count('Reportes y solicitudes', await tx.supportRequest.deleteMany());
       count('Adjuntos', await tx.attachment.deleteMany());
       count('Reacciones de chat', await tx.chatReaction.deleteMany());
       count('Mensajes guardados de chat', await tx.chatSavedMessage.deleteMany());

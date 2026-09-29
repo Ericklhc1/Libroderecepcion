@@ -18,8 +18,8 @@ import {
 } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import {
-  beginSupervisionOpening,
-  completeSupervisionOpening,
+  beginSupervisionShiftOpening,
+  completeSupervisionShiftOpening,
   createSupervisionNote,
   deliverSupervisionShift,
   finishSupervisionShift,
@@ -49,11 +49,11 @@ function refresh() {
 
 export async function startSupervisionShiftAction(
   _state: ActionState | null,
-  formData: FormData,
+  _formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('supervision.shift.manage');
-    const shift = await beginSupervisionOpening(user);
+    const shift = await beginSupervisionShiftOpening(user);
     refresh();
     return {
       ok: true as const,
@@ -75,21 +75,19 @@ export async function completeSupervisionOpeningAction(
         reviewedPending: z.literal('on', {
           errorMap: () => ({ message: 'Confirma que revisaste el estado operativo recibido.' }),
         }),
-        reviewedGuarantees: z.literal('on', {
-          errorMap: () => ({ message: 'Confirma que verificaste garantías y custodias.' }),
-        }),
         reviewedKeys: z.literal('on', {
-          errorMap: () => ({ message: 'Confirma que revisaste el inventario y excepciones de llaves.' }),
+          errorMap: () => ({ message: 'Confirma que revisaste el inventario y las excepciones de llaves.' }),
         }),
+        reportContingencyReason: zOptionalString,
       }),
       formDataToObject(formData),
     );
 
-    const shift = await completeSupervisionOpening(user, {
+    const shift = await completeSupervisionShiftOpening(user, {
       shiftId: input.shiftId,
       reviewedPending: true,
-      reviewedGuarantees: true,
       reviewedKeys: true,
+      reportContingencyReason: input.reportContingencyReason,
     });
     refresh();
     return {

@@ -17,7 +17,11 @@ describe('Central 1.26.0 · shell horizontal', () => {
 
     expect(topbar).toContain("new CustomEvent('fronti:open')");
     expect(assistant).toContain("window.addEventListener('fronti:open'");
-    expect(assistant).toContain('pageContext: { pathname }');
+    expect(assistant).toContain('pageContext: {');
+    expect(assistant).toContain('pathname,');
+    expect(assistant).toContain('search: window.location.search');
+    expect(assistant).toContain('hash: window.location.hash');
+    expect(assistant).toContain('title: document.title');
     expect(assistant).not.toContain('event-driven');
   });
 

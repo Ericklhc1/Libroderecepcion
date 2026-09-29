@@ -58,6 +58,8 @@ const GROUPS: Array<{ title: string; keys: Array<[string, keyof Awaited<ReturnTy
     title: 'Otros',
     keys: [
       ['Notificaciones', 'notifications'],
+      ['Reportes y solicitudes', 'supportRequests'],
+      ['Adjuntos de soporte', 'supportAttachments'],
       ['Auditoría', 'auditLogs'],
     ],
   },

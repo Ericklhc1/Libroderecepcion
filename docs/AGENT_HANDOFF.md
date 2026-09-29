@@ -1,5 +1,17 @@
 # Relevo de agentes — Central de Operaciones · Hotel HW Libertad
 
+## 29/09/2026 · Central 1.26.0 · shell horizontal y soporte
+
+- Rama: `feature/navegacion-horizontal-v1-26-0`.
+- Se reemplaza el sidebar de escritorio por cabecera horizontal + mega-menús; móvil conserva su navegación inferior.
+- La búsqueda superior queda global. QuickActions deja la cabecera y vive en Novedades; filtros/buscadores de módulo no se eliminan.
+- Cabecera: identidad → búsqueda → Fronti vigente → Alojamiento → cuenta → notificaciones/chat existentes → Ayuda → Reportar/Solicitar.
+- Ayuda incorpora «Iniciar recorrido» y mantiene procedimientos determinísticos del repositorio.
+- Nuevo soporte: `/api/soporte/solicitud`, captura/adjunto opcionales, contexto técnico y SMTP a `support.recipient` (por defecto `eherrera@hoteleshw.com`).
+- Fronti sólo cambia de lanzador en escritorio mediante evento `fronti:open`; no se añadieron herramientas, contexto transversal ni automatización proactiva/event-driven.
+- Sin migración. Release objetivo `v1.26.0`. Antes de merge: Compuerta completa y verificación de Production.
+
+
 ## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa y cambio de identidad
 
 - Producto: **Central de Operaciones · Hotel HW Libertad**. No renombrar todavía repo, proyecto Vercel ni dominio; el cambio de subdominio es una migración separada.

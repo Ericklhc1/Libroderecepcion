@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { AlertStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
-import { requirePagePermission } from '@/server/auth/guard';
+import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { alertInclude } from '@/server/services/alerts';
 import { refreshAlertsInBackground } from '@/server/services/dashboard';
@@ -38,8 +38,19 @@ export default async function AlertsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await requirePagePermission('alert.manage');
+  const user = await requirePageUser();
   const params = await searchParams;
+  const canManage = user.permissions.includes('alert.manage');
+  const canApproveCash = user.permissions.includes('cash.approve');
+  const canValidateShift = user.roleKey === 'SUPERVISOR' || user.isSystemAdmin;
+
+  if (!canManage && !canApproveCash && !canValidateShift) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
+        No tienes acciones internas pendientes habilitadas para tu perfil.
+      </div>
+    );
+  }
   refreshAlertsInBackground();
 
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '') : '';
@@ -47,8 +58,25 @@ export default async function AlertsPage({
   const estado = typeof params.estado === 'string' ? params.estado : 'activas';
   const now = new Date();
 
+  const accessibleKinds: Prisma.AlertWhereInput[] = [
+    ...(canManage ? [{}] : []),
+    ...(canApproveCash
+      ? [
+          { dedupeKey: { startsWith: 'cash-transfer:' } },
+          { dedupeKey: { startsWith: 'cash-manual:' } },
+        ]
+      : []),
+    ...(canValidateShift
+      ? [
+          { dedupeKey: { startsWith: 'handover-elements-none:' } },
+          { dedupeKey: { startsWith: 'shift-validation:' } },
+        ]
+      : []),
+  ];
+
   const where: Prisma.AlertWhereInput = {
     deletedAt: null,
+    AND: [{ OR: accessibleKinds }],
     ...(estado === 'activas'
       ? {
           OR: [
@@ -94,11 +122,10 @@ export default async function AlertsPage({
 
   const countByStatus = new Map(counts.map((row) => [row.status, row._count._all]));
   const selected = typeof params.alerta === 'string' ? params.alerta : null;
-  const canManage = user.permissions.includes('alert.manage');
   const alertHref = (nextEstado: string) => {
     const query = new URLSearchParams({ estado: nextEstado });
     if (q) query.set('q', q);
-    return `/alertas?${query.toString()}`;
+    return `/alertas/sistema?${query.toString()}`;
   };
 
   const TABS: Array<{ key: string; label: string; count?: number }> = [
@@ -114,16 +141,15 @@ export default async function AlertsPage({
         <div>
           <h1 className="text-xl font-semibold text-petrol-900">Señales internas</h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Generadas automáticamente por el motor de reglas o creadas a mano. Se pueden marcar
-            como vistas, posponer o resolver.
+            Compatibilidad para autorizaciones y validaciones técnicas que todavía usan el modelo histórico.
+            No es la bandeja normal de Alertas.
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Vista especializada. Para ver las alertas junto al resto de la operación,
-            abre el{' '}
-            <Link href="/libro?clase=alert" className="font-medium text-petrol-600 hover:underline">
-              libro operativo
-            </Link>
-            .
+            Las alertas programables de usuario viven en{' '}
+            <Link href="/alertas" className="font-medium text-petrol-600 hover:underline">
+              Alertas
+            </Link>.
+            Esta pantalla sólo conserva acciones internas que aún requieren validación.
           </p>
         </div>
         {canManage ? (

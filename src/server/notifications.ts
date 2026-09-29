@@ -99,14 +99,14 @@ async function dispatchExternal(
       recipients: [user.email],
       subject:
         items.length === 1
-          ? `Libro Operativo · ${items[0]!.title}`
-          : `Libro Operativo · ${items.length} novedades nuevas`,
+          ? `Central de Operaciones · ${items[0]!.title}`
+          : `Central de Operaciones · ${items.length} novedades nuevas`,
       text: [
         `Hola ${user.name},`,
         '',
         items.length === 1
-          ? 'Tienes una nueva novedad en el Libro Operativo:'
-          : `Tienes ${items.length} novedades nuevas en el Libro Operativo:`,
+          ? 'Tienes una nueva novedad en Central de Operaciones:'
+          : `Tienes ${items.length} novedades nuevas en Central de Operaciones:`,
         '',
         ...items.flatMap((item, index) => [
           `${index + 1}. ${item.title}`,

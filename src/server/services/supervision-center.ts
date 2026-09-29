@@ -595,33 +595,54 @@ async function materializeOpeningReportEvidence(
     all.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
 
     const metrics: Record<string, Prisma.JsonValue> = {};
-    for (const row of all) Object.assign(metrics, jsonRecord(row.metrics));
-
-    const checks = mergeByJsonKey(
-      all.map((row) =>
-        jsonList<{ key: string; label: string; done: boolean | null; observation: string | null }>(
-          row.checks,
-        ),
-      ),
-    );
-    const findings = mergeByJsonKey(
-      all.map((row) =>
-        jsonList<{ key: string; severity: 'BAJA' | 'MEDIA' | 'ALTA'; title: string; detail: string }>(
-          row.findings,
-        ),
-      ),
-    );
-
+    const checksByKey = new Map<
+      string,
+      { key: string; label: string; done: boolean | null; observation: string | null }
+    >();
+    const findingsByKey = new Map<
+      string,
+      { key: string; severity: 'BAJA' | 'MEDIA' | 'ALTA'; title: string; detail: string }
+    >();
     const review = {
       checks: {} as Record<string, unknown>,
       findings: {} as Record<string, unknown>,
       metrics: {} as Record<string, unknown>,
     };
+
     for (const row of all) {
+      Object.assign(metrics, jsonRecord(row.metrics));
+
+      // Una nueva versión del Formulario reemplaza sus controles/hallazgos.
+      // Al heredar evidencia entre turnos debe conservarse la misma semántica:
+      // nunca revivir un punto antiguo que la recarga más reciente ya retiró.
+      if (row.reportKinds.includes('AUDITORIA_FORMULARIO')) {
+        checksByKey.clear();
+        findingsByKey.clear();
+        review.checks = {};
+        review.findings = {};
+      }
+
+      for (const item of jsonList<{
+        key: string;
+        label: string;
+        done: boolean | null;
+        observation: string | null;
+      }>(row.checks)) {
+        checksByKey.set(item.key, item);
+      }
+      for (const item of jsonList<{
+        key: string;
+        severity: 'BAJA' | 'MEDIA' | 'ALTA';
+        title: string;
+        detail: string;
+      }>(row.findings)) {
+        findingsByKey.set(item.key, item);
+      }
+
       const parsed = parseSupervisionAuditReviewState(row.reviewState);
       Object.assign(review.checks, parsed.checks);
       Object.assign(review.findings, parsed.findings);
-      if (parsed.metrics.departuresPending) {
+      if (parsed.metrics.departuresPending !== undefined) {
         review.metrics.departuresPending = parsed.metrics.departuresPending;
       }
     }
@@ -635,6 +656,9 @@ async function materializeOpeningReportEvidence(
     }
     const reportKinds = Array.from(new Set(all.flatMap((row) => row.reportKinds)));
     const warnings = Array.from(new Set(all.flatMap((row) => row.warnings)));
+    const checks = [...checksByKey.values()];
+    const findings = [...findingsByKey.values()];
+    const evidenceOwnerId = all[all.length - 1]?.uploadedById ?? userId;
 
     await tx.supervisionAuditImport.upsert({
       where: {
@@ -655,7 +679,7 @@ async function materializeOpeningReportEvidence(
       create: {
         supervisionShiftId: shiftId,
         businessDate,
-        uploadedById: userId,
+        uploadedById: evidenceOwnerId,
         reportKinds,
         metrics: metrics as Prisma.InputJsonObject,
         checks: JSON.parse(JSON.stringify(checks)) as Prisma.InputJsonArray,

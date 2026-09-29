@@ -54,6 +54,7 @@ async function main() {
     ['turnos', () => prisma.shift.deleteMany({ where: { isDemo: true } })],
     ['reservas de referencia', () => prisma.reservationReference.deleteMany({ where: { isDemo: true } })],
     ['huéspedes de referencia', () => prisma.guestReference.deleteMany({ where: { isDemo: true } })],
+    ['reportes de soporte demo', () => prisma.supportRequest.deleteMany({ where: { requestedById: { in: demoUserIds } } })],
     ['sesiones demo', () => prisma.session.deleteMany({ where: { userId: { in: demoUserIds } } })],
     ['auditoría de usuarios demo', () => prisma.auditLog.deleteMany({ where: { userId: { in: demoUserIds } } })],
     ['notificaciones de usuarios demo', () => prisma.notification.deleteMany({ where: { userId: { in: demoUserIds } } })],

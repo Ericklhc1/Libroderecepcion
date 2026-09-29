@@ -294,6 +294,57 @@ export function createR2PresignedPutUrl(
   };
 }
 
+export function createR2PresignedGetUrl(
+  key: string,
+  expiresSeconds = 300,
+): { url: string; expiresAt: string } {
+  const current = config();
+  if (!current) throw new Error('R2 no está configurado.');
+
+  const host = `${current.accountId}.r2.cloudflarestorage.com`;
+  const path = canonicalPath(current.bucket, key);
+  const now = new Date();
+  const { full, day } = amzDate(now);
+  const scope = `${day}/auto/s3/aws4_request`;
+  const expires = Math.min(Math.max(Math.trunc(expiresSeconds), 60), 900);
+
+  const query = new Map<string, string>([
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Content-Sha256', 'UNSIGNED-PAYLOAD'],
+    ['X-Amz-Credential', `${current.accessKeyId}/${scope}`],
+    ['X-Amz-Date', full],
+    ['X-Amz-Expires', String(expires)],
+    ['X-Amz-SignedHeaders', 'host'],
+  ]);
+  const canonicalQuery = Array.from(query.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => `${encodeAws(name)}=${encodeAws(value)}`)
+    .join('&');
+
+  const canonicalRequest = [
+    'GET',
+    path,
+    canonicalQuery,
+    `host:${host}\n`,
+    'host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    full,
+    scope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const signature = createHmac('sha256', signingKey(current.secretAccessKey, day))
+    .update(stringToSign)
+    .digest('hex');
+
+  return {
+    url: `https://${host}${path}?${canonicalQuery}&X-Amz-Signature=${signature}`,
+    expiresAt: new Date(now.getTime() + expires * 1000).toISOString(),
+  };
+}
+
 export async function putR2Object(
   key: string,
   bytes: Buffer,
@@ -507,6 +558,15 @@ export async function deleteR2Object(key: string): Promise<void> {
   if (!response.ok && response.status !== 404) {
     throw new Error(`R2 DELETE falló (${response.status}).`);
   }
+}
+
+export function makeSupportStorageKey(
+  userId: string,
+  fileName: string,
+  kind: 'captura' | 'archivo',
+): string {
+  const ext = fileName.toLocaleLowerCase().match(/\.([a-z0-9]{1,8})$/)?.[1] ?? 'bin';
+  return `support/${userId}/${kind}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
 }
 
 export function makeChatStorageKey(

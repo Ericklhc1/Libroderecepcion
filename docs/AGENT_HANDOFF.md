@@ -1,5 +1,25 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
+
+- Soporte reutiliza el R2 privado ya existente; no introducir blobs en Neon ni otro proveedor de almacenamiento.
+- `/api/soporte/adjuntos/init` sólo firma la subida. El navegador hace PUT directo a R2; no exigir `isR2Operational()` porque ese sondeo mide conectividad servidor→R2 y puede fallar aunque la transferencia directa del navegador sea viable.
+- Los objetos archivados se registran como `SupportRequestAttachment`; `attachmentNames` queda como inventario compatible con registros anteriores y con el respaldo por correo.
+- `/api/soporte/adjuntos/[attachmentId]` exige `support.view` y responde con redirect a GET temporal firmado; no volver a proxificar el binario por Vercel.
+- Si la subida directa falla, el `SupportRequest` no debe perderse: el archivo conserva el correo como respaldo.
+- Migración: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
+## 29/09/2026 · AROH 1.30.0 · adjuntos de soporte
+
+- `SupportRequestAttachment` conserva metadatos; los binarios viven en R2 privado, nunca en Neon.
+- Flujo de escritura: navegador solicita URL PUT temporal → navegador sube directo a R2 → `/api/soporte/solicitud` vincula sólo los uploads logrados.
+- Fallar al archivar **no puede bloquear el reporte**. Se mantiene la copia SMTP con el adjunto original; la respuesta informa si el archivo no quedó disponible en la bandeja.
+- Flujo de lectura: `/api/soporte/adjuntos/[attachmentId]` exige `support.view` y redirige a una URL GET firmada de 5 minutos.
+- No exponer `storageKey` en la UI ni hacer público el bucket.
+- El probe backend de R2 sigue degradado en Production; no usar `isR2Operational()` como gate del init de soporte, porque esta ruta prueba navegador→R2 y tiene fallback seguro.
+- La puesta en cero debe borrar `SupportRequest` antes que usuarios; `SupportRequestAttachment` cae por cascada.
+- Migración: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
 ## 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
 
 - `Reportar / solicitar` persiste primero un `SupportRequest`; SMTP es aviso secundario.

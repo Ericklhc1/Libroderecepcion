@@ -12,6 +12,14 @@ const attachmentSchema = z.object({
   dataUrl: z.string().min(20).max(5_000_000),
 });
 
+const storedAttachmentSchema = z.object({
+  kind: z.enum(['CAPTURA', 'ARCHIVO']),
+  storageKey: z.string().min(1).max(1000),
+  fileName: z.string().min(1).max(180),
+  mimeType: z.string().min(1).max(120),
+  size: z.number().int().positive().max(3 * 1024 * 1024),
+});
+
 const bodySchema = z.object({
   correlationId: z.string().uuid(),
   kind: z.enum(['ERROR', 'FUNCION']),
@@ -19,6 +27,7 @@ const bodySchema = z.object({
   description: z.string().trim().min(5).max(6000),
   screenshot: attachmentSchema.nullable().optional(),
   attachment: attachmentSchema.nullable().optional(),
+  storedAttachments: z.array(storedAttachmentSchema).max(2).default([]),
   context: z.object({
     pathname: z.string().max(500),
     search: z.string().max(1200),
@@ -92,6 +101,37 @@ export async function POST(request: Request) {
     if (payload.screenshot) attachments.push(decodeAttachment(payload.screenshot));
     if (payload.attachment) attachments.push(decodeAttachment(payload.attachment));
 
+    const storedAttachments = payload.storedAttachments.map((item) => {
+      if (!ALLOWED_TYPES.has(item.mimeType)) {
+        throw new Error('El tipo de archivo archivado no está permitido.');
+      }
+      if (
+        !item.storageKey.startsWith(`support/${user.id}/`) ||
+        item.storageKey.includes('..')
+      ) {
+        throw new Error('La referencia del archivo archivado no es válida.');
+      }
+      return {
+        kind: item.kind,
+        storageKey: item.storageKey,
+        fileName: safeFilename(item.fileName),
+        mimeType: item.mimeType,
+        size: item.size,
+      };
+    });
+    if (new Set(storedAttachments.map((item) => item.storageKey)).size !== storedAttachments.length) {
+      throw new Error('Hay referencias de adjuntos duplicadas.');
+    }
+
+    const allAttachmentNames = Array.from(
+      new Set([
+        ...storedAttachments.map((item) => item.fileName),
+        ...attachments.map((item) => item.filename),
+      ]),
+    );
+    const storedAttachmentNames = storedAttachments.map((item) => item.fileName);
+    const emailAttachmentNames = attachments.map((item) => item.filename);
+
     const label = payload.kind === 'ERROR' ? 'Reporte de problema' : 'Solicitud de función';
     const route = payload.context.pathname + payload.context.search;
 
@@ -114,7 +154,13 @@ export async function POST(request: Request) {
           shiftId: operationGate.shiftId ?? null,
           handoverId: operationGate.handoverId ?? null,
         },
-        attachmentNames: attachments.map((item) => item.filename),
+        attachmentNames: allAttachmentNames,
+        attachments:
+          storedAttachments.length > 0
+            ? {
+                create: storedAttachments,
+              }
+            : undefined,
         emailRecipient: recipient,
       },
     });
@@ -156,9 +202,15 @@ export async function POST(request: Request) {
           'DESCRIPCIÓN',
           payload.description,
           '',
-          attachments.length > 0
-            ? `Adjuntos: ${attachments.map((item) => item.filename).join(', ')}`
-            : 'Adjuntos: ninguno',
+          allAttachmentNames.length > 0
+            ? `Adjuntos declarados: ${allAttachmentNames.join(', ')}`
+            : 'Adjuntos declarados: ninguno',
+          storedAttachmentNames.length > 0
+            ? `Disponibles en bandeja: ${storedAttachmentNames.join(', ')}`
+            : 'Disponibles en bandeja: ninguno',
+          emailAttachmentNames.length > 0
+            ? `Incluidos como respaldo en este correo: ${emailAttachmentNames.join(', ')}`
+            : 'Incluidos como respaldo en este correo: ninguno',
           '',
           'Bandeja interna: /admin/soporte',
         ].join('\n'),
@@ -184,6 +236,7 @@ export async function POST(request: Request) {
           ? `Reporte registrado. Referencia: ${payload.correlationId}`
           : `Solicitud registrada. Referencia: ${payload.correlationId}`,
       mailSent,
+      storedAttachmentCount: storedAttachments.length,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

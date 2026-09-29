@@ -437,11 +437,14 @@ respuesta es válida.
 ## Limitaciones conocidas
 
 1. **Adjuntos**: desde v1.9 el chat usa Cloudflare R2 privado mediante su API
-   compatible con S3. La aplicación emite URLs PUT temporales y el navegador
-   sube el binario directamente a R2; la función de Vercel sólo inicia y
-   finaliza la operación. Neon guarda metadatos. La lectura pasa por una ruta
-   autenticada que valida pertenencia a la conversación. Sin credenciales R2
-   la subida se deshabilita sin afectar la mensajería de texto.
+   compatible con S3. Desde v1.30, **Reportar / solicitar** reutiliza el mismo
+   principio: la aplicación emite URLs PUT temporales y el navegador sube el
+   binario directamente a R2; Neon conserva sólo metadatos. En soporte, abrir
+   un archivo exige `support.view` y entrega una URL GET firmada temporal.
+   Si el archivado de soporte falla, el reporte se registra de todos modos y
+   el binario intenta continuar por SMTP como respaldo. El healthcheck backend
+   de R2 puede permanecer degradado sin convertir el formulario de soporte en
+   una calle sin salida.
 2. **Canales externos de notificación**: `dispatchExternal()` en
    `src/server/notifications.ts` es el punto de extensión y está vacío a
    propósito. Correo y WhatsApp quedan para una versión posterior.

@@ -1,5 +1,24 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
+
+- Las capturas y archivos de **Reportar / solicitar** se archivan en **Cloudflare R2 privado**; Neon guarda sólo metadatos y la relación con el `SupportRequest`.
+- La subida usa una URL PUT temporal firmada y ocurre **directamente desde el navegador a R2**. Si el archivo ya quedó archivado, no vuelve a viajar como base64 hacia Vercel.
+- La bandeja `/admin/soporte` lista los adjuntos persistentes y los abre mediante una ruta autenticada que exige `support.view`; la ruta genera una URL GET temporal firmada y redirige al navegador, sin proxificar el binario por Vercel.
+- El diseño evita depender de la conectividad servidor→R2, que mantiene antecedentes de fallos TLS en Vercel. Si la subida directa falla, el reporte igual se persiste y el archivo conserva el correo como canal de respaldo.
+- `attachmentNames` se conserva como inventario/histórico; `SupportRequestAttachment` representa sólo objetos realmente archivados.
+- No se guardan blobs en PostgreSQL. Migración aditiva: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
+## Actualización 29/09/2026 · AROH 1.30.0 · adjuntos consultables de soporte
+
+- **Reportar / solicitar** puede archivar la captura y el archivo adjunto en Cloudflare R2 privado; Neon guarda sólo metadatos en `SupportRequestAttachment`.
+- La subida se intenta directamente desde el navegador con una URL PUT temporal firmada. El reporte **no depende** del almacenamiento: si R2/CORS falla, el `SupportRequest` igualmente se registra y el adjunto sigue viajando por SMTP cuando el correo está disponible.
+- `/admin/soporte` muestra los adjuntos persistidos con nombre y tamaño. Abrir uno exige `support.view` y genera una URL GET firmada de cinco minutos; el binario no atraviesa Vercel.
+- Los reportes históricos de v1.29.0 conservan `attachmentNames` y se identifican como referencias históricas cuando no existe objeto archivado.
+- La puesta en cero y la purga demo eliminan los registros de soporte antes de borrar usuarios; los metadatos de adjuntos caen por cascada.
+- El healthcheck backend de R2 continúa degradado desde Vercel. Esta release no cambia credenciales ni declara resuelto ese transporte; usa una ruta navegador→R2 independiente y mantiene degradación segura.
+- Migración aditiva: `20260929185000_support_request_attachments`. Release objetivo: **v1.30.0**.
+
 ## Actualización 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
 
 - **Reportar / solicitar** persiste cada envío primero en Neon como `SupportRequest`; el correo deja de ser la única evidencia.

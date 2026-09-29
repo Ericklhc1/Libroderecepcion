@@ -135,8 +135,9 @@ export default async function ProfilePage() {
             defaultChecked={record.emailNotificationsEnabled}
           />
           <p className="text-xs text-slate-500">
-            Chat y timers no se envían por correo para evitar ruido. Las notificaciones internas
-            continúan funcionando aunque desactives este canal.
+            Este interruptor controla sólo los avisos opcionales. Los eventos que Administración
+            marque como obligatorios se enviarán igualmente al correo registrado. Chat y alarmas
+            siguen priorizando aviso interno y notificación del dispositivo.
           </p>
           <SubmitButton pendingLabel="Guardando…">Guardar correo y avisos</SubmitButton>
         </ActionForm>

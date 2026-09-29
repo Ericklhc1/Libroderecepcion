@@ -133,6 +133,7 @@ export function EditTaskDialog({
     title: string;
     description: string;
     priority: string;
+    startsAt: string;
     dueAt: string;
     departmentId: string | null;
     tags: string[];
@@ -161,7 +162,7 @@ export function EditTaskDialog({
         <Field label="Evidencia aportada" name="evidenceProvided">
           <Textarea name="evidenceProvided" rows={2} defaultValue={task.evidenceProvided} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Prioridad" name="priority">
             <Select
               name="priority"
@@ -173,6 +174,9 @@ export function EditTaskDialog({
                 { value: 'CRITICA', label: 'Crítica' },
               ]}
             />
+          </Field>
+          <Field label="Inicio programado" name="startsAt">
+            <Input type="datetime-local" name="startsAt" defaultValue={task.startsAt} />
           </Field>
           <Field label="Fecha límite" name="dueAt">
             <Input type="datetime-local" name="dueAt" defaultValue={task.dueAt} />

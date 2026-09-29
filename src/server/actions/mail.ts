@@ -6,6 +6,11 @@ import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { saveMailConfig, sendMailTest } from '@/server/services/mail-settings';
+import {
+  NOTIFICATION_EMAIL_MODES,
+  saveNotificationEmailPolicy,
+  type NotificationEmailMode,
+} from '@/server/services/notification-email-policy';
 
 /**
  * Acciones de la consola de correo.

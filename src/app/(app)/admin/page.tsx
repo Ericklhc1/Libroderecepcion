@@ -5,6 +5,7 @@ import {
   ClipboardList,
   KeyRound,
   Mail,
+  Inbox,
   Eraser,
   Settings,
   ShieldCheck,
@@ -76,6 +77,13 @@ const SECTIONS: Array<{
     icon: Bug,
   },
   {
+    href: '/admin/soporte',
+    title: 'Reportes y solicitudes',
+    description: 'Bandeja interna de problemas y funciones solicitadas desde AROH.',
+    permission: 'support.view',
+    icon: Inbox,
+  },
+  {
     href: '/admin/correo',
     title: 'Correo',
     description: 'Servidor de salida, casilla del hotel y envío de prueba.',
@@ -115,6 +123,7 @@ const SECTIONS: Array<{
 export default async function AdminPage() {
   const user = await requirePageUser();
   if (!hasTechnicalAdminAccess(user.permissions)) {
+    if (user.permissions.includes('support.view')) redirect('/admin/soporte');
     if (user.permissions.includes('audit.view')) redirect('/admin/auditoria');
     if (user.permissions.includes('shift.manage')) redirect('/admin/turnos');
     redirect('/sin-permisos');

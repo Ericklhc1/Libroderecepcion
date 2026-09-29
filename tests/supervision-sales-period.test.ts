@@ -77,6 +77,24 @@ describe('ventas por período de FNS', () => {
     });
   });
 
+  it('preserva créditos negativos y no toma valores de la fila siguiente', () => {
+    const withCredit = SAMPLE.replace(
+      'Spa CL$ 10.000 CL$ 10.000 CL$ 10.000 CL$ 10.00',
+      'Spa CL$ -10.000 CL$ 10.000 CL$ 10.000 CL$ 10.00',
+    );
+    expect(parseSalesPeriodReport(withCredit)?.daily[0]?.costCenters.spa).toBe(-10_000);
+
+    const clippedEvents = SAMPLE.replace(
+      'Eventos CL$ 0 CL$ 0 CL$ 0 CL$ 0',
+      'Eventos CL$ 0 CL$ 0',
+    );
+    const parsed = parseSalesPeriodReport(clippedEvents);
+    expect(parsed?.visibleDays).toBe(2);
+    expect(parsed?.visibleThrough).toBe('2026-09-02');
+    expect(parsed?.truncated).toBe(true);
+    expect(parsed?.daily[1]?.costCenters.eventos).toBe(0);
+  });
+
   it('eleva cortesías y descuadres de centros de coste sin convertirlos en hechos no demostrados', () => {
     const parsed = parseSalesPeriodReport(SAMPLE);
     expect(parsed).not.toBeNull();

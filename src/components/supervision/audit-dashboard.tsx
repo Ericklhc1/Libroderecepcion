@@ -283,7 +283,7 @@ export function SupervisionAuditDashboard({
                       <div>
                         <p className="text-sm font-semibold text-petrol-900">Ventas por período · mes en curso</p>
                         <p className="mt-0.5 text-xs text-slate-500">
-                          ${salesPeriodVisibleDays} día(s) legibles
+                          {salesPeriodVisibleDays} día(s) legibles
                           {salesPeriodExpectedDays !== null ? ` de ${salesPeriodExpectedDays} esperados` : ''}
                           {typeof salesPeriod.visibleThrough === 'string' ? ` · hasta ${salesPeriod.visibleThrough}` : ''}.
                         </p>

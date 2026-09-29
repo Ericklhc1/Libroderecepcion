@@ -135,6 +135,7 @@ export default async function UsersPage({
                     </span>
                     <Chip>{user.role.name}</Chip>
                     {!user.role.operational ? <Chip>Fuera de operación</Chip> : null}
+                    {user.hiddenFromSelectors ? <Chip>Oculto</Chip> : null}
                     {user.active ? (
                       <Badge tone="resuelto">Activa</Badge>
                     ) : (
@@ -174,6 +175,7 @@ export default async function UsersPage({
                           departmentId: user.departmentId,
                           email: user.email,
                           emailNotificationsEnabled: user.emailNotificationsEnabled,
+                          hiddenFromSelectors: user.hiddenFromSelectors,
                           phone: user.phone,
                           active: user.active,
                         }}

@@ -1,0 +1,6 @@
+-- Apertura operacional de Supervisión: estado preparatorio y evidencia inalterable del inicio.
+ALTER TYPE "SupervisionShiftStatus" ADD VALUE IF NOT EXISTS 'PREPARACION' BEFORE 'ACTIVO';
+
+ALTER TABLE "SupervisionShift"
+  ADD COLUMN IF NOT EXISTS "openingState" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS "openingCompletedAt" TIMESTAMP(3);

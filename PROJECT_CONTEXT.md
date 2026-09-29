@@ -1,5 +1,17 @@
 # Central de Operaciones · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · Central 1.26.0 · navegación horizontal compacta
+
+- Escritorio adopta una **cabecera horizontal compacta** y retira el sidebar del shell: identidad, búsqueda global, acceso vigente de Fronti, alojamiento, cuenta, ayuda y soporte quedan en la franja superior; los módulos viven en una segunda fila horizontal.
+- Los módulos con navegación secundaria usan **mega-menús** compactos por proceso. Tareas, seguimientos, alertas e incidencias siguen sin convertirse en módulos raíz: aparecen sólo como vistas relacionadas bajo Novedades u otros módulos pertinentes.
+- La antigua franja global de «Nueva novedad / Nueva incidencia» desaparece. Esas acciones pasan a **Novedades**, mientras los buscadores, filtros y acciones específicas permanecen dentro de cada módulo.
+- **Ayuda** reúne búsqueda de procedimientos y reactivación del recorrido guiado paso a paso.
+- Se incorpora un panel lateral **Reportar problema / Solicitar función** con captura opcional, adjunto y contexto técnico de la pantalla. El destinatario se controla mediante `support.recipient`; el envío reutiliza SMTP existente y no crea una segunda mesa de ayuda.
+- Fronti cambia únicamente de punto de acceso visual en escritorio. **No** se amplió su contexto transversal ni se implementó proactividad/eventos en esta release; esas capas quedan expresamente fuera para revisión posterior módulo por módulo.
+- Móvil conserva la navegación inferior y «Más». Sin migración de esquema ni cambios de datos operativos.
+- Release objetivo: **v1.26.0**.
+
+
 ## Actualización 29/09/2026 · Central 1.25.0 · jornada operativa canónica e identidad
 
 - La plataforma pasa a llamarse **Central de Operaciones · Hotel HW Libertad**. «Libro/Novedades» queda como un módulo interno, no como nombre del producto completo.

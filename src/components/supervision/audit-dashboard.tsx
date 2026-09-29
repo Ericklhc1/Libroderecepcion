@@ -95,6 +95,8 @@ function decimal(value: number | null, suffix = ''): string {
 
 const KIND_LABEL: Record<string, string> = {
   AUDITORIA_FORMULARIO: 'Formulario',
+  ACTIVIDAD: 'Actividad',
+  ENTRADAS: 'Entradas',
   COBROS: 'Cobros',
   VENTAS_CANAL: 'Ventas',
   PRODUCCION_HABITACION: 'Producción',

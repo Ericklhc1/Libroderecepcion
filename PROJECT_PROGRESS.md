@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · adjuntos consultables de soporte · versión candidata **v1.30.0**
+Actualizado: **2026-09-29** · adjuntos persistentes de soporte · versión candidata **v1.30.0**
 
 ## Estados canónicos
 
@@ -34,29 +34,31 @@ Actualizado: **2026-09-29** · adjuntos consultables de soporte · versión cand
 | Fronti contextual transversal | `PRODUCTION` | v1.27.0 | Contexto vivo de módulo/sección/filtros/entidad en todas las pantallas autenticadas |
 | Usuarios ocultos | `PRODUCTION` | #193 · v1.28.0 | Cuenta activa y plenamente operativa, excluida sólo de selectores/directorios |
 | Bandeja interna de soporte | `PRODUCTION` | #194 · v1.29.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Adjuntos persistentes de soporte | `EN_DESARROLLO` | v1.30.0 | R2 privado + metadatos Neon + acceso autenticado desde la bandeja |
 | Adjuntos consultables de soporte | `EN_DESARROLLO` | v1.30.0 | Binarios privados en R2 + metadatos en Neon + acceso firmado desde la bandeja; fallback SMTP |
 
 ## Iteración actual
 
 **AROH 1.30.0** · rama **`feat/support-attachments-1-30-0`**
 
-Objetivo: hacer que capturas y archivos de **Reportar / solicitar** puedan consultarse directamente desde la bandeja sin guardar blobs en PostgreSQL y sin convertir R2 en una dependencia del registro.
+Objetivo: hacer que capturas y archivos de **Reportar / solicitar** sean consultables directamente desde la bandeja sin guardar blobs en PostgreSQL.
 
 Incluye:
-- `SupportRequestAttachment` para metadatos en Neon;
-- subida directa navegador → R2 mediante PUT firmado;
-- enlaces de bandeja protegidos por `support.view` y GET firmado temporal;
-- compatibilidad histórica con los nombres de adjuntos de v1.29.0;
-- fallback seguro: si el archivado falla, el reporte se registra igual y SMTP conserva el adjunto cuando puede enviarse;
-- corrección de Puesta en cero / purga demo para que los reportes no bloqueen la eliminación de usuarios;
-- regresiones para persistencia, permisos, fallback y reset.
+- almacenamiento privado en R2 reutilizando la infraestructura existente;
+- PUT directo navegador→R2 mediante URL firmada temporal;
+- modelo `SupportRequestAttachment` con metadatos en Neon;
+- apertura protegida por `support.view` mediante GET firmado temporal;
+- bandeja con nombre, tipo y tamaño del archivo;
+- inventario compatible con reportes v1.29.0;
+- correo sólo como respaldo cuando el archivado directo no resulta;
+- el binario archivado deja de duplicarse como base64 hacia Vercel.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - migración Production;
 - despliegue Vercel Production;
-- verificación de versión, runtime y comportamiento del almacenamiento.
+- smoke de versión y apertura de bandeja.
 
 ## Infraestructura vigente
 

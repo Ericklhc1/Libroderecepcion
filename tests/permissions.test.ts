@@ -244,6 +244,25 @@ describe('el Administrador de sistema no participa en la operación', () => {
     expect(ids).not.toContain(admin.id);
   });
 
+  it('un usuario oculto sigue operativo pero desaparece de los selectores', async () => {
+    const hidden = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepcionista oculto',
+    });
+    await prisma.user.update({
+      where: { id: hidden.id },
+      data: { hiddenFromSelectors: true },
+    });
+
+    const selectable = await listOperationalUsers();
+    expect(selectable.map((person) => person.id)).not.toContain(hidden.id);
+
+    await expect(assertAssignable(hidden.id)).resolves.toBeUndefined();
+
+    const shift = await openShiftAs(hidden, { type: ShiftType.DIA });
+    expect(shift.assignments.some((assignment) => assignment.userId === hidden.id)).toBe(true);
+  });
+
   it('no puede figurar como responsable de un registro', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });

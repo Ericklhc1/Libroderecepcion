@@ -13,6 +13,21 @@
 - NO incluir proactividad/eventos/background agents en esta release. Alcance exclusivo: contextualidad transversal bajo demanda.
 - Sin migración. Release objetivo `v1.27.0`; antes de merge: Compuerta completa y después health/smoke/tag de Production.
 
+## 29/09/2026 · AROH 1.26.3 · hotfix panel Reportar / solicitar
+
+- El panel de soporte debe montarse en `document.body` mediante `createPortal`.
+- No volver a dejar overlays `position: fixed` como descendientes directos del header con `backdrop-filter`, porque ese ancestro puede convertirse en containing block y recortar el viewport.
+- La prueba en `tests/shell-horizontal.test.ts` protege esta invariante.
+- Sin migración Prisma. Release objetivo: **v1.26.3**.
+
+## 29/09/2026 · AROH 1.26.2 · dropdowns de navegación
+
+- Mantener el shell horizontal de v1.26.x, pero la navegación secundaria usa dropdowns compactos; no reintroducir mega-menús de ancho completo.
+- El dropdown se renderiza mediante portal para escapar del `overflow-x-auto` de la fila principal y se reposiciona en resize/scroll.
+- Cabecera y fila de módulos comparten `max-w-[1680px]` centrado.
+- Tipografía de módulos/opciones: `text-[0.82rem]`; marca AROH y alojamiento suben levemente para legibilidad.
+- Animación `nav-dropdown-enter` con alternativa sin movimiento para `prefers-reduced-motion`.
+- Sin cambios de datos ni Prisma. Release objetivo: **v1.26.2**.
 
 ## 29/09/2026 · AROH 1.26.1 · identidad final del producto
 

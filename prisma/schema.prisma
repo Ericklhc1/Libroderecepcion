@@ -547,6 +547,8 @@ model User {
   chatMediaPreferences              ChatMediaPreference[]
   operationalAlarmsCreated          OperationalAlarm[]          @relation("operationalAlarmCreatedBy")
   operationalAlarmRecipients        OperationalAlarmRecipient[] @relation("operationalAlarmRecipientUser")
+  supportRequestsCreated             SupportRequest[]            @relation("supportRequestCreatedBy")
+  supportRequestsResolved            SupportRequest[]            @relation("supportRequestResolvedBy")
   // El correo dejó de ser único, pero se sigue buscando por él (¿qué cuentas
   // usan esta casilla?), así que conserva índice propio.
 
@@ -1512,6 +1514,48 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([createdAt])
+}
+
+enum SupportRequestKind {
+  ERROR
+  FUNCION
+}
+
+enum SupportRequestStatus {
+  NUEVA
+  EN_REVISION
+  RESUELTA
+  DESCARTADA
+}
+
+model SupportRequest {
+  id              String               @id @default(cuid())
+  correlationId   String               @unique
+  kind            SupportRequestKind
+  status          SupportRequestStatus @default(NUEVA)
+  subject         String
+  description     String
+  requestedById   String
+  requestedBy     User                 @relation("supportRequestCreatedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  requesterName   String
+  requesterUser   String
+  requesterRole   String
+  requesterEmail  String?
+  context         Json
+  attachmentNames String[]             @default([])
+  emailRecipient  String?
+  emailSent       Boolean              @default(false)
+  emailError      String?
+  resolution      String?
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?                @relation("supportRequestResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([kind, createdAt])
+  @@index([requestedById, createdAt])
 }
 
 model OperationalAlarm {

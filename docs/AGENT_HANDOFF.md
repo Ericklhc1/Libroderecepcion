@@ -1,5 +1,15 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
+
+- `Reportar / solicitar` persiste primero un `SupportRequest`; SMTP es aviso secundario.
+- Bandeja: `/admin/soporte`. Lectura exige `support.view`; gestión exige `support.manage`.
+- El Administrador de sistema recibe ambos permisos por migración; Supervisor/Gerencia no los reciben por defecto.
+- Estados: nueva → en revisión → resuelta/descartada. Los cierres exigen nota de resolución y generan `AuditLog`.
+- La página de soporte debe permanecer catalogada en Fronti; la regresión transversal falla si se elimina del mapa.
+- No guardar blobs de capturas/adjuntos en Neon. La bandeja conserva nombres y el contenido sigue por SMTP.
+- Migración: `20260929183500_support_inbox`. Release objetivo: **v1.29.0**.
+
 ## 29/09/2026 · AROH 1.28.0 · usuarios ocultos
 
 - `User.hiddenFromSelectors` es una propiedad administrativa independiente de `active` y del rol.

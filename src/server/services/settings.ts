@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS = {
   'support.recipient': {
     value: 'eherrera@hoteleshw.com',
     category: 'general',
-    description: 'Correo que recibe reportes de error y solicitudes de función enviados desde la Central.',
+    description: 'Correo que recibe una copia de aviso de los reportes y solicitudes guardados en la bandeja interna de AROH.',
   },
   'shift.handoverReminderMinutes': {
     value: 60,

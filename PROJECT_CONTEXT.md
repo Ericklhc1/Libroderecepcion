@@ -1,5 +1,16 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.29.0 · bandeja interna de soporte
+
+- **Reportar / solicitar** persiste cada envío primero en Neon como `SupportRequest`; el correo deja de ser la única evidencia.
+- Nueva bandeja `/admin/soporte` con búsqueda, filtros por tipo/estado, solicitante, referencia y contexto técnico.
+- Estados: `NUEVA`, `EN_REVISION`, `RESUELTA`, `DESCARTADA`; cerrar o descartar exige resolución y genera auditoría.
+- Permisos granulares: `support.view` y `support.manage`. El Administrador de sistema recibe ambos por defecto; otros roles sólo por habilitación explícita.
+- `support.recipient` se mantiene como **copia de aviso por SMTP**. Si SMTP falla, el registro no se pierde.
+- Los binarios de adjuntos no se guardan en Neon: la bandeja conserva sus nombres y el contenido continúa por el canal de correo vigente.
+- Fronti cataloga `/admin/soporte` como pantalla administrativa contextual.
+- Migración aditiva: `20260929183500_support_inbox`. Release objetivo: **v1.29.0**.
+
 ## Actualización 29/09/2026 · AROH 1.28.0 · usuarios ocultos
 
 - Administración incorpora **Usuario oculto** como estado de visibilidad, separado de cuenta activa/inactiva y del rol.

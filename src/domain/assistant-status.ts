@@ -43,6 +43,8 @@ export type AssistantFailure =
   | 'SIN_CLAVE'
   /** Hay clave, y el proveedor de IA la rechaza. */
   | 'CLAVE_RECHAZADA'
+  /** La credencial existe, pero la cuenta, el alcance o los permisos no habilitan el producto. */
+  | 'ACCESO_DENEGADO'
   /** La clave sirve, pero el modelo configurado no existe para esta cuenta. */
   | 'MODELO_DESCONOCIDO'
   /** La cuenta se quedó sin saldo. */
@@ -77,6 +79,8 @@ export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
     'Fronti todavía no está configurado. Avisa al Administrador de sistema: falta la credencial del proveedor de IA. El Libro funciona igual sin él.',
   CLAVE_RECHAZADA:
     'El proveedor de IA rechazó la credencial de Fronti. Esto no se arregla desde el mesón: avisa al Administrador de sistema. El Libro funciona igual sin él.',
+  ACCESO_DENEGADO:
+    'El proveedor de IA recibió la credencial, pero denegó el acceso a la cuenta o al producto. El Administrador de sistema debe revisar permisos, alcance e ID de cuenta. La Central funciona igual sin Fronti.',
   MODELO_DESCONOCIDO:
     'El proveedor de IA no reconoce el modelo configurado para Fronti. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
   CUOTA:
@@ -101,6 +105,7 @@ export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
 export const ASSISTANT_FAILURE_IS_TEMPORARY: Record<AssistantFailure, boolean> = {
   SIN_CLAVE: false,
   CLAVE_RECHAZADA: false,
+  ACCESO_DENEGADO: false,
   MODELO_DESCONOCIDO: false,
   CUOTA: false,
   SATURADO: true,
@@ -121,6 +126,7 @@ export const ASSISTANT_FAILURE_IS_TEMPORARY: Record<AssistantFailure, boolean> =
 export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
   SIN_CLAVE: 503,
   CLAVE_RECHAZADA: 503,
+  ACCESO_DENEGADO: 503,
   MODELO_DESCONOCIDO: 503,
   CUOTA: 503,
   SATURADO: 429,
@@ -137,6 +143,8 @@ export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
 
 /** Lo que se le puede sacar a una respuesta fallida del proveedor de IA. */
 export type ProviderFailureSignal = {
+  /** Proveedor que emitió la respuesta, cuando se conoce. */
+  provider?: string | null;
   /** Estado HTTP, si hubo respuesta. */
   status?: number | null;
   /** `error.code` o `error.type` del cuerpo, si vino. */
@@ -170,6 +178,19 @@ export function classifyAssistantFailure(signal: ProviderFailureSignal): Assista
   if (code === 'insufficient_quota' || message.includes('insufficient_quota')) return 'CUOTA';
   if (code === 'model_not_found' || code === 'invalid_model') return 'MODELO_DESCONOCIDO';
   if (code === 'invalid_api_key' || code === 'authentication_error') return 'CLAVE_RECHAZADA';
+
+  /*
+   * Cloudflare usa 401/403 también cuando el token existe pero no tiene
+   * Workers AI Read/Edit, está limitado a AI Gateway o pertenece a otro
+   * alcance de cuenta. Etiquetarlo como "clave rechazada" es demasiado fuerte:
+   * el dato puede ser correcto y lo incorrecto ser el permiso o el Account ID.
+   */
+  if (
+    signal.provider === 'cloudflare' &&
+    (status === 401 || status === 403 || code === '10000')
+  ) {
+    return 'ACCESO_DENEGADO';
+  }
 
   if (status === 401 || status === 403) return 'CLAVE_RECHAZADA';
   if (status === 404) return 'MODELO_DESCONOCIDO';

@@ -15,10 +15,12 @@ import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
-import { calendarDateKey, hotelCalendarDate, hotelDayStart } from '@/domain/time';
+import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
-  REQUIRED_SUPERVISION_OPENING_REPORTS,
+  REQUIRED_SUPERVISION_AUDIT_REPORTS,
+  SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
+  SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
   SUPERVISION_REPORT_LABELS,
 } from '@/domain/supervision-opening';
 import { getLiveCashState } from '@/server/services/live-cash';
@@ -183,7 +185,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   if (!shift) throw new RuleError('No tienes una apertura de Supervisión en preparación.');
 
   const businessDate = hotelCalendarDate();
-  const openingDayStart = hotelDayStart();
+  const auditDate = addCalendarDateDays(businessDate, -1);
 
   const [
     cashState,
@@ -225,9 +227,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     listRecentPhysicalKeyCounts(5, 1),
     listRecentPhysicalKeyCounts(6, 1),
     prisma.supervisionAuditImport.findMany({
-      // Una apertura puede mezclar cierres del día anterior con fotografías de hoy.
-      // Cuenta como evidencia todo informe cargado durante el día actual del hotel.
-      where: { createdAt: { gte: openingDayStart } },
+      // Reutiliza evidencia válida aunque la haya cargado otro turno de Supervisión:
+      // importa la fecha operativa que declara el informe, no cuándo se subió.
+      where: { businessDate: { in: [businessDate, auditDate] } },
       select: {
         id: true,
         reportKinds: true,
@@ -325,12 +327,37 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     .filter((row) => row.audit && row.audit.difference !== 0 && !row.audit.notes?.trim())
     .map((row) => row.currency);
 
-  const presentReportKinds = Array.from(
-    new Set(reportRows.flatMap((row) => row.reportKinds).filter((kind) => kind !== 'DESCONOCIDO')),
+  const todayKey = calendarDateKey(businessDate);
+  const auditDateKey = calendarDateKey(auditDate);
+  const kindsForDate = (dateKey: string) =>
+    Array.from(
+      new Set(
+        reportRows
+          .filter((row) => calendarDateKey(row.businessDate) === dateKey)
+          .flatMap((row) => row.reportKinds)
+          .filter((kind) => kind !== 'DESCONOCIDO'),
+      ),
+    );
+
+  const todayKinds = kindsForDate(todayKey);
+  const auditKinds = kindsForDate(auditDateKey);
+  const presentReportKinds = Array.from(new Set([...todayKinds, ...auditKinds]));
+
+  // "Habitaciones con actividad" es el informe principal y sustituye al trío
+  // histórico. Exigir los cuatro a la vez sería burocracia sin información nueva.
+  const occupancyReady =
+    todayKinds.includes(SUPERVISION_OPERATIONAL_PRIMARY_REPORT) ||
+    SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.every((kind) => todayKinds.includes(kind));
+  const missingOperationalFallback = occupancyReady
+    ? []
+    : SUPERVISION_OPERATIONAL_FALLBACK_REPORTS.filter((kind) => !todayKinds.includes(kind));
+
+  const missingAuditReports = REQUIRED_SUPERVISION_AUDIT_REPORTS.filter(
+    (kind) => !auditKinds.includes(kind),
   );
-  const missingRequiredReports = REQUIRED_SUPERVISION_OPENING_REPORTS.filter(
-    (kind) => !presentReportKinds.includes(kind),
-  );
+  const auditReady = missingAuditReports.length === 0;
+  const reportsReady = occupancyReady && auditReady;
+
   const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
     (kind) => !presentReportKinds.includes(kind),
   );
@@ -400,6 +427,8 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     },
     businessDate,
     businessDateKey: calendarDateKey(businessDate),
+    auditDate,
+    auditDateKey: calendarDateKey(auditDate),
     pendingRows,
     pendingTotal: pendingRows.length,
     cash: {
@@ -430,9 +459,17 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     keys: keyRows,
     reports: {
       presentKinds: presentReportKinds,
-      required: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
+      todayKinds,
+      auditKinds,
+      operationalPrimary: SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
+      operationalFallback: [...SUPERVISION_OPERATIONAL_FALLBACK_REPORTS],
+      occupancyReady,
+      missingOperationalFallback,
+      auditRequired: [...REQUIRED_SUPERVISION_AUDIT_REPORTS],
+      missingAudit: missingAuditReports,
+      auditReady,
+      reportsReady,
       optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
-      missingRequired: missingRequiredReports,
       missingOptional: missingOptionalReports,
       labels: SUPERVISION_REPORT_LABELS,
       sources: reportRows.map((row) => ({
@@ -445,7 +482,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
     },
     blockers: {
       cash: missingCashCurrencies.length,
-      reports: missingRequiredReports.length,
+      // Los informes incompletos exigen contingencia documentada, pero no dejan
+      // al hotel sin Supervisión si el PMS o una exportación falla.
+      reports: reportsReady ? 0 : 1,
     },
   };
 }
@@ -459,6 +498,7 @@ export async function completeSupervisionOpening(
     reviewedPending: boolean;
     reviewedGuarantees: boolean;
     reviewedKeys: boolean;
+    reportContingencyReason?: string | null;
   },
 ) {
   assertSupervisor(user);
@@ -480,11 +520,10 @@ export async function completeSupervisionOpening(
       `Hay diferencias de Caja sin observación en: ${readiness.cash.unexplainedDifferences.join(', ')}.`,
     );
   }
-  if (readiness.reports.missingRequired.length > 0) {
+  const reportContingencyReason = input.reportContingencyReason?.trim() || null;
+  if (!readiness.reports.reportsReady && (!reportContingencyReason || reportContingencyReason.length < 8)) {
     throw new RuleError(
-      `Faltan informes operativos obligatorios: ${readiness.reports.missingRequired
-        .map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind)
-        .join(', ')}.`,
+      'Falta evidencia PMS de apertura. Carga los informes disponibles o registra una contingencia con el motivo.',
     );
   }
 
@@ -518,7 +557,12 @@ export async function completeSupervisionOpening(
       guarantees: readiness.guarantees,
       keys: readiness.keys,
       reports: {
-        presentKinds: readiness.reports.presentKinds,
+        todayKinds: readiness.reports.todayKinds,
+        auditKinds: readiness.reports.auditKinds,
+        occupancyReady: readiness.reports.occupancyReady,
+        auditReady: readiness.reports.auditReady,
+        reportsReady: readiness.reports.reportsReady,
+        contingencyReason: reportContingencyReason,
         sources: readiness.reports.sources,
         missingOptional: readiness.reports.missingOptional,
       },
@@ -566,6 +610,8 @@ export async function completeSupervisionOpening(
           priorities,
           cashAudits: readiness.cash.currencies.map((row) => row.audit?.id).filter(Boolean),
           reportKinds: readiness.reports.presentKinds,
+          reportsReady: readiness.reports.reportsReady,
+          reportContingencyReason,
           pendingReviewed: readiness.pendingTotal,
         },
       },

@@ -8,12 +8,6 @@ import {
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
-import {
-  addCalendarDateDays,
-  calendarDateKey,
-  hotelCalendarDate,
-  hotelDayStart,
-} from '@/domain/time';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -21,12 +15,6 @@ import { recordAudit } from '@/server/audit';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { createFollowUp } from '@/server/services/followups';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
-import {
-  OPTIONAL_SUPERVISION_OPENING_REPORTS,
-  REQUIRED_SUPERVISION_OPENING_REPORTS,
-  SUPERVISION_REPORT_LABELS,
-} from '@/domain/supervision-opening';
-import { getSupervisionData } from '@/server/services/supervision';
 import { calendarDateKey, hotelCalendarDate, hotelDayStart } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
@@ -69,44 +57,6 @@ export async function getLastClosedSupervisionShift(userId: string) {
   });
 }
 
-export async function beginSupervisionShiftOpening(user: CurrentUser) {
-  assertSupervisor(user);
-
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.supervisionShift.findFirst({
-      where: { supervisorId: user.id, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
-      select: { id: true },
-    });
-    if (existing) throw new RuleError('Ya tienes un turno de Supervisión abierto o en preparación.');
-
-    const shift = await tx.supervisionShift.create({
-      data: {
-        supervisorId: user.id,
-        status: SupervisionShiftStatus.PREPARACION,
-        priorities: [],
-        openingState: { version: 1, phase: 'PREPARACION' },
-      },
-    });
-    await recordAudit(
-      {
-        entity: 'SupervisionShift',
-        entityId: shift.id,
-        action: AuditAction.CREAR,
-        summary: `Apertura de Supervisión iniciada por ${user.name}`,
-        user,
-        after: { startedAt: shift.startedAt, status: shift.status },
-      },
-      tx,
-    );
-    return shift;
-  });
-}
-
-/**
- * Compatibilidad interna y de pruebas: abre directamente un turno ACTIVO.
- * La interfaz de producción no usa esta función; pasa siempre por la apertura
- * guiada y completeSupervisionShiftOpening().
- */
 export async function startSupervisionShift(
   user: CurrentUser,
   input: { priorities: string[] },
@@ -121,13 +71,14 @@ export async function startSupervisionShift(
     });
     if (existing) throw new RuleError('Ya tienes un turno de Supervisión abierto.');
 
+    const now = new Date();
     const shift = await tx.supervisionShift.create({
       data: {
         supervisorId: user.id,
         priorities,
         status: SupervisionShiftStatus.ACTIVO,
+        openingCompletedAt: now,
         openingState: { version: 0, legacyDirectStart: true },
-        openingCompletedAt: new Date(),
       },
     });
     await recordAudit(
@@ -137,7 +88,7 @@ export async function startSupervisionShift(
         action: AuditAction.TURNO_INICIAR,
         summary: `Turno de Supervisión iniciado por ${user.name}`,
         user,
-        after: { startedAt: shift.startedAt, priorities },
+        after: { startedAt: shift.startedAt, priorities, legacyDirectStart: true },
       },
       tx,
     );
@@ -145,256 +96,485 @@ export async function startSupervisionShift(
   });
 }
 
-function jsonIds(value: Prisma.JsonValue | null | undefined): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((row) => {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
-    const id = (row as Record<string, Prisma.JsonValue>).id;
-    return typeof id === 'string' ? [id] : [];
+/**
+ * La interfaz inicia una preparación, no un turno activo. La preparación existe
+ * para que Caja, garantías, llaves, informes y pendientes se reciban antes de
+ * asumir formalmente Supervisión.
+ */
+export async function beginSupervisionOpening(user: CurrentUser) {
+  assertSupervisor(user);
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.supervisionShift.findFirst({
+      where: { supervisorId: user.id, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
+      select: { id: true, status: true },
+    });
+    if (existing) {
+      throw new RuleError(
+        existing.status === SupervisionShiftStatus.PREPARACION
+          ? 'Ya tienes una apertura de Supervisión en curso.'
+          : 'Ya tienes un turno de Supervisión abierto.',
+      );
+    }
+
+    const shift = await tx.supervisionShift.create({
+      data: {
+        supervisorId: user.id,
+        status: SupervisionShiftStatus.PREPARACION,
+        priorities: [],
+        openingState: { version: 1, phase: 'PREPARACION' },
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'SupervisionShift',
+        entityId: shift.id,
+        action: AuditAction.CREAR,
+        summary: `Apertura de Supervisión iniciada por ${user.name}`,
+        user,
+        after: { status: shift.status, preparationStartedAt: shift.startedAt },
+      },
+      tx,
+    );
+    return shift;
   });
 }
 
-export async function getSupervisionOpeningState(user: CurrentUser, shiftId: string) {
+type OpeningPendingRow = {
+  key: string;
+  ref: string;
+  title: string;
+  detail: string | null;
+  href: string;
+  tone: 'critico' | 'atencion' | 'curso';
+  group: string;
+};
+
+function jsonSnapshotIds(value: Prisma.JsonValue | null | undefined): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  return new Set(
+    value.flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const id = (item as Record<string, Prisma.JsonValue>).id;
+      return typeof id === 'string' ? [id] : [];
+    }),
+  );
+}
+
+function dedupeOpeningPending(rows: OpeningPendingRow[]): OpeningPendingRow[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.key)) return false;
+    seen.add(row.key);
+    return true;
+  });
+}
+
+export async function getSupervisionOpeningReadiness(user: CurrentUser) {
   assertSupervisor(user);
   const shift = await prisma.supervisionShift.findFirst({
-    where: { id: shiftId, supervisorId: user.id, status: SupervisionShiftStatus.PREPARACION },
-    select: { id: true, startedAt: true, status: true },
+    where: {
+      supervisorId: user.id,
+      status: SupervisionShiftStatus.PREPARACION,
+    },
+    orderBy: { startedAt: 'desc' },
   });
-  if (!shift) throw new RuleError('No tienes una apertura de Supervisión pendiente.');
+  if (!shift) throw new RuleError('No tienes una apertura de Supervisión en preparación.');
 
-  const today = hotelCalendarDate();
-  const auditDate = addCalendarDateDays(today, -1);
-  const todayKey = calendarDateKey(today);
-  const auditDateKey = calendarDateKey(auditDate);
-  const dayStart = hotelDayStart();
+  const businessDate = hotelCalendarDate();
+  const openingDayStart = hotelDayStart();
 
-  const [funds, currentCashGuarantees, cashAudits, imports, keyCounts] = await Promise.all([
+  const [
+    cashState,
+    cashFunds,
+    cashAudits,
+    openGuarantees,
+    floor4,
+    floor5,
+    floor6,
+    reportRows,
+    supervision,
+    myTasks,
+    myFollowUps,
+  ] = await Promise.all([
+    getLiveCashState({ movementLimit: 1, auditLimit: 1 }),
     prisma.cashFund.findMany({
       where: { active: true, currency: { in: ['CLP', 'USD'] } },
       select: { currency: true, amount: true },
       orderBy: { currency: 'asc' },
     }),
-    prisma.guarantee.findMany({
-      where: {
-        deletedAt: null,
-        kind: 'EFECTIVO',
-        state: { in: ['VIGENTE', 'APLICADA_PARCIALMENTE'] },
-      },
-      select: { id: true, currency: true },
-    }),
     prisma.cashAudit.findMany({
       where: { countedById: user.id, createdAt: { gte: shift.startedAt } },
       select: {
         id: true,
+        humanId: true,
         currency: true,
         expectedAmount: true,
         countedAmount: true,
         difference: true,
         notes: true,
         guaranteeSnapshot: true,
+        denominationSnapshot: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
     }),
+    listOpenGuarantees(100),
+    listRecentPhysicalKeyCounts(4, 1),
+    listRecentPhysicalKeyCounts(5, 1),
+    listRecentPhysicalKeyCounts(6, 1),
     prisma.supervisionAuditImport.findMany({
-      where: { supervisionShiftId: shift.id },
-      select: { businessDate: true, reportKinds: true, updatedAt: true },
-      orderBy: { businessDate: 'desc' },
+      // Una apertura puede mezclar cierres del día anterior con fotografías de hoy.
+      // Cuenta como evidencia todo informe cargado durante el día actual del hotel.
+      where: { createdAt: { gte: openingDayStart } },
+      select: {
+        id: true,
+        reportKinds: true,
+        businessDate: true,
+        updatedAt: true,
+        uploadedBy: { select: { name: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
     }),
-    Promise.all(
-      [4, 5, 6].map((floor) =>
-        prisma.keyInventoryCount.findFirst({
-          where: { floor },
-          orderBy: { countedAt: 'desc' },
-          select: {
-            id: true,
-            floor: true,
-            countedAt: true,
-            countedBy: { select: { name: true } },
-            items: { select: { expected: true, found: true, outOfService: true } },
-          },
-        }),
-      ),
-    ),
+    getSupervisionData(),
+    prisma.task.findMany({
+      where: {
+        deletedAt: null,
+        assigneeId: user.id,
+        status: { in: TASK_OPEN_STATUSES },
+      },
+      select: {
+        id: true,
+        humanId: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        dueAt: true,
+      },
+      orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
+      take: 50,
+    }),
+    prisma.followUp.findMany({
+      where: {
+        deletedAt: null,
+        ownerId: user.id,
+        status: { in: ['PENDIENTE', 'VENCIDO'] },
+      },
+      select: {
+        id: true,
+        humanId: true,
+        action: true,
+        description: true,
+        status: true,
+        priority: true,
+        scheduledAt: true,
+      },
+      orderBy: [{ priority: 'desc' }, { scheduledAt: 'asc' }, { createdAt: 'asc' }],
+      take: 50,
+    }),
   ]);
 
-  const currentGuaranteeIdsByCurrency = new Map<string, Set<string>>();
-  for (const guarantee of currentCashGuarantees) {
-    const currency = guarantee.currency.toUpperCase();
-    const set = currentGuaranteeIdsByCurrency.get(currency) ?? new Set<string>();
-    set.add(guarantee.id);
-    currentGuaranteeIdsByCurrency.set(currency, set);
+  const latestAuditByCurrency = new Map<string, (typeof cashAudits)[number]>();
+  for (const audit of cashAudits) {
+    const currency = audit.currency.toUpperCase();
+    if (!latestAuditByCurrency.has(currency)) latestAuditByCurrency.set(currency, audit);
   }
 
-  const cash = funds.map((fund) => {
-    const audit = cashAudits.find((row) => row.currency.toUpperCase() === fund.currency.toUpperCase()) ?? null;
-    const snapshotIds = new Set(jsonIds(audit?.guaranteeSnapshot));
-    const currentIds = currentGuaranteeIdsByCurrency.get(fund.currency.toUpperCase()) ?? new Set<string>();
+  const cashCurrencies = cashFunds.map((fund) => {
+    const currency = fund.currency.toUpperCase();
+    const audit = latestAuditByCurrency.get(currency) ?? null;
+    const currentGuaranteeIds = new Set(
+      cashState.cashGuarantees
+        .filter((guarantee) => guarantee.currency.toUpperCase() === currency)
+        .map((guarantee) => guarantee.id),
+    );
+    const snapshotIds = jsonSnapshotIds(audit?.guaranteeSnapshot);
     const guaranteesCurrent =
-      snapshotIds.size === currentIds.size && [...currentIds].every((id) => snapshotIds.has(id));
+      Boolean(audit) &&
+      snapshotIds.size === currentGuaranteeIds.size &&
+      [...currentGuaranteeIds].every((id) => snapshotIds.has(id));
+    const difference = audit ? Number(audit.difference) : null;
+    const differenceExplained = difference === null || difference === 0 || Boolean(audit?.notes?.trim());
+    const ready = Boolean(audit) && guaranteesCurrent && differenceExplained;
+
     return {
-      currency: fund.currency,
+      currency,
       fund: Number(fund.amount),
-      auditId: audit?.id ?? null,
-      countedAt: audit?.createdAt ?? null,
-      counted: audit ? Number(audit.countedAmount) : null,
-      difference: audit ? Number(audit.difference) : null,
-      notes: audit?.notes ?? null,
-      guaranteeCount: currentIds.size,
       guaranteesCurrent,
-      ready: Boolean(audit) && guaranteesCurrent,
+      ready,
+      audit: audit
+        ? {
+            id: audit.id,
+            humanId: audit.humanId,
+            expectedAmount: Number(audit.expectedAmount),
+            countedAmount: Number(audit.countedAmount),
+            difference,
+            notes: audit.notes,
+            createdAt: audit.createdAt,
+          }
+        : null,
     };
   });
 
-  const byDate = new Map<string, Set<string>>();
-  for (const row of imports) {
-    const key = calendarDateKey(row.businessDate);
-    const set = byDate.get(key) ?? new Set<string>();
-    row.reportKinds.forEach((kind) => set.add(kind));
-    byDate.set(key, set);
-  }
-  const todayKinds = byDate.get(todayKey) ?? new Set<string>();
-  const auditKinds = byDate.get(auditDateKey) ?? new Set<string>();
-  const occupancyReady =
-    todayKinds.has('ACTIVIDAD') ||
-    ['ENTRADAS', 'IN_HOUSE', 'SALIDAS'].every((kind) => todayKinds.has(kind));
-  const auditRequired = ['AUDITORIA_FORMULARIO', 'COBROS', 'CARGOS_DIARIOS'];
-  const missingAudit = auditRequired.filter((kind) => !auditKinds.has(kind));
-  const managementKinds = new Set([...todayKinds, ...auditKinds]);
-  const missingManagement = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
-    (kind) => !managementKinds.has(kind),
+  const missingCashCurrencies = cashCurrencies
+    .filter((row) => !row.ready)
+    .map((row) => row.currency);
+  const unexplainedCashDifferences = cashCurrencies
+    .filter((row) => row.audit && row.audit.difference !== 0 && !row.audit.notes?.trim())
+    .map((row) => row.currency);
+
+  const presentReportKinds = Array.from(
+    new Set(reportRows.flatMap((row) => row.reportKinds).filter((kind) => kind !== 'DESCONOCIDO')),
   );
-  const reportsReady = occupancyReady && missingAudit.length === 0;
+  const missingRequiredReports = REQUIRED_SUPERVISION_OPENING_REPORTS.filter(
+    (kind) => !presentReportKinds.includes(kind),
+  );
+  const missingOptionalReports = OPTIONAL_SUPERVISION_OPENING_REPORTS.filter(
+    (kind) => !presentReportKinds.includes(kind),
+  );
 
-  const keys = keyCounts.map((count, index) => {
-    const floor = index + 4;
-    const totals = count?.items.reduce(
-      (acc, item) => ({
-        expected: acc.expected + item.expected,
-        found: acc.found + item.found,
-        outOfService: acc.outOfService + item.outOfService,
-      }),
-      { expected: 0, found: 0, outOfService: 0 },
-    ) ?? { expected: 0, found: 0, outOfService: 0 };
-    return {
-      floor,
-      countId: count?.id ?? null,
-      countedAt: count?.countedAt ?? null,
-      countedBy: count?.countedBy.name ?? null,
-      ...totals,
-      missing: Math.max(totals.expected - totals.found, 0),
-      freshToday: Boolean(count?.countedAt && count.countedAt >= dayStart),
-    };
-  });
+  const signalRows: OpeningPendingRow[] = supervision.blocks.flatMap((block) =>
+    block.rows.map((row) => ({
+      key:
+        row.sourceEntity && row.sourceId
+          ? `${row.sourceEntity}:${row.sourceId}`
+          : `signal:${block.key}:${row.id}`,
+      ref: row.ref,
+      title: row.title,
+      detail: row.detail,
+      href: row.href,
+      tone: block.tone,
+      group: block.title,
+    })),
+  );
+  const taskRows: OpeningPendingRow[] = myTasks.map((task) => ({
+    key: `Task:${task.id}`,
+    ref: `#${task.humanId}`,
+    title: task.title,
+    detail: task.description,
+    href: `/tareas/${task.id}`,
+    tone:
+      task.priority === 'CRITICA'
+        ? 'critico'
+        : task.status === 'BLOQUEADA'
+          ? 'atencion'
+          : 'curso',
+    group: 'Asignado a mí',
+  }));
+  const followUpRows: OpeningPendingRow[] = myFollowUps.map((followUp) => ({
+    key: `FollowUp:${followUp.id}`,
+    ref: `#${followUp.humanId}`,
+    title: followUp.action,
+    detail: followUp.description,
+    href: '/seguimientos',
+    tone: followUp.status === 'VENCIDO' ? 'critico' : 'curso',
+    group: 'En seguimiento',
+  }));
+  const pendingRows = dedupeOpeningPending([...signalRows, ...taskRows, ...followUpRows]);
+
+  const keyRows = [
+    { floor: 4, count: floor4[0] ?? null },
+    { floor: 5, count: floor5[0] ?? null },
+    { floor: 6, count: floor6[0] ?? null },
+  ].map(({ floor, count }) => ({
+    floor,
+    id: count?.id ?? null,
+    countedAt: count?.countedAt ?? null,
+    countedBy: count?.countedBy.name ?? null,
+    totals: count?.totals ?? {
+      expected: floor === 4 ? 29 : 30,
+      found: 0,
+      missing: floor === 4 ? 29 : 30,
+      surplus: 0,
+      outOfService: 0,
+    },
+  }));
 
   return {
-    shift,
-    today,
-    auditDate,
-    cash,
-    cashReady: cash.length === 0 || cash.every((row) => row.ready),
-    reports: {
-      todayKinds: [...todayKinds],
-      auditKinds: [...auditKinds],
-      occupancyReady,
-      missingAudit,
-      reportsReady,
-      requiredLabels: REQUIRED_SUPERVISION_OPENING_REPORTS.map(
-        (kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind,
-      ),
-      missingManagement,
+    shift: {
+      id: shift.id,
+      status: shift.status,
+      startedAt: shift.startedAt,
     },
-    keys,
+    businessDate,
+    businessDateKey: calendarDateKey(businessDate),
+    pendingRows,
+    pendingTotal: pendingRows.length,
+    cash: {
+      currencies: cashCurrencies,
+      missingCurrencies: missingCashCurrencies,
+      unexplainedDifferences: unexplainedCashDifferences,
+      denominations: cashState.denominations,
+      guarantees: cashState.cashGuarantees.map((guarantee) => ({
+        id: guarantee.id,
+        amount: guarantee.amount,
+        guestName: guarantee.guestName,
+        roomNumber: guarantee.roomNumber,
+        reference: guarantee.reference,
+        currency: guarantee.currency,
+      })),
+    },
+    guarantees: openGuarantees.map((guarantee) => ({
+      id: guarantee.id,
+      humanId: guarantee.humanId,
+      kind: guarantee.kind,
+      currency: guarantee.currency,
+      amount: Number(guarantee.amount),
+      state: guarantee.state,
+      reference: guarantee.reference,
+      roomNumber: guarantee.roomNumber,
+      guestName: guarantee.guestName,
+    })),
+    keys: keyRows,
+    reports: {
+      presentKinds: presentReportKinds,
+      required: [...REQUIRED_SUPERVISION_OPENING_REPORTS],
+      optional: [...OPTIONAL_SUPERVISION_OPENING_REPORTS],
+      missingRequired: missingRequiredReports,
+      missingOptional: missingOptionalReports,
+      labels: SUPERVISION_REPORT_LABELS,
+      sources: reportRows.map((row) => ({
+        id: row.id,
+        reportKinds: row.reportKinds,
+        businessDate: calendarDateKey(row.businessDate),
+        updatedAt: row.updatedAt,
+        uploadedBy: row.uploadedBy.name,
+      })),
+    },
+    blockers: {
+      cash: missingCashCurrencies.length,
+      reports: missingRequiredReports.length,
+    },
   };
 }
 
-export async function completeSupervisionShiftOpening(
+export type SupervisionOpeningReadiness = Awaited<ReturnType<typeof getSupervisionOpeningReadiness>>;
+
+export async function completeSupervisionOpening(
   user: CurrentUser,
   input: {
     shiftId: string;
     reviewedPending: boolean;
+    reviewedGuarantees: boolean;
     reviewedKeys: boolean;
-    reportContingencyReason?: string | null;
   },
 ) {
   assertSupervisor(user);
-  if (!input.reviewedPending) throw new RuleError('Confirma la revisión de los pendientes operativos.');
-  if (!input.reviewedKeys) throw new RuleError('Confirma la revisión del inventario de llaves.');
-
-  const opening = await getSupervisionOpeningState(user, input.shiftId);
-  if (!opening.cashReady) {
-    throw new RuleError('Debes arquear todas las divisas activas y validar las garantías antes de iniciar.');
+  if (!input.reviewedPending || !input.reviewedGuarantees || !input.reviewedKeys) {
+    throw new RuleError('Debes confirmar la revisión operacional completa antes de iniciar tu turno.');
   }
 
-  const contingency = input.reportContingencyReason?.trim() || null;
-  if (!opening.reports.reportsReady && (!contingency || contingency.length < 8)) {
+  const readiness = await getSupervisionOpeningReadiness(user);
+  if (readiness.shift.id !== input.shiftId) {
+    throw new RuleError('La apertura que intentas confirmar ya no es la apertura vigente.');
+  }
+  if (readiness.cash.missingCurrencies.length > 0) {
     throw new RuleError(
-      'Faltan informes operativos obligatorios. Cárgalos o registra una contingencia explicando por qué no están disponibles.',
+      `Debes arquear personalmente la Caja y validar sus garantías antes de iniciar: ${readiness.cash.missingCurrencies.join(', ')}.`,
+    );
+  }
+  if (readiness.cash.unexplainedDifferences.length > 0) {
+    throw new RuleError(
+      `Hay diferencias de Caja sin observación en: ${readiness.cash.unexplainedDifferences.join(', ')}.`,
+    );
+  }
+  if (readiness.reports.missingRequired.length > 0) {
+    throw new RuleError(
+      `Faltan informes operativos obligatorios: ${readiness.reports.missingRequired
+        .map((kind) => SUPERVISION_REPORT_LABELS[kind] ?? kind)
+        .join(', ')}.`,
     );
   }
 
-  const review = await getSupervisionData();
-  const visiblePending = review.blocks.flatMap((block) =>
-    block.rows.map((row) => ({
-      block: block.key,
-      ref: row.ref,
-      title: row.title,
-      sourceEntity: row.sourceEntity ?? null,
-      sourceId: row.sourceId ?? null,
-    })),
-  );
-  const priorities = visiblePending
-    .slice(0, 12)
-    .map((row) => `${row.ref ? `${row.ref} · ` : ''}${row.title}`);
+  const priorities = [
+    ...readiness.pendingRows.map((row) => `${row.ref} · ${row.title}`),
+    ...readiness.reports.missingOptional.map(
+      (kind) => `Completar ${SUPERVISION_REPORT_LABELS[kind] ?? kind}`,
+    ),
+  ]
+    .filter(Boolean)
+    .slice(0, 12);
+
+  const now = new Date();
+  const openingState = JSON.parse(
+    JSON.stringify({
+      version: 1,
+      businessDate: readiness.businessDateKey,
+      completedAt: now,
+      confirmations: {
+        pending: true,
+        guarantees: true,
+        keys: true,
+      },
+      cash: readiness.cash.currencies.map((row) => ({
+        currency: row.currency,
+        fund: row.fund,
+        ready: row.ready,
+        guaranteesCurrent: row.guaranteesCurrent,
+        audit: row.audit,
+      })),
+      guarantees: readiness.guarantees,
+      keys: readiness.keys,
+      reports: {
+        presentKinds: readiness.reports.presentKinds,
+        sources: readiness.reports.sources,
+        missingOptional: readiness.reports.missingOptional,
+      },
+      pending: readiness.pendingRows.map((row) => ({
+        key: row.key,
+        ref: row.ref,
+        title: row.title,
+        group: row.group,
+      })),
+    }),
+  ) as Prisma.InputJsonObject;
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.supervisionShift.updateMany({
-      where: {
-        id: input.shiftId,
-        supervisorId: user.id,
-        status: SupervisionShiftStatus.PREPARACION,
-      },
+    const current = await tx.supervisionShift.findUnique({
+      where: { id: input.shiftId },
+      select: { id: true, supervisorId: true, status: true },
+    });
+    if (!current || current.supervisorId !== user.id) {
+      throw new NotFoundError('La apertura de Supervisión no existe.');
+    }
+    if (current.status !== SupervisionShiftStatus.PREPARACION) {
+      throw new RuleError('Esta apertura ya fue iniciada o cerrada.');
+    }
+
+    const shift = await tx.supervisionShift.update({
+      where: { id: current.id },
       data: {
         status: SupervisionShiftStatus.ACTIVO,
+        startedAt: now,
+        openingCompletedAt: now,
+        openingState,
         priorities,
-        openingCompletedAt: new Date(),
-        openingState: JSON.parse(
-          JSON.stringify({
-            version: 1,
-            completedAt: new Date(),
-            cash: opening.cash,
-            reports: opening.reports,
-            reportContingencyReason: contingency,
-            keys: opening.keys,
-            pendingReviewed: true,
-            pendingSnapshot: visiblePending,
-          }),
-        ) as Prisma.InputJsonObject,
       },
     });
-    if (updated.count !== 1) throw new RuleError('La apertura ya cambió de estado. Actualiza la pantalla.');
 
     await recordAudit(
       {
         entity: 'SupervisionShift',
-        entityId: input.shiftId,
+        entityId: shift.id,
         action: AuditAction.TURNO_INICIAR,
-        summary: `Turno de Supervisión iniciado por ${user.name} después de completar la apertura operativa`,
+        summary: `Turno de Supervisión iniciado por ${user.name} tras recepción operacional`,
         user,
         after: {
-          cashReady: opening.cashReady,
-          reportsReady: opening.reports.reportsReady,
-          reportContingencyReason: contingency,
-          reviewedKeys: true,
-          pendingReviewed: visiblePending.length,
+          startedAt: now,
           priorities,
+          cashAudits: readiness.cash.currencies.map((row) => row.audit?.id).filter(Boolean),
+          reportKinds: readiness.reports.presentKinds,
+          pendingReviewed: readiness.pendingTotal,
         },
       },
       tx,
     );
-    return tx.supervisionShift.findUniqueOrThrow({ where: { id: input.shiftId } });
+    return shift;
   });
 }
+
 async function buildSupervisionSnapshot(
   shiftId: string,
   client: Prisma.TransactionClient,
@@ -594,6 +774,9 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
     const shift = await tx.supervisionShift.findUnique({ where: { id: shiftId } });
     if (!shift) throw new NotFoundError('El turno de Supervisión no existe.');
     if (shift.supervisorId !== user.id) throw new RuleError('Ese turno pertenece a otro supervisor.');
+    if (shift.status === SupervisionShiftStatus.PREPARACION) {
+      throw new RuleError('Completa la apertura antes de cerrar el turno de Supervisión.');
+    }
     if (!OPEN_SUPERVISION_STATUSES.includes(shift.status as (typeof OPEN_SUPERVISION_STATUSES)[number])) {
       throw new RuleError('Ese turno de Supervisión ya está cerrado.');
     }

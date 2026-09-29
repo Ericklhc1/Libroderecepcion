@@ -16,6 +16,8 @@ import {
 
 export type SupervisionReportKind =
   | 'AUDITORIA_FORMULARIO'
+  | 'ACTIVIDAD'
+  | 'ENTRADAS'
   | 'COBROS'
   | 'VENTAS_CANAL'
   | 'PRODUCCION_HABITACION'
@@ -40,7 +42,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.22.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.24.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
@@ -55,6 +57,8 @@ export type ParsedSupervisionReport = {
 
 const REPORT_LABELS: Record<SupervisionReportKind, string> = {
   AUDITORIA_FORMULARIO: 'Formulario de auditoría',
+  ACTIVIDAD: 'Habitaciones con actividad',
+  ENTRADAS: 'Entradas / Check-ins',
   COBROS: 'Cobros',
   VENTAS_CANAL: 'Ventas por canal',
   PRODUCCION_HABITACION: 'Producción por habitación',
@@ -122,6 +126,8 @@ function matchNumber(text: string, pattern: RegExp, parser = numberEs): number |
 function kindOf(fileName: string, text: string): SupervisionReportKind {
   const name = fileName.toLocaleLowerCase('es-CL');
   if (/formulario auditor[ií]a/i.test(text)) return 'AUDITORIA_FORMULARIO';
+  if (name.includes('habitaciones con actividad') || name.includes('actividad') || /habitaciones con actividad/i.test(text)) return 'ACTIVIDAD';
+  if (name.includes('entradas') || /informe de entradas|\bentradas\b.*check.?in/i.test(text)) return 'ENTRADAS';
   if (/operaciones de caja reservas/i.test(text) || /totales por forma de pago/i.test(text)) return 'COBROS';
   if (/ingresos totales por canal/i.test(text)) return 'VENTAS_CANAL';
   if (/producci[oó]n por habitaci[oó]n/i.test(text)) return 'PRODUCCION_HABITACION';
@@ -231,6 +237,10 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
         },
       };
     }
+    case 'ACTIVIDAD':
+      return { roomActivity: { recognized: true } };
+    case 'ENTRADAS':
+      return { entries: { recognized: true } };
     case 'COBROS':
       return {
         payments: {
@@ -322,6 +332,8 @@ function reportedBusinessDate(fileName: string, text: string): string | null {
 }
 
 const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {
+  ACTIVIDAD: 1,
+  ENTRADAS: 1,
   VENTAS_CANAL: 8,
   COBROS: 4,
   PRODUCCION_HABITACION: 3,
@@ -454,13 +466,13 @@ export async function mergeSupervisionAuditReport(
     const shift = await tx.supervisionShift.findFirst({
       where: {
         supervisorId: user.id,
-        status: SupervisionShiftStatus.ACTIVO,
+        status: { in: [SupervisionShiftStatus.PREPARACION, SupervisionShiftStatus.ACTIVO] },
       },
       orderBy: { startedAt: 'desc' },
       select: { id: true },
     });
     if (!shift) {
-      throw new RuleError('Inicia tu turno de Supervisión antes de cargar informes de auditoría.');
+      throw new RuleError('Comienza la apertura de Supervisión antes de cargar los informes del día.');
     }
 
     const existing = await tx.supervisionAuditImport.findUnique({

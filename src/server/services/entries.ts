@@ -26,6 +26,7 @@ import {
   operationalMailTimestamp,
   queueOperationalMail,
 } from '@/server/services/operational-mail';
+import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 export const entryInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -206,6 +207,15 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
     status: 'SUCCESS',
     metadata: { entryType: entry.type },
   });
+
+  if (
+    entry.type === EntryType.INCIDENCIA ||
+    entry.priority === 'CRITICA' ||
+    entry.priority === 'ALTA' ||
+    entry.requiresFollowUp
+  ) {
+    scheduleFrontiProactiveSweep('entry-created');
+  }
 
   return entry;
 }

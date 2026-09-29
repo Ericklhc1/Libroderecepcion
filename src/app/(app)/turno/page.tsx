@@ -185,6 +185,7 @@ export default async function ShiftPage({
           where: {
             deletedAt: null,
             active: true,
+            hiddenFromSelectors: false,
             role: { operational: true },
           },
           select: {

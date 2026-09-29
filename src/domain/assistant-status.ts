@@ -207,7 +207,11 @@ export function classifyAssistantFailure(signal: ProviderFailureSignal): Assista
     llegar solo. Fue exactamente lo que pasó con `input_text`.
   */
   if (status === 400) {
-    return /\bmodel\b/.test(message) ? 'MODELO_DESCONOCIDO' : 'PETICION_INVALIDA';
+    const unknownModel =
+      /model[_ -]?not[_ -]?found/.test(message) ||
+      /(?:model|modelo).*(?:does not exist|not available|not found|no existe|no disponible)/.test(message) ||
+      /(?:do not have|don't have|sin) (?:access|acceso).*(?:model|modelo)/.test(message);
+    return unknownModel ? 'MODELO_DESCONOCIDO' : 'PETICION_INVALIDA';
   }
   if (status === 422) return 'PETICION_INVALIDA';
 

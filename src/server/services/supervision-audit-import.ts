@@ -383,7 +383,7 @@ function reportedBusinessDate(fileName: string, text: string): string | null {
     )
     .filter((value): value is string => Boolean(value));
 
-  return candidates.length === 1 ? candidates[0] : null;
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
 }
 
 const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {

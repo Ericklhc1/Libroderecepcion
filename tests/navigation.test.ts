@@ -18,10 +18,10 @@ const ROLES = Object.values(ROLE_KEYS);
  * seguimientos son clases de un mismo flujo, no cuatro módulos. Si alguien
  * los vuelve a agregar al menú, estas pruebas fallan.
  */
-const RETIRED_FROM_MENU = ['/tareas', '/incidencias', '/alertas', '/seguimientos'];
+const RETIRED_FROM_MENU = ['/tareas', '/incidencias', '/seguimientos'];
 
 describe('menú principal', () => {
-  it('no ofrece las cuatro entidades como módulos separados', () => {
+  it('no ofrece tareas, incidencias y seguimientos como módulos raíz separados', () => {
     const hrefs = NAV_GROUPS.flatMap((group) => group.items).map((item) => item.href);
     for (const retired of RETIRED_FROM_MENU) {
       expect(hrefs).not.toContain(retired);
@@ -38,7 +38,7 @@ describe('menú principal', () => {
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
-      '/avisos', // timers y recordatorios internos
+      '/alertas', // llamadas de atención programables
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
@@ -78,7 +78,7 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/avisos']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
   it('el Supervisor ve el Centro como módulo raíz privado', () => {
@@ -182,7 +182,7 @@ describe('cabecera horizontal compacta', () => {
     const roots = NAV_ITEMS.map((item) => item.href);
     expect(roots).not.toContain('/tareas');
     expect(roots).not.toContain('/seguimientos');
-    expect(roots).not.toContain('/alertas');
+    expect(roots).toContain('/alertas');
   });
 
   it('usa dropdowns compactos, animados y centrados en vez de un mega menú de ancho completo', () => {

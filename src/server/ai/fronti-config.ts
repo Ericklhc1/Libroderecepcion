@@ -25,6 +25,11 @@ export type FrontiConfig = {
   memoryContextLimit: number;
   modelHistoryLimit: number;
   sessionActivityMinutes: number;
+  proactive: {
+    enabled: boolean;
+    minSeverity: 'BAJA' | 'MEDIA' | 'ALTA';
+    maxSignals: number;
+  };
   tools: Record<FrontiToolKey, boolean>;
 };
 
@@ -39,6 +44,10 @@ function provider(value: string): FrontiProviderName {
 
 function reasoning(value: string): 'low' | 'medium' | 'high' {
   return value === 'medium' || value === 'high' ? value : 'low';
+}
+
+function proactiveSeverity(value: string): 'BAJA' | 'MEDIA' | 'ALTA' {
+  return value === 'BAJA' || value === 'ALTA' ? value : 'MEDIA';
 }
 
 export async function getFrontiConfig(): Promise<FrontiConfig> {
@@ -80,6 +89,11 @@ export async function getFrontiConfig(): Promise<FrontiConfig> {
     memoryContextLimit: clamp(number('fronti.memoryContextLimit', 12), 1, 30, 12),
     modelHistoryLimit: clamp(number('fronti.modelHistoryLimit', 15), 4, 30, 15),
     sessionActivityMinutes: clamp(number('fronti.sessionActivityMinutes', 15), 5, 60, 15),
+    proactive: {
+      enabled: bool('fronti.proactive.enabled', true),
+      minSeverity: proactiveSeverity(string('fronti.proactive.minSeverity', 'MEDIA')),
+      maxSignals: clamp(number('fronti.proactive.maxSignals', 24), 5, 50, 24),
+    },
     tools: {
       room: bool('fronti.tool.room', true),
       priorities: bool('fronti.tool.priorities', true),

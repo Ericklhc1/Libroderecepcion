@@ -15,6 +15,11 @@ import {
   sourceDepartureTotal,
   type AuditReviewStatus,
 } from '@/domain/supervision-audit-review';
+import {
+  parseSalesPeriodReport,
+  salesPeriodFindings,
+  type SalesPeriodMetrics,
+} from '@/domain/supervision-sales-period';
 
 export type SupervisionReportKind =
   | 'AUDITORIA_FORMULARIO'
@@ -22,6 +27,7 @@ export type SupervisionReportKind =
   | 'ENTRADAS'
   | 'COBROS'
   | 'VENTAS_CANAL'
+  | 'VENTAS_PERIODO'
   | 'PRODUCCION_HABITACION'
   | 'SALIDAS'
   | 'REVENUE'
@@ -44,7 +50,7 @@ export type SupervisionAuditFinding = {
   detail: string;
 };
 
-export const SUPERVISION_AUDIT_PARSER_VERSION = '1.24.0';
+export const SUPERVISION_AUDIT_PARSER_VERSION = '1.25.0';
 
 export type ParsedSupervisionReport = {
   kind: SupervisionReportKind;
@@ -62,7 +68,8 @@ const REPORT_LABELS: Record<SupervisionReportKind, string> = {
   ACTIVIDAD: 'Habitaciones con actividad',
   ENTRADAS: 'Entradas / Check-ins',
   COBROS: 'Cobros',
-  VENTAS_CANAL: 'Ventas por canal',
+  VENTAS_CANAL: 'Ventas por canal (legado)',
+  VENTAS_PERIODO: 'Ventas por período',
   PRODUCCION_HABITACION: 'Producción por habitación',
   SALIDAS: 'Salidas',
   REVENUE: 'Revenue',
@@ -156,6 +163,7 @@ function kindOf(fileName: string, text: string): SupervisionReportKind {
   }
 
   if (/operaciones de caja reservas/i.test(text) || /totales por forma de pago/i.test(text)) return 'COBROS';
+  if (/informe detalle ventas periodo/i.test(text)) return 'VENTAS_PERIODO';
   if (/ingresos totales por canal/i.test(text)) return 'VENTAS_CANAL';
   if (/producci[oó]n por habitaci[oó]n/i.test(text)) return 'PRODUCCION_HABITACION';
   if (/informe de salidas/i.test(text)) return 'SALIDAS';
@@ -247,6 +255,8 @@ function metricsFor(kind: SupervisionReportKind, text: string, checks: Supervisi
         },
       };
     }
+    case 'VENTAS_PERIODO':
+      return {};
     case 'VENTAS_CANAL': {
       const total = text.match(
         /Total\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+CL\$\s*([\d.]+)\s+([\d.,]+)\s*%\s+(\d+)\s+(\d+)\s+(\d+)/i,
@@ -362,6 +372,7 @@ const EXPECTED_FIELDS: Partial<Record<SupervisionReportKind, number>> = {
   ACTIVIDAD: 1,
   ENTRADAS: 1,
   VENTAS_CANAL: 8,
+  VENTAS_PERIODO: 1,
   COBROS: 4,
   PRODUCCION_HABITACION: 3,
   SALIDAS: 5,
@@ -405,6 +416,7 @@ export function parseSupervisionReportText(
   const text = rawText.replace(/\s+/g, ' ').trim();
   const kind = kindOf(fileName, text);
   const warnings: string[] = [];
+  const salesPeriod = kind === 'VENTAS_PERIODO' ? parseSalesPeriodReport(rawText) : null;
 
   if (!text) {
     warnings.push(
@@ -418,12 +430,22 @@ export function parseSupervisionReportText(
   }
 
   const checks = kind === 'AUDITORIA_FORMULARIO' ? auditChecks(text) : [];
-  const findings = kind === 'AUDITORIA_FORMULARIO' ? findingsFromAudit(text, checks) : [];
-  const metrics = metricsFor(kind, text, checks);
-  const completeness = completenessFor(kind, metrics, checks);
+  const findings =
+    kind === 'AUDITORIA_FORMULARIO'
+      ? findingsFromAudit(text, checks)
+      : salesPeriod
+        ? salesPeriodFindings(salesPeriod)
+        : [];
+  const metrics = salesPeriod ? { salesPeriod } : metricsFor(kind, text, checks);
+  const completeness =
+    salesPeriod
+      ? { found: salesPeriod.visibleDays, expected: salesPeriod.expectedVisibleDays }
+      : completenessFor(kind, metrics, checks);
   if (completeness && completeness.found < completeness.expected) {
     warnings.push(
-      `Formato parcialmente reconocido: se extrajeron ${completeness.found} de ${completeness.expected} campos/control(es) esperados para ${REPORT_LABELS[kind]}.`,
+      kind === 'VENTAS_PERIODO'
+        ? `Ventas por período: el PDF contiene ${completeness.found} día(s) completos de ${completeness.expected} esperados hasta la fecha de generación. No se completaron fechas por inferencia.`
+        : `Formato parcialmente reconocido: se extrajeron ${completeness.found} de ${completeness.expected} campos/control(es) esperados para ${REPORT_LABELS[kind]}.`,
     );
   }
 
@@ -452,8 +474,8 @@ export async function parseSupervisionReport(
     );
   }
 
-  const text = compactText(linesFromFragments(fragments));
-  const parsed = parseSupervisionReportText(fileName, text);
+  const lines = linesFromFragments(fragments);
+  const parsed = parseSupervisionReportText(fileName, lines.join('\n'));
 
   // Para los informes que describen movimientos de habitaciones, reutilizamos
   // el lector PMS estructurado. Así la apertura no se limita a saber que el
@@ -565,13 +587,20 @@ export async function mergeSupervisionAuditReport(
             jsonArray<SupervisionAuditCheck>(existing?.checks),
             input.parsed.checks,
           );
+    const existingFindings = jsonArray<SupervisionAuditFinding>(existing?.findings);
     const findings =
       input.parsed.kind === 'AUDITORIA_FORMULARIO'
         ? input.parsed.findings
-        : mergeByKey(
-            jsonArray<SupervisionAuditFinding>(existing?.findings),
-            input.parsed.findings,
-          );
+        : input.parsed.kind === 'VENTAS_PERIODO'
+          ? mergeByKey(
+              existingFindings.filter(
+                (finding) =>
+                  !finding.key.startsWith('sales-period:') &&
+                  !finding.key.startsWith('cross:sales-period:'),
+              ),
+              input.parsed.findings,
+            )
+          : mergeByKey(existingFindings, input.parsed.findings);
     const reviewState = parseSupervisionAuditReviewState(existing?.reviewState);
     // Un informe SALIDAS recién cargado es una nueva fotografía de origen:
     // sustituye cualquier ajuste manual previo del contador, para no ocultar datos más frescos.

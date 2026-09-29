@@ -30,7 +30,7 @@ export default async function AcceptTermsPage() {
             <BookOpen className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <p className="text-xs font-medium text-slate-500">Central de Operaciones · Hotel HW Libertad</p>
+            <p className="text-xs font-medium text-slate-500">AROH Central IA · Hotel HW Libertad</p>
             <h1 className="text-xl font-semibold text-petrol-950">{TERMS_TITLE}</h1>
           </div>
         </header>
@@ -92,7 +92,7 @@ export default async function AcceptTermsPage() {
 
               <SubmitButton className="w-full" pendingLabel="Registrando aceptación…">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                Aceptar y entrar al Libro
+                Aceptar y entrar a AROH
               </SubmitButton>
             </ActionForm>
 

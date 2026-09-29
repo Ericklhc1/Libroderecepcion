@@ -1,9 +1,8 @@
-# Tablero de situación — Libro Operativo de Recepción
+# Tablero de situación — Central de Operaciones · Hotel HW Libertad
 
-> Estado real del desarrollo. La fuente de verdad técnica es `main` +
-> Vercel Production + Neon `production`.
+> Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · Apertura operacional de Supervisión · versión propuesta **v1.24.0**
+Actualizado: **2026-09-29** · jornada operativa canónica + nueva identidad · versión candidata **v1.25.0**
 
 ## Estados canónicos
 
@@ -20,64 +19,56 @@ Actualizado: **2026-09-29** · Apertura operacional de Supervisión · versión 
 | Bloque | Estado | Iteración / PR | Nota |
 |---|---|---|---|
 | Infraestructura Production-only | `PRODUCTION` | v1.0.0 | GitHub `main` → Vercel Production → Neon `production`; sin staging alojado |
-| Turnos + transferencia de Caja | `PRODUCTION` | #125 · #128 · v1.10.9 | Relevo secuencial + gate transversal; saliente cierra, entrante recuenta y confirma antes de operar |
-| ID FNS transversal | `PRODUCTION` | #64 · #67 · #68 | Reservas/RoomStay consolidados por ID FNS |
-| Caja unificada | `PRODUCTION` | v1.3.1 | Semántica financiera correcta desplegada | Arqueo contra efectivo esperado; fondo, garantías y saldo operacional separados; Tesorería como transferencia interna |
-| PMS / Habitaciones / Reservas | `RETIRADO_RUNTIME` | v1.4.0 | Legado histórico conservado; fuera de navegación, formularios y flujos operativos | Núcleo por habitación e ID FNS desplegado |
-| Preparar entrega | `PRODUCTION` | #66 · #67 · #68 | Anulación/retiro cierra participación y evita usuarios activos huérfanos |
-| Fronti proveedor/credenciales | `PRODUCTION` | #71 | Groq/vLLM/OpenAI, credenciales cifradas administrables y fallback de entorno |
-| Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión; PMS retirado del runtime operativo |
-| Centro de Supervisión | `PR_ABIERTO` | v1.24.0 · PR #177 | Apertura guiada: pendientes + Caja/garantías + llaves + informes antes de activar el turno |
-| Central de Reservas | `EN_DESARROLLO` | v1.23.0 | Bandeja previa a la operación + rol específico, sin duplicar PMS |
-| Correo individual | `EN_DESARROLLO` | v1.23.0 | Correo opcional por usuario + preferencias + outbox de novedades |
+| Turnos + transferencia de Caja | `PRODUCTION` | #125 · #128 · v1.10.9 | Relevo secuencial; saliente cierra, entrante recuenta y confirma |
+| Recepción guiada + emergencia única | `PRODUCTION` | v1.19.0 | Recepción en cinco pasos, participación compartida y emergencia auto-liberable |
+| Caja unificada | `PRODUCTION` | v1.3.1 | Fondo, garantías y saldo operacional separados |
+| Núcleo operativo sin PMS | `PRODUCTION` | v1.10.9 | Turnos + Novedades + Caja + Llaves + Supervisión |
+| Centro de Supervisión accionable | `PRODUCTION` | v1.24.0 · PR #177 | Apertura guiada y comprobable antes de activar Supervisión |
+| Central de Reservas | `PRODUCTION` | v1.23.0 | Bandeja previa a la operación + rol específico |
+| Correo individual | `PRODUCTION` | v1.23.0 | Correo opcional por usuario + preferencias + outbox |
+| Jornada operativa canónica | `EN_DESARROLLO` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
+| Identidad Central de Operaciones | `EN_DESARROLLO` | v1.25.0 | Branding en UI/correos/Fronti; dominio se migra después |
 
 ## Iteración actual
 
-**Libro 1.24.0** · rama **`feat/apertura-supervision-1-24-0`** · PR **#177**
+**Central 1.25.0** · rama **`feat/central-operaciones-dia-operativo-1-25-0`**
 
-Objetivo: convertir el inicio de Supervisión en una recepción operacional comprobable, no en una declaración libre de prioridades.
+Objetivo: que la operación diaria tenga **una sola fecha canónica** y que la plataforma adopte su nueva identidad sin mezclar todavía la migración de dominio.
 
 Incluye:
-- estado `PREPARACION` antes de `ACTIVO`;
-- pendientes reales visibles antes de asumir;
-- arqueo personal obligatorio por fondo activo y validación física de garantías en efectivo;
-- revisión de garantías/custodias y último inventario de llaves;
-- evidencia PMS idónea sin redundancia: **Habitaciones con actividad** o el respaldo **Entradas + In House + Salidas** para el estado de hoy, más Formulario de auditoría + Cobros + Cargos diarios del cierre anterior;
-- Ventas por canal, Producción por habitación y Revenue como gestión no bloqueante;
-- contingencia escrita si el PMS no entrega la evidencia completa, sin relajar la barrera de Caja/garantías;
-- señal conservadora de trámite por ID enlazado en PDF, sin auto-confirmar check-in/check-out;
-- fecha de informe autodetectada para mezclar cierres de ayer con fotografías de hoy;
-- snapshot de apertura y prioridades generadas desde el estado real.
+- turno operativo abierto → manda `Shift.date`;
+- sin turno abierto, último cierre DÍA → misma fecha; último cierre NOCHE → día siguiente;
+- Inicio y dashboard de Supervisión consumen esa fecha;
+- informes visibles del dashboard limitados a la jornada vigente;
+- cierre anterior conservado únicamente como evidencia de apertura;
+- parser de PDF robustecido para no confundir fechas de huéspedes/reservas con la fecha del informe;
+- identidad visible **Central de Operaciones · Hotel HW Libertad**;
+- sin migración de esquema ni datos.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
-- migración automática en Vercel Production;
-- smoke de versión, Centro de Supervisión y flujo de apertura.
+- despliegue Vercel Production;
+- smoke de versión, Inicio, Supervisión e informes diarios.
 
 ## Infraestructura vigente
 
-Flujo único:
-
 `rama de trabajo → PR/Compuerta → main → Vercel Production → Neon production`
 
-- Previews nuevos de Vercel están desactivados por `vercel.json`.
-- Los previews históricos no son fuente de verdad.
-- Neon debe quedar con una única rama `production`.
+- Vercel despliega automáticamente sólo `main`.
 - No existe staging alojado.
 - CI usa PostgreSQL efímero y nunca Neon Production.
-- Toda actualización de `main` incrementa SemVer.
-- El workflow **Release Vercel Production** verifica versión + SHA + smoke y crea el tag `vX.Y.Z`.
+- Neon debe mantener una única rama alojada `production`.
+- Toda actualización de Production incrementa SemVer.
+- El subdominio nuevo se configurará después de estabilizar v1.25.0; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 
 | Bloqueo | Efecto | Tratamiento |
 |---|---|---|
-| Neon Free | No permite proteger la rama Production y limita retención/historial | Mantener una sola rama y respaldos externos |
-| Límite diario de deployments Vercel Free | Puede frenar builds si se acumulan previews históricos | Sólo `main` despliega automáticamente; evitar despliegues innecesarios |
+| Neon Free | Protección/retención limitadas | Una sola rama + respaldos externos |
+| Límite diario de deployments Vercel Free | Puede frenar builds por exceso de despliegues | Sólo `main` despliega automáticamente |
 
 ## Regla de mantenimiento
 
-Cada PR funcional actualiza este archivo en el mismo PR. No mezclar ramas
-históricas completas: rescatar sólo funcionalidad concreta que no exista en
-`main`, reimplementándola sobre Production actual.
+Cada PR funcional actualiza este archivo en el mismo PR. No mezclar ramas históricas completas; rescatar sólo funcionalidad concreta que no exista en `main`.

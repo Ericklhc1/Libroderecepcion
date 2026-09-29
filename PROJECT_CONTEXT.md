@@ -13,6 +13,22 @@
 - Esta release **no implementa Fronti proactivo/event-driven** ni acciones autónomas de fondo; esa capa queda separada para revisión posterior.
 - Sin migración Prisma ni cambios masivos de datos. Release objetivo: **v1.27.0**.
 
+## Actualización 29/09/2026 · AROH 1.26.3 · panel de soporte fuera del header sticky
+
+- Se corrige el drawer **Reportar / solicitar**: antes se renderizaba como `fixed` dentro de la cabecera `sticky` con `backdrop-blur`, por lo que el navegador lo tomaba respecto de ese contenedor y quedaba recortado a la altura del header.
+- El panel ahora se monta con **React Portal en `document.body`**, igual que los overlays globales correctos del sistema.
+- Mantiene overlay de pantalla completa, cierre por Escape/clic exterior, formulario desplazable y bloqueo de scroll de fondo.
+- Se agrega regresión explícita para exigir portal + `fixed inset-0` en el componente de soporte.
+- Sin cambios de esquema ni datos. Release objetivo: **v1.26.3**.
+
+## Actualización 29/09/2026 · AROH 1.26.2 · navegación desplegable compacta
+
+- La navegación secundaria de escritorio deja de abrir franjas tipo mega-menú a todo el ancho y pasa a **dropdowns compactos anclados al módulo**.
+- Los dropdowns usan tarjeta flotante, sombra suave, bordes redondeados, indicador de selección y animación breve respetando `prefers-reduced-motion`.
+- La tipografía de módulos y opciones sube aproximadamente un punto visual para mejorar legibilidad sin agrandar la cabecera.
+- Cabecera y navegación viven dentro de un contenedor centrado de ancho máximo; en pantallas muy anchas o con zoom reducido no se pegan a los extremos.
+- Si el ancho disponible no alcanza, la fila de módulos conserva desplazamiento horizontal; el dropdown usa portal para no quedar recortado por ese contenedor.
+- Sin migración de esquema ni cambios de datos. Release objetivo: **v1.26.2**.
 
 ## Actualización 29/09/2026 · AROH 1.26.1 · identidad final del producto
 

@@ -189,6 +189,12 @@ async function persistFrontiChatMessage(input: {
       });
     }
 
+    scheduleWebPushForUsers(
+      recipients
+        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+        .map((recipient) => recipient.userId),
+    );
+
     return created;
   });
 

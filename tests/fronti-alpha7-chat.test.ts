@@ -58,7 +58,7 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
 
     expect(source).toContain('/(^|\\s)@fronti\\b/i');
     expect(source).toContain('canUseFronti(user, config.enabled)');
-    expect(source).toContain('runReceptionAssistant(user, modelMessages)');
+    expect(source).toContain('runReceptionAssistant(user, modelMessages, runtimeContext)');
     expect(route).toContain('maybeInvokeFrontiInChat');
   });
 
@@ -80,7 +80,8 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
     expect(widget).toContain('Fronti✨');
     expect(widget).toContain('conectado');
     expect(widget).toContain("item.type === 'FRONTI' ? 'Fronti✨' : item.title");
-    expect(layout).toContain('(!user.roleOperational || user.isSystemAdmin)');
+    expect(layout).toContain('const frontiVisible = canUseFronti(user, frontiConfig.enabled)');
+    expect(layout).not.toContain('(!user.roleOperational || user.isSystemAdmin)');
   });
 
   it('normaliza tokens pegados con Bearer o comillas antes de autenticar', () => {

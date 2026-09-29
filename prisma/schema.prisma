@@ -490,6 +490,7 @@ model User {
   alertsResolved                  Alert[]                    @relation("alertResolvedBy")
   auditLogs                       AuditLog[]
   notifications                   Notification[]
+  pushSubscriptions               PushSubscription[]
   settingsUpdated                 SystemSetting[]
   mailSettingsUpdated             MailSettings[]
   checklistDone                   TaskChecklistItem[]
@@ -1514,6 +1515,33 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([createdAt])
+}
+
+/**
+ * Suscripción Web Push por navegador/dispositivo.
+ *
+ * El endpoint es una capability URL y nunca se muestra en la interfaz. No
+ * guardamos claves de cifrado del navegador porque AROH envía un push vacío
+ * autenticado con VAPID; el service worker despierta y recupera el contenido
+ * desde la Central, respetando la sesión y permisos vigentes.
+ */
+model PushSubscription {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint        String   @unique
+  expiresAt       DateTime?
+  userAgent       String?
+  lastTriggeredAt DateTime?
+  lastDeliveredAt DateTime?
+  lastSuccessAt   DateTime?
+  failureCount    Int      @default(0)
+  disabledAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, disabledAt])
+  @@index([disabledAt, lastTriggeredAt])
 }
 
 enum SupportRequestKind {

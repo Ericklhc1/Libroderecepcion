@@ -684,7 +684,7 @@ export async function chatWithFrontiProvider(args: {
   }
 
   if (!response.ok) {
-    const failure = await parseFailure(response);
+    const failure = await parseFailure(response, args.provider.provider);
     throw new FrontiProviderError(failure.failure, undefined, failure.detail);
   }
 

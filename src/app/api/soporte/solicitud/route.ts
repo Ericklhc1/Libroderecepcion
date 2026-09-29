@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { sendMail, type MailAttachment } from '@/server/mail';
 import { getSettingString } from '@/server/services/settings';
+import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
 
 const attachmentSchema = z.object({
   name: z.string().min(1).max(180),
@@ -12,6 +13,7 @@ const attachmentSchema = z.object({
 });
 
 const bodySchema = z.object({
+  correlationId: z.string().uuid(),
   kind: z.enum(['ERROR', 'FUNCION']),
   subject: z.string().trim().min(3).max(160),
   description: z.string().trim().min(5).max(6000),
@@ -22,6 +24,7 @@ const bodySchema = z.object({
     search: z.string().max(1200),
     href: z.string().max(2000),
     userAgent: z.string().max(1200),
+    platform: z.string().max(200),
     language: z.string().max(80),
     timezone: z.string().max(120),
     viewport: z.string().max(40),
@@ -80,7 +83,10 @@ export async function POST(request: Request) {
       where: { id: user.id },
       select: { email: true, username: true },
     });
-    const recipient = await getSettingString('support.recipient', 'eherrera@hoteleshw.com');
+    const [recipient, operationGate] = await Promise.all([
+      getSettingString('support.recipient', 'eherrera@hoteleshw.com'),
+      getReceptionOperationGate(user),
+    ]);
 
     const attachments: MailAttachment[] = [];
     if (payload.screenshot) attachments.push(decodeAttachment(payload.screenshot));
@@ -96,6 +102,7 @@ export async function POST(request: Request) {
         label,
         '',
         `Asunto: ${payload.subject}`,
+        `Referencia: ${payload.correlationId}`,
         `Fecha: ${new Date().toISOString()}`,
         '',
         'SOLICITANTE',
@@ -110,10 +117,14 @@ export async function POST(request: Request) {
         `Ruta: ${route}`,
         `URL: ${payload.context.href}`,
         `Navegador: ${payload.context.userAgent}`,
+        `Plataforma: ${payload.context.platform}`,
         `Idioma: ${payload.context.language}`,
         `Zona horaria: ${payload.context.timezone}`,
         `Ventana: ${payload.context.viewport}`,
         `Pantalla: ${payload.context.screen}`,
+        `Estado de turno: ${operationGate.mode}`,
+        `Turno activo: ${operationGate.shiftId ?? '—'}`,
+        `Entrega relacionada: ${operationGate.handoverId ?? '—'}`,
         '',
         'DESCRIPCIÓN',
         payload.description,
@@ -135,8 +146,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       message:
         payload.kind === 'ERROR'
-          ? 'Reporte enviado con el contexto técnico de esta pantalla.'
-          : 'Solicitud enviada con el contexto técnico de esta pantalla.',
+          ? `Reporte enviado. Referencia: ${payload.correlationId}`
+          : `Solicitud enviada. Referencia: ${payload.correlationId}`,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

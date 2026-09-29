@@ -3,12 +3,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCheck,
-  FileUp,
   KeyRound,
   ShieldCheck,
   WalletCards,
 } from 'lucide-react';
-import { ActionForm } from '@/components/ui/form';
+import { ActionForm, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -17,10 +16,6 @@ import { SupervisionAuditUpload } from '@/components/supervision/audit-upload';
 import { completeSupervisionOpeningAction } from '@/server/actions/supervision-center';
 import type { SupervisionOpeningReadiness } from '@/server/services/supervision-center';
 import { formatDateTime } from '@/lib/format';
-
-function reportStatus(present: string[], kind: string) {
-  return present.includes(kind);
-}
 
 function keyTone(missing: number, outOfService: number) {
   return missing > 0 || outOfService > 0 ? 'pendiente' : 'resuelto';
@@ -31,7 +26,8 @@ export function SupervisionOpeningPanel({
 }: {
   readiness: SupervisionOpeningReadiness;
 }) {
-  const blocked = readiness.blockers.cash > 0 || readiness.blockers.reports > 0;
+  const cashBlocked = readiness.blockers.cash > 0;
+  const reportsIncomplete = !readiness.reports.reportsReady;
 
   return (
     <section id="apertura-supervision" className="space-y-4">
@@ -46,8 +42,8 @@ export function SupervisionOpeningPanel({
             <div>
               <p className="font-medium text-petrol-900">Tu turno todavía no está activo.</p>
               <p className="mt-0.5 text-sm text-slate-600">
-                La apertura registra qué operación recibiste. Completa Caja, garantías, llaves,
-                informes y revisión de pendientes; sólo entonces podrás confirmar el inicio.
+                Primero recibes la operación: pendientes, Caja, garantías, llaves e informes.
+                Sólo después el Libro registra formalmente que asumiste Supervisión.
               </p>
             </div>
           </div>
@@ -58,10 +54,9 @@ export function SupervisionOpeningPanel({
               <p className="text-lg font-semibold text-petrol-900">{readiness.pendingTotal}</p>
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Arqueos conformes</p>
+              <p className="text-xs text-slate-500">Caja</p>
               <p className="text-lg font-semibold text-petrol-900">
-                {readiness.cash.currencies.length - readiness.cash.missingCurrencies.length}/
-                {readiness.cash.currencies.length}
+                {readiness.cash.currencies.length - readiness.cash.missingCurrencies.length}/{readiness.cash.currencies.length}
               </p>
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
@@ -69,10 +64,9 @@ export function SupervisionOpeningPanel({
               <p className="text-lg font-semibold text-petrol-900">{readiness.guarantees.length}</p>
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <p className="text-xs text-slate-500">Informes obligatorios</p>
+              <p className="text-xs text-slate-500">Evidencia PMS</p>
               <p className="text-lg font-semibold text-petrol-900">
-                {readiness.reports.required.length - readiness.reports.missingRequired.length}/
-                {readiness.reports.required.length}
+                {readiness.reports.reportsReady ? 'Completa' : 'Pendiente'}
               </p>
             </div>
           </div>
@@ -83,11 +77,9 @@ export function SupervisionOpeningPanel({
         <CardHeader
           title="1 · Estado operativo recibido"
           action={
-            readiness.pendingTotal > 0 ? (
-              <Badge tone="pendiente">{readiness.pendingTotal} asunto(s)</Badge>
-            ) : (
-              <Badge tone="resuelto">Sin pendientes</Badge>
-            )
+            readiness.pendingTotal > 0
+              ? <Badge tone="pendiente">{readiness.pendingTotal} asunto(s)</Badge>
+              : <Badge tone="resuelto">Sin pendientes</Badge>
           }
         />
         {readiness.pendingRows.length === 0 ? (
@@ -99,24 +91,16 @@ export function SupervisionOpeningPanel({
             <ul className="divide-y divide-slate-100">
               {readiness.pendingRows.map((row) => (
                 <li key={row.key} className="flex items-start gap-3 px-4 py-3">
-                  <ClipboardCheck
-                    className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600"
-                    aria-hidden="true"
-                  />
+                  <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-medium text-slate-500">{row.ref}</span>
                       <Chip>{row.group}</Chip>
                     </div>
                     <p className="mt-1 text-sm font-medium text-petrol-900">{row.title}</p>
-                    {row.detail ? (
-                      <p className="mt-0.5 text-xs text-slate-600">{row.detail}</p>
-                    ) : null}
+                    {row.detail ? <p className="mt-0.5 text-xs text-slate-600">{row.detail}</p> : null}
                   </div>
-                  <Link
-                    href={row.href}
-                    className="shrink-0 text-xs font-semibold text-petrol-700 hover:underline"
-                  >
+                  <Link href={row.href} className="shrink-0 text-xs font-semibold text-petrol-700 hover:underline">
                     Revisar
                   </Link>
                 </li>
@@ -125,18 +109,21 @@ export function SupervisionOpeningPanel({
           </div>
         )}
         <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-          Al iniciar, estos asuntos se fotografían como el estado recibido y las prioridades se
-          generan desde ellos. No se crean duplicados.
+          Al iniciar, el Libro fotografía estos asuntos y construye tus prioridades desde fuentes reales.
+          No crea una segunda tarea ni una copia de la novedad.
         </p>
       </Card>
 
       <Card>
         <CardHeader title="2 · Caja y garantías" />
         <div className="space-y-4 px-4 py-4">
+          <p className="text-sm text-slate-600">
+            El Supervisor hace un arqueo propio por cada fondo activo. Las garantías en efectivo se
+            validan físicamente dentro de ese arqueo; si cambian después, el arqueo deja de servir para la apertura.
+          </p>
+
           {readiness.cash.currencies.length === 0 ? (
-            <p className="text-sm text-slate-600">
-              Caja no está habilitada porque no hay fondos fijos activos.
-            </p>
+            <p className="text-sm text-slate-600">Caja no está habilitada en la configuración del hotel.</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {readiness.cash.currencies.map((cash) => {
@@ -146,10 +133,6 @@ export function SupervisionOpeningPanel({
                 const denominations = readiness.cash.denominations.filter(
                   (denomination) => denomination.currency.toUpperCase() === cash.currency,
                 );
-                const differenceNeedsNote =
-                  Boolean(cash.audit) &&
-                  cash.audit!.difference !== 0 &&
-                  !cash.audit!.notes?.trim();
 
                 return (
                   <div key={cash.currency} className="rounded-xl border border-slate-200 p-3">
@@ -158,25 +141,18 @@ export function SupervisionOpeningPanel({
                         <div className="flex items-center gap-2">
                           <WalletCards className="h-4 w-4 text-petrol-600" aria-hidden="true" />
                           <p className="font-semibold text-petrol-900">Caja {cash.currency}</p>
-                          {cash.ready ? (
-                            <Badge tone={cash.audit?.difference === 0 ? 'resuelto' : 'atencion'}>
-                              Arqueada
-                            </Badge>
-                          ) : (
-                            <Badge tone="critico">Pendiente</Badge>
-                          )}
+                          <Badge tone={cash.ready ? 'resuelto' : 'critico'}>
+                            {cash.ready ? 'Conforme' : 'Pendiente'}
+                          </Badge>
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
                           Fondo fijo: {cash.currency} {cash.fund.toLocaleString('es-CL')}
                         </p>
                         {cash.audit ? (
                           <p className="mt-1 text-xs text-slate-600">
-                            Contado {cash.currency}{' '}
-                            {cash.audit.countedAmount.toLocaleString('es-CL')}
-                            {' · '}diferencia {cash.currency}{' '}
-                            {cash.audit.difference.toLocaleString('es-CL')}
-                            {' · '}
-                            {formatDateTime(cash.audit.createdAt)}
+                            Contado {cash.currency} {cash.audit.countedAmount.toLocaleString('es-CL')}
+                            {' · '}diferencia {cash.currency} {cash.audit.difference.toLocaleString('es-CL')}
+                            {' · '}{formatDateTime(cash.audit.createdAt)}
                           </p>
                         ) : null}
                       </div>
@@ -187,20 +163,18 @@ export function SupervisionOpeningPanel({
                         guarantees={guarantees}
                       />
                     </div>
-                    {differenceNeedsNote ? (
+                    {!cash.guaranteesCurrent && cash.audit ? (
+                      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+                        Las garantías vigentes cambiaron desde este arqueo. Debes volver a validarlas.
+                      </p>
+                    ) : null}
+                    {cash.audit?.difference !== 0 && !cash.audit?.notes?.trim() ? (
                       <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 ring-1 ring-red-200">
                         La diferencia del arqueo debe quedar explicada antes de iniciar Supervisión.
                       </p>
                     ) : null}
-                    {cash.audit && !cash.guaranteesCurrent ? (
-                      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
-                        Las garantías en efectivo cambiaron después del arqueo. Debes arquear
-                        nuevamente para validarlas físicamente.
-                      </p>
-                    ) : null}
                     <p className="mt-2 text-xs text-slate-500">
-                      {guarantees.length} garantía(s) en efectivo se validan físicamente dentro de
-                      este arqueo.
+                      {guarantees.length} garantía(s) en efectivo se validan físicamente por separado.
                     </p>
                   </div>
                 );
@@ -213,8 +187,7 @@ export function SupervisionOpeningPanel({
               <div>
                 <p className="font-medium text-petrol-900">Garantías y custodias abiertas</p>
                 <p className="text-xs text-slate-500">
-                  Revisa el estado vigente. Las garantías en efectivo se validan físicamente al
-                  arquear Caja.
+                  Las garantías no se duplican: aquí ves el estado vigente de su fuente original.
                 </p>
               </div>
               <Badge tone={readiness.guarantees.length > 0 ? 'pendiente' : 'resuelto'}>
@@ -225,18 +198,13 @@ export function SupervisionOpeningPanel({
               <div className="mt-3 max-h-52 overflow-y-auto">
                 <ul className="divide-y divide-slate-200 text-sm">
                   {readiness.guarantees.map((guarantee) => (
-                    <li
-                      key={guarantee.id}
-                      className="flex flex-wrap items-center justify-between gap-2 py-2"
-                    >
+                    <li key={guarantee.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                       <span className="text-petrol-900">
-                        #{guarantee.humanId} ·{' '}
-                        {guarantee.guestName ?? guarantee.reference ?? 'Sin referencia'}
+                        #{guarantee.humanId} · {guarantee.guestName ?? guarantee.reference ?? 'Sin referencia'}
                         {guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}
                       </span>
                       <span className="text-xs tabular text-slate-500">
-                        {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')} ·{' '}
-                        {guarantee.kind.toLocaleLowerCase('es-CL')}
+                        {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')} · {guarantee.kind.toLocaleLowerCase('es-CL')}
                       </span>
                     </li>
                   ))}
@@ -258,12 +226,11 @@ export function SupervisionOpeningPanel({
                   Piso {row.floor}
                 </p>
                 <Badge tone={keyTone(row.totals.missing, row.totals.outOfService)}>
-                  {row.totals.found}/{row.totals.expected}
+                  {row.id ? `${row.totals.found}/${row.totals.expected}` : 'Sin inventario'}
                 </Badge>
               </div>
               <p className="mt-2 text-xs text-slate-600">
-                Faltantes: {row.totals.missing} · Fuera de servicio:{' '}
-                {row.totals.outOfService}
+                Faltantes: {row.totals.missing} · Fuera de servicio: {row.totals.outOfService}
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {row.countedAt
@@ -274,166 +241,149 @@ export function SupervisionOpeningPanel({
           ))}
         </div>
         <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-          La apertura no inventa un conteo nuevo: te obliga a revisar el último inventario y sus
-          excepciones. Si hay una anomalía, se gestiona en Llaves.
+          No se repite un conteo de 89 llaves por burocracia: revisas el último inventario y sus excepciones.
+          Un faltante permanece visible y debe gestionarse, pero no se maquilla con una confirmación genérica.
         </p>
       </Card>
 
       <Card>
         <CardHeader
-          title="4 · Informes operativos PMS"
+          title="4 · Informes PMS"
           action={
-            readiness.reports.missingRequired.length > 0 ? (
-              <Badge tone="critico">
-                {readiness.reports.missingRequired.length} obligatorio(s) pendiente(s)
-              </Badge>
-            ) : (
-              <Badge tone="resuelto">Núcleo completo</Badge>
-            )
+            readiness.reports.reportsReady
+              ? <Badge tone="resuelto">Evidencia completa</Badge>
+              : <Badge tone="pendiente">Evidencia incompleta</Badge>
           }
         />
-        <div className="space-y-4 px-4 py-4">
-          <div>
+        <div className="space-y-5 px-4 py-4">
+          <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Obligatorios para iniciar
+              Fotografía operacional · {readiness.businessDateKey}
             </p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {readiness.reports.required.map((kind) => {
-                const present = reportStatus(readiness.reports.presentKinds, kind);
-                return (
-                  <div
-                    key={kind}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 ${
-                      present
-                        ? 'bg-emerald-50 text-emerald-900 ring-emerald-200'
-                        : 'bg-red-50 text-red-900 ring-red-200'
-                    }`}
-                  >
-                    {present ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    )}
-                    <span>{readiness.reports.labels[kind] ?? kind}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Gestión diaria · no bloquean la apertura
+            <p className="mt-1 text-sm text-slate-600">
+              Preferido: <strong>{readiness.reports.labels[readiness.reports.operationalPrimary]}</strong>.
+              Ese informe ya contiene entradas, ocupadas y salidas. Sólo si no está disponible se exige
+              el respaldo completo Entradas + In House + Salidas.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {readiness.reports.optional.map((kind) => (
+              <Chip>
+                {readiness.reports.todayKinds.includes(readiness.reports.operationalPrimary) ? '✓ ' : '○ '}
+                {readiness.reports.labels[readiness.reports.operationalPrimary]}
+              </Chip>
+              {readiness.reports.operationalFallback.map((kind) => (
                 <Chip key={kind}>
-                  {reportStatus(readiness.reports.presentKinds, kind) ? '✓ ' : '○ '}
+                  {readiness.reports.todayKinds.includes(kind) ? '✓ ' : '○ '}
                   {readiness.reports.labels[kind] ?? kind}
                 </Chip>
               ))}
             </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="mb-3 flex items-center gap-2">
-              <FileUp className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-              <div>
-                <p className="font-medium text-petrol-900">Subir informes del inicio del día</p>
-                <p className="text-xs text-slate-500">
-                  El Libro reconoce el tipo y la fecha de cada PDF. Los informes ya cargados hoy
-                  cuentan para la apertura y no necesitas volver a subirlos en otro turno.
-                </p>
-              </div>
+            <p className="mt-2 text-xs font-medium text-slate-600">
+              Estado: {readiness.reports.occupancyReady ? '✓ fotografía operacional disponible' : 'pendiente'}.
+            </p>
+            <div className="mt-3">
+              <SupervisionAuditUpload defaultBusinessDate={readiness.businessDateKey} />
             </div>
-            <SupervisionAuditUpload
-              defaultBusinessDate={readiness.businessDateKey}
-              automaticBusinessDate
-            />
-          </div>
+          </section>
+
+          <section className="border-t border-slate-200 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Cierre y auditoría · {readiness.auditDateKey}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Este bloque sí corresponde al día cerrado anterior: Formulario de auditoría, Cobros y Cargos diarios.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {readiness.reports.auditRequired.map((kind) => (
+                <Chip key={kind}>
+                  {readiness.reports.auditKinds.includes(kind) ? '✓ ' : '○ '}
+                  {readiness.reports.labels[kind] ?? kind}
+                </Chip>
+              ))}
+            </div>
+            {readiness.reports.missingAudit.length > 0 ? (
+              <p className="mt-2 flex items-start gap-2 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                Faltan: {readiness.reports.missingAudit
+                  .map((kind) => readiness.reports.labels[kind] ?? kind)
+                  .join(', ')}.
+              </p>
+            ) : (
+              <p className="mt-2 flex items-center gap-2 text-xs text-emerald-800">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Cierre documental completo.
+              </p>
+            )}
+            <div className="mt-3">
+              <SupervisionAuditUpload defaultBusinessDate={readiness.auditDateKey} />
+            </div>
+          </section>
+
+          <section className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
+            <p className="font-semibold text-slate-700">Gestión · no bloquea la apertura</p>
+            <p className="mt-1">
+              Ventas por canal, Producción por habitación y Revenue se mantienen como información de gestión.
+              Pendientes: {readiness.reports.missingOptional.length
+                ? readiness.reports.missingOptional.map((kind) => readiness.reports.labels[kind] ?? kind).join(', ')
+                : 'ninguno'}.
+            </p>
+          </section>
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="5 · Confirmar recepción e iniciar turno" />
+        <CardHeader title="5 · Confirmar recepción e iniciar" />
         <div className="space-y-4 px-4 py-4">
-          {blocked ? (
+          {cashBlocked ? (
             <div className="rounded-xl bg-red-50 px-3 py-3 text-sm text-red-900 ring-1 ring-red-200">
-              <p className="font-semibold">Todavía no puedes iniciar.</p>
+              <p className="font-semibold">Caja/garantías todavía bloquean la apertura.</p>
               {readiness.cash.missingCurrencies.length > 0 ? (
-                <p className="mt-1">
-                  Falta arqueo conforme o revalidación de garantías en:{' '}
-                  {readiness.cash.missingCurrencies.join(', ')}.
-                </p>
+                <p className="mt-1">Falta tu arqueo o validación vigente: {readiness.cash.missingCurrencies.join(', ')}.</p>
               ) : null}
               {readiness.cash.unexplainedDifferences.length > 0 ? (
                 <p className="mt-1">
-                  Hay diferencias de Caja sin explicación:{' '}
-                  {readiness.cash.unexplainedDifferences.join(', ')}.
-                </p>
-              ) : null}
-              {readiness.reports.missingRequired.length > 0 ? (
-                <p className="mt-1">
-                  Faltan informes:{' '}
-                  {readiness.reports.missingRequired
-                    .map((kind) => readiness.reports.labels[kind] ?? kind)
-                    .join(', ')}
-                  .
+                  Hay diferencias sin explicación: {readiness.cash.unexplainedDifferences.join(', ')}.
                 </p>
               ) : null}
             </div>
-          ) : (
-            <div className="rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-              <p className="font-semibold">Controles bloqueantes completos.</p>
-              <p className="mt-1">
-                Confirma lo revisado para convertir esta preparación en tu turno activo.
-              </p>
-            </div>
-          )}
+          ) : null}
 
           <ActionForm action={completeSupervisionOpeningAction} refreshOnSuccess className="space-y-3">
             <input type="hidden" name="shiftId" value={readiness.shift.id} />
+
             <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input
-                type="checkbox"
-                name="reviewedPending"
-                required
-                className="mt-0.5 h-4 w-4 shrink-0"
-              />
-              <span>
-                Revisé los asuntos pendientes, señales, tareas y seguimientos que recibo al comenzar.
-              </span>
+              <input type="checkbox" name="reviewedPending" required className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Revisé los asuntos pendientes, señales, tareas y seguimientos que recibo al comenzar.</span>
             </label>
+
             <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input
-                type="checkbox"
-                name="reviewedGuarantees"
-                required
-                className="mt-0.5 h-4 w-4 shrink-0"
-              />
+              <input type="checkbox" name="reviewedGuarantees" required className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Verifiqué garantías y custodias; las garantías en efectivo fueron validadas
-                físicamente durante mi arqueo.
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-              <input
-                type="checkbox"
-                name="reviewedKeys"
-                required
-                className="mt-0.5 h-4 w-4 shrink-0"
-              />
-              <span>
-                Revisé el último inventario de llaves y conozco sus faltantes o excepciones.
+                Verifiqué las garantías y custodias abiertas; las garantías en efectivo fueron validadas físicamente en mi arqueo.
               </span>
             </label>
 
+            <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+              <input type="checkbox" name="reviewedKeys" required className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Revisé el último inventario de llaves y conozco sus faltantes o excepciones vigentes.</span>
+            </label>
+
+            {reportsIncomplete ? (
+              <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                <p className="text-sm font-semibold text-amber-950">Contingencia de PMS</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  La falta de un informe no debe dejar al hotel sin Supervisión. Para iniciar sin evidencia completa,
+                  explica qué no está disponible y por qué. La excepción quedará en la apertura y en Auditoría.
+                </p>
+                <Textarea
+                  name="reportContingencyReason"
+                  rows={3}
+                  minLength={8}
+                  placeholder="Ej.: FNS no emite Habitaciones con actividad; se continúa con el estado disponible y se actualizará al recuperarse."
+                />
+              </div>
+            ) : null}
+
             <div className="flex justify-end">
-              <SubmitButton
-                variant="gold"
-                pendingLabel="Iniciando turno…"
-                disabled={blocked}
-              >
+              <SubmitButton variant="gold" pendingLabel="Iniciando turno…" disabled={cashBlocked}>
                 CONFIRMAR E INICIAR SUPERVISIÓN
               </SubmitButton>
             </div>

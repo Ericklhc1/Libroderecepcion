@@ -6,8 +6,9 @@ import { hasPermission } from '@/server/auth/current-user';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
 import {
   getSupervisionCenterSummary,
-  getSupervisionOpeningReadiness,
+  getSupervisionOpeningState,
 } from '@/server/services/supervision-center';
+import { getLiveCashState } from '@/server/services/live-cash';
 import { getTeamPerformance } from '@/server/services/performance';
 import { getFormOptions } from '@/server/services/options';
 import { listAnnouncements } from '@/server/services/announcements';
@@ -157,10 +158,11 @@ export default async function SupervisionCenterPage({
     canPerformance ? getTeamPerformance(user, period) : Promise.resolve([]),
   ]);
 
-  const openingReadiness =
+  const opening =
     isSupervisor && center.currentShift?.status === 'PREPARACION'
-      ? await getSupervisionOpeningReadiness(user)
+      ? await getSupervisionOpeningState(user, center.currentShift.id)
       : null;
+  const openingCashState = opening ? await getLiveCashState({ movementLimit: 1, auditLimit: 8 }) : null;
 
   const matches = (...values: Array<string | number | null | undefined>) =>
     !q || values.filter(Boolean).join(' ').toLocaleLowerCase('es-CL').includes(q);
@@ -323,7 +325,9 @@ export default async function SupervisionCenterPage({
         </div>
       </Card>
 
-      {openingReadiness ? <SupervisionOpeningPanel readiness={openingReadiness} /> : null}
+      {opening && openingCashState ? (
+        <SupervisionOpeningPanel opening={opening} blocks={review.blocks} cashState={openingCashState} />
+      ) : null}
 
       <section id="continuidad" className="scroll-mt-4">
       <Card>

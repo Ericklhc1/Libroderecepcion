@@ -31,7 +31,7 @@ Actualizado: **2026-09-29** · bandeja interna de soporte · versión candidata 
 | Identidad AROH Central IA | `PRODUCTION` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
 | Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
 | Panel Reportar / solicitar | `PRODUCTION` | #190 · v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
-| Bandeja interna de soporte | `EN_DESARROLLO` | v1.27.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
+| Bandeja interna de soporte | `PR_ABIERTO` | #191 · v1.27.0 | Persistencia en Neon + permisos + estados; SMTP queda como aviso secundario |
 
 ## Iteración actual
 

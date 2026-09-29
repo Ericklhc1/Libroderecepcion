@@ -41,8 +41,10 @@ export const ASSISTANT_TIMEOUT_MS = 30_000;
 export type AssistantFailure =
   /** No hay clave configurada: Fronti nunca estuvo encendido. */
   | 'SIN_CLAVE'
-  /** Hay clave, y el proveedor de IA la rechaza. */
+  /** El proveedor identificó expresamente la credencial como inválida. */
   | 'CLAVE_RECHAZADA'
+  /** La autorización fue rechazada, pero puede ser clave, permisos, cuenta o alcance. */
+  | 'ACCESO_RECHAZADO'
   /** La clave sirve, pero el modelo configurado no existe para esta cuenta. */
   | 'MODELO_DESCONOCIDO'
   /** La cuenta se quedó sin saldo. */
@@ -76,7 +78,9 @@ export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
   SIN_CLAVE:
     'Fronti todavía no está configurado. Avisa al Administrador de sistema: falta la credencial del proveedor de IA. El Libro funciona igual sin él.',
   CLAVE_RECHAZADA:
-    'El proveedor de IA rechazó la credencial de Fronti. Esto no se arregla desde el mesón: avisa al Administrador de sistema. El Libro funciona igual sin él.',
+    'El proveedor de IA indicó que la credencial de Fronti no es válida. Esto no se arregla desde el mesón: avisa al Administrador de sistema. El Libro funciona igual sin él.',
+  ACCESO_RECHAZADO:
+    'El proveedor de IA rechazó la autorización de Fronti. Puede deberse a la credencial, los permisos o la cuenta configurada; avisa al Administrador de sistema. El Libro funciona igual sin él.',
   MODELO_DESCONOCIDO:
     'El proveedor de IA no reconoce el modelo configurado para Fronti. Avisa al Administrador de sistema. El Libro funciona igual sin él.',
   CUOTA:
@@ -101,6 +105,7 @@ export const ASSISTANT_FAILURE_MESSAGE: Record<AssistantFailure, string> = {
 export const ASSISTANT_FAILURE_IS_TEMPORARY: Record<AssistantFailure, boolean> = {
   SIN_CLAVE: false,
   CLAVE_RECHAZADA: false,
+  ACCESO_RECHAZADO: false,
   MODELO_DESCONOCIDO: false,
   CUOTA: false,
   SATURADO: true,
@@ -121,6 +126,7 @@ export const ASSISTANT_FAILURE_IS_TEMPORARY: Record<AssistantFailure, boolean> =
 export const ASSISTANT_FAILURE_STATUS: Record<AssistantFailure, number> = {
   SIN_CLAVE: 503,
   CLAVE_RECHAZADA: 503,
+  ACCESO_RECHAZADO: 503,
   MODELO_DESCONOCIDO: 503,
   CUOTA: 503,
   SATURADO: 429,
@@ -171,7 +177,7 @@ export function classifyAssistantFailure(signal: ProviderFailureSignal): Assista
   if (code === 'model_not_found' || code === 'invalid_model') return 'MODELO_DESCONOCIDO';
   if (code === 'invalid_api_key' || code === 'authentication_error') return 'CLAVE_RECHAZADA';
 
-  if (status === 401 || status === 403) return 'CLAVE_RECHAZADA';
+  if (status === 401 || status === 403) return 'ACCESO_RECHAZADO';
   if (status === 404) return 'MODELO_DESCONOCIDO';
   if (status === 429) return 'SATURADO';
   if (status === 408 || status === 504) return 'SIN_RESPUESTA';

@@ -7,7 +7,7 @@ import {
   ShieldCheck,
   WalletCards,
 } from 'lucide-react';
-import { ActionForm } from '@/components/ui/form';
+import { ActionForm, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -164,6 +164,11 @@ export function SupervisionOpeningPanel({
                         guarantees={guarantees}
                       />
                     </div>
+                    {!cash.fundCurrent && cash.audit ? (
+                      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+                        El fondo fijo cambió desde este arqueo. Debes volver a contarlo.
+                      </p>
+                    ) : null}
                     {!cash.guaranteesCurrent && cash.audit ? (
                       <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
                         Las garantías vigentes cambiaron desde este arqueo. Debes volver a validarlas.

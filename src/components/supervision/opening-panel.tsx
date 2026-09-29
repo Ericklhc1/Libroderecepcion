@@ -371,7 +371,7 @@ export function SupervisionOpeningPanel({
           <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
             <p className="font-semibold text-slate-700">Gestión · no bloquea la apertura</p>
             <p className="mt-1">
-              Ventas por canal, Producción por habitación y Revenue quedan como compromisos del turno
+              Ventas por período del mes actual, Producción por habitación y Revenue quedan como compromisos del turno
               si todavía faltan. Pendientes:{' '}
               {readiness.reports.missingOptional.length
                 ? readiness.reports.missingOptional

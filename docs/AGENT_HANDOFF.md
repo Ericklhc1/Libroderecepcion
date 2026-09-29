@@ -8,7 +8,7 @@
 - Estados: nueva → en revisión → resuelta/descartada. Los cierres exigen nota de resolución y generan `AuditLog`.
 - La página de soporte debe permanecer catalogada en Fronti; la regresión transversal falla si se elimina del mapa.
 - No guardar blobs de capturas/adjuntos en Neon. La bandeja conserva nombres y el contenido sigue por SMTP.
-- Migración: `20260929145000_support_inbox`. Release objetivo: **v1.29.0**.
+- Migración: `20260929183500_support_inbox`. Release objetivo: **v1.29.0**.
 
 ## 29/09/2026 · AROH 1.28.0 · usuarios ocultos
 

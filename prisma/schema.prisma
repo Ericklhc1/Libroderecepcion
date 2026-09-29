@@ -1623,6 +1623,8 @@ model OperationalAlarm {
   sourceEntity  String?
   sourceId      String?
   sourceLink    String?
+  /// Si existe, vuelve a notificar mientras el destinatario no la atienda.
+  repeatMinutes Int?
   status        OperationalAlarmStatus @default(ACTIVA)
   cancelledAt   DateTime?
   closedAt      DateTime?

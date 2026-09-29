@@ -44,6 +44,8 @@ describe('Central 1.26.0 · shell horizontal', () => {
     expect(panel).toContain('document.body');
     expect(panel).toContain('fixed inset-0 z-[130]');
     expect(route).toContain('CONTEXTO AUTOMÁTICO');
+    expect(route).toContain('prisma.supportRequest.create');
+    expect(route.indexOf('prisma.supportRequest.create')).toBeLessThan(route.indexOf('sendMail({'));
     expect(route).toContain("getSettingString('support.recipient'");
     expect(settings).toContain("'support.recipient'");
   });

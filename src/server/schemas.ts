@@ -341,6 +341,7 @@ export const userCreateSchema = z.object({
   departmentId: zOptionalCuid,
   phone: zOptionalString,
   emailNotificationsEnabled: zCheckbox,
+  hiddenFromSelectors: zCheckbox,
 });
 
 export const userUpdateSchema = z.object({
@@ -357,6 +358,7 @@ export const userUpdateSchema = z.object({
   departmentId: zOptionalCuid,
   phone: zOptionalString,
   emailNotificationsEnabled: zCheckbox,
+  hiddenFromSelectors: zCheckbox,
   active: zCheckbox,
 });
 

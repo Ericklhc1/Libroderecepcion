@@ -324,7 +324,7 @@ export async function maybeInvokeFrontiInChat(
     ];
   }
 
-  const result = await runReceptionAssistant(user, modelMessages);
+  const result = await runReceptionAssistant(user, modelMessages, runtimeContext);
   const frontiMessageId = await persistFrontiChatMessage({
     conversationId: conversation.id,
     invokedById: user.id,

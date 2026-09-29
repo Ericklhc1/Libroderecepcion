@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
 
 
 const MAX_ACTIVE_PER_CREATOR = 100;
@@ -280,9 +281,37 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
         },
       });
       dispatched += 1;
+      scheduleWebPushForUsers([userId]);
     });
   }
   return dispatched;
+}
+
+export async function dispatchDueAlarmsForAllUsers(now = new Date()): Promise<{
+  users: number;
+  dispatched: number;
+}> {
+  const dueUsers = await prisma.operationalAlarmRecipient.findMany({
+    where: {
+      acknowledgedAt: null,
+      lastTriggeredAt: null,
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
+      alarm: {
+        status: OperationalAlarmStatus.ACTIVA,
+        dueAt: { lte: now },
+      },
+      user: { active: true, deletedAt: null },
+    },
+    distinct: ['userId'],
+    select: { userId: true },
+    take: 200,
+  });
+
+  let dispatched = 0;
+  for (const row of dueUsers) {
+    dispatched += await dispatchDueAlarmsForUser(row.userId, now);
+  }
+  return { users: dueUsers.length, dispatched };
 }
 
 export async function acknowledgeOperationalAlarm(user: CurrentUser, recipientId: string) {

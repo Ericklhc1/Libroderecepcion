@@ -2,7 +2,7 @@
 
 > Fuente de verdad técnica: `main` + Vercel Production + Neon `production`.
 
-Actualizado: **2026-09-29** · dropdowns compactos + legibilidad + centrado · versión candidata **v1.26.2**
+Actualizado: **2026-09-29** · hotfix panel Reportar / solicitar · versión candidata **v1.26.3**
 
 ## Estados canónicos
 
@@ -29,28 +29,28 @@ Actualizado: **2026-09-29** · dropdowns compactos + legibilidad + centrado · v
 | Navegación horizontal compacta | `PRODUCTION` | v1.26.0 | Cabecera horizontal sin sidebar de escritorio |
 | Jornada operativa canónica | `PRODUCTION` | v1.25.0 | Dashboard/informes siguen el ciclo real de turnos |
 | Identidad AROH Central IA | `PRODUCTION` | #187 · v1.26.1 | Producto renombrado transversalmente; dominio se migra después |
-| Dropdowns compactos de módulos | `PR_ABIERTO` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
+| Dropdowns compactos de módulos | `PRODUCTION` | #189 · v1.26.2 | Menús flotantes, tipografía mayor y shell centrado |
+| Panel Reportar / solicitar | `EN_DESARROLLO` | v1.26.3 | Drawer global mediante portal; no queda recortado por el header sticky |
 
 ## Iteración actual
 
-**AROH 1.26.2** · rama **`style/dropdown-nav-1-26-2`**
+**AROH 1.26.3** · rama **`fix/support-panel-portal-1-26-3`**
 
-Objetivo: reducir ruido visual de la navegación horizontal y mejorar legibilidad sin volver a ocupar toda la pantalla con navegación secundaria.
+Objetivo: corregir el drawer **Reportar / solicitar**, que quedaba limitado a la altura de la cabecera por vivir dentro del header sticky con backdrop-filter.
 
 Incluye:
-- dropdowns compactos anclados a cada módulo;
-- portal para evitar recortes por desplazamiento horizontal;
-- animación breve y accesible;
-- tipografía de módulos y opciones ligeramente mayor;
-- cabecera y fila de módulos centradas en un contenedor máximo de 1680 px;
-- conservación del desplazamiento horizontal cuando realmente falta ancho;
+- render del overlay mediante `createPortal(..., document.body)`;
+- overlay real de viewport completo con `fixed inset-0`;
+- drawer lateral de altura completa, con formulario desplazable;
+- conservación del bloqueo de scroll, cierre por Escape y clic exterior;
+- prueba de regresión específica para impedir que vuelva a quedar atrapado por el shell;
 - sin migración de esquema ni datos.
 
 PENDIENTE antes de Production:
 - compuerta completa verde;
 - merge a `main`;
 - despliegue Vercel Production;
-- smoke visual de cabecera, centrado y dropdowns.
+- segunda verificación del código desplegado.
 
 ## Infraestructura vigente
 
@@ -61,7 +61,7 @@ PENDIENTE antes de Production:
 - CI usa PostgreSQL efímero y nunca Neon Production.
 - Neon debe mantener una única rama alojada `production`.
 - Toda actualización de Production incrementa SemVer.
-- El subdominio nuevo se configurará después de estabilizar v1.26.2; no se cambia DNS dentro de este PR.
+- El subdominio nuevo se configurará después de estabilizar v1.26.3; no se cambia DNS dentro de este PR.
 
 ## Bloqueos conocidos
 

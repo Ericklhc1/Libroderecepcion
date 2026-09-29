@@ -9,7 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
-import { countLiveAlerts } from '@/server/services/alert-engine';
+import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 import { visibleNavGroups } from '@/components/layout/nav-items';
 import { DesktopNav, MobileNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
@@ -55,7 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     receptionGate,
   ] = await Promise.all([
     getSettingString('hotel.name', 'Hotel'),
-    countLiveAlerts(),
+    countMyActiveOperationalAlarms(user.id),
     getNotificationFeedForUser(user.id),
     prisma.task.count({
       where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
@@ -75,7 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
-  const badges = { '/supervision': alerts, '/libro': myOpenTasks };
+  const badges = { '/alertas': alerts, '/libro': myOpenTasks };
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (

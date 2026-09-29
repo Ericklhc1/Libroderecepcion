@@ -536,9 +536,18 @@ export async function toggleChecklistItem(
 ) {
   const item = await prisma.taskChecklistItem.findUnique({
     where: { id: input.itemId },
-    include: { task: { select: { id: true, humanId: true, deletedAt: true } } },
+    include: {
+      task: {
+        select: { id: true, humanId: true, deletedAt: true, startsAt: true },
+      },
+    },
   });
   if (!item || item.task.deletedAt) throw new NotFoundError('El ítem no existe.');
+  if (item.task.startsAt && item.task.startsAt > new Date()) {
+    throw new RuleError(
+      `Esta tarea está programada para comenzar el ${formatDateTime(item.task.startsAt)}.`,
+    );
+  }
 
   const updated = await prisma.taskChecklistItem.update({
     where: { id: input.itemId },

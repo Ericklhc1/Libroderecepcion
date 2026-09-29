@@ -64,9 +64,9 @@ export async function updateMyEmailPreferencesAction(
       ok: true,
       message: email
         ? enabled
-          ? 'Correo guardado. Recibirás las novedades habilitadas del Libro.'
-          : 'Correo guardado. Los avisos por correo están desactivados.'
-        : 'Correo eliminado. Las notificaciones seguirán disponibles dentro del Libro.',
+          ? 'Correo guardado. Recibirás los avisos opcionales habilitados de la Central.'
+          : 'Correo guardado. Los avisos opcionales por correo están desactivados; los obligatorios seguirán llegando.'
+        : 'Correo eliminado. Las notificaciones seguirán disponibles dentro de la Central.',
     };
   });
 }

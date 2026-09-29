@@ -42,10 +42,15 @@ export async function POST(request: Request) {
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = await parseSupervisionReport(file.name, bytes);
-    const businessDate = businessDateFrom(formData.get('businessDate'), parsed.reportedBusinessDate);
+    // Ventas por período es una fotografía mensual: se ancla al inicio declarado
+    // por el propio informe, no a la fecha diaria elegida en el formulario.
+    const requestedBusinessDate =
+      parsed.kind === 'VENTAS_PERIODO' ? null : formData.get('businessDate');
+    const businessDate = businessDateFrom(requestedBusinessDate, parsed.reportedBusinessDate);
     const selectedBusinessDate = businessDate.toISOString().slice(0, 10);
 
     if (
+      parsed.kind !== 'VENTAS_PERIODO' &&
       typeof formData.get('businessDate') === 'string' &&
       String(formData.get('businessDate')).trim() &&
       parsed.reportedBusinessDate &&

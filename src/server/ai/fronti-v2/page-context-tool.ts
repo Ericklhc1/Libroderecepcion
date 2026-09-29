@@ -229,14 +229,16 @@ async function reservationCenterSnapshot(
           reservation.checkIn &&
           reservation.checkIn >= snapshot.now &&
           reservation.checkIn <= snapshot.horizons.in24Hours &&
-          [ReservationStatus.PENDIENTE, ReservationStatus.CONFIRMADA].includes(reservation.status),
+          (reservation.status === ReservationStatus.PENDIENTE ||
+            reservation.status === ReservationStatus.CONFIRMADA),
       ).length,
       next72: snapshot.reservations.filter(
         (reservation) =>
           reservation.checkIn &&
           reservation.checkIn >= snapshot.now &&
           reservation.checkIn <= snapshot.horizons.in72Hours &&
-          [ReservationStatus.PENDIENTE, ReservationStatus.CONFIRMADA].includes(reservation.status),
+          (reservation.status === ReservationStatus.PENDIENTE ||
+            reservation.status === ReservationStatus.CONFIRMADA),
       ).length,
     },
     reservations: rows.slice(0, 30).map((reservation) => ({
@@ -271,6 +273,12 @@ async function detailSnapshot(
   if (page.entityType === 'OperationalEntry') {
     const entry = await getEntry(page.entityId).catch(() => null);
     if (!entry) return { found: false };
+    const room = entry.roomId
+      ? await prisma.room.findUnique({
+          where: { id: entry.roomId },
+          select: { number: true },
+        })
+      : null;
     return {
       found: true,
       type: entry.type,
@@ -282,7 +290,7 @@ async function detailSnapshot(
       priority: entry.priority,
       severity: entry.severity,
       dueAt: entry.dueAt,
-      room: entry.room?.number ?? null,
+      room: room?.number ?? null,
       owner: entry.owner?.name ?? null,
       department: entry.department?.name ?? null,
       requiresFollowUp: entry.requiresFollowUp,
@@ -294,6 +302,12 @@ async function detailSnapshot(
   if (page.entityType === 'Task') {
     const task = await getTask(page.entityId).catch(() => null);
     if (!task) return { found: false };
+    const room = task.roomId
+      ? await prisma.room.findUnique({
+          where: { id: task.roomId },
+          select: { number: true },
+        })
+      : null;
     return {
       found: true,
       id: task.id,
@@ -305,7 +319,7 @@ async function detailSnapshot(
       dueAt: task.dueAt,
       assignee: task.assignee?.name ?? null,
       department: task.department?.name ?? null,
-      room: task.room?.number ?? null,
+      room: room?.number ?? null,
       blockedReason: task.blockedReason,
       checklist: task.checklist.map((item) => ({ text: item.text, done: item.done })),
     };

@@ -27,8 +27,8 @@ export default async function InstallPage() {
             <BookOpen className="h-6 w-6" aria-hidden="true" />
           </span>
           <div>
-            <p className="text-xs font-medium text-gold-300">Instalación</p>
-            <h1 className="text-lg font-semibold">Libro Operativo de Recepción</h1>
+            <p className="text-xs font-medium text-gold-300">Central de Operaciones</p>
+            <h1 className="text-lg font-semibold">Instalación · Hotel HW Libertad</h1>
           </div>
         </div>
 

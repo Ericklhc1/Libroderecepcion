@@ -16,11 +16,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Libro Operativo de Recepción',
-    template: '%s · Libro Operativo de Recepción',
+    default: 'Central de Operaciones · Hotel HW Libertad',
+    template: '%s · Central de Operaciones · Hotel HW Libertad',
   },
   description:
-    'Sistema operativo digital de recepción hotelera: turnos, entregas, novedades, incidencias, tareas, seguimientos y alertas.',
+    'Central operativa digital del Hotel HW Libertad: turnos, recepción, caja, novedades, supervisión, reservas, trazabilidad e informes.',
   robots: { index: false, follow: false },
 };
 

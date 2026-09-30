@@ -179,7 +179,7 @@ describe('Novedades / habitación', () => {
     expect(page).toContain('#detalle-habitacion');
     expect(page).toContain('id="detalle-habitacion"');
     expect(page).toContain("detail ? 'order-first scroll-mt-28' : 'order-last'");
-    expect(page).toContain('Reflejo de Caja · últimos 30 días');
+    expect(page).toContain('Folios de Caja · últimos 30 días');
   });
 
   it('rechaza números fuera del catálogo', async () => {

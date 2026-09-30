@@ -1,5 +1,13 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.37.7 · sidebar persistente al desplazarse
+
+- El sidebar de escritorio usa `sticky top-0`, `h-dvh` y `self-start`; mantiene marca y pie visibles, y el menú dispone de scroll interno con `overscroll-contain`.
+- `body overflow-x: hidden` creaba un ancestro de scroll que impedía el comportamiento sticky del shell. Se sustituye por `clip`, conservando el control horizontal sin crear otro contenedor de desplazamiento. También permite al topbar sticky seguir el scroll del documento.
+- La navegación móvil y la impresión mantienen su comportamiento. Cambio exclusivamente de layout/CSS, sin datos, permisos, Prisma ni migraciones.
+- Base de release: v1.37.6 / c18f04421823af71126874b546e03fe97f2870b1.
+
+
 
 ## 30/09/2026 · AROH 1.37.2 · alineación visual transversal
 

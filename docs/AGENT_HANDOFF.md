@@ -1,6 +1,20 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
 
+## 30/09/2026 · AROH 1.37.0 · tutoriales modulares + Ayuda completa + Fronti explicativo
+
+- El tutorial deja de ser únicamente un onboarding global. Cada usuario conserva en `User.tutorialKnownModules` los módulos que ya conoce.
+- Cuando un permiso vuelve visible un módulo que esa cuenta todavía no conoce, AROH presenta automáticamente **sólo el tutorial de ese módulo**. Si se habilitan varios a la vez, los encadena sin repetir los anteriores.
+- «Cerrar esta vez» sólo afecta la sesión. Completar u omitir permanentemente un tutorial de módulo lo marca como conocido; puede reabrirse desde Ayuda.
+- La migración inicializa como conocidos los módulos actuales de quienes ya habían completado el tutorial general, evitando bombardear a usuarios existentes tras desplegar.
+- Ayuda incorpora **Tutoriales por módulo** y amplía el manual buscable con Novedades / habitación, tareas programadas/validadas, seguimientos, Alertas, Notificaciones, Web Push, Caja/arqueos/regularización/Tesorería, Gym, Estacionamiento, Gerencia, Fronti, Supervisión, auditorías, medidas correctivas, salud, rendimiento, usuarios ocultos, permisos, soporte/adjuntos, chat, búsqueda global, historial e IDs humanos.
+- Fronti proactivo adopta un contrato explícito de explicación: **Qué pasó → Qué está mal / qué revisar → Qué hacer**, sin inventar causas, montos, personas ni estados no demostrados.
+- Los hallazgos de inventario de llaves enlazan al piso afectado cuando la telemetría contiene ese contexto.
+- Migración: `20260930112000_tutoriales_modulares`.
+- Release: **v1.37.0**.
+
+
+
 ## 30/09/2026 · AROH 1.36.2 · trazabilidad gerencial + detalle de habitación
 
 - Gerencia deja de usar «Ver evidencia» como salto genérico: cada señal muestra el detalle detectado y enlaces al registro concreto cuando existe ruta individual.

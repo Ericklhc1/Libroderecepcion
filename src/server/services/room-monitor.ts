@@ -6,7 +6,6 @@ import {
   OperationalAlarmStatus,
   Priority,
   Severity,
-  TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';

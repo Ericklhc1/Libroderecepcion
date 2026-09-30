@@ -184,6 +184,8 @@ export default async function RoomOperationsMonitor({
     listAlarmCandidates(),
   ]);
 
+  const canViewCash = user.permissions.includes('cash.view');
+
   const floors = [4, 5, 6].map((floor) => ({
     floor,
     rooms: overview.rooms.filter((room) => room.floor === floor),
@@ -453,6 +455,10 @@ export default async function RoomOperationsMonitor({
                     <SectionTitle icon={Banknote} title="Garantías" count={detail.guarantees.length} />
                     {detail.guarantees.length === 0 ? (
                       <p className="mt-2 text-xs text-slate-400">Sin garantías vinculadas.</p>
+                    ) : !canViewCash ? (
+                      <p className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+                        Hay {detail.guarantees.length} garantía(s) vinculada(s). El detalle financiero requiere acceso a Caja.
+                      </p>
                     ) : (
                       <ul className="mt-2 space-y-2">
                         {detail.guarantees.slice(0, 10).map((guarantee) => (

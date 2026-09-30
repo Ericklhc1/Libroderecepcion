@@ -21,7 +21,6 @@ import type { CurrentUser } from '@/server/auth/current-user';
  */
 const DIRECCION_GERENCIA: PermissionKey[] = [
   'management.dashboard.view',
-  'reservation.center.view',
   'supervision.center.view',
   'supervision.task.assign',
   'supervision.followup.manage',

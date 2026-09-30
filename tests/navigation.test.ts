@@ -188,6 +188,8 @@ describe('shell corporativo con sidebar', () => {
     expect(nav).toContain('section.items.map((subitem)');
     expect(nav).toContain('href={subitem.href}');
     expect(nav).toContain('menuActive');
+    expect(nav).toContain('useSearchParams');
+    expect(nav).toContain('isSubitemActive');
   });
 
   it('usa geometría recta y cian como acento visual del estado activo', () => {

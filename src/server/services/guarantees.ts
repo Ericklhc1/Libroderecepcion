@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import {
   GUARANTEE_STATE_LABELS,
   OPEN_GUARANTEE_STATES,
@@ -36,8 +37,9 @@ type Tx = Prisma.TransactionClient;
 /**
  * Desde v1.4.0 la garantía es una entidad propia de Caja.
  *
- * guestName, roomNumber y reference son contexto libre de Recepción. Los
- * vínculos a reserva/estadía se conservan únicamente para registros históricos
+ * guestName y reference son contexto libre de Recepción. roomNumber usa el
+ * catálogo canónico de 89 habitaciones. Los vínculos a reserva/estadía se
+ * conservan únicamente para registros históricos
  * o integraciones legadas y jamás son requisito para operar una garantía nueva.
  */
 export const guaranteeInclude = {
@@ -139,12 +141,30 @@ export async function createGuarantee(
         })
       : null;
 
+    const explicitRoomNumber = input.roomNumber?.trim() || null;
+    if (explicitRoomNumber && !isOperationalRoomNumber(explicitRoomNumber)) {
+      throw new RuleError('Selecciona una habitación válida del hotel.');
+    }
+
+    const roomFromId = input.roomId
+      ? await tx.room.findFirst({
+          where: { id: input.roomId, active: true },
+          select: { number: true },
+        })
+      : null;
+    if (input.roomId && (!roomFromId || !isOperationalRoomNumber(roomFromId.number))) {
+      throw new RuleError('La habitación seleccionada no pertenece al catálogo operativo.');
+    }
+
+    const roomNumber =
+      explicitRoomNumber || roomFromId?.number || legacyReservation?.roomNumber || null;
+
     const created = await tx.guarantee.create({
       data: {
         reservationReferenceId: legacyReservation?.id ?? null,
         stayId: input.stayId ?? null,
         guestName: input.guestName?.trim() || legacyReservation?.guest?.fullName || null,
-        roomNumber: input.roomNumber?.trim() || legacyReservation?.roomNumber || null,
+        roomNumber,
         reference: input.reference?.trim() || legacyReservation?.code || null,
         dueAt: input.dueAt ?? null,
         kind: input.kind,

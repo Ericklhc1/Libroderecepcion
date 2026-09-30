@@ -136,6 +136,14 @@ export function TaskForm({
         </Field>
       </div>
 
+      <Field
+        label="Habitación"
+        name="roomId"
+        hint="Opcional. Vincula la tarea al monitor Novedades / habitación."
+      >
+        <Select name="roomId" placeholder="Sin habitación específica" options={options.rooms} />
+      </Field>
+
       {showOrigin && !entryId && !followUpId && !alertId ? (
         <Field
           label="Registro de origen"

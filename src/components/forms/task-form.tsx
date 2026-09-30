@@ -19,6 +19,7 @@ export function TaskForm({
   followUpId,
   alertId,
   defaultAssigneeId,
+  defaultRoomId,
   showOrigin = true,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -27,6 +28,7 @@ export function TaskForm({
   followUpId?: string;
   alertId?: string;
   defaultAssigneeId?: string;
+  defaultRoomId?: string;
   showOrigin?: boolean;
 }) {
   return (
@@ -120,7 +122,18 @@ export function TaskForm({
         )}
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Habitación" name="roomId" hint="Opcional. Se verá en Novedades / habitación.">
+          <Select
+            name="roomId"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomId}
+            options={options.rooms}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Inicio programado"
           name="startsAt"

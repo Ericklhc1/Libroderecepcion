@@ -24,6 +24,7 @@ export const taskInclude = {
   assignee: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true } },
+  room: { select: { id: true, number: true, floor: true } },
   entry: { select: { id: true, humanId: true, title: true, type: true } },
   followUp: { select: { id: true, action: true } },
   sourceAlert: { select: { id: true, title: true, type: true } },
@@ -74,6 +75,10 @@ function inferOrigin(input: TaskCreateInput): TaskOrigin {
 }
 
 export async function createTask(user: CurrentUser, input: TaskCreateInput) {
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('Selecciona una habitación válida.');
+  }
   if (input.startsAt && input.dueAt && input.dueAt <= input.startsAt) {
     throw new RuleError('La fecha límite debe ser posterior al inicio programado.');
   }
@@ -188,6 +193,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
           dueAt: created.dueAt,
           origin: created.origin,
           targetType: created.targetType,
+          roomId: created.roomId,
+          roomNumber: created.room?.number ?? null,
           participantIds: created.participants.map((participant) => participant.userId),
         },
       },
@@ -232,6 +239,7 @@ const TASK_EDITABLE = [
   'startsAt',
   'dueAt',
   'departmentId',
+  'roomId',
   'tags',
   'blockedReason',
   'fulfillmentCriteria',
@@ -246,6 +254,10 @@ export async function updateTask(
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
 
+  if ('roomId' in input && input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('Selecciona una habitación válida.');
+  }
   const nextStartsAt = 'startsAt' in input ? input.startsAt ?? null : current.startsAt;
   const nextDueAt = 'dueAt' in input ? input.dueAt ?? null : current.dueAt;
   if (nextStartsAt && nextDueAt && nextDueAt <= nextStartsAt) {

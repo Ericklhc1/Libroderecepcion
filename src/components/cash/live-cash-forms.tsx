@@ -19,6 +19,7 @@ import {
 } from '@/server/actions/live-cash';
 import { createGuaranteeAction } from '@/server/actions/references';
 import { DenominationVisual } from '@/components/cash/denomination-visual';
+import { ROOM_NUMBER_OPTIONS } from '@/domain/room-catalog';
 
 function formatFolio(folio: number) {
   return String(folio).padStart(4, '0');
@@ -42,13 +43,7 @@ export function CreateGymPassForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Habitación" name="roomNumber" required>
-          <Input
-            name="roomNumber"
-            required
-            maxLength={20}
-            placeholder="Ej.: 512"
-            autoComplete="off"
-          />
+          <Select name="roomNumber" required placeholder="Selecciona habitación" options={ROOM_NUMBER_OPTIONS} />
         </Field>
         <Field label="Huésped" name="guestName" required>
           <Input
@@ -84,19 +79,18 @@ export function CreateParkingPassForm({
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Habitación" name="roomNumber" required>
-          <Input name="roomNumber" required maxLength={20} placeholder="Ej.: 512" autoComplete="off" />
+          <Select name="roomNumber" required placeholder="Selecciona habitación" options={ROOM_NUMBER_OPTIONS} />
         </Field>
         <Field label="Huésped" name="guestName" required>
           <Input name="guestName" required maxLength={160} placeholder="Nombre del huésped" autoComplete="off" />
         </Field>
       </div>
-      <Field label="Patente / matrícula" name="vehiclePlate" required>
+      <Field label="ID Reserva" name="reservationCode" required>
         <Input
-          name="vehiclePlate"
+          name="reservationCode"
           required
-          maxLength={20}
-          placeholder="Ej.: ABCD12"
-          autoCapitalize="characters"
+          maxLength={80}
+          placeholder="ID de reserva del PMS"
           autoComplete="off"
         />
       </Field>
@@ -370,7 +364,7 @@ export function CreateCashGuaranteeForm() {
           <Input name="guestName" maxLength={160} placeholder="Nombre" />
         </Field>
         <Field label="Habitación" name="roomNumber" hint="Indica al menos huésped, habitación o referencia.">
-          <Input name="roomNumber" maxLength={20} placeholder="512" />
+          <Select name="roomNumber" placeholder="Sin habitación" options={ROOM_NUMBER_OPTIONS} />
         </Field>
       </div>
 

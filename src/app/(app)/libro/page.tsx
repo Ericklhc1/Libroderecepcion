@@ -23,6 +23,7 @@ export const dynamic = 'force-dynamic';
 const TABS = [
   { label: 'Novedades', href: '/libro?clase=entry' },
   { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
+  { label: 'Habitaciones', href: '/libro/habitaciones' },
   { label: 'Mis tareas', href: '/libro?clase=task' },
 ];
 

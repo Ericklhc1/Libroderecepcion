@@ -405,7 +405,9 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             <div className="px-4">
               <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Tareas, incidencias, turnos, continuidad y auditoría." />
               <SourceState title="Reservas" status={cockpit.sources.reservations} detail="Próximas 24/72 h, saldos, garantías y acciones pendientes." />
-              <SourceState title="Caja y llaves" status={cockpit.sources.cash} detail="Arqueos, diferencias, custodia e inventario físico." />
+              <SourceState title="Caja" status={cockpit.sources.cash} detail="Arqueos, diferencias, fondos y custodia monetaria." />
+              <SourceState title="Llaves" status={cockpit.sources.keys} detail="Inventario físico y cobertura por piso." />
+              <SourceState title="Auditoría" status={cockpit.sources.audits} detail="Auditorías abiertas, hallazgos y medidas correctivas." />
               <SourceState title="PMS comercial" status={cockpit.sources.commercialPms} detail="Ocupación, ADR, RevPAR, pickup y pace: fuente aún no conectada." />
               <SourceState title="Finanzas" status={cockpit.sources.finance} detail="GOP, GOPPAR y Flow Through/Flex: requieren fuente financiera." />
               <SourceState title="RR. HH. / labor" status={cockpit.sources.labor} detail="Horas, costo laboral, productividad POR/PAR y sobretiempo." />

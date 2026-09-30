@@ -311,7 +311,10 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_prioridades',
       'consultar_supervision',
       'consultar_caja',
+      'consultar_garantias',
+      'consultar_llaves',
       'consultar_turnos',
+      'consultar_auditoria',
     ]);
   }
 

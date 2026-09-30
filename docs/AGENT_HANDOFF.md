@@ -1,5 +1,21 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.35.0 · Centro de Decisión Gerencial
+
+- Rama: `feature/centro-decision-gerencial-v1-35-0`.
+- Nueva ruta: `/gerencia`. Es una capa **estratégica y read-only** en su portada; no duplica estados ni crea un flujo operativo paralelo.
+- Permiso nuevo: `management.dashboard.view`, concedido por defecto a Gerencia, Supervisor y Administrador de sistema. Recepción, Auditor nocturno y Central de Reservas no lo reciben.
+- Separación canónica: **Supervisión gestiona el presente; Gerencia compara, prioriza, identifica tendencia y conecta operación con resultado**.
+- No existe score global ni ranking de personas. Cada indicador conserva fórmula/origen, período actual y comparación cuando corresponde.
+- Pulso ejecutivo: Continuidad, Ejecución, Riesgo y Control. Son grupos explicables, no una nota compuesta.
+- Cola de decisión: máximo cinco frentes priorizados por reglas determinísticas y evidencia real; abre el objeto/módulo original para actuar.
+- Fragilidad operacional: pendientes sin dueño, tareas/seguimientos vencidos, entregas sin recibir, cierres pendientes, Caja, garantías, llaves y llegadas 24 h con riesgo.
+- Fricción de procesos: P90 de cierre de turno, recepción de entrega y arqueo, cierres incompletos, diferencias y fallos observados.
+- PMS/comercial: sólo muestra métricas presentes en `SupervisionAuditImport`: ocupación, Revenue, ADR, RevPAR, ventas, comisiones, producción y cobros según los informes cargados. **No estimar GOP/GOPPAR ni completar datos ausentes**.
+- Fronti reconoce `/gerencia` y puede leer la fotografía gerencial con el mismo permiso; no recibe una vía de escritura nueva.
+- Release objetivo: **v1.35.0**. Migración aditiva exclusiva de permiso: `20260930030000_centro_decision_gerencial`.
+
+
 ## 29/09/2026 · AROH 1.34.1 · sidebar simplificado
 
 - Rama: `fix/sidebar-simplificado-v1-34-1`.

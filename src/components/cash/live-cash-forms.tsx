@@ -334,7 +334,11 @@ export function ReclassifyCashMovementDialog({
   );
 }
 
-export function CreateCashGuaranteeForm() {
+export function CreateCashGuaranteeForm({
+  defaultRoomNumber,
+}: {
+  defaultRoomNumber?: string;
+} = {}) {
   return (
     <ActionForm action={createGuaranteeAction} className="space-y-3" resetOnSuccess>
       <input type="hidden" name="kind" value="EFECTIVO" />
@@ -369,7 +373,12 @@ export function CreateCashGuaranteeForm() {
           <Input name="guestName" maxLength={160} placeholder="Nombre" />
         </Field>
         <Field label="Habitación" name="roomNumber" hint="Opcional. Se verá en Novedades / habitación.">
-          <Select name="roomNumber" placeholder="Sin habitación" options={ROOM_NUMBER_OPTIONS} />
+          <Select
+            name="roomNumber"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomNumber}
+            options={ROOM_NUMBER_OPTIONS}
+          />
         </Field>
       </div>
 

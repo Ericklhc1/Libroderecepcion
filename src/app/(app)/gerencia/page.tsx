@@ -6,7 +6,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Banknote,
-  BedDouble,
+  BellRing,
   Database,
   KeyRound,
   Minus,
@@ -161,7 +161,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             </h1>
             <p className="mt-1 max-w-3xl text-sm text-slate-600">
               Qué cambió, dónde está el riesgo y qué requiere una decisión. Los hechos provienen
-              de la operación registrada en AROH; las métricas sin fuente conectada no se estiman.
+              de la operación registrada en AROH; el PMS queda como fuente externa de contexto y no se replica aquí.
             </p>
           </div>
 
@@ -285,17 +285,17 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
 
           <div className="grid gap-0 px-2 py-2 lg:grid-cols-[12rem_1fr]">
             <div className="flex items-center gap-2 px-3 py-3">
-              <BedDouble className="h-4 w-4 text-gold-600" aria-hidden="true" />
+              <BellRing className="h-4 w-4 text-gold-600" aria-hidden="true" />
               <div>
-                <p className="text-sm font-semibold text-petrol-950">Preparación</p>
-                <p className="text-xs text-slate-500">Próximas llegadas</p>
+                <p className="text-sm font-semibold text-petrol-950">Continuidad</p>
+                <p className="text-xs text-slate-500">Seguimientos y atención pendiente</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
-              <Metric label="Llegadas 24 h" value={cockpit.readiness.arrivals24} />
-              <Metric label="24 h con fricción" value={cockpit.readiness.arrivals24AtRisk} emphasis={cockpit.readiness.arrivals24AtRisk > 0} />
-              <Metric label="Garantía pendiente" value={cockpit.readiness.guaranteeRisk} />
-              <Metric label="Con saldo pendiente" value={cockpit.readiness.withBalance} />
+              <Metric label="Seguimientos abiertos" value={cockpit.continuity.openFollowUps} />
+              <Metric label="Seguimientos vencidos" value={cockpit.continuity.overdueFollowUps} emphasis={cockpit.continuity.overdueFollowUps > 0} />
+              <Metric label="Alertas activas" value={cockpit.continuity.activeAlarms} />
+              <Metric label="Alertas vencidas" value={cockpit.continuity.overdueAlarms} emphasis={cockpit.continuity.overdueAlarms > 0} />
             </div>
           </div>
 
@@ -403,12 +403,11 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
               </h2>
             </div>
             <div className="px-4">
-              <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Tareas, incidencias, turnos, continuidad y auditoría." />
-              <SourceState title="Reservas" status={cockpit.sources.reservations} detail="Próximas 24/72 h, saldos, garantías y acciones pendientes." />
+              <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Novedades, tareas, incidencias, seguimientos, alertas, turnos y continuidad." />
               <SourceState title="Caja" status={cockpit.sources.cash} detail="Arqueos, diferencias, fondos y custodia monetaria." />
               <SourceState title="Llaves" status={cockpit.sources.keys} detail="Inventario físico y cobertura por piso." />
               <SourceState title="Auditoría" status={cockpit.sources.audits} detail="Auditorías abiertas, hallazgos y medidas correctivas." />
-              <SourceState title="PMS comercial" status={cockpit.sources.commercialPms} detail="Ocupación, ADR, RevPAR, pickup y pace: fuente aún no conectada." />
+              <SourceState title="PMS externo" status={cockpit.sources.commercialPms} detail="FNSRooms u otro PMS puede aportar contexto comercial; AROH no replica reservas, estadías, habitaciones ni check-in/out." />
               <SourceState title="Finanzas" status={cockpit.sources.finance} detail="GOP, GOPPAR y Flow Through/Flex: requieren fuente financiera." />
               <SourceState title="RR. HH. / labor" status={cockpit.sources.labor} detail="Horas, costo laboral, productividad POR/PAR y sobretiempo." />
               <SourceState title="Voz del huésped" status={cockpit.sources.guestVoice} detail="Reputación, satisfacción y recuperación de servicio." />

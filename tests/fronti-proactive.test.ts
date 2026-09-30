@@ -259,6 +259,31 @@ describe('Fronti proactivo', () => {
     expect(after?.key).not.toBe(before?.key);
   });
 
+
+  it('estructura el aviso de Fronti como qué pasó, qué está mal y qué hacer', async () => {
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador Fronti' });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción Fronti' });
+    await createOperationalSignal(author.id, {
+      title: 'Señal explicable',
+      priority: Priority.CRITICA,
+    });
+
+    await runFrontiProactiveSweep({ trigger: 'test-explicacion' });
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: {
+        type: NotificationType.FRONTI_HALLAZGO,
+        entity: 'FrontiProactiveSignal',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(notification.body).toContain('Qué pasó:');
+    expect(notification.body).toContain('Qué está mal / qué revisar:');
+    expect(notification.body).toContain('Qué hacer:');
+    expect(notification.link).toMatch(/^\/libro\//);
+  });
+
   it('incorpora una novedad prioritaria recién creada al barrido', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
     const entry = await createOperationalSignal(user.id, {
@@ -276,4 +301,67 @@ describe('Fronti proactivo', () => {
       ),
     ).toBe(true);
   });
+
+  it('detecta un descuadre de Caja con montos exactos y abre el arqueo concreto', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor descuadre Fronti',
+    });
+    const now = new Date('2026-09-30T12:00:00.000Z');
+
+    const audit = await prisma.cashAudit.create({
+      data: {
+        id: 'fronti-cash-audit-difference',
+        currency: 'CLP',
+        expectedAmount: 100_000,
+        countedAmount: 98_000,
+        difference: -2_000,
+        countedById: supervisor.id,
+        guaranteeSnapshot: [],
+        denominationSnapshot: [],
+        createdAt: now,
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates(now);
+    const candidate = candidates.find((item) => item.entityId === audit.id);
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.area).toBe('Caja');
+    expect(candidate?.evidence).toContain('esperado CLP 100.000');
+    expect(candidate?.evidence).toContain('contado CLP 98.000');
+    expect(candidate?.evidence).toContain('diferencia CLP -2.000');
+    expect(candidate?.evidence).toContain('no demuestra por sí sola la causa');
+    expect(candidate?.link).toBe(`/caja/arqueos/${audit.id}`);
+  });
+
+  it('detecta una tarea vencida y enlaza directamente a la tarea', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor tarea Fronti',
+    });
+    const now = new Date('2026-09-30T12:00:00.000Z');
+    const dueAt = new Date('2026-09-30T10:00:00.000Z');
+
+    const task = await prisma.task.create({
+      data: {
+        title: 'Revisar diferencia pendiente',
+        description: 'Tarea determinística para el radar de Fronti.',
+        priority: Priority.ALTA,
+        dueAt,
+        assigneeId: supervisor.id,
+        createdById: supervisor.id,
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates(now);
+    const candidate = candidates.find((item) => item.entityId === task.id);
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.area).toBe('Tareas');
+    expect(candidate?.title).toContain(`#${task.humanId}`);
+    expect(candidate?.evidence).toContain('la fecha límite ya pasó');
+    expect(candidate?.link).toBe(`/tareas/${task.id}`);
+  });
+
 });

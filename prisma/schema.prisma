@@ -423,6 +423,7 @@ model RolePermission {
   @@index([permissionId])
 }
 
+
 /// Una cuenta del sistema se identifica por `username`.
 ///
 /// El correo es un CANAL de comunicación individual, no una identidad ni una
@@ -454,6 +455,11 @@ model User {
   /// y no en el navegador a propósito: quien entra desde otro equipo el primer
   /// día sigue siendo alguien que ya conoce el sistema.
   tutorialDoneAt     DateTime?
+  /// Módulos cuyo onboarding ya fue completado u omitido de forma permanente.
+  ///
+  /// La lista permite detectar permisos nuevos: si un módulo se vuelve visible
+  /// y su clave no está aquí, AROH ofrece únicamente el tutorial de ese módulo.
+  tutorialKnownModules String[]   @default([])
   /// Personalización ligera del IM. Todo es local al Libro: sin CDN ni perfil externo.
   chatAvatarKey       String      @default("dragon")
   chatStatusText      String?

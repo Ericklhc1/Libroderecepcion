@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { NAV_ITEMS } from '@/components/layout/nav-items';
-import { TUTORIAL_STEPS, shouldNavigateTutorial } from '@/domain/tutorial-tour';
+import {
+  TUTORIAL_STEPS,
+  enabledTutorialModules,
+  moduleTutorialSteps,
+  shouldNavigateTutorial,
+} from '@/domain/tutorial-tour';
+import { ROLE_KEYS, ROLE_PERMISSIONS } from '@/lib/permissions';
 
 describe('recorrido guiado', () => {
   it('al posponerlo deja de controlar la navegación', () => {
@@ -59,6 +65,46 @@ describe('recorrido guiado', () => {
     expect(descriptions).not.toContain('importación pms');
   });
 
+
+  it('detecta módulos habilitados por permisos y genera sólo su tutorial', () => {
+    const receptionist = ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST];
+    const management = ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT];
+
+    expect(enabledTutorialModules(receptionist)).toEqual(
+      expect.arrayContaining(['novedades', 'habitaciones', 'caja', 'turno', 'llaves', 'alertas']),
+    );
+    expect(enabledTutorialModules(receptionist)).not.toContain('gerencia');
+
+    expect(enabledTutorialModules(management)).toContain('gerencia');
+    expect(enabledTutorialModules(management)).not.toContain('turno');
+
+    const steps = moduleTutorialSteps(['gerencia'], management);
+    expect(steps.length).toBeGreaterThanOrEqual(3);
+    expect(steps.every((step) => step.module === 'gerencia')).toBe(true);
+    expect(steps.map((step) => step.id)).toContain('mod-gerencia-trazabilidad');
+    expect(steps.map((step) => step.id)).toContain('mod-gerencia-fronti');
+  });
+
+  it('el layout ofrece onboarding sólo para módulos nuevos ya después del tutorial general', async () => {
+    const { readFileSync } = await import('node:fs');
+    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
+    const actions = readFileSync('src/server/actions/tutorial.ts', 'utf8');
+    const migration = readFileSync(
+      'prisma/migrations/20260930112000_tutoriales_modulares/migration.sql',
+      'utf8',
+    );
+
+    expect(layout).toContain('tutorialKnownModules');
+    expect(layout).toContain('pendingModules');
+    expect(layout).toContain('moduleTutorialSteps(pendingModules');
+    expect(layout).toContain('mode="modules"');
+    expect(actions).toContain('finishModuleTutorialAction');
+    expect(actions).toContain('restartModuleTutorialAction');
+    expect(actions).toContain('tutorialKnownModules');
+    expect(migration).toContain('ADD COLUMN "tutorialKnownModules"');
+    expect(migration).toContain('WHERE u."tutorialDoneAt" IS NOT NULL');
+  });
+
   it('el layout subordina el tutorial al gate operativo', async () => {
     const { readFileSync } = await import('node:fs');
     const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
@@ -83,7 +129,7 @@ describe('recorrido guiado', () => {
     expect(component).toContain('¿Quieres interactuar con la Central?');
     expect(component).toContain('Cerrar esta vez');
     expect(component).toContain('No volver a mostrar');
-    expect(component).toContain('Puedes activarlo cuando quieras desde Mi perfil');
+    expect(component).toContain('Puedes activarlo cuando quieras desde Ayuda o Mi perfil');
     expect(component).toContain('libro:tutorial:dismissed:');
     expect(component).toContain('sessionStorage.setItem');
     expect(component).toContain('sessionReady');

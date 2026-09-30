@@ -167,13 +167,14 @@ export const HELP_TOPICS: HelpTopic[] = [
       'Entra a Caja.',
       'Usa «Nueva garantía» para registrar el dinero bajo custodia. No lo dupliques como Novedad: la garantía ya conserva su propia trazabilidad entre turnos.',
       'El nombre, habitación o referencia son contexto libre opcional: no necesitas crear una reserva.',
+      'Si registraste mal monto, moneda, huésped, habitación, referencia, vigencia u observaciones, usa «Editar». AROH registra el antes/después en Auditoría.',
       'Cuando corresponda devolverla, usa la acción de devolución en la misma sección de Caja.',
     ],
     caveat:
       'Caja conserva la trazabilidad financiera sin depender de PMS. Los vínculos históricos de reservas sólo existen para datos antiguos.',
     route: '/caja',
     anyOf: ['cash.guarantee_in', 'cash.guarantee_out'],
-    keywords: ['garantía', 'garantia', 'deposito', 'efectivo', 'devolver', 'caja'],
+    keywords: ['garantía', 'garantia', 'deposito', 'efectivo', 'editar', 'corregir', 'devolver', 'caja'],
   },
   {
     id: 'incidencia',

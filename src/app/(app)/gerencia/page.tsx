@@ -52,9 +52,6 @@ function pct(value: number | null) {
   return value === null ? '—' : `${Math.round(value)}%`;
 }
 
-function hours(value: number | null) {
-  return value === null ? '—' : `${value.toFixed(1)} h`;
-}
 
 function trendValue(item: ManagementTrend, value: number | null) {
   if (value === null) return '—';

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { BookOpen, Search, UserRound } from 'lucide-react';
+import { Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';

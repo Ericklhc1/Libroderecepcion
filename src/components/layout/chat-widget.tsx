@@ -1406,7 +1406,7 @@ export function ChatWidget({
   if (!mounted) return null;
 
   const panel = open ? (
-    <div className="fixed inset-0 z-[120] flex flex-col border-l border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-lg sm:ring-1 sm:ring-slate-200 lg:bottom-12">
+    <div className="fixed inset-0 z-[120] flex flex-col border-l border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-2xl sm:ring-1 sm:ring-slate-200 lg:bottom-12">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
         {view !== 'list' ? (
           <button

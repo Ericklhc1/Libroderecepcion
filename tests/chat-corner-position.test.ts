@@ -12,7 +12,7 @@ describe('Chat anclado al borde del viewport', () => {
 
   it('abre el panel desde el mismo borde derecho fuera de móvil pequeño', () => {
     expect(source).toContain('sm:bottom-20 sm:right-0');
-    expect(source).toContain('sm:rounded-l-2xl');
+    expect(source).toContain('sm:rounded-l-lg');
     expect(source).toContain('lg:bottom-12');
   });
 });

@@ -1,5 +1,18 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+
+## 30/09/2026 · AROH 1.36.2 · trazabilidad gerencial + detalle de habitación
+
+- Gerencia deja de usar «Ver evidencia» como salto genérico: cada señal muestra el detalle detectado y enlaces al registro concreto cuando existe ruta individual.
+- Diferencias de Caja muestran arqueo, esperado, contado, diferencia, responsable y acceso directo a `/caja/arqueos/[id]`.
+- Incidencias críticas, tareas vencidas, correctivas, hallazgos y habitaciones críticas exponen sus orígenes concretos.
+- Fronti genera una sugerencia breve a partir de los hechos ya detectados; si IA no está disponible, la interfaz lo declara y conserva la acción determinística.
+- Novedades / habitación corrige la navegación en móvil/tablet: al tocar una habitación el panel de detalle se presenta antes del mapa y el enlace apunta a `#detalle-habitacion`.
+- Gimnasio y Estacionamiento se muestran en Novedades / habitación sólo como **reflejo de Caja de los últimos 30 días**. No se duplican ni se convierten en novedades.
+- Los folios reflejados enlazan nuevamente a Caja para conservar la fuente única de verdad.
+- Release: **v1.36.2**.
+
+
 ## 30/09/2026 · AROH 1.36.0 · Novedades / habitación
 
 - AROH reafirma su alcance: **no es PMS**. FNSrooms sigue siendo la fuente para reservas, ocupación, check-in y check-out.

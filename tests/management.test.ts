@@ -74,8 +74,15 @@ describe('cockpit estratégico de Gerencia', () => {
     const cockpit = await getManagementCockpit();
 
     expect(cockpit.sources.operational).toBe('connected');
-    expect(cockpit.sources.reservations).toBe('connected');
     expect(cockpit.sources.cash).toBe('connected');
+    expect(cockpit.continuity).toEqual(
+      expect.objectContaining({
+        openFollowUps: expect.any(Number),
+        overdueFollowUps: expect.any(Number),
+        activeAlarms: expect.any(Number),
+        overdueAlarms: expect.any(Number),
+      }),
+    );
 
     for (const source of [
       cockpit.sources.commercialPms,

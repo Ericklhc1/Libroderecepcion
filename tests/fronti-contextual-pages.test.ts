@@ -97,7 +97,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(context.filters).not.toHaveProperty('api_key');
   });
 
-  it('entiende las subsecciones de Caja y Central de Reservas', () => {
+  it('entiende las subsecciones de Caja y Prellegadas', () => {
     const cash = resolveFrontiPageContext({
       pathname: '/caja',
       search: '?seccion=garantias',
@@ -115,9 +115,30 @@ describe('Fronti contextual · cobertura de pantallas', () => {
       pathname: '/central-reservas',
       search: '?vista=24h&q=martinez',
     });
+    expect(reservations.moduleKey).toBe('prellegadas');
+    expect(reservations.moduleLabel).toBe('Prellegadas');
     expect(reservations.sectionLabel).toBe('Llegadas próximas 24 h');
     expect(reservations.filters.q).toBe('martinez');
   });
+  it('entiende Novedades / habitación como monitor de continuidad', () => {
+    const room = resolveFrontiPageContext({
+      pathname: '/habitaciones',
+      search: '?habitacion=617',
+    });
+    expect(room.moduleLabel).toBe('Novedades / habitación');
+    expect(room.sectionLabel).toBe('Habitación 617');
+    expect(room.entityType).toBe('RoomNumber');
+    expect(room.entityId).toBe('617');
+    expect(room.recommendedTools).toEqual(
+      expect.arrayContaining([
+        'consultar_novedades',
+        'consultar_tareas',
+        'consultar_garantias',
+        'consultar_llaves',
+      ]),
+    );
+  });
+
   it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
     const management = resolveFrontiPageContext({
       pathname: '/gerencia',

@@ -390,7 +390,7 @@ export async function getManagementCockpit(inputDays = 30) {
       severity: 'atencion',
       title: 'Cobertura de llaves incompleta',
       fact: `${keysMissing} faltante(s) y ${keysOutOfService} fuera de servicio según los últimos inventarios disponibles.`,
-      why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante llegadas y operación.',
+      why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante la operación diaria.',
       action: 'Validar reposición, recuperación o contingencia por piso.',
       href: '/llaves?piso=todos',
     });

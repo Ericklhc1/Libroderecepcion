@@ -156,7 +156,6 @@ export default async function ShiftPage({
 
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
-  const pendingHandover = cashIncoming ?? incoming;
   const sharedOperationalShift =
     !shift && desk.operationalCurrent ? desk.operationalCurrent : null;
   const outgoingStillClosing = Boolean(

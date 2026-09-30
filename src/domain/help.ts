@@ -71,20 +71,20 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
 
   {
-    id: 'reasignar-titular-turno',
-    question: '¿Cómo cambio al titular de un turno Día/Noche?',
+    id: 'cambiar-tipo-turno',
+    question: '¿Cómo corrijo un turno DÍA a NOCHE o viceversa?',
     steps: [
-      'En Administración > Roles y permisos, activa «Reasignar titular del turno» para los roles que deban tener esta facultad.',
+      'En Administración > Roles y permisos, activa «Cambiar tipo de turno Día/Noche» para los roles autorizados.',
       'Entra a Mi turno mientras el turno esté INICIADO o ACTIVO.',
-      'En «Reasignar titular del turno», elige a la persona que asumirá como titular.',
-      'Si esa persona ya estaba como apoyo en el mismo turno, pasa a TITULAR sin salir ni volver a entrar. Si aún no participaba, se incorpora directamente como titular.',
-      'El titular anterior permanece en el turno como APOYO y la Central registra el cambio en Auditoría.',
+      'Pulsa «CAMBIAR A TURNO DÍA» o «CAMBIAR A TURNO NOCHE», según corresponda.',
+      'La Central conserva la misma fecha operativa y recalcula automáticamente la ventana: DÍA 07:00–20:00 o NOCHE 20:00–08:00.',
+      'El cambio queda registrado en Auditoría con el tipo y horario anterior y posterior.',
     ],
     caveat:
-      'La reasignación no cambia un turno DÍA por NOCHE ni borra quién abrió el turno. Tampoco se permite cuando el cierre ya comenzó o si la persona elegida participa activamente en otro turno.',
+      'Esta función corrige el tipo del turno; no cambia al titular ni borra participantes. Si el cierre ya comenzó, primero hay que cancelar la preparación de cierre.',
     route: '/turno',
     anyOf: ['shift.reassign'],
-    keywords: ['turno', 'titular', 'apoyo', 'reasignar', 'cambiar', 'dia', 'día', 'noche', 'responsable'],
+    keywords: ['turno', 'día', 'dia', 'noche', 'cambiar', 'corregir', 'tipo', 'horario', 'franja'],
   },
 
   {

@@ -34,7 +34,6 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
-      '/central-reservas', // preparación previa y continuidad de reservas
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
@@ -292,7 +291,7 @@ describe('todo el menú es alcanzable en móvil', () => {
 
     expect(visibles).toContain('/llaves');
 
-    for (const retired of ['/reservas', '/huespedes', '/habitaciones']) {
+    for (const retired of ['/central-reservas', '/reservas', '/huespedes', '/habitaciones']) {
       expect(visibles).not.toContain(retired);
     }
   });

@@ -134,6 +134,8 @@ describe('Fronti contextual · cobertura de pantallas', () => {
         'consultar_caja',
         'consultar_garantias',
         'consultar_llaves',
+        'consultar_turnos',
+        'consultar_auditoria',
       ]),
     );
   });

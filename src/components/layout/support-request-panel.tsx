@@ -303,7 +303,7 @@ export function SupportRequestPanel({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50 lg:inline-flex"
+        className="hidden h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50 lg:inline-flex"
         aria-label="Reportar error o solicitar función"
       >
         <MessageSquareWarning className="h-4 w-4 text-petrol-600" aria-hidden="true" />
@@ -324,10 +324,10 @@ export function SupportRequestPanel({
             role="dialog"
             aria-modal="true"
             aria-labelledby="support-panel-title"
-            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-2xl"
+            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)]"
           >
             <header className="flex items-start gap-3 border-b border-slate-200 bg-petrol-900 px-4 py-4 text-white">
-              <span className="mt-0.5 rounded-lg bg-gold-500 p-2 text-petrol-950">
+              <span className="mt-0.5 rounded-md bg-gold-500 p-2 text-petrol-950">
                 <MessageSquareWarning className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
@@ -342,7 +342,7 @@ export function SupportRequestPanel({
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={state.status === 'sending'}
-                className="rounded-lg p-1.5 text-petrol-100 hover:bg-petrol-800 disabled:opacity-40"
+                className="rounded-md p-1.5 text-petrol-100 hover:bg-petrol-800 disabled:opacity-40"
                 aria-label="Cerrar"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -354,7 +354,7 @@ export function SupportRequestPanel({
                 <button
                   type="button"
                   onClick={() => setKind('ERROR')}
-                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                  className={`rounded-md border px-3 py-3 text-left transition-colors ${
                     kind === 'ERROR'
                       ? 'border-red-300 bg-red-50 text-red-900'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -367,7 +367,7 @@ export function SupportRequestPanel({
                 <button
                   type="button"
                   onClick={() => setKind('FUNCION')}
-                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                  className={`rounded-md border px-3 py-3 text-left transition-colors ${
                     kind === 'FUNCION'
                       ? 'border-gold-400 bg-gold-50 text-petrol-900'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -409,7 +409,7 @@ export function SupportRequestPanel({
                   type="button"
                   onClick={() => void capture()}
                   disabled={captureBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-petrol-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-petrol-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   {captureBusy ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -421,7 +421,7 @@ export function SupportRequestPanel({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-petrol-700 hover:bg-slate-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-petrol-700 hover:bg-slate-50"
                 >
                   <FileUp className="h-4 w-4" aria-hidden="true" />
                   Adjuntar archivo
@@ -436,7 +436,7 @@ export function SupportRequestPanel({
               </div>
 
               {screenshot || attachment ? (
-                <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                <div className="mt-3 space-y-2 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
                   {screenshot ? (
                     <div className="flex items-center gap-2 text-xs text-slate-700">
                       <Camera className="h-3.5 w-3.5 text-petrol-600" aria-hidden="true" />
@@ -471,19 +471,19 @@ export function SupportRequestPanel({
                 </div>
               ) : null}
 
-              <div className="mt-4 rounded-xl bg-petrol-50 px-3 py-2.5 text-xs leading-4 text-petrol-800 ring-1 ring-petrol-100">
+              <div className="mt-4 rounded-md bg-petrol-50 px-3 py-2.5 text-xs leading-4 text-petrol-800 ring-1 ring-petrol-100">
                 Se enviarán automáticamente: referencia de soporte, módulo/ruta, versión, alojamiento, navegador/plataforma, zona horaria, tamaño de ventana y estado de turno cuando corresponda. Las capturas y archivos se archivan de forma privada para consultarlos desde la bandeja; si ese archivado falla, el sistema conserva el envío por correo como respaldo.
               </div>
 
               {state.status === 'ok' ? (
-                <p className="mt-3 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+                <p className="mt-3 flex items-start gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   {state.message}
                 </p>
               ) : null}
 
               {state.status === 'error' ? (
-                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200">
+                <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200">
                   {state.message}
                 </p>
               ) : null}
@@ -495,7 +495,7 @@ export function SupportRequestPanel({
                   subject.trim().length === 0 ||
                   description.trim().length === 0
                 }
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {state.status === 'sending' ? (
                   <>

@@ -27,6 +27,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, EmptyState } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
+import { cn } from '@/lib/cn';
 
 export const metadata = { title: 'Novedades / habitación' };
 export const dynamic = 'force-dynamic';
@@ -78,23 +79,25 @@ function RoomTile({
   selected: boolean;
 }) {
   const tone = ROOM_TONE[room.attention];
-  const activity =
-    room.openEntries +
-    room.openTasks +
-    room.openFollowUps +
-    room.activeAlarms +
-    room.openGuarantees;
+  const metrics = [
+    { label: 'Novedades', value: room.openEntries },
+    { label: 'Tareas', value: room.openTasks },
+    { label: 'Seguimientos', value: room.openFollowUps },
+    { label: 'Alertas', value: room.activeAlarms },
+    { label: 'Garantías', value: room.openGuarantees },
+  ].filter((metric) => metric.value > 0);
+  const activity = metrics.reduce((total, metric) => total + metric.value, 0);
 
   return (
     <Link
       href={`/novedades/habitacion?habitacion=${room.number}#detalle-habitacion`}
       aria-current={selected ? 'page' : undefined}
-      className={`group min-h-[8.5rem] rounded-lg border p-3 shadow-card transition-[border-color,background-color,transform] hover:-translate-y-0.5 ${
+      className={`group flex h-full min-h-[8.5rem] flex-col rounded-lg border p-3 shadow-card transition-[border-color,background-color,transform] hover:-translate-y-0.5 ${
         selected ? 'ring-2 ring-gold-500 ring-offset-2' : ''
       } ${tone.shell}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <span className="block text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-slate-400">
             Habitación
           </span>
@@ -102,53 +105,45 @@ function RoomTile({
             {room.number}
           </span>
         </div>
-        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${tone.dot}`} title={tone.label} />
+        <span
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${tone.dot}`}
+          title={tone.label}
+        />
       </div>
 
-      {activity === 0 ? (
-        <p className="mt-4 text-xs font-medium text-slate-400">Sin contexto abierto</p>
-      ) : (
-        <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.68rem]">
-          {room.openEntries > 0 ? (
-            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
-              Novedades <strong>{room.openEntries}</strong>
-            </span>
-          ) : null}
-          {room.openTasks > 0 ? (
-            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
-              Tareas <strong>{room.openTasks}</strong>
-            </span>
-          ) : null}
-          {room.openFollowUps > 0 ? (
-            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
-              Seguimientos <strong>{room.openFollowUps}</strong>
-            </span>
-          ) : null}
-          {room.activeAlarms > 0 ? (
-            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
-              Alertas <strong>{room.activeAlarms}</strong>
-            </span>
-          ) : null}
-          {room.openGuarantees > 0 ? (
-            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
-              Garantías <strong>{room.openGuarantees}</strong>
-            </span>
-          ) : null}
-        </div>
-      )}
-
       {room.criticalIncidents > 0 || room.overdueTasks > 0 ? (
-        <p className="mt-2 text-[0.68rem] font-semibold text-red-700">
+        <p className="mt-2 text-[0.68rem] font-semibold leading-tight text-red-700">
           {room.criticalIncidents > 0 ? `${room.criticalIncidents} crítica(s)` : ''}
           {room.criticalIncidents > 0 && room.overdueTasks > 0 ? ' · ' : ''}
           {room.overdueTasks > 0 ? `${room.overdueTasks} vencida(s)` : ''}
         </p>
       ) : null}
+
+      {activity === 0 ? (
+        <p className="mt-auto pt-4 text-center text-xs font-medium text-slate-400">
+          Sin contexto abierto
+        </p>
+      ) : (
+        <div className="mt-auto grid grid-cols-2 gap-1.5 pt-3 text-[0.68rem]">
+          {metrics.map((metric, index) => (
+            <span
+              key={metric.label}
+              className={cn(
+                'flex min-h-8 items-center justify-between gap-2 rounded-sm bg-white/80 px-2 py-1 leading-none text-petrol-800 ring-1 ring-black/5',
+                metrics.length % 2 === 1 && index === metrics.length - 1 && 'col-span-2',
+              )}
+            >
+              <span className="min-w-0 truncate">{metric.label}</span>
+              <strong className="shrink-0 tabular font-semibold">{metric.value}</strong>
+            </span>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }
 
-function SectionTitle({
+function SectionTitle({function SectionTitle({
   icon: Icon,
   title,
   count,

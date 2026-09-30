@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { BookOpen, Search, UserRound } from 'lucide-react';
+import { Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
@@ -82,17 +82,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-[#f3f6f8]">
       <div className="flex min-h-screen min-w-0">
         <aside className="hidden w-56 shrink-0 flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print">
-          <Link href="/" className="flex items-center gap-3 border-b border-petrol-800 px-4 py-4">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-gold-500 text-petrol-950">
-              <BookOpen className="h-5 w-5" aria-hidden="true" />
+          <Link href="/" className="block border-b border-petrol-800 px-4 py-4">
+            <span className="block truncate text-base font-light tracking-tight text-white">
+              AROH <span className="font-semibold text-gold-400">Central IA</span>
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold tracking-tight text-white">
-                AROH <span className="text-gold-400">Central IA</span>
-              </span>
-              <span className="mt-0.5 block truncate text-[0.68rem] font-medium text-petrol-300">
-                {hotelName}
-              </span>
+            <span className="mt-1 block truncate text-[0.68rem] font-medium text-petrol-300">
+              {hotelName}
             </span>
           </Link>
 
@@ -111,13 +106,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
             <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
-              <Link href="/" className="flex shrink-0 items-center gap-2 lg:hidden">
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-petrol-950 text-gold-400">
-                  <BookOpen className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <span className="hidden text-xs font-semibold text-petrol-950 sm:inline">
-                  AROH <span className="text-gold-600">Central IA</span>
-                </span>
+              <Link href="/" className="flex shrink-0 items-baseline gap-1 lg:hidden">
+                <span className="text-sm font-semibold text-petrol-950">AROH</span>
+                <span className="text-sm font-semibold text-gold-600">Central IA</span>
               </Link>
 
               <form

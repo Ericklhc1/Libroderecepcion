@@ -339,7 +339,7 @@ const PRIMARY: NavItem[] = [
     label: 'Gerencia',
     icon: 'metrics',
     anyOf: ['management.dashboard.view'],
-
+  },
 ];
 
 const SECONDARY: NavItem[] = [

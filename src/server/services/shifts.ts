@@ -1017,7 +1017,7 @@ export async function openShift(
           activatedAt: now,
           leftAt: null,
         },
-        update: { role, activatedAt: now, leftAt: null },
+        update: { activatedAt: now, leftAt: null },
       });
 
       /*
@@ -1589,7 +1589,7 @@ export async function addShiftMember(
           activatedAt: now,
           leftAt: null,
         },
-        update: { activatedAt: now, leftAt: null },
+        update: { role, activatedAt: now, leftAt: null },
       });
 
       await recordAudit(

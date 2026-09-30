@@ -28,6 +28,7 @@ import {
   getDeviceNotificationState,
   reconcileDeviceNotifications,
   showDeviceNotification,
+  syncDeviceNotificationState,
   testDevicePush,
   type DeviceNotificationState,
 } from './device-notifications';
@@ -172,6 +173,11 @@ export function NotificationCenter({
 
       setItems(snapshot.items);
       setUnread(snapshot.unread);
+      void syncDeviceNotificationState({
+        unread: snapshot.unread,
+        readIds: snapshot.items.filter((item) => Boolean(item.readAt)).map((item) => item.id),
+        clearAll: snapshot.unread === 0,
+      });
 
       const nextBlockingSignature = snapshot.blockingAnnouncementIds.join('|');
       if (nextBlockingSignature !== blockingAnnouncementSignature.current) {
@@ -378,10 +384,19 @@ export function NotificationCenter({
         setItems((current) =>
           current.map((item) => (item.id === id && !item.readAt ? { ...item, readAt: now } : item)),
         );
-        setUnread((current) => Math.max(0, current - 1));
+        setUnread((current) => {
+          const next = Math.max(0, current - 1);
+          void syncDeviceNotificationState({
+            unread: next,
+            readIds: [id],
+            clearAll: next === 0,
+          });
+          return next;
+        });
       } else {
         setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? now })));
         setUnread(0);
+        void syncDeviceNotificationState({ unread: 0, clearAll: true });
       }
 
       try {

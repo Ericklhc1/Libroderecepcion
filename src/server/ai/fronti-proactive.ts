@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
+import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { notify } from '@/server/notifications';
 import { recordAudit } from '@/server/audit';
 import { getSettingBool, getSettingNumber } from '@/server/services/settings';
@@ -114,6 +115,109 @@ async function entryCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
   });
 }
 
+async function cashDifferenceCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
+  const since = new Date(now.getTime() - 20 * 60 * 1000);
+  const rows = await prisma.cashAudit.findMany({
+    where: {
+      createdAt: { gte: since, lte: now },
+      difference: { not: 0 },
+    },
+    select: {
+      id: true,
+      humanId: true,
+      currency: true,
+      expectedAmount: true,
+      countedAmount: true,
+      difference: true,
+      createdAt: true,
+      countedBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 16,
+  });
+
+  return rows.map((row) => {
+    const expected = Number(row.expectedAmount);
+    const counted = Number(row.countedAmount);
+    const difference = Number(row.difference);
+    return {
+      key: `cash-audit:${row.id}:${difference}`,
+      severity: 'ALTA' as const,
+      area: 'Caja',
+      title: `Arqueo #${row.humanId} con diferencia ${row.currency} ${difference > 0 ? '+' : ''}${difference.toLocaleString('es-CL')}`,
+      evidence: clean(
+        [
+          `arqueo #${row.humanId}`,
+          `esperado ${row.currency} ${expected.toLocaleString('es-CL')}`,
+          `contado ${row.currency} ${counted.toLocaleString('es-CL')}`,
+          `diferencia ${row.currency} ${difference > 0 ? '+' : ''}${difference.toLocaleString('es-CL')}`,
+          `contado por ${row.countedBy.name}`,
+          'el monto contado no coincide con el monto esperado',
+          'la evidencia no demuestra por sí sola la causa del descuadre',
+        ].join(' · '),
+      ),
+      link: `/caja/arqueos/${row.id}`,
+      entityType: 'CashAudit',
+      entityId: row.id,
+      detectedAt: row.createdAt,
+    };
+  });
+}
+
+async function overdueTaskCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
+  const rows = await prisma.task.findMany({
+    where: {
+      deletedAt: null,
+      status: { in: TASK_OPEN_STATUSES },
+      dueAt: { lt: now },
+      OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+    },
+    select: {
+      id: true,
+      humanId: true,
+      title: true,
+      status: true,
+      priority: true,
+      dueAt: true,
+      assignee: { select: { name: true } },
+      room: { select: { number: true } },
+    },
+    orderBy: { dueAt: 'asc' },
+    take: 16,
+  });
+
+  return rows.map((row) => {
+    const severity: FrontiProactiveSeverity =
+      row.priority === Priority.CRITICA
+        ? 'CRITICA'
+        : row.priority === Priority.ALTA
+          ? 'ALTA'
+          : 'MEDIA';
+
+    return {
+      key: `task-overdue:${row.id}:${row.dueAt?.toISOString() ?? 'sin-fecha'}`,
+      severity,
+      area: 'Tareas',
+      title: `Tarea #${row.humanId} vencida · ${row.title}`,
+      evidence: clean(
+        [
+          `tarea #${row.humanId}`,
+          `estado ${row.status}`,
+          `prioridad ${row.priority}`,
+          row.dueAt ? `fecha límite ${row.dueAt.toISOString()}` : null,
+          row.assignee?.name ? `responsable ${row.assignee.name}` : 'sin responsable asignado',
+          row.room?.number ? `habitación ${row.room.number}` : null,
+          'la fecha límite ya pasó y la tarea continúa abierta',
+        ].filter(Boolean).join(' · '),
+      ),
+      link: `/tareas/${row.id}`,
+      entityType: 'Task',
+      entityId: row.id,
+      detectedAt: row.dueAt ?? now,
+    };
+  });
+}
+
 async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
   const since = new Date(now.getTime() - 20 * 60 * 1000);
   const rows = await prisma.operationalMetricEvent.findMany({
@@ -207,13 +311,15 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
 export async function collectFrontiProactiveCandidates(
   now = new Date(),
 ): Promise<FrontiProactiveCandidate[]> {
-  const [entries, observability] = await Promise.all([
+  const [entries, cashDifferences, overdueTasks, observability] = await Promise.all([
     entryCandidates(now),
+    cashDifferenceCandidates(now),
+    overdueTaskCandidates(now),
     observabilityCandidates(now),
   ]);
 
   const unique = new Map<string, FrontiProactiveCandidate>();
-  for (const candidate of [...entries, ...observability]) {
+  for (const candidate of [...entries, ...cashDifferences, ...overdueTasks, ...observability]) {
     const id = signalId(candidate.key);
     const current = unique.get(id);
     if (
@@ -288,6 +394,10 @@ function canReceiveCandidate(
       recipient.permissions.has('key.inventory') ||
       recipient.permissions.has('key.stock')
     );
+  }
+
+  if (candidate.link.startsWith('/caja')) {
+    return recipient.permissions.has('cash.view');
   }
 
   // /alertas es visible para cualquier usuario autenticado; el alcance del

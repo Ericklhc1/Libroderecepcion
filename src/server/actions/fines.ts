@@ -86,6 +86,7 @@ export async function createFineAction(
     revalidatePath(`/habitaciones/${input.roomNumber}`);
     revalidatePath('/habitaciones');
     revalidatePath('/supervision');
+    revalidatePath('/libro/habitaciones');
     return {
       ok: true as const,
       message: 'Multa registrada. Queda en la habitación y en Supervisión.',
@@ -117,6 +118,7 @@ export async function changeFineStatusAction(
 
     revalidatePath(`/habitaciones/${input.roomNumber}`);
     revalidatePath('/supervision');
+    revalidatePath('/libro/habitaciones');
     return { ok: true as const, message: 'Estado de la multa actualizado.' };
   });
 }
@@ -140,6 +142,7 @@ export async function deleteFineAction(
 
     revalidatePath(`/habitaciones/${input.roomNumber}`);
     revalidatePath('/supervision');
+    revalidatePath('/libro/habitaciones');
     return { ok: true as const, message: 'Multa eliminada. Queda en el registro.' };
   });
 }

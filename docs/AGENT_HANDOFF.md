@@ -1,5 +1,13 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.33.2 · hotfix de autorecepción de turnos
+
+- No ofrecer recepción normal al mismo usuario que figura en las asignaciones del turno saliente.
+- `startReceptionShift()` mantiene la barrera server-side «la entrega debe ser recibida por alguien distinto del turno saliente»; la UI debe anticiparla y nunca presentar un botón imposible.
+- La detección visual usa la entrega pendiente y `desk.awaitingReceipt`; no relajar la segregación de recuento/custodia/firmas para resolver este caso.
+- Sin migración Prisma. Release objetivo: **v1.33.2**.
+
+
 ## 29/09/2026 · AROH 1.33.1 · cierre de revisión Fronti proactivo
 
 - Se cierra el feedback pendiente de la revisión de v1.31.0: el límite se aplica después del cooldown, el interruptor global `fronti.enabled` también detiene la proactividad y las escaladas de urgencia de reservas cambian su fingerprint.

@@ -122,13 +122,11 @@ export async function getReceptionOperationGate(
           // y no recibida aunque el turno de origen haya sido archivado. El
           // gate debe reconocer exactamente el mismo relevo o la UI muestra
           // formularios que luego responden «Debes iniciar tu turno».
-          // La entrega sólo debe bloquear a alguien que realmente pueda
-          // recibirla. Cualquier participante del turno saliente está
-          // excluido por la regla de recepción y, si lo incluyéramos acá,
-          // vería una instrucción imposible: «recibe tu propia entrega».
-          assignments: {
-            none: { userId: user.id },
-          },
+          // Una entrega cerrada pendiente bloquea por igual a cualquier
+          // recepcionista autorizado que vaya a continuar la operación, aunque
+          // también haya participado en el turno saliente. La participación
+          // anterior ya terminó con el cierre; el siguiente turno conserva su
+          // propio inicio, recuento y trazabilidad.
         },
       },
       select: { id: true },

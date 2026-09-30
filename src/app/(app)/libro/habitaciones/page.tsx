@@ -14,11 +14,19 @@ import { getRoomOperationsBoard, type RoomMonitorItem } from '@/server/services/
 import { hasPermission } from '@/server/auth/current-user';
 import { formatDateTime } from '@/lib/format';
 import { HOTEL_ROOM_RANGES } from '@/domain/hotel-rooms';
+import { ViewTabs } from '@/components/layout/view-tabs';
 
 export const metadata = { title: 'Novedades · Habitaciones' };
 export const dynamic = 'force-dynamic';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const TABS = [
+  { label: 'Novedades', href: '/libro?clase=entry' },
+  { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
+  { label: 'Habitaciones', href: '/libro/habitaciones' },
+  { label: 'Mis tareas', href: '/libro?clase=task' },
+];
 
 const KIND_LABEL: Record<RoomMonitorItem['kind'], string> = {
   NOVEDAD: 'Novedad',
@@ -122,6 +130,8 @@ export default async function RoomOperationsPage({ searchParams }: { searchParam
           </div>
         </div>
       </header>
+
+      <ViewTabs label="Vista operativa" activeHref="/libro/habitaciones" tabs={TABS} />
 
       <nav className="flex flex-wrap items-center justify-between gap-3" aria-label="Filtros del monitor">
         <div className="flex flex-wrap gap-1.5">

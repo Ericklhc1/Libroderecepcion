@@ -116,6 +116,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: ROUTE_TARGET,
   },
   {
+    id: 'gerencia',
+    title: 'Gerencia',
+    description:
+      'Cockpit estratégico de sólo lectura: prioriza decisiones, compara tendencias y muestra riesgo con evidencia. No crea tareas, alertas ni notificaciones automáticamente.',
+    route: '/gerencia',
+    target: ROUTE_TARGET,
+    anyOf: ['management.dashboard.view'],
+  },
+  {
     id: 'supervision',
     title: 'Centro de Supervisión',
     description:

@@ -81,10 +81,6 @@ describe('jornada operativa transversal de punta a punta', () => {
       roleKey: ROLE_KEYS.RECEPTIONIST,
       name: 'Recepción saliente E2E',
     });
-    const incoming = await createUser({
-      roleKey: ROLE_KEYS.RECEPTIONIST,
-      name: 'Recepción entrante E2E',
-    });
     const supervisor = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,
       name: 'Supervisión E2E',
@@ -150,53 +146,50 @@ describe('jornada operativa transversal de punta a punta', () => {
     await sendHandover(outgoing, { shiftId: dayShift.id });
     await closeShift(outgoing, { shiftId: dayShift.id });
 
-    // El saliente ya terminó: no puede recibir su propia entrega ni debe ver
-    // una instrucción imposible. Queda fuera de turno.
-    expect((await getReceptionOperationGate(outgoing)).mode).toBe('NO_SHIFT');
+    // El turno anterior ya terminó. La misma persona puede continuar, pero la
+    // entrega pendiente bloquea toda operación hasta abrir el NUEVO turno,
+    // recontar Caja y completar los cinco pasos de recepción.
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('HANDOVER_PENDING');
 
-    // 5. Para quien sí puede tomar la liana, la entrega pendiente bloquea la
-    // operación general hasta recibir/recontar el relevo.
-    expect((await getReceptionOperationGate(incoming)).mode).toBe('HANDOVER_PENDING');
-
-    // El entrante no puede saltarse el recuento/recepción.
+    // 5. El continuador no puede saltarse el recuento/recepción.
     await expect(
-      openShiftAs(incoming, { type: ShiftType.NOCHE }),
+      openShiftAs(outgoing, { type: ShiftType.NOCHE }),
     ).rejects.toThrow(/pendiente de recepción/i);
 
-    const nightShiftStarted = await startReceptionShift(incoming, {
+    const nightShiftStarted = await startReceptionShift(outgoing, {
       handoverId: handover.id,
       type: ShiftType.NOCHE,
     });
     expect(nightShiftStarted.status).toBe('INICIADO');
-    expect((await getReceptionOperationGate(incoming)).mode).toBe('RECEIVING');
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('RECEIVING');
 
-    await confirmReceptionReviewStep(incoming, {
+    await confirmReceptionReviewStep(outgoing, {
       handoverId: handover.id,
       step: 'BRIEFING',
     });
 
-    const receivedCash = await receiveShiftCash(incoming, {
+    const receivedCash = await receiveShiftCash(outgoing, {
       handoverId: handover.id,
       quantities,
     });
     expect(receivedCash.discrepancies).toEqual([]);
     expect(receivedCash.shiftId).toBe(nightShiftStarted.id);
 
-    await confirmReceptionReviewStep(incoming, {
+    await confirmReceptionReviewStep(outgoing, {
       handoverId: handover.id,
       step: 'CUSTODY',
     });
-    await confirmReceptionReviewStep(incoming, {
+    await confirmReceptionReviewStep(outgoing, {
       handoverId: handover.id,
       step: 'FINAL',
     });
-    await receiveHandover(incoming, { handoverId: handover.id });
+    await receiveHandover(outgoing, { handoverId: handover.id });
 
     const nightShift = await prisma.shift.findUniqueOrThrow({
       where: { id: nightShiftStarted.id },
     });
     expect(nightShift.status).toBe('ACTIVO');
-    expect((await getReceptionOperationGate(incoming)).mode).toBe('ACTIVE');
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('ACTIVE');
 
     const linked = await prisma.shiftHandover.findUniqueOrThrow({
       where: { id: handover.id },
@@ -204,13 +197,13 @@ describe('jornada operativa transversal de punta a punta', () => {
     expect(linked.toShiftId).toBe(nightShift.id);
     expect(linked.status).toBe('RECIBIDA');
 
-    // 6. Sólo queda una participación operativa viva: la del entrante.
+    // 6. Sólo queda una participación operativa viva: la del nuevo turno.
     const liveAssignments = await prisma.shiftAssignment.findMany({
       where: { activatedAt: { not: null }, leftAt: null },
       select: { userId: true, shiftId: true },
     });
     expect(liveAssignments).toEqual([
-      expect.objectContaining({ userId: incoming.id, shiftId: nightShift.id }),
+      expect.objectContaining({ userId: outgoing.id, shiftId: nightShift.id }),
     ]);
 
     // 7. El cierre saliente deja validación posterior sin bloquear continuidad.
@@ -226,6 +219,6 @@ describe('jornada operativa transversal de punta a punta', () => {
     });
     const summary = await getSupervisionCenterSummary(supervisor);
     expect(summary.currentShift?.id).toBe(supervisionShift.id);
-    expect((await getReceptionOperationGate(incoming)).mode).toBe('ACTIVE');
+    expect((await getReceptionOperationGate(outgoing)).mode).toBe('ACTIVE');
   });
 });

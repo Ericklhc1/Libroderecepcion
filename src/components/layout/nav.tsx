@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -46,6 +46,22 @@ function isActive(pathname: string, href: string): boolean {
   const target = href.split(/[?#]/, 1)[0] ?? href;
   if (target === '/') return pathname === '/';
   return pathname === target || pathname.startsWith(`${target}/`);
+}
+
+function isSubitemActive(
+  pathname: string,
+  currentSearch: { toString(): string },
+  href: string,
+): boolean {
+  const target = new URL(href, 'https://aroh.local');
+  if (pathname !== target.pathname || target.hash) return false;
+
+  const current = new URLSearchParams(currentSearch.toString());
+  const expected = new URLSearchParams(target.search);
+  current.sort();
+  expected.sort();
+
+  return current.toString() === expected.toString();
 }
 
 function badgeFor(
@@ -313,6 +329,7 @@ export function SidebarNav({
   badges?: Partial<Record<string, number>>;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   return (
     <nav aria-label="Navegación principal" className="space-y-5">
@@ -363,7 +380,7 @@ export function SidebarNav({
                         </p>
                         <div className="space-y-0.5">
                           {section.items.map((subitem) => {
-                            const subActive = isActive(pathname, subitem.href);
+                            const subActive = isSubitemActive(pathname, searchParams, subitem.href);
                             return (
                               <Link
                                 key={subitem.href}

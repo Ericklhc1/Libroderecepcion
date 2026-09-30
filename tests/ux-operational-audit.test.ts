@@ -10,10 +10,11 @@ describe('auditoría UX operativa 1.10.10', () => {
     expect(nav).not.toContain("item.label.split(' ')[0]");
   });
 
-  it('Tareas no revive vínculos PMS retirados y permite colaboradores con toque', () => {
+  it('Tareas usa habitación como contexto sin revivir dependencias PMS', () => {
     const form = readFileSync('src/components/forms/task-form.tsx', 'utf8');
     expect(form).not.toContain('Usa Ctrl/Cmd');
-    expect(form).not.toContain('name="roomId"');
+    expect(form).toContain('name="roomId"');
+    expect(form).toContain('options.rooms');
     expect(form).not.toContain('name="reservationId"');
     expect(form).not.toContain('name="guestId"');
     expect(form).toContain('type="checkbox"');

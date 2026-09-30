@@ -18,15 +18,17 @@ import {
 } from '@/components/operational/operational-alarm-form';
 import { cancelOperationalAlarmAction } from '@/server/actions/operational-alarms';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
+import { getFormOptions } from '@/server/services/options';
 
 export const metadata = { title: 'Alertas' };
 export const dynamic = 'force-dynamic';
 
 export default async function AlertsPage() {
   const user = await requirePageUser();
-  const [candidates, alarms] = await Promise.all([
+  const [candidates, alarms, options] = await Promise.all([
     listAlarmCandidates(),
     listMyOperationalAlarms(user.id),
+    getFormOptions(),
   ]);
 
   const active = alarms.filter((alarm) => alarm.status === OperationalAlarmStatus.ACTIVA);
@@ -49,6 +51,7 @@ export default async function AlertsPage() {
         <div className="px-4 py-4">
           <OperationalAlarmCreateForm
             currentUserId={user.id}
+            rooms={options.rooms}
             candidates={candidates.map((candidate) => ({
               id: candidate.id,
               name: candidate.name,
@@ -95,6 +98,7 @@ export default async function AlertsPage() {
                       <p className="mt-1 text-xs text-slate-500">
                         {formatDateTime(alarm.dueAt)} · creada por {alarm.createdBy.name}
                         {alarm.repeatMinutes ? ` · repite cada ${alarm.repeatMinutes} min` : ''}
+                        {alarm.room ? ` · Hab. ${alarm.room.number}` : ''}
                       </p>
                       <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
                         <Users className="h-3.5 w-3.5" aria-hidden="true" />

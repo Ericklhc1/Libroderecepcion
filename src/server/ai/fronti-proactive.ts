@@ -494,7 +494,6 @@ export async function runFrontiProactiveSweep(input: {
           [
             `Área: ${candidate.area}`,
             `Prioridad: ${candidate.severity}`,
-            `Qué pasó: ${candidate.evidence}`,
             explanation.text,
           ].join(' · '),
           1800,

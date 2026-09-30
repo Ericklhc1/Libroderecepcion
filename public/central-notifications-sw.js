@@ -113,6 +113,50 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(renewSubscription());
 });
 
+async function syncDeliveredNotificationState(payload) {
+  const unread = Number.isFinite(payload && payload.unread) ? Number(payload.unread) : null;
+  const readIds = Array.isArray(payload && payload.readIds)
+    ? new Set(payload.readIds.map((value) => String(value)))
+    : new Set();
+  const clearAll = Boolean(payload && payload.clearAll);
+
+  try {
+    const delivered = await self.registration.getNotifications();
+    for (const notification of delivered) {
+      const id =
+        notification &&
+        notification.data &&
+        notification.data.notificationId
+          ? String(notification.data.notificationId)
+          : null;
+      if (clearAll || (id && readIds.has(id))) notification.close();
+    }
+  } catch {
+    // Cerrar avisos del SO es una mejora visual; no afecta el estado de AROH.
+  }
+
+  try {
+    if (
+      unread !== null &&
+      self.navigator &&
+      typeof self.navigator.setAppBadge === 'function'
+    ) {
+      if (unread > 0) {
+        await self.navigator.setAppBadge(unread);
+      } else if (typeof self.navigator.clearAppBadge === 'function') {
+        await self.navigator.clearAppBadge();
+      }
+    }
+  } catch {
+    // El badge es adicional; AROH mantiene su contador interno.
+  }
+}
+
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'AROH_NOTIFICATION_STATE') return;
+  event.waitUntil(syncDeliveredNotificationState(event.data));
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 

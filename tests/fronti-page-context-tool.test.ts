@@ -61,7 +61,7 @@ describe('Fronti contextual · lector vivo de pantalla', () => {
     );
   });
 
-  it('entiende el filtro actual de Central de Reservas sin inventar otro estado', async () => {
+  it('trata la antigua Central de Reservas como ruta retirada', async () => {
     const admin = await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       username: 'fronti-context-admin',
@@ -72,22 +72,55 @@ describe('Fronti contextual · lector vivo de pantalla', () => {
     });
 
     const result = (await executeFrontiPageContextTool(admin, page)) as {
-      page: { moduleKey: string; sectionKey: string; filters: Record<string, string> };
-      snapshot: {
-        view: string;
-        query: string | null;
-        counts: { visible: number };
-        reservations: unknown[];
-      };
+      page: { moduleKey: string; sectionKey: string };
+      snapshot: { retired: boolean; note: string };
     };
 
     expect(result.page.moduleKey).toBe('central-reservas');
-    expect(result.page.sectionKey).toBe('24h');
-    expect(result.page.filters.q).toBe('nadie');
-    expect(result.snapshot.view).toBe('24h');
-    expect(result.snapshot.query).toBe('nadie');
-    expect(result.snapshot.counts.visible).toBe(0);
-    expect(result.snapshot.reservations).toEqual([]);
+    expect(result.page.sectionKey).toBe('retirada');
+    expect(result.snapshot.retired).toBe(true);
+    expect(result.snapshot.note).toMatch(/retirada del núcleo/i);
+  });
+
+  it('lee el monitor operativo de una habitación sin contexto PMS', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      username: 'fronti-context-room',
+    });
+    const room = await prisma.room.findUniqueOrThrow({ where: { number: '512' } });
+    await prisma.operationalEntry.create({
+      data: {
+        type: EntryType.NOVEDAD,
+        title: 'Pendiente habitación 512',
+        description: 'Debe aparecer en contexto del monitor.',
+        priority: Priority.ALTA,
+        roomId: room.id,
+        createdById: receptionist.id,
+      },
+    });
+
+    const page = resolveFrontiPageContext({
+      pathname: '/libro/habitaciones',
+      search: '?habitacion=512',
+    });
+    const result = (await executeFrontiPageContextTool(receptionist, page)) as {
+      page: { moduleKey: string; sectionLabel: string };
+      snapshot: {
+        selected: {
+          room: { number: string };
+          items: Array<{ title: string; kind: string }>;
+        };
+      };
+    };
+
+    expect(result.page.moduleKey).toBe('habitaciones-operativas');
+    expect(result.page.sectionLabel).toContain('512');
+    expect(result.snapshot.selected.room.number).toBe('512');
+    expect(result.snapshot.selected.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'entry', title: 'Pendiente habitación 512' }),
+      ]),
+    );
   });
 
   it('no abre contexto administrativo a Recepción', async () => {

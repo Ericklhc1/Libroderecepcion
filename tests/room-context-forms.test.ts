@@ -52,6 +52,12 @@ describe('contrato transversal de habitación', () => {
     expect(nav).not.toContain("href: '/central-reservas'");
   });
 
+  it('el monitor no expone detalle financiero de garantías sin permiso de Caja', () => {
+    const page = readFileSync('src/app/(app)/novedades/habitacion/page.tsx', 'utf8');
+    expect(page).toContain("const canViewCash = user.permissions.includes('cash.view')");
+    expect(page).toContain('El detalle financiero requiere acceso a Caja');
+  });
+
   it('Caja respeta la habitación recibida desde el monitor', () => {
     const page = readFileSync('src/app/(app)/caja/page.tsx', 'utf8');
     expect(page).toContain("const roomContext = typeof params.habitacion === 'string'");

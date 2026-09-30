@@ -24,6 +24,7 @@ const TABS = [
   { label: 'Novedades', href: '/libro?clase=entry' },
   { label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' },
   { label: 'Mis tareas', href: '/libro?clase=task' },
+  { label: 'Por habitación', href: '/libro/habitaciones' },
 ];
 
 export default async function BookPage({

@@ -7,6 +7,7 @@ import { recordAudit } from '@/server/audit';
 import { NotFoundError, RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { calendarDateKey } from '@/domain/time';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import { insertCashMovement } from './live-cash';
 import { getMyOpenShift } from './shifts';
 
@@ -20,6 +21,7 @@ export type GymPassRow = {
   roomNumber: string;
   guestName: string;
   vehiclePlate: string | null;
+  reservationCode: string | null;
   receptionistName: string;
   status: 'EMITIDO' | 'ANULADO';
   issuedAt: Date;
@@ -64,16 +66,26 @@ async function createServicePass(
     roomNumber: string;
     guestName: string;
     vehiclePlate?: string | null;
+    reservationCode?: string | null;
   },
 ): Promise<{ id: string; humanId: number; folio: number; formattedFolio: string }> {
   const roomNumber = params.roomNumber.trim();
   const guestName = params.guestName.trim();
   const vehiclePlate = params.vehiclePlate?.trim().toUpperCase() || null;
-  if (!roomNumber) throw new RuleError('Indica la habitación.');
-  if (!guestName) throw new RuleError('Indica el huésped.');
-  if (params.serviceType === 'ESTACIONAMIENTO' && !vehiclePlate) {
-    throw new RuleError('Indica la patente o matrícula del vehículo.');
+  const reservationCode = params.reservationCode?.trim() || null;
+  if (!isOperationalRoomNumber(roomNumber)) {
+    throw new RuleError('Selecciona una habitación válida del hotel.');
   }
+  if (!guestName) throw new RuleError('Indica el huésped.');
+  if (params.serviceType === 'ESTACIONAMIENTO' && !reservationCode) {
+    throw new RuleError('Indica el ID de reserva.');
+  }
+
+  const room = await prisma.room.findFirst({
+    where: { number: roomNumber, active: true },
+    select: { id: true },
+  });
+  if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
 
   const shift = await getMyOpenShift(user.id);
   if (!shift) {
@@ -93,6 +105,8 @@ async function createServicePass(
         roomNumber,
         guestName,
         vehiclePlate,
+        reservationCode,
+        roomId: room.id,
         receptionistId: user.id,
         shiftId: shift.id,
       },
@@ -104,6 +118,7 @@ async function createServicePass(
         roomNumber: true,
         guestName: true,
         vehiclePlate: true,
+        reservationCode: true,
       },
     });
 
@@ -116,7 +131,8 @@ async function createServicePass(
         summary:
           `Folio de ${serviceLabel} #${created.humanId} · ` +
           `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}` +
-          (created.vehiclePlate ? ` · ${created.vehiclePlate}` : ''),
+          (created.reservationCode ? ` · reserva ${created.reservationCode}` : '') +
+          (created.vehiclePlate ? ` · patente histórica ${created.vehiclePlate}` : ''),
         after: {
           humanId: created.humanId,
           folio: formatGymFolio(created.folio),
@@ -125,6 +141,8 @@ async function createServicePass(
           roomNumber: created.roomNumber,
           guestName: created.guestName,
           vehiclePlate: created.vehiclePlate,
+          reservationCode: created.reservationCode,
+          roomId: room.id,
           receptionistId: user.id,
           receptionistName: user.name,
           shiftId: shift.id,
@@ -157,7 +175,7 @@ export async function createParkingPass(
     serviceDate: string | Date;
     roomNumber: string;
     guestName: string;
-    vehiclePlate: string;
+    reservationCode: string;
   },
 ) {
   return createServicePass(user, { ...params, serviceType: 'ESTACIONAMIENTO' });
@@ -182,6 +200,7 @@ export async function voidGymPass(
       guestName: true,
       serviceType: true,
       vehiclePlate: true,
+      reservationCode: true,
       shiftId: true,
       operationalEntryId: true,
       currency: true,
@@ -313,6 +332,7 @@ async function listPasses(
     roomNumber: pass.roomNumber,
     guestName: pass.guestName,
     vehiclePlate: pass.vehiclePlate,
+    reservationCode: pass.reservationCode,
     receptionistName: pass.receptionist.name,
     status: pass.status === 'ANULADO' ? 'ANULADO' : 'EMITIDO',
     issuedAt: pass.issuedAt,

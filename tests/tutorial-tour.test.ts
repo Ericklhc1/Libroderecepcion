@@ -35,13 +35,15 @@ describe('recorrido guiado', () => {
     const routes = TUTORIAL_STEPS.map((step) => step.route).filter(Boolean);
 
     expect(routes).toContain('/libro?clase=entry');
-    expect(routes).toContain('/central-reservas');
+    expect(routes).toContain('/novedades/habitacion');
     expect(routes).toContain('/caja');
     expect(routes).toContain('/turno');
     expect(routes).toContain('/llaves');
     expect(routes).toContain('/alertas');
     expect(routes).toContain('/supervision');
     expect(routes).toContain('/gerencia');
+
+    expect(routes).not.toContain('/central-reservas');
 
     for (const retired of [
       '/reservas',

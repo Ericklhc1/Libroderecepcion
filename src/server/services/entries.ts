@@ -33,6 +33,7 @@ export const entryInclude = {
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true, key: true } },
+  room: { select: { id: true, number: true, floor: true } },
   shift: { select: { id: true, type: true, date: true } },
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
@@ -47,7 +48,7 @@ type EntryCreateInput = {
   description: string;
   category?: string | null;
   departmentId?: string | null;
-  /** Legado de compatibilidad: se acepta pero se ignora. */
+  /** Contexto operativo de habitación; no representa ocupación PMS. */
   roomId?: string | null;
   priority: Prisma.OperationalEntryCreateInput['priority'];
   ownerId?: string | null;
@@ -55,7 +56,7 @@ type EntryCreateInput = {
   dueAt?: Date | null;
   tags: string[];
   requiresFollowUp: boolean;
-  /** Legado de compatibilidad: se aceptan pero se ignoran. */
+  /** Vínculos legados de contexto; no son requisito para la operación. */
   guestId?: string | null;
   reservationId?: string | null;
   stayId?: string | null;
@@ -79,6 +80,14 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
     throw new RuleError('Una incidencia requiere indicar su gravedad.');
   }
 
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
+  }
+
   const shift = await getMyOpenShift(user.id);
 
   const entry = await prisma.$transaction(async (tx) => {
@@ -89,7 +98,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         description: input.description,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
-        roomId: null,
+        roomId: input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         shiftId: shift?.id ?? null,
@@ -124,6 +133,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           ownerId: created.ownerId,
           departmentId: created.departmentId,
           category: created.category,
+          roomId: created.roomId,
+          roomNumber: created.room?.number ?? null,
         },
       },
       tx,
@@ -182,6 +193,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           `Departamento: ${created.department?.name ?? 'sin departamento'}`,
           `Responsable: ${created.owner?.name ?? 'sin responsable'}`,
           `Categoría: ${created.category ?? 'sin categoría'}`,
+          `Habitación: ${created.room?.number ?? 'sin habitación'}`,
           `Requiere seguimiento: ${created.requiresFollowUp ? 'sí' : 'no'}`,
           '',
           'Descripción:',
@@ -225,6 +237,7 @@ const EDITABLE_FIELDS = [
   'description',
   'category',
   'departmentId',
+  'roomId',
   'priority',
   'ownerId',
   'dueAt',
@@ -262,6 +275,13 @@ export async function updateEntry(
     throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
   }
   if (input.ownerId) await assertAssignable(input.ownerId);
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
+  }
 
   const data: Prisma.OperationalEntryUpdateInput = {};
   const after: Record<string, unknown> = {};

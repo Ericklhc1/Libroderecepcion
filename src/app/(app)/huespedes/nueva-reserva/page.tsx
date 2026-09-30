@@ -3,10 +3,11 @@ import { ArrowLeft, FileCheck2, TriangleAlert } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getReservationPdfDraft } from '@/server/services/reservation-pdf';
 import { Card, CardHeader } from '@/components/ui/card';
-import { ActionForm, Field, Input } from '@/components/ui/form';
+import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { applyReservationPdfAction, discardReservationPdfAction } from '@/server/actions/reservation-pdf';
 import { ReservationPdfUpload } from './reservation-pdf-upload';
+import { ROOM_NUMBER_OPTIONS } from '@/domain/room-catalog';
 
 export const metadata = { title: 'Cargar nueva reserva' };
 export const dynamic = 'force-dynamic';
@@ -65,7 +66,7 @@ export default async function NewReservationPdfPage({ searchParams }: { searchPa
                   <Input name="guestName" defaultValue={draft.extracted.guestName ?? ''} />
                 </Field>
                 <Field label="Habitación" name="roomNumber">
-                  <Input name="roomNumber" inputMode="numeric" defaultValue={draft.extracted.roomNumber ?? ''} placeholder="Puede quedar vacía" />
+                  <Select name="roomNumber" placeholder="Sin habitación" defaultValue={draft.extracted.roomNumber ?? ''} options={ROOM_NUMBER_OPTIONS} />
                 </Field>
                 <Field label="Canal" name="channel">
                   <Input name="channel" defaultValue={draft.extracted.channel ?? ''} />

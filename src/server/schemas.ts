@@ -15,6 +15,7 @@ import {
   TaskStatus,
   TaskTargetType,
 } from '@prisma/client';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import {
   zCheckbox,
   zOptionalCuid,
@@ -53,9 +54,8 @@ export const entryCreateSchema = z.object({
 });
 
 /**
- * Desde v1.4.0 Novedades e Incidencias no dependen de PMS ni de una habitación
- * estructurada. Área, categoría y responsable son suficientes como contexto
- * operativo; cualquier número de habitación puede escribirse en el texto.
+ * La habitación es contexto operativo opcional. Vincularla alimenta el monitor
+ * Novedades / habitación; no representa ocupación, estadía ni estado PMS.
  */
 export const entryCreateWithContextSchema = entryCreateSchema;
 
@@ -270,7 +270,10 @@ export const guaranteeCreateSchema = z
     roomId: zOptionalCuid,
     /** Contexto directo de Caja: al menos uno debe identificar de quién/de qué es el dinero. */
     guestName: zOptionalString,
-    roomNumber: zOptionalString,
+    roomNumber: zOptionalString.refine(
+      (value) => !value || isOperationalRoomNumber(value),
+      'Selecciona una habitación válida del hotel.',
+    ),
     reference: zOptionalString,
     dueAt: zOptionalDate,
     kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),

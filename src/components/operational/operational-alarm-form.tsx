@@ -6,6 +6,7 @@ import { AlarmClock, BellRing, TimerReset } from 'lucide-react';
 import { ActionForm, Field, Input, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { ROOM_NUMBER_OPTIONS } from '@/domain/room-catalog';
 import {
   createOperationalAlarmAction,
   updateOperationalAlarmAction,
@@ -28,10 +29,12 @@ export function OperationalAlarmCreateForm({
   candidates,
   currentUserId,
   source = null,
+  defaultRoomNumber,
 }: {
   candidates: Candidate[];
   currentUserId: string;
   source?: Source;
+  defaultRoomNumber?: string;
 }) {
   const [kind, setKind] = useState<'TIMER' | 'RECORDATORIO'>('RECORDATORIO');
   const [scope, setScope] = useState<'INDIVIDUAL' | 'GRUPO' | 'GLOBAL'>('INDIVIDUAL');
@@ -94,9 +97,19 @@ export function OperationalAlarmCreateForm({
         />
       </Field>
 
-      <Field label="Detalle" name="note" hint="Opcional. Contexto breve para quien recibe la alerta.">
-        <Textarea name="note" rows={2} maxLength={500} />
-      </Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Habitación" name="roomNumber" hint="Opcional. La alerta aparecerá en Novedades / habitación.">
+          <select name="roomNumber" defaultValue={defaultRoomNumber ?? ''} className="input-base">
+            <option value="">Sin habitación</option>
+            {ROOM_NUMBER_OPTIONS.map((room) => (
+              <option key={room.value} value={room.value}>{room.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Detalle" name="note" hint="Opcional. Contexto breve para quien recibe la alerta.">
+          <Textarea name="note" rows={2} maxLength={500} />
+        </Field>
+      </div>
 
       {kind === 'TIMER' ? (
         <Field

@@ -59,6 +59,7 @@ export default async function LiveCashPage({
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '').toLowerCase() : '';
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
+  const roomContext = typeof params.habitacion === 'string' ? params.habitacion : '';
   const todayKey = hotelDateKey(new Date());
   const defaultFrom = `${todayKey.slice(0, 8)}01`;
   const gymFrom = typeof params.desde === 'string' && params.desde ? params.desde : defaultFrom;
@@ -99,6 +100,7 @@ export default async function LiveCashPage({
   const visibleGuarantees = state.cashGuarantees.filter(
     (item) =>
       (!moneda || item.currency === moneda) &&
+      (!roomContext || item.roomNumber === roomContext) &&
       matches([
         item.humanId,
         item.guestName,
@@ -130,7 +132,7 @@ export default async function LiveCashPage({
       item.formattedFolio,
       item.roomNumber,
       item.guestName,
-      item.vehiclePlate,
+      item.reservationCode,
       item.receptionistName,
       item.status,
     ]),
@@ -156,7 +158,7 @@ export default async function LiveCashPage({
           {canCreateGuarantee ? (
             <Dialog
               title="Registrar garantía en efectivo"
-              description="Registra el dinero recibido bajo custodia. El contexto de huésped, habitación o referencia es texto libre y opcional."
+              description="Registra el dinero recibido bajo custodia. La habitación se selecciona del catálogo y alimenta Novedades / habitación; huésped y referencia siguen siendo contexto libre."
               triggerVariant="secondary"
               triggerSize="sm"
               width="sm"
@@ -167,7 +169,7 @@ export default async function LiveCashPage({
                 </>
               }
             >
-              <CreateCashGuaranteeForm />
+              <CreateCashGuaranteeForm defaultRoomNumber={roomContext || undefined} />
             </Dialog>
           ) : null}
 
@@ -192,7 +194,7 @@ export default async function LiveCashPage({
           {canOperateCash ? (
             <Dialog
               title="Generar ticket de estacionamiento"
-              description="Registra fecha, habitación, huésped y patente. El recepcionista se toma automáticamente de tu sesión."
+              description="Registra fecha, habitación, huésped e ID Reserva de FNSrooms. AROH no administra la reserva."
               triggerVariant="secondary"
               triggerSize="sm"
               width="sm"
@@ -645,7 +647,7 @@ export default async function LiveCashPage({
                       <th className="px-4 py-2 font-medium">Fecha</th>
                       <th className="px-4 py-2 font-medium">Habitación</th>
                       <th className="px-4 py-2 font-medium">Huésped</th>
-                      <th className="px-4 py-2 font-medium">Patente</th>
+                      <th className="px-4 py-2 font-medium">ID Reserva</th>
                       <th className="px-4 py-2 font-medium">Recepcionista</th>
                       <th className="px-4 py-2 font-medium">Estado</th>
                       <th className="px-4 py-2 text-right font-medium">Acción</th>
@@ -658,7 +660,7 @@ export default async function LiveCashPage({
                         <td className="px-4 py-2 text-slate-600">{formatCalendarDate(pass.serviceDate)}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.roomNumber}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.guestName}</td>
-                        <td className="px-4 py-2 font-mono font-semibold text-petrol-900">{pass.vehiclePlate}</td>
+                        <td className="px-4 py-2 font-mono font-semibold text-petrol-900">{pass.reservationCode ?? "—"}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.receptionistName}</td>
                         <td className="px-4 py-2">
                           <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>

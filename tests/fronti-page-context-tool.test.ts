@@ -61,33 +61,61 @@ describe('Fronti contextual · lector vivo de pantalla', () => {
     );
   });
 
-  it('entiende el filtro actual de Central de Reservas sin inventar otro estado', async () => {
-    const admin = await createUser({
-      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
-      username: 'fronti-context-admin',
+  it('lee el monitor operacional de una habitación sin consultar estado PMS', async () => {
+    const receptionist = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      username: 'fronti-context-room-monitor',
     });
-    const page = resolveFrontiPageContext({
-      pathname: '/central-reservas',
-      search: '?vista=24h&q=nadie',
+    const room = await prisma.room.findFirstOrThrow({ where: { number: '512' } });
+    const entry = await prisma.operationalEntry.create({
+      data: {
+        type: EntryType.NOVEDAD,
+        title: 'Contexto de habitación',
+        description: 'Debe aparecer en el monitor de la 512.',
+        priority: Priority.ALTA,
+        createdById: receptionist.id,
+        roomId: room.id,
+      },
     });
 
-    const result = (await executeFrontiPageContextTool(admin, page)) as {
-      page: { moduleKey: string; sectionKey: string; filters: Record<string, string> };
+    const page = resolveFrontiPageContext({
+      pathname: '/novedades/habitacion',
+      search: '?habitacion=512',
+    });
+    const result = (await executeFrontiPageContextTool(receptionist, page)) as {
+      page: { moduleKey: string; filters: Record<string, string> };
       snapshot: {
-        view: string;
-        query: string | null;
-        counts: { visible: number };
-        reservations: unknown[];
+        summary: { total: number };
+        selectedRoom: {
+          room: { number: string };
+          entries: Array<{ id: string }>;
+        };
+        note: string;
       };
     };
 
-    expect(result.page.moduleKey).toBe('central-reservas');
-    expect(result.page.sectionKey).toBe('24h');
-    expect(result.page.filters.q).toBe('nadie');
-    expect(result.snapshot.view).toBe('24h');
-    expect(result.snapshot.query).toBe('nadie');
-    expect(result.snapshot.counts.visible).toBe(0);
-    expect(result.snapshot.reservations).toEqual([]);
+    expect(result.page.moduleKey).toBe('novedades-habitacion');
+    expect(result.page.filters.habitacion).toBe('512');
+    expect(result.snapshot.summary.total).toBe(89);
+    expect(result.snapshot.selectedRoom.room.number).toBe('512');
+    expect(result.snapshot.selectedRoom.entries.map((item) => item.id)).toContain(entry.id);
+    expect(result.snapshot.note).toMatch(/no representa ocupación/i);
+  });
+
+  it('Central de Reservas sólo conserva una redirección de compatibilidad', async () => {
+    const admin = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      username: 'fronti-context-legacy-central',
+    });
+    const page = resolveFrontiPageContext({ pathname: '/central-reservas' });
+    const result = (await executeFrontiPageContextTool(admin, page)) as {
+      snapshot: { legacy: boolean; redirectTo: string; note: string };
+    };
+
+    expect(result.snapshot.legacy).toBe(true);
+    expect(result.snapshot.redirectTo).toBe('/novedades/habitacion');
+    expect(result.snapshot.note).toContain('FNSrooms');
+    expect(JSON.stringify(result.snapshot)).not.toMatch(/checkIn|checkOut|balanceDue|reservations/);
   });
 
   it('no abre contexto administrativo a Recepción', async () => {

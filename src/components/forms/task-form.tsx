@@ -19,6 +19,7 @@ export function TaskForm({
   followUpId,
   alertId,
   defaultAssigneeId,
+  defaultRoomId,
   showOrigin = true,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -27,6 +28,7 @@ export function TaskForm({
   followUpId?: string;
   alertId?: string;
   defaultAssigneeId?: string;
+  defaultRoomId?: string;
   showOrigin?: boolean;
 }) {
   return (
@@ -120,7 +122,21 @@ export function TaskForm({
         )}
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Habitación" name="roomId" hint="Opcional. Se verá en Novedades / habitación.">
+          <Select
+            name="roomId"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomId}
+            options={options.rooms}
+          />
+        </Field>
+        <Field label="Área" name="departmentId">
+          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Inicio programado"
           name="startsAt"
@@ -130,9 +146,6 @@ export function TaskForm({
         </Field>
         <Field label="Fecha límite" name="dueAt">
           <Input type="datetime-local" name="dueAt" />
-        </Field>
-        <Field label="Área" name="departmentId">
-          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
         </Field>
       </div>
 
@@ -151,7 +164,7 @@ export function TaskForm({
         name="checklist"
         hint="Un paso por línea. Opcional."
       >
-        <Textarea name="checklist" rows={3} placeholder={'Llamar a la empresa\nRegistrar patente\nInformar al huésped'} />
+        <Textarea name="checklist" rows={3} placeholder={'Llamar a la empresa\nRegistrar ID de reserva\nInformar al huésped'} />
       </Field>
 
       <Field label="Etiquetas" name="tags" hint="Separadas por coma.">

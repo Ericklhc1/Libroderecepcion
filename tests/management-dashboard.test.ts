@@ -29,25 +29,25 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(source).toContain('prisma.operationalEntry.');
     expect(source).toContain('prisma.shiftHandover.');
     expect(source).toContain('prisma.cashAudit.');
-    expect(source).toContain('prisma.reservationReference.');
+    expect(source).toContain('getRoomMonitorOverview');
+    expect(source).not.toContain('prisma.reservationReference.');
     expect(source).toContain('prisma.keyInventoryCount.');
     expect(source).toContain('prisma.checklistRun.');
     expect(source).toContain('prisma.correctiveMeasure.');
     expect(source).not.toContain('prisma.alert.');
   });
 
-  it('el cockpit distingue datos conectados de métricas estratégicas futuras', () => {
+  it('el cockpit se mantiene enfocado en operación y no se convierte en PMS', () => {
     const page = readFileSync('src/app/(app)/gerencia/page.tsx', 'utf8');
 
     expect(page).toContain('Decisiones requeridas');
     expect(page).toContain('Scorecard ejecutivo');
-    expect(page).toContain('Tendencia · actual vs. período anterior');
-    expect(page).toContain('Calidad de la capa estratégica');
-    expect(page).toContain('PMS comercial');
-    expect(page).toContain('RevPAR');
-    expect(page).toContain('GOPPAR');
-    expect(page).toContain('Flow Through/Flex');
-    expect(page).toContain("'No conectada'");
+    expect(page).toContain('Foco por habitación');
+    expect(page).toContain('Contexto por habitación');
+    expect(page).toContain('FNSrooms continúa siendo la fuente PMS');
+    expect(page).not.toContain('Llegadas 24 h');
+    expect(page).not.toContain('RevPAR');
+    expect(page).not.toContain('GOPPAR');
     expect(page).not.toMatch(/ranking|mejor empleado|peor empleado/i);
   });
 

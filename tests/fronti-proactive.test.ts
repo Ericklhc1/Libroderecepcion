@@ -3,9 +3,8 @@ import {
   AlertLevel,
   AlertStatus,
   AlertType,
-  GuaranteeStatus,
   NotificationType,
-  ReservationStatus,
+  Priority,
 } from '@prisma/client';
 import {
   ROLE_KEYS,
@@ -18,6 +17,27 @@ import {
   collectFrontiProactiveCandidates,
   runFrontiProactiveSweep,
 } from '@/server/ai/fronti-proactive';
+
+async function createOperationalSignal(
+  userId: string,
+  input: {
+    title: string;
+    priority?: Priority;
+    createdAt?: Date;
+  },
+) {
+  return prisma.operationalEntry.create({
+    data: {
+      type: 'NOVEDAD',
+      title: input.title,
+      description: 'Señal operativa determinística para Fronti proactivo.',
+      priority: input.priority ?? Priority.ALTA,
+      requiresFollowUp: true,
+      createdById: userId,
+      createdAt: input.createdAt,
+    },
+  });
+}
 
 describe('Fronti proactivo', () => {
   beforeAll(async () => {
@@ -66,6 +86,23 @@ describe('Fronti proactivo', () => {
     expect(untouched.status).toBe(AlertStatus.NUEVA);
   });
 
+  it('no genera señales proactivas desde reservas PMS', async () => {
+    await prisma.reservationReference.create({
+      data: {
+        code: 'PMS-NO-FRONTI-1',
+        status: 'EN_CASA',
+        guaranteeStatus: 'RECHAZADA',
+        requiresAction: true,
+        balanceDue: 99999,
+        actionNote: 'Este dato pertenece al PMS, no al radar proactivo de AROH.',
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates();
+    expect(candidates.some((candidate) => candidate.entityType === 'ReservationReference')).toBe(false);
+    expect(candidates.some((candidate) => candidate.link.startsWith('/central-reservas'))).toBe(false);
+  });
+
   it('no envía Fronti proactivo a un Supervisor que no tiene Fronti asignado', async () => {
     const supervisor = await createUser({
       roleKey: ROLE_KEYS.SUPERVISOR,
@@ -75,16 +112,9 @@ describe('Fronti proactivo', () => {
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       name: 'Administrador',
     });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
 
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-ACCESS-1',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-        actionNote: 'Señal real para probar asignación individual de Fronti.',
-      },
-    });
+    await createOperationalSignal(author.id, { title: 'Pendiente operativo con prioridad' });
 
     const result = await runFrontiProactiveSweep({ trigger: 'test-access' });
     expect(result.notified).toBe(1);
@@ -103,70 +133,16 @@ describe('Fronti proactivo', () => {
     expect(recipientIds).not.toContain(supervisor.id);
   });
 
-  it('no filtra datos proactivos de un módulo cuyo permiso fue retirado al usuario', async () => {
-    const supervisor = await createUser({
-      roleKey: ROLE_KEYS.SUPERVISOR,
-      name: 'Supervisor acotado',
-    });
-    const admin = await createUser({
-      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
-      name: 'Administrador',
-    });
-    await prisma.user.update({
-      where: { id: supervisor.id },
-      data: { frontiAccessEnabled: true },
-    });
-
-    await prisma.rolePermission.deleteMany({
-      where: {
-        roleId: supervisor.roleId,
-        permission: { key: 'reservation.center.view' },
-      },
-    });
-
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-PERM-1',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-        actionNote: 'No debe filtrarse a quien perdió el permiso.',
-      },
-    });
-
-    const result = await runFrontiProactiveSweep({ trigger: 'test-permission' });
-    expect(result.notified).toBe(1);
-
-    const notifications = await prisma.notification.findMany({
-      where: {
-        type: NotificationType.FRONTI_HALLAZGO,
-        entity: 'FrontiProactiveSignal',
-        link: { startsWith: '/central-reservas' },
-      },
-      select: { userId: true },
-    });
-
-    expect(notifications.map((item) => item.userId)).toEqual([admin.id]);
-    expect(notifications.some((item) => item.userId === supervisor.id)).toBe(false);
-  });
-
   it('deduplica la misma señal durante la ventana de enfriamiento', async () => {
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     await prisma.user.update({
       where: { id: supervisor.id },
       data: { frontiAccessEnabled: true },
     });
 
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-COOLDOWN-1',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-        actionNote: 'La condición sigue abierta.',
-      },
-    });
+    await createOperationalSignal(author.id, { title: 'Pendiente que sigue abierto' });
 
     const first = await runFrontiProactiveSweep({ trigger: 'test-first' });
     const second = await runFrontiProactiveSweep({ trigger: 'test-second' });
@@ -186,18 +162,13 @@ describe('Fronti proactivo', () => {
 
   it('respeta el interruptor global de Fronti', async () => {
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    await createOperationalSignal(author.id, { title: 'No debe avisarse con Fronti apagado' });
+
     await prisma.systemSetting.upsert({
       where: { key: 'fronti.enabled' },
       create: { key: 'fronti.enabled', value: false, category: 'fronti' },
       update: { value: false },
-    });
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-OFF-1',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-      },
     });
 
     const result = await runFrontiProactiveSweep({ trigger: 'test-disabled' });
@@ -209,8 +180,9 @@ describe('Fronti proactivo', () => {
     ).toBe(0);
   });
 
-  it('permite que una señal nueva avance aunque las primeras estén en cooldown', async () => {
+  it('permite que una señal nueva avance aunque una anterior esté en cooldown', async () => {
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     await prisma.systemSetting.upsert({
       where: { key: 'fronti.proactiveMaxFindingsPerRun' },
       create: {
@@ -221,25 +193,16 @@ describe('Fronti proactivo', () => {
       update: { value: 1 },
     });
 
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-LIMIT-CRITICAL',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-      },
+    await createOperationalSignal(author.id, {
+      title: 'Primera señal crítica',
+      priority: Priority.CRITICA,
     });
     const first = await runFrontiProactiveSweep({ trigger: 'test-limit-first' });
     expect(first.notified).toBe(1);
 
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-LIMIT-HIGH',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.PENDIENTE,
-        balanceDue: 10,
-        requiresAction: true,
-      },
+    await createOperationalSignal(author.id, {
+      title: 'Segunda señal nueva',
+      priority: Priority.ALTA,
     });
     const second = await runFrontiProactiveSweep({ trigger: 'test-limit-second' });
     expect(second.notified).toBe(1);
@@ -247,13 +210,10 @@ describe('Fronti proactivo', () => {
 
   it('reclama concurrentemente cada señal una sola vez por destinatario', async () => {
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-CLAIM-1',
-        status: ReservationStatus.EN_CASA,
-        guaranteeStatus: GuaranteeStatus.RECHAZADA,
-        requiresAction: true,
-      },
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    await createOperationalSignal(author.id, {
+      title: 'Señal para prueba concurrente',
+      priority: Priority.CRITICA,
     });
 
     const [a, b] = await Promise.all([
@@ -272,25 +232,27 @@ describe('Fronti proactivo', () => {
     ).toBe(1);
   });
 
-  it('cambia el fingerprint cuando una reserva escala de alta a crítica', async () => {
-    const now = new Date('2026-09-29T12:00:00.000Z');
-    await prisma.reservationReference.create({
-      data: {
-        code: 'FRONTI-ESCALATION-1',
-        status: ReservationStatus.CONFIRMADA,
-        guaranteeStatus: GuaranteeStatus.PENDIENTE,
-        balanceDue: 10,
-        requiresAction: true,
-        checkIn: new Date(now.getTime() + 25 * 60 * 60 * 1000),
-      },
+  it('cambia el fingerprint cuando una novedad escala de alta a crítica', async () => {
+    const now = new Date();
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const entry = await createOperationalSignal(author.id, {
+      title: 'Señal que escala',
+      priority: Priority.ALTA,
+      createdAt: now,
     });
 
     const before = (await collectFrontiProactiveCandidates(now)).find(
-      (candidate) => candidate.entityType === 'ReservationReference',
+      (candidate) => candidate.entityId === entry.id,
     );
-    const after = (await collectFrontiProactiveCandidates(
-      new Date(now.getTime() + 2 * 60 * 60 * 1000),
-    )).find((candidate) => candidate.entityType === 'ReservationReference');
+
+    await prisma.operationalEntry.update({
+      where: { id: entry.id },
+      data: { priority: Priority.CRITICA },
+    });
+
+    const after = (await collectFrontiProactiveCandidates(new Date(now.getTime() + 60_000))).find(
+      (candidate) => candidate.entityId === entry.id,
+    );
 
     expect(before?.severity).toBe('ALTA');
     expect(after?.severity).toBe('CRITICA');
@@ -299,15 +261,9 @@ describe('Fronti proactivo', () => {
 
   it('incorpora una novedad prioritaria recién creada al barrido', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
-    const entry = await prisma.operationalEntry.create({
-      data: {
-        type: 'NOVEDAD',
-        title: 'Revisión prioritaria',
-        description: 'Caso recién creado para Fronti.',
-        priority: 'ALTA',
-        requiresFollowUp: true,
-        createdById: user.id,
-      },
+    const entry = await createOperationalSignal(user.id, {
+      title: 'Revisión prioritaria',
+      priority: Priority.ALTA,
     });
 
     const candidates = await collectFrontiProactiveCandidates(entry.createdAt);
@@ -320,5 +276,4 @@ describe('Fronti proactivo', () => {
       ),
     ).toBe(true);
   });
-
 });

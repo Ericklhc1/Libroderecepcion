@@ -14,6 +14,7 @@ import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 
 
 const MAX_ACTIVE_PER_CREATOR = 100;
@@ -28,6 +29,7 @@ export type AlarmCreateInput = {
   sourceEntity?: string | null;
   sourceId?: string | null;
   sourceLink?: string | null;
+  roomNumber?: string | null;
   repeatMinutes?: number | null;
 };
 
@@ -98,6 +100,47 @@ async function resolveRecipients(
   return valid.map((row) => row.id);
 }
 
+async function resolveAlarmRoomNumber(input: AlarmCreateInput): Promise<string | null> {
+  const explicit = input.roomNumber?.trim() || null;
+  if (explicit) {
+    if (!isOperationalRoomNumber(explicit)) {
+      throw new RuleError('La habitación indicada no pertenece al catálogo operativo.');
+    }
+    return explicit;
+  }
+
+  if (!input.sourceEntity || !input.sourceId) return null;
+
+  if (input.sourceEntity === 'OperationalEntry') {
+    const source = await prisma.operationalEntry.findUnique({
+      where: { id: input.sourceId },
+      select: { room: { select: { number: true } } },
+    });
+    return source?.room?.number ?? null;
+  }
+
+  if (input.sourceEntity === 'Task') {
+    const source = await prisma.task.findUnique({
+      where: { id: input.sourceId },
+      select: { room: { select: { number: true } } },
+    });
+    return source?.room?.number ?? null;
+  }
+
+  if (input.sourceEntity === 'FollowUp') {
+    const source = await prisma.followUp.findUnique({
+      where: { id: input.sourceId },
+      select: {
+        entry: { select: { room: { select: { number: true } } } },
+        task: { select: { room: { select: { number: true } } } },
+      },
+    });
+    return source?.entry?.room?.number ?? source?.task?.room?.number ?? null;
+  }
+
+  return null;
+}
+
 export async function createOperationalAlarm(user: CurrentUser, input: AlarmCreateInput) {
   if (
     input.scope === OperationalAlarmScope.GLOBAL &&
@@ -126,6 +169,9 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
   }
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
+
+  const roomNumber = await resolveAlarmRoomNumber(input);
+
   const originShift =
     input.kind === OperationalAlarmKind.TIMER
       ? await prisma.shift.findFirst({
@@ -158,6 +204,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         sourceEntity: input.sourceEntity?.trim() || null,
         sourceId: input.sourceId?.trim() || null,
         sourceLink: input.sourceLink?.trim() || null,
+        roomNumber,
         repeatMinutes:
           input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes ?? null,
         recipients: {
@@ -187,6 +234,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
           sourceEntity: created.sourceEntity,
           sourceId: created.sourceId,
           sourceLink: created.sourceLink,
+          roomNumber: created.roomNumber,
           repeatMinutes: created.repeatMinutes,
           recipients: created.recipients.map((row) => row.userId),
         },

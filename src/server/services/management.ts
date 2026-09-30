@@ -3,10 +3,8 @@ import 'server-only';
 import {
   EntryStatus,
   EntryType,
-  GuaranteeStatus,
   HandoverStatus,
   Priority,
-  ReservationStatus,
   Severity,
   ShiftStatus,
   TaskStatus,
@@ -14,6 +12,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { getRoomMonitorOverview } from '@/server/services/room-monitor';
 
 export type ManagementDecisionSeverity = 'critica' | 'atencion' | 'seguimiento';
 
@@ -76,8 +75,6 @@ export async function getManagementCockpit(inputDays = 30) {
   const period = periodFor(days, now);
   const currentRange = { gte: period.current.from, lte: period.current.to };
   const previousRange = { gte: period.previous.from, lte: period.previous.to };
-  const next24 = new Date(now.getTime() + 24 * 60 * 60_000);
-  const next72 = new Date(now.getTime() + 72 * 60 * 60_000);
 
   const [
     currentTasksClosed,
@@ -98,7 +95,7 @@ export async function getManagementCockpit(inputDays = 30) {
     previousShifts,
     previousShiftsClosed,
     cashAudits,
-    reservationRows,
+    roomMonitor,
     auditsOpen,
     criticalFindings,
     correctiveOpen,
@@ -225,30 +222,7 @@ export async function getManagementCockpit(inputDays = 30) {
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
-    prisma.reservationReference.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          {
-            checkIn: { gte: now, lte: next72 },
-            status: { in: [ReservationStatus.PENDIENTE, ReservationStatus.CONFIRMADA] },
-          },
-          { requiresAction: true },
-          { guaranteeStatus: { in: [GuaranteeStatus.PENDIENTE, GuaranteeStatus.RECHAZADA] } },
-          { balanceDue: { gt: 0 } },
-        ],
-      },
-      select: {
-        id: true,
-        code: true,
-        checkIn: true,
-        requiresAction: true,
-        guaranteeStatus: true,
-        balanceDue: true,
-      },
-      orderBy: { checkIn: 'asc' },
-      take: 250,
-    }),
+    getRoomMonitorOverview(now),
     prisma.checklistRun.count({
       where: { deletedAt: null, status: { not: 'CERRADA' } },
     }),
@@ -364,27 +338,6 @@ export async function getManagementCockpit(inputDays = 30) {
   const keysMissing = keySnapshots.reduce((sum, row) => sum + row.missing, 0);
   const keysOutOfService = keySnapshots.reduce((sum, row) => sum + row.outOfService, 0);
 
-  const arrivals24 = reservationRows.filter(
-    (row) => row.checkIn && row.checkIn >= now && row.checkIn <= next24,
-  );
-  const arrivals72 = reservationRows.filter(
-    (row) => row.checkIn && row.checkIn >= now && row.checkIn <= next72,
-  );
-  const reservationsNeedAction = reservationRows.filter((row) => row.requiresAction);
-  const reservationsGuaranteeRisk = reservationRows.filter(
-    (row) =>
-      row.guaranteeStatus === GuaranteeStatus.PENDIENTE ||
-      row.guaranteeStatus === GuaranteeStatus.RECHAZADA,
-  );
-  const reservationsWithBalance = reservationRows.filter((row) => Number(row.balanceDue ?? 0) > 0);
-  const arrivals24AtRisk = arrivals24.filter(
-    (row) =>
-      row.requiresAction ||
-      row.guaranteeStatus === GuaranteeStatus.PENDIENTE ||
-      row.guaranteeStatus === GuaranteeStatus.RECHAZADA ||
-      Number(row.balanceDue ?? 0) > 0,
-  );
-
   const decisions: ManagementDecision[] = [];
 
   if (correctiveOverdue > 0) {
@@ -420,15 +373,15 @@ export async function getManagementCockpit(inputDays = 30) {
       href: '/libro?clase=entry&tipo=INCIDENCIA',
     });
   }
-  if (arrivals24AtRisk.length > 0) {
+  if (roomMonitor.summary.critical > 0) {
     decisions.push({
-      id: 'arrivals-risk',
-      severity: 'atencion',
-      title: 'Llegadas próximas con fricción',
-      fact: `${arrivals24AtRisk.length} llegada(s) de las próximas 24 h tienen saldo, garantía o acción pendiente.`,
-      why: 'Resolver antes de la llegada reduce excepciones de último minuto en Recepción.',
-      action: 'Priorizar los casos con mayor cercanía e impacto.',
-      href: '/central-reservas?vista=accion',
+      id: 'room-focus-critical',
+      severity: 'critica',
+      title: 'Habitaciones con riesgo operativo concentrado',
+      fact: `${roomMonitor.summary.critical} habitación(es) tienen incidencia crítica o tarea vencida asociada.`,
+      why: 'Concentrar novedades, tareas y alertas por habitación permite detectar dónde se acumula riesgo sin modelar ocupación PMS.',
+      action: 'Abrir el mapa y revisar primero las habitaciones críticas.',
+      href: '/novedades/habitacion',
     });
   }
   if (keysMissing > 0 || keysOutOfService > 0) {
@@ -437,7 +390,7 @@ export async function getManagementCockpit(inputDays = 30) {
       severity: 'atencion',
       title: 'Cobertura de llaves incompleta',
       fact: `${keysMissing} faltante(s) y ${keysOutOfService} fuera de servicio según los últimos inventarios disponibles.`,
-      why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante llegadas y operación.',
+      why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante la operación diaria.',
       action: 'Validar reposición, recuperación o contingencia por piso.',
       href: '/llaves?piso=todos',
     });
@@ -533,13 +486,14 @@ export async function getManagementCockpit(inputDays = 30) {
       handoverComplianceRate: currentHandoverRate,
       shiftClosureRate: currentShiftClosureRate,
     },
-    readiness: {
-      arrivals24: arrivals24.length,
-      arrivals72: arrivals72.length,
-      arrivals24AtRisk: arrivals24AtRisk.length,
-      reservationsNeedAction: reservationsNeedAction.length,
-      guaranteeRisk: reservationsGuaranteeRisk.length,
-      withBalance: reservationsWithBalance.length,
+    roomFocus: {
+      totalRooms: roomMonitor.summary.total,
+      roomsWithActivity: roomMonitor.summary.withActivity,
+      criticalRooms: roomMonitor.summary.critical,
+      openEntries: roomMonitor.summary.openEntries,
+      openTasks: roomMonitor.summary.openTasks,
+      activeAlarms: roomMonitor.summary.activeAlarms,
+      openGuarantees: roomMonitor.summary.openGuarantees,
     },
     controls: {
       cashAudits: cashAudits.length,
@@ -556,15 +510,10 @@ export async function getManagementCockpit(inputDays = 30) {
     trends,
     sources: {
       operational: 'connected' as const,
-      reservations: 'connected' as const,
+      roomContext: 'connected' as const,
       cash: 'connected' as const,
       keys: 'connected' as const,
       audits: 'connected' as const,
-      commercialPms: 'not_connected' as const,
-      finance: 'not_connected' as const,
-      labor: 'not_connected' as const,
-      guestVoice: 'not_connected' as const,
-      benchmark: 'not_connected' as const,
     },
   };
 }

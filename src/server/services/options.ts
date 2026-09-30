@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, ENTRY_TYPE_LABEL, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { ROOM_NUMBERS } from '@/domain/room-catalog';
 import { listOperationalUsers } from './users';
 
 export type Option = { value: string; label: string };
@@ -15,7 +16,7 @@ export type FormOptions = {
   reservations: Option[];
   openEntries: Option[];
   openTasks: Option[];
-  /** Legado Habitaciones: ya no participa en formularios operativos nuevos. */
+  /** Catálogo operativo de las 89 habitaciones. No representa ocupación PMS. */
   rooms: Option[];
   activeShifts: Option[];
 };
@@ -23,12 +24,11 @@ export type FormOptions = {
 /**
  * Opciones para los formularios operativos.
  *
- * Desde v1.4.0 esta función NO consulta huéspedes, reservas, estadías ni
- * habitaciones. Novedades, tareas y Supervisión funcionan sólo con personas,
- * áreas, registros, tareas y turnos.
+ * Habitaciones es sólo catálogo de contexto operativo. No consulta estadías,
+ * ocupación, check-in ni check-out del PMS.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, entries, tasks, activeShifts] = await Promise.all([
+  const [users, departments, entries, tasks, rooms, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
@@ -46,6 +46,11 @@ export async function getFormOptions(): Promise<FormOptions> {
       orderBy: { createdAt: 'desc' },
       select: { id: true, humanId: true, title: true },
       take: 100,
+    }),
+    prisma.room.findMany({
+      where: { active: true, number: { in: ROOM_NUMBERS } },
+      orderBy: [{ floor: 'asc' }, { number: 'asc' }],
+      select: { id: true, number: true },
     }),
     prisma.shift.findMany({
       where: {
@@ -74,7 +79,7 @@ export async function getFormOptions(): Promise<FormOptions> {
       value: task.id,
       label: `Tarea #${task.humanId} · ${task.title}`,
     })),
-    rooms: [],
+    rooms: rooms.map((room) => ({ value: room.id, label: room.number })),
     activeShifts: activeShifts.map((shift) => ({
       value: shift.id,
       label: `${shift.type} · ${formatCalendarDate(shift.date)}`,

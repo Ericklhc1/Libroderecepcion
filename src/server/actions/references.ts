@@ -212,6 +212,7 @@ function refreshGuarantees(): void {
   revalidatePath('/supervision');
   revalidatePath('/turno');
   revalidatePath('/');
+  revalidatePath('/novedades/habitacion');
 }
 
 /* --------------------------------- Garantías -------------------------------- */

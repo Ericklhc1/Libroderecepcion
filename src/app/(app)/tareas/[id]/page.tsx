@@ -157,6 +157,16 @@ export default async function TaskDetailPage({
               </dd>
             </div>
             <div>
+              <dt className="text-xs font-medium text-slate-500">Habitación</dt>
+              <dd className="text-petrol-900">
+                {task.room ? (
+                  <Link href={`/novedades/habitacion?habitacion=${task.room.number}`} className="font-medium text-gold-700 hover:underline">
+                    {task.room.number}
+                  </Link>
+                ) : 'Sin habitación'}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{task.department?.name ?? 'Sin área'}</dd>
             </div>
@@ -268,12 +278,14 @@ export default async function TaskDetailPage({
                   startsAt: toDateTimeInput(task.startsAt),
                   dueAt: toDateTimeInput(task.dueAt),
                   departmentId: task.departmentId,
+                  roomId: task.roomId,
                   tags: task.tags,
                   fulfillmentCriteria: task.fulfillmentCriteria ?? '',
                   evidenceRequired: task.evidenceRequired ?? '',
                   evidenceProvided: task.evidenceProvided ?? '',
                 }}
                 departments={options.departments}
+                rooms={options.rooms}
               />
             ) : null}
             <Dialog
@@ -291,6 +303,7 @@ export default async function TaskDetailPage({
                   username: candidate.username,
                   roleName: candidate.role.name,
                 }))}
+                defaultRoomNumber={task.room?.number ?? undefined}
                 source={{
                   entity: 'Task',
                   id: task.id,

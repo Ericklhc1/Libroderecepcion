@@ -6,7 +6,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Banknote,
-  BedDouble,
+  DoorOpen,
   Database,
   KeyRound,
   Minus,
@@ -285,17 +285,17 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
 
           <div className="grid gap-0 px-2 py-2 lg:grid-cols-[12rem_1fr]">
             <div className="flex items-center gap-2 px-3 py-3">
-              <BedDouble className="h-4 w-4 text-gold-600" aria-hidden="true" />
+              <DoorOpen className="h-4 w-4 text-gold-600" aria-hidden="true" />
               <div>
-                <p className="text-sm font-semibold text-petrol-950">Preparación</p>
-                <p className="text-xs text-slate-500">Próximas llegadas</p>
+                <p className="text-sm font-semibold text-petrol-950">Foco por habitación</p>
+                <p className="text-xs text-slate-500">Concentración de actividad operativa</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
-              <Metric label="Llegadas 24 h" value={cockpit.readiness.arrivals24} />
-              <Metric label="24 h con fricción" value={cockpit.readiness.arrivals24AtRisk} emphasis={cockpit.readiness.arrivals24AtRisk > 0} />
-              <Metric label="Garantía pendiente" value={cockpit.readiness.guaranteeRisk} />
-              <Metric label="Con saldo pendiente" value={cockpit.readiness.withBalance} />
+              <Metric label="Con actividad" value={cockpit.roomFocus.roomsWithActivity} hint={`de ${cockpit.roomFocus.totalRooms} habitaciones`} />
+              <Metric label="Críticas / vencidas" value={cockpit.roomFocus.criticalRooms} emphasis={cockpit.roomFocus.criticalRooms > 0} />
+              <Metric label="Novedades abiertas" value={cockpit.roomFocus.openEntries} />
+              <Metric label="Alertas activas" value={cockpit.roomFocus.activeAlarms} />
             </div>
           </div>
 
@@ -403,16 +403,14 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
               </h2>
             </div>
             <div className="px-4">
-              <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Tareas, incidencias, turnos, continuidad y auditoría." />
-              <SourceState title="Reservas" status={cockpit.sources.reservations} detail="Próximas 24/72 h, saldos, garantías y acciones pendientes." />
-              <SourceState title="Caja" status={cockpit.sources.cash} detail="Arqueos, diferencias, fondos y custodia monetaria." />
+              <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Novedades, tareas, incidencias, turnos y continuidad." />
+              <SourceState title="Contexto por habitación" status={cockpit.sources.roomContext} detail="Vínculos operativos sobre el catálogo fijo de 89 habitaciones; no ocupación PMS." />
+              <SourceState title="Caja" status={cockpit.sources.cash} detail="Arqueos, diferencias, garantías, fondos y custodia monetaria." />
               <SourceState title="Llaves" status={cockpit.sources.keys} detail="Inventario físico y cobertura por piso." />
               <SourceState title="Auditoría" status={cockpit.sources.audits} detail="Auditorías abiertas, hallazgos y medidas correctivas." />
-              <SourceState title="PMS comercial" status={cockpit.sources.commercialPms} detail="Ocupación, ADR, RevPAR, pickup y pace: fuente aún no conectada." />
-              <SourceState title="Finanzas" status={cockpit.sources.finance} detail="GOP, GOPPAR y Flow Through/Flex: requieren fuente financiera." />
-              <SourceState title="RR. HH. / labor" status={cockpit.sources.labor} detail="Horas, costo laboral, productividad POR/PAR y sobretiempo." />
-              <SourceState title="Voz del huésped" status={cockpit.sources.guestVoice} detail="Reputación, satisfacción y recuperación de servicio." />
-              <SourceState title="Benchmark competitivo" status={cockpit.sources.benchmark} detail="Comp set e índices de mercado: requiere proveedor externo." />
+              <p className="border-t border-slate-100 py-3 text-xs leading-5 text-slate-500">
+                FNSrooms continúa siendo la fuente PMS. Este cockpit evalúa ejecución y riesgo operativo de AROH; no replica ocupación, check-in, check-out ni gestión de habitaciones.
+              </p>
             </div>
           </div>
         </div>

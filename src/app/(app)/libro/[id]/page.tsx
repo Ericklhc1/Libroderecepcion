@@ -184,6 +184,16 @@ export default async function EntryDetailPage({
               <dd className="text-petrol-900">{entry.owner?.name ?? 'Sin asignar'}</dd>
             </div>
             <div>
+              <dt className="text-xs font-medium text-slate-500">Habitación</dt>
+              <dd className="text-petrol-900">
+                {entry.room ? (
+                  <Link href={`/novedades/habitacion?habitacion=${entry.room.number}`} className="font-medium text-gold-700 hover:underline">
+                    {entry.room.number}
+                  </Link>
+                ) : 'Sin habitación'}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs font-medium text-slate-500">Área</dt>
               <dd className="text-petrol-900">{entry.department?.name ?? 'Sin área'}</dd>
             </div>
@@ -228,12 +238,14 @@ export default async function EntryDetailPage({
                   description: entry.description,
                   dueAt: toDateTimeInput(entry.dueAt),
                   departmentId: entry.departmentId,
+                  roomId: entry.roomId,
                   ownerId: entry.ownerId,
                   priority: entry.priority,
                   tags: entry.tags,
                 }}
                 departments={options.departments}
                 users={options.users}
+                rooms={options.rooms}
               />
             ) : null}
 
@@ -268,6 +280,7 @@ export default async function EntryDetailPage({
                   options={options}
                   entryId={entry.id}
                   defaultAssigneeId={entry.ownerId ?? user.id}
+                  defaultRoomId={entry.roomId ?? undefined}
                 />
               </Dialog>
             ) : null}
@@ -287,6 +300,7 @@ export default async function EntryDetailPage({
                   username: candidate.username,
                   roleName: candidate.role.name,
                 }))}
+                defaultRoomNumber={entry.room?.number ?? undefined}
                 source={{
                   entity: 'OperationalEntry',
                   id: entry.id,

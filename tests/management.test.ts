@@ -70,22 +70,15 @@ describe('cockpit estratégico de Gerencia', () => {
     expect(seven.trends.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('declara fuentes estratégicas faltantes en vez de inventar KPI comerciales o financieros', async () => {
+  it('mantiene Gerencia sobre evidencia operativa de AROH y contexto por habitación', async () => {
     const cockpit = await getManagementCockpit();
 
     expect(cockpit.sources.operational).toBe('connected');
-    expect(cockpit.sources.reservations).toBe('connected');
+    expect(cockpit.sources.roomContext).toBe('connected');
     expect(cockpit.sources.cash).toBe('connected');
-
-    for (const source of [
-      cockpit.sources.commercialPms,
-      cockpit.sources.finance,
-      cockpit.sources.labor,
-      cockpit.sources.guestVoice,
-      cockpit.sources.benchmark,
-    ]) {
-      expect(source).toBe('not_connected');
-    }
+    expect(cockpit.sources.keys).toBe('connected');
+    expect(cockpit.sources.audits).toBe('connected');
+    expect(cockpit.roomFocus.totalRooms).toBe(89);
   });
 
   it('Fronti puede leer llaves para Gerencia sin conceder permiso de inventario', async () => {

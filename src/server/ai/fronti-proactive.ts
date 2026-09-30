@@ -5,10 +5,8 @@ import {
   AuditAction,
   EntryStatus,
   EntryType,
-  GuaranteeStatus,
   NotificationType,
   Priority,
-  ReservationStatus,
   Severity,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -16,6 +14,7 @@ import { ROLE_KEYS } from '@/lib/permissions';
 import { notify } from '@/server/notifications';
 import { recordAudit } from '@/server/audit';
 import { getSettingBool, getSettingNumber } from '@/server/services/settings';
+import { getRoomOperationsBoard } from '@/server/services/room-operations';
 import {
   chatWithFrontiProviderChain,
   resolveFrontiBackgroundProviderChainRuntime,
@@ -56,106 +55,40 @@ function clean(value: string, max = 900): string {
   return value.trim().replace(/\s+/g, ' ').slice(0, max);
 }
 
-function money(value: { toString(): string } | null): number {
-  if (!value) return 0;
-  const parsed = Number(value.toString());
-  return Number.isFinite(parsed) ? parsed : 0;
+async function roomContextCandidates(
+  now: Date,
+): Promise<FrontiProactiveCandidate[]> {
+  const board = await getRoomOperationsBoard({ includeCashContext: false });
+
+  return board.rooms
+    .filter((room) => room.criticalCount >= 2 || room.openCount >= 4)
+    .map((room) => {
+      const severity: FrontiProactiveSeverity =
+        room.criticalCount >= 2 ? 'CRITICA' : 'ALTA';
+      const newest = room.items[0]?.timestamp ?? now;
+
+      return {
+        key:
+          `room-context:${room.id}:${severity}:open-${room.openCount}:critical-${room.criticalCount}`,
+        severity,
+        area: 'Novedades · Habitaciones',
+        title: `Habitación ${room.number} concentra contexto operativo`,
+        evidence: clean(
+          [
+            `${room.openCount} objeto(s) abierto(s)`,
+            `${room.criticalCount} crítico(s)`,
+            `${room.counts.entries} novedad(es)/incidencia(s)`,
+            `${room.counts.tasks} tarea(s)`,
+            `${room.counts.alarms} alerta(s)`,
+          ].join(' · '),
+        ),
+        link: `/libro/habitaciones?habitacion=${room.number}`,
+        entityType: 'Room',
+        entityId: room.id,
+        detectedAt: newest,
+      };
+    });
 }
-
-async function reservationCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
-  const in72h = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-  const rows = await prisma.reservationReference.findMany({
-    where: {
-      deletedAt: null,
-      isDemo: false,
-      status: {
-        in: [
-          ReservationStatus.PENDIENTE,
-          ReservationStatus.CONFIRMADA,
-          ReservationStatus.EN_CASA,
-        ],
-      },
-      AND: [
-        {
-          OR: [
-            { requiresAction: true },
-            {
-              guaranteeStatus: {
-                in: [GuaranteeStatus.PENDIENTE, GuaranteeStatus.RECHAZADA],
-              },
-            },
-            { balanceDue: { gt: 0 } },
-          ],
-        },
-        {
-          OR: [
-            { checkIn: { gte: now, lte: in72h } },
-            { checkOut: { gte: now, lte: in72h } },
-            { status: ReservationStatus.EN_CASA },
-          ],
-        },
-      ],
-    },
-    select: {
-      id: true,
-      code: true,
-      roomNumber: true,
-      checkIn: true,
-      checkOut: true,
-      status: true,
-      guaranteeStatus: true,
-      balanceDue: true,
-      requiresAction: true,
-      actionNote: true,
-      updatedAt: true,
-      guest: { select: { fullName: true } },
-    },
-    orderBy: [{ checkIn: 'asc' }, { updatedAt: 'desc' }],
-    take: 24,
-  });
-
-  return rows.map((row) => {
-    const balance = money(row.balanceDue);
-    const checkInSoon =
-      row.checkIn !== null && row.checkIn.getTime() - now.getTime() <= 24 * 60 * 60 * 1000;
-    const criticalGuarantee = row.guaranteeStatus === GuaranteeStatus.RECHAZADA;
-    const severity: FrontiProactiveSeverity =
-      criticalGuarantee || (checkInSoon && balance > 0)
-        ? 'CRITICA'
-        : checkInSoon || balance > 0
-          ? 'ALTA'
-          : 'MEDIA';
-    const risks = [
-      row.requiresAction ? `requiere acción${row.actionNote ? `: ${row.actionNote}` : ''}` : null,
-      row.guaranteeStatus === GuaranteeStatus.PENDIENTE ? 'garantía pendiente' : null,
-      row.guaranteeStatus === GuaranteeStatus.RECHAZADA ? 'garantía rechazada' : null,
-      balance > 0 ? `saldo pendiente ${balance}` : null,
-    ].filter(Boolean);
-
-    return {
-      key: `reservation:${row.id}:${severity}:${risks.join('|')}`,
-      severity,
-      area: 'Central de Reservas',
-      title: `Reserva ${row.code} requiere revisión`,
-      evidence: clean(
-        [
-          row.guest?.fullName ? `Huésped: ${row.guest.fullName}` : null,
-          row.roomNumber ? `Hab. ${row.roomNumber}` : null,
-          row.checkIn ? `llegada ${row.checkIn.toISOString()}` : null,
-          row.checkOut ? `salida ${row.checkOut.toISOString()}` : null,
-          ...risks,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-      ),
-      link: `/central-reservas?q=${encodeURIComponent(row.code)}`,
-      entityType: 'ReservationReference',
-      entityId: row.id,
-      detectedAt: row.updatedAt,
-    };
-  });
-}
-
 
 async function entryCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
   const since = new Date(now.getTime() - 20 * 60 * 1000);
@@ -295,14 +228,14 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
 export async function collectFrontiProactiveCandidates(
   now = new Date(),
 ): Promise<FrontiProactiveCandidate[]> {
-  const [reservations, entries, observability] = await Promise.all([
-    reservationCandidates(now),
+  const [roomContext, entries, observability] = await Promise.all([
+    roomContextCandidates(now),
     entryCandidates(now),
     observabilityCandidates(now),
   ]);
 
   const unique = new Map<string, FrontiProactiveCandidate>();
-  for (const candidate of [...reservations, ...entries, ...observability]) {
+  for (const candidate of [...roomContext, ...entries, ...observability]) {
     const id = signalId(candidate.key);
     const current = unique.get(id);
     if (
@@ -367,10 +300,6 @@ function canReceiveCandidate(
   recipient: FrontiProactiveRecipient,
   candidate: FrontiProactiveCandidate,
 ): boolean {
-  if (candidate.link.startsWith('/central-reservas')) {
-    return recipient.permissions.has('reservation.center.view');
-  }
-
   if (candidate.link.startsWith('/supervision/salud')) {
     return recipient.permissions.has('supervision.center.view');
   }

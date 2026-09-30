@@ -1,6 +1,17 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
 
+## 30/09/2026 · AROH 1.37.2 · alineación visual transversal
+
+- **Novedades / habitación** ya no usa una grilla de dos columnas ciega para sus métricas: una sola métrica ocupa todo el ancho; con cantidad impar la última ocupa dos columnas. La tarjeta es `flex-col` y empuja la zona de métricas al fondo para mantener una lectura estable entre habitaciones.
+- Botones compartidos: alturas mínimas `sm/md/lg` = 2rem / 2.25rem / 2.75rem.
+- `Badge` y `Chip` centran contenido y usan altura/line-height estable.
+- `.input-base` usa `min-h-10`; `.card` usa `min-w-0`; `.card-header` usa `min-h-11`.
+- Topbar y contenido principal comparten gutter horizontal de 1rem.
+- Esta versión es únicamente de UI/consistencia. No tocar flujos, permisos ni datos para resolver alineación.
+- Release: **v1.37.2**.
+
+
 ## 30/09/2026 · AROH 1.37.1 · hora Chile canónica
 
 - Corrección transversal de escritura: `datetime-local` representa hora local sin zona y nunca debe pasarse directamente a `new Date()` / `Date.parse()` en Vercel.

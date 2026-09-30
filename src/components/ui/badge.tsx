@@ -19,7 +19,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+        'inline-flex min-h-5 items-center justify-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium leading-none whitespace-nowrap',
         style.badge,
         className,
       )}
@@ -45,7 +45,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-sm bg-petrol-50 px-2 py-0.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-200',
+        'inline-flex min-h-5 items-center justify-center gap-1 rounded-sm bg-petrol-50 px-2 py-0.5 text-xs font-medium leading-none text-petrol-700 ring-1 ring-petrol-200',
         className,
       )}
     >

@@ -29,7 +29,8 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(source).toContain('prisma.operationalEntry.');
     expect(source).toContain('prisma.shiftHandover.');
     expect(source).toContain('prisma.cashAudit.');
-    expect(source).toContain('prisma.reservationReference.');
+    expect(source).toContain('getRoomOperationsBoard');
+    expect(source).not.toContain('prisma.reservationReference.');
     expect(source).toContain('prisma.keyInventoryCount.');
     expect(source).toContain('prisma.checklistRun.');
     expect(source).toContain('prisma.correctiveMeasure.');
@@ -43,8 +44,9 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(page).toContain('Scorecard ejecutivo');
     expect(page).toContain('Tendencia · actual vs. período anterior');
     expect(page).toContain('Calidad de la capa estratégica');
-    expect(page).toContain('PMS comercial');
-    expect(page).toContain('RevPAR');
+    expect(page).toContain('Contexto por habitación');
+    expect(page).not.toContain('PMS comercial');
+    expect(page).not.toContain('RevPAR');
     expect(page).toContain('GOPPAR');
     expect(page).toContain('Flow Through/Flex');
     expect(page).toContain("'No conectada'");

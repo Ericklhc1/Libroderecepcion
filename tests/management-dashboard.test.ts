@@ -47,7 +47,7 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(page).toContain('RevPAR');
     expect(page).toContain('GOPPAR');
     expect(page).toContain('Flow Through/Flex');
-    expect(page).toContain('Fuente no conectada');
+    expect(page).toContain("'No conectada'");
     expect(page).not.toMatch(/ranking|mejor empleado|peor empleado/i);
   });
 

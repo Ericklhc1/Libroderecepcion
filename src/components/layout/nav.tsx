@@ -313,41 +313,79 @@ export function SidebarNav({
   badges?: Partial<Record<string, number>>;
 }) {
   const pathname = usePathname();
+
   return (
     <nav aria-label="Navegación principal" className="space-y-5">
       {groups.map((group, index) => (
         <div key={group.title ?? 'principal'} className="space-y-1">
           {group.title ? (
-            <p className="px-3 pb-1 text-xs font-medium text-petrol-300">{group.title}</p>
+            <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-petrol-400">
+              {group.title}
+            </p>
           ) : null}
           {index > 0 && !group.title ? (
             <hr className="mx-3 border-petrol-800" aria-hidden="true" />
           ) : null}
+
           {group.items.map((item) => {
             const Icon = ICONS[item.icon];
-            const active = isActive(pathname, item.href);
+            const rootActive = isActive(pathname, item.href);
+            const menuActive =
+              item.menu?.some((section) =>
+                section.items.some((subitem) => isActive(pathname, subitem.href)),
+              ) ?? false;
+            const active = rootActive || menuActive;
             const badge = badgeFor(badges, item.href);
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                /*
-                  `active:` da el cambio de estado en el mismo clic, antes de
-                  que llegue la respuesta del servidor: quien está en el mesón
-                  no se queda dudando si el toque quedó registrado.
-                */
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-700',
-                  active
-                    ? 'bg-petrol-800 font-semibold text-white'
-                    : 'text-petrol-100 hover:bg-petrol-800/60',
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="flex-1 truncate">{item.label}</span>
-                {badge && badge > 0 ? <Badge value={badge} /> : null}
-              </Link>
+              <div key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={rootActive ? 'page' : undefined}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-800',
+                    active
+                      ? 'border-gold-500 bg-petrol-800 font-semibold text-white'
+                      : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {badge && badge > 0 ? <Badge value={badge} /> : null}
+                </Link>
+
+                {active && item.menu?.length ? (
+                  <div className="ml-5 mt-1 space-y-2 border-l border-petrol-800 pb-2 pl-3">
+                    {item.menu.map((section) => (
+                      <div key={section.title}>
+                        <p className="px-2 pb-1 pt-1 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-petrol-500">
+                          {section.title}
+                        </p>
+                        <div className="space-y-0.5">
+                          {section.items.map((subitem) => {
+                            const subActive = isActive(pathname, subitem.href);
+                            return (
+                              <Link
+                                key={subitem.href}
+                                href={subitem.href}
+                                title={subitem.description}
+                                className={cn(
+                                  'block rounded-sm border-l px-2 py-1.5 text-[0.75rem] transition-colors',
+                                  subActive
+                                    ? 'border-gold-500 bg-petrol-900 text-white'
+                                    : 'border-transparent text-petrol-300 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
+                                )}
+                              >
+                                {subitem.label}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </div>

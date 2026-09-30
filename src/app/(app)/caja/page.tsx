@@ -659,7 +659,7 @@ export default async function LiveCashPage({
                         <td className="px-4 py-2 text-slate-600">{formatCalendarDate(pass.serviceDate)}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.roomNumber}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.guestName}</td>
-                        <td className="px-4 py-2 font-mono font-semibold text-petrol-900">{pass.vehiclePlate}</td>
+                        <td className="px-4 py-2 font-mono font-semibold text-petrol-900">{pass.reservationCode ?? "—"}</td>
                         <td className="px-4 py-2 text-slate-600">{pass.receptionistName}</td>
                         <td className="px-4 py-2">
                           <Badge tone={pass.status === 'EMITIDO' ? 'resuelto' : 'neutro'}>

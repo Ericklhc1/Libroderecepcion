@@ -9,6 +9,17 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
+    borderRadius: {
+      none: '0px',
+      sm: '2px',
+      DEFAULT: '3px',
+      md: '4px',
+      lg: '5px',
+      xl: '6px',
+      '2xl': '8px',
+      '3xl': '10px',
+      full: '9999px',
+    },
     extend: {
       colors: {
         petrol: {
@@ -51,7 +62,7 @@ const config: Config = {
         ],
       },
       boxShadow: {
-        card: '0 1px 2px rgba(15, 36, 48, 0.06), 0 1px 12px rgba(15, 36, 48, 0.05)',
+        card: '0 1px 1px rgba(9, 24, 32, 0.04), 0 4px 14px rgba(9, 24, 32, 0.035)',
       },
       keyframes: {
         'fade-in': {

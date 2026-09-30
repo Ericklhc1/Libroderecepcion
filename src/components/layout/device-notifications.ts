@@ -179,6 +179,69 @@ export async function reconcileDeviceNotifications(): Promise<boolean> {
   }
 }
 
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
+/**
+ * Mantiene el badge del icono de la PWA alineado con las notificaciones
+ * realmente pendientes. iOS conserva el último número escrito hasta que la
+ * aplicación lo cambia explícitamente; marcar una notificación como leída no
+ * lo reduce por sí solo.
+ */
+export async function syncAppBadge(unread: number): Promise<void> {
+  if (typeof navigator === 'undefined') return;
+
+  const count = Number.isFinite(unread) ? Math.max(0, Math.floor(unread)) : 0;
+  const badgeNavigator = navigator as BadgeNavigator;
+
+  try {
+    if (count > 0 && typeof badgeNavigator.setAppBadge === 'function') {
+      await badgeNavigator.setAppBadge(count);
+    } else if (count === 0 && typeof badgeNavigator.clearAppBadge === 'function') {
+      await badgeNavigator.clearAppBadge();
+    } else if (count === 0 && typeof badgeNavigator.setAppBadge === 'function') {
+      await badgeNavigator.setAppBadge(0);
+    }
+  } catch {
+    // El badge es una mejora del dispositivo; nunca bloquea la operación.
+  }
+
+  // Safari/iOS puede resolver el badge desde el contexto del service worker.
+  // Enviamos el mismo estado como respaldo cuando la PWA ya está controlada.
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.controller?.postMessage({
+        type: 'aroh:sync-badge',
+        unread: count,
+      });
+    }
+  } catch {
+    // El intento directo anterior sigue siendo suficiente en navegadores compatibles.
+  }
+}
+
+export async function refreshAppBadgeFromServer(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const response = await fetch('/api/notifications/unread', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return;
+
+    const payload = (await response.json()) as { notifications?: number };
+    if (typeof payload.notifications === 'number') {
+      await syncAppBadge(payload.notifications);
+    }
+  } catch {
+    // La siguiente sincronización normal volverá a intentarlo.
+  }
+}
+
 export async function disableDeviceNotifications(): Promise<void> {
   try {
     const worker = await registration();

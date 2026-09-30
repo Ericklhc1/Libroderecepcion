@@ -24,9 +24,30 @@ async function fetchPushPayload() {
   return response.json();
 }
 
+async function updateAppBadge(unread) {
+  const count = Number.isFinite(unread) ? Math.max(0, Math.floor(unread)) : 0;
+  if (!self.navigator) return;
+
+  try {
+    if (count > 0 && typeof self.navigator.setAppBadge === 'function') {
+      await self.navigator.setAppBadge(count);
+    } else if (count === 0 && typeof self.navigator.clearAppBadge === 'function') {
+      await self.navigator.clearAppBadge();
+    } else if (count === 0 && typeof self.navigator.setAppBadge === 'function') {
+      await self.navigator.setAppBadge(0);
+    }
+  } catch {
+    // El badge es adicional; nunca bloquea la notificación.
+  }
+}
+
 async function showPushPayload() {
   const payload = await fetchPushPayload();
-  if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) return;
+  if (!payload) return;
+
+  await updateAppBadge(payload.unread);
+
+  if (!Array.isArray(payload.items) || payload.items.length === 0) return;
 
   for (const item of payload.items) {
     const urgent = URGENT_TYPES.has(item.type);
@@ -42,21 +63,6 @@ async function showPushPayload() {
     });
   }
 
-  if (
-    typeof payload.unread === 'number' &&
-    self.navigator &&
-    typeof self.navigator.setAppBadge === 'function'
-  ) {
-    try {
-      if (payload.unread > 0) {
-        await self.navigator.setAppBadge(payload.unread);
-      } else if (typeof self.navigator.clearAppBadge === 'function') {
-        await self.navigator.clearAppBadge();
-      }
-    } catch {
-      // El badge es adicional; nunca bloquea la notificación.
-    }
-  }
 }
 
 async function renewSubscription() {
@@ -103,6 +109,12 @@ self.addEventListener('install', () => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'aroh:sync-badge') return;
+  event.waitUntil(updateAppBadge(Number(data.unread)));
 });
 
 self.addEventListener('push', (event) => {

@@ -153,15 +153,16 @@ describe('visibilidad por rol', () => {
   });
 });
 
-describe('cabecera horizontal compacta', () => {
+describe('shell corporativo con sidebar', () => {
   const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
   const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
 
-  it('usa la navegación horizontal en escritorio y retira el sidebar del shell', () => {
-    expect(layout).toContain('<DesktopNav groups={groups} badges={badges} />');
-    expect(layout).not.toContain('<SidebarNav');
-    expect(layout).not.toContain('<aside');
-    expect(nav).toContain('export function DesktopNav');
+  it('usa sidebar oscuro en escritorio y conserva navegación móvil separada', () => {
+    expect(layout).toContain('<SidebarNav groups={groups} badges={badges} />');
+    expect(layout).toContain('<aside');
+    expect(layout).not.toContain('<DesktopNav groups={groups} badges={badges} />');
+    expect(nav).toContain('export function SidebarNav');
+    expect(layout).toContain('bg-petrol-950 lg:flex');
   });
 
   it('la cabecera global conserva sólo utilidades globales', () => {
@@ -185,24 +186,20 @@ describe('cabecera horizontal compacta', () => {
     expect(roots).toContain('/alertas');
   });
 
-  it('usa dropdowns compactos, animados y centrados en vez de un mega menú de ancho completo', () => {
-    expect(nav).toContain("createPortal");
-    expect(nav).toContain("nav-dropdown-enter");
-    expect(nav).toContain("max-w-[1680px]");
-    expect(nav).toContain("w-max min-w-full");
-    expect(nav).toContain("text-[0.82rem]");
-    expect(nav).not.toContain("gridTemplateColumns");
-
+  it('el sidebar usa geometría recta y acento cian para el estado activo', () => {
+    expect(nav).toContain("rounded-md border-l-2");
+    expect(nav).toContain("border-gold-500 bg-petrol-800");
+    expect(nav).toContain("text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900");
+    expect(layout).toContain("w-56");
+    expect(layout).toContain("text-gold-400");
     expect(layout).toContain("max-w-[1680px]");
-    expect(layout).toContain("text-[0.68rem]");
-    expect(layout).toContain("text-[0.9rem]");
   });
 });
 
 /**
  * Ningún destino puede quedar inalcanzable desde el teléfono.
  *
- * La navegación horizontal es de escritorio; en móvil, la barra inferior es
+ * El sidebar es de escritorio; en móvil, la barra inferior es
  * la puerta principal. Pintaba cinco elementos y los cuatro de consulta
  * más Administración no tenían ninguna otra: Llaves, Huéspedes, Historial,
  * Indicadores y Administración no se podían abrir desde un teléfono.

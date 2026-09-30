@@ -39,6 +39,7 @@ describe('menú principal', () => {
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
       '/alertas', // llamadas de atención programables
+      '/gerencia', // decisión estratégica, sólo visible con permiso propio
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
@@ -79,6 +80,15 @@ describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
     expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
+  });
+
+  it('Gerencia ve su cockpit como módulo raíz y Recepción no', () => {
+    const management = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]).map((i) => i.href);
+    expect(management).toContain('/gerencia');
+
+    for (const roleKey of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR]) {
+      expect(visibleNavItems(ROLE_PERMISSIONS[roleKey]).map((i) => i.href)).not.toContain('/gerencia');
+    }
   });
 
   it('el Supervisor ve el Centro como módulo raíz privado', () => {

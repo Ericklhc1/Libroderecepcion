@@ -25,6 +25,7 @@ export type AlarmCreateInput = {
   note?: string | null;
   dueAt: Date;
   recipientIds?: string[];
+  roomId?: string | null;
   sourceEntity?: string | null;
   sourceId?: string | null;
   sourceLink?: string | null;
@@ -56,6 +57,7 @@ export async function listMyOperationalAlarms(userId: string, take = 60) {
         orderBy: { createdAt: 'asc' },
       },
       originShift: { select: { id: true, type: true, date: true, status: true } },
+      room: { select: { id: true, number: true, floor: true } },
     },
     orderBy: [{ status: 'asc' }, { dueAt: 'desc' }],
     take: Math.max(1, Math.min(take, 100)),
@@ -118,6 +120,14 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
     throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
   }
 
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('Selecciona una habitación válida.');
+  }
+
   const activeCount = await prisma.operationalAlarm.count({
     where: { createdById: user.id, status: OperationalAlarmStatus.ACTIVA },
   });
@@ -155,6 +165,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         dueAt: input.dueAt,
         createdById: user.id,
         originShiftId: originShift?.id ?? null,
+        roomId: input.roomId ?? null,
         sourceEntity: input.sourceEntity?.trim() || null,
         sourceId: input.sourceId?.trim() || null,
         sourceLink: input.sourceLink?.trim() || null,
@@ -184,6 +195,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
           scope: created.scope,
           dueAt: created.dueAt,
           originShiftId: created.originShiftId,
+          roomId: created.roomId,
           sourceEntity: created.sourceEntity,
           sourceId: created.sourceId,
           sourceLink: created.sourceLink,

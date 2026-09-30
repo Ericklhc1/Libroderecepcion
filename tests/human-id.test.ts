@@ -144,6 +144,25 @@ describe('identificadores humanos globales', () => {
     const byResponsible = await searchOperationalRecords(receptionist, 'Jaime Correlativo');
     expect(byResponsible.some((row) => row.humanId === guarantee.humanId)).toBe(true);
   });
+  it('indexa habitaciones y destinos del sistema desde el buscador general', async () => {
+    const byRoom = await searchOperationalRecords(receptionist, '617');
+    expect(byRoom[0]).toMatchObject({
+      entityType: 'Room',
+      roomNumber: '617',
+      href: '/habitaciones?habitacion=617',
+    });
+
+    const byModule = await searchOperationalRecords(receptionist, 'habitacion');
+    expect(
+      byModule.some(
+        (row) =>
+          row.entityType === 'Navigation' &&
+          row.href === '/habitaciones' &&
+          row.title === 'Novedades / habitación',
+      ),
+    ).toBe(true);
+  });
+
   it('no expone seguimientos privados de otra persona en la búsqueda global', async () => {
     const followUp = await createFollowUp(supervisor, {
       action: 'Revisión reservada de Supervisión',

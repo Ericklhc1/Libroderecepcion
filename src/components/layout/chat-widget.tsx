@@ -222,9 +222,11 @@ function relativeActivity(value: string): string {
   if (hours < 24) return `${hours} h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} d`;
-  return new Intl.DateTimeFormat('es-CL', { day: '2-digit', month: '2-digit' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(value));
 }
 
 function PersonPresence({ person, compact = false }: { person: ChatPerson; compact?: boolean }) {

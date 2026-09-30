@@ -1,6 +1,17 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
 
+## Actualización 30/09/2026 · AROH 1.37.1 · hora Chile canónica en formularios
+
+- Causa raíz corregida: los campos HTML `datetime-local` enviaban valores sin zona (por ejemplo `2026-09-30T11:00`) y `zOptionalDate` los convertía con `new Date()` en el servidor UTC de Vercel. Al mostrarlos luego en `America/Santiago`, 11:00 quedaba como 08:00.
+- La escritura de formularios queda centralizada: cualquier `datetime-local` pasa por `parseHotelDateInput()` y se interpreta como hora de pared de `America/Santiago` antes de persistirse como instante UTC. El cambio estacional UTC-3/UTC-4 se calcula con `Intl`; no hay offsets manuales.
+- Cobertura por el esquema común: Novedades/Incidencias, Tareas, Seguimientos, Alertas, Reservas de referencia, Garantías y los vencimientos de Supervisión. Caja en vivo y Alarmas operativas ya usaban parser Chile dedicado y quedan protegidas por regresión.
+- Un ISO que ya trae `Z` u offset continúa tratándose como instante absoluto. Las fechas calendario `@db.Date` mantienen su semántica UTC estable y no se convierten a hora de Santiago.
+- El Chat también fija `America/Santiago` al mostrar fechas de actividad antiguas.
+- Regresiones: pruebas directas para verano UTC-3, invierno UTC-4, ISO absoluto y guardas de código contra `Date.parse(v)` / `new Date(v)` en el parser común.
+- Sin migración Prisma ni reescritura masiva de datos. Versión: **v1.37.1**.
+
+
 ## Actualización 30/09/2026 · AROH 1.37.0 · onboarding modular y Ayuda viva
 
 - `User.tutorialKnownModules` convierte el onboarding en estado por usuario y por módulo. El acceso efectivo se deriva de permisos; un módulo visible que no esté marcado como conocido dispara su recorrido específico.

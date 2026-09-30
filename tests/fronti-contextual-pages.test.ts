@@ -97,7 +97,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(context.filters).not.toHaveProperty('api_key');
   });
 
-  it('entiende las subsecciones de Caja y Central de Reservas', () => {
+  it('entiende Caja y reconoce la antigua Central de Reservas como ruta retirada', () => {
     const cash = resolveFrontiPageContext({
       pathname: '/caja',
       search: '?seccion=garantias',
@@ -111,12 +111,12 @@ describe('Fronti contextual · cobertura de pantallas', () => {
       ]),
     );
 
-    const reservations = resolveFrontiPageContext({
+    const retiredPms = resolveFrontiPageContext({
       pathname: '/central-reservas',
       search: '?vista=24h&q=martinez',
     });
-    expect(reservations.sectionLabel).toBe('Llegadas próximas 24 h');
-    expect(reservations.filters.q).toBe('martinez');
+    expect(retiredPms.sectionLabel).toBe('Ruta retirada');
+    expect(retiredPms.recommendedTools).toEqual(['consultar_contexto_pantalla']);
   });
   it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
     const management = resolveFrontiPageContext({

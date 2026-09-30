@@ -1,5 +1,16 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+
+## Actualización 30/09/2026 · AROH 1.37.0 · onboarding modular y Ayuda viva
+
+- `User.tutorialKnownModules` convierte el onboarding en estado por usuario y por módulo. El acceso efectivo se deriva de permisos; un módulo visible que no esté marcado como conocido dispara su recorrido específico.
+- El tutorial general sigue existiendo para el primer ingreso. Al terminarlo, el servidor marca como conocidos todos los módulos habilitados en ese momento, evitando una segunda ronda redundante.
+- Usuarios que ya habían finalizado el tutorial antes de esta versión se migran con sus módulos actualmente visibles como conocidos.
+- Ayuda y tutorial dejan de ser documentación mínima: cubren el producto vigente, incluida la semántica Novedad/Tarea/Seguimiento/Alerta/Notificación, Novedades / habitación, Caja y folios, Web Push, Supervisión, Gerencia, Fronti, soporte, chat, usuarios ocultos y búsqueda por #ID.
+- Fronti proactivo debe explicar cada hallazgo con el contrato «Qué pasó / Qué está mal o qué revisar / Qué hacer». La detección sigue siendo determinística y la IA no puede inventar causas ni modificar estados por sí sola.
+- Migración aditiva: `20260930112000_tutoriales_modulares`. Versión: **v1.37.0**.
+
+
 ## Actualización 29/09/2026 · AROH 1.33.2 · hotfix de autorecepción de turnos
 
 - **Mi turno** deja de ofrecer «INICIAR RECEPCIÓN DE TURNO» a la misma persona que participó en el turno saliente y acaba de cerrar/enviar esa entrega.

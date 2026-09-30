@@ -184,9 +184,12 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       recientes: 'Cambios recientes',
       bandeja: 'Bandeja completa',
     };
-    return detail('central-reservas', 'Central de Reservas', section, labels[section] ?? 'Central de Reservas', [
+    return detail('prellegadas', 'Prellegadas', section, labels[section] ?? 'Prellegadas', [
       'consultar_contexto_pantalla',
       'consultar_garantias',
+      'consultar_tareas',
+      'consultar_seguimientos',
+      'consultar_alertas',
     ]);
   }
 
@@ -239,9 +242,21 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
   if (pathname === '/habitaciones') {
-    return detail('habitaciones', 'Habitaciones', 'retirada', 'Ruta de habitaciones retirada', [
-      'consultar_contexto_pantalla',
-    ]);
+    return detail(
+      'habitaciones',
+      'Novedades / habitación',
+      filters.habitacion ? 'detalle' : 'monitor',
+      filters.habitacion ? `Habitación ${filters.habitacion}` : 'Monitor de continuidad por habitación',
+      [
+        'consultar_contexto_pantalla',
+        'consultar_novedades',
+        'consultar_tareas',
+        'consultar_garantias',
+        'consultar_llaves',
+      ],
+      filters.habitacion ? 'RoomNumber' : null,
+      filters.habitacion ?? null,
+    );
   }
 
   const cashAudit = pathname.match(/^\/caja\/arqueos\/([^/]+)$/);

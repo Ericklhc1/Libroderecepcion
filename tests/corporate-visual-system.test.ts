@@ -22,7 +22,8 @@ describe('sistema visual corporativo AROH', () => {
     expect(nav).toContain('rounded-md border-l-2');
     expect(nav).toContain('border-gold-500 bg-petrol-800');
     expect(nav).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
-    expect(nav).toContain('section.items.map((subitem)');
+    const sidebar = nav.slice(nav.indexOf('export function SidebarNav'), nav.indexOf('/** Barra inferior para móvil'));
+    expect(sidebar).not.toContain('section.items.map((subitem)');
   });
 
   it('mantiene producto y alojamiento separados en el shell', () => {

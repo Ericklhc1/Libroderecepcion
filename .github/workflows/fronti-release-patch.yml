@@ -1,0 +1,38 @@
+name: Preparar parche Fronti (temporal)
+
+on:
+  push:
+    branches:
+      - fix/fronti-operativo-1-38-0
+    paths:
+      - .maintenance/fronti-release.py
+      - .github/workflows/fronti-release-patch.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fronti-release-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/fronti-operativo-1-38-0
+      - name: Aplicar cambios con coincidencias verificadas
+        run: |
+          test "$(git branch --show-current)" = "fix/fronti-operativo-1-38-0"
+          python3 .maintenance/fronti-release.py
+          git diff --check
+          git diff --stat
+      - name: Guardar únicamente código de la rama de trabajo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/server/ai/reception-assistant.ts src/server/ai/fronti-v2/tool-registry.ts src/components/layout/chat-widget.tsx src/components/layout/fronti-assistant.tsx package.json package-lock.json PROJECT_CONTEXT.md docs/AGENT_HANDOFF.md
+          git commit -m "feat(fronti): continuidad conversacional, datos completos y confirmaciones verificables"
+          git push origin HEAD:fix/fronti-operativo-1-38-0

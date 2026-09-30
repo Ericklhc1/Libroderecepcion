@@ -6,7 +6,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Banknote,
-  BedDouble,
+  DoorOpen,
   Database,
   KeyRound,
   Minus,
@@ -285,17 +285,17 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
 
           <div className="grid gap-0 px-2 py-2 lg:grid-cols-[12rem_1fr]">
             <div className="flex items-center gap-2 px-3 py-3">
-              <BedDouble className="h-4 w-4 text-gold-600" aria-hidden="true" />
+              <DoorOpen className="h-4 w-4 text-gold-600" aria-hidden="true" />
               <div>
-                <p className="text-sm font-semibold text-petrol-950">Preparación</p>
-                <p className="text-xs text-slate-500">Próximas llegadas</p>
+                <p className="text-sm font-semibold text-petrol-950">Contexto por habitación</p>
+                <p className="text-xs text-slate-500">Concentración de novedades operativas</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
-              <Metric label="Llegadas 24 h" value={cockpit.readiness.arrivals24} />
-              <Metric label="24 h con fricción" value={cockpit.readiness.arrivals24AtRisk} emphasis={cockpit.readiness.arrivals24AtRisk > 0} />
-              <Metric label="Garantía pendiente" value={cockpit.readiness.guaranteeRisk} />
-              <Metric label="Con saldo pendiente" value={cockpit.readiness.withBalance} />
+              <Metric label="Habitaciones" value={cockpit.roomContext.totalRooms} />
+              <Metric label="Con pendientes" value={cockpit.roomContext.roomsWithOpenContext} />
+              <Metric label="Con críticos" value={cockpit.roomContext.roomsWithCriticalContext} emphasis={cockpit.roomContext.roomsWithCriticalContext > 0} />
+              <Metric label="Objetos abiertos" value={cockpit.roomContext.openItems} />
             </div>
           </div>
 
@@ -404,11 +404,10 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             </div>
             <div className="px-4">
               <SourceState title="Operación AROH" status={cockpit.sources.operational} detail="Tareas, incidencias, turnos, continuidad y auditoría." />
-              <SourceState title="Reservas" status={cockpit.sources.reservations} detail="Próximas 24/72 h, saldos, garantías y acciones pendientes." />
+              <SourceState title="Contexto por habitación" status={cockpit.sources.roomContext} detail="Novedades, incidencias, tareas y alertas asociadas a las 89 habitaciones." />
               <SourceState title="Caja" status={cockpit.sources.cash} detail="Arqueos, diferencias, fondos y custodia monetaria." />
               <SourceState title="Llaves" status={cockpit.sources.keys} detail="Inventario físico y cobertura por piso." />
               <SourceState title="Auditoría" status={cockpit.sources.audits} detail="Auditorías abiertas, hallazgos y medidas correctivas." />
-              <SourceState title="PMS comercial" status={cockpit.sources.commercialPms} detail="Ocupación, ADR, RevPAR, pickup y pace: fuente aún no conectada." />
               <SourceState title="Finanzas" status={cockpit.sources.finance} detail="GOP, GOPPAR y Flow Through/Flex: requieren fuente financiera." />
               <SourceState title="RR. HH. / labor" status={cockpit.sources.labor} detail="Horas, costo laboral, productividad POR/PAR y sobretiempo." />
               <SourceState title="Voz del huésped" status={cockpit.sources.guestVoice} detail="Reputación, satisfacción y recuperación de servicio." />

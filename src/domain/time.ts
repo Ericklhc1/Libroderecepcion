@@ -116,16 +116,50 @@ export function hotelWallDateTime(
  * usaría la zona del proceso (UTC en Vercel) y desplazaría el movimiento.
  */
 export function parseHotelDateTimeLocal(value: string): Date {
-  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(
+      value.trim(),
+    );
   if (!match) throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
-  const [, dateKey, hourText, minuteText] = match;
+  const [, dateKey, hourText, minuteText, secondText, millisecondText] = match;
   if (!dateKey || !hourText || !minuteText) {
     throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
   }
-  return hotelWallDateTime(dateKey, Number(hourText), Number(minuteText));
+
+  const second = secondText ? Number(secondText) : 0;
+  const millisecond = millisecondText ? Number(millisecondText.padEnd(3, '0')) : 0;
+  if (second < 0 || second > 59 || millisecond < 0 || millisecond > 999) {
+    throw new Error(`Fecha/hora local del hotel inválida: ${value}`);
+  }
+
+  const minuteInstant = hotelWallDateTime(dateKey, Number(hourText), Number(minuteText));
+  return new Date(minuteInstant.getTime() + second * 1000 + millisecond);
 }
 
 /**
+ * Interpreta fechas recibidas desde formularios/API sin confundir una hora de
+ * pared del hotel con la zona del proceso de Vercel.
+ *
+ * - `datetime-local` NO trae zona: se interpreta en America/Santiago.
+ * - ISO con `Z` u offset ya representa un instante absoluto y se conserva.
+ * - `YYYY-MM-DD` mantiene la semántica histórica de fecha calendario UTC.
+ */
+export function parseHotelDateInput(value: string): Date {
+  const trimmed = value.trim();
+  const localDateTime =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(trimmed);
+
+  if (localDateTime) return parseHotelDateTimeLocal(trimmed);
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Fecha inválida: ${value}`);
+  }
+  return parsed;
+}
+
+/**
+ * Suma noches según el calendario del hotel/**
  * Suma noches según el calendario del hotel y conserva la hora local original.
  * A diferencia de sumar `24h`, no se corre una hora al cruzar un cambio de DST.
  */

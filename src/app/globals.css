@@ -18,7 +18,8 @@ html {
 }
 
 body {
-  overflow-x: hidden;
+  /* clip evita crear un ancestro de scroll que impida sticky en sidebar/topbar. */
+  overflow-x: clip;
 }
 
 body {

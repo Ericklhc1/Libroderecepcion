@@ -90,8 +90,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-[#f3f6f8]">
       <div className="flex min-h-screen min-w-0">
-        <aside className="hidden w-56 shrink-0 flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print">
-          <Link href="/" className="block border-b border-petrol-800 px-4 py-4">
+        <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 self-start flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print">
+          <Link href="/" className="block shrink-0 border-b border-petrol-800 px-4 py-4">
             <span className="block truncate text-base font-light tracking-tight text-white">
               AROH <span className="font-semibold text-gold-400">Central IA</span>
             </span>
@@ -100,11 +100,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </Link>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
             <SidebarNav groups={groups} badges={badges} />
           </div>
 
-          <div className="border-t border-petrol-800 px-4 py-3">
+          <div className="shrink-0 border-t border-petrol-800 px-4 py-3">
             <p className="text-[0.65rem] font-medium uppercase tracking-[0.08em] text-petrol-400">
               Opera con sentido.
             </p>

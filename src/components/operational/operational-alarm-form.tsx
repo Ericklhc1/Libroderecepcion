@@ -29,10 +29,12 @@ export function OperationalAlarmCreateForm({
   candidates,
   currentUserId,
   source = null,
+  defaultRoomNumber,
 }: {
   candidates: Candidate[];
   currentUserId: string;
   source?: Source;
+  defaultRoomNumber?: string;
 }) {
   const [kind, setKind] = useState<'TIMER' | 'RECORDATORIO'>('RECORDATORIO');
   const [scope, setScope] = useState<'INDIVIDUAL' | 'GRUPO' | 'GLOBAL'>('INDIVIDUAL');

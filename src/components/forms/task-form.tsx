@@ -164,7 +164,7 @@ export function TaskForm({
         name="checklist"
         hint="Un paso por línea. Opcional."
       >
-        <Textarea name="checklist" rows={3} placeholder={'Llamar a la empresa\nRegistrar patente\nInformar al huésped'} />
+        <Textarea name="checklist" rows={3} placeholder={'Llamar a la empresa\nRegistrar ID de reserva\nInformar al huésped'} />
       </Field>
 
       <Field label="Etiquetas" name="tags" hint="Separadas por coma.">

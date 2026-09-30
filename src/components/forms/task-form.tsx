@@ -19,6 +19,7 @@ export function TaskForm({
   followUpId,
   alertId,
   defaultAssigneeId,
+  defaultRoomId,
   showOrigin = true,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -27,6 +28,7 @@ export function TaskForm({
   followUpId?: string;
   alertId?: string;
   defaultAssigneeId?: string;
+  defaultRoomId?: string;
   showOrigin?: boolean;
 }) {
   return (
@@ -120,7 +122,10 @@ export function TaskForm({
         )}
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
+        <Field label="Habitación" name="roomId" hint="Opcional. La tarea aparecerá en el monitor de esa habitación.">
+          <Select name="roomId" placeholder="Sin habitación" defaultValue={defaultRoomId} options={options.rooms} />
+        </Field>
         <Field
           label="Inicio programado"
           name="startsAt"
@@ -151,7 +156,7 @@ export function TaskForm({
         name="checklist"
         hint="Un paso por línea. Opcional."
       >
-        <Textarea name="checklist" rows={3} placeholder={'Llamar a la empresa\nRegistrar patente\nInformar al huésped'} />
+        <Textarea name="checklist" rows={3} placeholder={'Llamar al área\nConfirmar solución\nRegistrar resultado'} />
       </Field>
 
       <Field label="Etiquetas" name="tags" hint="Separadas por coma.">

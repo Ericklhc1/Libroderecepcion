@@ -124,6 +124,7 @@ describe('matriz de roles y permisos', () => {
       'shift.manage',
       'audit.view',
       'metrics.view',
+      'management.dashboard.view',
     ] as PermissionKey[]) {
       expect(hasPermission(supervisor, permission)).toBe(true);
     }

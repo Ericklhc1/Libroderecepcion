@@ -170,23 +170,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
 
-  let roomNumber = input.roomNumber?.trim() || null;
-  if (!roomNumber && input.sourceEntity === 'OperationalEntry' && input.sourceId) {
-    roomNumber = (
-      await prisma.operationalEntry.findUnique({
-        where: { id: input.sourceId },
-        select: { room: { select: { number: true } } },
-      })
-    )?.room?.number ?? null;
-  }
-  if (!roomNumber && input.sourceEntity === 'Task' && input.sourceId) {
-    roomNumber = (
-      await prisma.task.findUnique({
-        where: { id: input.sourceId },
-        select: { room: { select: { number: true } } },
-      })
-    )?.room?.number ?? null;
-  }
+  const roomNumber = await resolveAlarmRoomNumber(input);
 
   const originShift =
     input.kind === OperationalAlarmKind.TIMER

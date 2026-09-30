@@ -39,7 +39,6 @@ describe('menú principal', () => {
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
       '/alertas', // llamadas de atención programables
-      '/gerencia', // decisión estratégica, sólo visible con permiso propio
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });
@@ -82,7 +81,10 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
-  it('Gerencia ve su cockpit como módulo raíz y Recepción no', () => {
+  it('Gerencia vive en un grupo de Dirección separado del núcleo operativo', () => {
+    const direction = NAV_GROUPS.find((group) => group.title === 'Dirección');
+    expect(direction?.items.map((item) => item.href)).toEqual(['/gerencia']);
+
     const management = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]).map((i) => i.href);
     expect(management).toContain('/gerencia');
 

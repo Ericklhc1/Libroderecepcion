@@ -105,8 +105,8 @@ function Pulse({
   );
 }
 
-function priorityTone(priority: string): 'critico' | 'pendiente' | 'neutral' {
-  return priority === 'CRITICA' ? 'critico' : priority === 'ALTA' ? 'pendiente' : 'neutral';
+function priorityTone(priority: string): 'critico' | 'pendiente' | 'neutro' {
+  return priority === 'CRITICA' ? 'critico' : priority === 'ALTA' ? 'pendiente' : 'neutro';
 }
 
 export default async function ManagementPage({
@@ -398,7 +398,7 @@ export default async function ManagementPage({
                     {pms.warnings ? ` · ${pms.warnings} advertencia(s) de lectura` : ''}
                   </p>
                 </div>
-                <Badge tone="neutral">Fuente identificada</Badge>
+                <Badge tone="neutro">Fuente identificada</Badge>
               </div>
 
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

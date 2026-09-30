@@ -1,5 +1,14 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.33.3 · continuidad del mismo recepcionista
+
+- **Revierte la restricción funcional de 1.33.2**: una persona que participó en el turno saliente puede recibir la entrega y continuar en el turno siguiente.
+- No borrar ni retirar al usuario de las asignaciones históricas para habilitar el relevo. El turno saliente conserva su trazabilidad real y debe estar formalmente `CERRADO`; su `ShiftAssignment.leftAt` debe haber quedado registrado antes de iniciar el nuevo turno.
+- `startReceptionShift()`, `receiveShiftCash()` y `receiveHandover()` aceptan al mismo usuario del turno anterior. La recepción sigue creando/enlazando un turno distinto, permanece `INICIADO` y no pasa a `ACTIVO` hasta completar entrega, recuento de Caja/garantías, custodia y revisión final.
+- El gate y la UI vuelven a presentar `HANDOVER_PENDING` al continuador; la pantalla de entrega permite los cinco pasos aunque el receptor también sea emisor histórico.
+- Regresión obligatoria: la jornada E2E encadena DÍA → cierre → NOCHE con la misma persona, incluyendo Caja, y comprueba que sólo quede viva la asignación del turno nuevo.
+- Sin migración Prisma. Release objetivo: **v1.33.3**.
+
 ## 29/09/2026 · AROH 1.33.2 · hotfix de autorecepción de turnos
 
 - No ofrecer recepción normal al mismo usuario que figura en las asignaciones del turno saliente.

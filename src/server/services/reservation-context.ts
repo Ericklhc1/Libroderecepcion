@@ -1,5 +1,7 @@
 import 'server-only';
+import { OperationalAlarmStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
  * Antena operativa de una reserva.
@@ -17,8 +19,8 @@ import { prisma } from '@/lib/prisma';
  * reserva, incluidos comentarios y responsables. No se persiste un resumen
  * duplicado: se calcula leyendo las fuentes originales para que no se desincronicen.
  */
-export async function getReservationOperationalContext(id: string) {
-  return prisma.reservationReference.findFirst({
+export async function getReservationOperationalContext(id: string, user: CurrentUser) {
+  const reservation = await prisma.reservationReference.findFirst({
     where: { id, deletedAt: null },
     include: {
       guest: true,
@@ -99,28 +101,53 @@ export async function getReservationOperationalContext(id: string) {
           },
         },
       },
-      alerts: {
-        where: { deletedAt: null },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          comments: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            include: { author: { select: { name: true } } },
-          },
-        },
-      },
       gymPasses: true,
     },
   });
+  if (!reservation) return null;
+
+  const canSeeAllAlarms =
+    user.isSystemAdmin ||
+    user.permissions.includes('shift.manage') ||
+    user.permissions.includes('supervision.center.view') ||
+    user.permissions.includes('management.dashboard.view');
+
+  const alerts = await prisma.operationalAlarm.findMany({
+    where: {
+      sourceEntity: 'ReservationReference',
+      sourceId: reservation.id,
+      status: OperationalAlarmStatus.ACTIVA,
+      ...(canSeeAllAlarms
+        ? {}
+        : {
+            OR: [
+              { createdById: user.id },
+              { recipients: { some: { userId: user.id } } },
+            ],
+          }),
+    },
+    select: {
+      id: true,
+      title: true,
+      note: true,
+      kind: true,
+      status: true,
+      dueAt: true,
+      sourceLink: true,
+      createdAt: true,
+    },
+    orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
+  });
+
+  return { ...reservation, alerts };
 }
 
-export async function getReservationOperationalContextByCode(code: string) {
+export async function getReservationOperationalContextByCode(code: string, user: CurrentUser) {
   const reservation = await prisma.reservationReference.findFirst({
     where: { code, deletedAt: null },
     select: { id: true },
   });
-  return reservation ? getReservationOperationalContext(reservation.id) : null;
+  return reservation ? getReservationOperationalContext(reservation.id, user) : null;
 }
 
 export type ReservationOperationalContext = NonNullable<
@@ -141,7 +168,7 @@ export function reservationModuleSignals(reservation: ReservationOperationalCont
         entry.tasks.reduce((subtotal, task) => subtotal + task.comments.length, 0) +
         entry.followUps.reduce((subtotal, followUp) => subtotal + followUp.comments.length, 0),
       0,
-    ) + reservation.alerts.reduce((total, alert) => total + alert.comments.length, 0);
+    );
 
   const tasks = reservation.entries.reduce((total, entry) => total + entry.tasks.length, 0);
   const followUps = reservation.entries.reduce((total, entry) => total + entry.followUps.length, 0);

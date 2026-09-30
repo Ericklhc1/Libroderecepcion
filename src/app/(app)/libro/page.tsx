@@ -138,7 +138,6 @@ export default async function BookPage({
       <Filters
         action="/libro"
         fields={[
-          'q',
           'tipo',
           'estado',
           'prioridad',

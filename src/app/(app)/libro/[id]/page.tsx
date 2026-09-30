@@ -20,7 +20,9 @@ import {
   RestoreEntryForm,
 } from '@/components/operational/entry-actions';
 import { TaskForm } from '@/components/forms/task-form';
+import { FollowUpForm } from '@/components/forms/followup-form';
 import { createTaskAction } from '@/server/actions/tasks';
+import { createFollowUpAction } from '@/server/actions/followups';
 import {
   AlarmKindIcon,
   LinkedAlertPrompt,
@@ -268,6 +270,23 @@ export default async function EntryDetailPage({
                   options={options}
                   entryId={entry.id}
                   defaultAssigneeId={entry.ownerId ?? user.id}
+                />
+              </Dialog>
+            ) : null}
+
+            {user.permissions.includes('followup.create') ? (
+              <Dialog
+                title="Crear seguimiento desde esta novedad"
+                description="Programa la continuidad de este asunto sin duplicarlo. El seguimiento conserva el vínculo con la novedad original."
+                triggerVariant="secondary"
+                triggerSize="sm"
+                trigger="Crear seguimiento"
+              >
+                <FollowUpForm
+                  action={createFollowUpAction}
+                  options={options}
+                  entryId={entry.id}
+                  defaultOwnerId={entry.ownerId ?? user.id}
                 />
               </Dialog>
             ) : null}

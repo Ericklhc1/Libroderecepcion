@@ -175,22 +175,6 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
-  if (pathname === '/central-reservas') {
-    const section = filters.vista || 'bandeja';
-    const labels: Record<string, string> = {
-      accion: 'Requieren acción',
-      '24h': 'Llegadas próximas 24 h',
-      '72h': 'Llegadas próximas 72 h',
-      recientes: 'Cambios recientes',
-      bandeja: 'Bandeja completa',
-    };
-    return detail('central-reservas', 'Central de Reservas', section, labels[section] ?? 'Central de Reservas', [
-      'consultar_contexto_pantalla',
-      'consultar_garantias',
-    ]);
-  }
-
-  const reservationCode = pathname.match(/^\/reservas\/([^/]+)$/);
   if (reservationCode) {
     return detail('reservas', 'Reservas', 'detalle', 'Detalle de reserva', [
       'consultar_contexto_pantalla',
@@ -299,6 +283,22 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_vencimientos',
     ]);
   }
+  if (pathname === '/novedades/habitacion') {
+    return detail(
+      'novedades-habitacion',
+      'Novedades / habitación',
+      filters.habitacion ? `Hab. ${filters.habitacion}` : '89 habitaciones',
+      'Monitor operacional por habitación',
+      [
+        'consultar_contexto_pantalla',
+        'consultar_prioridades',
+        'consultar_caja',
+        'consultar_garantias',
+        'consultar_llaves',
+      ],
+    );
+  }
+
   if (pathname === '/indicadores') {
     return detail('indicadores', 'Indicadores', filters.dias ? `${filters.dias}d` : '30d', 'Indicadores operativos', [
       'consultar_contexto_pantalla',

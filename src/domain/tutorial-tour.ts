@@ -66,7 +66,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'libro',
     title: 'Novedades',
     description:
-      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cualquier habitación o referencia se escribe como contexto libre cuando aporta valor.',
+      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cuando una habitación aporta contexto, se selecciona del catálogo y queda vinculada al monitor operacional.',
     route: '/libro?clase=entry',
     target: ROUTE_TARGET,
   },

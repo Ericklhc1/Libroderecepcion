@@ -13,6 +13,7 @@ import {
   openShift,
   prepareHandover,
   receiveHandover,
+  reassignShiftLead,
   sendHandover,
   startReceptionShift,
 } from '@/server/services/shifts';
@@ -71,6 +72,41 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(shift.assignments).toHaveLength(1);
     expect(shift.assignments[0]!.userId).toBe(receptionist.id);
     expect(shift.assignments[0]!.role).toBe('TITULAR');
+  });
+
+  it('reasigna el titular sin borrar la participación del turno', async () => {
+    const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
+
+    const { shift } = await openShift(titular, { type: ShiftType.DIA });
+    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
+
+    await reassignShiftLead(supervisor, { shiftId: shift.id, userId: apoyo.id });
+
+    const assignments = await prisma.shiftAssignment.findMany({
+      where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
+      select: { userId: true, role: true },
+    });
+
+    expect(assignments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: titular.id, role: 'APOYO' }),
+        expect.objectContaining({ userId: apoyo.id, role: 'TITULAR' }),
+      ]),
+    );
+  });
+
+  it('un rol sin shift.reassign no puede cambiar al titular', async () => {
+    const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+
+    const { shift } = await openShift(titular, { type: ShiftType.NOCHE });
+    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
+
+    await expect(
+      reassignShiftLead(titular, { shiftId: shift.id, userId: apoyo.id }),
+    ).rejects.toThrow(RuleError);
   });
 
   it('la ventana la decide el tipo, no quien abre el turno', async () => {

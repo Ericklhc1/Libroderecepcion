@@ -17,6 +17,7 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
     expect(page).toContain('nunca duplica ni cambia el estado');
     expect(page).toContain('Abrir objeto original');
     expect(service).toContain('sourceLink');
+    expect(service).toContain("link: recipient.alarm.sourceLink ?? '/alertas'");
     expect(service).toContain('createOperationalAlarm');
   });
 
@@ -33,11 +34,18 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
     expect(actions).toContain('router.push(href)');
   });
 
-  it('Tareas conservan su ciclo propio y las notificaciones sólo avisan asignaciones', () => {
-    const tasks = readFileSync('src/app/(app)/tareas/page.tsx', 'utf8');
+  it('Tareas conservan su ciclo propio, inicio programado y avisos enlazados', () => {
+    const page = readFileSync('src/app/(app)/tareas/page.tsx', 'utf8');
+    const service = readFileSync('src/server/services/tasks.ts', 'utf8');
+    const schemas = readFileSync('src/server/schemas.ts', 'utf8');
     const tests = readFileSync('tests/tasks.test.ts', 'utf8');
 
-    expect(tasks).toContain('Lo que hay que hacer, con responsable y fecha límite');
+    expect(page).toContain('Lo que hay que hacer, con responsable y fecha límite');
+    expect(service).toContain('startsAt?: Date | null');
+    expect(service).toContain('startsAt: input.startsAt ?? null');
+    expect(service).toContain('La fecha límite debe ser posterior al inicio programado');
+    expect(service).toContain('link: `/tareas/${created.id}`');
+    expect(schemas).toContain('startsAt: zOptionalDate');
     expect(tests).toContain("type: 'TAREA_ASIGNADA'");
     expect(tests).toContain("status: TaskStatus.COMPLETADA");
   });

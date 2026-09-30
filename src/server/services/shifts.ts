@@ -186,7 +186,12 @@ export async function getMyOpenShift(userId: string) {
   return prisma.shift.findFirst({
     where: {
       status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
-      assignments: { some: { userId } },
+      assignments: {
+        some: {
+          userId,
+          removedExplicitly: false,
+        },
+      },
     },
     include: shiftInclude,
     orderBy: [{ date: 'desc' }, { actualStart: 'desc' }],
@@ -216,7 +221,12 @@ export async function getMyPendingClosureShift(userId: string) {
   return prisma.shift.findFirst({
     where: {
       status: ShiftStatus.ENTREGA_ENVIADA,
-      assignments: { some: { userId } },
+      assignments: {
+        some: {
+          userId,
+          removedExplicitly: false,
+        },
+      },
       archivedAt: null,
     },
     include: shiftInclude,
@@ -1005,7 +1015,7 @@ export async function openShift(
           activatedAt: now,
           leftAt: null,
         },
-        update: { activatedAt: now, leftAt: null },
+        update: { activatedAt: now, leftAt: null, removedExplicitly: false },
       });
 
       /*
@@ -1281,7 +1291,7 @@ export async function startReceptionShift(
           activatedAt: now,
           leftAt: null,
         },
-        update: { activatedAt: now, leftAt: null },
+        update: { activatedAt: now, leftAt: null, removedExplicitly: false },
       });
 
       const claimed = await tx.shiftHandover.updateMany({
@@ -1577,7 +1587,7 @@ export async function addShiftMember(
           activatedAt: now,
           leftAt: null,
         },
-        update: { activatedAt: now, leftAt: null },
+        update: { role, activatedAt: now, leftAt: null, removedExplicitly: false },
       });
 
       await recordAudit(
@@ -1605,6 +1615,123 @@ export async function addShiftMember(
       }
       throw error;
     });
+}
+
+/**
+ * Saca a una persona del turno vigente sin borrar su participación histórica.
+ *
+ * La asignación se conserva y se marca con leftAt. Si sale quien era TITULAR,
+ * se promueve automáticamente a la persona activa más antigua que permanezca.
+ * Nunca se permite dejar un turno operativo sin participantes.
+ */
+export async function removeShiftMember(
+  actor: CurrentUser,
+  input: { shiftId: string; userId: string },
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw<Array<{ locked: boolean }>>`
+      SELECT pg_advisory_xact_lock(1279873620) IS NULL AS "locked"
+    `;
+
+    const shift = await tx.shift.findUnique({
+      where: { id: input.shiftId },
+      include: {
+        assignments: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!shift) throw new NotFoundError('El turno no existe.');
+    if (shift.archivedAt) throw new RuleError('Ese turno ya fue archivado.');
+    if (shift.status !== ShiftStatus.INICIADO && shift.status !== ShiftStatus.ACTIVO) {
+      throw new RuleError(
+        'Sólo se puede sacar gente mientras el turno está iniciado o activo. Si el cierre ya comenzó, cancélalo primero.',
+      );
+    }
+
+    const activeAssignments = shift.assignments.filter(
+      (assignment) => assignment.activatedAt && !assignment.leftAt,
+    );
+    const actorIsIn = activeAssignments.some((assignment) => assignment.userId === actor.id);
+    const actorSupervises = actor.permissions.includes('shift.manage');
+    if (!actorIsIn && !actorSupervises) {
+      throw new RuleError('Sólo quien está en el turno o quien lo supervisa puede sacar gente.');
+    }
+
+    const target = activeAssignments.find((assignment) => assignment.userId === input.userId);
+    if (!target) {
+      throw new RuleError('Esa persona ya no participa activamente en este turno.');
+    }
+    if (activeAssignments.length <= 1) {
+      throw new RuleError(
+        'No puedes sacar a la única persona activa del turno. Debes cerrar o reasignar la operación antes.',
+      );
+    }
+
+    const remaining = activeAssignments.filter((assignment) => assignment.userId !== target.userId);
+    const replacement =
+      target.role === AssignmentRole.TITULAR
+        ? remaining.find((assignment) => assignment.role === AssignmentRole.APOYO) ?? remaining[0]!
+        : null;
+    const now = new Date();
+
+    await tx.shiftAssignment.update({
+      where: { id: target.id },
+      data: { leftAt: now, removedExplicitly: true },
+    });
+
+    if (replacement) {
+      await tx.shiftAssignment.update({
+        where: { id: replacement.id },
+        data: { role: AssignmentRole.TITULAR },
+      });
+    }
+
+    await recordAudit(
+      {
+        entity: 'Shift',
+        entityId: shift.id,
+        action: AuditAction.EDITAR,
+        user: actor,
+        summary:
+          actor.id === target.userId
+            ? `${target.user.name} salió del turno`
+            : `${target.user.name} fue retirado del turno por ${actor.name}`,
+        before: {
+          removedUserId: target.userId,
+          removedUserName: target.user.name,
+          removedRole: target.role,
+          activeParticipants: activeAssignments.map((assignment) => assignment.userId),
+        },
+        after: {
+          removedUserId: target.userId,
+          leftAt: now.toISOString(),
+          promotedUserId: replacement?.userId ?? null,
+          promotedUserName: replacement?.user.name ?? null,
+          activeParticipants: remaining.map((assignment) => assignment.userId),
+        },
+      },
+      tx,
+    );
+
+    if (actor.id !== target.userId) {
+      await notify(
+        [
+          {
+            userId: target.userId,
+            type: NotificationType.ACTUALIZACION_OPERATIVA,
+            title: 'Salida de turno registrada',
+            body: `${actor.name} te retiró del turno ${SHIFT_TYPE_LABEL[shift.type]}. Tu participación anterior quedó guardada en el historial.`,
+            link: '/turno',
+            entity: 'Shift',
+            entityId: shift.id,
+          },
+        ],
+        tx,
+      );
+    }
+  });
 }
 
 /**
@@ -2073,7 +2200,9 @@ export async function receiveHandover(
 /** Paso 3: abrir la preparación de la entrega, generando el resumen automático. */
 export async function prepareHandover(user: CurrentUser, shiftId: string) {
   const shift = await getShiftById(shiftId);
-  if (!shift.assignments.some((a) => a.userId === user.id)) {
+  if (!shift.assignments.some(
+    (a) => a.userId === user.id && !a.removedExplicitly,
+  )) {
     throw new RuleError('Sólo quien está en el turno puede preparar su entrega.');
   }
 
@@ -2216,7 +2345,10 @@ export async function confirmHandoverReviewStep(
   if (handover.status !== HandoverStatus.BORRADOR) {
     throw new RuleError('La entrega ya no está en preparación.');
   }
-  if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+  if (!handover.fromShift.assignments.some(
+    (assignment) =>
+      assignment.userId === user.id && !assignment.removedExplicitly,
+  )) {
     throw new RuleError('Sólo quien está en el turno puede confirmar la revisión de su entrega.');
   }
   if (handover.fromShift.status !== ShiftStatus.PREPARANDO_ENTREGA) {
@@ -2288,7 +2420,9 @@ export async function sendHandover(
   params: { shiftId: string; notes?: string | null },
 ) {
   const shift = await getShiftById(params.shiftId);
-  if (!shift.assignments.some((a) => a.userId === user.id)) {
+  if (!shift.assignments.some(
+    (a) => a.userId === user.id && !a.removedExplicitly,
+  )) {
     throw new RuleError('Sólo quien está en el turno puede enviar su entrega.');
   }
   const handover = shift.handoverOut;
@@ -2472,7 +2606,9 @@ export async function closeShift(
   params: { shiftId: string; notes?: string | null },
 ) {
   const shift = await getShiftById(params.shiftId);
-  const isOwner = shift.assignments.some((a) => a.userId === user.id);
+  const isOwner = shift.assignments.some(
+    (a) => a.userId === user.id && !a.removedExplicitly,
+  );
   const canManage = user.permissions.includes('shift.manage');
   if (!isOwner && !canManage) {
     throw new RuleError('Sólo quien estuvo en el turno o un supervisor puede cerrarlo.');
@@ -2615,7 +2751,9 @@ export async function closeShift(
 /** Cancela la preparación y devuelve el turno a ACTIVO sin borrar la entrega. */
 export async function cancelHandoverPreparation(user: CurrentUser, shiftId: string) {
   const shift = await getShiftById(shiftId);
-  if (!shift.assignments.some((a) => a.userId === user.id)) {
+  if (!shift.assignments.some(
+    (a) => a.userId === user.id && !a.removedExplicitly,
+  )) {
     throw new RuleError('Sólo quien está en el turno puede cancelar la preparación.');
   }
   assertTransition(shift.status, ShiftStatus.ACTIVO);

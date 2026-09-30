@@ -730,6 +730,9 @@ model ShiftAssignment {
   activatedAt DateTime?
   /// Fin real de la participación. Mientras sea nulo, la persona ocupa su único turno activo.
   leftAt      DateTime?
+  /// Distingue una salida manual del turno de un cierre/relevo técnico.
+  /// Permite conservar trazabilidad sin mantener privilegios operativos.
+  removedExplicitly Boolean  @default(false)
   createdAt   DateTime       @default(now())
 
   @@unique([shiftId, userId])

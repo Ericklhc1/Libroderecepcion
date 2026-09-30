@@ -406,7 +406,12 @@ export async function saveHandoverUsdRateAction(
     if (handover.status !== HandoverStatus.BORRADOR) {
       throw new RuleError('El dólar del turno se declara antes de enviar la entrega.');
     }
-    if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+    if (
+      !handover.fromShift.assignments.some(
+        (assignment) =>
+          assignment.userId === user.id && !assignment.removedExplicitly,
+      )
+    ) {
       throw new RuleError('Sólo quien está en el turno puede declarar el dólar de la entrega.');
     }
 

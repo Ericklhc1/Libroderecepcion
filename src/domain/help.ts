@@ -71,6 +71,23 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
 
   {
+    id: 'gestionar-personas-turno',
+    question: '¿Cómo agrego o saco personas de un turno?',
+    steps: [
+      'En Mi turno, usa «Compartir turno / sumar al equipo» para incorporar a otra persona operativa disponible.',
+      'Para retirarla, usa «Sacar del turno» y selecciona a quien deja de participar.',
+      'La salida se registra con hora y queda en Auditoría; no se borra la participación histórica.',
+      'Si sale el TITULAR y quedan otras personas activas, la Central promueve automáticamente a una de ellas como TITULAR.',
+      'Nunca se puede dejar un turno operativo sin ninguna persona activa.',
+    ],
+    caveat:
+      'Las altas y bajas sólo se permiten mientras el turno está INICIADO o ACTIVO. Una persona retirada deja de tener acceso operativo a ese turno, aunque siga apareciendo en su historial de participación.',
+    route: '/turno',
+    anyOf: ['shift.start'],
+    keywords: ['turno', 'persona', 'equipo', 'sumar', 'agregar', 'sacar', 'quitar', 'retirar', 'titular', 'apoyo'],
+  },
+
+  {
     id: 'cambiar-tipo-turno',
     question: '¿Cómo corrijo un turno DÍA a NOCHE o viceversa?',
     steps: [

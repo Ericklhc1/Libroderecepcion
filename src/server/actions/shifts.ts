@@ -27,6 +27,7 @@ import {
   openShift,
   prepareHandover,
   receiveHandover,
+  removeShiftMember,
   changeShiftType,
   startReceptionShift,
   sendHandover,
@@ -162,6 +163,20 @@ export async function addShiftMemberAction(
     await addShiftMember(user, input);
     refresh(input.shiftId);
     return { ok: true as const, message: 'Persona sumada al turno.' };
+  });
+}
+
+export async function removeShiftMemberAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.start');
+    const input = parseOrThrow(addMemberSchema, formDataToObject(formData));
+
+    await removeShiftMember(user, input);
+    refresh(input.shiftId);
+    return { ok: true as const, message: 'Persona retirada del turno.' };
   });
 }
 
@@ -458,7 +473,12 @@ export async function closeShiftAction(
     const user = await requirePermissionOrOwner('shift.close', async () => {
       const shift = await prisma.shift.findUnique({
         where: { id: input.shiftId },
-        select: { assignments: { select: { userId: true } } },
+        select: {
+          assignments: {
+            where: { removedExplicitly: false },
+            select: { userId: true },
+          },
+        },
       });
       return shift?.assignments.map((assignment) => assignment.userId) ?? [];
     });
@@ -526,7 +546,9 @@ export async function addHandoverNoteAction(
     if (handover.status !== HandoverStatus.BORRADOR) {
       throw new RuleError('La entrega ya fue enviada: no admite nuevas notas.');
     }
-    if (!handover.fromShift.assignments.some((a) => a.userId === user.id)) {
+    if (!handover.fromShift.assignments.some(
+      (a) => a.userId === user.id && !a.removedExplicitly,
+    )) {
       throw new RuleError('Sólo quien está en el turno puede agregar notas a su entrega.');
     }
 
@@ -582,7 +604,9 @@ export async function removeHandoverNoteAction(
     if (item.handover.status !== HandoverStatus.BORRADOR) {
       throw new RuleError('La entrega ya fue enviada.');
     }
-    if (!item.handover.fromShift.assignments.some((a) => a.userId === user.id)) {
+    if (!item.handover.fromShift.assignments.some(
+      (a) => a.userId === user.id && !a.removedExplicitly,
+    )) {
       throw new RuleError('Sólo quien está en el turno puede editar su entrega.');
     }
 

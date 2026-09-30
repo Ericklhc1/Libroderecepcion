@@ -59,6 +59,7 @@ export default async function LiveCashPage({
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '').toLowerCase() : '';
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
+  const roomContext = typeof params.habitacion === 'string' ? params.habitacion : '';
   const todayKey = hotelDateKey(new Date());
   const defaultFrom = `${todayKey.slice(0, 8)}01`;
   const gymFrom = typeof params.desde === 'string' && params.desde ? params.desde : defaultFrom;
@@ -167,7 +168,7 @@ export default async function LiveCashPage({
                 </>
               }
             >
-              <CreateCashGuaranteeForm />
+              <CreateCashGuaranteeForm defaultRoomNumber={roomContext || undefined} />
             </Dialog>
           ) : null}
 

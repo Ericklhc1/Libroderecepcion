@@ -143,7 +143,7 @@ function RoomTile({
   );
 }
 
-function SectionTitle({function SectionTitle({
+function SectionTitle({
   icon: Icon,
   title,
   count,

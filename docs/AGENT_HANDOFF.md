@@ -1,6 +1,17 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
 
+## 30/09/2026 · AROH 1.37.1 · hora Chile canónica
+
+- Corrección transversal de escritura: `datetime-local` representa hora local sin zona y nunca debe pasarse directamente a `new Date()` / `Date.parse()` en Vercel.
+- El parser común `zOptionalDate` usa ahora `parseHotelDateInput()`: horas sin zona se interpretan en `America/Santiago`; ISO con `Z`/offset se conserva como instante absoluto.
+- Esto cubre Novedades/Incidencias, Tareas, Seguimientos, Alertas, Reservas de referencia, Garantías, Comunicados y vencimientos/periodos que usan el esquema común. Caja en vivo y Alarmas operativas continúan con `parseHotelDateTimeLocal()`.
+- Caso de regresión explícito: `30/09/2026 11:00` debe persistir como `2026-09-30T14:00:00.000Z` y volver a mostrarse **11:00** en Chile, no 08:00.
+- También se prueba invierno UTC-4 para evitar fijar manualmente `-03:00`.
+- No migrar timestamps históricos automáticamente: sólo corregir datos antiguos cuando exista evidencia del valor local que el usuario pretendía registrar.
+- Sin migración Prisma. Release: **v1.37.1**.
+
+
 ## 30/09/2026 · AROH 1.37.0 · tutoriales modulares + Ayuda completa + Fronti explicativo
 
 - El tutorial deja de ser únicamente un onboarding global. Cada usuario conserva en `User.tutorialKnownModules` los módulos que ya conoce.

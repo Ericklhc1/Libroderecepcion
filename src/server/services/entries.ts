@@ -47,7 +47,7 @@ type EntryCreateInput = {
   description: string;
   category?: string | null;
   departmentId?: string | null;
-  /** Legado de compatibilidad: se acepta pero se ignora. */
+  /** Contexto operativo opcional; no crea ni modifica una estadía PMS. */
   roomId?: string | null;
   priority: Prisma.OperationalEntryCreateInput['priority'];
   ownerId?: string | null;
@@ -74,6 +74,10 @@ type EntryCreateInput = {
  */
 export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
   if (input.ownerId) await assertAssignable(input.ownerId);
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+  }
 
   if (input.type === EntryType.INCIDENCIA && !input.severity) {
     throw new RuleError('Una incidencia requiere indicar su gravedad.');
@@ -89,7 +93,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         description: input.description,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
-        roomId: null,
+        roomId: input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         shiftId: shift?.id ?? null,
@@ -225,6 +229,7 @@ const EDITABLE_FIELDS = [
   'description',
   'category',
   'departmentId',
+  'roomId',
   'priority',
   'ownerId',
   'dueAt',
@@ -262,6 +267,10 @@ export async function updateEntry(
     throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
   }
   if (input.ownerId) await assertAssignable(input.ownerId);
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+  }
 
   const data: Prisma.OperationalEntryUpdateInput = {};
   const after: Record<string, unknown> = {};

@@ -1,5 +1,20 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.36.0 · Novedades / habitación
+
+- AROH reafirma su alcance: **no es PMS**. FNSrooms sigue siendo la fuente para reservas, ocupación, check-in y check-out.
+- Se retira «Central de Reservas» como módulo raíz. La ruta histórica redirige a `/novedades/habitacion`.
+- Nuevo módulo **Novedades / habitación**: mapa operativo interactivo de las 89 habitaciones (401–429, 501–530, 601–630).
+- Habitación funciona como **contexto físico**, no como estado de alojamiento.
+- El monitor reúne Novedades/Incidencias, Tareas, Seguimientos, Alertas programables, Garantías y otros registros operativos asociados.
+- Formularios de Novedades, Tareas, Alertas, Garantías, Gimnasio y Estacionamiento usan selector canónico de habitación.
+- Las Alertas heredan la habitación del objeto de origen cuando corresponda, sin duplicar la Novedad/Tarea.
+- Estacionamiento sustituye «Patente» por **ID Reserva**; `vehiclePlate` queda sólo como compatibilidad histórica y los registros nuevos usan `reservationCode`.
+- Gerencia no incorpora llegadas/ocupación como KPI propio; métricas PMS permanecen como fuentes externas/no conectadas.
+- Semántica preservada: Tarea = trabajo; Alerta = llamada de atención programable; Notificación = aviso navegable.
+- Release objetivo: **v1.36.0**.
+
+
 ## 30/09/2026 · AROH 1.35.0 · Gerencia estratégica
 
 - Rama: `feature/gerencia-estrategica-v1-35-0`.

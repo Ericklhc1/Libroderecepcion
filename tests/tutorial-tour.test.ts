@@ -41,6 +41,7 @@ describe('recorrido guiado', () => {
     expect(routes).toContain('/llaves');
     expect(routes).toContain('/alertas');
     expect(routes).toContain('/supervision');
+    expect(routes).toContain('/gerencia');
 
     for (const retired of [
       '/reservas',

@@ -38,6 +38,7 @@ export const PERMISSIONS = {
   'nightaudit.run': { group: 'Auditoría nocturna', name: 'Controles y cierre nocturno' },
 
   'metrics.view': { group: 'Indicadores', name: 'Ver indicadores' },
+  'management.dashboard.view': { group: 'Gerencia', name: 'Ver Centro de Decisión Gerencial' },
   'audit.view': { group: 'Auditoría', name: 'Ver registro de auditoría' },
 
   /*
@@ -253,6 +254,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'conflict.resolve_all',
     'announcement.manage',
     'reservation.center.view',
+    'management.dashboard.view',
     'supervision.view',
     'supervision.center.view',
     'supervision.shift.manage',
@@ -322,6 +324,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLE_KEYS.MANAGEMENT]: [
     'guest.view',
     'reservation.center.view',
+    'management.dashboard.view',
     'supervision.view',
     'supervision.center.view',
     'supervision.task.assign',

@@ -9,6 +9,7 @@ import {
   isTutorialModuleKey,
   type TutorialModuleKey,
 } from '@/domain/tutorial-tour';
+import { isTutorialModuleKey } from '@/domain/tutorial-tour';
 import {
   finishCorrelatedOperationalMetric,
   operationalDurationMs,
@@ -131,8 +132,8 @@ export async function finishTutorialAction(
         completedEventType,
         correlationId,
         userId: user.id,
-        entityType: 'Tutorial',
-        entityId: 'guided-tour',
+        entityType: moduleKey ? 'TutorialModule' : 'Tutorial',
+        entityId: moduleKey ?? 'guided-tour',
         fallbackStartedAt: startedAt,
       });
     } else {
@@ -140,8 +141,8 @@ export async function finishTutorialAction(
       recordOperationalEvent({
         eventType: completedEventType,
         userId: user.id,
-        entityType: 'Tutorial',
-        entityId: 'guided-tour',
+        entityType: moduleKey ? 'TutorialModule' : 'Tutorial',
+        entityId: moduleKey ?? 'guided-tour',
         startedAt,
         completedAt,
         durationMs: operationalDurationMs(startedAt, completedAt),
@@ -263,6 +264,27 @@ export async function restartModuleTutorialAction(
       data: { tutorialKnownModules: { set: next } },
     });
 
+    revalidatePath('/', 'layout');
+    return { ok: true as const, message: 'El tutorial del módulo volverá a aparecer.' };
+  });
+}
+
+
+/** Vuelve a ofrecer únicamente el tutorial de un módulo habilitado. */
+export async function restartModuleTutorialAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requireUser();
+    const raw = formData.get('moduleKey');
+    if (typeof raw !== 'string' || !isTutorialModuleKey(raw)) {
+      throw new Error('El módulo de tutorial no es válido.');
+    }
+
+    await prisma.userTutorialModule.deleteMany({
+      where: { userId: user.id, moduleKey: raw },
+    });
     revalidatePath('/', 'layout');
     return { ok: true as const, message: 'El tutorial del módulo volverá a aparecer.' };
   });

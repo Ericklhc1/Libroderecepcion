@@ -281,12 +281,6 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
-    href: '/gerencia',
-    label: 'Gerencia',
-    icon: 'metrics',
-    anyOf: ['management.dashboard.view'],
-  },
-  {
     href: '/supervision',
     label: 'Centro de Supervisión',
     icon: 'supervision',
@@ -339,6 +333,15 @@ const PRIMARY: NavItem[] = [
         ],
       },
     ],
+  },
+];
+
+const MANAGEMENT: NavItem[] = [
+  {
+    href: '/gerencia',
+    label: 'Gerencia',
+    icon: 'metrics',
+    anyOf: ['management.dashboard.view'],
   },
 ];
 
@@ -415,6 +418,7 @@ const SYSTEM: NavItem[] = [
 
 export const NAV_GROUPS: NavGroup[] = [
   { title: null, items: PRIMARY },
+  { title: 'Dirección', items: MANAGEMENT },
   { title: 'Consulta', items: SECONDARY },
   { title: 'Sistema', items: SYSTEM },
 ];

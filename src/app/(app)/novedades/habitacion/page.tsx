@@ -8,7 +8,7 @@ import {
   ClipboardCheck,
   DoorOpen,
   Receipt,
-  ShieldAlert,
+  RefreshCcw,
 } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { getFormOptions } from '@/server/services/options';
@@ -24,8 +24,8 @@ import {
   getRoomMonitorOverview,
   type RoomMonitorTile,
 } from '@/server/services/room-monitor';
-import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Card, EmptyState } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
 
 export const metadata = { title: 'Novedades / habitación' };
@@ -81,6 +81,7 @@ function RoomTile({
   const activity =
     room.openEntries +
     room.openTasks +
+    room.openFollowUps +
     room.activeAlarms +
     room.openGuarantees;
 
@@ -116,6 +117,11 @@ function RoomTile({
           {room.openTasks > 0 ? (
             <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
               Tareas <strong>{room.openTasks}</strong>
+            </span>
+          ) : null}
+          {room.openFollowUps > 0 ? (
+            <span className="rounded-sm bg-white/80 px-2 py-1 text-petrol-800 ring-1 ring-black/5">
+              Seguimientos <strong>{room.openFollowUps}</strong>
             </span>
           ) : null}
           {room.activeAlarms > 0 ? (
@@ -221,7 +227,7 @@ export default async function RoomOperationsMonitor({
           ['Críticas / vencidas', overview.summary.critical],
           ['Novedades abiertas', overview.summary.openEntries],
           ['Tareas abiertas', overview.summary.openTasks],
-          ['Alertas activas', overview.summary.activeAlarms],
+          ['Seguimientos', overview.summary.openFollowUps],
         ].map(([label, value]) => (
           <div key={String(label)} className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-card">
             <p className="text-[0.64rem] font-semibold uppercase tracking-[0.07em] text-slate-400">
@@ -394,6 +400,27 @@ export default async function RoomOperationsMonitor({
                               {human(task.status)}
                               {task.assignee ? ` · ${task.assignee.name}` : ' · sin asignar'}
                               {task.dueAt ? ` · vence ${formatDateTime(task.dueAt)}` : ''}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section>
+                    <SectionTitle icon={RefreshCcw} title="Seguimientos" count={detail.followUps.length} />
+                    {detail.followUps.length === 0 ? (
+                      <p className="mt-2 text-xs text-slate-400">Sin seguimientos vinculados.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {detail.followUps.slice(0, 10).map((followUp) => (
+                          <li key={followUp.id} className="rounded-md border border-slate-200 bg-white p-2.5">
+                            <Link href="/seguimientos" className="text-sm font-semibold text-petrol-950 hover:underline">
+                              #{followUp.humanId} · {followUp.nextAction ?? followUp.action}
+                            </Link>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {human(followUp.status)} · {followUp.owner.name}
+                              {followUp.scheduledAt ? ` · ${formatDateTime(followUp.scheduledAt)}` : ''}
                             </p>
                           </li>
                         ))}

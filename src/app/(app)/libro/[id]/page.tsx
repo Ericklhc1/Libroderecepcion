@@ -230,12 +230,14 @@ export default async function EntryDetailPage({
                   description: entry.description,
                   dueAt: toDateTimeInput(entry.dueAt),
                   departmentId: entry.departmentId,
+                  roomId: entry.roomId,
                   ownerId: entry.ownerId,
                   priority: entry.priority,
                   tags: entry.tags,
                 }}
                 departments={options.departments}
                 users={options.users}
+                rooms={options.rooms}
               />
             ) : null}
 
@@ -270,6 +272,7 @@ export default async function EntryDetailPage({
                   options={options}
                   entryId={entry.id}
                   defaultAssigneeId={entry.ownerId ?? user.id}
+                  defaultRoomId={entry.roomId ?? undefined}
                 />
               </Dialog>
             ) : null}

@@ -15,6 +15,7 @@ import {
   TaskStatus,
   TaskTargetType,
 } from '@prisma/client';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import {
   zCheckbox,
   zOptionalCuid,
@@ -270,7 +271,10 @@ export const guaranteeCreateSchema = z
     roomId: zOptionalCuid,
     /** Contexto directo de Caja: al menos uno debe identificar de quién/de qué es el dinero. */
     guestName: zOptionalString,
-    roomNumber: zOptionalString,
+    roomNumber: zOptionalString.refine(
+      (value) => !value || isOperationalRoomNumber(value),
+      'Selecciona una habitación válida del hotel.',
+    ),
     reference: zOptionalString,
     dueAt: zOptionalDate,
     kind: z.enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO']),

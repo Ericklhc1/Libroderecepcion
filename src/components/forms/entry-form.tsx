@@ -31,12 +31,9 @@ const IMPACT_OPTIONS = Object.values(Impact).map((impact) => ({
 /**
  * Formulario canónico del Libro desde v1.4.0.
  *
- * Novedades e Incidencias describen la operación directamente. No consultan
- * habitaciones, huéspedes, reservas ni estadías del PMS. Si una habitación es
- * relevante, se escribe en el título/descripcion o en la categoría.
- *
- * defaultRoomId y defaultStayId se aceptan sólo para compatibilidad de páginas
- * antiguas todavía compilables; se ignoran deliberadamente.
+ * Novedades e Incidencias pueden vincularse a una habitación del catálogo
+ * operativo. Ese vínculo alimenta el monitor Novedades / habitación y no
+ * representa ocupación, check-in ni estado PMS.
  */
 export function EntryForm({
   action,
@@ -44,7 +41,7 @@ export function EntryForm({
   defaultType = EntryType.NOVEDAD,
   lockType = false,
   closeOnSuccess = true,
-  defaultRoomId: _defaultRoomId = '',
+  defaultRoomId = '',
   defaultStayId: _defaultStayId = '',
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -87,6 +84,28 @@ export function EntryForm({
         </p>
       ) : null}
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Habitación"
+          name="roomId"
+          hint="Opcional. Sirve para agrupar la operación en Novedades / habitación."
+        >
+          <Select
+            name="roomId"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomId}
+            options={options.rooms}
+          />
+        </Field>
+        <Field label="Área responsable" name="departmentId">
+          <Select
+            name="departmentId"
+            placeholder="Sin área específica"
+            options={options.departments}
+          />
+        </Field>
+      </div>
+
       <Field label="Título" name="title" required>
         <Input
           name="title"
@@ -100,24 +119,14 @@ export function EntryForm({
         label="Descripción"
         name="description"
         required
-        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Habitación, huésped o referencia pueden escribirse aquí cuando aporten contexto."
+        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Si aplica una habitación, selecciónala arriba para que aparezca en su monitor."
       >
         <Textarea name="description" required rows={4} maxLength={8000} />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Categoría" name="category" hint="Opcional. Ej.: mantenimiento, caja, seguridad.">
-          <Input name="category" maxLength={120} placeholder="Categoría" />
-        </Field>
-
-        <Field label="Área responsable" name="departmentId">
-          <Select
-            name="departmentId"
-            placeholder="Sin área específica"
-            options={options.departments}
-          />
-        </Field>
-      </div>
+      <Field label="Categoría" name="category" hint="Opcional. Ej.: mantenimiento, caja, seguridad.">
+        <Input name="category" maxLength={120} placeholder="Categoría" />
+      </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Responsable" name="ownerId">

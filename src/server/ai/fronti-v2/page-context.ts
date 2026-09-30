@@ -305,6 +305,13 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_prioridades',
     ]);
   }
+  if (pathname === '/gerencia') {
+    return detail('gerencia', 'Gerencia', filters.dias ? `${filters.dias}d` : '30d', 'Centro de Decisión Gerencial', [
+      'consultar_contexto_pantalla',
+      'consultar_prioridades',
+      'consultar_supervision',
+    ]);
+  }
 
   if (pathname === '/supervision') {
     return detail('supervision', 'Centro de Supervisión', 'centro', 'Centro de Supervisión', [

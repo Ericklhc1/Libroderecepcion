@@ -20,6 +20,7 @@ import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getMetrics, defaultRange } from '@/server/services/metrics';
+import { getManagementDashboard } from '@/server/services/management-dashboard';
 import {
   getOperationalHealth,
   operationalHealthRange,
@@ -955,6 +956,15 @@ export async function executeFrontiPageContextTool(
       const requested = Number(page.filters.dias ?? 30);
       const days = [7, 30, 90].includes(requested) ? requested : 30;
       return { ...base, snapshot: await getMetrics(defaultRange(days)) };
+    }
+    case 'gerencia': {
+      requireAny(
+        user,
+        ['management.dashboard.view'],
+        'No tienes permiso para consultar el Centro de Decisión Gerencial.',
+      );
+      const requested = Number(page.filters.dias ?? 30);
+      return { ...base, snapshot: await getManagementDashboard(requested) };
     }
     case 'supervision':
       return {

@@ -40,6 +40,7 @@ describe('menú principal', () => {
       '/llaves', // inventario físico autónomo
       '/alertas', // llamadas de atención programables
       '/supervision', // Centro privado, sólo visible con permiso específico
+      '/gerencia', // capa estratégica para roles con permiso gerencial
     ]);
   });
 
@@ -81,11 +82,21 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
-  it('el Supervisor ve el Centro como módulo raíz privado', () => {
-    const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
-    expect(permissions).toContain('supervision.view');
-    expect(permissions).toContain('supervision.center.view');
-    expect(visibleNavItems(permissions).map((i) => i.href)).toContain('/supervision');
+  it('Supervisor y Gerencia ven sus módulos de dirección sin abrirlos al mesón', () => {
+    const supervisor = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
+    expect(supervisor).toContain('supervision.center.view');
+    expect(supervisor).toContain('management.dashboard.view');
+    expect(visibleNavItems(supervisor).map((i) => i.href)).toEqual(
+      expect.arrayContaining(['/supervision', '/gerencia']),
+    );
+
+    const management = ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT];
+    expect(management).toContain('management.dashboard.view');
+    expect(visibleNavItems(management).map((i) => i.href)).toContain('/gerencia');
+
+    for (const role of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR]) {
+      expect(visibleNavItems(ROLE_PERMISSIONS[role]).map((i) => i.href)).not.toContain('/gerencia');
+    }
   });
 
   it('separa la Auditoría de la Administración técnica', () => {

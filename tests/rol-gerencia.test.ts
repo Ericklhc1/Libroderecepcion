@@ -20,6 +20,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
  * custodiar llaves ni editar reservas.
  */
 const DIRECCION_GERENCIA: PermissionKey[] = [
+  'management.dashboard.view',
   'reservation.center.view',
   'supervision.center.view',
   'supervision.task.assign',

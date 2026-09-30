@@ -72,6 +72,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(pages.map(routeForPage)).toContain('/central-reservas');
     expect(pages.map(routeForPage)).toContain('/caja');
     expect(pages.map(routeForPage)).toContain('/supervision');
+    expect(pages.map(routeForPage)).toContain('/gerencia');
     expect(pages.map(routeForPage)).toContain('/admin/fronti');
   });
 
@@ -94,6 +95,23 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     });
     expect(context.filters).not.toHaveProperty('token');
     expect(context.filters).not.toHaveProperty('api_key');
+  });
+
+  it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
+    const management = resolveFrontiPageContext({
+      pathname: '/gerencia',
+      search: '?dias=30',
+    });
+    expect(management.moduleKey).toBe('gerencia');
+    expect(management.sectionLabel).toBe('Centro de Decisión Gerencial');
+    expect(management.filters.dias).toBe('30');
+    expect(management.recommendedTools).toEqual(
+      expect.arrayContaining([
+        'consultar_contexto_pantalla',
+        'consultar_prioridades',
+        'consultar_supervision',
+      ]),
+    );
   });
 
   it('entiende las subsecciones de Caja y Central de Reservas', () => {

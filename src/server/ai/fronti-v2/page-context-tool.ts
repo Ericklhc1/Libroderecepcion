@@ -7,6 +7,7 @@ import { getDashboardData } from '@/server/services/dashboard';
 import { getEntry } from '@/server/services/entries';
 import { getTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
+import { getRoomOperationsBoard } from '@/server/services/room-operations';
 import { getReservationCenterSnapshot } from '@/server/services/reservation-center';
 import {
   getReservationOperationalContext,
@@ -845,6 +846,37 @@ export async function executeFrontiPageContextTool(
         ...base,
         snapshot: await getNotificationFeedForUser(user.id, 40),
       };
+    case 'habitaciones-contexto': {
+      const roomNumber = page.filters.habitacion ?? page.entityId ?? null;
+      const board = await getRoomOperationsBoard({
+        includeCashContext: has(user, 'cash.view'),
+        selectedRoomNumber: roomNumber,
+      });
+      const floor = page.filters.piso ?? 'todos';
+      const state = page.filters.estado ?? 'todos';
+      const visibleRooms = board.rooms.filter((room) => {
+        if (floor !== 'todos' && String(room.floor) !== floor) return false;
+        if (state === 'actividad' && room.openCount === 0) return false;
+        if (state === 'criticas' && room.criticalCount === 0) return false;
+        return true;
+      });
+      return {
+        ...base,
+        snapshot: {
+          semantics:
+            'La habitación es contexto operativo de Novedades; no representa ocupación, check-in, check-out ni disponibilidad PMS.',
+          summary: board.summary,
+          selected: board.selected,
+          visibleRooms: visibleRooms.slice(0, 89).map((room) => ({
+            number: room.number,
+            floor: room.floor,
+            openCount: room.openCount,
+            criticalCount: room.criticalCount,
+            counts: room.counts,
+          })),
+        },
+      };
+    }
     case 'central-reservas':
       return { ...base, snapshot: await reservationCenterSnapshot(user, page) };
     case 'reservas':

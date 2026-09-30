@@ -158,13 +158,11 @@ export function ReservationAntenna({ reservation }: { reservation: ReservationOp
             {reservation.alerts.map((alert) => (
               <li key={alert.id} className="px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={alert.status === 'RESUELTA' ? 'resuelto' : alert.level === 'CRITICA' ? 'atencion' : 'pendiente'}>{alert.status}</Badge>
+                  <Badge tone={alert.status === 'ACTIVA' ? 'pendiente' : 'resuelto'}>{alert.status}</Badge>
                   <p className="font-medium text-petrol-900">{alert.title}</p>
                 </div>
-                {alert.message ? <p className="mt-1 text-slate-700">{alert.message}</p> : null}
-                {alert.comments.map((comment) => (
-                  <p key={comment.id} className="mt-1 text-xs text-slate-600"><span className="font-medium">{comment.author.name}:</span> {comment.body}</p>
-                ))}
+                {alert.note ? <p className="mt-1 text-slate-700">{alert.note}</p> : null}
+                <p className="mt-1 text-xs text-slate-500">{alert.kind.toLocaleLowerCase('es-CL')}</p>
               </li>
             ))}
           </ul>

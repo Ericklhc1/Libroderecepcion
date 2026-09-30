@@ -231,6 +231,49 @@ export async function showDeviceNotification(item: NotificationFeedItem): Promis
 }
 
 
+export async function syncDeviceNotificationState(input: {
+  unread: number;
+  readIds?: string[];
+  clearAll?: boolean;
+}): Promise<void> {
+  if (typeof navigator === 'undefined') return;
+
+  const unread = Math.max(0, Number.isFinite(input.unread) ? Math.trunc(input.unread) : 0);
+
+  try {
+    const badgeNavigator = navigator as Navigator & {
+      setAppBadge?: (value?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (unread > 0 && typeof badgeNavigator.setAppBadge === 'function') {
+      await badgeNavigator.setAppBadge(unread);
+    } else if (unread === 0 && typeof badgeNavigator.clearAppBadge === 'function') {
+      await badgeNavigator.clearAppBadge();
+    }
+  } catch {
+    // El badge del launcher no es fuente de verdad.
+  }
+
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    const worker = await navigator.serviceWorker.ready;
+    const target =
+      navigator.serviceWorker.controller ??
+      worker.active ??
+      worker.waiting ??
+      worker.installing;
+    target?.postMessage({
+      type: 'AROH_NOTIFICATION_STATE',
+      unread,
+      readIds: input.readIds ?? [],
+      clearAll: Boolean(input.clearAll),
+    });
+  } catch {
+    // El próximo snapshot volverá a reconciliarlo.
+  }
+}
+
 export async function testDevicePush(): Promise<{ ok: boolean; message: string }> {
   try {
     const response = await fetch('/api/push/test', {

@@ -422,7 +422,7 @@ describe('invariantes del turno', () => {
     ).rejects.toThrow(/ya fue recibida/);
   });
 
-  it('nadie del turno saliente puede recibir su propia entrega', async () => {
+  it('quien estuvo en el turno saliente puede continuar en el siguiente tras cerrarlo', async () => {
     const shiftA = await createShift({ userId: morning.id, type: ShiftType.DIA });
     await openShiftAs(morning, shiftA);
     await receiveHandover(morning, { shiftId: shiftA.id });
@@ -430,9 +430,18 @@ describe('invariantes del turno', () => {
     const sent = await sendReviewedHandover(morning, shiftA.id);
     await closeShift(morning, { shiftId: shiftA.id });
 
-    await expect(
-      receiveHandover(morning, { handoverId: sent.id }),
-    ).rejects.toThrow(/distinto del turno saliente/i);
+    const oldAssignment = await prisma.shiftAssignment.findUniqueOrThrow({
+      where: { shiftId_userId: { shiftId: shiftA.id, userId: morning.id } },
+    });
+    expect(oldAssignment.leftAt).not.toBeNull();
+
+    const next = await receiveGuidedHandover(morning, sent.id, ShiftType.NOCHE);
+    expect(next.id).not.toBe(shiftA.id);
+    expect(next.status).toBe(ShiftStatus.ACTIVO);
+
+    const received = await prisma.shiftHandover.findUniqueOrThrow({ where: { id: sent.id } });
+    expect(received.receivedById).toBe(morning.id);
+    expect(received.toShiftId).toBe(next.id);
   });
 
   it('un turno activo no puede saltarse la entrega para cerrar', async () => {

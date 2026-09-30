@@ -23,14 +23,15 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(source).not.toContain("'shift.start',\n  'shift.receive'");
   });
 
-  it('no ofrece al turno saliente recibir su propia entrega', () => {
+  it('ofrece la entrega cerrada aunque el mismo usuario continúe en el turno siguiente', () => {
     const source = readFileSync(
       'src/server/services/reception-operation-gate.ts',
       'utf8',
     );
 
-    expect(source).toContain('assignments: {');
-    expect(source).toContain('none: { userId: user.id }');
+    expect(source).not.toContain('none: { userId: user.id }');
+    expect(source).toContain('La participación');
+    expect(source).toContain('anterior ya terminó con el cierre');
   });
 
   it('el gate reconoce la misma entrega que la pantalla permite recibir', () => {

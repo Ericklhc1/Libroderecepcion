@@ -1151,9 +1151,13 @@ export async function startReceptionShift(
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
-  if (handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
-    throw new RuleError('La entrega debe ser recibida por alguien distinto del turno saliente.');
-  }
+  /*
+   * Una persona puede continuar en el turno siguiente aunque haya participado
+   * en el saliente. La separación relevante es entre TURNOS: el anterior debe
+   * estar formalmente cerrado y su participación terminada antes de crear el
+   * nuevo turno receptor. La recepción guiada, el recuento y la auditoría se
+   * mantienen completos.
+   */
   if (handover.status !== HandoverStatus.ENVIADA || handover.receivedAt) {
     throw new RuleError('Esta entrega ya no está disponible para iniciar una recepción.');
   }
@@ -1647,18 +1651,6 @@ export async function receiveShiftCash(
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
-  const outgoingMember = await prisma.shiftAssignment.findUnique({
-    where: {
-      shiftId_userId: {
-        shiftId: handover.fromShiftId,
-        userId: user.id,
-      },
-    },
-    select: { id: true },
-  });
-  if (outgoingMember) {
-    throw new RuleError('La entrega debe ser recibida por alguien distinto del turno saliente.');
-  }
   if (handover.fromShift.status !== ShiftStatus.CERRADO) {
     throw new RuleError(
       'El turno saliente debe estar cerrado formalmente antes de recibir su Caja.',
@@ -1857,18 +1849,6 @@ export async function receiveHandover(
     },
   });
   if (!incoming) throw new NotFoundError('La entrega indicada no existe.');
-  const outgoingMember = await prisma.shiftAssignment.findUnique({
-    where: {
-      shiftId_userId: {
-        shiftId: incoming.fromShiftId,
-        userId: user.id,
-      },
-    },
-    select: { id: true },
-  });
-  if (outgoingMember) {
-    throw new RuleError('La entrega debe ser recibida por alguien distinto del turno saliente.');
-  }
   if (incoming.status === HandoverStatus.RECIBIDA || incoming.receivedAt) {
     throw new RuleError('Esa entrega ya fue recibida y confirmada.');
   }
@@ -1877,7 +1857,7 @@ export async function receiveHandover(
   }
   if (incoming.fromShift.status !== ShiftStatus.CERRADO) {
     throw new RuleError(
-      'El turno saliente debe quedar cerrado formalmente antes de que otra persona reciba la entrega.',
+      'El turno saliente debe quedar cerrado formalmente antes de recibir la entrega.',
     );
   }
   if (!incoming.toShiftId || !incoming.toShift) {

@@ -26,10 +26,10 @@ export default async function LoginPage() {
   const showDemoHint = process.env.NODE_ENV !== 'production';
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-petrol-900 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-petrol-950 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center gap-3 text-white">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold-500 text-petrol-950">
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-gold-500 text-petrol-950">
             <BookOpen className="h-6 w-6" aria-hidden="true" />
           </span>
           <div>
@@ -38,7 +38,7 @@ export default async function LoginPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white p-6 shadow-xl">
+        <div className="rounded-lg border border-petrol-800/10 border-t-2 border-t-gold-500 bg-white p-6 shadow-card">
           <h2 className="text-base font-semibold text-petrol-900">Iniciar sesión</h2>
           <p className="mt-1 text-sm text-slate-500">
             Accede con tu cuenta operativa para entrar a tu turno.
@@ -49,7 +49,7 @@ export default async function LoginPage() {
         </div>
 
         {showDemoHint ? (
-          <div className="mt-5 rounded-xl bg-petrol-800/60 p-4 text-xs text-petrol-100 ring-1 ring-petrol-700">
+          <div className="mt-5 rounded-lg border border-petrol-700 bg-petrol-900 p-4 text-xs text-petrol-100 ring-1 ring-petrol-700">
             <p className="font-semibold text-gold-300">Cuentas demo (sólo desarrollo)</p>
             {/* Se entra con el USUARIO, así que es lo que se muestra. */}
             <ul className="mt-2 space-y-1">

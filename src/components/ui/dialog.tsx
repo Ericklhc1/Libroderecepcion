@@ -138,11 +138,11 @@ export function Dialog({
             Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
             `transform` y pisaría el `translate` que hace el centrado.
           */
-          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-xl outline-none',
+          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none',
           width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
         )}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-[#f8fafc] px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-petrol-900">{title}</h2>
             {description ? (

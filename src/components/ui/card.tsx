@@ -101,7 +101,7 @@ export function StatTile({
   return (
     <div
       className={cn(
-        'rounded-xl border bg-white px-4 py-3 shadow-card',
+        'rounded-lg border bg-white px-4 py-3 shadow-card',
         tone === 'alert'
           ? 'border-red-200'
           : tone === 'good'
@@ -109,7 +109,7 @@ export function StatTile({
             : 'border-slate-200',
       )}
     >
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</p>
       <p
         className={cn(
           'mt-1 text-2xl font-semibold tabular',

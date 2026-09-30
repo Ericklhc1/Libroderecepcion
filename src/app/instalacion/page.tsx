@@ -20,10 +20,10 @@ export default async function InstallPage() {
   if (!(await needsInstall())) redirect('/login');
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-petrol-900 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-petrol-950 px-4 py-10">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex items-center gap-3 text-white">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold-500 text-petrol-950">
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-gold-500 text-petrol-950">
             <BookOpen className="h-6 w-6" aria-hidden="true" />
           </span>
           <div>
@@ -32,13 +32,13 @@ export default async function InstallPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white p-6 shadow-xl">
+        <div className="rounded-lg border border-petrol-800/10 border-t-2 border-t-gold-500 bg-white p-6 shadow-card">
           <h2 className="text-base font-semibold text-petrol-900">Poner en marcha el sistema</h2>
           <p className="mt-1 text-sm text-slate-600">
             Se hace una sola vez. Crea el hotel y tu cuenta de Administrador de sistema; desde
             ella agregarás al equipo y programarás los turnos.
           </p>
-          <p className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          <p className="mt-3 flex items-start gap-2 rounded-md bg-[#f8fafc] px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600" aria-hidden="true" />
             <span>
               Esta pantalla deja de existir en cuanto se crea la primera cuenta. La contraseña

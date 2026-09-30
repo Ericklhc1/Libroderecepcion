@@ -23,10 +23,10 @@ export default async function AcceptTermsPage() {
   if (await hasAcceptedCurrentTerms(user.id)) redirect('/');
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-8">
+    <main className="min-h-screen bg-[#f3f6f8] px-4 py-8">
       <div className="mx-auto w-full max-w-3xl">
         <header className="mb-5 flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-petrol-900 text-gold-300">
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-petrol-950 text-gold-300">
             <BookOpen className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
@@ -35,7 +35,7 @@ export default async function AcceptTermsPage() {
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200">
+        <section className="overflow-hidden rounded-lg border border-slate-300 border-t-2 border-t-gold-500 bg-white shadow-card">
           <div className="border-b border-slate-200 bg-petrol-50 px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-semibold text-petrol-900">
@@ -66,7 +66,7 @@ export default async function AcceptTermsPage() {
               </section>
             ))}
 
-            <div className="rounded-xl bg-petrol-950 px-4 py-3 text-center text-xs text-petrol-100">
+            <div className="rounded-md bg-petrol-950 px-4 py-3 text-center text-xs text-petrol-100">
               <p className="flex items-center justify-center gap-1.5 font-medium text-gold-300">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 {AI_ATTRIBUTION}
@@ -76,7 +76,7 @@ export default async function AcceptTermsPage() {
 
           <div className="border-t border-slate-200 px-5 py-5">
             <ActionForm action={acceptTermsAction} className="space-y-4">
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <label className="flex cursor-pointer items-start gap-3 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
                 <input
                   type="checkbox"
                   name="accept"

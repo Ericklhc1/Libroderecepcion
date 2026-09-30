@@ -58,8 +58,8 @@ export function HelpCenter({
       onClick={() => setOpen(true)}
       className={
         open
-          ? 'inline-flex h-9 items-center gap-2 rounded-lg border border-petrol-100 bg-petrol-50 px-2.5 text-sm font-medium text-petrol-800'
-          : 'inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50'
+          ? 'inline-flex h-9 items-center gap-2 rounded-md border border-petrol-100 bg-petrol-50 px-2.5 text-sm font-medium text-petrol-800'
+          : 'inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50'
       }
       aria-label={open ? 'Central de ayuda' : 'Abrir la central de ayuda'}
     >
@@ -83,7 +83,7 @@ export function HelpCenter({
         role="dialog"
         aria-modal="true"
         aria-label="Central de ayuda"
-        className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[85dvh]"
+        className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-md border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:max-h-[85dvh]"
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-3">
           <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
@@ -98,7 +98,7 @@ export function HelpCenter({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+            className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
             aria-label="Cerrar"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -106,7 +106,7 @@ export function HelpCenter({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-petrol-50 px-3 py-3 ring-1 ring-petrol-100">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-petrol-50 px-3 py-3 ring-1 ring-petrol-100">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-petrol-900">Recorrido paso a paso</p>
               <p className="mt-0.5 text-xs leading-4 text-slate-600">
@@ -177,7 +177,7 @@ function HelpEntry({
   const action = topic.action ? HELP_ACTIONS[topic.action] : null;
 
   return (
-    <li className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+    <li className="rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
       <p className="font-medium text-petrol-900">{topic.question}</p>
 
       <ol className="mt-1.5 space-y-1 text-sm text-slate-700">

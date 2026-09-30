@@ -1,16 +1,35 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Paleta del producto: azul petróleo como color principal, dorado como acento,
- * blanco y grises para el resto. Los tonos del semáforo visual se definen en
+ * Paleta del producto: azul noche como base, blanco/gris frío para superficies
+ * y cian como acento principal. Por compatibilidad, la clave interna `gold`
+ * conserva su nombre histórico pero representa el acento cian de AROH.
+ * Los tonos del semáforo visual se definen en
  * `src/components/ui/tone.ts` con clases completas para que Tailwind las
  * detecte en compilación.
  */
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
+    borderRadius: {
+      none: '0px',
+      sm: '2px',
+      DEFAULT: '3px',
+      md: '4px',
+      lg: '5px',
+      xl: '6px',
+      '2xl': '8px',
+      '3xl': '10px',
+      full: '9999px',
+    },
     extend: {
       colors: {
+        slate: {
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+        },
         petrol: {
           50: '#eef5f7',
           100: '#d5e6ea',
@@ -25,16 +44,16 @@ const config: Config = {
           950: '#091820',
         },
         gold: {
-          50: '#fbf8ef',
-          100: '#f5edd5',
-          200: '#ead9a6',
-          300: '#dcc06f',
-          400: '#cfa844',
-          500: '#c9a227',
-          600: '#a8811f',
-          700: '#85631c',
-          800: '#6d501e',
-          900: '#5c431e',
+          50: '#ecfeff',
+          100: '#cffafe',
+          200: '#a5f3fc',
+          300: '#67e8f9',
+          400: '#22d3ee',
+          500: '#06b6d4',
+          600: '#0891b2',
+          700: '#0e7490',
+          800: '#155e75',
+          900: '#164e63',
         },
       },
       fontFamily: {
@@ -51,7 +70,7 @@ const config: Config = {
         ],
       },
       boxShadow: {
-        card: '0 1px 2px rgba(15, 36, 48, 0.06), 0 1px 12px rgba(15, 36, 48, 0.05)',
+        card: '0 1px 1px rgba(9, 24, 32, 0.04), 0 4px 14px rgba(9, 24, 32, 0.035)',
       },
       keyframes: {
         'fade-in': {

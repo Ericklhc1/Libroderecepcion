@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { BookOpen, Search, UserRound } from 'lucide-react';
+import { Search, UserRound } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
@@ -11,7 +11,7 @@ import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 import { visibleNavGroups } from '@/components/layout/nav-items';
-import { DesktopNav, MobileNav } from '@/components/layout/nav';
+import { MobileNav, SidebarNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
@@ -79,81 +79,97 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur no-print">
-          <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
-            <Link href="/" className="flex shrink-0 items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
-                <BookOpen className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <span className="hidden min-w-0 xl:block">
-                <span className="block truncate text-[0.7rem] font-semibold uppercase tracking-wide text-gold-700">
-                  AROH Central IA
-                </span>
-                <span className="block max-w-44 truncate text-[0.92rem] font-semibold text-petrol-950">
-                  {hotelName}
-                </span>
-              </span>
-            </Link>
+    <div className="min-h-screen bg-[#f3f6f8]">
+      <div className="flex min-h-screen min-w-0">
+        <aside className="hidden w-56 shrink-0 flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print">
+          <Link href="/" className="block border-b border-petrol-800 px-4 py-4">
+            <span className="block truncate text-base font-light tracking-tight text-white">
+              AROH <span className="font-semibold text-gold-400">Central IA</span>
+            </span>
+            <span className="mt-1 block truncate text-[0.68rem] font-medium text-petrol-300">
+              {hotelName}
+            </span>
+          </Link>
 
-            <form
-              action="/buscar"
-              className="relative min-w-[11rem] flex-1 xl:max-w-2xl"
-              data-tour="global-search"
-            >
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                name="q"
-                placeholder="Buscar #ID, habitación, huésped, responsable o texto…"
-                aria-label="Búsqueda global"
-                className="input-base h-9 pl-9"
-              />
-            </form>
-
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              {frontiVisible ? <FrontiLauncher displayName={frontiConfig.displayName} /> : null}
-              <PropertyMenu hotelName={hotelName} />
-              <AccountMenu
-                userName={user.name}
-                roleName={user.roleName}
-                initialsText={initials(user.name)}
-              />
-
-              <div data-tour="help-center">
-                <HelpCenter permissions={user.permissions} userId={user.id} />
-              </div>
-
-              <SupportRequestPanel version={packageJson.version} hotelName={hotelName} />
-
-              <NotificationCenter initialSnapshot={notificationFeed} />
-              {user.roleOperational && !user.isSystemAdmin ? (
-                <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
-              ) : null}
-
-              <Link
-                href="/perfil"
-                className="rounded-lg p-2 text-petrol-700 hover:bg-petrol-50 lg:hidden"
-                aria-label="Mi perfil"
-              >
-                <UserRound className="h-5 w-5" aria-hidden="true" />
-              </Link>
-            </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+            <SidebarNav groups={groups} badges={badges} />
           </div>
 
-          <DesktopNav groups={groups} badges={badges} />
-        </header>
+          <div className="border-t border-petrol-800 px-4 py-3">
+            <p className="text-[0.65rem] font-medium uppercase tracking-[0.08em] text-petrol-400">
+              Opera con sentido.
+            </p>
+            <p className="mt-1 text-[0.62rem] text-petrol-500">v{packageJson.version}</p>
+          </div>
+        </aside>
 
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-4 lg:pb-8">{children}</main>
-        <div className="px-4 pb-24 lg:pb-4">
-          <AiAttribution />
-          <p className="mt-1 text-center text-[0.65rem] text-slate-400">
-            AROH Central IA v{packageJson.version}
-          </p>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
+            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
+              <Link href="/" className="flex shrink-0 items-baseline gap-1 lg:hidden">
+                <span className="text-sm font-semibold text-petrol-950">AROH</span>
+                <span className="text-sm font-semibold text-gold-600">Central IA</span>
+              </Link>
+
+              <form
+                action="/buscar"
+                className="relative min-w-[11rem] flex-1 xl:max-w-2xl"
+                data-tour="global-search"
+              >
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Buscar #ID, habitación, huésped, responsable o texto…"
+                  aria-label="Búsqueda global"
+                  className="input-base h-9 pl-9"
+                />
+              </form>
+
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {frontiVisible ? <FrontiLauncher displayName={frontiConfig.displayName} /> : null}
+                <PropertyMenu hotelName={hotelName} />
+                <AccountMenu
+                  userName={user.name}
+                  roleName={user.roleName}
+                  initialsText={initials(user.name)}
+                />
+
+                <div data-tour="help-center">
+                  <HelpCenter permissions={user.permissions} userId={user.id} />
+                </div>
+
+                <SupportRequestPanel version={packageJson.version} hotelName={hotelName} />
+                <NotificationCenter initialSnapshot={notificationFeed} />
+
+                {user.roleOperational && !user.isSystemAdmin ? (
+                  <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
+                ) : null}
+
+                <Link
+                  href="/perfil"
+                  className="rounded-md p-2 text-petrol-700 hover:bg-gold-50 lg:hidden"
+                  aria-label="Mi perfil"
+                >
+                  <UserRound className="h-5 w-5" aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+          </header>
+
+          <main className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-24 pt-5 lg:pb-8">
+            {children}
+          </main>
+
+          <div className="mx-auto w-full max-w-[1680px] px-4 pb-24 lg:pb-4">
+            <AiAttribution />
+            <p className="mt-1 text-center text-[0.65rem] text-slate-400 lg:hidden">
+              AROH Central IA v{packageJson.version}
+            </p>
+          </div>
         </div>
       </div>
 

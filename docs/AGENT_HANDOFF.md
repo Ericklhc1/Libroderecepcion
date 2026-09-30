@@ -1,5 +1,18 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.34.0 · sistema visual corporativo
+
+- Rama: `feature/aroh-corporate-visual-system`.
+- Referencia visual canónica: storyboard AROH Central IA; azul noche casi negro + blanco/gris frío + cian, geometría recta y modular.
+- Cambio de presentación: no modifica reglas operativas, permisos, datos, Prisma ni máquinas de estado.
+- Escritorio: sidebar oscuro persistente; lienzo de trabajo claro. Móvil conserva barra inferior independiente.
+- La clave histórica `gold-*` permanece temporalmente por compatibilidad de clases, pero sus tokens representan cian. No reintroducir dorado visual.
+- El sidebar muestra navegación secundaria del módulo activo para no perder acceso a Tareas, Seguimientos, Caja, Turnos, Llaves, Supervisión o Administración.
+- Wordmark visible: **AROH Central IA**; alojamiento separado como contexto.
+- Tarjetas, botones, chips, campos, overlays, chat, Fronti, ayuda, notificaciones, soporte, tutorial, gates, alarmas y modales comparten el mismo sistema.
+- Regresiones: `tests/corporate-visual-system.test.ts`, `tests/corporate-visual-pages.test.ts`, `tests/corporate-visual-all-pages.test.ts` y contrato de navegación en `tests/navigation.test.ts`.
+- Release objetivo: **v1.34.0**. Sin migración Prisma.
+
 ## 29/09/2026 · AROH 1.33.3 · continuidad del mismo recepcionista
 
 - **Revierte la restricción funcional de 1.33.2**: una persona que participó en el turno saliente puede recibir la entrega y continuar en el turno siguiente.

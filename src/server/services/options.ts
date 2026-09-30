@@ -15,7 +15,7 @@ export type FormOptions = {
   reservations: Option[];
   openEntries: Option[];
   openTasks: Option[];
-  /** Legado Habitaciones: ya no participa en formularios operativos nuevos. */
+  /** Catálogo operativo de habitaciones: valor estructurado = Room.id, etiqueta = número. */
   rooms: Option[];
   activeShifts: Option[];
 };
@@ -23,17 +23,21 @@ export type FormOptions = {
 /**
  * Opciones para los formularios operativos.
  *
- * Desde v1.4.0 esta función NO consulta huéspedes, reservas, estadías ni
- * habitaciones. Novedades, tareas y Supervisión funcionan sólo con personas,
- * áreas, registros, tareas y turnos.
+ * No consulta huéspedes, reservas ni estadías del PMS. Sí carga el catálogo
+ * propio de habitaciones porque la habitación es contexto operativo de AROH.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, entries, tasks, activeShifts] = await Promise.all([
+  const [users, departments, rooms, entries, tasks, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
       orderBy: { order: 'asc' },
       select: { id: true, name: true },
+    }),
+    prisma.room.findMany({
+      where: { active: true },
+      orderBy: [{ floor: 'asc' }, { number: 'asc' }],
+      select: { id: true, number: true },
     }),
     prisma.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
@@ -74,7 +78,7 @@ export async function getFormOptions(): Promise<FormOptions> {
       value: task.id,
       label: `Tarea #${task.humanId} · ${task.title}`,
     })),
-    rooms: [],
+    rooms: rooms.map((room) => ({ value: room.id, label: room.number })),
     activeShifts: activeShifts.map((shift) => ({
       value: shift.id,
       label: `${shift.type} · ${formatCalendarDate(shift.date)}`,

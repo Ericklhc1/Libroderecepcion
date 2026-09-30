@@ -103,55 +103,25 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
-    href: '/central-reservas',
-    label: 'Central de Reservas',
-    mobileLabel: 'Reservas',
-    icon: 'guest',
-    anyOf: ['reservation.center.view'],
+    href: '/habitaciones',
+    label: 'Novedades / habitación',
+    mobileLabel: 'Habitaciones',
+    icon: 'room',
+    mobile: true,
     menu: [
       {
-        title: 'Preparación',
+        title: 'Continuidad',
         items: [
+          {
+            href: '/habitaciones',
+            label: 'Monitor de habitaciones',
+            description: 'Asuntos activos asociados a las 89 habitaciones.',
+          },
           {
             href: '/central-reservas',
-            label: 'Bandeja completa',
-            description: 'Señales previas a la operación.',
-          },
-          {
-            href: '/central-reservas?vista=accion',
-            label: 'Requieren acción',
-            description: 'Garantías, saldos y pendientes.',
-          },
-        ],
-      },
-      {
-        title: 'Llegadas',
-        items: [
-          {
-            href: '/central-reservas?vista=24h',
-            label: 'Próximas 24 h',
-            description: 'Llegadas más inmediatas.',
-          },
-          {
-            href: '/central-reservas?vista=72h',
-            label: 'Próximas 72 h',
-            description: 'Preparación de los próximos tres días.',
-          },
-          {
-            href: '/central-reservas?vista=recientes',
-            label: 'Cambios recientes',
-            description: 'Reservas modificadas en las últimas 24 h.',
-          },
-        ],
-      },
-      {
-        title: 'Referencias',
-        items: [
-          {
-            href: '/huespedes',
-            label: 'Huéspedes y reservas',
-            description: 'Consulta de referencias operativas existentes.',
-            anyOf: ['guest.view', 'guest.manage'],
+            label: 'Prellegadas',
+            description: 'Excepciones de próximas llegadas; no sustituye al PMS.',
+            anyOf: ['reservation.center.view'],
           },
         ],
       },

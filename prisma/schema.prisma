@@ -1619,6 +1619,9 @@ model OperationalAlarm {
   createdBy     User                   @relation("operationalAlarmCreatedBy", fields: [createdById], references: [id])
   originShiftId String?
   originShift   Shift?                 @relation("operationalAlarmOriginShift", fields: [originShiftId], references: [id], onDelete: SetNull)
+  /// Habitación como contexto operativo opcional. No implica ocupación/PMS.
+  roomId        String?
+  room          Room?                  @relation(fields: [roomId], references: [id], onDelete: SetNull)
   /// Objeto original al que llama la atención. No duplica su estado.
   sourceEntity  String?
   sourceId      String?
@@ -1636,6 +1639,7 @@ model OperationalAlarm {
   @@index([status, dueAt])
   @@index([sourceEntity, sourceId, status])
   @@index([originShiftId, status])
+  @@index([roomId, status])
   @@index([createdById, createdAt])
 }
 
@@ -1822,6 +1826,8 @@ model Room {
   keys          RoomKey[]
   entries       OperationalEntry[]
   tasks         Task[]
+  operationalAlarms OperationalAlarm[]
+  guarantees    Guarantee[]
   movements     KeyMovement[]
   keyInventoryItems KeyInventoryItem[]
   fines         Fine[]
@@ -2056,6 +2062,8 @@ model Guarantee {
 
   /// Contexto operativo directo, escrito por Recepción. No depende del PMS.
   guestName  String?
+  roomId     String?
+  room       Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
   roomNumber String?
   reference  String?
   dueAt      DateTime?
@@ -2097,6 +2105,7 @@ model Guarantee {
 
   @@index([reservationReferenceId])
   @@index([stayId])
+  @@index([roomId])
   @@index([state])
   @@index([dueAt])
   @@index([deletedAt])
@@ -2734,8 +2743,10 @@ model GymPass {
   serviceType            String                @default("GIMNASIO")
   roomNumber             String
   guestName              String
-  /// Patente/matrícula del vehículo. Sólo se exige para ESTACIONAMIENTO.
+  /// Campo histórico de patente. Ya no se solicita en tickets nuevos.
   vehiclePlate           String?
+  /// ID/código de reserva escrito por Recepción para tickets de ESTACIONAMIENTO.
+  reservationCode        String?
   receptionistId         String
   shiftId                String?
 

@@ -3,6 +3,7 @@ import {
   EntryStatus,
   EntryType,
   HandoverStatus,
+  OperationalAlarmStatus,
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
@@ -10,7 +11,6 @@ import { prisma } from '@/lib/prisma';
 import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
-import { LIVE_ALERT_WHERE } from './alert-engine';
 
 export type MetricsRange = { from: Date; to: Date };
 
@@ -91,7 +91,7 @@ export async function getMetrics(range: MetricsRange) {
     prisma.task.count({
       where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
-    prisma.alert.count({ where: LIVE_ALERT_WHERE(now) }),
+    prisma.operationalAlarm.count({ where: { status: OperationalAlarmStatus.ACTIVA } }),
     // La continuidad es inherente: todo registro abierto sigue vigente entre
     // turnos hasta resolverse o cerrarse. No existe una categoría separada de
     // «heredados» ni un umbral horario artificial.

@@ -1,5 +1,23 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.36.0 · Novedades por habitación
+
+- Rama: `feature/novedades-habitaciones-v1-36-0`.
+- Principio de producto: **AROH no es PMS**. No administrar ocupación, check-in, check-out, disponibilidad ni inventario comercial de habitaciones; FNSRooms/PMS conserva ese dominio.
+- Se retira «Central de Reservas» como módulo visible. `/central-reservas` queda sólo como redirección de compatibilidad hacia `/libro/habitaciones`.
+- Nueva vista **Novedades · Habitaciones**: mapa interactivo de las 89 habitaciones 401–429, 501–530 y 601–630, agrupadas por piso.
+- La habitación funciona como dimensión de contexto operativo: Novedades/Incidencias, Tareas, Alertas y, con permiso de Caja, Garantías y servicios asociados.
+- El monitor nunca deriva estado de ocupación ni muestra check-in/check-out; resolver un objeto se hace en su módulo original.
+- Catálogo único en `src/domain/hotel-rooms.ts`; formularios operativos reutilizan el mismo selector para evitar texto libre e inconsistencias.
+- Novedades y Tareas vuelven a persistir `roomId`; OperationalAlarm y Guarantee reciben relación opcional a Room mediante migración aditiva.
+- Gimnasio/Estacionamiento validan habitación contra el catálogo y persisten `roomId`.
+- Estacionamiento deja de pedir **Patente**: tickets nuevos solicitan **ID Reserva** (`reservationCode`). `vehiclePlate` se conserva sólo para compatibilidad histórica.
+- Fronti contextual entiende `/libro/habitaciones`; Fronti proactivo deja de vigilar check-in/check-out/reservas y usa concentración de contexto operativo por habitación.
+- Gerencia deja de usar pre-llegadas como driver y sustituye esa capa por concentración de riesgo operacional por habitación.
+- Semántica 1.33.0 intacta: Tarea = trabajo; Alerta = llamada programable; Notificación = aviso. Asociar una habitación no duplica objetos ni cambia estados.
+- Release objetivo: **v1.36.0**. Migración aditiva `20260930043000_contexto_operativo_habitaciones`.
+
+
 ## 30/09/2026 · AROH 1.35.0 · Gerencia estratégica
 
 - Rama: `feature/gerencia-estrategica-v1-35-0`.

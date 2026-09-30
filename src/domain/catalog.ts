@@ -6,7 +6,7 @@ import {
   ROLE_DEFINITIONS,
   ROLE_PERMISSIONS,
 } from '@/lib/permissions';
-import { ROOM_RANGES, roomNumbers } from '@/domain/room-catalog';
+import { roomNumbers } from '@/domain/room-catalog';
 
 /** Áreas operativas con las que arranca cualquier instalación. */
 export const DEPARTMENTS = [

@@ -2,7 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const APP_ROOT = join(process.cwd(), 'src', 'app', '(app)');
+const SITE_ROOT = join(process.cwd(), 'src', 'app');
+const APP_ROOT = join(SITE_ROOT, '(app)');
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -12,19 +13,19 @@ function walk(dir: string): string[] {
 }
 
 function routeForPage(path: string): string {
-  const local = relative(APP_ROOT, path).split(sep).join('/');
+  const local = relative(SITE_ROOT, path).split(sep).join('/');
   const withoutPage = local === 'page.tsx' ? '' : local.replace(/\/page\.tsx$/, '');
   return '/' + withoutPage;
 }
 
 describe('sistema visual corporativo · cobertura total de pantallas', () => {
-  const pages = walk(APP_ROOT).filter((path) => path.endsWith(sep + 'page.tsx'));
+  const pages = walk(SITE_ROOT).filter((path) => path.endsWith(sep + 'page.tsx'));
 
-  it('recorre todas las pantallas autenticadas actuales', () => {
-    expect(pages.length).toBeGreaterThanOrEqual(45);
+  it('recorre todas las pantallas actuales, incluidas entradas públicas', () => {
+    expect(pages.length).toBeGreaterThanOrEqual(50);
   });
 
-  it('ninguna pantalla hardcodea una geometría paralela al sistema global', () => {
+  it('ninguna pantalla del sitio hardcodea una geometría paralela al sistema global', () => {
     const offenders = pages.flatMap((path) => {
       const source = readFileSync(path, 'utf8');
       const reasons: string[] = [];
@@ -43,6 +44,13 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
     expect(layout).toContain("bg-[#f4f2ed]");
     expect(layout).toContain('border-t-gold-500');
     expect(layout).toContain('bg-petrol-950 text-gold-400');
+  });
+
+  it('las entradas públicas también usan la identidad compartida', () => {
+    const login = readFileSync(join(SITE_ROOT, 'login', 'page.tsx'), 'utf8');
+    const install = readFileSync(join(SITE_ROOT, 'instalacion', 'page.tsx'), 'utf8');
+    expect(login).toContain('bg-petrol-900');
+    expect(install).toContain('bg-petrol-900');
   });
 
   it('los tokens globales controlan geometría, superficies y neutrales', () => {

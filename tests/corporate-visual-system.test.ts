@@ -14,7 +14,7 @@ describe('sistema visual corporativo AROH', () => {
     const css = readFileSync('src/app/globals.css', 'utf8');
     expect(css).toContain('background: #f4f2ed');
     expect(css).toContain('border border-slate-300 bg-white shadow-card');
-    expect(css).toContain("bg-[#faf9f6]");
+    expect(css).toContain('background-color: #faf9f6');
   });
 
   it('da a la navegación de escritorio el tratamiento oscuro corporativo', () => {

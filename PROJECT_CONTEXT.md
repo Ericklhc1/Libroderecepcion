@@ -8,6 +8,7 @@
 - Usuarios que ya habían finalizado el tutorial antes de esta versión se migran con sus módulos actualmente visibles como conocidos.
 - Ayuda y tutorial dejan de ser documentación mínima: cubren el producto vigente, incluida la semántica Novedad/Tarea/Seguimiento/Alerta/Notificación, Novedades / habitación, Caja y folios, Web Push, Supervisión, Gerencia, Fronti, soporte, chat, usuarios ocultos y búsqueda por #ID.
 - Fronti proactivo debe explicar cada hallazgo con el contrato «Qué pasó / Qué está mal o qué revisar / Qué hacer». La detección sigue siendo determinística y la IA no puede inventar causas ni modificar estados por sí sola.
+- El radar cubre además descuadres recientes de Caja (esperado, contado, diferencia, responsable y enlace al arqueo) y tareas vencidas abiertas (estado, prioridad, responsable, habitación si existe y enlace directo).
 - Migración aditiva: `20260930112000_tutoriales_modulares`. Versión: **v1.37.0**.
 
 

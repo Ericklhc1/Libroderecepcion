@@ -38,7 +38,7 @@ export default async function InstallPage() {
             Se hace una sola vez. Crea el hotel y tu cuenta de Administrador de sistema; desde
             ella agregarás al equipo y programarás los turnos.
           </p>
-          <p className="mt-3 flex items-start gap-2 rounded-md bg-[#faf9f6] px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          <p className="mt-3 flex items-start gap-2 rounded-md bg-[#f8fafc] px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-petrol-600" aria-hidden="true" />
             <span>
               Esta pantalla deja de existir en cuanto se crea la primera cuenta. La contraseña

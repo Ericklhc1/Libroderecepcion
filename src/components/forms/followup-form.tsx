@@ -43,12 +43,12 @@ export function FollowUpForm({
         </div>
       )}
 
-      <Field label="Acción realizada" name="action" required>
+      <Field label="Acción / seguimiento" name="action" required>
         <Input
           name="action"
           required
           maxLength={300}
-          placeholder="Ej: Se contactó al huésped para regularizar el medio de pago"
+          placeholder="Ej: Confirmar solución, validar respuesta del área o retomar este asunto"
         />
       </Field>
 
@@ -113,7 +113,7 @@ export function FollowUpForm({
       </Field>
 
       <div className="flex justify-end pt-1">
-        <SubmitButton pendingLabel="Guardando…">Registrar seguimiento</SubmitButton>
+        <SubmitButton pendingLabel="Guardando…">Crear seguimiento</SubmitButton>
       </div>
     </ActionForm>
   );

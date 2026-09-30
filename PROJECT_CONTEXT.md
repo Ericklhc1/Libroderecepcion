@@ -1,5 +1,13 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.33.2 · hotfix de autorecepción de turnos
+
+- **Mi turno** deja de ofrecer «INICIAR RECEPCIÓN DE TURNO» a la misma persona que participó en el turno saliente y acaba de cerrar/enviar esa entrega.
+- El backend ya impedía la autorecepción para conservar separación entre entrega, recuento, custodia y firmas; la interfaz ahora refleja esa misma regla en vez de devolver al usuario al mismo punto.
+- Cuando la entrega pendiente pertenece al propio usuario, la pantalla explica que debe recibirla otra persona autorizada.
+- No cambia el modelo de datos ni se requiere migración Prisma. Versión: **v1.33.2**.
+
+
 ## Actualización 29/09/2026 · AROH 1.33.1 · hardening Fronti proactivo
 
 - El barrido proactivo respeta simultáneamente `fronti.enabled` y `fronti.proactiveEnabled`.

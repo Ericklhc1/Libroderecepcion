@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SITE_ROOT = join(process.cwd(), 'src', 'app');
+const COMPONENTS_ROOT = join(process.cwd(), 'src', 'components');
 const APP_ROOT = join(SITE_ROOT, '(app)');
 
 function walk(dir: string): string[] {
@@ -25,15 +26,22 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
     expect(pages.length).toBeGreaterThanOrEqual(50);
   });
 
-  it('ninguna pantalla del sitio hardcodea una geometría paralela al sistema global', () => {
-    const offenders = pages.flatMap((path) => {
+  it('ninguna pantalla ni componente visual hardcodea una geometría paralela al sistema global', () => {
+    const visualFiles = [
+      ...pages,
+      ...walk(COMPONENTS_ROOT).filter((path) => /\.tsx$/.test(path)),
+    ];
+    const offenders = visualFiles.flatMap((path) => {
       const source = readFileSync(path, 'utf8');
       const reasons: string[] = [];
       if (/rounded-\[[^\]]+\]/.test(source)) reasons.push('radio arbitrario');
       if (/borderRadius\s*:/.test(source)) reasons.push('borderRadius inline');
       if (/fontFamily\s*:/.test(source)) reasons.push('fontFamily inline');
       if (/font-family\s*:/.test(source)) reasons.push('font-family inline');
-      return reasons.map((reason) => `${routeForPage(path)}: ${reason}`);
+      const label = path.startsWith(SITE_ROOT)
+        ? routeForPage(path)
+        : relative(process.cwd(), path).split(sep).join('/');
+      return reasons.map((reason) => `${label}: ${reason}`);
     });
 
     expect(offenders, 'Pantallas fuera del sistema visual: ' + offenders.join(', ')).toEqual([]);

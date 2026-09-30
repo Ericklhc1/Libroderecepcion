@@ -104,12 +104,6 @@ export default async function AuditPage({
 
       <form action="/admin/auditoria" className="card px-4 py-3">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[200px] flex-1">
-            <label htmlFor="q" className="label-base">
-              Buscar
-            </label>
-            <input id="q" name="q" type="search" defaultValue={q ?? ''} className="input-base" />
-          </div>
           <div>
             <label htmlFor="accion" className="label-base">
               Acción

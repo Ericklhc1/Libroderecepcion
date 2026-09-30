@@ -1,5 +1,27 @@
 import type { PermissionKey } from '@/lib/permissions';
 
+export const TUTORIAL_MODULE_KEYS = [
+  'novedades',
+  'habitaciones',
+  'caja',
+  'turno',
+  'llaves',
+  'alertas',
+  'supervision',
+  'gerencia',
+  'auditoria',
+  'administracion',
+] as const;
+
+export type TutorialModuleKey = (typeof TUTORIAL_MODULE_KEYS)[number];
+
+export type TutorialModule = {
+  key: TutorialModuleKey;
+  label: string;
+  route: string;
+  anyOf?: PermissionKey[];
+};
+
 export type TutorialStep = {
   id: string;
   title: string;
@@ -7,9 +29,74 @@ export type TutorialStep = {
   route?: string;
   target?: string;
   anyOf?: PermissionKey[];
+  module?: TutorialModuleKey;
 };
 
 const ROUTE_TARGET = '[data-tour="route-title"], main h1';
+
+export const TUTORIAL_MODULES: TutorialModule[] = [
+  { key: 'novedades', label: 'Novedades', route: '/libro?clase=entry' },
+  { key: 'habitaciones', label: 'Novedades / habitación', route: '/novedades/habitacion' },
+  { key: 'caja', label: 'Caja', route: '/caja', anyOf: ['cash.view'] },
+  {
+    key: 'turno',
+    label: 'Mi turno',
+    route: '/turno',
+    anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
+  },
+  {
+    key: 'llaves',
+    label: 'Llaves',
+    route: '/llaves',
+    anyOf: ['key.assign', 'key.inventory', 'key.stock'],
+  },
+  { key: 'alertas', label: 'Alertas', route: '/alertas' },
+  {
+    key: 'supervision',
+    label: 'Centro de Supervisión',
+    route: '/supervision',
+    anyOf: ['supervision.center.view'],
+  },
+  {
+    key: 'gerencia',
+    label: 'Gerencia',
+    route: '/gerencia',
+    anyOf: ['management.dashboard.view'],
+  },
+  {
+    key: 'auditoria',
+    label: 'Auditoría',
+    route: '/admin/auditoria',
+    anyOf: ['audit.view'],
+  },
+  {
+    key: 'administracion',
+    label: 'Administración',
+    route: '/admin',
+    anyOf: ['user.manage', 'role.manage', 'system.configure', 'support.view'],
+  },
+];
+
+function allowed(
+  item: { anyOf?: PermissionKey[] },
+  permissions: PermissionKey[],
+): boolean {
+  return !item.anyOf || item.anyOf.some((permission) => permissions.includes(permission));
+}
+
+export function isTutorialModuleKey(value: string): value is TutorialModuleKey {
+  return (TUTORIAL_MODULE_KEYS as readonly string[]).includes(value);
+}
+
+export function enabledTutorialModules(permissions: PermissionKey[]): TutorialModuleKey[] {
+  return TUTORIAL_MODULES.filter((module) => allowed(module, permissions)).map(
+    (module) => module.key,
+  );
+}
+
+export function visibleTutorialModules(permissions: PermissionKey[]): TutorialModule[] {
+  return TUTORIAL_MODULES.filter((module) => allowed(module, permissions));
+}
 
 /**
  * Decide si el recorrido debe mover al usuario a la ruta del paso actual.
@@ -33,133 +120,428 @@ export function shouldNavigateTutorial(
 }
 
 /**
- * Recorrido de producto v1.5.0.
+ * Recorrido general del primer ingreso.
  *
- * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Alertas + Supervisión.
- * Novedades / habitación organiza contexto operativo por habitación sin modelar ocupación, check-in o check-out.
+ * Es deliberadamente breve: presenta el mapa del producto. La capacitación
+ * profunda vive en MODULE_TUTORIAL_STEPS y vuelve a aparecer sólo cuando un
+ * módulo nuevo se habilita para la cuenta.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'inicio',
     title: 'Inicio: tu radar del turno',
     description:
-      'Aquí ves lo urgente y lo que necesita atención ahora. No tienes que recorrer todo el sistema para saber por dónde empezar.',
+      'Aquí ves lo urgente, vencido y pendiente. AROH organiza la continuidad operativa; FNSrooms sigue siendo el PMS.',
     route: '/',
     target: ROUTE_TARGET,
   },
   {
     id: 'acciones-modulo',
-    title: 'Acciones del módulo',
+    title: 'Acciones dentro de cada módulo',
     description:
-      'Las acciones operativas viven dentro del módulo que corresponde. En Novedades puedes registrar una novedad o incidencia sin recargar la cabecera global.',
+      'Cada función vive donde corresponde. Novedad, tarea, alerta, Caja y controles conservan su propia trazabilidad: no se duplican para aparentar integración.',
     route: '/libro?clase=entry',
-    target: '[data-tour="module-actions"]',
+    target: '[data-tour="module-actions"], [data-tour="route-title"], main h1',
   },
   {
     id: 'busqueda',
     title: 'Búsqueda global',
     description:
-      'Busca novedades, tareas, responsables y referencias operativas del Libro.',
+      'Busca #ID, habitación, huésped, responsable o texto. Los identificadores humanos te permiten saltar al objeto concreto.',
     target: '[data-tour="global-search"]',
   },
   {
     id: 'libro',
+    module: 'novedades',
     title: 'Novedades',
     description:
-      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cuando una habitación aporta contexto, se selecciona del catálogo y queda vinculada al monitor operacional.',
+      'El núcleo operativo registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Tareas, seguimientos y alertas son objetos distintos, vinculables.',
     route: '/libro?clase=entry',
     target: ROUTE_TARGET,
   },
   {
     id: 'novedades-habitacion',
+    module: 'habitaciones',
     title: 'Novedades / habitación',
     description:
-      'Las 89 habitaciones funcionan como un mapa de contexto operacional. Cada tarjeta reúne novedades, tareas, alertas, garantías y otros hechos vinculados; no muestra ocupación ni sustituye al PMS.',
+      'Las 89 habitaciones son un monitor de contexto operacional. Al tocar una habitación ves directamente sus novedades, tareas, alertas, garantías y el reflejo histórico de folios de Caja.',
     route: '/novedades/habitacion',
     target: ROUTE_TARGET,
   },
   {
     id: 'caja',
+    module: 'caja',
     title: 'Caja',
     description:
-      'Aquí vive la custodia financiera: fondo fijo, garantías, ingresos, egresos, transferencias, arqueos y diferencias. No depende del PMS.',
+      'Fondo fijo, garantías, movimientos, arqueos, diferencias, gimnasio y estacionamiento viven aquí. Caja es la fuente de verdad financiera.',
     route: '/caja',
     target: ROUTE_TARGET,
     anyOf: ['cash.view'],
   },
   {
     id: 'turno',
+    module: 'turno',
     title: 'Mi turno',
     description:
-      'Mi turno organiza inicio, continuidad, entrega y cierre. La entrega resume Novedades, tareas, seguimientos y alertas; Caja conserva su propio control de custodia.',
+      'Inicio, recepción, continuidad, entrega y cierre siguen un ciclo formal. La operación se bloquea cuando el turno no está ACTIVO.',
     route: '/turno',
     target: ROUTE_TARGET,
     anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
   },
   {
     id: 'llaves',
+    module: 'llaves',
     title: 'Llaves',
     description:
-      'Inventario físico por pisos 4, 5 y 6. Entregas, devoluciones, extravíos y conteos funcionan sin PMS, reserva ni estadía.',
+      'Inventario físico por pisos 4, 5 y 6, con faltantes, fuera de servicio y trazabilidad. No depende del PMS.',
     route: '/llaves',
     target: ROUTE_TARGET,
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   {
     id: 'alertas',
+    module: 'alertas',
     title: 'Alertas',
     description:
-      'Programa llamadas de atención individuales, grupales o globales. Una alerta puede apuntar a una novedad o tarea sin duplicarla ni cambiar su estado.',
+      'Una alerta es una llamada de atención programable. Una notificación sólo avisa y te lleva al objeto original; no crea una segunda tarea ni una segunda novedad.',
     route: '/alertas',
     target: ROUTE_TARGET,
   },
   {
-    id: 'gerencia',
-    title: 'Gerencia',
-    description:
-      'Cockpit estratégico de sólo lectura: prioriza decisiones, compara tendencias y muestra riesgo con evidencia. No crea tareas, alertas ni notificaciones automáticamente.',
-    route: '/gerencia',
-    target: ROUTE_TARGET,
-    anyOf: ['management.dashboard.view'],
-  },
-  {
     id: 'supervision',
+    module: 'supervision',
     title: 'Centro de Supervisión',
     description:
-      'Concentra excepciones de Novedades, Caja y Turnos, además de tareas, seguimientos, auditorías y controles del Supervisor.',
+      'Concentra pendientes, asignación, auditorías, medidas correctivas, informes, salud operativa y rendimiento sin rankings.',
     route: '/supervision',
     target: ROUTE_TARGET,
     anyOf: ['supervision.center.view'],
   },
   {
+    id: 'gerencia',
+    module: 'gerencia',
+    title: 'Gerencia',
+    description:
+      'No muestra una pista vaga: explica qué está mal, enseña el registro que lo demuestra, permite abrirlo directamente y Fronti sugiere una acción sobre esos hechos.',
+    route: '/gerencia',
+    target: ROUTE_TARGET,
+    anyOf: ['management.dashboard.view'],
+  },
+  {
     id: 'auditoria',
+    module: 'auditoria',
     title: 'Auditoría',
     description:
-      'Consulta el rastro de cambios con fecha, responsable y motivo. Es una vista de control y no modifica el historial.',
+      'Consulta quién cambió qué, cuándo y por qué. El historial es trazabilidad; nunca se reescribe para “corregir” el pasado.',
     route: '/admin/auditoria',
     target: ROUTE_TARGET,
     anyOf: ['audit.view'],
   },
   {
     id: 'administracion',
+    module: 'administracion',
     title: 'Administración',
     description:
-      'Usuarios, roles, parámetros y configuración técnica viven aquí. Sólo aparece con permisos administrativos.',
+      'Usuarios, roles, permisos, soporte y configuración técnica viven aquí. Al habilitar un módulo nuevo a una cuenta, AROH le ofrece automáticamente su tutorial.',
     route: '/admin',
     target: ROUTE_TARGET,
-    anyOf: ['user.manage', 'role.manage', 'system.configure'],
+    anyOf: ['user.manage', 'role.manage', 'system.configure', 'support.view'],
   },
   {
     id: 'ayuda',
-    title: 'Ayuda y recorridos',
+    title: 'Ayuda y tutoriales por módulo',
     description:
-      'Si olvidas un procedimiento, abre la ayuda. Puedes volver a iniciar este recorrido cuando quieras.',
+      'La Ayuda documenta las funciones reales del sistema y permite volver a iniciar el recorrido general o el tutorial de cualquier módulo disponible para tu cuenta.',
     target: '[data-tour="help-center"]',
   },
 ];
 
+export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
+  novedades: [
+    {
+      id: 'mod-novedades-registro',
+      module: 'novedades',
+      title: 'Novedades: registra el hecho una sola vez',
+      description:
+        'Crea la novedad o incidencia con contexto, prioridad, habitación si corresponde y responsable. No la dupliques como alerta o tarea para “dar visibilidad”.',
+      route: '/libro?clase=entry',
+      target: '[data-tour="module-actions"], [data-tour="route-title"], main h1',
+    },
+    {
+      id: 'mod-novedades-continuidad',
+      module: 'novedades',
+      title: 'Convierte el hecho en trabajo cuando haga falta',
+      description:
+        'Tarea = trabajo concreto. Seguimiento = continuidad. Alerta = llamada de atención programada. Notificación = aviso. Los cuatro pueden apuntar al mismo origen sin duplicarlo.',
+      route: '/libro?clase=entry',
+      target: ROUTE_TARGET,
+    },
+    {
+      id: 'mod-novedades-id',
+      module: 'novedades',
+      title: 'Usa el #ID para volver al origen',
+      description:
+        'Los objetos operativos usan identificadores humanos globales. Cuando Fronti, Supervisión o Gerencia señalan algo, el objetivo es poder abrir ese registro exacto.',
+      route: '/libro?clase=entry',
+      target: '[data-tour="global-search"], [data-tour="route-title"], main h1',
+    },
+  ],
+  habitaciones: [
+    {
+      id: 'mod-habitaciones-mapa',
+      module: 'habitaciones',
+      title: 'Las 89 habitaciones son contexto, no PMS',
+      description:
+        'El mapa 401–429, 501–530 y 601–630 concentra actividad operacional por habitación. No modela ocupación, check-in ni check-out.',
+      route: '/novedades/habitacion',
+      target: ROUTE_TARGET,
+    },
+    {
+      id: 'mod-habitaciones-detalle',
+      module: 'habitaciones',
+      title: 'Toca una habitación y ve el detalle',
+      description:
+        'Al seleccionar una habitación, AROH abre el panel de detalle visible con sus novedades, tareas, seguimientos, alertas y garantías, con enlaces hacia cada objeto.',
+      route: '/novedades/habitacion',
+      target: '#detalle-habitacion, [data-tour="route-title"], main h1',
+    },
+    {
+      id: 'mod-habitaciones-folios',
+      module: 'habitaciones',
+      title: 'Gym y estacionamiento: reflejo histórico',
+      description:
+        'Los folios de gimnasio y estacionamiento aparecen durante 30 días como reflejo. La fuente de verdad sigue siendo Caja y el folio abre su registro allí.',
+      route: '/novedades/habitacion',
+      target: ROUTE_TARGET,
+    },
+  ],
+  caja: [
+    {
+      id: 'mod-caja-conceptos',
+      module: 'caja',
+      title: 'Caja separa conceptos',
+      description:
+        'Fondo fijo, garantías bajo custodia y movimientos operacionales no son lo mismo. AROH los mantiene separados para que un saldo aparente no esconda una diferencia real.',
+      route: '/caja',
+      target: ROUTE_TARGET,
+      anyOf: ['cash.view'],
+    },
+    {
+      id: 'mod-caja-arqueo',
+      module: 'caja',
+      title: 'Arquea y deja la diferencia visible',
+      description:
+        'El arqueo compara esperado versus contado. Si no coincide, la diferencia queda trazada; no se borra ni se corrige maquillando el historial.',
+      route: '/caja?seccion=auditorias',
+      target: ROUTE_TARGET,
+      anyOf: ['cash.view'],
+    },
+    {
+      id: 'mod-caja-servicios',
+      module: 'caja',
+      title: 'Gimnasio y estacionamiento también nacen en Caja',
+      description:
+        'Emite folios de gimnasio y tickets de estacionamiento con habitación y contexto. Estacionamiento usa ID Reserva; Novedades / habitación sólo refleja estos registros por 30 días.',
+      route: '/caja?seccion=gimnasio',
+      target: ROUTE_TARGET,
+      anyOf: ['cash.view'],
+    },
+  ],
+  turno: [
+    {
+      id: 'mod-turno-recibir',
+      module: 'turno',
+      title: 'Primero recibe la continuidad',
+      description:
+        'El turno saliente debe cerrar. Después, quien recibe abre la entrega pendiente, recuenta Caja y valida la recepción antes de iniciar el siguiente turno.',
+      route: '/turno',
+      target: ROUTE_TARGET,
+      anyOf: ['shift.start', 'shift.receive', 'shift.manage'],
+    },
+    {
+      id: 'mod-turno-activo',
+      module: 'turno',
+      title: 'La operación exige turno ACTIVO',
+      description:
+        'Sin turno, durante recepción o durante cierre, las acciones operativas del mesón quedan bloqueadas. Las consultas de lectura siguen disponibles cuando corresponde.',
+      route: '/turno',
+      target: ROUTE_TARGET,
+      anyOf: ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
+    },
+    {
+      id: 'mod-turno-entrega',
+      module: 'turno',
+      title: 'Entrega, cierre y firma',
+      description:
+        'Prepara la entrega, cierra Caja, envía y cierra formalmente el turno. La entrega queda disponible para recepción y el acta conserva firmas y trazabilidad.',
+      route: '/turno',
+      target: ROUTE_TARGET,
+      anyOf: ['shift.handover', 'shift.close', 'shift.manage'],
+    },
+  ],
+  llaves: [
+    {
+      id: 'mod-llaves-pisos',
+      module: 'llaves',
+      title: 'Inventario por piso o completo',
+      description:
+        'Puedes revisar todos los pisos o separar 4, 5 y 6. El catálogo siempre representa las 89 habitaciones canónicas.',
+      route: '/llaves?piso=todos',
+      target: ROUTE_TARGET,
+      anyOf: ['key.assign', 'key.inventory', 'key.stock'],
+    },
+    {
+      id: 'mod-llaves-diferencias',
+      module: 'llaves',
+      title: 'Los faltantes quedan como señal',
+      description:
+        'Registra encontrado y fuera de servicio. Las diferencias físicas quedan trazadas y pueden alimentar Supervisión y Fronti; no se deducen desde ocupación PMS.',
+      route: '/llaves?piso=todos',
+      target: ROUTE_TARGET,
+      anyOf: ['key.inventory', 'key.stock'],
+    },
+  ],
+  alertas: [
+    {
+      id: 'mod-alertas-programar',
+      module: 'alertas',
+      title: 'Programa una alerta sólo cuando quieras atención futura',
+      description:
+        'La alerta tiene fecha/hora y destinatario individual, grupal o global. Puede vincularse a una novedad, tarea o habitación sin crear una copia del objeto.',
+      route: '/alertas',
+      target: ROUTE_TARGET,
+    },
+    {
+      id: 'mod-alertas-notificacion',
+      module: 'alertas',
+      title: 'Notificación no significa alerta',
+      description:
+        'La campana sólo avisa. Al abrir una notificación llegas al objeto que originó el aviso; marcarla leída no resuelve la tarea, novedad o alerta de origen.',
+      route: '/notificaciones',
+      target: ROUTE_TARGET,
+    },
+  ],
+  supervision: [
+    {
+      id: 'mod-supervision-centro',
+      module: 'supervision',
+      title: 'Supervisión concentra excepciones, no duplica operación',
+      description:
+        'Revisa pendientes, continuidad, tareas y seguimientos desde una capa de control. Los objetos siguen viviendo en sus módulos originales.',
+      route: '/supervision',
+      target: ROUTE_TARGET,
+      anyOf: ['supervision.center.view'],
+    },
+    {
+      id: 'mod-supervision-auditorias',
+      module: 'supervision',
+      title: 'Auditorías y medidas correctivas',
+      description:
+        'Una auditoría puede generar hallazgos y medidas correctivas con responsable, plazo y validación. El cierre exige evidencia y trazabilidad.',
+      route: '/supervision/auditorias',
+      target: ROUTE_TARGET,
+      anyOf: ['supervision.center.view'],
+    },
+    {
+      id: 'mod-supervision-control',
+      module: 'supervision',
+      title: 'Informes, salud y rendimiento',
+      description:
+        'Los informes consolidan datos operativos; Salud detecta señales de flujo/técnicas; Rendimiento mide cumplimiento sin rankings personales.',
+      route: '/supervision',
+      target: ROUTE_TARGET,
+      anyOf: ['supervision.center.view'],
+    },
+  ],
+  gerencia: [
+    {
+      id: 'mod-gerencia-decision',
+      module: 'gerencia',
+      title: 'Gerencia empieza por lo que requiere decisión',
+      description:
+        'El cockpit prioriza diferencias, incidencias, backlog, continuidad, llaves y hallazgos usando hechos del sistema, no conclusiones inventadas.',
+      route: '/gerencia',
+      target: ROUTE_TARGET,
+      anyOf: ['management.dashboard.view'],
+    },
+    {
+      id: 'mod-gerencia-trazabilidad',
+      module: 'gerencia',
+      title: 'Trazabilidad significa ver el error exacto',
+      description:
+        'Cada señal expone el detalle detectado y un enlace al arqueo, tarea, incidencia, habitación o control concreto. No te manda a revisar manualmente un módulo entero.',
+      route: '/gerencia',
+      target: ROUTE_TARGET,
+      anyOf: ['management.dashboard.view'],
+    },
+    {
+      id: 'mod-gerencia-fronti',
+      module: 'gerencia',
+      title: 'Fronti explica sobre evidencia',
+      description:
+        'Fronti recibe los hechos detectados, explica qué ocurrió y qué revisar sin inventar montos, responsables ni causas. Si IA no responde, AROH conserva la acción determinística.',
+      route: '/gerencia',
+      target: ROUTE_TARGET,
+      anyOf: ['management.dashboard.view'],
+    },
+  ],
+  auditoria: [
+    {
+      id: 'mod-auditoria-rastro',
+      module: 'auditoria',
+      title: 'Auditoría conserva el rastro',
+      description:
+        'Consulta fecha, usuario, entidad, acción y contexto de los cambios. La auditoría sirve para reconstruir qué ocurrió, no para editar el pasado.',
+      route: '/admin/auditoria',
+      target: ROUTE_TARGET,
+      anyOf: ['audit.view'],
+    },
+  ],
+  administracion: [
+    {
+      id: 'mod-admin-usuarios',
+      module: 'administracion',
+      title: 'Usuarios y visibilidad operativa',
+      description:
+        'Crea cuentas, asigna roles y puede marcar una cuenta como oculta para que opere normalmente sin aparecer en selectores, turnos ni directorios.',
+      route: '/admin/usuarios',
+      target: ROUTE_TARGET,
+      anyOf: ['user.manage'],
+    },
+    {
+      id: 'mod-admin-permisos',
+      module: 'administracion',
+      title: 'Los módulos se habilitan por permisos',
+      description:
+        'La matriz de Roles y permisos define qué módulos y acciones ve cada cuenta. Cuando una cuenta gana acceso a un módulo que no conocía, AROH dispara su tutorial automáticamente.',
+      route: '/admin/roles',
+      target: ROUTE_TARGET,
+      anyOf: ['role.manage'],
+    },
+    {
+      id: 'mod-admin-soporte',
+      module: 'administracion',
+      title: 'Reportes, solicitudes y configuración',
+      description:
+        'La bandeja conserva reportes/solicitudes y adjuntos; Parámetros, Correo y Fronti concentran la configuración técnica según permisos.',
+      route: '/admin',
+      target: ROUTE_TARGET,
+      anyOf: ['user.manage', 'role.manage', 'system.configure', 'support.view'],
+    },
+  ],
+};
+
 export function guidedTourSteps(permissions: PermissionKey[]): TutorialStep[] {
-  return TUTORIAL_STEPS.filter(
-    (step) => !step.anyOf || step.anyOf.some((permission) => permissions.includes(permission)),
-  );
+  return TUTORIAL_STEPS.filter((step) => allowed(step, permissions));
+}
+
+export function moduleTutorialSteps(
+  modules: readonly TutorialModuleKey[],
+  permissions: PermissionKey[],
+): TutorialStep[] {
+  const enabled = new Set(enabledTutorialModules(permissions));
+  return modules
+    .filter((module) => enabled.has(module))
+    .flatMap((module) => MODULE_TUTORIAL_STEPS[module])
+    .filter((step) => allowed(step, permissions));
 }

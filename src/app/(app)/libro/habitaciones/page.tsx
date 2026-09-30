@@ -154,7 +154,7 @@ export default async function RoomOperationsPage({ searchParams }: { searchParam
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-7 md:grid-cols-10 xl:grid-cols-15">
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-7 md:grid-cols-10 xl:grid-cols-[repeat(15,minmax(0,1fr))]">
           {rooms.map((room) => {
             const query = new URLSearchParams();
             if (floor) query.set('piso', String(floor));

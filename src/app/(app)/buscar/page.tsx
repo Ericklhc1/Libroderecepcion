@@ -25,7 +25,7 @@ export default async function GlobalSearchPage({
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Búsqueda global</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Un solo buscador para números de registro, habitaciones, huéspedes, responsables y texto operativo.
+          Un solo índice para registros, habitaciones, reservas, alertas, notificaciones y destinos del sistema.
         </p>
       </header>
 
@@ -40,7 +40,7 @@ export default async function GlobalSearchPage({
             name="q"
             defaultValue={q}
             autoFocus
-            placeholder="Ej.: #1252, 617, Jaime, multa, garantía, caja…"
+            placeholder="Ej.: #1252, 617, reserva 752…, garantía, Fronti, informes…"
             className="input-base w-full pl-9"
             aria-label="Buscar en todo el Libro"
           />
@@ -64,7 +64,7 @@ export default async function GlobalSearchPage({
         <Card>
           <EmptyState
             message={`No encontré registros para “${q}”.`}
-            hint="Prueba con el #ID, habitación, huésped, responsable, título o una palabra de la descripción."
+            hint="Prueba con #ID, habitación, reserva, huésped, responsable, módulo, acción o una palabra del contenido."
           />
         </Card>
       ) : (
@@ -74,7 +74,9 @@ export default async function GlobalSearchPage({
               <li key={`${result.entityType}-${result.entityId}`}>
                 <Link href={result.href} className="block px-4 py-3 hover:bg-slate-50">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold tabular text-petrol-700">#{result.humanId}</span>
+                    {result.humanId ? (
+                      <span className="font-semibold tabular text-petrol-700">#{result.humanId}</span>
+                    ) : null}
                     <Chip>{result.kind}</Chip>
                     {result.status ? (
                       <span className="text-xs font-medium text-slate-500">
@@ -91,7 +93,7 @@ export default async function GlobalSearchPage({
                     {result.guestName ? <span>{result.guestName}</span> : null}
                     {result.responsible ? <span>Responsable: {result.responsible}</span> : null}
                     {result.category ? <span>{result.category.replaceAll('_', ' ')}</span> : null}
-                    <span>{formatDateTime(result.createdAt)}</span>
+                    {result.createdAt ? <span>{formatDateTime(result.createdAt)}</span> : null}
                   </div>
                 </Link>
               </li>

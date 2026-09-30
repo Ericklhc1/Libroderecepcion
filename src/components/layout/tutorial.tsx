@@ -223,7 +223,7 @@ export function TutorialTour({
       {targetRect ? (
         <div className="pointer-events-none fixed inset-0 z-[60] no-print" aria-hidden="true">
           <div
-            className="absolute rounded-xl ring-4 ring-gold-400 shadow-[0_0_0_9999px_rgba(6,31,41,0.64)] transition-all duration-150"
+            className="absolute rounded-md ring-4 ring-gold-400 shadow-[0_0_0_9999px_rgba(6,31,41,0.64)] transition-all duration-150"
             style={{
               top: Math.max(6, targetRect.top - 6),
               left: Math.max(6, targetRect.left - 6),
@@ -246,7 +246,7 @@ export function TutorialTour({
         data-tutorial-ui="true"
         className="fixed inset-x-0 bottom-0 z-[70] px-3 pb-20 lg:bottom-4 lg:left-auto lg:right-4 lg:w-[26rem] lg:px-0 lg:pb-0 no-print"
       >
-        <div className="rounded-xl bg-petrol-900 p-4 text-petrol-50 shadow-2xl ring-1 ring-white/10">
+        <div className="rounded-md bg-petrol-900 p-4 text-petrol-50 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-white/10">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 rounded-lg bg-petrol-800 p-1.5 text-gold-400">
               <Compass className="h-4 w-4" aria-hidden="true" />
@@ -371,10 +371,10 @@ export function TutorialTour({
             role="dialog"
             aria-modal="true"
             aria-labelledby="tutorial-interaction-title"
-            className="max-h-[min(90vh,38rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+            className="max-h-[min(90vh,38rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-slate-200"
           >
             <div className="flex items-start gap-3">
-              <span className="rounded-xl bg-petrol-50 p-2 text-petrol-800">
+              <span className="rounded-md bg-petrol-50 p-2 text-petrol-800">
                 <MousePointer2 className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>

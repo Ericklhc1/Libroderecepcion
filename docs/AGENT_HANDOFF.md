@@ -8,7 +8,8 @@
 - Cabecera: identidad AROH separada del alojamiento, acento dorado superior y símbolo petróleo/dorado.
 - Navegación de escritorio: barra petróleo oscura, estados activos sólidos y subrayado dorado.
 - Tarjetas, botones, chips y campos heredan el nuevo sistema desde componentes compartidos.
-- Regresión: `tests/corporate-visual-system.test.ts`.
+- La armonización cubre también login, instalación, términos, cambio de contraseña, sin permisos, móvil, chat, Fronti, ayuda, notificaciones, soporte, tutorial, gates, alarmas y modales de turno.
+- Regresiones: `tests/corporate-visual-system.test.ts`, `tests/corporate-visual-pages.test.ts` y `tests/corporate-visual-all-pages.test.ts`; recorren el árbol real de pantallas y componentes para impedir geometrías/shells paralelos.
 - Release objetivo: **v1.34.0**. Sin migración Prisma.
 
 ## 29/09/2026 · AROH 1.33.2 · hotfix de autorecepción de turnos

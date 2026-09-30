@@ -482,7 +482,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
         description: { type: ['string', 'null'], maxLength: 2000 },
         dueAt: {
           type: 'string',
-          description: 'Fecha y hora ISO 8601 con zona horaria explícita.',
+          description: 'Fecha y hora indicada por el usuario, por ejemplo mañana a las 09:00 o en 2 horas; el servidor interpreta la hora del hotel. También acepta ISO.',
         },
         priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
       },
@@ -494,7 +494,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
     type: 'function',
     name: 'proponer_registro',
     description:
-      'Prepara una novedad o incidencia de la Central. Las incidencias requieren gravedad. La escritura sólo ocurre después de confirmar la tarjeta.',
+      'Prepara una novedad o incidencia con los datos ya aportados. Basta una descripción breve: no exijas habitación, responsable ni vencimiento si no se indicaron. Conserva el responsable y plazo cuando existan. Las incidencias requieren gravedad. Sólo guarda después de confirmar la tarjeta.',
     strict: true,
     mode: 'propose',
     area: 'novedades',
@@ -503,14 +503,22 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
       properties: {
         type: { type: 'string', enum: ['NOVEDAD', 'INCIDENCIA'] },
         title: { type: 'string', minLength: 3, maxLength: 200 },
-        description: { type: 'string', minLength: 3, maxLength: 4000 },
+        description: { type: ['string', 'null'], maxLength: 4000, description: 'Descripción aportada por el usuario o null para usar el título sin pedirlo dos veces.' },
         roomNumber: { type: ['string', 'null'] },
-        priority: { type: 'string', enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'] },
+        priority: { type: ['string', 'null'], enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null], description: 'Prioridad indicada o null: se mostrará media como valor predeterminado en la tarjeta.' },
         severity: {
           type: ['string', 'null'],
           enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null],
         },
         requiresFollowUp: { type: 'boolean' },
+        responsible: {
+          type: ['string', 'null'], maxLength: 160,
+          description: 'Nombre literal de la persona, usuario o área indicada (por ejemplo área recepción). Null si no se indicó. No inventes identificadores.',
+        },
+        dueAt: {
+          type: ['string', 'null'], maxLength: 160,
+          description: 'Vencimiento literal del usuario, por ejemplo hoy a las 21:00, mañana a las 09:00 o en 2 días. También acepta ISO. Null si no se indicó.',
+        },
       },
       required: [
         'type',
@@ -520,6 +528,8 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
         'priority',
         'severity',
         'requiresFollowUp',
+        'responsible',
+        'dueAt',
       ],
       additionalProperties: false,
     },
@@ -725,10 +735,10 @@ export function selectFrontiToolDefinitions(
   if (/check.?out|confirmar salida|confirma la salida/.test(text)) wanted.add('proponer_checkouts');
   if (/recuerdame|recordatorio/.test(text)) wanted.add('proponer_recordatorio');
   if (/multa|cobro por dano|cobro por mancha/.test(text)) wanted.add('proponer_multa');
-  if (/crea|crear|registra|registrar|anota|anotar/.test(text) && /novedad|incidencia/.test(text)) {
+  if (/crea|crear|registra|registrar|anota|anotar|genera|levanta|deja una/.test(text) && /novedad|incidencia/.test(text)) {
     wanted.add('proponer_registro');
   }
-  if (/completa|completar|resuelve|resolver|marca como completada/.test(text) && /tarea|t#|#\\d+/.test(text)) {
+  if (/completa|completar|resuelve|resolver|marca como completada/.test(text) && /tarea|t#|#\d+/.test(text)) {
     wanted.add('proponer_resolver_tarea');
   }
   if (/reporta|reportar|informa al supervisor|avisa al administrador/.test(text)) {

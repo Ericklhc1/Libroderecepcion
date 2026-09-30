@@ -1,5 +1,18 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.38.0 · Fronti: acciones continuas y confirmación verificable
+
+- Causa raíz: el catálogo de herramientas se elegía únicamente con el último mensaje; una respuesta por campos perdía la intención previa de crear. La selección conserva ahora la solicitud literal reciente del usuario, sin convertir mensajes del modelo en autorizaciones; preguntas nuevas y cancelaciones cortan la continuidad.
+- La propuesta de Novedad/Incidencia conserva persona o área responsable y vencimiento. Resuelve nombres contra los catálogos operativos, respeta usuarios ocultos/inactivos/no operativos, pide aclaración ante ambigüedad y revalida antes de confirmar.
+- Las fechas naturales (hoy, mañana, en dos días con número, horas/minutos) usan las funciones canónicas de America/Santiago; no se exige ISO al usuario ni se fija UTC-3. Campos opcionales no bloquean una novedad simple; prioridad predeterminada y datos completos son visibles antes de guardar.
+- Las tarjetas muestran descripción, responsable, área, habitación, prioridad, vencimiento y seguimiento, con lectura desplazable en móvil. El encabezado identifica AROH Central IA.
+- Tras obtener una tarjeta válida, la respuesta es determinística: aún no está guardada. No se consume otra inferencia que pueda perder la propuesta o fingir éxito. Propuestas idénticas de una misma respuesta se deduplican.
+- La escritura sigue pasando por createEntry, con permisos y bloqueo operativo de turno. La confirmación retorna el # global real y enlace al registro, actualiza las vistas y no libera una confirmación consumida si falla un paso posterior de seguimiento.
+- Se refuerza la validación de herramientas al ejecutar; no se amplían roles ni capacidades. Completar tareas por # usa humanId, no el correlativo legado del módulo.
+- Pruebas nuevas: reproducción de conversación por campos, continuidad/cancelación, permisos, catálogos, fechas de verano/invierno, tarjetas, persistencia simulada completa, caducidad y doble confirmación. No se crean registros de prueba en Production.
+- Sin migración Prisma, sin cambios de datos históricos ni proveedores nuevos. Base v1.37.7 / e7501461499f6a17e5a545ae3c97e9641c705928. Release v1.38.0.
+
+
 ## 30/09/2026 · AROH 1.37.7 · sidebar persistente al desplazarse
 
 - El sidebar de escritorio usa `sticky top-0`, `h-dvh` y `self-start`; mantiene marca y pie visibles, y el menú dispone de scroll interno con `overscroll-contain`.

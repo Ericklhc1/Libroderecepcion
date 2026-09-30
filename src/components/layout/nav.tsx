@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -46,22 +46,6 @@ function isActive(pathname: string, href: string): boolean {
   const target = href.split(/[?#]/, 1)[0] ?? href;
   if (target === '/') return pathname === '/';
   return pathname === target || pathname.startsWith(`${target}/`);
-}
-
-function isSubitemActive(
-  pathname: string,
-  currentSearch: { toString(): string },
-  href: string,
-): boolean {
-  const target = new URL(href, 'https://aroh.local');
-  if (pathname !== target.pathname || target.hash) return false;
-
-  const current = new URLSearchParams(currentSearch.toString());
-  const expected = new URLSearchParams(target.search);
-  current.sort();
-  expected.sort();
-
-  return current.toString() === expected.toString();
 }
 
 function badgeFor(
@@ -329,7 +313,6 @@ export function SidebarNav({
   badges?: Partial<Record<string, number>>;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   return (
     <nav aria-label="Navegación principal" className="space-y-5">
@@ -346,63 +329,25 @@ export function SidebarNav({
 
           {group.items.map((item) => {
             const Icon = ICONS[item.icon];
-            const rootActive = isActive(pathname, item.href);
-            const menuActive =
-              item.menu?.some((section) =>
-                section.items.some((subitem) => isActive(pathname, subitem.href)),
-              ) ?? false;
-            const active = rootActive || menuActive;
+            const active = isActive(pathname, item.href);
             const badge = badgeFor(badges, item.href);
 
             return (
-              <div key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={rootActive ? 'page' : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-800',
-                    active
-                      ? 'border-gold-500 bg-petrol-800 font-semibold text-white'
-                      : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span className="flex-1 truncate">{item.label}</span>
-                  {badge && badge > 0 ? <Badge value={badge} /> : null}
-                </Link>
-
-                {active && item.menu?.length ? (
-                  <div className="ml-5 mt-1 space-y-2 border-l border-petrol-800 pb-2 pl-3">
-                    {item.menu.map((section) => (
-                      <div key={section.title}>
-                        <p className="px-2 pb-1 pt-1 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-petrol-500">
-                          {section.title}
-                        </p>
-                        <div className="space-y-0.5">
-                          {section.items.map((subitem) => {
-                            const subActive = isSubitemActive(pathname, searchParams, subitem.href);
-                            return (
-                              <Link
-                                key={subitem.href}
-                                href={subitem.href}
-                                title={subitem.description}
-                                className={cn(
-                                  'block rounded-sm border-l px-2 py-1.5 text-[0.75rem] transition-colors',
-                                  subActive
-                                    ? 'border-gold-500 bg-petrol-900 text-white'
-                                    : 'border-transparent text-petrol-300 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
-                                )}
-                              >
-                                {subitem.label}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-800',
+                  active
+                    ? 'border-gold-500 bg-petrol-800 font-semibold text-white'
+                    : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{item.label}</span>
+                {badge && badge > 0 ? <Badge value={badge} /> : null}
+              </Link>
             );
           })}
         </div>

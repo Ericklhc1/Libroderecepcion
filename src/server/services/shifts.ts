@@ -1716,6 +1716,23 @@ export async function removeShiftMember(
       },
       tx,
     );
+
+    if (actor.id !== target.userId) {
+      await notify(
+        [
+          {
+            userId: target.userId,
+            type: NotificationType.ACTUALIZACION_OPERATIVA,
+            title: 'Salida de turno registrada',
+            body: `${actor.name} te retiró del turno ${SHIFT_TYPE_LABEL[shift.type]}. Tu participación anterior quedó guardada en el historial.`,
+            link: '/turno',
+            entity: 'Shift',
+            entityId: shift.id,
+          },
+        ],
+        tx,
+      );
+    }
   });
 }
 

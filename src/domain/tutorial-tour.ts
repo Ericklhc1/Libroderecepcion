@@ -35,9 +35,9 @@ export function shouldNavigateTutorial(
 /**
  * Recorrido de producto v1.5.0.
  *
- * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Alertas + Supervisión.
- * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
- * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
+ * AROH gira alrededor de Turnos + Novedades + contexto por Habitación + Caja +
+ * Llaves + Alertas + Supervisión. La habitación organiza contexto operativo;
+ * no representa ocupación, reserva, check-in ni check-out.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -67,18 +67,17 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'libro',
     title: 'Novedades',
     description:
-      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. Cualquier habitación o referencia se escribe como contexto libre cuando aporta valor.',
+      'Es el núcleo operativo: registra qué pasó, qué queda pendiente, quién responde y cómo se resolvió. La habitación puede seleccionarse como contexto estructurado cuando aporta valor.',
     route: '/libro?clase=entry',
     target: ROUTE_TARGET,
   },
   {
-    id: 'central-reservas',
-    title: 'Central de Reservas',
+    id: 'novedades-habitaciones',
+    title: 'Novedades · Habitaciones',
     description:
-      'Prepara llegadas, garantías, saldos y pendientes antes de que impacten al mesón. Trabaja sobre referencias ya existentes y deriva continuidad a tareas, alertas o seguimientos.',
-    route: '/central-reservas',
+      'Mapa de las 89 habitaciones como contexto operativo. Reúne novedades, tareas, alertas y otros registros asociados sin gestionar ocupación ni sustituir el PMS.',
+    route: '/libro/habitaciones',
     target: ROUTE_TARGET,
-    anyOf: ['reservation.center.view'],
   },
   {
     id: 'caja',

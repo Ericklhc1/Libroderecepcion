@@ -1,22 +1,23 @@
 import 'server-only';
 
 import {
-  AlertStatus,
   FollowUpStatus,
+  OperationalAlarmStatus,
   GuaranteeStatus,
   ReservationStatus,
   TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import type { CurrentUser } from '@/server/auth/current-user';
 
 /**
- * Bandeja de Central de Reservas.
+ * Bandeja de Prellegadas.
  *
- * No replica el PMS: reúne referencias ya presentes en el Libro y sus señales
- * operativas para que Reservas prepare la llegada y entregue pendientes
- * estructurados a Recepción.
+ * No replica el PMS: reúne referencias ya presentes en AROH y sus excepciones
+ * para preparar próximas llegadas. Las Alertas son OperationalAlarm; la tabla
+ * Alert legada no participa en esta pantalla.
  */
-export async function getReservationCenterSnapshot(now = new Date()) {
+export async function getReservationCenterSnapshot(user: CurrentUser, now = new Date()) {
   const in72Hours = new Date(now.getTime() + 72 * 60 * 60_000);
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60_000);
 
@@ -83,23 +84,36 @@ export async function getReservationCenterSnapshot(now = new Date()) {
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       take: 40,
     }),
-    prisma.alert.findMany({
+    prisma.operationalAlarm.findMany({
       where: {
-        deletedAt: null,
-        reservationId: { in: reservationIds },
-        status: { not: AlertStatus.RESUELTA },
+        sourceEntity: 'ReservationReference',
+        sourceId: { in: reservationIds },
+        status: OperationalAlarmStatus.ACTIVA,
+        ...(
+          user.isSystemAdmin ||
+          user.permissions.includes('shift.manage') ||
+          user.permissions.includes('supervision.center.view') ||
+          user.permissions.includes('management.dashboard.view')
+            ? {}
+            : {
+                OR: [
+                  { createdById: user.id },
+                  { recipients: { some: { userId: user.id } } },
+                ],
+              }
+        ),
       },
       select: {
         id: true,
-        humanId: true,
         title: true,
-        level: true,
+        note: true,
+        kind: true,
         status: true,
         dueAt: true,
-        reservationId: true,
-        reservation: { select: { code: true } },
+        sourceId: true,
+        createdAt: true,
       },
-      orderBy: [{ level: 'desc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       take: 40,
     }),
     reservationIds.length === 0
@@ -127,6 +141,10 @@ export async function getReservationCenterSnapshot(now = new Date()) {
         }),
   ]);
 
+  const reservationCodeById = new Map(
+    reservations.map((reservation) => [reservation.id, reservation.code]),
+  );
+
   return {
     now,
     horizons: {
@@ -136,7 +154,12 @@ export async function getReservationCenterSnapshot(now = new Date()) {
     },
     reservations,
     tasks,
-    alerts,
+    alerts: alerts.map((alert) => ({
+      ...alert,
+      reservation: alert.sourceId
+        ? { code: reservationCodeById.get(alert.sourceId) ?? 'Reserva' }
+        : null,
+    })),
     followUps,
   };
 }

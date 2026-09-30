@@ -127,7 +127,7 @@ export default async function TasksPage({
 
       <Filters
         action="/tareas"
-        fields={['q', 'estadoTarea', 'prioridad', 'area', 'responsable']}
+        fields={['estadoTarea', 'prioridad', 'area', 'responsable']}
         values={values}
         options={{ departments: options.departments, users: options.users }}
         extraHidden={onlyMine ? { mias: '1' } : undefined}

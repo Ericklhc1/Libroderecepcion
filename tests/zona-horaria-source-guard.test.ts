@@ -40,6 +40,28 @@ describe('guardas de zona horaria en superficies operativas', () => {
     expect(reports).toContain('hotelWallDateTime');
   });
 
+  it('todos los formularios datetime-local pasan por la zona del hotel al persistir', () => {
+    const action = source('src/server/action.ts');
+    const schemas = source('src/server/schemas.ts');
+    const liveCash = source('src/server/actions/live-cash.ts');
+    const operationalAlarms = source('src/server/actions/operational-alarms.ts');
+
+    expect(action).toContain("import { parseHotelDateInput } from '@/domain/time'");
+    expect(action).toContain('parseHotelDateInput(v)');
+    expect(action).not.toContain('Date.parse(v)');
+    expect(action).not.toContain('new Date(v)');
+
+    expect(schemas).toContain('occurredAt: zOptionalDate');
+    expect(schemas).toContain('startsAt: zOptionalDate');
+    expect(schemas).toContain('scheduledAt: zOptionalDate');
+    expect(schemas).toContain('dueAt: zOptionalDate');
+    expect(schemas).toContain('checkIn: zOptionalDate');
+    expect(schemas).toContain('checkOut: zOptionalDate');
+
+    expect(liveCash).toContain('parseHotelDateTimeLocal(input.effectiveAt)');
+    expect(operationalAlarms).toContain('parseHotelDateTimeLocal(input.dueAtLocal)');
+  });
+
   it('un cierre de Caja antiguo no invita a reconstruirlo con la Caja actual', () => {
     const shiftPage = source('src/app/(app)/turno/page.tsx');
     expect(shiftPage).toContain('pendingClosureIsStale');

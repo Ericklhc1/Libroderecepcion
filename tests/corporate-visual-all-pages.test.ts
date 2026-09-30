@@ -38,7 +38,7 @@ describe('acoplamiento visual transversal AROH', () => {
 
     for (const path of files) {
       const source = readFileSync(path, 'utf8');
-      expect(source, path).toMatch(/bg-(?:petrol-950|\[#f4f2ed\])/);
+      expect(source, path).toMatch(/bg-(?:petrol-950|\[#f3f6f8\])/);
       expect(source, path).toContain('border-t-gold-500');
     }
   });

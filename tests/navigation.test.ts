@@ -34,7 +34,6 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
-      '/central-reservas', // preparación previa y continuidad de reservas
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
@@ -205,6 +204,7 @@ describe('shell corporativo con sidebar', () => {
   it('las vistas secundarias siguen alcanzables dentro de su módulo', () => {
     const libro = readFileSync('src/app/(app)/libro/page.tsx', 'utf-8');
     expect(libro).toContain("{ label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' }");
+    expect(libro).toContain("{ label: 'Habitaciones', href: '/libro/habitaciones' }");
     expect(libro).toContain("{ label: 'Mis tareas', href: '/libro?clase=task' }");
     expect(libro).toContain('href="/historial"');
 

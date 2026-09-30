@@ -24,6 +24,7 @@ export const taskInclude = {
   assignee: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true } },
+  room: { select: { id: true, number: true, floor: true } },
   entry: { select: { id: true, humanId: true, title: true, type: true } },
   followUp: { select: { id: true, action: true } },
   sourceAlert: { select: { id: true, title: true, type: true } },
@@ -107,12 +108,18 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
   if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
   let origin = inferOrigin(input);
+  let roomId = input.roomId ?? null;
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+  }
   if (input.entryId) {
     const entry = await prisma.operationalEntry.findFirst({
       where: { id: input.entryId, deletedAt: null },
-      select: { type: true },
+      select: { type: true, roomId: true },
     });
     if (!entry) throw new NotFoundError('El registro de origen no existe.');
+    if (!roomId) roomId = entry.roomId;
     if (entry.type === 'INCIDENCIA') origin = TaskOrigin.INCIDENCIA;
   }
 
@@ -142,7 +149,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         targetType,
         targetShiftId: input.targetShiftId ?? null,
         supervisionShiftId: supervisionShift?.id ?? null,
-        roomId: input.roomId ?? null,
+        roomId,
         guestId: input.guestId ?? null,
         reservationId: input.reservationId ?? null,
         stayId: input.stayId ?? null,

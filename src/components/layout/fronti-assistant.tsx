@@ -344,7 +344,7 @@ export function FrontiAssistant() {
     <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
-          className="pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
+          className="pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
           aria-label={config.displayName}
         >
           <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
@@ -392,7 +392,7 @@ export function FrontiAssistant() {
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-5 ${
+                  className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-5 ${
                     message.role === 'user'
                       ? 'rounded-br-md bg-petrol-800 text-white'
                       : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'
@@ -406,7 +406,7 @@ export function FrontiAssistant() {
             {confirmations.map((item) => (
               <div
                 key={item.token}
-                className={`rounded-xl border bg-white p-3 ${item.risk === 'high' ? 'border-amber-300' : 'border-slate-200'}`}
+                className={`rounded-md border bg-white p-3 ${item.risk === 'high' ? 'border-amber-300' : 'border-slate-200'}`}
               >
                 <div className="flex items-start gap-2">
                   {item.risk === 'high' ? (
@@ -466,7 +466,7 @@ export function FrontiAssistant() {
                 </button>
               ))}
             </div>
-            <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-petrol-500 focus-within:ring-2 focus-within:ring-petrol-100">
+            <div className="flex items-end gap-2 rounded-md border border-slate-300 bg-white p-2 focus-within:border-petrol-500 focus-within:ring-2 focus-within:ring-petrol-100">
               <textarea
                 ref={inputRef}
                 value={text}

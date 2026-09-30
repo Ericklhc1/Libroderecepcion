@@ -38,6 +38,7 @@ const createSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .transform((value) => (Array.isArray(value) ? value : value ? [value] : [])),
+  roomId: z.string().trim().cuid().optional().or(z.literal('')).transform((value) => value || null),
   sourceEntity: z.string().trim().max(80).optional().transform((value) => value || null),
   sourceId: z.string().trim().max(120).optional().transform((value) => value || null),
   sourceLink: z
@@ -100,12 +101,14 @@ export async function createOperationalAlarmAction(
       note: input.note,
       dueAt,
       recipientIds: input.recipientIds,
+      roomId: input.roomId,
       sourceEntity: input.sourceEntity,
       sourceId: input.sourceId,
       sourceLink: input.sourceLink,
       repeatMinutes: input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes,
     });
     revalidatePath('/alertas');
+    revalidatePath('/libro/habitaciones');
     if (input.sourceLink) revalidatePath(input.sourceLink);
     return {
       ok: true as const,

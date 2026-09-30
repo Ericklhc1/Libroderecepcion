@@ -25,6 +25,7 @@ import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 function refreshOperationalViews(entryId?: string) {
   revalidatePath('/');
   revalidatePath('/libro');
+  revalidatePath('/libro/habitaciones');
   revalidatePath('/supervision');
   revalidatePath('/incidencias');
   revalidatePath('/tareas');

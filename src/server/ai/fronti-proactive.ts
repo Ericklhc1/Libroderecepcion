@@ -3,9 +3,13 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import {
   AuditAction,
+  EntryStatus,
+  EntryType,
   GuaranteeStatus,
   NotificationType,
+  Priority,
   ReservationStatus,
+  Severity,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS } from '@/lib/permissions';
@@ -129,7 +133,7 @@ async function reservationCandidates(now: Date): Promise<FrontiProactiveCandidat
     ].filter(Boolean);
 
     return {
-      key: `reservation:${row.id}:${risks.join('|')}`,
+      key: `reservation:${row.id}:${severity}:${risks.join('|')}`,
       severity,
       area: 'Central de Reservas',
       title: `Reserva ${row.code} requiere revisión`,
@@ -148,6 +152,67 @@ async function reservationCandidates(now: Date): Promise<FrontiProactiveCandidat
       entityType: 'ReservationReference',
       entityId: row.id,
       detectedAt: row.updatedAt,
+    };
+  });
+}
+
+
+async function entryCandidates(now: Date): Promise<FrontiProactiveCandidate[]> {
+  const since = new Date(now.getTime() - 20 * 60 * 1000);
+  const rows = await prisma.operationalEntry.findMany({
+    where: {
+      createdAt: { gte: since },
+      deletedAt: null,
+      status: { in: [EntryStatus.ABIERTO, EntryStatus.EN_CURSO, EntryStatus.EN_ESPERA] },
+      OR: [
+        { type: EntryType.INCIDENCIA },
+        { priority: { in: [Priority.ALTA, Priority.CRITICA] } },
+        { requiresFollowUp: true },
+      ],
+    },
+    select: {
+      id: true,
+      humanId: true,
+      type: true,
+      title: true,
+      description: true,
+      priority: true,
+      severity: true,
+      requiresFollowUp: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 24,
+  });
+
+  return rows.map((row) => {
+    const severity: FrontiProactiveSeverity =
+      row.severity === Severity.CRITICA || row.priority === Priority.CRITICA
+        ? 'CRITICA'
+        : row.severity === Severity.ALTA || row.priority === Priority.ALTA
+          ? 'ALTA'
+          : 'MEDIA';
+
+    return {
+      key: `entry:${row.id}:${severity}`,
+      severity,
+      area: row.type === EntryType.INCIDENCIA ? 'Incidencias' : 'Novedades',
+      title: `#${row.humanId} · ${row.title}`,
+      evidence: clean(
+        [
+          `tipo ${row.type}`,
+          `prioridad ${row.priority}`,
+          row.severity ? `gravedad ${row.severity}` : null,
+          row.requiresFollowUp ? 'requiere seguimiento' : null,
+          row.description,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      ),
+      link: `/libro/${row.id}`,
+      entityType: 'OperationalEntry',
+      entityId: row.id,
+      detectedAt: row.createdAt,
     };
   });
 }
@@ -230,13 +295,14 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
 export async function collectFrontiProactiveCandidates(
   now = new Date(),
 ): Promise<FrontiProactiveCandidate[]> {
-  const [reservations, observability] = await Promise.all([
+  const [reservations, entries, observability] = await Promise.all([
     reservationCandidates(now),
+    entryCandidates(now),
     observabilityCandidates(now),
   ]);
 
   const unique = new Map<string, FrontiProactiveCandidate>();
-  for (const candidate of [...reservations, ...observability]) {
+  for (const candidate of [...reservations, ...entries, ...observability]) {
     const id = signalId(candidate.key);
     const current = unique.get(id);
     if (
@@ -322,26 +388,49 @@ function canReceiveCandidate(
   return true;
 }
 
-async function isCoolingDown(
-  id: string,
+async function claimRecipients(
+  signalIdValue: string,
   userIds: string[],
+  now: Date,
   cutoff: Date,
-): Promise<boolean> {
-  if (!userIds.length) return true;
-  const recent = await prisma.notification.count({
-    where: {
-      userId: { in: userIds },
-      type: NotificationType.FRONTI_HALLAZGO,
-      entity: 'FrontiProactiveSignal',
-      entityId: id,
-      createdAt: { gte: cutoff },
-    },
-  });
-  return recent >= userIds.length;
+): Promise<string[]> {
+  const claimed: string[] = [];
+
+  for (const userId of userIds) {
+    const rows = await prisma.$queryRaw<Array<{ userId: string }>>`
+      INSERT INTO "FrontiProactiveClaim" ("signalId", "userId", "claimedAt")
+      VALUES (${signalIdValue}, ${userId}, ${now})
+      ON CONFLICT ("signalId", "userId") DO UPDATE
+      SET "claimedAt" = EXCLUDED."claimedAt"
+      WHERE "FrontiProactiveClaim"."claimedAt" < ${cutoff}
+      RETURNING "userId"
+    `;
+    if (rows[0]?.userId) claimed.push(rows[0].userId);
+  }
+
+  return claimed;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('FRONTI_PROACTIVE_INFERENCE_TIMEOUT')),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function explainCandidate(
   candidate: FrontiProactiveCandidate,
+  timeoutMs: number,
 ): Promise<GeneratedExplanation> {
   const deterministicFallback =
     'Revisa el origen de esta señal y confirma el estado vigente antes de actuar. Fronti no cambió ningún estado operativo.';
@@ -359,7 +448,7 @@ async function explainCandidate(
       };
     }
 
-    const result = await chatWithFrontiProviderChain({
+    const result = await withTimeout(chatWithFrontiProviderChain({
       providers,
       messages: [
         {
@@ -378,7 +467,7 @@ async function explainCandidate(
         },
       ],
       toolChoice: 'none',
-    });
+    }), timeoutMs);
     const text = clean(result.text || deterministicFallback, 520);
     return {
       text: text || deterministicFallback,
@@ -400,6 +489,7 @@ async function explainCandidate(
 export async function runFrontiProactiveSweep(input: {
   trigger?: string;
   now?: Date;
+  deadlineAt?: number;
 } = {}): Promise<{
   enabled: boolean;
   candidates: number;
@@ -408,7 +498,11 @@ export async function runFrontiProactiveSweep(input: {
   skippedCooldown: number;
   fallbackExplanations: number;
 }> {
-  const enabled = await getSettingBool('fronti.proactiveEnabled', true);
+  const [frontiEnabled, proactiveEnabled] = await Promise.all([
+    getSettingBool('fronti.enabled', true),
+    getSettingBool('fronti.proactiveEnabled', true),
+  ]);
+  const enabled = frontiEnabled && proactiveEnabled;
   if (!enabled) {
     return {
       enabled: false,
@@ -421,6 +515,7 @@ export async function runFrontiProactiveSweep(input: {
   }
 
   const now = input.now ?? new Date();
+  const deadlineAt = input.deadlineAt ?? Date.now() + 75_000;
   const cooldownHours = Math.max(
     1,
     Math.min(72, Math.trunc(await getSettingNumber('fronti.proactiveCooldownHours', 24))),
@@ -448,27 +543,37 @@ export async function runFrontiProactiveSweep(input: {
   let skippedCooldown = 0;
   let fallbackExplanations = 0;
 
-  for (const candidate of candidates.slice(0, maxFindings)) {
+  for (const candidate of candidates) {
+    if (analysed >= maxFindings) break;
+
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 5_000) break;
+
     const id = signalId(candidate.key);
     const userIds = recipientPool
       .filter((recipient) => canReceiveCandidate(recipient, candidate))
       .map((recipient) => recipient.id);
 
-    if (!userIds.length) {
-      continue;
-    }
+    if (!userIds.length) continue;
 
-    if (await isCoolingDown(id, userIds, cutoff)) {
+    const claimedUserIds = await claimRecipients(id, userIds, now, cutoff);
+    if (!claimedUserIds.length) {
       skippedCooldown += 1;
       continue;
     }
 
-    const explanation = await explainCandidate(candidate);
+    const explanationTimeoutMs = Math.max(
+      2_000,
+      Math.min(18_000, deadlineAt - Date.now() - 5_000),
+    );
+    if (explanationTimeoutMs < 2_000) break;
+
+    const explanation = await explainCandidate(candidate, explanationTimeoutMs);
     analysed += 1;
     if (explanation.usedFallback) fallbackExplanations += 1;
 
     await notify(
-      userIds.map((userId) => ({
+      claimedUserIds.map((userId) => ({
         userId,
         type: NotificationType.FRONTI_HALLAZGO,
         title: `Fronti · ${candidate.title}`,
@@ -486,7 +591,7 @@ export async function runFrontiProactiveSweep(input: {
         entityId: id,
       })),
     );
-    notified += userIds.length;
+    notified += claimedUserIds.length;
 
     await recordAudit({
       entity: 'FrontiProactiveSignal',
@@ -504,7 +609,7 @@ export async function runFrontiProactiveSweep(input: {
         provider: explanation.provider,
         model: explanation.model,
         deterministicFallback: explanation.usedFallback,
-        recipients: userIds.length,
+        recipients: claimedUserIds.length,
       },
     });
   }

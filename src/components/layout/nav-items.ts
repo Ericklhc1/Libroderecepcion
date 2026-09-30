@@ -63,6 +63,11 @@ const PRIMARY: NavItem[] = [
             description: 'Casos que requieren gestión y resolución.',
           },
           {
+            href: '/libro/habitaciones',
+            label: 'Habitaciones',
+            description: 'Monitor de contexto operativo de las 89 habitaciones.',
+          },
+          {
             href: '/libro?clase=task',
             label: 'Mis tareas',
             description: 'Trabajo operativo asignado a tu cuenta.',
@@ -97,61 +102,6 @@ const PRIMARY: NavItem[] = [
             href: '/notificaciones',
             label: 'Notificaciones',
             description: 'Avisos que recibió tu cuenta.',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    href: '/central-reservas',
-    label: 'Central de Reservas',
-    mobileLabel: 'Reservas',
-    icon: 'guest',
-    anyOf: ['reservation.center.view'],
-    menu: [
-      {
-        title: 'Preparación',
-        items: [
-          {
-            href: '/central-reservas',
-            label: 'Bandeja completa',
-            description: 'Señales previas a la operación.',
-          },
-          {
-            href: '/central-reservas?vista=accion',
-            label: 'Requieren acción',
-            description: 'Garantías, saldos y pendientes.',
-          },
-        ],
-      },
-      {
-        title: 'Llegadas',
-        items: [
-          {
-            href: '/central-reservas?vista=24h',
-            label: 'Próximas 24 h',
-            description: 'Llegadas más inmediatas.',
-          },
-          {
-            href: '/central-reservas?vista=72h',
-            label: 'Próximas 72 h',
-            description: 'Preparación de los próximos tres días.',
-          },
-          {
-            href: '/central-reservas?vista=recientes',
-            label: 'Cambios recientes',
-            description: 'Reservas modificadas en las últimas 24 h.',
-          },
-        ],
-      },
-      {
-        title: 'Referencias',
-        items: [
-          {
-            href: '/huespedes',
-            label: 'Huéspedes y reservas',
-            description: 'Consulta de referencias operativas existentes.',
-            anyOf: ['guest.view', 'guest.manage'],
           },
         ],
       },

@@ -56,6 +56,13 @@ describe('cockpit estratégico de Gerencia', () => {
     const critical = cockpit.decisions.find((item) => item.id === 'critical-incidents');
     expect(critical?.href).toBe('/libro?clase=entry&tipo=INCIDENCIA');
     expect(critical?.action).toMatch(/responsable/i);
+    expect(critical?.evidence).toHaveLength(1);
+    expect(critical?.evidence[0]?.label).toMatch(/Incidencia #/);
+    expect(critical?.evidence[0]?.href).toMatch(/^\/libro\//);
+
+    const overdue = cockpit.decisions.find((item) => item.id === 'tasks-overdue');
+    expect(overdue?.evidence).toHaveLength(1);
+    expect(overdue?.evidence[0]?.href).toMatch(/^\/tareas\//);
   });
 
   it('normaliza el rango a 7, 30 o 90 días y compara contra el período anterior', async () => {

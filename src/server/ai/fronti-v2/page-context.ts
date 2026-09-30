@@ -176,25 +176,19 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
   }
 
   if (pathname === '/central-reservas') {
-    const section = filters.vista || 'bandeja';
-    const labels: Record<string, string> = {
-      accion: 'Requieren acción',
-      '24h': 'Llegadas próximas 24 h',
-      '72h': 'Llegadas próximas 72 h',
-      recientes: 'Cambios recientes',
-      bandeja: 'Bandeja completa',
-    };
-    return detail('central-reservas', 'Central de Reservas', section, labels[section] ?? 'Central de Reservas', [
-      'consultar_contexto_pantalla',
-      'consultar_garantias',
-    ]);
+    return detail(
+      'central-reservas',
+      'Contexto PMS',
+      'retirada',
+      'Ruta retirada',
+      ['consultar_contexto_pantalla'],
+    );
   }
 
   const reservationCode = pathname.match(/^\/reservas\/([^/]+)$/);
   if (reservationCode) {
-    return detail('reservas', 'Reservas', 'detalle', 'Detalle de reserva', [
+    return detail('reservas', 'Referencia PMS', 'contexto', 'Referencia externa', [
       'consultar_contexto_pantalla',
-      'consultar_garantias',
     ], 'ReservationCode', decodeURIComponent(reservationCode[1] ?? ''));
   }
   if (pathname === '/reservas') {
@@ -205,9 +199,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
 
   const guestReservation = pathname.match(/^\/huespedes\/reservas\/([^/]+)$/);
   if (guestReservation) {
-    return detail('reservas', 'Reservas', 'detalle-interno', 'Detalle de reserva', [
+    return detail('reservas', 'Referencia PMS', 'contexto', 'Referencia externa', [
       'consultar_contexto_pantalla',
-      'consultar_garantias',
     ], 'ReservationReference', guestReservation[1] ?? null);
   }
   if (pathname === '/huespedes/nueva-reserva') {

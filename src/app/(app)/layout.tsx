@@ -16,7 +16,11 @@ import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
 import { TutorialTour } from '@/components/layout/tutorial';
-import { guidedTourSteps } from '@/domain/tutorial-tour';
+import {
+  enabledTutorialModules,
+  guidedTourSteps,
+  moduleTutorialSteps,
+} from '@/domain/tutorial-tour';
 import { getBlockingAnnouncements } from '@/server/services/announcements';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { initials } from '@/lib/format';
@@ -63,7 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getBlockingAnnouncements(user.id),
     prisma.user.findUnique({
       where: { id: user.id },
-      select: { tutorialDoneAt: true },
+      select: { tutorialDoneAt: true, tutorialKnownModules: true },
     }),
     user.roleOperational && !user.isSystemAdmin
       ? getChatUnreadCount(user.id)
@@ -73,6 +77,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
+  const enabledModules = enabledTutorialModules(user.permissions);
+  const knownModules = new Set(tutorialRow?.tutorialKnownModules ?? []);
+  const pendingModules = tutorialDone
+    ? enabledModules.filter((module) => !knownModules.has(module))
+    : [];
   const groups = visibleNavGroups(user.permissions);
   const items = groups.flatMap((group) => group.items);
   const badges = { '/alertas': alerts, '/libro': myOpenTasks };
@@ -186,12 +195,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AnnouncementGate announcements={blocking} userName={user.name} />
       ) : null}
 
-      {!tutorialDone && blocking.length === 0 ? (
+      {blocking.length === 0 && !tutorialDone ? (
         <TutorialTour
           steps={guidedTourSteps(user.permissions)}
           userId={user.id}
           userName={user.name}
           suspended={receptionGate.mode !== 'ACTIVE'}
+          mode="general"
+        />
+      ) : blocking.length === 0 && pendingModules.length > 0 ? (
+        <TutorialTour
+          steps={moduleTutorialSteps(pendingModules, user.permissions)}
+          userId={user.id}
+          userName={user.name}
+          suspended={receptionGate.mode !== 'ACTIVE'}
+          mode="modules"
+          modules={pendingModules}
         />
       ) : null}
     </div>

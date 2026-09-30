@@ -31,12 +31,11 @@ const IMPACT_OPTIONS = Object.values(Impact).map((impact) => ({
 /**
  * Formulario canónico del Libro desde v1.4.0.
  *
- * Novedades e Incidencias describen la operación directamente. No consultan
- * habitaciones, huéspedes, reservas ni estadías del PMS. Si una habitación es
- * relevante, se escribe en el título/descripcion o en la categoría.
+ * Novedades e Incidencias describen la operación directamente. La habitación
+ * es contexto estructurado opcional del catálogo interno de AROH; seleccionar
+ * una no crea ni modifica una reserva, estadía o check-in del PMS.
  *
- * defaultRoomId y defaultStayId se aceptan sólo para compatibilidad de páginas
- * antiguas todavía compilables; se ignoran deliberadamente.
+ * defaultStayId sigue siendo legado. defaultRoomId sí inicializa el contexto.
  */
 export function EntryForm({
   action,
@@ -44,7 +43,7 @@ export function EntryForm({
   defaultType = EntryType.NOVEDAD,
   lockType = false,
   closeOnSuccess = true,
-  defaultRoomId: _defaultRoomId = '',
+  defaultRoomId = '',
   defaultStayId: _defaultStayId = '',
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -100,7 +99,7 @@ export function EntryForm({
         label="Descripción"
         name="description"
         required
-        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Habitación, huésped o referencia pueden escribirse aquí cuando aporten contexto."
+        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Usa el campo Habitación cuando aplique; el texto queda para el contexto adicional."
       >
         <Textarea name="description" required rows={4} maxLength={8000} />
       </Field>
@@ -120,6 +119,19 @@ export function EntryForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Habitación"
+          name="roomId"
+          hint="Opcional. Vincula este registro al monitor Novedades / habitación."
+        >
+          <Select
+            name="roomId"
+            defaultValue={defaultRoomId}
+            placeholder="Sin habitación específica"
+            options={options.rooms}
+          />
+        </Field>
+
         <Field label="Responsable" name="ownerId">
           <Select name="ownerId" placeholder="Sin responsable individual" options={options.users} />
         </Field>

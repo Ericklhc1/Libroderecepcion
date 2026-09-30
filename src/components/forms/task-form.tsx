@@ -120,7 +120,16 @@ export function TaskForm({
         )}
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Habitación" name="roomId" hint="Opcional. Aparecerá en Novedades · Habitaciones.">
+          <Select name="roomId" placeholder="Sin habitación" options={options.rooms} />
+        </Field>
+        <Field label="Área" name="departmentId">
+          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Inicio programado"
           name="startsAt"
@@ -130,9 +139,6 @@ export function TaskForm({
         </Field>
         <Field label="Fecha límite" name="dueAt">
           <Input type="datetime-local" name="dueAt" />
-        </Field>
-        <Field label="Área" name="departmentId">
-          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
         </Field>
       </div>
 

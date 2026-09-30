@@ -69,7 +69,7 @@ describe('registros del libro operativo', () => {
     expect(entry.shiftId).toBe(shift.id);
   });
 
-  it('una novedad no hereda estadía, reserva ni huésped aunque reciba un roomId legado', async () => {
+  it('una novedad conserva la habitación como contexto sin heredar PMS', async () => {
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '404' } });
     const reservation = await prisma.reservationReference.create({
       data: {
@@ -97,7 +97,7 @@ describe('registros del libro operativo', () => {
       roomId: room.id,
     });
 
-    expect(entry.roomId).toBeNull();
+    expect(entry.roomId).toBe(room.id);
     expect(entry.stayId).toBeNull();
     expect(entry.reservationId).toBeNull();
     expect(entry.guestId).toBeNull();

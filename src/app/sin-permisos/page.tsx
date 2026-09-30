@@ -5,7 +5,7 @@ export const metadata = { title: 'Sin permisos' };
 
 export default function ForbiddenPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f4f2ed] px-4">
+    <main className="flex min-h-screen items-center justify-center bg-[#f3f6f8] px-4">
       <div className="max-w-md rounded-lg border border-slate-300 border-t-2 border-t-gold-500 bg-white p-8 text-center shadow-card">
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
           <ShieldAlert className="h-6 w-6" aria-hidden="true" />

@@ -49,7 +49,7 @@ export const PERMISSIONS = {
   */
   'guest.view': { group: 'Huéspedes y reservas', name: 'Consultar huéspedes y reservas' },
   'guest.manage': { group: 'Huéspedes y reservas', name: 'Gestionar referencias de huésped y reserva' },
-  'reservation.center.view': { group: 'Central de Reservas', name: 'Ver la bandeja operativa de Central de Reservas' },
+  'reservation.center.view': { group: 'Referencias PMS', name: 'Consultar contexto externo del PMS' },
   'supervision.view': { group: 'Supervisión', name: 'Consultar el tablero de supervisión' },
   'supervision.center.view': { group: 'Centro de Supervisión', name: 'Ver el Centro de Supervisión' },
   'supervision.shift.manage': { group: 'Centro de Supervisión', name: 'Iniciar, entregar y finalizar turno de Supervisión' },

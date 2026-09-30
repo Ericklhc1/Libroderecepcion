@@ -1623,6 +1623,8 @@ model OperationalAlarm {
   sourceEntity  String?
   sourceId      String?
   sourceLink    String?
+  /// Contexto operativo opcional. No representa ocupación ni estado PMS.
+  roomNumber    String?
   /// Si existe, vuelve a notificar mientras el destinatario no la atienda.
   repeatMinutes Int?
   status        OperationalAlarmStatus @default(ACTIVA)
@@ -1635,6 +1637,7 @@ model OperationalAlarm {
 
   @@index([status, dueAt])
   @@index([sourceEntity, sourceId, status])
+  @@index([roomNumber, status])
   @@index([originShiftId, status])
   @@index([createdById, createdAt])
 }
@@ -2097,6 +2100,7 @@ model Guarantee {
 
   @@index([reservationReferenceId])
   @@index([stayId])
+  @@index([roomNumber])
   @@index([state])
   @@index([dueAt])
   @@index([deletedAt])
@@ -2734,8 +2738,10 @@ model GymPass {
   serviceType            String                @default("GIMNASIO")
   roomNumber             String
   guestName              String
-  /// Patente/matrícula del vehículo. Sólo se exige para ESTACIONAMIENTO.
+  /// Legado: patente/matrícula de tickets anteriores a 1.36.0.
   vehiclePlate           String?
+  /// ID de reserva informado por Recepción para ESTACIONAMIENTO.
+  reservationCode        String?
   receptionistId         String
   shiftId                String?
 
@@ -2763,6 +2769,8 @@ model GymPass {
 
   @@index([serviceDate])
   @@index([serviceType, serviceDate])
+  @@index([roomNumber, serviceDate])
+  @@index([reservationCode])
   @@index([issuedAt])
   @@index([reservationReferenceId])
   @@index([roomId])

@@ -7,6 +7,9 @@ import { parseFrontiDueAt } from '@/domain/fronti-due-date';
 import { HOTEL_LOCALE, HOTEL_TIME_ZONE } from '@/domain/time';
 
 type Level = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+const LEVEL_LABELS: Record<Level, string> = {
+  BAJA: 'Baja', MEDIA: 'Media', ALTA: 'Alta', CRITICA: 'Crítica',
+};
 
 export type FrontiEntryDraft = {
   type: 'NOVEDAD' | 'INCIDENCIA';
@@ -107,15 +110,20 @@ export async function prepareFrontiEntryDraft(user: CurrentUser, args: Record<st
     departmentId: responsible.departmentId,
     dueAt: dueAt?.toISOString() ?? null,
   };
+  const dueAtLabel = dueAt?.toLocaleString(HOTEL_LOCALE, {
+    timeZone: HOTEL_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
   const detail = [
     `Título: ${title}`,
     `Descripción: ${description}`,
     `Responsable: ${responsible.ownerName}`,
     `Área: ${responsible.departmentName}`,
     `Habitación: ${roomNumber ?? 'No aplica'}`,
-    `Prioridad: ${priority.toLowerCase()}${args.priority == null ? ' (predeterminada)' : ''}`,
-    ...(severity ? [`Gravedad: ${severity.toLowerCase()}`] : []),
-    `Vencimiento: ${dueAt ? dueAt.toLocaleString(HOTEL_LOCALE, { timeZone: HOTEL_TIME_ZONE }) + ' · hora de Chile' : 'Sin vencimiento'}`,
+    `Prioridad: ${LEVEL_LABELS[priority]}${args.priority == null ? ' (predeterminada)' : ''}`,
+    ...(severity ? [`Gravedad: ${LEVEL_LABELS[severity]}`] : []),
+    `Vencimiento: ${dueAtLabel ? dueAtLabel + ' · hora de Chile' : 'Sin vencimiento'}`,
     `Seguimiento: ${draft.requiresFollowUp ? 'Sí' : 'No'}`,
   ].join('\n');
   return { draft, detail };

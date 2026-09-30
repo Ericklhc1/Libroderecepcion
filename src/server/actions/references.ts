@@ -7,6 +7,7 @@ import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/s
 import {
   guaranteeCreateSchema,
   guaranteeDeleteSchema,
+  guaranteeUpdateSchema,
   guaranteeStateSchema,
   guestSchema,
   reservationSchema,
@@ -18,6 +19,7 @@ import {
   changeGuaranteeState,
   createGuarantee,
   softDeleteGuarantee,
+  updateGuarantee,
 } from '@/server/services/guarantees';
 import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 import { GUARANTEE_STATE_LABELS } from '@/domain/guarantees';
@@ -236,6 +238,23 @@ export async function createGuaranteeAction(
       ok: true as const,
       message: `Garantía registrada por ${input.currency} ${input.amount}.`,
       id: guarantee.id,
+    };
+  });
+}
+
+export async function updateGuaranteeAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('cash.guarantee_in');
+    const input = parseOrThrow(guaranteeUpdateSchema, formDataToObject(formData));
+    await updateGuarantee(user, input);
+    refreshGuarantees();
+    return {
+      ok: true as const,
+      message: 'Garantía editada. Los cambios quedaron registrados en Auditoría.',
+      id: input.id,
     };
   });
 }

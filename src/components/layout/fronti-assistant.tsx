@@ -416,7 +416,7 @@ export function FrontiAssistant() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-petrol-900">{item.title}</p>
-                    <p className="mt-1 text-xs leading-4 text-slate-600">{item.detail}</p>
+                    <p className="mt-1 text-xs leading-4 text-slate-600 max-h-52 overflow-y-auto whitespace-pre-wrap break-words">{item.detail}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-2">

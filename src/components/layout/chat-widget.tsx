@@ -1515,7 +1515,7 @@ export function ChatWidget({
         <span className="font-semibold">Fronti✨</span>
         <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
         <span className="font-medium text-emerald-700">conectado</span>
-        <span className="ml-auto text-slate-500">Asistente del Libro</span>
+        <span className="ml-auto text-slate-500">AROH Central IA</span>
       </button>
 
       {view === 'conversation' && conversationSearchOpen ? (
@@ -2540,7 +2540,7 @@ export function ChatWidget({
                   <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-petrol-950">{item.title}</p>
-                    <p className="mt-1 text-xs leading-4 text-slate-600">{item.detail}</p>
+                    <p className="mt-1 text-xs leading-4 text-slate-600 max-h-52 overflow-y-auto whitespace-pre-wrap break-words">{item.detail}</p>
                   </div>
                 </div>
                 <div className="mt-2 flex justify-end gap-2">

@@ -1,5 +1,14 @@
 import 'server-only';
 
+import { revalidatePath } from 'next/cache';
+import { parseFrontiDueAt } from '@/domain/fronti-due-date';
+import { buildFrontiToolIntent } from './fronti-v2/action-intent';
+import {
+  prepareFrontiEntryDraft,
+  validateFrontiEntryAssignment,
+  type FrontiEntryDraft,
+} from './fronti-v2/entry-draft';
+
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   EntryType,
@@ -38,6 +47,7 @@ import {
 } from './fronti-config';
 import {
   assertFrontiToolEnabled,
+  canFrontiUseTool,
   filterFrontiToolDefinitionsForUser,
   frontiToolMode,
   selectFrontiToolDefinitions,
@@ -128,15 +138,7 @@ type PendingAction =
       userId: string;
       action: 'create_entry';
       expiresAt: number;
-      args: {
-        type: 'NOVEDAD' | 'INCIDENCIA';
-        title: string;
-        description: string;
-        roomNumber?: string | null;
-        priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
-        severity?: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA' | null;
-        requiresFollowUp: boolean;
-      };
+      args: FrontiEntryDraft;
     }
   | {
       version: 2;
@@ -645,9 +647,9 @@ async function reminderProposalTool(user: CurrentUser, args: Record<string, unkn
   const description =
     typeof args.description === 'string' && args.description.trim() ? args.description.trim() : null;
   const dueAt = String(args.dueAt ?? '').trim();
-  const date = new Date(dueAt);
+  const date = parseFrontiDueAt(dueAt);
   if (title.length < 3) throw new Error('El recordatorio necesita un título.');
-  if (!dueAt || Number.isNaN(date.getTime())) {
+  if (!date || Number.isNaN(date.getTime())) {
     throw new Error('No pude determinar una fecha y hora válida para el recordatorio.');
   }
   if (date.getTime() <= Date.now() - 60_000) {
@@ -675,61 +677,15 @@ async function reminderProposalTool(user: CurrentUser, args: Record<string, unkn
 async function entryProposalTool(user: CurrentUser, args: Record<string, unknown>) {
   const type = args.type === 'INCIDENCIA' ? EntryType.INCIDENCIA : EntryType.NOVEDAD;
   requireToolPermission(user, type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create');
-
-  const title = String(args.title ?? '').trim();
-  const description = String(args.description ?? '').trim();
-  if (title.length < 3 || description.length < 3) {
-    throw new Error('El registro necesita título y descripción.');
-  }
-
-  const priority = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.priority))
-    ? (String(args.priority) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
-    : 'MEDIA';
-  const severity =
-    args.severity && ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].includes(String(args.severity))
-      ? (String(args.severity) as 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA')
-      : null;
-
-  if (type === EntryType.INCIDENCIA && !severity) {
-    return {
-      status: 'needs_info',
-      missing: [{ field: 'severity', message: 'Indica la gravedad de la incidencia.' }],
-      instruction: 'Pide sólo la gravedad faltante; no la inventes.',
-    };
-  }
-
-  const roomNumber =
-    typeof args.roomNumber === 'string' && args.roomNumber.trim()
-      ? cleanRoomNumber(args.roomNumber)
-      : null;
-  if (roomNumber) {
-    const exists = await prisma.room.findFirst({
-      where: { number: roomNumber, active: true },
-      select: { id: true },
-    });
-    if (!exists) throw new Error(`La habitación ${roomNumber} no existe o está inactiva.`);
-  }
-
-  const requiresFollowUp =
-    type === EntryType.INCIDENCIA ? true : Boolean(args.requiresFollowUp);
-
+  const { draft, detail } = await prepareFrontiEntryDraft(user, args);
   const confirmation = makeConfirmation(
     user,
     'create_entry',
-    {
-      type,
-      title,
-      description,
-      roomNumber,
-      priority,
-      severity,
-      requiresFollowUp,
-    },
+    draft,
     type === EntryType.INCIDENCIA ? 'Crear incidencia' : 'Crear novedad',
-    `${title}${roomNumber ? ` · Hab. ${roomNumber}` : ''} · Prioridad ${priority.toLowerCase()}`,
-    type === EntryType.INCIDENCIA && priority === 'CRITICA' ? 'high' : 'normal',
+    detail,
+    draft.priority === 'CRITICA' ? 'high' : 'normal',
   );
-
   return {
     status: 'confirmation_required',
     message: 'El registro está preparado y todavía no se ha creado.',
@@ -760,7 +716,7 @@ async function completeTaskProposalTool(
   const task = await prisma.task.findFirst({
     where: {
       deletedAt: null,
-      ...(taskId ? { id: taskId } : { seq: taskSeq as number }),
+      ...(taskId ? { id: taskId } : { humanId: taskSeq as number }),
     },
     select: { id: true, humanId: true, title: true, status: true },
   });
@@ -864,6 +820,9 @@ async function executeTool(
   runtimeContext: FrontiRuntimeContext | null,
 ) {
   assertFrontiToolEnabled(config, name);
+  if (!canFrontiUseTool(user, name)) {
+    throw new Error('Tu cuenta no tiene permiso para realizar esa acción.');
+  }
 
   if (isReceptionDeskRole(user.roleKey) && name !== 'reportar_hallazgo') {
     const gate = await getReceptionOperationGate(user);
@@ -957,12 +916,15 @@ function systemInstructions(config: FrontiConfig): string {
     'La respuesta vive en una burbuja estrecha: prefiere párrafos cortos, negritas y viñetas. No uses tablas Markdown salvo que el usuario pida explícitamente una tabla, columnas o un cuadro comparativo. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
     'Cuando indique needs_info, pide sólo lo que falta. Si falta un permiso, dilo sin sugerir cómo saltarlo. ' +
+    'Para crear una novedad usa proponer_registro: basta una descripción breve de lo ocurrido; puedes usar ese mismo texto como título y descripción. No obligues a rellenar un formulario en el chat. Habitación, responsable y vencimiento son opcionales; usa null si no se indicaron. Prioridad no indicada: null, el sistema mostrará la predeterminada en la tarjeta. Para incidencias pregunta sólo la gravedad si falta. ' +
+    'Conserva todos los datos que el usuario ya dio en mensajes anteriores. Si pide responsable por persona o área, envía el nombre literal en responsible; no inventes IDs ni confundas un área con una persona. Envía el vencimiento literal en dueAt: el servidor interpreta «hoy a las 21:00» en la hora del hotel. Nunca pidas ISO 8601 al usuario. ' +
+    'Cuando tengas datos suficientes, prepara la tarjeta con la herramienta disponible en esta solicitud; no digas que falta habilitar una integración ni ofrezcas registrar sin llamar la herramienta. Una tarjeta es una propuesta, no una escritura: sólo la confirmación en pantalla guarda. Un sí escrito en el chat no sustituye esa confirmación. ' +
     'Sigue las instrucciones operativas del usuario usando herramientas: puedes consultar transversalmente Turnos, Novedades, Caja, Garantías, Llaves, Tareas, Seguimientos, Supervisión, Alertas, Auditoría, Usuarios y configuración cuando sus permisos lo permitan; también puedes preparar novedades, incidencias, tareas, recordatorios, multas y check-outs. ' +
     'Para consultas amplias, combina varias herramientas antes de responder y diferencia hechos actuales de memoria conversacional. Si recibes contexto de pantalla, úsalo como parte natural de la conversación. Para referencias como «aquí», «esto», «esta pantalla», «este registro», «esta habitación», «esta reserva» o «esta tarea», consulta primero consultar_contexto_pantalla y después profundiza con la herramienta especializada si hace falta. ' +
     `Zona horaria: ${env().HOTEL_TIMEZONE}. Hora de referencia: ${new Date().toLocaleString('es-CL', { timeZone: env().HOTEL_TIMEZONE })}. ` +
     'Para prioridades, respeta el orden calculado por el motor determinístico. ' +
     'Si al revisar datos, estados o un flujo detectas un fallo concreto, una contradicción operativa o una mejora de proceso no trivial y accionable, usa reportar_hallazgo con evidencia específica. No reportes gustos de estilo, hipótesis vagas ni el mismo hallazgo repetidamente. ' +
-    'Para recordatorios con fechas relativas, conviértelas a ISO 8601 con la zona horaria del hotel. ' +
+    'Para recordatorios conserva la fecha relativa aportada por el usuario: el servidor la interpreta con la zona horaria del hotel. ' +
     `Instrucciones adicionales del Administrador de sistema: ${config.extraInstructions}`
   );
 }
@@ -1031,9 +993,10 @@ export async function runReceptionAssistant(
     let activeProviders = [...providers];
     const latestUserMessage =
       [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-    const tools = chatTools(config, user, latestUserMessage, runtimeContext);
+    const tools = chatTools(config, user, buildFrontiToolIntent(messages), runtimeContext);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
+    const proposalFingerprints = new Set<string>();
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop += 1) {
       loops = loop + 1;
@@ -1099,7 +1062,11 @@ export async function runReceptionAssistant(
       for (const call of response.toolCalls) {
         let args: Record<string, unknown>;
         try {
-          args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+          const parsed: unknown = JSON.parse(call.function.arguments);
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('La acción necesita parámetros válidos.');
+          }
+          args = parsed as Record<string, unknown>;
         } catch {
           toolTrace.push({ name: call.function.name, ok: false });
           toolMessages.push({
@@ -1114,6 +1081,20 @@ export async function runReceptionAssistant(
         }
 
         try {
+          if (!tools.some((tool) => tool.function.name === call.function.name)) {
+            throw new Error('Esta acción no está disponible en esta solicitud con tus permisos.');
+          }
+          const proposalKey = call.function.name + ':' + JSON.stringify(
+            Object.entries(args).sort(([left], [right]) => left.localeCompare(right)),
+          );
+          if (proposalFingerprints.has(proposalKey)) {
+            toolMessages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify({ status: 'confirmation_required', message: 'La misma propuesta ya está preparada. No se duplicó.' }),
+            });
+            continue;
+          }
           const result = await executeTool(
             user,
             call.function.name,
@@ -1131,6 +1112,7 @@ export async function runReceptionAssistant(
           ) {
             const card = (result as { confirmation: AssistantConfirmation }).confirmation;
             confirmations.push(card);
+            proposalFingerprints.add(proposalKey);
             modelResult = {
               ...(result as Record<string, unknown>),
               confirmation: {
@@ -1162,6 +1144,26 @@ export async function runReceptionAssistant(
         }
       }
 
+      // La tarjeta ya es un resultado verificado del servidor. No necesitamos
+      // otra inferencia que pueda perderla, fingir éxito o agotar el proveedor.
+      if (confirmations.length) {
+        recordFrontiAgentRun(telemetry, {
+          provider: modelTrace.at(-1)?.provider ?? config.provider,
+          model: modelTrace.at(-1)?.model ?? config.model,
+          configuredProvider: config.provider,
+          configuredModel: config.model,
+          models: modelTrace,
+          durationMs: Date.now() - startedAt,
+          loops,
+          tools: toolTrace,
+          outcome: toolTrace.some((item) => !item.ok) ? 'partial' : 'success',
+        });
+        return {
+          reply: 'La propuesta está preparada, pero todavía no se ha guardado ningún cambio. Revisa los datos de la tarjeta y pulsa «Confirmar».' +
+            (toolTrace.some((item) => !item.ok) ? ' Otra parte de la solicitud necesita revisión; sólo están preparadas las acciones que aparecen en las tarjetas.' : ''),
+          confirmations,
+        };
+      }
       chat = [...chat, response.assistantMessage, ...toolMessages];
     }
 
@@ -1228,6 +1230,7 @@ export async function executeReceptionConfirmation(
             : 'room.manage';
   await assertReceptionOperationPermission(user, pendingPermission);
   await claimConfirmation(pending);
+  let actionCommitted = false;
 
   try {
   if (pending.action === 'create_reminder') {
@@ -1286,6 +1289,8 @@ export async function executeReceptionConfirmation(
       type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create',
     );
 
+    await validateFrontiEntryAssignment(pending.args);
+
     const room = pending.args.roomNumber
       ? await prisma.room.findFirst({
           where: { number: pending.args.roomNumber, active: true },
@@ -1301,12 +1306,12 @@ export async function executeReceptionConfirmation(
       title: pending.args.title,
       description: pending.args.description,
       category: null,
-      departmentId: user.departmentId,
+      departmentId: pending.args.departmentId === undefined ? user.departmentId : pending.args.departmentId,
       roomId: room?.id ?? null,
       priority: Priority[pending.args.priority],
-      ownerId: null,
+      ownerId: pending.args.ownerId ?? null,
       occurredAt: null,
-      dueAt: null,
+      dueAt: parseFrontiDueAt(pending.args.dueAt),
       tags: ['fronti'],
       requiresFollowUp: pending.args.requiresFollowUp,
       guestId: null,
@@ -1317,11 +1322,26 @@ export async function executeReceptionConfirmation(
           : undefined,
       immediateAction: null,
     });
+    actionCommitted = true;
+    let warning = '';
     if (type === EntryType.INCIDENCIA) {
-      await ensureIncidentWorkflow(entry.id);
+      try {
+        await ensureIncidentWorkflow(entry.id);
+      } catch (error) {
+        console.error('Fronti: registro guardado con seguimiento pendiente', { entryId: entry.id, error });
+        warning = ' El registro quedó guardado, pero no se pudo completar su seguimiento automático. Revísalo desde el registro; no vuelvas a crearlo.';
+      }
     }
+    try {
+      for (const path of ['/', '/libro', '/incidencias', '/tareas', '/seguimientos', '/novedades/habitacion', `/libro/${entry.id}`]) {
+        revalidatePath(path);
+      }
+    } catch (error) {
+      console.error('Fronti: registro guardado, actualización de vistas pendiente', { entryId: entry.id, error });
+    }
+    const label = type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad';
     return {
-      reply: `${type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad'} #${entry.humanId} creada: ${entry.title}.`,
+      reply: `${label} #${entry.humanId} creada: ${entry.title}. [Abrir ${label.toLowerCase()} #${entry.humanId}](/libro/${entry.id}).${warning}`,
     };
   }
 
@@ -1354,7 +1374,7 @@ export async function executeReceptionConfirmation(
   });
   return { reply: `Check-out confirmado: ${validated.map((item) => item.roomNumber).join(', ')}.` };
   } catch (error) {
-    await releaseConfirmationClaim(pending);
+    if (!actionCommitted) await releaseConfirmationClaim(pending);
     throw error;
   }
 }

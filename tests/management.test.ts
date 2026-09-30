@@ -74,11 +74,10 @@ describe('cockpit estratégico de Gerencia', () => {
     const cockpit = await getManagementCockpit();
 
     expect(cockpit.sources.operational).toBe('connected');
-    expect(cockpit.sources.reservations).toBe('connected');
+    expect(cockpit.sources.roomContext).toBe('connected');
     expect(cockpit.sources.cash).toBe('connected');
 
     for (const source of [
-      cockpit.sources.commercialPms,
       cockpit.sources.finance,
       cockpit.sources.labor,
       cockpit.sources.guestVoice,

@@ -13,7 +13,7 @@ import {
   openShift,
   prepareHandover,
   receiveHandover,
-  reassignShiftLead,
+  changeShiftType,
   sendHandover,
   startReceptionShift,
 } from '@/server/services/shifts';
@@ -74,38 +74,33 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(shift.assignments[0]!.role).toBe('TITULAR');
   });
 
-  it('reasigna el titular sin borrar la participación del turno', async () => {
+  it('cambia un turno DÍA a NOCHE y recalcula su ventana sin tocar participantes', async () => {
     const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
 
     const { shift } = await openShift(titular, { type: ShiftType.DIA });
-    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
 
-    await reassignShiftLead(supervisor, { shiftId: shift.id, userId: apoyo.id });
+    await changeShiftType(supervisor, { shiftId: shift.id, type: ShiftType.NOCHE });
 
-    const assignments = await prisma.shiftAssignment.findMany({
-      where: { shiftId: shift.id, activatedAt: { not: null }, leftAt: null },
-      select: { userId: true, role: true },
+    const updated = await prisma.shift.findUniqueOrThrow({
+      where: { id: shift.id },
+      include: { assignments: true },
     });
 
-    expect(assignments).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ userId: titular.id, role: 'APOYO' }),
-        expect.objectContaining({ userId: apoyo.id, role: 'TITULAR' }),
-      ]),
-    );
+    expect(updated.type).toBe(ShiftType.NOCHE);
+    expect(formatTime(updated.plannedStart)).toBe('20:00');
+    expect(formatTime(updated.plannedEnd)).toBe('08:00');
+    expect(updated.assignments).toHaveLength(1);
+    expect(updated.assignments[0]!.userId).toBe(titular.id);
+    expect(updated.assignments[0]!.role).toBe('TITULAR');
   });
 
-  it('un rol sin shift.reassign no puede cambiar al titular', async () => {
-    const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-    const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
-
-    const { shift } = await openShift(titular, { type: ShiftType.NOCHE });
-    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
+  it('un rol sin shift.reassign no puede cambiar DÍA/NOCHE', async () => {
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const { shift } = await openShift(receptionist, { type: ShiftType.NOCHE });
 
     await expect(
-      reassignShiftLead(titular, { shiftId: shift.id, userId: apoyo.id }),
+      changeShiftType(receptionist, { shiftId: shift.id, type: ShiftType.DIA }),
     ).rejects.toThrow(RuleError);
   });
 

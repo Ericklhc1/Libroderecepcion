@@ -14,7 +14,7 @@ import {
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
-  reassignShiftLeadAction,
+  changeShiftTypeAction,
   sendHandoverAction,
   startReceptionShiftAction,
 } from '@/server/actions/shifts';
@@ -346,40 +346,27 @@ export function AddShiftMemberForm({
   );
 }
 
-/** Cambia el titular del turno sin borrar la participación histórica. */
-export function ReassignShiftLeadForm({
+/** Corrige el turno vigente entre las dos franjas canónicas. */
+export function ChangeShiftTypeForm({
   shiftId,
-  candidates,
+  currentType,
 }: {
   shiftId: string;
-  candidates: Array<{ value: string; label: string; disabled?: boolean }>;
+  currentType: 'DIA' | 'NOCHE';
 }) {
-  const enabled = candidates.some((candidate) => !candidate.disabled);
+  const nextType = currentType === 'DIA' ? 'NOCHE' : 'DIA';
 
   return (
-    <ActionForm action={reassignShiftLeadAction} refreshOnSuccess>
+    <ActionForm action={changeShiftTypeAction} refreshOnSuccess>
       <input type="hidden" name="shiftId" value={shiftId} />
-      <Field
-        label="Reasignar titular del turno"
-        name="userId"
-        hint="Cambia quién figura como titular de este turno Día/Noche. La participación anterior no se borra y queda trazada."
-      >
-        <Select
-          name="userId"
-          required
-          placeholder="Elige al nuevo titular"
-          options={candidates}
-        />
-      </Field>
-      {enabled ? (
-        <SubmitButton variant="secondary" pendingLabel="Reasignando…">
-          Reasignar titular
-        </SubmitButton>
-      ) : (
-        <p className="text-xs text-slate-500">
-          No hay otra persona disponible para asumir como titular.
-        </p>
-      )}
+      <input type="hidden" name="type" value={nextType} />
+      <p className="text-xs leading-5 text-slate-600">
+        Tipo actual: <strong>{currentType === 'DIA' ? 'DÍA' : 'NOCHE'}</strong>. Al corregirlo,
+        la fecha operativa se conserva y la ventana pasa a {SHIFT_WINDOW_LABEL[nextType]}.
+      </p>
+      <SubmitButton variant="secondary" pendingLabel="Cambiando turno…">
+        CAMBIAR A TURNO {nextType === 'DIA' ? 'DÍA' : 'NOCHE'}
+      </SubmitButton>
     </ActionForm>
   );
 }

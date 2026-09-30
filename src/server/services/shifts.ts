@@ -1608,109 +1608,47 @@ export async function addShiftMember(
 }
 
 /**
- * Reasigna quién figura como TITULAR del turno operativo vigente.
+ * Corrige el tipo del turno operativo vigente: DÍA ↔ NOCHE.
  *
- * No borra participación ni reescribe quién abrió el turno: la trazabilidad
- * histórica se conserva. Si el nuevo titular ya participa como APOYO, sólo
- * cambia su rol; si aún no participa, se incorpora al turno.
+ * La fecha operativa no cambia. Sí se recalcula la ventana planificada para
+ * mantener coherencia con las dos franjas canónicas del hotel.
  */
-export async function reassignShiftLead(
+export async function changeShiftType(
   actor: CurrentUser,
-  input: { shiftId: string; userId: string },
+  input: { shiftId: string; type: ShiftType },
 ): Promise<void> {
   if (!actor.permissions.includes('shift.reassign')) {
-    throw new RuleError('Tu rol no puede reasignar el titular de un turno.');
+    throw new RuleError('Tu rol no puede cambiar el tipo de un turno.');
   }
 
-  await assertShiftAssignable(input.userId);
-
-  const target = await prisma.user.findFirst({
-    where: { id: input.userId, deletedAt: null, active: true },
-    select: { id: true, name: true },
-  });
-  if (!target) throw new NotFoundError('La persona indicada no existe o está inactiva.');
-
   await prisma.$transaction(async (tx) => {
-    // Serializa cambios de titular para evitar dos TITULAR por una carrera de clics.
+    // Evita dos correcciones simultáneas sobre el mismo turno.
     await tx.$queryRaw<Array<{ locked: boolean }>>`
       SELECT pg_advisory_xact_lock(1279873619) IS NULL AS "locked"
     `;
 
     const shift = await tx.shift.findUnique({
       where: { id: input.shiftId },
-      include: {
-        assignments: {
-          include: { user: { select: { id: true, name: true } } },
-        },
-      },
     });
     if (!shift) throw new NotFoundError('El turno no existe.');
     if (shift.archivedAt) throw new RuleError('Ese turno ya fue archivado.');
-    if (
-      shift.status !== ShiftStatus.INICIADO &&
-      shift.status !== ShiftStatus.ACTIVO
-    ) {
+    if (shift.status !== ShiftStatus.INICIADO && shift.status !== ShiftStatus.ACTIVO) {
       throw new RuleError(
-        'El titular sólo puede reasignarse mientras el turno está iniciado o activo. Si el cierre ya comenzó, cancélalo primero.',
+        'El tipo sólo puede cambiarse mientras el turno está iniciado o activo. Si el cierre ya comenzó, cancélalo primero.',
       );
     }
+    if (shift.type === input.type) return;
 
-    const activeAssignments = shift.assignments.filter(
-      (assignment) => assignment.activatedAt && !assignment.leftAt,
-    );
-    const currentLead = activeAssignments.find(
-      (assignment) => assignment.role === AssignmentRole.TITULAR,
-    );
-    if (currentLead?.userId === target.id) return;
+    const window = plannedWindow(shift.date, input.type);
 
-    const busyElsewhere = await tx.shiftAssignment.findFirst({
-      where: {
-        userId: target.id,
-        shiftId: { not: shift.id },
-        activatedAt: { not: null },
-        leftAt: null,
+    await tx.shift.update({
+      where: { id: shift.id },
+      data: {
+        type: input.type,
+        plannedStart: window.start,
+        plannedEnd: window.end,
       },
-      select: { shiftId: true },
     });
-    if (busyElsewhere) {
-      throw new RuleError(`${target.name} ya participa activamente en otro turno.`);
-    }
-
-    const targetAssignment = shift.assignments.find(
-      (assignment) => assignment.userId === target.id,
-    );
-    const now = new Date();
-
-    await tx.shiftAssignment.updateMany({
-      where: {
-        shiftId: shift.id,
-        role: AssignmentRole.TITULAR,
-        activatedAt: { not: null },
-        leftAt: null,
-      },
-      data: { role: AssignmentRole.APOYO },
-    });
-
-    if (targetAssignment) {
-      const targetIsActive = Boolean(targetAssignment.activatedAt && !targetAssignment.leftAt);
-      await tx.shiftAssignment.update({
-        where: { id: targetAssignment.id },
-        data: {
-          role: AssignmentRole.TITULAR,
-          ...(targetIsActive ? {} : { activatedAt: now, leftAt: null }),
-        },
-      });
-    } else {
-      await tx.shiftAssignment.create({
-        data: {
-          shiftId: shift.id,
-          userId: target.id,
-          role: AssignmentRole.TITULAR,
-          activatedAt: now,
-          leftAt: null,
-        },
-      });
-    }
 
     await recordAudit(
       {
@@ -1718,18 +1656,18 @@ export async function reassignShiftLead(
         entityId: shift.id,
         action: AuditAction.EDITAR,
         user: actor,
-        summary: `Titular del turno reasignado de ${currentLead?.user.name ?? 'sin titular'} a ${target.name}`,
+        summary: `Tipo de turno corregido de ${SHIFT_TYPE_LABEL[shift.type]} a ${SHIFT_TYPE_LABEL[input.type]}`,
         before: {
-          titularUserId: currentLead?.userId ?? null,
-          titularName: currentLead?.user.name ?? null,
           type: shift.type,
           date: calendarDateKey(shift.date),
+          plannedStart: shift.plannedStart.toISOString(),
+          plannedEnd: shift.plannedEnd.toISOString(),
         },
         after: {
-          titularUserId: target.id,
-          titularName: target.name,
-          type: shift.type,
+          type: input.type,
           date: calendarDateKey(shift.date),
+          plannedStart: window.start.toISOString(),
+          plannedEnd: window.end.toISOString(),
         },
       },
       tx,

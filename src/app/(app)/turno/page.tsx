@@ -25,7 +25,7 @@ import {
   JoinShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
-  ReassignShiftLeadForm,
+  ChangeShiftTypeForm,
   StartReceptionShiftForm,
 } from '@/components/operational/shift-actions';
 import {
@@ -220,64 +220,15 @@ export default async function ShiftPage({
         })
     : [];
 
-  const reassignTargetShift =
+  const changeTypeTargetShift =
     user.permissions.includes('shift.reassign')
       ? (shift ?? desk.operationalCurrent)
       : null;
-  const canReassignLead = Boolean(
-    reassignTargetShift &&
-      (reassignTargetShift.status === ShiftStatus.INICIADO ||
-        reassignTargetShift.status === ShiftStatus.ACTIVO),
+  const canChangeShiftType = Boolean(
+    changeTypeTargetShift &&
+      (changeTypeTargetShift.status === ShiftStatus.INICIADO ||
+        changeTypeTargetShift.status === ShiftStatus.ACTIVO),
   );
-  const currentLeadId =
-    reassignTargetShift?.assignments.find(
-      (assignment) =>
-        assignment.role === 'TITULAR' &&
-        assignment.activatedAt &&
-        !assignment.leftAt,
-    )?.userId ?? null;
-  const reassignCandidates =
-    canReassignLead && reassignTargetShift
-      ? (
-          await prisma.user.findMany({
-            where: {
-              deletedAt: null,
-              active: true,
-              hiddenFromSelectors: false,
-              role: {
-                operational: true,
-                permissions: { some: { permission: { key: 'shift.start' } } },
-              },
-            },
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              assignments: {
-                where: { activatedAt: { not: null }, leftAt: null },
-                select: { shiftId: true },
-                take: 1,
-              },
-            },
-            orderBy: { name: 'asc' },
-          })
-        )
-          .filter((person) => person.id !== currentLeadId)
-          .map((person) => {
-            const activeShiftId = person.assignments[0]?.shiftId ?? null;
-            const alreadyHere = activeShiftId === reassignTargetShift.id;
-            const busyElsewhere = Boolean(activeShiftId && !alreadyHere);
-            return {
-              value: person.id,
-              label: busyElsewhere
-                ? `${person.name} · @${person.username} · en otro turno`
-                : alreadyHere
-                  ? `${person.name} · @${person.username} · participa en este turno`
-                  : `${person.name} · @${person.username}`,
-              disabled: busyElsewhere,
-            };
-          })
-      : [];
 
   const textMatches = (values: Array<string | number | null | undefined>) =>
     !q ||
@@ -445,11 +396,11 @@ export default async function ShiftPage({
                       No debes abrir otro turno ni una segunda emergencia. Si vienes a reforzar el
                       mesón, incorpórate al turno que ya está vigente.
                     </p>
-                    {canReassignLead && reassignTargetShift?.id === sharedOperationalShift.id ? (
+                    {canChangeShiftType && changeTypeTargetShift?.id === sharedOperationalShift.id ? (
                       <div className="mt-3 max-w-md rounded-lg bg-white p-3 ring-1 ring-petrol-200">
-                        <ReassignShiftLeadForm
+                        <ChangeShiftTypeForm
                           shiftId={sharedOperationalShift.id}
-                          candidates={reassignCandidates}
+                          currentType={sharedOperationalShift.type}
                         />
                       </div>
                     ) : null}
@@ -565,12 +516,9 @@ export default async function ShiftPage({
                       <AddShiftMemberForm shiftId={memberTargetShift!.id} candidates={memberCandidates} />
                     </div>
                   ) : null}
-                  {canReassignLead && reassignTargetShift?.id === shift.id ? (
+                  {canChangeShiftType && changeTypeTargetShift?.id === shift.id ? (
                     <div className="mt-3 max-w-sm rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
-                      <ReassignShiftLeadForm
-                        shiftId={shift.id}
-                        candidates={reassignCandidates}
-                      />
+                      <ChangeShiftTypeForm shiftId={shift.id} currentType={shift.type} />
                     </div>
                   ) : null}
                 </div>

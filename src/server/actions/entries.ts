@@ -30,6 +30,7 @@ function refreshOperationalViews(entryId?: string) {
   revalidatePath('/tareas');
   revalidatePath('/seguimientos');
   revalidatePath('/alertas');
+  revalidatePath('/novedades/habitacion');
   if (entryId) revalidatePath(`/libro/${entryId}`);
 }
 

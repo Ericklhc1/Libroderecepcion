@@ -20,6 +20,7 @@ export type GymPassRow = {
   roomNumber: string;
   guestName: string;
   vehiclePlate: string | null;
+  reservationCode: string | null;
   receptionistName: string;
   status: 'EMITIDO' | 'ANULADO';
   issuedAt: Date;
@@ -64,16 +65,24 @@ async function createServicePass(
     roomNumber: string;
     guestName: string;
     vehiclePlate?: string | null;
+    reservationCode?: string | null;
   },
 ): Promise<{ id: string; humanId: number; folio: number; formattedFolio: string }> {
   const roomNumber = params.roomNumber.trim();
   const guestName = params.guestName.trim();
   const vehiclePlate = params.vehiclePlate?.trim().toUpperCase() || null;
+  const reservationCode = params.reservationCode?.trim() || null;
   if (!roomNumber) throw new RuleError('Indica la habitación.');
   if (!guestName) throw new RuleError('Indica el huésped.');
-  if (params.serviceType === 'ESTACIONAMIENTO' && !vehiclePlate) {
-    throw new RuleError('Indica la patente o matrícula del vehículo.');
+  if (params.serviceType === 'ESTACIONAMIENTO' && !reservationCode) {
+    throw new RuleError('Indica el ID de reserva.');
   }
+
+  const room = await prisma.room.findFirst({
+    where: { number: roomNumber, active: true },
+    select: { id: true },
+  });
+  if (!room) throw new RuleError('Selecciona una habitación válida.');
 
   const shift = await getMyOpenShift(user.id);
   if (!shift) {
@@ -90,9 +99,11 @@ async function createServicePass(
         id,
         serviceDate,
         serviceType: params.serviceType,
+        roomId: room.id,
         roomNumber,
         guestName,
         vehiclePlate,
+        reservationCode,
         receptionistId: user.id,
         shiftId: shift.id,
       },
@@ -104,6 +115,7 @@ async function createServicePass(
         roomNumber: true,
         guestName: true,
         vehiclePlate: true,
+        reservationCode: true,
       },
     });
 
@@ -116,7 +128,8 @@ async function createServicePass(
         summary:
           `Folio de ${serviceLabel} #${created.humanId} · ` +
           `${calendarDateKey(created.serviceDate)} · hab. ${created.roomNumber} · ${created.guestName}` +
-          (created.vehiclePlate ? ` · ${created.vehiclePlate}` : ''),
+          (created.reservationCode ? ` · reserva ${created.reservationCode}` : '') +
+          (created.vehiclePlate ? ` · patente histórica ${created.vehiclePlate}` : ''),
         after: {
           humanId: created.humanId,
           folio: formatGymFolio(created.folio),
@@ -125,6 +138,7 @@ async function createServicePass(
           roomNumber: created.roomNumber,
           guestName: created.guestName,
           vehiclePlate: created.vehiclePlate,
+          reservationCode: created.reservationCode,
           receptionistId: user.id,
           receptionistName: user.name,
           shiftId: shift.id,
@@ -157,7 +171,7 @@ export async function createParkingPass(
     serviceDate: string | Date;
     roomNumber: string;
     guestName: string;
-    vehiclePlate: string;
+    reservationCode: string;
   },
 ) {
   return createServicePass(user, { ...params, serviceType: 'ESTACIONAMIENTO' });
@@ -313,6 +327,7 @@ async function listPasses(
     roomNumber: pass.roomNumber,
     guestName: pass.guestName,
     vehiclePlate: pass.vehiclePlate,
+    reservationCode: pass.reservationCode,
     receptionistName: pass.receptionist.name,
     status: pass.status === 'ANULADO' ? 'ANULADO' : 'EMITIDO',
     issuedAt: pass.issuedAt,

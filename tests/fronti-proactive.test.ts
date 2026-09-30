@@ -259,6 +259,31 @@ describe('Fronti proactivo', () => {
     expect(after?.key).not.toBe(before?.key);
   });
 
+
+  it('estructura el aviso de Fronti como qué pasó, qué está mal y qué hacer', async () => {
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador Fronti' });
+    const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción Fronti' });
+    await createOperationalSignal(author.id, {
+      title: 'Señal explicable',
+      priority: Priority.CRITICA,
+    });
+
+    await runFrontiProactiveSweep({ trigger: 'test-explicacion' });
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: {
+        type: NotificationType.FRONTI_HALLAZGO,
+        entity: 'FrontiProactiveSignal',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(notification.body).toContain('Qué pasó:');
+    expect(notification.body).toContain('Qué está mal / qué revisar:');
+    expect(notification.body).toContain('Qué hacer:');
+    expect(notification.link).toMatch(/^\/libro\//);
+  });
+
   it('incorpora una novedad prioritaria recién creada al barrido', async () => {
     const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
     const entry = await createOperationalSignal(user.id, {

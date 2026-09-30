@@ -14,6 +14,7 @@ import {
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
+  removeShiftMemberAction,
   changeShiftTypeAction,
   sendHandoverAction,
   startReceptionShiftAction,
@@ -342,6 +343,44 @@ export function AddShiftMemberForm({
           No hay usuarios disponibles para incorporarse ahora.
         </p>
       )}
+    </ActionForm>
+  );
+}
+
+/** Saca a una persona del turno vigente conservando el historial de participación. */
+export function RemoveShiftMemberForm({
+  shiftId,
+  participants,
+}: {
+  shiftId: string;
+  participants: Array<{ value: string; label: string }>;
+}) {
+  if (participants.length <= 1) {
+    return (
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+        El turno necesita al menos una persona activa. No se puede retirar a la única persona.
+      </p>
+    );
+  }
+
+  return (
+    <ActionForm action={removeShiftMemberAction} refreshOnSuccess>
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <Field
+        label="Sacar del turno"
+        name="userId"
+        hint="La persona deja de participar desde este momento. Su participación anterior permanece en el historial."
+      >
+        <Select
+          name="userId"
+          required
+          placeholder="Elige a la persona"
+          options={participants}
+        />
+      </Field>
+      <SubmitButton variant="danger" pendingLabel="Retirando…">
+        Sacar del turno
+      </SubmitButton>
     </ActionForm>
   );
 }

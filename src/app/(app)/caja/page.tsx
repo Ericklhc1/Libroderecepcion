@@ -100,6 +100,7 @@ export default async function LiveCashPage({
   const visibleGuarantees = state.cashGuarantees.filter(
     (item) =>
       (!moneda || item.currency === moneda) &&
+      (!roomContext || item.roomNumber === roomContext) &&
       matches([
         item.humanId,
         item.guestName,
@@ -157,7 +158,7 @@ export default async function LiveCashPage({
           {canCreateGuarantee ? (
             <Dialog
               title="Registrar garantía en efectivo"
-              description="Registra el dinero recibido bajo custodia. El contexto de huésped, habitación o referencia es texto libre y opcional."
+              description="Registra el dinero recibido bajo custodia. La habitación se selecciona del catálogo y alimenta Novedades / habitación; huésped y referencia siguen siendo contexto libre."
               triggerVariant="secondary"
               triggerSize="sm"
               width="sm"

@@ -4,9 +4,10 @@
 
 - Rama: `feature/aroh-corporate-visual-system`.
 - Cambio exclusivamente visual: no modifica reglas operativas, permisos, datos, Prisma ni flujos de Turnos/Caja/Novedades.
-- Se conserva la paleta canónica petróleo + dorado y se adopta una geometría más estructurada: radios globales menores, bordes visibles, sombras planas y fondo cálido.
-- Cabecera: identidad AROH separada del alojamiento, acento dorado superior y símbolo petróleo/dorado.
-- Navegación de escritorio: barra petróleo oscura, estados activos sólidos y subrayado dorado.
+- Referencia visual canónica: storyboard comercial de AROH. Base azul noche/petróleo casi negro, superficies blancas/gris frío y cian como acento principal; se elimina el crema/dorado como lenguaje dominante.
+- Geometría: radios globales menores, bordes visibles, sombras planas y composición modular/cuadrada.
+- Navegación de escritorio: sidebar oscuro con estados activos sólidos y acento cian; en móvil se conserva la barra inferior.
+- La clave interna histórica `gold-*` se conserva temporalmente por compatibilidad, pero sus valores cromáticos representan el cian de AROH.
 - Tarjetas, botones, chips y campos heredan el nuevo sistema desde componentes compartidos.
 - La armonización cubre también login, instalación, términos, cambio de contraseña, sin permisos, móvil, chat, Fronti, ayuda, notificaciones, soporte, tutorial, gates, alarmas y modales de turno.
 - Regresiones: `tests/corporate-visual-system.test.ts`, `tests/corporate-visual-pages.test.ts` y `tests/corporate-visual-all-pages.test.ts`; recorren el árbol real de pantallas y componentes para impedir geometrías/shells paralelos.

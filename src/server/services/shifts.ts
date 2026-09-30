@@ -1971,7 +1971,7 @@ export async function activateShift(
 ): Promise<ShiftWithDetail> {
   const shift = await getShiftById(params.shiftId);
   const activeAssignment = shift.assignments.some(
-    (a) => a.userId === user.id && !a.removedExplicitly,
+    (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
   );
   if (!activeAssignment) throw new RuleError('No estás participando activamente en este turno.');
   if (shift.status === ShiftStatus.ACTIVO) return shift;

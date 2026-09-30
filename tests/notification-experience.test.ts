@@ -32,6 +32,22 @@ describe('experiencia de notificaciones', () => {
     expect(manifest).toContain("display: 'standalone'");
   });
 
+  it('reconcilia badges y avisos del sistema cuando AROH marca notificaciones como leídas', () => {
+    const source = readFileSync('src/components/layout/notification-center.tsx', 'utf8');
+    const helper = readFileSync('src/components/layout/device-notifications.ts', 'utf8');
+    const worker = readFileSync('public/central-notifications-sw.js', 'utf8');
+
+    expect(source).toContain('syncDeviceNotificationState');
+    expect(source).toContain('readIds: [id]');
+    expect(source).toContain('clearAll: true');
+    expect(helper).toContain("type: 'AROH_NOTIFICATION_STATE'");
+    expect(helper).toContain('clearAppBadge');
+    expect(worker).toContain("self.addEventListener('message'");
+    expect(worker).toContain('getNotifications()');
+    expect(worker).toContain('notification.close()');
+    expect(worker).toContain('clearAppBadge');
+  });
+
   it('resuelve tareas simples sin obligar a tomar y validar antes', () => {
     const list = readFileSync('src/app/(app)/tareas/page.tsx', 'utf8');
     const detail = readFileSync('src/app/(app)/tareas/[id]/page.tsx', 'utf8');

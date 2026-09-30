@@ -36,8 +36,7 @@ export function shouldNavigateTutorial(
  * Recorrido de producto v1.5.0.
  *
  * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Alertas + Supervisión.
- * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
- * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
+ * Novedades / habitación organiza contexto operativo por habitación sin modelar ocupación, check-in o check-out.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -72,13 +71,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: ROUTE_TARGET,
   },
   {
-    id: 'central-reservas',
-    title: 'Central de Reservas',
+    id: 'novedades-habitacion',
+    title: 'Novedades / habitación',
     description:
-      'Prepara llegadas, garantías, saldos y pendientes antes de que impacten al mesón. Trabaja sobre referencias ya existentes y deriva continuidad a tareas, alertas o seguimientos.',
-    route: '/central-reservas',
+      'Las 89 habitaciones funcionan como un mapa de contexto operacional. Cada tarjeta reúne novedades, tareas, alertas, garantías y otros hechos vinculados; no muestra ocupación ni sustituye al PMS.',
+    route: '/novedades/habitacion',
     target: ROUTE_TARGET,
-    anyOf: ['reservation.center.view'],
   },
   {
     id: 'caja',

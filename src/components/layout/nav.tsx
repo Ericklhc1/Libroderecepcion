@@ -414,7 +414,7 @@ export function MobileNav({
             aria-label="Cerrar el menú"
             onClick={() => setOpenMore(false)}
           />
-          <div className="absolute inset-x-0 bottom-[3.75rem] max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white p-3 shadow-2xl">
+          <div className="absolute inset-x-0 bottom-[3.75rem] max-h-[70vh] overflow-y-auto rounded-t-lg border-t-2 border-t-gold-500 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-sm font-semibold text-petrol-900">Todo el menú</p>
               <button
@@ -479,7 +479,7 @@ export function MobileNav({
       ) : null}
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden no-print"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-petrol-800 bg-petrol-950 lg:hidden no-print"
         aria-label="Navegación rápida"
       >
       {mobileItems.map((item) => {
@@ -493,7 +493,7 @@ export function MobileNav({
             aria-current={active ? 'page' : undefined}
             className={cn(
               'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
-              active ? 'text-petrol-800' : 'text-slate-500',
+              active ? 'text-white' : 'text-petrol-200',
             )}
           >
             <Icon className="h-5 w-5" aria-hidden="true" />
@@ -515,7 +515,7 @@ export function MobileNav({
           aria-expanded={openMore}
           className={cn(
             'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
-            openMore || restIsActive ? 'text-petrol-800' : 'text-slate-500',
+            openMore || restIsActive ? 'text-white' : 'text-petrol-200',
           )}
         >
           <Menu className="h-5 w-5" aria-hidden="true" />

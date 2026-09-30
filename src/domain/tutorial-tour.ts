@@ -35,9 +35,9 @@ export function shouldNavigateTutorial(
 /**
  * Recorrido de producto v1.5.0.
  *
- * La Central gira alrededor de Turnos + Novedades + Caja + Llaves + Alertas + Supervisión.
- * Central de Reservas es una bandeja previa a la operación que reutiliza referencias existentes;
- * no sustituye el PMS ni vuelve a convertirlo en núcleo del Libro.
+ * AROH gira alrededor de continuidad operativa: Novedades, habitaciones, Turnos,
+ * Caja, Llaves, Alertas, Supervisión y Gerencia. Prellegadas es una bandeja
+ * secundaria de preparación y nunca sustituye el PMS.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -60,7 +60,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'busqueda',
     title: 'Búsqueda global',
     description:
-      'Busca novedades, tareas, responsables y referencias operativas del Libro.',
+      'Busca en un solo índice registros, habitaciones, reservas, alertas, notificaciones y destinos del sistema.',
     target: '[data-tour="global-search"]',
   },
   {
@@ -72,10 +72,18 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: ROUTE_TARGET,
   },
   {
-    id: 'central-reservas',
-    title: 'Central de Reservas',
+    id: 'habitaciones',
+    title: 'Novedades / habitación',
     description:
-      'Prepara llegadas, garantías, saldos y pendientes antes de que impacten al mesón. Trabaja sobre referencias ya existentes y deriva continuidad a tareas, alertas o seguimientos.',
+      'Monitor de continuidad activa por las 89 habitaciones. Lo resuelto o cerrado sale del monitor sin perder su historial.',
+    route: '/habitaciones',
+    target: ROUTE_TARGET,
+  },
+  {
+    id: 'prellegadas',
+    title: 'Prellegadas',
+    description:
+      'Prepara excepciones de próximas llegadas: garantías, saldos, cambios y acciones pendientes. No administra reservas ni reemplaza al PMS.',
     route: '/central-reservas',
     target: ROUTE_TARGET,
     anyOf: ['reservation.center.view'],

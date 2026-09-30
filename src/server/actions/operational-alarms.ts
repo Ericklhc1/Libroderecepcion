@@ -142,6 +142,7 @@ export async function updateOperationalAlarmAction(
       repeatMinutes: input.repeatMinutes,
     });
     revalidatePath('/alertas');
+    revalidatePath('/libro/habitaciones');
     if (updated.sourceLink) revalidatePath(updated.sourceLink);
     return { ok: true as const, id: updated.id, message: 'Alerta actualizada.' };
   });
@@ -156,6 +157,7 @@ export async function cancelOperationalAlarmAction(
     const input = parseOrThrow(cancelSchema, formDataToObject(formData));
     await cancelOperationalAlarm(user, input.alarmId);
     revalidatePath('/alertas');
+    revalidatePath('/libro/habitaciones');
     return { ok: true as const, message: 'Alerta eliminada de la operación activa.' };
   });
 }

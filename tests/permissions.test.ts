@@ -140,11 +140,10 @@ describe('matriz de roles y permisos', () => {
     expect(hasPermission(auditor, 'shift.close')).toBe(true);
   });
 
-  it('Central de Reservas prepara reservas sin operar el mesón', async () => {
+  it('Reservas aporta contexto operativo sin operar el mesón', async () => {
     const reservations = await createUser({ roleKey: ROLE_KEYS.RESERVATIONS_CENTER });
 
     for (const permission of [
-      'reservation.center.view',
       'guest.view',
       'guest.manage',
       'entry.create',
@@ -178,7 +177,6 @@ describe('matriz de roles y permisos', () => {
 
     for (const permission of [
       'management.dashboard.view',
-      'reservation.center.view',
       'supervision.center.view',
       'supervision.task.assign',
       'supervision.followup.manage',

@@ -27,7 +27,7 @@ import {
   openShift,
   prepareHandover,
   receiveHandover,
-  reassignShiftLead,
+  changeShiftType,
   startReceptionShift,
   sendHandover,
 } from '@/server/services/shifts';
@@ -165,22 +165,25 @@ export async function addShiftMemberAction(
   });
 }
 
-const reassignLeadSchema = z.object({
+const changeShiftTypeSchema = z.object({
   shiftId: z.string().min(1),
-  userId: z.string().min(1),
+  type: z.enum(['DIA', 'NOCHE']),
 });
 
-export async function reassignShiftLeadAction(
+export async function changeShiftTypeAction(
   _state: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('shift.reassign');
-    const input = parseOrThrow(reassignLeadSchema, formDataToObject(formData));
+    const input = parseOrThrow(changeShiftTypeSchema, formDataToObject(formData));
 
-    await reassignShiftLead(user, input);
+    await changeShiftType(user, input);
     refresh(input.shiftId);
-    return { ok: true as const, message: 'Titular del turno reasignado correctamente.' };
+    return {
+      ok: true as const,
+      message: `Turno cambiado a ${SHIFT_TYPE_LABEL[input.type]} (${SHIFT_WINDOW_LABEL[input.type]}).`,
+    };
   });
 }
 

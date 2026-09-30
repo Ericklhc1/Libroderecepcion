@@ -318,7 +318,7 @@ export function SidebarNav({
       {groups.map((group, index) => (
         <div key={group.title ?? 'principal'} className="space-y-1">
           {group.title ? (
-            <p className="px-3 pb-1 text-xs font-medium text-petrol-300">{group.title}</p>
+            <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-petrol-400">{group.title}</p>
           ) : null}
           {index > 0 && !group.title ? (
             <hr className="mx-3 border-petrol-800" aria-hidden="true" />
@@ -338,10 +338,10 @@ export function SidebarNav({
                   no se queda dudando si el toque quedó registrado.
                 */
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-700',
+                  'flex items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-800',
                   active
-                    ? 'bg-petrol-800 font-semibold text-white'
-                    : 'text-petrol-100 hover:bg-petrol-800/60',
+                    ? 'border-gold-500 bg-petrol-800 font-semibold text-white'
+                    : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />

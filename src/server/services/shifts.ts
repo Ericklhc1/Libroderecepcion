@@ -217,7 +217,7 @@ export async function getMyActiveShift(userId: string) {
   });
 }
 
-/** Turno ya entregado que la persona aún puede cerrar, aunque ya no esté activa en él. */
+/** Turno ya entregado que la persona sigue participando activamente y aún debe cerrar. */
 export async function getMyPendingClosureShift(userId: string) {
   return prisma.shift.findFirst({
     where: {
@@ -1017,7 +1017,7 @@ export async function openShift(
           activatedAt: now,
           leftAt: null,
         },
-        update: { activatedAt: now, leftAt: null },
+        update: { role, activatedAt: now, leftAt: null },
       });
 
       /*
@@ -2596,7 +2596,7 @@ export async function closeShift(
   );
   const canManage = user.permissions.includes('shift.manage');
   if (!isOwner && !canManage) {
-    throw new RuleError('Sólo quien estuvo en el turno o un supervisor puede cerrarlo.');
+    throw new RuleError('Sólo quien está en el turno o un supervisor puede cerrarlo.');
   }
 
   const handoverStatus: 'NONE' | HandoverStatus = shift.handoverOut

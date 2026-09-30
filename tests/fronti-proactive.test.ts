@@ -183,4 +183,142 @@ describe('Fronti proactivo', () => {
       }),
     ).toBe(2);
   });
+
+  it('respeta el interruptor global de Fronti', async () => {
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
+    await prisma.systemSetting.upsert({
+      where: { key: 'fronti.enabled' },
+      create: { key: 'fronti.enabled', value: false, category: 'fronti' },
+      update: { value: false },
+    });
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-OFF-1',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+      },
+    });
+
+    const result = await runFrontiProactiveSweep({ trigger: 'test-disabled' });
+    expect(result.enabled).toBe(false);
+    expect(
+      await prisma.notification.count({
+        where: { type: NotificationType.FRONTI_HALLAZGO },
+      }),
+    ).toBe(0);
+  });
+
+  it('permite que una señal nueva avance aunque las primeras estén en cooldown', async () => {
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
+    await prisma.systemSetting.upsert({
+      where: { key: 'fronti.proactiveMaxFindingsPerRun' },
+      create: {
+        key: 'fronti.proactiveMaxFindingsPerRun',
+        value: 1,
+        category: 'fronti',
+      },
+      update: { value: 1 },
+    });
+
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-LIMIT-CRITICAL',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+      },
+    });
+    const first = await runFrontiProactiveSweep({ trigger: 'test-limit-first' });
+    expect(first.notified).toBe(1);
+
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-LIMIT-HIGH',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.PENDIENTE,
+        balanceDue: 10,
+        requiresAction: true,
+      },
+    });
+    const second = await runFrontiProactiveSweep({ trigger: 'test-limit-second' });
+    expect(second.notified).toBe(1);
+  });
+
+  it('reclama concurrentemente cada señal una sola vez por destinatario', async () => {
+    await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador' });
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-CLAIM-1',
+        status: ReservationStatus.EN_CASA,
+        guaranteeStatus: GuaranteeStatus.RECHAZADA,
+        requiresAction: true,
+      },
+    });
+
+    const [a, b] = await Promise.all([
+      runFrontiProactiveSweep({ trigger: 'test-concurrency-a' }),
+      runFrontiProactiveSweep({ trigger: 'test-concurrency-b' }),
+    ]);
+
+    expect(a.notified + b.notified).toBe(1);
+    expect(
+      await prisma.notification.count({
+        where: {
+          type: NotificationType.FRONTI_HALLAZGO,
+          entity: 'FrontiProactiveSignal',
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('cambia el fingerprint cuando una reserva escala de alta a crítica', async () => {
+    const now = new Date('2026-09-29T12:00:00.000Z');
+    await prisma.reservationReference.create({
+      data: {
+        code: 'FRONTI-ESCALATION-1',
+        status: ReservationStatus.CONFIRMADA,
+        guaranteeStatus: GuaranteeStatus.PENDIENTE,
+        balanceDue: 10,
+        requiresAction: true,
+        checkIn: new Date(now.getTime() + 25 * 60 * 60 * 1000),
+      },
+    });
+
+    const before = (await collectFrontiProactiveCandidates(now)).find(
+      (candidate) => candidate.entityType === 'ReservationReference',
+    );
+    const after = (await collectFrontiProactiveCandidates(
+      new Date(now.getTime() + 2 * 60 * 60 * 1000),
+    )).find((candidate) => candidate.entityType === 'ReservationReference');
+
+    expect(before?.severity).toBe('ALTA');
+    expect(after?.severity).toBe('CRITICA');
+    expect(after?.key).not.toBe(before?.key);
+  });
+
+  it('incorpora una novedad prioritaria recién creada al barrido', async () => {
+    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción' });
+    const entry = await prisma.operationalEntry.create({
+      data: {
+        type: 'NOVEDAD',
+        title: 'Revisión prioritaria',
+        description: 'Caso recién creado para Fronti.',
+        priority: 'ALTA',
+        requiresFollowUp: true,
+        createdById: user.id,
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates(entry.createdAt);
+    expect(
+      candidates.some(
+        (candidate) =>
+          candidate.entityType === 'OperationalEntry' &&
+          candidate.entityId === entry.id &&
+          candidate.link === `/libro/${entry.id}`,
+      ),
+    ).toBe(true);
+  });
+
 });

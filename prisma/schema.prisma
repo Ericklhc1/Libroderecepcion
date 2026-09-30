@@ -2857,3 +2857,14 @@ model OperationalMetricEvent {
   @@index([shiftId, createdAt])
   @@index([correlationId, createdAt])
 }
+
+/// Reclamación atómica por señal y destinatario para impedir duplicados de
+/// Fronti proactivo entre cron, polling y ejecuciones event-driven concurrentes.
+model FrontiProactiveClaim {
+  signalId  String
+  userId    String
+  claimedAt DateTime @default(now())
+
+  @@id([signalId, userId])
+  @@index([claimedAt])
+}

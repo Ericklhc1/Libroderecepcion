@@ -1,5 +1,15 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## Actualización 29/09/2026 · AROH 1.33.1 · hardening Fronti proactivo
+
+- El barrido proactivo respeta simultáneamente `fronti.enabled` y `fronti.proactiveEnabled`.
+- Los límites se aplican después de descartar señales en cooldown y la deduplicación concurrente se reclama en PostgreSQL con `FrontiProactiveClaim`.
+- Las reservas incorporan severidad al fingerprint para que una escalada temporal ALTA → CRÍTICA no quede silenciada por el cooldown anterior.
+- Novedades/incidencias recientes relevantes se incorporan directamente como candidatas.
+- Polling/eventos usan `after()` y el cron opera con deadline interno inferior a los 120 s de Vercel.
+- Migración: `20260930005000_fronti_proactive_claims`. Versión: **v1.33.1**.
+
+
 ## Actualización 29/09/2026 · AROH 1.32.1 · hotfix de inicialización Web Push
 
 - Corrige la creación/lectura del par VAPID en Production: el bloqueo asesor de PostgreSQL ya no devuelve una columna `void` que Prisma no puede deserializar.

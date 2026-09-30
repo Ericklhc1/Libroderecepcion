@@ -21,7 +21,10 @@ export function scheduleFrontiProactiveSweep(reason: string): void {
     after(async () => {
       try {
         const { runFrontiProactiveSweep } = await import('./fronti-proactive');
-        await runFrontiProactiveSweep({ trigger: `event:${reason}` });
+        await runFrontiProactiveSweep({
+          trigger: `event:${reason}`,
+          deadlineAt: Date.now() + 45_000,
+        });
       } catch (error) {
         console.error('[fronti-proactivo] ejecución diferida falló', error);
       }

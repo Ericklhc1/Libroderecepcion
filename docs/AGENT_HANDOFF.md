@@ -1,5 +1,14 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.33.1 · cierre de revisión Fronti proactivo
+
+- Se cierra el feedback pendiente de la revisión de v1.31.0: el límite se aplica después del cooldown, el interruptor global `fronti.enabled` también detiene la proactividad y las escaladas de urgencia de reservas cambian su fingerprint.
+- La deduplicación deja de depender de conteos susceptibles a carreras: `FrontiProactiveClaim` reclama atómicamente cada señal por destinatario antes de inferencia/fan-out.
+- El cron de Vercel entrega un deadline explícito al barrido y cada inferencia tiene presupuesto acotado; siempre queda margen antes de `maxDuration=120`.
+- El polling de notificaciones usa el scheduler con `after()`; no deja promesas fire-and-forget fuera del ciclo de vida de la request.
+- Novedades/incidencias recién creadas de alta prioridad, críticas o con seguimiento son candidatas directas durante 20 minutos; no dependen de que otra regla fabrique una Alert.
+- Migración aditiva: `20260930005000_fronti_proactive_claims`. Release objetivo: **v1.33.1**.
+
 ## 29/09/2026 · AROH 1.30.0 · adjuntos persistentes de soporte
 
 - Soporte reutiliza el R2 privado ya existente; no introducir blobs en Neon ni otro proveedor de almacenamiento.

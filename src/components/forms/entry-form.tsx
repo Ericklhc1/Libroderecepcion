@@ -100,12 +100,21 @@ export function EntryForm({
         label="Descripción"
         name="description"
         required
-        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Habitación, huésped o referencia pueden escribirse aquí cuando aporten contexto."
+        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Si aplica a una habitación, selecciónala abajo para que aparezca en su monitor."
       >
         <Textarea name="description" required rows={4} maxLength={8000} />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label="Habitación" name="roomId" hint="Opcional. Vincula esta novedad al monitor de la habitación.">
+          <Select
+            name="roomId"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomId}
+            options={options.rooms}
+          />
+        </Field>
+
         <Field label="Categoría" name="category" hint="Opcional. Ej.: mantenimiento, caja, seguridad.">
           <Input name="category" maxLength={120} placeholder="Categoría" />
         </Field>

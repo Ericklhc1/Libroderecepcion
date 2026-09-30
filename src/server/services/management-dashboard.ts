@@ -231,7 +231,6 @@ export async function getManagementDashboard(
     current,
     previous,
     currentHealth,
-    previousHealth,
     supervision,
     reservations,
     auditRows,
@@ -239,7 +238,6 @@ export async function getManagementDashboard(
     getMetrics(currentRange),
     getMetrics(priorRange),
     getOperationalHealth(currentRange),
-    getOperationalHealth(priorRange),
     getSupervisionData({ exhaustive: true }),
     getReservationCenterSnapshot(now),
     prisma.supervisionAuditImport.findMany({
@@ -372,24 +370,11 @@ export async function getManagementDashboard(
     },
     friction: {
       shiftCloseP90Ms: currentHealth.shifts.p90CloseMs,
-      shiftCloseP90DeltaMs: numberDelta(
-        currentHealth.shifts.p90CloseMs,
-        previousHealth.shifts.p90CloseMs,
-      ),
       handoverReceiveP90Ms: currentHealth.handovers.p90ReceiveMs,
-      handoverReceiveP90DeltaMs: numberDelta(
-        currentHealth.handovers.p90ReceiveMs,
-        previousHealth.handovers.p90ReceiveMs,
-      ),
       cashCountP90Ms: currentHealth.cash.p90CountMs,
-      cashCountP90DeltaMs: numberDelta(
-        currentHealth.cash.p90CountMs,
-        previousHealth.cash.p90CountMs,
-      ),
       closeIncomplete: currentHealth.shifts.closeIncomplete,
       cashCountsWithDifferences: currentHealth.cash.withDifferences,
       operationalFailures: currentHealth.failures,
-      previousOperationalFailures: previousHealth.failures,
     },
     trends: {
       taskOnTime: {

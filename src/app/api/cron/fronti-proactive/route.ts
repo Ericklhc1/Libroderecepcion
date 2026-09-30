@@ -13,7 +13,10 @@ export async function GET(request: Request) {
   }
 
   const alertSync = await runAlertEngine();
-  const result = await runFrontiProactiveSweep({ trigger: 'vercel-cron' });
+  const result = await runFrontiProactiveSweep({
+    trigger: 'vercel-cron',
+    deadlineAt: Date.now() + 100_000,
+  });
   return NextResponse.json(
     { ok: true, alertSync, ...result },
     { headers: { 'Cache-Control': 'no-store' } },

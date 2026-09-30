@@ -173,23 +173,56 @@ describe('shell corporativo con sidebar', () => {
     expect(layout).not.toContain('<QuickActions');
   });
 
-  it('mantiene alcanzable la navegación secundaria desde el sidebar', () => {
-    const novedades = NAV_ITEMS.find((item) => item.href === '/libro?clase=entry');
-    const submenu = novedades?.menu?.flatMap((section) => section.items.map((item) => item.href)) ?? [];
-    expect(submenu).toContain('/tareas');
-    expect(submenu).toContain('/seguimientos');
-    expect(submenu).toContain('/alertas');
+  it('mantiene el sidebar reducido a módulos raíz', () => {
+    const sidebarStart = nav.indexOf('export function SidebarNav');
+    const sidebarEnd = nav.indexOf('/** Barra inferior para móvil', sidebarStart);
+    const sidebar = nav.slice(sidebarStart, sidebarEnd);
+
+    expect(sidebar).toContain('group.items.map((item)');
+    expect(sidebar).not.toContain('item.menu?.length');
+    expect(sidebar).not.toContain('section.items.map((subitem)');
+    expect(sidebar).not.toContain('useSearchParams');
+    expect(sidebar).not.toContain('isSubitemActive');
 
     const roots = NAV_ITEMS.map((item) => item.href);
     expect(roots).not.toContain('/tareas');
     expect(roots).not.toContain('/seguimientos');
+    expect(roots).not.toContain('/incidencias');
+  });
 
-    expect(nav).toContain('item.menu?.length');
-    expect(nav).toContain('section.items.map((subitem)');
-    expect(nav).toContain('href={subitem.href}');
-    expect(nav).toContain('menuActive');
-    expect(nav).toContain('useSearchParams');
-    expect(nav).toContain('isSubitemActive');
+  it('las vistas secundarias siguen alcanzables dentro de su módulo', () => {
+    const libro = readFileSync('src/app/(app)/libro/page.tsx', 'utf-8');
+    expect(libro).toContain("{ label: 'Incidencias', href: '/libro?clase=entry&tipo=INCIDENCIA' }");
+    expect(libro).toContain("{ label: 'Mis tareas', href: '/libro?clase=task' }");
+    expect(libro).toContain('href="/historial"');
+
+    const caja = readFileSync('src/app/(app)/caja/page.tsx', 'utf-8');
+    for (const section of ['garantias', 'auditorias', 'gimnasio', 'estacionamiento', 'movimientos']) {
+      expect(caja).toContain(`<option value="${section}"`);
+    }
+
+    const llaves = readFileSync('src/app/(app)/llaves/page.tsx', 'utf-8');
+    expect(llaves).toContain('([4, 5, 6] as const).map');
+    expect(llaves).toContain('href={`/llaves?piso=${value}`}');
+
+    const turno = readFileSync('src/app/(app)/turno/page.tsx', 'utf-8');
+    expect(turno).toContain('href="/admin/turnos"');
+
+    const supervision = readFileSync('src/app/(app)/supervision/page.tsx', 'utf-8');
+    for (const href of [
+      '/supervision/tablero',
+      '/supervision/auditorias',
+      '/supervision/informes',
+      '/supervision/rendimiento',
+      '/supervision/salud',
+    ]) {
+      expect(supervision).toContain(`href="${href}"`);
+    }
+
+    const admin = readFileSync('src/app/(app)/admin/page.tsx', 'utf-8');
+    for (const href of ['/admin/usuarios', '/admin/roles', '/admin/soporte', '/admin/parametros', '/admin/correo', '/admin/fronti']) {
+      expect(admin).toContain(href);
+    }
   });
 
   it('usa geometría recta y cian como acento visual del estado activo', () => {

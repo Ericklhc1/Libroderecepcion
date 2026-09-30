@@ -128,7 +128,12 @@ export function ReservationDialog({
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Habitación" name="roomNumber">
-            <Input name="roomNumber" defaultValue={defaults?.roomNumber ?? ''} />
+            <Select
+              name="roomNumber"
+              placeholder="Sin habitación"
+              defaultValue={defaults?.roomNumber ?? ''}
+              options={ROOM_NUMBER_OPTIONS}
+            />
           </Field>
           <Field label="Llegada" name="checkIn">
             <Input type="datetime-local" name="checkIn" defaultValue={defaults?.checkIn ?? ''} />

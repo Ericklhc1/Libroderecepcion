@@ -6,10 +6,16 @@ import { useRouter } from 'next/navigation';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { markNotificationsReadAction } from '@/server/actions/notifications';
+import { refreshAppBadgeFromServer, syncAppBadge } from '@/components/layout/device-notifications';
 
 export function MarkAllReadForm() {
   return (
-    <ActionForm action={markNotificationsReadAction} hideSuccess className="space-y-0">
+    <ActionForm
+      action={markNotificationsReadAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={() => void syncAppBadge(0)}
+    >
       <SubmitButton variant="secondary" size="sm" pendingLabel="Marcando…">
         Marcar todas como leídas
       </SubmitButton>
@@ -38,7 +44,12 @@ function MarkOneReadButton() {
 
 export function MarkOneReadForm({ id }: { id: string }) {
   return (
-    <ActionForm action={markNotificationsReadAction} hideSuccess className="space-y-0">
+    <ActionForm
+      action={markNotificationsReadAction}
+      hideSuccess
+      className="space-y-0"
+      onSuccess={() => void refreshAppBadgeFromServer()}
+    >
       <input type="hidden" name="id" value={id} />
       <MarkOneReadButton />
     </ActionForm>
@@ -74,6 +85,12 @@ export function OpenNotificationButton({
         if (response.status === 401) {
           window.location.assign('/login');
           return;
+        }
+        if (response.ok) {
+          const snapshot = (await response.json().catch(() => null)) as { unread?: number } | null;
+          if (snapshot && typeof snapshot.unread === 'number') {
+            await syncAppBadge(snapshot.unread);
+          }
         }
       }
     } finally {

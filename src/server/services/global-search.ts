@@ -307,7 +307,6 @@ export async function searchOperationalRecords(
           OR: [
             { title: { contains: q, mode: 'insensitive' } },
             { body: { contains: q, mode: 'insensitive' } },
-            { type: { equals: q.toLocaleUpperCase('es-CL').replaceAll(' ', '_') as never } },
           ],
         },
         select: { id: true, type: true, title: true, body: true, link: true, readAt: true, createdAt: true },

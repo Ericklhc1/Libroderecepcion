@@ -139,7 +139,8 @@ function compactReservationContext(
       id: alert.id,
       title: alert.title,
       status: alert.status,
-      level: alert.level,
+      kind: alert.kind,
+      note: alert.note,
       dueAt: alert.dueAt,
     })),
   };
@@ -177,9 +178,9 @@ async function reservationCenterSnapshot(
   requireAny(
     user,
     ['reservation.center.view'],
-    'No tienes permiso para consultar la Central de Reservas.',
+    'No tienes permiso para consultar Prellegadas.',
   );
-  const snapshot = await getReservationCenterSnapshot();
+  const snapshot = await getReservationCenterSnapshot(user);
   const view = page.filters.vista ?? '';
   const q = (page.filters.q ?? '').toLocaleLowerCase('es-CL');
 
@@ -328,7 +329,7 @@ async function detailSnapshot(
 
   if (page.entityType === 'ReservationReference') {
     requireAny(user, ['guest.view', 'guest.manage'], 'No tienes permiso para consultar reservas.');
-    const reservation = await getReservationOperationalContext(page.entityId);
+    const reservation = await getReservationOperationalContext(page.entityId, user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
@@ -338,7 +339,7 @@ async function detailSnapshot(
       ['room.view', 'guest.view', 'guest.manage'],
       'No tienes permiso para consultar reservas.',
     );
-    const reservation = await getReservationOperationalContextByCode(page.entityId);
+    const reservation = await getReservationOperationalContextByCode(page.entityId, user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 

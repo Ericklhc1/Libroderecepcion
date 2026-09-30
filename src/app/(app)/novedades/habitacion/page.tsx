@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { EntryType } from '@prisma/client';
 import {
   AlarmClock,
   ArrowRight,
@@ -10,6 +11,14 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
+import { getFormOptions } from '@/server/services/options';
+import { listAlarmCandidates } from '@/server/services/operational-alarms';
+import { Dialog } from '@/components/ui/dialog';
+import { EntryForm } from '@/components/forms/entry-form';
+import { TaskForm } from '@/components/forms/task-form';
+import { OperationalAlarmCreateForm } from '@/components/operational/operational-alarm-form';
+import { createEntryAction } from '@/server/actions/entries';
+import { createTaskAction } from '@/server/actions/tasks';
 import {
   getRoomMonitorDetail,
   getRoomMonitorOverview,
@@ -156,16 +165,18 @@ export default async function RoomOperationsMonitor({
 }: {
   searchParams: SearchParams;
 }) {
-  await requirePageUser();
+  const user = await requirePageUser();
   const params = await searchParams;
   const requestedRoom = one(params.habitacion).trim();
 
   const overview = await getRoomMonitorOverview();
   const selectedTile =
     overview.rooms.find((room) => room.number === requestedRoom) ?? null;
-  const detail = selectedTile
-    ? await getRoomMonitorDetail(selectedTile.number)
-    : null;
+  const [detail, formOptions, alarmCandidates] = await Promise.all([
+    selectedTile ? getRoomMonitorDetail(selectedTile.number) : Promise.resolve(null),
+    getFormOptions(),
+    listAlarmCandidates(),
+  ]);
 
   const floors = [4, 5, 6].map((floor) => ({
     floor,
@@ -281,30 +292,63 @@ export default async function RoomOperationsMonitor({
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2 no-print">
-                    <Link
-                      href={`/libro?clase=entry&habitacion=${detail.room.number}&crear=novedad`}
-                      className="rounded-sm bg-petrol-950 px-2.5 py-1.5 text-xs font-semibold text-white"
+                    {user.permissions.includes('entry.create') ? (
+                      <Dialog
+                        title={`Nueva novedad · Hab. ${detail.room.number}`}
+                        description="La habitación queda vinculada automáticamente al monitor operacional."
+                        triggerVariant="primary"
+                        triggerSize="sm"
+                        trigger="+ Novedad"
+                      >
+                        <EntryForm
+                          action={createEntryAction}
+                          options={formOptions}
+                          defaultType={EntryType.NOVEDAD}
+                          defaultRoomId={detail.room.id}
+                        />
+                      </Dialog>
+                    ) : null}
+                    {user.permissions.includes('task.create') ? (
+                      <Dialog
+                        title={`Nueva tarea · Hab. ${detail.room.number}`}
+                        description="La tarea quedará visible en esta habitación hasta que se cierre."
+                        triggerVariant="secondary"
+                        triggerSize="sm"
+                        trigger="+ Tarea"
+                      >
+                        <TaskForm
+                          action={createTaskAction}
+                          options={formOptions}
+                          defaultRoomId={detail.room.id}
+                        />
+                      </Dialog>
+                    ) : null}
+                    <Dialog
+                      title={`Nueva alerta · Hab. ${detail.room.number}`}
+                      description="Programa una llamada de atención vinculada a esta habitación. No crea una novedad paralela."
+                      triggerVariant="secondary"
+                      triggerSize="sm"
+                      trigger="+ Alerta"
                     >
-                      + Novedad
-                    </Link>
-                    <Link
-                      href={`/tareas?habitacion=${detail.room.number}&crear=1`}
-                      className="rounded-sm bg-white px-2.5 py-1.5 text-xs font-semibold text-petrol-800 ring-1 ring-slate-300"
-                    >
-                      + Tarea
-                    </Link>
-                    <Link
-                      href={`/alertas?habitacion=${detail.room.number}&crear=1`}
-                      className="rounded-sm bg-white px-2.5 py-1.5 text-xs font-semibold text-petrol-800 ring-1 ring-slate-300"
-                    >
-                      + Alerta
-                    </Link>
-                    <Link
-                      href={`/caja?seccion=garantias&habitacion=${detail.room.number}`}
-                      className="rounded-sm bg-white px-2.5 py-1.5 text-xs font-semibold text-petrol-800 ring-1 ring-slate-300"
-                    >
-                      Caja
-                    </Link>
+                      <OperationalAlarmCreateForm
+                        currentUserId={user.id}
+                        defaultRoomNumber={detail.room.number}
+                        candidates={alarmCandidates.map((candidate) => ({
+                          id: candidate.id,
+                          name: candidate.name,
+                          username: candidate.username,
+                          roleName: candidate.role.name,
+                        }))}
+                      />
+                    </Dialog>
+                    {user.permissions.includes('cash.view') ? (
+                      <Link
+                        href={`/caja?seccion=garantias&habitacion=${detail.room.number}`}
+                        className="rounded-sm bg-white px-2.5 py-1.5 text-xs font-semibold text-petrol-800 ring-1 ring-slate-300"
+                      >
+                        Abrir Caja
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
 

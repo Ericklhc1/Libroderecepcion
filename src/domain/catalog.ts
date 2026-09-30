@@ -6,6 +6,7 @@ import {
   ROLE_DEFINITIONS,
   ROLE_PERMISSIONS,
 } from '@/lib/permissions';
+import { HOTEL_ROOM_RANGES, HOTEL_ROOMS } from '@/domain/hotel-rooms';
 
 /** Áreas operativas con las que arranca cualquier instalación. */
 export const DEPARTMENTS = [
@@ -29,11 +30,7 @@ export const DEPARTMENTS = [
  * central del módulo operativo, así que existen desde la instalación y no
  * dependen de que un informe del PMS las mencione.
  */
-export const ROOM_RANGES = [
-  { floor: 4, from: 401, to: 429 },
-  { floor: 5, from: 501, to: 530 },
-  { floor: 6, from: 601, to: 630 },
-];
+export const ROOM_RANGES = HOTEL_ROOM_RANGES;
 
 /**
  * Denominaciones de efectivo en circulación.
@@ -71,13 +68,7 @@ export const CASH_DENOMINATIONS: Array<{
 ];
 
 export function roomNumbers(): Array<{ number: string; floor: number }> {
-  const rooms: Array<{ number: string; floor: number }> = [];
-  for (const range of ROOM_RANGES) {
-    for (let number = range.from; number <= range.to; number += 1) {
-      rooms.push({ number: String(number), floor: range.floor });
-    }
-  }
-  return rooms;
+  return HOTEL_ROOMS.map((room) => ({ ...room }));
 }
 
 /** Copias de llave sin asignar con las que arranca el stock del Supervisor. */

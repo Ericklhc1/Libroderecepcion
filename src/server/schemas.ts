@@ -305,6 +305,28 @@ export const guaranteeCreateSchema = z
     }
   });
 
+export const guaranteeUpdateSchema = z.object({
+  id: z.string().min(1),
+  guestName: zOptionalString,
+  roomNumber: zOptionalString.refine(
+    (value) => !value || isOperationalRoomNumber(value),
+    'Selecciona una habitación válida del hotel.',
+  ),
+  reference: zOptionalString,
+  dueAt: zOptionalDate,
+  kind: z
+    .enum(['TARJETA', 'EFECTIVO', 'TRANSFERENCIA', 'VOUCHER', 'CARTA_EMPRESA', 'OTRO'])
+    .optional(),
+  amount: zMoney.refine((value) => value > 0, 'El monto debe ser mayor que cero').optional(),
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((value) => /^[A-Z]{3}$/.test(value), 'Usa el código de tres letras, como CLP o USD')
+    .optional(),
+  notes: zOptionalString,
+});
+
 export const guaranteeStateSchema = z.object({
   id: z.string().min(1),
   state: z.enum(['PENDIENTE', 'VIGENTE', 'DEVUELTA', 'APLICADA_PARCIALMENTE', 'MULTA', 'CERRADA']),

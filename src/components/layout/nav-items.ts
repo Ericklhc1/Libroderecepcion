@@ -281,6 +281,12 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
+    href: '/gerencia',
+    label: 'Gerencia',
+    icon: 'metrics',
+    anyOf: ['management.dashboard.view'],
+  },
+  {
     href: '/supervision',
     label: 'Centro de Supervisión',
     icon: 'supervision',

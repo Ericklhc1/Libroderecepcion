@@ -23,9 +23,9 @@ export default async function ReservationFolderPage({
 }: {
   params: Promise<{ code: string }>;
 }) {
-  await requirePageAnyPermission(['room.view', 'guest.view', 'guest.manage']);
+  const user = await requirePageAnyPermission(['room.view', 'guest.view', 'guest.manage']);
   const { code } = await params;
-  const reservation = await getReservationOperationalContextByCode(decodeURIComponent(code));
+  const reservation = await getReservationOperationalContextByCode(decodeURIComponent(code), user);
   if (!reservation) notFound();
 
   const signals = reservationModuleSignals(reservation);
@@ -196,12 +196,12 @@ export default async function ReservationFolderPage({
 
       {reservation.alerts.length > 0 ? (
         <Card>
-          <CardHeader title="Alertas del ID FNS" count={reservation.alerts.length} />
+          <CardHeader title="Alertas de la reserva" count={reservation.alerts.length} href="/alertas" hrefLabel="Abrir alertas" />
           <ul className="divide-y divide-slate-100">
             {reservation.alerts.map((alert) => (
               <li key={alert.id} className="px-4 py-3 text-sm">
                 <p className="flex items-center gap-2 font-medium text-petrol-900"><Bell className="h-4 w-4" />{alert.title}</p>
-                {alert.message ? <p className="mt-1 text-slate-600">{alert.message}</p> : null}
+                {alert.note ? <p className="mt-1 text-slate-600">{alert.note}</p> : null}
               </li>
             ))}
           </ul>

@@ -239,6 +239,7 @@ const TASK_EDITABLE = [
   'startsAt',
   'dueAt',
   'departmentId',
+  'roomId',
   'tags',
   'blockedReason',
   'fulfillmentCriteria',
@@ -269,7 +270,15 @@ export async function updateTask(
     );
   }
 
-  const data: Prisma.TaskUpdateInput = {};
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+  }
+
+  const data: Prisma.TaskUncheckedUpdateInput = {};
   const after: Record<string, unknown> = {};
   for (const field of TASK_EDITABLE) {
     if (!(field in input)) continue;

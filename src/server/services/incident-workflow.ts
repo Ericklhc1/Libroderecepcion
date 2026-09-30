@@ -21,6 +21,7 @@ export async function ensureIncidentWorkflow(entryId: string) {
       createdById: true,
       departmentId: true,
       shiftId: true,
+      roomId: true,
     },
   });
   if (!entry || entry.type !== EntryType.INCIDENCIA) return;
@@ -41,6 +42,7 @@ export async function ensureIncidentWorkflow(entryId: string) {
         createdById: entry.createdById,
         departmentId: entry.departmentId,
         shiftId: entry.shiftId,
+        roomId: entry.roomId,
         entryId: entry.id,
       },
       select: { id: true },

@@ -301,4 +301,67 @@ describe('Fronti proactivo', () => {
       ),
     ).toBe(true);
   });
+
+  it('detecta un descuadre de Caja con montos exactos y abre el arqueo concreto', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor descuadre Fronti',
+    });
+    const now = new Date('2026-09-30T12:00:00.000Z');
+
+    const audit = await prisma.cashAudit.create({
+      data: {
+        id: 'fronti-cash-audit-difference',
+        currency: 'CLP',
+        expectedAmount: 100_000,
+        countedAmount: 98_000,
+        difference: -2_000,
+        countedById: supervisor.id,
+        guaranteeSnapshot: [],
+        denominationSnapshot: [],
+        createdAt: now,
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates(now);
+    const candidate = candidates.find((item) => item.entityId === audit.id);
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.area).toBe('Caja');
+    expect(candidate?.evidence).toContain('esperado CLP 100.000');
+    expect(candidate?.evidence).toContain('contado CLP 98.000');
+    expect(candidate?.evidence).toContain('diferencia CLP -2.000');
+    expect(candidate?.evidence).toContain('no demuestra por sí sola la causa');
+    expect(candidate?.link).toBe(`/caja/arqueos/${audit.id}`);
+  });
+
+  it('detecta una tarea vencida y enlaza directamente a la tarea', async () => {
+    const supervisor = await createUser({
+      roleKey: ROLE_KEYS.SUPERVISOR,
+      name: 'Supervisor tarea Fronti',
+    });
+    const now = new Date('2026-09-30T12:00:00.000Z');
+    const dueAt = new Date('2026-09-30T10:00:00.000Z');
+
+    const task = await prisma.task.create({
+      data: {
+        title: 'Revisar diferencia pendiente',
+        description: 'Tarea determinística para el radar de Fronti.',
+        priority: Priority.ALTA,
+        dueAt,
+        assigneeId: supervisor.id,
+        createdById: supervisor.id,
+      },
+    });
+
+    const candidates = await collectFrontiProactiveCandidates(now);
+    const candidate = candidates.find((item) => item.entityId === task.id);
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.area).toBe('Tareas');
+    expect(candidate?.title).toContain(`#${task.humanId}`);
+    expect(candidate?.evidence).toContain('la fecha límite ya pasó');
+    expect(candidate?.link).toBe(`/tareas/${task.id}`);
+  });
+
 });

@@ -2734,8 +2734,11 @@ model GymPass {
   serviceType            String                @default("GIMNASIO")
   roomNumber             String
   guestName              String
-  /// Patente/matrícula del vehículo. Sólo se exige para ESTACIONAMIENTO.
+  /// Compatibilidad histórica: tickets antiguos podían guardar patente/matrícula.
   vehiclePlate           String?
+  /// ID/código de reserva escrito en el ticket de estacionamiento. Es contexto externo,
+  /// no una relación PMS ni una segunda fuente de verdad.
+  reservationCode        String?
   receptionistId         String
   shiftId                String?
 

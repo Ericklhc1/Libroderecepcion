@@ -265,6 +265,14 @@ export async function updateTask(
     throw new RuleError('La fecha límite debe ser posterior al inicio programado.');
   }
 
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
+  }
+
   if (
     current.status === TaskStatus.VALIDADA ||
     current.status === TaskStatus.COMPLETADA ||

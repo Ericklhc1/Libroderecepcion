@@ -9,6 +9,7 @@
 - La migración inicializa como conocidos los módulos actuales de quienes ya habían completado el tutorial general, evitando bombardear a usuarios existentes tras desplegar.
 - Ayuda incorpora **Tutoriales por módulo** y amplía el manual buscable con Novedades / habitación, tareas programadas/validadas, seguimientos, Alertas, Notificaciones, Web Push, Caja/arqueos/regularización/Tesorería, Gym, Estacionamiento, Gerencia, Fronti, Supervisión, auditorías, medidas correctivas, salud, rendimiento, usuarios ocultos, permisos, soporte/adjuntos, chat, búsqueda global, historial e IDs humanos.
 - Fronti proactivo adopta un contrato explícito de explicación: **Qué pasó → Qué está mal / qué revisar → Qué hacer**, sin inventar causas, montos, personas ni estados no demostrados.
+- El radar proactivo incorpora descuadres recientes de Caja con **esperado / contado / diferencia / responsable** y abre el arqueo exacto; también detecta tareas vencidas abiertas y abre la tarea concreta.
 - Los hallazgos de inventario de llaves enlazan al piso afectado cuando la telemetría contiene ese contexto.
 - Migración: `20260930112000_tutoriales_modulares`.
 - Release: **v1.37.0**.

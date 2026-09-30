@@ -562,11 +562,9 @@ export async function runFrontiProactiveSweep(input: {
       continue;
     }
 
-    const explanationTimeoutMs = Math.max(
-      2_000,
-      Math.min(18_000, deadlineAt - Date.now() - 5_000),
-    );
-    if (explanationTimeoutMs < 2_000) break;
+    const inferenceBudgetMs = deadlineAt - Date.now() - 5_000;
+    if (inferenceBudgetMs < 2_000) break;
+    const explanationTimeoutMs = Math.min(18_000, inferenceBudgetMs);
 
     const explanation = await explainCandidate(candidate, explanationTimeoutMs);
     analysed += 1;

@@ -111,6 +111,6 @@ VALUES
   ('room-627', '627', 6, TRUE, NOW(), NOW()),
   ('room-628', '628', 6, TRUE, NOW(), NOW()),
   ('room-629', '629', 6, TRUE, NOW(), NOW()),
-  ('room-630', '630', 6, TRUE, NOW(), NOW());
+  ('room-630', '630', 6, TRUE, NOW(), NOW())
 ON CONFLICT ("number") DO UPDATE
 SET "floor" = EXCLUDED."floor", "active" = TRUE, "updatedAt" = NOW();

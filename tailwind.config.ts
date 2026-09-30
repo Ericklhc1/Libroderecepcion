@@ -1,8 +1,10 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Paleta del producto: azul petróleo como color principal, dorado como acento,
- * blanco y grises para el resto. Los tonos del semáforo visual se definen en
+ * Paleta del producto: azul noche como base, blanco/gris frío para superficies
+ * y cian como acento principal. Por compatibilidad, la clave interna `gold`
+ * conserva su nombre histórico pero representa el acento cian de AROH.
+ * Los tonos del semáforo visual se definen en
  * `src/components/ui/tone.ts` con clases completas para que Tailwind las
  * detecte en compilación.
  */
@@ -23,10 +25,10 @@ const config: Config = {
     extend: {
       colors: {
         slate: {
-          50: '#faf9f6',
-          100: '#f4f2ed',
-          200: '#e7e2d9',
-          300: '#d6cfc3',
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
         },
         petrol: {
           50: '#eef5f7',
@@ -42,16 +44,16 @@ const config: Config = {
           950: '#091820',
         },
         gold: {
-          50: '#fbf8ef',
-          100: '#f5edd5',
-          200: '#ead9a6',
-          300: '#dcc06f',
-          400: '#cfa844',
-          500: '#c9a227',
-          600: '#a8811f',
-          700: '#85631c',
-          800: '#6d501e',
-          900: '#5c431e',
+          50: '#ecfeff',
+          100: '#cffafe',
+          200: '#a5f3fc',
+          300: '#67e8f9',
+          400: '#22d3ee',
+          500: '#06b6d4',
+          600: '#0891b2',
+          700: '#0e7490',
+          800: '#155e75',
+          900: '#164e63',
         },
       },
       fontFamily: {

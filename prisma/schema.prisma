@@ -424,24 +424,6 @@ model RolePermission {
 }
 
 
-/// Estado persistente del tutorial de cada módulo por usuario.
-///
-/// Una fila significa que ese usuario ya recibió o descartó el tutorial de ese
-/// módulo. Si más adelante gana acceso a un módulo que no tiene fila, el layout
-/// lo detecta y ofrece sólo ese recorrido nuevo.
-model UserTutorialModule {
-  userId    String
-  moduleKey String
-  doneAt    DateTime @default(now())
-  outcome   String   @default("COMPLETED")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([userId, moduleKey])
-  @@index([moduleKey])
-}
-
 /// Una cuenta del sistema se identifica por `username`.
 ///
 /// El correo es un CANAL de comunicación individual, no una identidad ni una

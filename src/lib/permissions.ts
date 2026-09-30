@@ -33,6 +33,7 @@ export const PERMISSIONS = {
   'shift.receive': { group: 'Turnos', name: 'Recibir turno' },
   'shift.handover': { group: 'Turnos', name: 'Entregar turno' },
   'shift.close': { group: 'Turnos', name: 'Cerrar turno' },
+  'shift.reassign': { group: 'Turnos', name: 'Reasignar titular del turno' },
   'shift.manage': { group: 'Turnos', name: 'Supervisar y administrar turnos' },
 
   'nightaudit.run': { group: 'Auditoría nocturna', name: 'Controles y cierre nocturno' },
@@ -236,6 +237,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
         'shift.start',
         'shift.receive',
         'shift.handover',
+        'shift.reassign',
         'room.manage',
         'key.assign',
       ].includes(p),
@@ -247,6 +249,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'incident.manage',
     'incident.close',
     'shift.manage',
+    'shift.reassign',
     'audit.view',
     'key.stock',
     'room.reset',

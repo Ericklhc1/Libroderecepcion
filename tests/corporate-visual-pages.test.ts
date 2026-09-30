@@ -49,9 +49,9 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
 
   it('el shell autenticado aplica la identidad corporativa a todas las rutas', () => {
     const layout = readFileSync(join(APP_ROOT, 'layout.tsx'), 'utf8');
-    expect(layout).toContain("bg-[#f4f2ed]");
-    expect(layout).toContain('border-t-gold-500');
-    expect(layout).toContain('bg-petrol-950 text-gold-400');
+    expect(layout).toContain("bg-[#f3f6f8]");
+    expect(layout).toContain('<SidebarNav groups={groups} badges={badges} />');
+    expect(layout).toContain('bg-petrol-950 lg:flex');
   });
 
   it('las entradas públicas también usan la identidad compartida', () => {
@@ -65,10 +65,10 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
     const config = readFileSync('tailwind.config.ts', 'utf8');
     const css = readFileSync('src/app/globals.css', 'utf8');
 
-    expect(config).toContain("50: '#faf9f6'");
-    expect(config).toContain("100: '#f4f2ed'");
+    expect(config).toContain("50: '#f8fafc'");
+    expect(config).toContain("100: '#f1f5f9'");
     expect(config).toContain("lg: '5px'");
     expect(css).toContain('border border-slate-300 bg-white shadow-card');
-    expect(css).toContain('background-color: #faf9f6');
+    expect(css).toContain('background-color: #f8fafc');
   });
 });

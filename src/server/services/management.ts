@@ -322,21 +322,32 @@ export async function getManagementCockpit(inputDays = 30) {
     }, new Map<string, number>()),
   ).map(([currency, amount]) => ({ currency, amount }));
 
+  type KeyTotals = {
+    expected: number;
+    found: number;
+    missing: number;
+    outOfService: number;
+  };
+  const emptyKeyTotals = (): KeyTotals => ({
+    expected: 0,
+    found: 0,
+    missing: 0,
+    outOfService: 0,
+  });
   const keySnapshots = [
     { floor: 4, snapshot: floor4 },
     { floor: 5, snapshot: floor5 },
     { floor: 6, snapshot: floor6 },
   ].map(({ floor, snapshot }) => {
-    const totals = snapshot?.items.reduce(
-      (acc, item) => {
-        acc.expected += item.expected;
-        acc.found += item.found;
-        acc.outOfService += item.outOfService;
-        acc.missing += Math.max(item.expected - item.found, 0);
-        return acc;
-      },
-      { expected: 0, found: 0, missing: 0, outOfService: 0 },
-    ) ?? { expected: 0, found: 0, missing: 0, outOfService: 0 };
+    const totals = snapshot
+      ? snapshot.items.reduce<KeyTotals>((acc, item) => {
+          acc.expected += item.expected;
+          acc.found += item.found;
+          acc.outOfService += item.outOfService;
+          acc.missing += Math.max(item.expected - item.found, 0);
+          return acc;
+        }, emptyKeyTotals())
+      : emptyKeyTotals();
     return { floor, countedAt: snapshot?.countedAt ?? null, ...totals };
   });
   const keysMissing = keySnapshots.reduce((sum, row) => sum + row.missing, 0);

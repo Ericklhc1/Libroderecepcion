@@ -283,6 +283,15 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_vencimientos',
     ]);
   }
+  if (pathname === '/central-reservas') {
+    return detail(
+      'novedades-habitacion',
+      'Novedades / habitación',
+      'redireccion',
+      'Ruta anterior de Central de Reservas',
+      ['consultar_contexto_pantalla'],
+    );
+  }
   if (pathname === '/novedades/habitacion') {
     return detail(
       'novedades-habitacion',

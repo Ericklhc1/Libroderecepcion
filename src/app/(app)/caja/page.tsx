@@ -130,7 +130,7 @@ export default async function LiveCashPage({
       item.formattedFolio,
       item.roomNumber,
       item.guestName,
-      item.vehiclePlate,
+      item.reservationCode,
       item.receptionistName,
       item.status,
     ]),
@@ -192,7 +192,7 @@ export default async function LiveCashPage({
           {canOperateCash ? (
             <Dialog
               title="Generar ticket de estacionamiento"
-              description="Registra fecha, habitación, huésped y patente. El recepcionista se toma automáticamente de tu sesión."
+              description="Registra fecha, habitación, huésped e ID Reserva de FNSrooms. AROH no administra la reserva."
               triggerVariant="secondary"
               triggerSize="sm"
               width="sm"
@@ -645,7 +645,7 @@ export default async function LiveCashPage({
                       <th className="px-4 py-2 font-medium">Fecha</th>
                       <th className="px-4 py-2 font-medium">Habitación</th>
                       <th className="px-4 py-2 font-medium">Huésped</th>
-                      <th className="px-4 py-2 font-medium">Patente</th>
+                      <th className="px-4 py-2 font-medium">ID Reserva</th>
                       <th className="px-4 py-2 font-medium">Recepcionista</th>
                       <th className="px-4 py-2 font-medium">Estado</th>
                       <th className="px-4 py-2 text-right font-medium">Acción</th>

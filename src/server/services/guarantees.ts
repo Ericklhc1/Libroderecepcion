@@ -56,6 +56,7 @@ export const guaranteeInclude = {
       guest: { select: { id: true, fullName: true, vip: true } },
     },
   },
+  room: { select: { id: true, number: true, floor: true } },
   createdBy: { select: { name: true } },
   returnedBy: { select: { name: true } },
 } satisfies Prisma.GuaranteeInclude;
@@ -124,6 +125,15 @@ export async function createGuarantee(
   },
 ): Promise<{ id: string }> {
   const shift = await getMyOpenShift(user.id);
+  const requestedRoomNumber = input.roomNumber?.trim() || null;
+  const selectedRoom = input.roomId
+    ? await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true, number: true } })
+    : requestedRoomNumber
+      ? await prisma.room.findFirst({ where: { number: requestedRoomNumber, active: true }, select: { id: true, number: true } })
+      : null;
+  if ((input.roomId || requestedRoomNumber) && !selectedRoom) {
+    throw new RuleError('Selecciona una habitación válida.');
+  }
   const initialState = input.state ?? GuaranteeState.PENDIENTE;
 
   const guarantee = await prisma.$transaction(async (tx) => {
@@ -144,7 +154,8 @@ export async function createGuarantee(
         reservationReferenceId: legacyReservation?.id ?? null,
         stayId: input.stayId ?? null,
         guestName: input.guestName?.trim() || legacyReservation?.guest?.fullName || null,
-        roomNumber: input.roomNumber?.trim() || legacyReservation?.roomNumber || null,
+        roomId: selectedRoom?.id ?? null,
+        roomNumber: selectedRoom?.number ?? legacyReservation?.roomNumber ?? null,
         reference: input.reference?.trim() || legacyReservation?.code || null,
         dueAt: input.dueAt ?? null,
         kind: input.kind,
@@ -163,6 +174,7 @@ export async function createGuarantee(
         reservationReferenceId: true,
         stayId: true,
         guestName: true,
+        roomId: true,
         roomNumber: true,
         reference: true,
         dueAt: true,

@@ -475,7 +475,7 @@ export async function closeShiftAction(
         where: { id: input.shiftId },
         select: {
           assignments: {
-            where: { activatedAt: { not: null }, leftAt: null },
+            where: { removedExplicitly: false },
             select: { userId: true },
           },
         },
@@ -547,7 +547,7 @@ export async function addHandoverNoteAction(
       throw new RuleError('La entrega ya fue enviada: no admite nuevas notas.');
     }
     if (!handover.fromShift.assignments.some(
-      (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
+      (a) => a.userId === user.id && !a.removedExplicitly,
     )) {
       throw new RuleError('Sólo quien está en el turno puede agregar notas a su entrega.');
     }
@@ -605,7 +605,7 @@ export async function removeHandoverNoteAction(
       throw new RuleError('La entrega ya fue enviada.');
     }
     if (!item.handover.fromShift.assignments.some(
-      (a) => a.userId === user.id && a.activatedAt && !a.leftAt,
+      (a) => a.userId === user.id && !a.removedExplicitly,
     )) {
       throw new RuleError('Sólo quien está en el turno puede editar su entrega.');
     }

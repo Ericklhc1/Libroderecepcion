@@ -109,6 +109,7 @@ describe('matriz de roles y permisos', () => {
       'entry.delete',
       'entry.reopen',
       'shift.manage',
+      'shift.reassign',
     ] as PermissionKey[]) {
       expect(hasPermission(receptionist, permission)).toBe(false);
     }
@@ -122,6 +123,7 @@ describe('matriz de roles y permisos', () => {
       'incident.manage',
       'incident.close',
       'shift.manage',
+      'shift.reassign',
       'audit.view',
       'metrics.view',
     ] as PermissionKey[]) {

@@ -71,6 +71,23 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
 
   {
+    id: 'reasignar-titular-turno',
+    question: '¿Cómo cambio al titular de un turno Día/Noche?',
+    steps: [
+      'En Administración > Roles y permisos, activa «Reasignar titular del turno» para los roles que deban tener esta facultad.',
+      'Entra a Mi turno mientras el turno esté INICIADO o ACTIVO.',
+      'En «Reasignar titular del turno», elige a la persona que asumirá como titular.',
+      'Si esa persona ya estaba como apoyo en el mismo turno, pasa a TITULAR sin salir ni volver a entrar. Si aún no participaba, se incorpora directamente como titular.',
+      'El titular anterior permanece en el turno como APOYO y la Central registra el cambio en Auditoría.',
+    ],
+    caveat:
+      'La reasignación no cambia un turno DÍA por NOCHE ni borra quién abrió el turno. Tampoco se permite cuando el cierre ya comenzó o si la persona elegida participa activamente en otro turno.',
+    route: '/turno',
+    anyOf: ['shift.reassign'],
+    keywords: ['turno', 'titular', 'apoyo', 'reasignar', 'cambiar', 'dia', 'día', 'noche', 'responsable'],
+  },
+
+  {
     id: 'recibir-caja',
     question: '¿Cómo recibo la Caja y valido el relevo?',
     steps: [

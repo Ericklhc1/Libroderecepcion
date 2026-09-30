@@ -14,6 +14,7 @@ import {
   openShiftAction,
   prepareHandoverAction,
   receiveHandoverAction,
+  reassignShiftLeadAction,
   sendHandoverAction,
   startReceptionShiftAction,
 } from '@/server/actions/shifts';
@@ -339,6 +340,44 @@ export function AddShiftMemberForm({
       ) : (
         <p className="text-xs text-slate-500">
           No hay usuarios disponibles para incorporarse ahora.
+        </p>
+      )}
+    </ActionForm>
+  );
+}
+
+/** Cambia el titular del turno sin borrar la participación histórica. */
+export function ReassignShiftLeadForm({
+  shiftId,
+  candidates,
+}: {
+  shiftId: string;
+  candidates: Array<{ value: string; label: string; disabled?: boolean }>;
+}) {
+  const enabled = candidates.some((candidate) => !candidate.disabled);
+
+  return (
+    <ActionForm action={reassignShiftLeadAction} refreshOnSuccess>
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <Field
+        label="Reasignar titular del turno"
+        name="userId"
+        hint="Cambia quién figura como titular de este turno Día/Noche. La participación anterior no se borra y queda trazada."
+      >
+        <Select
+          name="userId"
+          required
+          placeholder="Elige al nuevo titular"
+          options={candidates}
+        />
+      </Field>
+      {enabled ? (
+        <SubmitButton variant="secondary" pendingLabel="Reasignando…">
+          Reasignar titular
+        </SubmitButton>
+      ) : (
+        <p className="text-xs text-slate-500">
+          No hay otra persona disponible para asumir como titular.
         </p>
       )}
     </ActionForm>

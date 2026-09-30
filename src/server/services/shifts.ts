@@ -1608,6 +1608,136 @@ export async function addShiftMember(
 }
 
 /**
+ * Reasigna quién figura como TITULAR del turno operativo vigente.
+ *
+ * No borra participación ni reescribe quién abrió el turno: la trazabilidad
+ * histórica se conserva. Si el nuevo titular ya participa como APOYO, sólo
+ * cambia su rol; si aún no participa, se incorpora al turno.
+ */
+export async function reassignShiftLead(
+  actor: CurrentUser,
+  input: { shiftId: string; userId: string },
+): Promise<void> {
+  if (!actor.permissions.includes('shift.reassign')) {
+    throw new RuleError('Tu rol no puede reasignar el titular de un turno.');
+  }
+
+  await assertShiftAssignable(input.userId);
+
+  const target = await prisma.user.findFirst({
+    where: { id: input.userId, deletedAt: null, active: true },
+    select: { id: true, name: true },
+  });
+  if (!target) throw new NotFoundError('La persona indicada no existe o está inactiva.');
+
+  await prisma.$transaction(async (tx) => {
+    // Serializa cambios de titular para evitar dos TITULAR por una carrera de clics.
+    await tx.$queryRaw<Array<{ locked: boolean }>>`
+      SELECT pg_advisory_xact_lock(1279873619) IS NULL AS "locked"
+    `;
+
+    const shift = await tx.shift.findUnique({
+      where: { id: input.shiftId },
+      include: {
+        assignments: {
+          include: { user: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!shift) throw new NotFoundError('El turno no existe.');
+    if (shift.archivedAt) throw new RuleError('Ese turno ya fue archivado.');
+    if (
+      shift.status !== ShiftStatus.INICIADO &&
+      shift.status !== ShiftStatus.ACTIVO
+    ) {
+      throw new RuleError(
+        'El titular sólo puede reasignarse mientras el turno está iniciado o activo. Si el cierre ya comenzó, cancélalo primero.',
+      );
+    }
+
+    const activeAssignments = shift.assignments.filter(
+      (assignment) => assignment.activatedAt && !assignment.leftAt,
+    );
+    const currentLead = activeAssignments.find(
+      (assignment) => assignment.role === AssignmentRole.TITULAR,
+    );
+    if (currentLead?.userId === target.id) return;
+
+    const busyElsewhere = await tx.shiftAssignment.findFirst({
+      where: {
+        userId: target.id,
+        shiftId: { not: shift.id },
+        activatedAt: { not: null },
+        leftAt: null,
+      },
+      select: { shiftId: true },
+    });
+    if (busyElsewhere) {
+      throw new RuleError(`${target.name} ya participa activamente en otro turno.`);
+    }
+
+    const targetAssignment = shift.assignments.find(
+      (assignment) => assignment.userId === target.id,
+    );
+    const now = new Date();
+
+    await tx.shiftAssignment.updateMany({
+      where: {
+        shiftId: shift.id,
+        role: AssignmentRole.TITULAR,
+        activatedAt: { not: null },
+        leftAt: null,
+      },
+      data: { role: AssignmentRole.APOYO },
+    });
+
+    if (targetAssignment) {
+      const targetIsActive = Boolean(targetAssignment.activatedAt && !targetAssignment.leftAt);
+      await tx.shiftAssignment.update({
+        where: { id: targetAssignment.id },
+        data: {
+          role: AssignmentRole.TITULAR,
+          ...(targetIsActive ? {} : { activatedAt: now, leftAt: null }),
+        },
+      });
+    } else {
+      await tx.shiftAssignment.create({
+        data: {
+          shiftId: shift.id,
+          userId: target.id,
+          role: AssignmentRole.TITULAR,
+          activatedAt: now,
+          leftAt: null,
+        },
+      });
+    }
+
+    await recordAudit(
+      {
+        entity: 'Shift',
+        entityId: shift.id,
+        action: AuditAction.EDITAR,
+        user: actor,
+        summary: `Titular del turno reasignado de ${currentLead?.user.name ?? 'sin titular'} a ${target.name}`,
+        before: {
+          titularUserId: currentLead?.userId ?? null,
+          titularName: currentLead?.user.name ?? null,
+          type: shift.type,
+          date: calendarDateKey(shift.date),
+        },
+        after: {
+          titularUserId: target.id,
+          titularName: target.name,
+          type: shift.type,
+          date: calendarDateKey(shift.date),
+        },
+      },
+      tx,
+    );
+  });
+}
+
+/**
  * Recuenta la Caja del turno saliente ya enviado/cerrado.
  *
  * Este paso NO activa el turno entrante. La cuenta permanece en RECEIVING hasta

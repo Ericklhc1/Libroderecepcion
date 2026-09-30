@@ -127,6 +127,25 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
   }
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
+
+  let roomNumber = input.roomNumber?.trim() || null;
+  if (!roomNumber && input.sourceEntity === 'OperationalEntry' && input.sourceId) {
+    roomNumber = (
+      await prisma.operationalEntry.findUnique({
+        where: { id: input.sourceId },
+        select: { room: { select: { number: true } } },
+      })
+    )?.room?.number ?? null;
+  }
+  if (!roomNumber && input.sourceEntity === 'Task' && input.sourceId) {
+    roomNumber = (
+      await prisma.task.findUnique({
+        where: { id: input.sourceId },
+        select: { room: { select: { number: true } } },
+      })
+    )?.room?.number ?? null;
+  }
+
   const originShift =
     input.kind === OperationalAlarmKind.TIMER
       ? await prisma.shift.findFirst({
@@ -159,7 +178,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         sourceEntity: input.sourceEntity?.trim() || null,
         sourceId: input.sourceId?.trim() || null,
         sourceLink: input.sourceLink?.trim() || null,
-        roomNumber: input.roomNumber?.trim() || null,
+        roomNumber,
         repeatMinutes:
           input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes ?? null,
         recipients: {

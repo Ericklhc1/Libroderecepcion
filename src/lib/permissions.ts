@@ -33,7 +33,7 @@ export const PERMISSIONS = {
   'shift.receive': { group: 'Turnos', name: 'Recibir turno' },
   'shift.handover': { group: 'Turnos', name: 'Entregar turno' },
   'shift.close': { group: 'Turnos', name: 'Cerrar turno' },
-  'shift.reassign': { group: 'Turnos', name: 'Reasignar titular del turno' },
+  'shift.reassign': { group: 'Turnos', name: 'Cambiar tipo de turno Día/Noche' },
   'shift.manage': { group: 'Turnos', name: 'Supervisar y administrar turnos' },
 
   'nightaudit.run': { group: 'Auditoría nocturna', name: 'Controles y cierre nocturno' },

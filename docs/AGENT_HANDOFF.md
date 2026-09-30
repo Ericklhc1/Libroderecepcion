@@ -1,5 +1,17 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 29/09/2026 · AROH 1.34.1 · sidebar simplificado
+
+- Rama: `fix/sidebar-simplificado-v1-34-1`.
+- Corrección de UX sobre 1.34.0: el sidebar vuelve a ser **selector de módulos**, no árbol de navegación secundaria.
+- No renderizar dentro del sidebar Incidencias, Tareas, Seguimientos, Historial, Notificaciones, subsecciones de Caja, pisos de Llaves ni subsecciones de Supervisión/Administración.
+- Las vistas secundarias permanecen en el sistema y se acceden desde el módulo propietario.
+- `/supervision/informes` se incorpora a la navegación interna del Centro de Supervisión para no depender del sidebar.
+- No cambia permisos, rutas, datos, Prisma ni lógica operativa.
+- Regresión en `tests/navigation.test.ts`: el bloque `SidebarNav` no puede volver a renderizar `item.menu`.
+- Release objetivo: **v1.34.1**. Sin migración Prisma.
+
+
 ## 29/09/2026 · AROH 1.34.0 · sistema visual corporativo
 
 - Rama: `feature/aroh-corporate-visual-system`.

@@ -42,10 +42,12 @@ import {
   queueOperationalMail,
   tryDeliverOperationalMail,
 } from '@/server/services/operational-mail';
+import { isHotelRoomNumber } from '@/domain/hotel-rooms';
 
 const gymPassSchema = z.object({
   serviceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Indica una fecha válida.'),
-  roomNumber: z.string().trim().min(1, 'Indica la habitación.').max(20),
+  roomNumber: z.string().trim().min(1, 'Indica la habitación.').max(20)
+    .refine(isHotelRoomNumber, 'Selecciona una habitación válida.'),
   guestName: z.string().trim().min(2, 'Indica el huésped.').max(160),
 });
 
@@ -60,6 +62,7 @@ export async function createGymPassAction(
     revalidatePath('/caja');
     revalidatePath('/caja/gimnasio');
     revalidatePath('/caja/estacionamiento');
+    revalidatePath('/libro/habitaciones');
     return {
       ok: true as const,
       message: `Folio de gimnasio ${result.formattedFolio} generado.`,
@@ -69,7 +72,7 @@ export async function createGymPassAction(
 }
 
 const parkingPassSchema = gymPassSchema.extend({
-  vehiclePlate: z.string().trim().min(2, 'Indica la patente o matrícula.').max(20),
+  reservationCode: z.string().trim().min(2, 'Indica el ID de reserva.').max(60),
 });
 
 export async function createParkingPassAction(

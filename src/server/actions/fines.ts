@@ -116,6 +116,7 @@ export async function changeFineStatusAction(
     });
 
     revalidatePath(`/habitaciones/${input.roomNumber}`);
+    revalidatePath('/habitaciones');
     revalidatePath('/supervision');
     return { ok: true as const, message: 'Estado de la multa actualizado.' };
   });
@@ -139,6 +140,7 @@ export async function deleteFineAction(
     await softDeleteFine(user, { fineId: input.fineId, reason: input.reason });
 
     revalidatePath(`/habitaciones/${input.roomNumber}`);
+    revalidatePath('/habitaciones');
     revalidatePath('/supervision');
     return { ok: true as const, message: 'Multa eliminada. Queda en el registro.' };
   });

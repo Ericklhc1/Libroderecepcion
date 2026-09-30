@@ -1,19 +1,19 @@
 import 'server-only';
 
-import { GuaranteeStatus, OperationalAlarmStatus, ReservationStatus } from '@prisma/client';
+import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { getDashboardData } from '@/server/services/dashboard';
 import { getEntry } from '@/server/services/entries';
 import { getTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
-import { getReservationCenterSnapshot } from '@/server/services/reservation-center';
 import {
   getReservationOperationalContext,
   getReservationOperationalContextByCode,
   reservationModuleSignals,
 } from '@/server/services/reservation-context';
 import { getRoomDetail } from '@/server/services/rooms';
+import { getRoomMonitorDetail, getRoomMonitorOverview } from '@/server/services/room-monitor';
 import { getLiveCashState } from '@/server/services/live-cash';
 import { getKeyInventory } from '@/server/services/keys';
 import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
@@ -69,19 +69,6 @@ async function safeRead(
       reason: error instanceof Error ? error.message : 'No disponible para esta cuenta.',
     };
   }
-}
-
-function reservationNeedsAttention(reservation: {
-  requiresAction: boolean;
-  guaranteeStatus: GuaranteeStatus;
-  balanceDue: { toString(): string } | null;
-}): boolean {
-  return (
-    reservation.requiresAction ||
-    reservation.guaranteeStatus === GuaranteeStatus.PENDIENTE ||
-    reservation.guaranteeStatus === GuaranteeStatus.RECHAZADA ||
-    Number(reservation.balanceDue ?? 0) > 0
-  );
 }
 
 function compactReservationContext(
@@ -167,100 +154,6 @@ async function bookSnapshot(page: FrontiResolvedPageContext) {
       overdue: item.overdue,
       href: item.href,
     })),
-  };
-}
-
-async function reservationCenterSnapshot(
-  user: CurrentUser,
-  page: FrontiResolvedPageContext,
-) {
-  requireAny(
-    user,
-    ['reservation.center.view'],
-    'No tienes permiso para consultar la Central de Reservas.',
-  );
-  const snapshot = await getReservationCenterSnapshot();
-  const view = page.filters.vista ?? '';
-  const q = (page.filters.q ?? '').toLocaleLowerCase('es-CL');
-
-  const rows = snapshot.reservations.filter((reservation) => {
-    const text = [
-      reservation.code,
-      reservation.guest?.fullName,
-      reservation.roomNumber,
-      reservation.channel,
-      reservation.actionNote,
-      reservation.notes,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLocaleLowerCase('es-CL');
-    if (q && !text.includes(q)) return false;
-    if (view === 'accion' && !reservationNeedsAttention(reservation)) return false;
-    if (
-      view === '24h' &&
-      !(
-        reservation.checkIn &&
-        reservation.checkIn >= snapshot.now &&
-        reservation.checkIn <= snapshot.horizons.in24Hours
-      )
-    ) return false;
-    if (
-      view === '72h' &&
-      !(
-        reservation.checkIn &&
-        reservation.checkIn >= snapshot.now &&
-        reservation.checkIn <= snapshot.horizons.in72Hours
-      )
-    ) return false;
-    if (view === 'recientes' && reservation.updatedAt < snapshot.horizons.oneDayAgo) return false;
-    return true;
-  });
-
-  return {
-    generatedAt: snapshot.now,
-    view: view || 'bandeja',
-    query: q || null,
-    counts: {
-      visible: rows.length,
-      attention: snapshot.reservations.filter(reservationNeedsAttention).length,
-      next24: snapshot.reservations.filter(
-        (reservation) =>
-          reservation.checkIn &&
-          reservation.checkIn >= snapshot.now &&
-          reservation.checkIn <= snapshot.horizons.in24Hours &&
-          (reservation.status === ReservationStatus.PENDIENTE ||
-            reservation.status === ReservationStatus.CONFIRMADA),
-      ).length,
-      next72: snapshot.reservations.filter(
-        (reservation) =>
-          reservation.checkIn &&
-          reservation.checkIn >= snapshot.now &&
-          reservation.checkIn <= snapshot.horizons.in72Hours &&
-          (reservation.status === ReservationStatus.PENDIENTE ||
-            reservation.status === ReservationStatus.CONFIRMADA),
-      ).length,
-    },
-    reservations: rows.slice(0, 30).map((reservation) => ({
-      id: reservation.id,
-      code: reservation.code,
-      guest: reservation.guest?.fullName ?? null,
-      vip: reservation.guest?.vip ?? false,
-      roomNumber: reservation.roomNumber,
-      checkIn: reservation.checkIn,
-      checkOut: reservation.checkOut,
-      status: reservation.status,
-      guaranteeStatus: reservation.guaranteeStatus,
-      balanceDue: reservation.balanceDue ? Number(reservation.balanceDue) : null,
-      requiresAction: reservation.requiresAction,
-      actionNote: reservation.actionNote,
-      updatedAt: reservation.updatedAt,
-    })),
-    related: {
-      tasks: snapshot.tasks.slice(0, 20),
-      alerts: snapshot.alerts.slice(0, 20),
-      followUps: snapshot.followUps.slice(0, 20),
-    },
   };
 }
 
@@ -792,6 +685,43 @@ export async function executeFrontiPageContextTool(
           onlyOpen: page.sectionKey !== 'historial',
         }),
       };
+    case 'novedades-habitacion': {
+      if (page.sectionKey === 'redireccion') {
+        return {
+          ...base,
+          snapshot: {
+            legacy: true,
+            redirectTo: '/novedades/habitacion',
+            note: 'Central de Reservas fue retirada. AROH organiza contexto operativo por habitación; FNSrooms continúa como PMS.',
+          },
+        };
+      }
+      const overview = await getRoomMonitorOverview();
+      const roomNumber = page.filters.habitacion ?? '';
+      const selected = roomNumber
+        ? await getRoomMonitorDetail(roomNumber).catch(() => null)
+        : null;
+      return {
+        ...base,
+        snapshot: {
+          summary: overview.summary,
+          rooms: overview.rooms.map((room) => ({
+            number: room.number,
+            floor: room.floor,
+            attention: room.attention,
+            openEntries: room.openEntries,
+            criticalIncidents: room.criticalIncidents,
+            openTasks: room.openTasks,
+            overdueTasks: room.overdueTasks,
+            activeAlarms: room.activeAlarms,
+            openGuarantees: room.openGuarantees,
+            lastActivityAt: room.lastActivityAt,
+          })),
+          selectedRoom: selected,
+          note: 'La habitación es contexto operativo. Este monitor no representa ocupación, check-in, check-out ni estado PMS.',
+        },
+      };
+    }
     case 'tareas':
       return {
         ...base,
@@ -845,8 +775,6 @@ export async function executeFrontiPageContextTool(
         ...base,
         snapshot: await getNotificationFeedForUser(user.id, 40),
       };
-    case 'central-reservas':
-      return { ...base, snapshot: await reservationCenterSnapshot(user, page) };
     case 'reservas':
     case 'habitaciones':
       return {

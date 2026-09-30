@@ -235,6 +235,7 @@ export default async function SupervisionCenterPage({
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="Secciones del Centro de Supervisión">
           <Link href="/supervision/tablero" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Asignación</Link>
           <Link href="/supervision/auditorias" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Auditorías</Link>
+          <Link href="/supervision/informes" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Informes</Link>
           <Link href="/supervision/rendimiento" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Rendimiento</Link>
           <Link href="/supervision/salud" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Salud operativa</Link>
         </nav>

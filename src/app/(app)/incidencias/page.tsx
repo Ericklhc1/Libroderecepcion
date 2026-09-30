@@ -146,7 +146,7 @@ export default async function IncidentsPage({
 
       <Filters
         action="/incidencias"
-        fields={['q', 'estado', 'prioridad', 'area', 'responsable', 'habitacion']}
+        fields={['estado', 'prioridad', 'area', 'responsable', 'habitacion']}
         values={values}
         options={{ departments: options.departments, users: options.users }}
         extraHidden={gravedad ? { gravedad } : undefined}

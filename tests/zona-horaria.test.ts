@@ -17,6 +17,7 @@ import {
   hotelDayStart,
   hotelHour,
   hotelParts,
+  parseHotelDateInput,
   parseHotelDateTimeLocal,
 } from '@/domain/time';
 import { plannedWindow, shiftTypeAt } from '@/domain/shift';
@@ -154,6 +155,27 @@ describe('utilidades de la zona del hotel', () => {
   it('interpreta la fecha efectiva de Caja como hora Chile y no como UTC del servidor', () => {
     expect(parseHotelDateTimeLocal('2026-09-16T16:25').toISOString()).toBe(
       '2026-09-16T19:25:00.000Z',
+    );
+  });
+
+  it('interpreta cualquier datetime-local de formulario como hora Chile antes de persistir', () => {
+    // Captura real: el usuario eligió 30/09/2026 11:00; en Santiago (UTC-3)
+    // el instante correcto es 14:00Z, no 11:00Z.
+    expect(parseHotelDateInput('2026-09-30T11:00').toISOString()).toBe(
+      '2026-09-30T14:00:00.000Z',
+    );
+  });
+
+  it('respeta el cambio estacional de Santiago al escribir formularios', () => {
+    // En junio Santiago está en UTC-4. No se codifica un offset fijo.
+    expect(parseHotelDateInput('2026-06-15T11:00').toISOString()).toBe(
+      '2026-06-15T15:00:00.000Z',
+    );
+  });
+
+  it('no reinterpreta un ISO que ya trae zona explícita', () => {
+    expect(parseHotelDateInput('2026-09-30T11:00:00.000Z').toISOString()).toBe(
+      '2026-09-30T11:00:00.000Z',
     );
   });
 });

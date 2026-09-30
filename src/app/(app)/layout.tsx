@@ -79,19 +79,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-[#f4f2ed]">
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur no-print">
+        <header className="sticky top-0 z-30 border-b border-slate-300 border-t-2 border-t-gold-500 bg-white/98 backdrop-blur no-print">
           <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
             <Link href="/" className="flex shrink-0 items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500 text-petrol-950">
+              <span className="flex h-9 w-9 items-center justify-center rounded-md bg-petrol-950 text-gold-400 ring-1 ring-petrol-800">
                 <BookOpen className="h-5 w-5" aria-hidden="true" />
               </span>
               <span className="hidden min-w-0 xl:block">
-                <span className="block truncate text-[0.7rem] font-semibold uppercase tracking-wide text-gold-700">
+                <span className="block truncate text-[0.68rem] font-semibold uppercase tracking-[0.09em] text-petrol-700">
                   AROH Central IA
                 </span>
-                <span className="block max-w-44 truncate text-[0.92rem] font-semibold text-petrol-950">
+                <span className="block max-w-44 truncate text-[0.9rem] font-semibold text-slate-700">
                   {hotelName}
                 </span>
               </span>
@@ -148,7 +148,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <DesktopNav groups={groups} badges={badges} />
         </header>
 
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-4 lg:pb-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-5 lg:pb-8">{children}</main>
         <div className="px-4 pb-24 lg:pb-4">
           <AiAttribution />
           <p className="mt-1 text-center text-[0.65rem] text-slate-400">

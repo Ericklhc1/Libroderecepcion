@@ -7,8 +7,12 @@ import { ArrowRight, CircleHelp, Compass, Search, X } from 'lucide-react';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { runHelpActionAction } from '@/server/actions/help';
-import { restartTutorialAction } from '@/server/actions/tutorial';
+import {
+  restartModuleTutorialAction,
+  restartTutorialAction,
+} from '@/server/actions/tutorial';
 import { HELP_ACTIONS, searchHelp, type HelpTopic } from '@/domain/help';
+import { visibleTutorialModules } from '@/domain/tutorial-tour';
 import type { PermissionKey } from '@/lib/permissions';
 
 /**
@@ -32,6 +36,10 @@ export function HelpCenter({
   const [query, setQuery] = useState('');
 
   const results = useMemo(() => searchHelp(query, permissions), [query, permissions]);
+  const tutorialModules = useMemo(
+    () => visibleTutorialModules(permissions),
+    [permissions],
+  );
 
   useEffect(() => setMounted(true), []);
 
@@ -126,6 +134,34 @@ export function HelpCenter({
                 Iniciar recorrido
               </SubmitButton>
             </ActionForm>
+          </div>
+
+          <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-3">
+            <p className="text-sm font-semibold text-petrol-900">Tutoriales por módulo</p>
+            <p className="mt-0.5 text-xs leading-4 text-slate-600">
+              Si te habilitan un módulo nuevo, su tutorial aparece automáticamente. También puedes
+              repetir cualquiera de los módulos disponibles para tu cuenta.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tutorialModules.map((module) => (
+                <ActionForm
+                  key={module.key}
+                  action={restartModuleTutorialAction}
+                  className="space-y-0"
+                  onSuccess={() => {
+                    window.sessionStorage.removeItem(
+                      `libro:tutorial:module:${userId}:${module.key}`,
+                    );
+                    window.location.reload();
+                  }}
+                >
+                  <input type="hidden" name="tutorialModules" value={module.key} />
+                  <SubmitButton variant="secondary" size="sm" pendingLabel="Preparando…">
+                    {module.label}
+                  </SubmitButton>
+                </ActionForm>
+              ))}
+            </div>
           </div>
 
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">

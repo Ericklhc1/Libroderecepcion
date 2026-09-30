@@ -33,6 +33,7 @@ export const entryInclude = {
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
   department: { select: { id: true, name: true, key: true } },
+  room: { select: { id: true, number: true, floor: true } },
   shift: { select: { id: true, type: true, date: true } },
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
@@ -47,7 +48,7 @@ type EntryCreateInput = {
   description: string;
   category?: string | null;
   departmentId?: string | null;
-  /** Legado de compatibilidad: se acepta pero se ignora. */
+  /** Contexto operativo opcional; no implica estado PMS. */
   roomId?: string | null;
   priority: Prisma.OperationalEntryCreateInput['priority'];
   ownerId?: string | null;
@@ -74,6 +75,10 @@ type EntryCreateInput = {
  */
 export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
   if (input.ownerId) await assertAssignable(input.ownerId);
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('Selecciona una habitación válida.');
+  }
 
   if (input.type === EntryType.INCIDENCIA && !input.severity) {
     throw new RuleError('Una incidencia requiere indicar su gravedad.');
@@ -89,7 +94,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         description: input.description,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
-        roomId: null,
+        roomId: input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         shiftId: shift?.id ?? null,
@@ -123,6 +128,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           status: created.status,
           ownerId: created.ownerId,
           departmentId: created.departmentId,
+          roomId: created.roomId,
+          roomNumber: created.room?.number ?? null,
           category: created.category,
         },
       },
@@ -180,6 +187,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
           `Prioridad: ${created.priority}`,
           `Gravedad: ${created.severity ?? 'no aplica'}`,
           `Departamento: ${created.department?.name ?? 'sin departamento'}`,
+          `Habitación: ${created.room?.number ?? 'sin habitación'}`,
           `Responsable: ${created.owner?.name ?? 'sin responsable'}`,
           `Categoría: ${created.category ?? 'sin categoría'}`,
           `Requiere seguimiento: ${created.requiresFollowUp ? 'sí' : 'no'}`,
@@ -225,6 +233,7 @@ const EDITABLE_FIELDS = [
   'description',
   'category',
   'departmentId',
+  'roomId',
   'priority',
   'ownerId',
   'dueAt',
@@ -262,6 +271,10 @@ export async function updateEntry(
     throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
   }
   if (input.ownerId) await assertAssignable(input.ownerId);
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true } });
+    if (!room) throw new RuleError('Selecciona una habitación válida.');
+  }
 
   const data: Prisma.OperationalEntryUpdateInput = {};
   const after: Record<string, unknown> = {};

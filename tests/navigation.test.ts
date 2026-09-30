@@ -34,7 +34,7 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
-      '/central-reservas', // preparación previa y continuidad de reservas
+      '/habitaciones', // continuidad activa agrupada por habitación
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
@@ -78,7 +78,7 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/habitaciones', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
   it('Gerencia vive en un grupo de Dirección separado del núcleo operativo', () => {
@@ -87,6 +87,7 @@ describe('visibilidad por rol', () => {
 
     const management = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]).map((i) => i.href);
     expect(management).toContain('/gerencia');
+    expect(visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]).map((i) => i.href)).toContain('/gerencia');
 
     for (const roleKey of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR]) {
       expect(visibleNavItems(ROLE_PERMISSIONS[roleKey]).map((i) => i.href)).not.toContain('/gerencia');
@@ -97,6 +98,7 @@ describe('visibilidad por rol', () => {
     const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
     expect(permissions).toContain('supervision.view');
     expect(permissions).toContain('supervision.center.view');
+    expect(permissions).toContain('management.dashboard.view');
     expect(visibleNavItems(permissions).map((i) => i.href)).toContain('/supervision');
   });
 

@@ -6,10 +6,15 @@ import { ArrowLeft, ArrowRight, Compass, MousePointer2, RotateCcw } from 'lucide
 import { Button, SubmitButton } from '@/components/ui/button';
 import { ActionForm } from '@/components/ui/form';
 import {
+  finishModuleTutorialAction,
   finishTutorialAction,
   recordTutorialClientEventAction,
 } from '@/server/actions/tutorial';
-import { shouldNavigateTutorial, type TutorialStep } from '@/domain/tutorial-tour';
+import {
+  shouldNavigateTutorial,
+  type TutorialModuleKey,
+  type TutorialStep,
+} from '@/domain/tutorial-tour';
 
 type Rect = { top: number; left: number; width: number; height: number };
 
@@ -55,16 +60,24 @@ export function TutorialTour({
   userId,
   userName,
   suspended = false,
+  mode = 'general',
+  modules = [],
 }: {
   steps: TutorialStep[];
   userId: string;
   userName: string;
   suspended?: boolean;
+  mode?: 'general' | 'modules';
+  modules?: TutorialModuleKey[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [index, setIndex] = useState(0);
-  const dismissKey = `libro:tutorial:dismissed:${userId}`;
+  const moduleToken = modules.join(',');
+  const dismissKey =
+    mode === 'modules'
+      ? `libro:tutorial:module:${userId}:${moduleToken}`
+      : `libro:tutorial:dismissed:${userId}`;
   const [dismissed, setDismissed] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
@@ -81,6 +94,9 @@ export function TutorialTour({
   const step = steps[index];
   const isLast = index === steps.length - 1;
   const first = index === 0;
+  const finishAction =
+    mode === 'modules' ? finishModuleTutorialAction : finishTutorialAction;
+  const moduleNoun = modules.length === 1 ? 'este módulo' : 'estos módulos';
 
   useEffect(() => {
     setDismissed(window.sessionStorage.getItem(dismissKey) === '1');
@@ -253,7 +269,13 @@ export function TutorialTour({
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-gold-400">
-                {first ? `Bienvenido, ${userName}` : 'Recorrido guiado'} · {index + 1} de {steps.length}
+                {first
+                  ? mode === 'modules'
+                    ? `Nuevo módulo habilitado, ${userName}`
+                    : `Bienvenido, ${userName}`
+                  : mode === 'modules'
+                    ? 'Tutorial del módulo'
+                    : 'Recorrido guiado'} · {index + 1} de {steps.length}
               </p>
               <p className="mt-0.5 font-semibold">{step.title}</p>
               <p className="mt-1.5 text-sm leading-5 text-petrol-100">{step.description}</p>
@@ -297,7 +319,7 @@ export function TutorialTour({
                 </Button>
               ) : (
                 <ActionForm
-                  action={finishTutorialAction}
+                  action={finishAction}
                   hideSuccess
                   className="space-y-0"
                   onSuccess={() => {
@@ -306,6 +328,9 @@ export function TutorialTour({
                   }}
                 >
                   <input type="hidden" name="tutorialOutcome" value="COMPLETED" />
+                  {mode === 'modules' ? (
+                    <input type="hidden" name="tutorialModules" value={moduleToken} />
+                  ) : null}
                   <input
                     type="hidden"
                     name="metricCorrelationId"
@@ -328,11 +353,13 @@ export function TutorialTour({
 
           {neverAgainConfirmed ? (
             <p className="mt-2 rounded-lg bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100 ring-1 ring-emerald-300/20">
-              Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.
+              {mode === 'modules'
+                ? `Listo. No volverás a ver automáticamente el tutorial de ${moduleNoun}. Puedes abrirlo otra vez desde Ayuda.`
+                : 'Ok, no volverás a ver el tutorial general. Puedes activarlo cuando quieras desde Ayuda o Mi perfil.'}
             </p>
           ) : (
             <ActionForm
-              action={finishTutorialAction}
+              action={finishAction}
               hideSuccess
               className="mt-2 space-y-0 text-center"
               onSuccess={() => {
@@ -341,6 +368,9 @@ export function TutorialTour({
               }}
             >
               <input type="hidden" name="tutorialOutcome" value="DISABLED" />
+              {mode === 'modules' ? (
+                <input type="hidden" name="tutorialModules" value={moduleToken} />
+              ) : null}
               <input
                 type="hidden"
                 name="metricCorrelationId"
@@ -354,7 +384,7 @@ export function TutorialTour({
                 readOnly
               />
               <SubmitButton variant="ghost" size="sm" pendingLabel="Guardando…">
-                No volver a mostrar el tutorial
+                {mode === 'modules' ? `No volver a mostrar ${moduleNoun}` : 'No volver a mostrar el tutorial'}
               </SubmitButton>
             </ActionForm>
           )}
@@ -383,14 +413,17 @@ export function TutorialTour({
                 </h2>
                 <p className="mt-1 text-sm leading-5 text-slate-600">
                   Hemos detectado que quieres usar la Central mientras el tutorial está activo.
-                  Puedes cerrarlo sólo por esta vez o dejar de mostrarlo automáticamente.
+                  Puedes cerrarlo sólo por esta vez o dejar de mostrar automáticamente
+                  {mode === 'modules' ? ` el tutorial de ${moduleNoun}` : ' el recorrido general'}.
                 </p>
               </div>
             </div>
 
             {neverAgainConfirmed ? (
               <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
-                Ok, no volverás a ver el tutorial. Puedes activarlo cuando quieras desde Mi perfil.
+                {mode === 'modules'
+                  ? `Listo. El tutorial de ${moduleNoun} sólo volverá si lo abres desde Ayuda.`
+                  : 'Ok, no volverás a ver el tutorial general. Puedes activarlo cuando quieras desde Ayuda o Mi perfil.'}
               </p>
             ) : (
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -404,7 +437,7 @@ export function TutorialTour({
                   Cerrar esta vez
                 </Button>
                 <ActionForm
-                  action={finishTutorialAction}
+                  action={finishAction}
                   hideSuccess
                   className="space-y-0"
                   onSuccess={() => {
@@ -416,6 +449,9 @@ export function TutorialTour({
                   }}
                 >
                   <input type="hidden" name="tutorialOutcome" value="DISABLED" />
+                  {mode === 'modules' ? (
+                    <input type="hidden" name="tutorialModules" value={moduleToken} />
+                  ) : null}
                   <input
                     type="hidden"
                     name="metricCorrelationId"
@@ -429,7 +465,7 @@ export function TutorialTour({
                     readOnly
                   />
                   <SubmitButton variant="gold" pendingLabel="Guardando…">
-                    No volver a mostrar
+                    {mode === 'modules' ? `No volver a mostrar ${moduleNoun}` : 'No volver a mostrar'}
                   </SubmitButton>
                 </ActionForm>
               </div>

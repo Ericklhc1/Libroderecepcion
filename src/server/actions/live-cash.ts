@@ -85,6 +85,7 @@ export async function createParkingPassAction(
     const result = await createParkingPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/caja/estacionamiento');
+    revalidatePath('/libro/habitaciones');
     return {
       ok: true as const,
       message: `Ticket de estacionamiento ${result.formattedFolio} generado.`,

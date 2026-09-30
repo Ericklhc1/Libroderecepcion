@@ -159,7 +159,6 @@ export function parseHotelDateInput(value: string): Date {
 }
 
 /**
- * Suma noches según el calendario del hotel/**
  * Suma noches según el calendario del hotel y conserva la hora local original.
  * A diferencia de sumar `24h`, no se corre una hora al cruzar un cambio de DST.
  */

@@ -17,7 +17,7 @@ import {
   saveLiveCashAuditAction,
   voidGymPassAction,
 } from '@/server/actions/live-cash';
-import { createGuaranteeAction } from '@/server/actions/references';
+import { createGuaranteeAction, updateGuaranteeAction } from '@/server/actions/references';
 import { DenominationVisual } from '@/components/cash/denomination-visual';
 import { ROOM_NUMBER_OPTIONS } from '@/domain/room-catalog';
 
@@ -406,6 +406,102 @@ export function CreateCashGuaranteeForm({
         <SubmitButton pendingLabel="Registrando…">Registrar garantía</SubmitButton>
       </div>
     </ActionForm>
+  );
+}
+
+export function EditCashGuaranteeForm({
+  guaranteeId,
+  humanId,
+  currency,
+  amount,
+  guestName,
+  roomNumber,
+  reference,
+  dueAt,
+  notes,
+}: {
+  guaranteeId: string;
+  humanId: number;
+  currency: string;
+  amount: number;
+  guestName: string | null;
+  roomNumber: string | null;
+  reference: string | null;
+  dueAt: string;
+  notes: string | null;
+}) {
+  return (
+    <Dialog
+      title={`Editar garantía #${humanId}`}
+      description="Corrige los datos de la garantía. Si cambias monto o moneda de una garantía en efectivo vigente, AROH ajusta también su ingreso de Caja vinculado y deja Auditoría."
+      triggerVariant="ghost"
+      triggerSize="sm"
+      width="sm"
+      trigger="Editar"
+    >
+      <ActionForm action={updateGuaranteeAction} closeOnSuccess>
+        <input type="hidden" name="id" value={guaranteeId} />
+        <input type="hidden" name="kind" value="EFECTIVO" />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Moneda" name="currency" required>
+            <Select
+              name="currency"
+              required
+              defaultValue={currency}
+              options={[
+                { value: 'CLP', label: 'CLP · Pesos chilenos' },
+                { value: 'USD', label: 'USD · Dólares' },
+              ]}
+            />
+          </Field>
+          <Field label="Monto original" name="amount" required>
+            <Input
+              name="amount"
+              inputMode="decimal"
+              min="0.01"
+              step="0.01"
+              required
+              defaultValue={String(amount)}
+            />
+          </Field>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Huésped / persona" name="guestName">
+            <Input name="guestName" maxLength={160} defaultValue={guestName ?? ''} />
+          </Field>
+          <Field label="Habitación" name="roomNumber">
+            <Select
+              name="roomNumber"
+              placeholder="Sin habitación"
+              defaultValue={roomNumber ?? ''}
+              options={ROOM_NUMBER_OPTIONS}
+            />
+          </Field>
+        </div>
+
+        <Field label="Referencia" name="reference">
+          <Input name="reference" maxLength={160} defaultValue={reference ?? ''} />
+        </Field>
+
+        <Field label="Vigencia / fecha objetivo" name="dueAt">
+          <Input name="dueAt" type="datetime-local" defaultValue={dueAt} />
+        </Field>
+
+        <Field label="Observaciones" name="notes">
+          <Textarea name="notes" rows={2} maxLength={1000} defaultValue={notes ?? ''} />
+        </Field>
+
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          Editar corrige el registro actual; no borra arqueos ni hechos históricos ya cerrados.
+        </p>
+
+        <div className="flex justify-end">
+          <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>
+        </div>
+      </ActionForm>
+    </Dialog>
   );
 }
 

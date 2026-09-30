@@ -97,6 +97,7 @@ export type LiveCashState = {
     appliedAmount: number;
     penaltyAmount: number;
     state: string;
+    notes: string | null;
     createdAt: Date;
   }>;
   audits: CashAuditRow[];
@@ -707,6 +708,7 @@ export async function getLiveCashState(
       appliedAmount: decimal(row.appliedAmount),
       penaltyAmount: decimal(row.penaltyAmount),
       state: row.state,
+      notes: row.notes ?? null,
       createdAt: row.createdAt,
     })),
     audits: auditRows.map((row) => {

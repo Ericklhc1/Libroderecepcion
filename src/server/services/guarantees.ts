@@ -253,6 +253,188 @@ export async function createGuarantee(
   return { id: guarantee.id };
 }
 
+export async function updateGuarantee(
+  user: CurrentUser,
+  input: {
+    id: string;
+    guestName?: string | null;
+    roomNumber?: string | null;
+    reference?: string | null;
+    dueAt?: Date | null;
+    kind?: GuaranteeKind;
+    amount?: number;
+    currency?: string;
+    notes?: string | null;
+  },
+): Promise<{ id: string }> {
+  const updated = await prisma.$transaction(async (tx) => {
+    const guarantee = await tx.guarantee.findFirst({
+      where: { id: input.id, deletedAt: null },
+      include: {
+        cashMovements: {
+          where: { voidedAt: null },
+          select: {
+            id: true,
+            kind: true,
+            currency: true,
+            amount: true,
+          },
+        },
+      },
+    });
+    if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
+
+    const nextGuestName =
+      input.guestName === undefined ? guarantee.guestName : input.guestName?.trim() || null;
+    const nextRoomNumber =
+      input.roomNumber === undefined ? guarantee.roomNumber : input.roomNumber?.trim() || null;
+    const nextReference =
+      input.reference === undefined ? guarantee.reference : input.reference?.trim() || null;
+    const nextDueAt = input.dueAt === undefined ? guarantee.dueAt : input.dueAt;
+    const nextKind = input.kind ?? guarantee.kind;
+    const nextAmount = input.amount ?? money(guarantee.amount) ?? 0;
+    const nextCurrency = (input.currency ?? guarantee.currency).trim().toUpperCase();
+    const nextNotes = input.notes === undefined ? guarantee.notes : input.notes?.trim() || null;
+
+    if (nextRoomNumber && !isOperationalRoomNumber(nextRoomNumber)) {
+      throw new RuleError('Selecciona una habitación válida del hotel.');
+    }
+    if (!(nextAmount > 0)) throw new RuleError('El monto debe ser mayor que cero.');
+    if (!/^[A-Z]{3}$/.test(nextCurrency)) {
+      throw new RuleError('La moneda debe tener tres letras.');
+    }
+    if (
+      !guarantee.reservationReferenceId &&
+      !guarantee.stayId &&
+      !nextGuestName &&
+      !nextRoomNumber &&
+      !nextReference
+    ) {
+      throw new RuleError(
+        'Indica al menos huésped, habitación o referencia para identificar esta garantía.',
+      );
+    }
+
+    const applied = money(guarantee.appliedAmount) ?? 0;
+    const penalty = money(guarantee.penaltyAmount) ?? 0;
+    if (applied + penalty > nextAmount) {
+      throw new RuleError(
+        `El monto editado (${nextAmount}) no puede quedar por debajo de lo ya aplicado o multado (${applied + penalty}).`,
+      );
+    }
+
+    const amountChanged = nextAmount !== (money(guarantee.amount) ?? 0);
+    const currencyChanged = nextCurrency !== guarantee.currency;
+    const kindChanged = nextKind !== guarantee.kind;
+    const financialChanged = amountChanged || currencyChanged || kindChanged;
+    const terminal =
+      guarantee.state === GuaranteeState.DEVUELTA ||
+      guarantee.state === GuaranteeState.MULTA ||
+      guarantee.state === GuaranteeState.CERRADA;
+
+    if (financialChanged && terminal) {
+      throw new RuleError(
+        'Una garantía ya devuelta, cobrada o cerrada conserva sus datos financieros históricos. Puedes corregir huésped, habitación, referencia, fecha u observaciones.',
+      );
+    }
+    if (kindChanged && guarantee.state !== GuaranteeState.PENDIENTE) {
+      throw new RuleError(
+        'La forma de garantía sólo puede cambiarse mientras está pendiente. Una vez vigente, corrige únicamente sus demás datos.',
+      );
+    }
+    if (
+      currencyChanged &&
+      guarantee.state === GuaranteeState.APLICADA_PARCIALMENTE &&
+      (applied > 0 || penalty > 0)
+    ) {
+      throw new RuleError(
+        'No se puede cambiar la moneda después de aplicar parte de la garantía.',
+      );
+    }
+
+    const cashIn = guarantee.cashMovements.find((movement) => movement.kind === 'GARANTIA_INGRESO');
+    const hasSettlement = guarantee.cashMovements.some(
+      (movement) =>
+        movement.kind === 'GARANTIA_DEVOLUCION' || movement.kind === 'GARANTIA_COBRO',
+    );
+
+    if (
+      guarantee.kind === GuaranteeKind.EFECTIVO &&
+      (guarantee.state === GuaranteeState.VIGENTE ||
+        guarantee.state === GuaranteeState.APLICADA_PARCIALMENTE) &&
+      (amountChanged || currencyChanged)
+    ) {
+      if (hasSettlement) {
+        throw new RuleError(
+          'La garantía ya tiene una devolución o cobro registrado y su monto/moneda no puede reescribirse.',
+        );
+      }
+      if (!cashIn) {
+        throw new RuleError(
+          'La garantía en efectivo no tiene su movimiento de ingreso vinculado. Regularízala antes de cambiar monto o moneda.',
+        );
+      }
+      await tx.cashMovement.update({
+        where: { id: cashIn.id },
+        data: {
+          amount: new Prisma.Decimal(nextAmount),
+          currency: nextCurrency,
+        },
+      });
+    }
+
+    const row = await tx.guarantee.update({
+      where: { id: guarantee.id },
+      data: {
+        guestName: nextGuestName,
+        roomNumber: nextRoomNumber,
+        reference: nextReference,
+        dueAt: nextDueAt,
+        kind: nextKind,
+        amount: new Prisma.Decimal(nextAmount),
+        currency: nextCurrency,
+        notes: nextNotes,
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'Guarantee',
+        entityId: guarantee.id,
+        action: AuditAction.EDITAR,
+        user,
+        summary: `${guaranteeLabel(row)} editada por ${user.name}`,
+        before: {
+          guestName: guarantee.guestName,
+          roomNumber: guarantee.roomNumber,
+          reference: guarantee.reference,
+          dueAt: guarantee.dueAt,
+          kind: guarantee.kind,
+          amount: money(guarantee.amount),
+          currency: guarantee.currency,
+          notes: guarantee.notes,
+        },
+        after: {
+          guestName: row.guestName,
+          roomNumber: row.roomNumber,
+          reference: row.reference,
+          dueAt: row.dueAt,
+          kind: row.kind,
+          amount: money(row.amount),
+          currency: row.currency,
+          notes: row.notes,
+          linkedCashInAdjusted: Boolean(cashIn && (amountChanged || currencyChanged)),
+        },
+      },
+      tx,
+    );
+
+    return row;
+  });
+
+  return { id: updated.id };
+}
+
 export async function changeGuaranteeState(
   user: CurrentUser,
   input: {

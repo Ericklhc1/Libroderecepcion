@@ -9,7 +9,7 @@ import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { Badge, Chip } from '@/components/ui/badge';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
 import { ReservationDialog } from '../../guest-forms';
-import { GuaranteeDialog, GuaranteeStateDialog } from '../../guarantee-forms';
+import { GuaranteeDialog, GuaranteeEditDialog, GuaranteeStateDialog } from '../../guarantee-forms';
 import { ReservationAntenna } from './reservation-antenna';
 import {
   GUARANTEE_STATUS_LABEL,
@@ -41,6 +41,7 @@ export default async function ReservationProfilePage({ params }: { params: Promi
   if (!reservation) notFound();
 
   const canEdit = hasPermission(user, 'guest.manage');
+  const canEditGuarantee = hasPermission(user, 'cash.guarantee_in');
   const guestOptions = guests.map((guest) => ({
     value: guest.id,
     label: `${guest.fullName}${guest.roomNumber ? ` · hab. ${guest.roomNumber}` : ''}`,
@@ -124,7 +125,30 @@ export default async function ReservationProfilePage({ params }: { params: Promi
                     </div>
                     <div className="text-right">
                       <p className="font-semibold tabular text-petrol-900">{guarantee.currency} {guarantee.amount.toString()}</p>
-                      {canEdit ? <GuaranteeStateDialog guaranteeId={guarantee.id} state={guarantee.state as GuaranteeStateValue} amount={guarantee.amount.toString()} currency={guarantee.currency} /> : null}
+                      <div className="mt-1 flex flex-wrap justify-end gap-1">
+                        {canEditGuarantee ? (
+                          <GuaranteeEditDialog
+                            guaranteeId={guarantee.id}
+                            kind={guarantee.kind as GuaranteeKindValue}
+                            state={guarantee.state as GuaranteeStateValue}
+                            amount={guarantee.amount.toString()}
+                            currency={guarantee.currency}
+                            guestName={guarantee.guestName}
+                            roomNumber={guarantee.roomNumber}
+                            reference={guarantee.reference}
+                            dueAt={guarantee.dueAt ? toDateTimeInput(guarantee.dueAt) : ''}
+                            notes={guarantee.notes}
+                          />
+                        ) : null}
+                        {canEdit ? (
+                          <GuaranteeStateDialog
+                            guaranteeId={guarantee.id}
+                            state={guarantee.state as GuaranteeStateValue}
+                            amount={guarantee.amount.toString()}
+                            currency={guarantee.currency}
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </li>

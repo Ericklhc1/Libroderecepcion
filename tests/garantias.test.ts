@@ -13,6 +13,7 @@ import {
   createGuarantee,
   listOpenGuarantees,
   softDeleteGuarantee,
+  updateGuarantee,
 } from '@/server/services/guarantees';
 import { runAlertEngine } from '@/server/services/alert-engine';
 import { getSupervisionData } from '@/server/services/supervision';
@@ -65,6 +66,93 @@ describe('garantías', () => {
     expect(guarantee.amount.toNumber()).toBe(100000);
     expect(guarantee.currency).toBe('CLP'); // normalizada a mayúsculas
     expect(guarantee.createdById).toBe(user.id);
+  });
+
+  it('edita una garantía vigente y sincroniza su ingreso de Caja', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Nombre original',
+      roomNumber: '517',
+      reference: 'GAR-EDIT',
+      kind: 'EFECTIVO',
+      amount: 50_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+      notes: 'Antes',
+    });
+
+    await updateGuarantee(user, {
+      id,
+      guestName: 'Nombre corregido',
+      roomNumber: '518',
+      reference: 'GAR-EDIT-CORREGIDA',
+      amount: 60_000,
+      currency: 'CLP',
+      notes: 'Después',
+    });
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    const movement = await prisma.cashMovement.findFirstOrThrow({
+      where: { guaranteeId: id, kind: 'GARANTIA_INGRESO', voidedAt: null },
+    });
+
+    expect(guarantee.guestName).toBe('Nombre corregido');
+    expect(guarantee.roomNumber).toBe('518');
+    expect(guarantee.reference).toBe('GAR-EDIT-CORREGIDA');
+    expect(guarantee.amount.toNumber()).toBe(60_000);
+    expect(guarantee.notes).toBe('Después');
+    expect(movement.amount.toNumber()).toBe(60_000);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entity: 'Guarantee', entityId: id, action: 'EDITAR' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(JSON.stringify(audit.after)).toContain('linkedCashInAdjusted');
+  });
+
+  it('no permite editar el monto por debajo de lo ya aplicado', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped parcial',
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await changeGuaranteeState(user, {
+      id,
+      state: GuaranteeState.APLICADA_PARCIALMENTE,
+      appliedAmount: 30_000,
+      applicationReason: 'Consumo',
+    });
+
+    await expect(
+      updateGuarantee(user, { id, amount: 20_000 }),
+    ).rejects.toThrow(/por debajo/i);
+  });
+
+  it('una garantía resuelta conserva sus datos financieros pero permite corregir contexto', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Nombre inicial',
+      kind: 'TARJETA',
+      amount: 10_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+    await changeGuaranteeState(user, { id, state: GuaranteeState.DEVUELTA });
+
+    await updateGuarantee(user, {
+      id,
+      guestName: 'Nombre corregido',
+      reference: 'Corrección administrativa',
+    });
+    await expect(updateGuarantee(user, { id, amount: 11_000 })).rejects.toThrow(
+      /datos financieros históricos/i,
+    );
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    expect(guarantee.guestName).toBe('Nombre corregido');
+    expect(guarantee.reference).toBe('Corrección administrativa');
+    expect(guarantee.amount.toNumber()).toBe(10_000);
   });
 
   it('registrar una garantía no crea una Novedad duplicada', async () => {

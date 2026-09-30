@@ -211,6 +211,7 @@ function refreshGuarantees(): void {
   revalidatePath('/caja');
   revalidatePath('/supervision');
   revalidatePath('/turno');
+  revalidatePath('/habitaciones');
   revalidatePath('/');
 }
 

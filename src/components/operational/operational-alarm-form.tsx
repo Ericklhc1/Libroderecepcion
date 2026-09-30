@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlarmClock, BellRing, TimerReset } from 'lucide-react';
-import { ActionForm, Field, Input, Textarea } from '@/components/ui/form';
+import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
@@ -28,10 +28,12 @@ export function OperationalAlarmCreateForm({
   candidates,
   currentUserId,
   source = null,
+  rooms = [],
 }: {
   candidates: Candidate[];
   currentUserId: string;
   source?: Source;
+  rooms?: Array<{ value: string; label: string }>;
 }) {
   const [kind, setKind] = useState<'TIMER' | 'RECORDATORIO'>('RECORDATORIO');
   const [scope, setScope] = useState<'INDIVIDUAL' | 'GRUPO' | 'GLOBAL'>('INDIVIDUAL');
@@ -94,9 +96,14 @@ export function OperationalAlarmCreateForm({
         />
       </Field>
 
-      <Field label="Detalle" name="note" hint="Opcional. Contexto breve para quien recibe la alerta.">
-        <Textarea name="note" rows={2} maxLength={500} />
-      </Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Habitación" name="roomId" hint="Opcional. Sólo agrega contexto al monitor de la habitación.">
+          <Select name="roomId" placeholder="Sin habitación" options={rooms} />
+        </Field>
+        <Field label="Detalle" name="note" hint="Opcional. Contexto breve para quien recibe la alerta.">
+          <Textarea name="note" rows={2} maxLength={500} />
+        </Field>
+      </div>
 
       {kind === 'TIMER' ? (
         <Field

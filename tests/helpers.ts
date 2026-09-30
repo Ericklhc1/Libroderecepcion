@@ -39,6 +39,7 @@ export async function resetOperationalData() {
     prisma.roomStay.deleteMany(),
     prisma.pmsImportBatch.deleteMany(),
     prisma.pushSubscription.deleteMany(),
+    prisma.frontiProactiveClaim.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.operationalMailOutbox.deleteMany(),
     prisma.operationalAlarmRecipient.deleteMany(),

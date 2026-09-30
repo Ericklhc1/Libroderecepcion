@@ -53,9 +53,9 @@ export const entryCreateSchema = z.object({
 });
 
 /**
- * Desde v1.4.0 Novedades e Incidencias no dependen de PMS ni de una habitación
- * estructurada. Área, categoría y responsable son suficientes como contexto
- * operativo; cualquier número de habitación puede escribirse en el texto.
+ * Novedades e Incidencias no dependen del PMS. La habitación es un contexto
+ * estructurado opcional: permite reunir el hecho en Novedades · Habitaciones
+ * sin representar ocupación, reserva, check-in ni check-out.
  */
 export const entryCreateWithContextSchema = entryCreateSchema;
 

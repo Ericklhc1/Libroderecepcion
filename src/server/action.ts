@@ -4,6 +4,7 @@ import { AuditAction } from '@prisma/client';
 import { z } from 'zod';
 import { AppError, ValidationError } from '@/server/errors';
 import { normalizeTags } from '@/domain/tags';
+import { parseHotelDateInput } from '@/domain/time';
 import { recordAudit } from '@/server/audit';
 import { getSettingBool } from '@/server/services/settings';
 import {
@@ -213,10 +214,18 @@ export const zOptionalDate = z
   .string()
   .optional()
   .transform((v) => (v === '' || v === undefined ? null : v))
-  .refine((v) => v === null || !Number.isNaN(Date.parse(v)), 'Fecha inválida')
-  .transform((v) => (v === null ? null : new Date(v)));
+  .refine((v) => {
+    if (v === null) return true;
+    try {
+      parseHotelDateInput(v);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Fecha inválida')
+  .transform((v) => (v === null ? null : parseHotelDateInput(v)));
 
-export const zTags = z
+export const zTags = zexport const zTags = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => normalizeTags(v));

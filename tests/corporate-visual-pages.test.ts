@@ -57,8 +57,8 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
   it('las entradas públicas también usan la identidad compartida', () => {
     const login = readFileSync(join(SITE_ROOT, 'login', 'page.tsx'), 'utf8');
     const install = readFileSync(join(SITE_ROOT, 'instalacion', 'page.tsx'), 'utf8');
-    expect(login).toContain('bg-petrol-900');
-    expect(install).toContain('bg-petrol-900');
+    expect(login).toContain('bg-petrol-950');
+    expect(install).toContain('bg-petrol-950');
   });
 
   it('los tokens globales controlan geometría, superficies y neutrales', () => {

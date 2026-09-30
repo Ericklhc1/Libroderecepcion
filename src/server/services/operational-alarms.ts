@@ -28,6 +28,7 @@ export type AlarmCreateInput = {
   sourceEntity?: string | null;
   sourceId?: string | null;
   sourceLink?: string | null;
+  roomNumber?: string | null;
   repeatMinutes?: number | null;
 };
 
@@ -158,6 +159,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
         sourceEntity: input.sourceEntity?.trim() || null,
         sourceId: input.sourceId?.trim() || null,
         sourceLink: input.sourceLink?.trim() || null,
+        roomNumber: input.roomNumber?.trim() || null,
         repeatMinutes:
           input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes ?? null,
         recipients: {
@@ -187,6 +189,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
           sourceEntity: created.sourceEntity,
           sourceId: created.sourceId,
           sourceLink: created.sourceLink,
+          roomNumber: created.roomNumber,
           repeatMinutes: created.repeatMinutes,
           recipients: created.recipients.map((row) => row.userId),
         },

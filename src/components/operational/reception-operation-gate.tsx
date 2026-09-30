@@ -50,9 +50,9 @@ export function ReceptionOperationGate({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-petrol-950/55 p-4 backdrop-blur-sm no-print">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200">
+      <div className="w-full max-w-md rounded-lg border border-slate-300 border-t-2 border-t-gold-500 bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)]">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold-100 text-petrol-800">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gold-100 text-petrol-800">
             <LockKeyhole className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
@@ -69,7 +69,7 @@ export function ReceptionOperationGate({
                 ? '/turno#abrir-turno'
                 : '/turno'
           }
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-petrol-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700"
         >
           <CalendarClock className="h-4 w-4" aria-hidden="true" />
           {copy.action}

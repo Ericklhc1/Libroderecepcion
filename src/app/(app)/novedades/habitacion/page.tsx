@@ -477,12 +477,12 @@ export default async function RoomOperationsMonitor({
                     )}
                   </section>
 
-                  {detail.fines.length > 0 || detail.passes.length > 0 ? (
+                  {detail.fines.length > 0 ? (
                     <section>
                       <SectionTitle
                         icon={Receipt}
-                        title="Reflejo de Caja · últimos 30 días"
-                        count={detail.fines.length + detail.passes.length}
+                        title="Otros registros"
+                        count={detail.fines.length}
                       />
                       <ul className="mt-2 space-y-2">
                         {detail.fines.slice(0, 6).map((fine) => (
@@ -495,27 +495,40 @@ export default async function RoomOperationsMonitor({
                             </p>
                           </li>
                         ))}
-                        {detail.passes.slice(0, 6).map((pass) => (
-                          <li key={pass.id} className="rounded-md border border-slate-200 bg-white p-2.5">
-                            <Link
-                              href={`/caja?q=${pass.humanId}`}
-                              className="text-sm font-semibold text-petrol-950 hover:underline"
-                            >
-                              {pass.serviceType === 'ESTACIONAMIENTO' ? 'Estacionamiento' : 'Gimnasio'} #{pass.humanId}
-                            </Link>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatCalendarDate(pass.serviceDate)} · {pass.guestName}
-                              {pass.reservationCode ? ` · reserva ${pass.reservationCode}` : ''}
-                              {pass.status === 'ANULADO' ? ' · anulado' : ''}
-                            </p>
-                          </li>
-                        ))}
                       </ul>
-                      {detail.passes.length > 0 ? (
-                        <p className="mt-2 text-[0.68rem] leading-5 text-slate-400">
-                          Estos folios no se duplican en Novedades: son una vista histórica de los registros de Caja de los últimos 30 días.
-                        </p>
-                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {detail.passes.length > 0 ? (
+                    <section>
+                      <SectionTitle
+                        icon={Receipt}
+                        title="Folios de Caja · últimos 30 días"
+                        count={detail.passes.length}
+                      />
+                      <ul className="mt-2 space-y-2">
+                        {detail.passes.slice(0, 10).map((pass) => {
+                          const serviceDay = pass.serviceDate.toISOString().slice(0, 10);
+                          return (
+                            <li key={pass.id} className="rounded-md border border-slate-200 bg-white p-2.5">
+                              <Link
+                                href={`/caja?q=${pass.humanId}&desde=${serviceDay}&hasta=${serviceDay}`}
+                                className="text-sm font-semibold text-petrol-950 hover:underline"
+                              >
+                                {pass.serviceType === 'ESTACIONAMIENTO' ? 'Estacionamiento' : 'Gimnasio'} #{pass.humanId}
+                              </Link>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatCalendarDate(pass.serviceDate)} · {pass.guestName}
+                                {pass.reservationCode ? ` · reserva ${pass.reservationCode}` : ''}
+                                {pass.status === 'ANULADO' ? ' · anulado' : ''}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <p className="mt-2 text-[0.68rem] leading-5 text-slate-400">
+                        Reflejo histórico únicamente: el registro sigue viviendo en Caja y no se duplica como Novedad.
+                      </p>
                     </section>
                   ) : null}
                 </div>

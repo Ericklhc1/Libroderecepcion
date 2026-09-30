@@ -1,10 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   EntryType,
+  FollowUpStatus,
+  GuaranteeKind,
+  GuaranteeState,
   OperationalAlarmKind,
   OperationalAlarmScope,
   Priority,
   Severity,
+  Prisma,
 } from '@prisma/client';
 import {
   ROLE_KEYS,
@@ -71,6 +75,29 @@ describe('Novedades / habitación', () => {
       checklist: [],
     });
 
+    await prisma.followUp.create({
+      data: {
+        action: 'Confirmar solución',
+        nextAction: 'Validar nuevamente con Recepción',
+        status: FollowUpStatus.PENDIENTE,
+        ownerId: user.id,
+        createdById: user.id,
+        taskId: task.id,
+      },
+    });
+
+    await prisma.guarantee.create({
+      data: {
+        kind: GuaranteeKind.EFECTIVO,
+        state: GuaranteeState.VIGENTE,
+        amount: new Prisma.Decimal(100000),
+        currency: 'CLP',
+        roomNumber: '512',
+        guestName: 'Huésped demo',
+        createdById: user.id,
+      },
+    });
+
     const alarm = await createOperationalAlarm(user, {
       kind: OperationalAlarmKind.RECORDATORIO,
       scope: OperationalAlarmScope.INDIVIDUAL,
@@ -92,14 +119,18 @@ describe('Novedades / habitación', () => {
       openEntries: 1,
       criticalIncidents: 1,
       openTasks: 1,
+      openFollowUps: 1,
       activeAlarms: 1,
+      openGuarantees: 1,
       attention: 'critical',
     });
 
     const detail = await getRoomMonitorDetail('512');
     expect(detail.entries.map((item) => item.id)).toContain(entry.id);
     expect(detail.tasks.map((item) => item.id)).toContain(task.id);
+    expect(detail.followUps).toHaveLength(1);
     expect(detail.alarms.map((item) => item.id)).toContain(alarm.id);
+    expect(detail.guarantees).toHaveLength(1);
 
     // El monitor usa Room sólo como llave de contexto: no necesita RoomStay.
     expect(await prisma.roomStay.count({ where: { roomId: room.id } })).toBe(0);

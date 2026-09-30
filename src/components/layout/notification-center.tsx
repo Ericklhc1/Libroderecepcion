@@ -28,6 +28,7 @@ import {
   getDeviceNotificationState,
   reconcileDeviceNotifications,
   showDeviceNotification,
+  syncAppBadge,
   testDevicePush,
   type DeviceNotificationState,
 } from './device-notifications';
@@ -146,6 +147,10 @@ export function NotificationCenter({
   useEffect(() => {
     deviceEnabledRef.current = deviceEnabled;
   }, [deviceEnabled]);
+
+  useEffect(() => {
+    void syncAppBadge(unread);
+  }, [unread]);
 
   useEffect(() => {
     const prime = () => primeNotificationAudio();

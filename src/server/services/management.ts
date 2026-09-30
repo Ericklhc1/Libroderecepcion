@@ -257,6 +257,17 @@ export async function getManagementCockpit(inputDays = 30) {
         deletedAt: null,
         confirmed: true,
         severity: Severity.CRITICA,
+        OR: [
+          { correctiveMeasures: { none: { deletedAt: null } } },
+          {
+            correctiveMeasures: {
+              some: {
+                deletedAt: null,
+                status: { notIn: ['VALIDADA', 'CANCELADA'] },
+              },
+            },
+          },
+        ],
       },
     }),
     prisma.correctiveMeasure.count({
@@ -459,9 +470,9 @@ export async function getManagementCockpit(inputDays = 30) {
       id: 'critical-findings',
       severity: 'seguimiento',
       title: 'Hallazgos críticos confirmados',
-      fact: `${criticalFindings} hallazgo(s) crítico(s) confirmado(s) permanecen en el registro de control.`,
-      why: 'Los hallazgos críticos deben traducirse en medidas con dueño y evidencia.',
-      action: 'Comprobar que cada hallazgo tenga medida correctiva trazable.',
+      fact: `${criticalFindings} hallazgo(s) crítico(s) confirmado(s) no tienen cierre correctivo completo.`,
+      why: 'Un hallazgo crítico sigue siendo riesgo mientras no exista una medida validada o un cierre explícito.',
+      action: 'Asegurar medida, responsable, plazo y evidencia hasta validación.',
       href: '/supervision/auditorias',
     });
   }

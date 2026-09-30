@@ -97,7 +97,7 @@ export function OperationalAlarmCreateForm({
 
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Habitación" name="roomNumber" hint="Opcional. La alerta aparecerá en Novedades / habitación.">
-          <select name="roomNumber" defaultValue="" className="input-base">
+          <select name="roomNumber" defaultValue={defaultRoomNumber ?? ''} className="input-base">
             <option value="">Sin habitación</option>
             {ROOM_NUMBER_OPTIONS.map((room) => (
               <option key={room.value} value={room.value}>{room.label}</option>

@@ -7,6 +7,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { GUARANTEE_STATUS_LABEL, RESERVATION_STATUS_LABEL } from '@/domain/labels';
 import { saveGuestAction, saveReservationAction } from '@/server/actions/references';
 import type { Option } from '@/server/services/options';
+import { ROOM_NUMBER_OPTIONS } from '@/domain/room-catalog';
 
 const STATUS_OPTIONS = Object.values(ReservationStatus).map((status) => ({
   value: status,
@@ -48,7 +49,7 @@ export function GuestDialog({
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Habitación" name="roomNumber">
-            <Input name="roomNumber" defaultValue={defaults?.roomNumber ?? ''} />
+            <Select name="roomNumber" placeholder="Sin habitación" defaultValue={defaults?.roomNumber ?? ''} options={ROOM_NUMBER_OPTIONS} />
           </Field>
           <Field label="Documento" name="documentId">
             <Input name="documentId" defaultValue={defaults?.documentId ?? ''} />

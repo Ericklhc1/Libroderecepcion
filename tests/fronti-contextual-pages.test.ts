@@ -69,7 +69,8 @@ describe('Fronti contextual · cobertura de pantallas', () => {
 
   it('mantiene el catálogo enlazado al árbol real de la app', () => {
     expect(pages.length).toBeGreaterThanOrEqual(45);
-    expect(pages.map(routeForPage)).toContain('/central-reservas');
+    expect(pages.map(routeForPage)).toContain('/central-reservas'); // compatibilidad: redirige al monitor
+    expect(pages.map(routeForPage)).toContain('/novedades/habitacion');
     expect(pages.map(routeForPage)).toContain('/caja');
     expect(pages.map(routeForPage)).toContain('/supervision');
     expect(pages.map(routeForPage)).toContain('/gerencia');
@@ -97,7 +98,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(context.filters).not.toHaveProperty('api_key');
   });
 
-  it('entiende las subsecciones de Caja y Central de Reservas', () => {
+  it('entiende Caja y Novedades / habitación sin contexto PMS', () => {
     const cash = resolveFrontiPageContext({
       pathname: '/caja',
       search: '?seccion=garantias',
@@ -111,12 +112,25 @@ describe('Fronti contextual · cobertura de pantallas', () => {
       ]),
     );
 
-    const reservations = resolveFrontiPageContext({
-      pathname: '/central-reservas',
-      search: '?vista=24h&q=martinez',
+    const rooms = resolveFrontiPageContext({
+      pathname: '/novedades/habitacion',
+      search: '?habitacion=512',
     });
-    expect(reservations.sectionLabel).toBe('Llegadas próximas 24 h');
-    expect(reservations.filters.q).toBe('martinez');
+    expect(rooms.moduleKey).toBe('novedades-habitacion');
+    expect(rooms.sectionLabel).toBe('Monitor operacional por habitación');
+    expect(rooms.filters.habitacion).toBe('512');
+    expect(rooms.recommendedTools).toEqual(
+      expect.arrayContaining([
+        'consultar_contexto_pantalla',
+        'consultar_prioridades',
+        'consultar_caja',
+        'consultar_garantias',
+      ]),
+    );
+
+    const legacy = resolveFrontiPageContext({ pathname: '/central-reservas' });
+    expect(legacy.moduleKey).toBe('novedades-habitacion');
+    expect(legacy.sectionKey).toBe('redireccion');
   });
   it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
     const management = resolveFrontiPageContext({

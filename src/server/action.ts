@@ -225,7 +225,7 @@ export const zOptionalDate = z
   }, 'Fecha inválida')
   .transform((v) => (v === null ? null : parseHotelDateInput(v)));
 
-export const zTags = zexport const zTags = z
+export const zTags = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => normalizeTags(v));

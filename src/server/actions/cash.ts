@@ -409,7 +409,7 @@ export async function saveHandoverUsdRateAction(
     if (
       !handover.fromShift.assignments.some(
         (assignment) =>
-          assignment.userId === user.id && assignment.activatedAt && !assignment.leftAt,
+          assignment.userId === user.id && !assignment.removedExplicitly,
       )
     ) {
       throw new RuleError('Sólo quien está en el turno puede declarar el dólar de la entrega.');

@@ -127,6 +127,7 @@ export function AssignTaskDialog({
 export function EditTaskDialog({
   task,
   departments,
+  rooms,
 }: {
   task: {
     id: string;
@@ -136,12 +137,14 @@ export function EditTaskDialog({
     startsAt: string;
     dueAt: string;
     departmentId: string | null;
+    roomId: string | null;
     tags: string[];
     fulfillmentCriteria: string;
     evidenceRequired: string;
     evidenceProvided: string;
   };
   departments: Array<{ value: string; label: string }>;
+  rooms: Array<{ value: string; label: string }>;
 }) {
   return (
     <Dialog title="Editar tarea" triggerVariant="secondary" triggerSize="sm" trigger="Editar">
@@ -182,14 +185,24 @@ export function EditTaskDialog({
             <Input type="datetime-local" name="dueAt" defaultValue={task.dueAt} />
           </Field>
         </div>
-        <Field label="Área" name="departmentId">
-          <Select
-            name="departmentId"
-            placeholder="Sin área"
-            defaultValue={task.departmentId ?? ''}
-            options={departments}
-          />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Habitación" name="roomId">
+            <Select
+              name="roomId"
+              placeholder="Sin habitación"
+              defaultValue={task.roomId ?? ''}
+              options={rooms}
+            />
+          </Field>
+          <Field label="Área" name="departmentId">
+            <Select
+              name="departmentId"
+              placeholder="Sin área"
+              defaultValue={task.departmentId ?? ''}
+              options={departments}
+            />
+          </Field>
+        </div>
         <Field label="Etiquetas" name="tags" hint="Separadas por coma.">
           <Input name="tags" defaultValue={task.tags.join(', ')} />
         </Field>

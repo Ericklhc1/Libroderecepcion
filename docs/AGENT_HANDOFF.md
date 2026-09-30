@@ -1,5 +1,21 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.36.0 · núcleo operativo, no PMS
+
+- Rama: `refactor/aroh-operations-core-v1-36-0`.
+- Regla de arquitectura: **AROH no es PMS**. FNSRooms u otro PMS sigue siendo la fuente de reservas, estadías, habitaciones, check-in/out, tarifas, ocupación y ciclo de huésped.
+- AROH se concentra en reportería/continuidad operativa: Novedades, Incidencias, Tareas, Seguimientos, Alertas, Notificaciones, Turnos, Caja, Llaves, Supervisión, Auditoría y Gerencia.
+- Se retira `/central-reservas` del menú y del tutorial; la ruta histórica redirige a Novedades.
+- La clave técnica `reservation.center.view` se conserva sólo por compatibilidad y se presenta como **Consultar contexto externo del PMS**.
+- Fronti proactivo deja de vigilar `ReservationReference`, llegadas, in-house, saldos o garantías PMS. Vigila hechos operativos de AROH y observabilidad.
+- Gerencia deja de usar llegadas/pre-arrival como scorecard; usa continuidad: seguimientos abiertos/vencidos y alertas activas/vencidas, además de tareas, incidencias, turnos, Caja, llaves y auditoría.
+- Las referencias PMS, cuando existan, son contexto mínimo enlazable: no crean una segunda representación del ciclo PMS.
+- Adaptación inspirada en OPERA Notes/Traces sin copiar el PMS: **Novedad = contexto persistente**; desde ella el usuario puede derivar explícitamente **Tarea**, **Seguimiento** o **Alerta**, siempre vinculada al registro original.
+- No introducir una entidad nueva `Trace`: Tarea/Seguimiento/Alerta ya cubren las semánticas accionables y crear otra entidad duplicaría flujo.
+- Una Novedad no genera automáticamente Tarea, Seguimiento ni Alerta.
+- Release objetivo: **v1.36.0**. Sin migración Prisma.
+
+
 ## 30/09/2026 · AROH 1.35.0 · Gerencia estratégica
 
 - Rama: `feature/gerencia-estrategica-v1-35-0`.

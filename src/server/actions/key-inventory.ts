@@ -27,6 +27,7 @@ import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-sched
 
 function refreshKeys() {
   revalidatePath('/llaves');
+  revalidatePath('/habitaciones');
   revalidatePath('/supervision');
   revalidatePath('/admin/auditoria');
 }

@@ -96,7 +96,6 @@ export default async function HandoverPage({
       handover.fromShift.status === ShiftStatus.CERRADO &&
       handover.toShift &&
       linkedReceiver &&
-      !isIssuer &&
       user.permissions.includes('shift.receive') &&
       (handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO),
   );

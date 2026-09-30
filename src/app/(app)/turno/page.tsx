@@ -221,8 +221,14 @@ export default async function ShiftPage({
         })
     : [];
 
+  const canRemoveMembers = Boolean(
+    canAddMembers &&
+      memberTargetShift &&
+      (memberTargetShift.status === ShiftStatus.INICIADO ||
+        memberTargetShift.status === ShiftStatus.ACTIVO),
+  );
   const activeMemberOptions =
-    canAddMembers && memberTargetShift
+    canRemoveMembers && memberTargetShift
       ? memberTargetShift.assignments
           .filter((assignment) => assignment.activatedAt && !assignment.leftAt)
           .map((assignment) => ({
@@ -532,10 +538,16 @@ export default async function ShiftPage({
                         />
                       </div>
                       <div>
-                        <RemoveShiftMemberForm
-                          shiftId={memberTargetShift!.id}
-                          participants={activeMemberOptions}
-                        />
+                        {canRemoveMembers ? (
+                          <RemoveShiftMemberForm
+                            shiftId={memberTargetShift!.id}
+                            participants={activeMemberOptions}
+                          />
+                        ) : (
+                          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+                            No se puede retirar personal mientras el turno está en cierre.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : null}

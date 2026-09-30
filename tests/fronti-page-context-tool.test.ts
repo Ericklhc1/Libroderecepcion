@@ -61,33 +61,43 @@ describe('Fronti contextual · lector vivo de pantalla', () => {
     );
   });
 
-  it('entiende el filtro actual de Central de Reservas sin inventar otro estado', async () => {
+  it('entiende Novedades · Habitaciones como contexto operativo y no PMS', async () => {
     const admin = await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       username: 'fronti-context-admin',
     });
+    const room = await prisma.room.findUniqueOrThrow({ where: { number: '512' } });
+    await prisma.operationalEntry.create({
+      data: {
+        type: EntryType.NOVEDAD,
+        title: 'Contexto habitación 512',
+        description: 'Fronti debe verlo en el monitor de la habitación.',
+        priority: Priority.ALTA,
+        createdById: admin.id,
+        ownerId: admin.id,
+        roomId: room.id,
+      },
+    });
+
     const page = resolveFrontiPageContext({
-      pathname: '/central-reservas',
-      search: '?vista=24h&q=nadie',
+      pathname: '/libro/habitaciones',
+      search: '?habitacion=512&estado=actividad',
     });
 
     const result = (await executeFrontiPageContextTool(admin, page)) as {
       page: { moduleKey: string; sectionKey: string; filters: Record<string, string> };
       snapshot: {
-        view: string;
-        query: string | null;
-        counts: { visible: number };
-        reservations: unknown[];
+        semantics: string;
+        selected: { number: string; openCount: number; items: Array<{ title: string }> } | null;
       };
     };
 
-    expect(result.page.moduleKey).toBe('central-reservas');
-    expect(result.page.sectionKey).toBe('24h');
-    expect(result.page.filters.q).toBe('nadie');
-    expect(result.snapshot.view).toBe('24h');
-    expect(result.snapshot.query).toBe('nadie');
-    expect(result.snapshot.counts.visible).toBe(0);
-    expect(result.snapshot.reservations).toEqual([]);
+    expect(result.page.moduleKey).toBe('habitaciones-contexto');
+    expect(result.page.filters.habitacion).toBe('512');
+    expect(result.snapshot.semantics).toMatch(/no representa ocupación/i);
+    expect(result.snapshot.selected?.number).toBe('512');
+    expect(result.snapshot.selected?.openCount).toBeGreaterThan(0);
+    expect(result.snapshot.selected?.items.some((item) => item.title.includes('Contexto habitación 512'))).toBe(true);
   });
 
   it('no abre contexto administrativo a Recepción', async () => {

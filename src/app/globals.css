@@ -22,7 +22,8 @@ body {
 }
 
 body {
-  @apply bg-slate-100 text-petrol-900 antialiased;
+  @apply text-petrol-950 antialiased;
+  background: #f4f2ed;
   /* Texto normal en 400; la jerarquía sube a 500 y 600 donde corresponde. */
   font-weight: 400;
 }
@@ -46,8 +47,9 @@ h4 {
 
 @layer components {
   .input-base {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-petrol-900
-      placeholder:text-slate-400 focus:border-petrol-500 disabled:bg-slate-100 disabled:text-slate-500 sm:text-sm;
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-petrol-950
+      shadow-[inset_0_1px_0_rgba(15,36,48,0.02)] placeholder:text-slate-400
+      focus:border-petrol-600 disabled:bg-slate-100 disabled:text-slate-500 sm:text-sm;
   }
 
   .label-base {
@@ -59,16 +61,27 @@ h4 {
   }
 
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+    @apply rounded-lg border border-slate-300 bg-white shadow-card;
   }
 
   .card-header {
     @apply flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3;
+    background-color: #faf9f6;
   }
 
   .card-title {
-    @apply text-sm font-semibold text-petrol-900;
+    @apply text-[0.78rem] font-semibold uppercase tracking-[0.055em] text-petrol-900;
   }
+}
+
+/* Lenguaje visual AROH: módulos rectos, bordes visibles y acento dorado puntual. */
+.aroh-panel-rule {
+  border-left: 3px solid #c9a227;
+}
+
+.aroh-section-label {
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 @keyframes nav-dropdown-in {

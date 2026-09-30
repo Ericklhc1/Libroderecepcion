@@ -148,7 +148,7 @@ export function DesktopNav({
   return (
     <div
       ref={rootRef}
-      className="hidden border-t border-slate-100 bg-white lg:block"
+      className="hidden border-t border-petrol-800 bg-petrol-950 lg:block"
     >
       <nav
         aria-label="Navegación principal"
@@ -163,10 +163,10 @@ export function DesktopNav({
             const open = openHref === item.href;
 
             const className = cn(
-              'relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-[0.82rem] font-medium transition-[background-color,color] duration-150',
+              'relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-[0.8rem] font-medium transition-[background-color,color] duration-150',
               active || open
-                ? 'bg-petrol-50 text-petrol-900'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-petrol-800',
+                ? 'bg-petrol-800 text-white'
+                : 'text-petrol-100 hover:bg-petrol-900 hover:text-white',
             );
 
             if (!hasMenu) {
@@ -214,7 +214,7 @@ export function DesktopNav({
                 {badge && badge > 0 ? <Badge value={badge} /> : null}
                 <ChevronDown
                   className={cn(
-                    'h-3.5 w-3.5 text-slate-400 transition-transform duration-200',
+                    'h-3.5 w-3.5 text-petrol-300 transition-transform duration-200',
                     open && 'rotate-180',
                   )}
                   aria-hidden="true"
@@ -237,7 +237,7 @@ export function DesktopNav({
               ref={menuRef}
               role="menu"
               aria-label={`Opciones de ${openItem.label}`}
-              className="nav-dropdown-enter fixed z-[70] rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl"
+              className="nav-dropdown-enter fixed z-[70] rounded-lg border border-slate-300 bg-white shadow-[0_18px_42px_-24px_rgba(9,24,32,0.48)]"
               style={{
                 left: menuPosition.left,
                 top: menuPosition.top,
@@ -273,7 +273,7 @@ export function DesktopNav({
                               role="menuitem"
                               onClick={closeMenu}
                               className={cn(
-                                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[0.82rem] transition-[background-color,color,box-shadow] duration-150',
+                                'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] transition-[background-color,color,box-shadow] duration-150',
                                 subActive
                                   ? 'bg-petrol-50 font-semibold text-petrol-900 shadow-sm ring-1 ring-petrol-100'
                                   : 'text-slate-700 hover:bg-slate-50 hover:text-petrol-900',
@@ -414,7 +414,7 @@ export function MobileNav({
             aria-label="Cerrar el menú"
             onClick={() => setOpenMore(false)}
           />
-          <div className="absolute inset-x-0 bottom-[3.75rem] max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white p-3 shadow-2xl">
+          <div className="absolute inset-x-0 bottom-[3.75rem] max-h-[70vh] overflow-y-auto rounded-t-lg border-t-2 border-t-gold-500 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-sm font-semibold text-petrol-900">Todo el menú</p>
               <button
@@ -479,7 +479,7 @@ export function MobileNav({
       ) : null}
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden no-print"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-petrol-800 bg-petrol-950 lg:hidden no-print"
         aria-label="Navegación rápida"
       >
       {mobileItems.map((item) => {
@@ -493,7 +493,7 @@ export function MobileNav({
             aria-current={active ? 'page' : undefined}
             className={cn(
               'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
-              active ? 'text-petrol-800' : 'text-slate-500',
+              active ? 'text-white' : 'text-petrol-200',
             )}
           >
             <Icon className="h-5 w-5" aria-hidden="true" />
@@ -515,7 +515,7 @@ export function MobileNav({
           aria-expanded={openMore}
           className={cn(
             'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
-            openMore || restIsActive ? 'text-petrol-800' : 'text-slate-500',
+            openMore || restIsActive ? 'text-white' : 'text-petrol-200',
           )}
         >
           <Menu className="h-5 w-5" aria-hidden="true" />

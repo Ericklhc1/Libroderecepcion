@@ -44,9 +44,9 @@ export function AnnouncementGate({
       aria-modal="true"
       aria-labelledby="aviso-importante-titulo"
     >
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
+      <div className="w-full max-w-lg rounded-md bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)]">
         <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
-          <span className="mt-0.5 rounded-lg bg-gold-100 p-2 text-gold-700">
+          <span className="mt-0.5 rounded-md bg-gold-100 p-2 text-gold-700">
             {current.personal ? (
               <UserRound className="h-5 w-5" aria-hidden="true" />
             ) : (

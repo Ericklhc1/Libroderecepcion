@@ -552,7 +552,7 @@ export function NotificationCenter({
             setOpen(true);
             setToast(null);
           }}
-          className={`fixed right-3 top-20 z-[60] w-[min(24rem,calc(100vw-1.5rem))] rounded-xl bg-white p-3 text-left shadow-2xl ring-1 ${
+          className={`fixed right-3 top-20 z-[60] w-[min(24rem,calc(100vw-1.5rem))] rounded-md bg-white p-3 text-left shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ${
             isUrgent(toast) ? 'ring-red-200' : 'ring-slate-200'
           }`}
         >
@@ -594,7 +594,7 @@ export function NotificationCenter({
             role="dialog"
             aria-modal="true"
             aria-label="Notificaciones"
-            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-2xl"
+            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)]"
           >
             <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0 flex-1">

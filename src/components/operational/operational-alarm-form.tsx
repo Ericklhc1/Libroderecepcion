@@ -149,7 +149,7 @@ export function OperationalAlarmCreateForm({
       ) : null}
 
       {scope !== 'GLOBAL' ? (
-        <fieldset className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+        <fieldset className="rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
           <legend className="px-1 text-sm font-semibold text-petrol-900">
             {scope === 'INDIVIDUAL' ? 'Persona' : 'Personas'}
           </legend>
@@ -191,7 +191,7 @@ export function OperationalAlarmCreateForm({
           </div>
         </fieldset>
       ) : (
-        <div className="rounded-xl bg-gold-50 px-3 py-3 text-sm text-petrol-900 ring-1 ring-gold-200">
+        <div className="rounded-md bg-gold-50 px-3 py-3 text-sm text-petrol-900 ring-1 ring-gold-200">
           La alerta se asignará a todos los usuarios activos. Cada persona puede atenderla o posponerla para sí misma.
         </div>
       )}
@@ -353,7 +353,7 @@ export function LinkedAlertPrompt({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="linked-alert-title"
-        className="w-full max-w-lg rounded-3xl bg-white shadow-2xl ring-1 ring-gold-200"
+        className="w-full max-w-lg rounded-lg bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-gold-200"
       >
         <div className="border-b border-gold-100 bg-gold-50 px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold-700">

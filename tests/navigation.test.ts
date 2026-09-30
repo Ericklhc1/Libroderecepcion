@@ -194,8 +194,8 @@ describe('cabecera horizontal compacta', () => {
     expect(nav).not.toContain("gridTemplateColumns");
 
     expect(layout).toContain("max-w-[1680px]");
-    expect(layout).toContain("text-[0.7rem]");
-    expect(layout).toContain("text-[0.92rem]");
+    expect(layout).toContain("text-[0.68rem]");
+    expect(layout).toContain("text-[0.9rem]");
   });
 });
 

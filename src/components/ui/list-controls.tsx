@@ -21,7 +21,7 @@ export function ListFilterBar({
     <form
       method="get"
       className={cn(
-        'flex flex-wrap items-end gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-200',
+        'flex flex-wrap items-end gap-2 rounded-lg border border-slate-300 bg-white p-2 shadow-card',
         className,
       )}
     >

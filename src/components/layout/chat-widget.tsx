@@ -1406,7 +1406,7 @@ export function ChatWidget({
   if (!mounted) return null;
 
   const panel = open ? (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-white shadow-2xl sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-2xl sm:ring-1 sm:ring-slate-200 lg:bottom-12">
+    <div className="fixed inset-0 z-[120] flex flex-col border-l border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-lg sm:ring-1 sm:ring-slate-200 lg:bottom-12">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
         {view !== 'list' ? (
           <button
@@ -1424,7 +1424,7 @@ export function ChatWidget({
             <ArrowLeft className="h-5 w-5" aria-hidden="true" />
           </button>
         ) : (
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-petrol-800 text-gold-300">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-petrol-800 text-gold-300">
             <MessageCircle className="h-5 w-5" aria-hidden="true" />
           </span>
         )}
@@ -1920,21 +1920,21 @@ export function ChatWidget({
       {view === 'settings' && snapshot?.type === 'GRUPO' ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
           <div className="space-y-4">
-            <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <section className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grupo</p>
               <div className="mt-2 flex gap-2">
                 <input
                   value={groupSettingsTitle}
                   onChange={(event) => setGroupSettingsTitle(event.target.value.slice(0, 80))}
                   disabled={snapshot.myRole === 'MIEMBRO'}
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-base outline-none focus:border-petrol-400 disabled:bg-slate-100 sm:text-sm"
+                  className="min-w-0 flex-1 rounded-md border border-slate-200 px-3 py-2 text-base outline-none focus:border-petrol-400 disabled:bg-slate-100 sm:text-sm"
                 />
                 {snapshot.myRole !== 'MIEMBRO' ? (
                   <button
                     type="button"
                     disabled={loading || groupSettingsTitle.trim().length < 2 || groupSettingsTitle.trim() === snapshot.title}
                     onClick={() => void manageGroup({ action: 'rename', title: groupSettingsTitle })}
-                    className="rounded-xl bg-petrol-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                    className="rounded-md bg-petrol-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                     title="Guardar nombre del grupo"
                   >
                     Guardar
@@ -1948,13 +1948,13 @@ export function ChatWidget({
                   action: 'mute',
                   muted: !snapshot.mutedUntil,
                 })}
-                className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+                className="mt-3 w-full rounded-md bg-slate-50 px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
               >
                 {snapshot.mutedUntil ? '🔔 Activar notificaciones del grupo' : '🔕 Silenciar notificaciones del grupo'}
               </button>
             </section>
 
-            <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+            <section className="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
               <div className="border-b border-slate-100 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Participantes · {snapshot.participants.length}
@@ -2005,7 +2005,7 @@ export function ChatWidget({
             </section>
 
             {bootstrap?.frontiEnabled ? (
-              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gold-200">
+              <section className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gold-200">
                 <div className="flex items-start gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-petrol-900 text-gold-300">
                     <Sparkles className="h-5 w-5" aria-hidden="true" />
@@ -2029,7 +2029,7 @@ export function ChatWidget({
             ) : null}
 
             {snapshot.myRole !== 'MIEMBRO' ? (
-              <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <section className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Agregar personas del equipo</p>
                 <p className="mt-1 text-xs text-slate-500">Fronti se invoca con @Fronti; aquí sólo aparecen cuentas humanas operativas.</p>
                 <label className="relative mt-2 block">
@@ -2038,7 +2038,7 @@ export function ChatWidget({
                     value={groupManageQuery}
                     onChange={(event) => setGroupManageQuery(event.target.value)}
                     placeholder="Buscar persona…"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-base outline-none focus:border-petrol-400 sm:text-sm"
+                    className="w-full rounded-md border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-base outline-none focus:border-petrol-400 sm:text-sm"
                   />
                 </label>
                 <div className="mt-2 max-h-48 overflow-y-auto divide-y divide-slate-100">
@@ -2076,7 +2076,7 @@ export function ChatWidget({
               type="button"
               disabled={loading}
               onClick={() => void manageGroup({ action: 'leave' })}
-              className="w-full rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-40"
+              className="w-full rounded-md bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-40"
             >
               Salir del grupo
             </button>
@@ -2086,7 +2086,7 @@ export function ChatWidget({
 
       {view === 'profile' && profileDraft ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
-          <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <div className="space-y-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
             <div className="text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-petrol-50 text-4xl">
                 {avatarGlyph(profileDraft.avatarKey)}
@@ -2108,7 +2108,7 @@ export function ChatWidget({
                         current ? { ...current, avatarKey: avatar.key } : current,
                       )
                     }
-                    className={`flex aspect-square items-center justify-center rounded-xl text-2xl ${
+                    className={`flex aspect-square items-center justify-center rounded-md text-2xl ${
                       profileDraft.avatarKey === avatar.key
                         ? 'bg-petrol-100 ring-2 ring-petrol-700'
                         : 'bg-slate-50 hover:bg-slate-100'
@@ -2135,7 +2135,7 @@ export function ChatWidget({
                 }
                 maxLength={CHAT_STATUS_MAX}
                 placeholder="Ej. En recepción ☕"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
               />
               <span className="mt-1 block text-right text-[0.65rem] text-slate-400">
                 {(profileDraft.statusText ?? '').length}/{CHAT_STATUS_MAX}
@@ -2153,7 +2153,7 @@ export function ChatWidget({
                     current ? { ...current, notificationTone: event.target.value } : current,
                   )
                 }
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-petrol-400"
               >
                 {CHAT_NOTIFICATION_TONES.map((tone) => (
                   <option key={tone.key} value={tone.key}>{tone.label}</option>
@@ -2161,7 +2161,7 @@ export function ChatWidget({
               </select>
             </label>
 
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-3">
               <div>
                 <p className="text-sm font-medium text-slate-800">Sonido</p>
                 <p className="text-xs text-slate-500">Usar el tono seleccionado para mensajes.</p>
@@ -2188,7 +2188,7 @@ export function ChatWidget({
                 type="button"
                 disabled={!profileDraft.soundEnabled}
                 onClick={testProfileTone}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-petrol-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-slate-100 px-3 py-2.5 text-sm font-semibold text-petrol-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Volume2 className="h-4 w-4" aria-hidden="true" />
                 Probar tono
@@ -2197,7 +2197,7 @@ export function ChatWidget({
                 type="button"
                 disabled={loading}
                 onClick={() => void saveChatProfile()}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-petrol-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-petrol-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-petrol-700 disabled:opacity-50"
               >
                 <Settings2 className="h-4 w-4" aria-hidden="true" />
                 Guardar
@@ -2226,10 +2226,10 @@ export function ChatWidget({
                 const bubbleClass = sticker || gif
                   ? 'px-2 py-1'
                   : mine
-                    ? 'rounded-2xl rounded-br-md bg-petrol-800 px-3 py-2 text-white'
+                    ? 'rounded-lg rounded-br-md bg-petrol-800 px-3 py-2 text-white'
                     : fromFronti
-                      ? 'rounded-2xl rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-gold-100'
-                      : 'rounded-2xl rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
+                      ? 'rounded-lg rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-gold-100'
+                      : 'rounded-lg rounded-bl-md bg-white px-3 py-2 text-slate-800 shadow-sm ring-1 ring-slate-100';
 
                 return (
                   <div
@@ -2297,7 +2297,7 @@ export function ChatWidget({
                               src={message.mediaUrl}
                               alt={message.mediaAlt || 'GIF'}
                               loading="lazy"
-                              className="max-h-64 w-auto max-w-full rounded-xl object-contain"
+                              className="max-h-64 w-auto max-w-full rounded-md object-contain"
                             />
                             {message.mediaPageUrl ? (
                               <a
@@ -2332,7 +2332,7 @@ export function ChatWidget({
                             ) : null}
                             {message.attachments.map((attachment) =>
                               attachment.mimeType.startsWith('image/') ? (
-                                <div key={attachment.id} className="mt-2 overflow-hidden rounded-xl bg-black/5">
+                                <div key={attachment.id} className="mt-2 overflow-hidden rounded-md bg-black/5">
                                   <a
                                     href={attachment.url}
                                     target="_blank"
@@ -2358,7 +2358,7 @@ export function ChatWidget({
                                   ) : null}
                                 </div>
                               ) : attachment.mimeType.startsWith('audio/') ? (
-                                <div key={attachment.id} className="mt-2 rounded-xl bg-black/5 p-2">
+                                <div key={attachment.id} className="mt-2 rounded-md bg-black/5 p-2">
                                   <audio controls preload="metadata" src={attachment.url} className="max-w-full" />
                                 </div>
                               ) : (
@@ -2506,7 +2506,7 @@ export function ChatWidget({
 
               {frontiBusy ? (
                 <div className="flex justify-start">
-                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm">
+                  <div className="flex items-center gap-2 rounded-lg rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm">
                     <Sparkles className="h-3.5 w-3.5 animate-pulse text-gold-600" aria-hidden="true" />
                     Fronti está pensando…
                   </div>
@@ -2515,7 +2515,7 @@ export function ChatWidget({
 
               {snapshot.typing.length > 0 ? (
                 <div className="flex justify-start">
-                  <div className="rounded-2xl rounded-bl-md bg-white px-3 py-2 text-xs italic text-slate-500 shadow-sm ring-1 ring-slate-100">
+                  <div className="rounded-lg rounded-bl-md bg-white px-3 py-2 text-xs italic text-slate-500 shadow-sm ring-1 ring-slate-100">
                     {snapshot.typing.length === 1
                       ? `${snapshot.typing[0]?.name} está escribiendo…`
                       : `${snapshot.typing.slice(0, 2).map((item) => item.name).join(' y ')} están escribiendo…`}
@@ -2530,7 +2530,7 @@ export function ChatWidget({
             {frontiConfirmations.map((item) => (
               <div
                 key={item.token}
-                className={`mb-2 rounded-xl border bg-white p-3 shadow-sm ${
+                className={`mb-2 rounded-md border bg-white p-3 shadow-sm ${
                   item.risk === 'high' ? 'border-amber-300' : 'border-gold-200'
                 }`}
               >
@@ -2567,7 +2567,7 @@ export function ChatWidget({
             ))}
 
             {recording ? (
-              <div className="mb-2 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">
+              <div className="mb-2 flex items-center gap-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-600" aria-hidden="true" />
                 <span className="min-w-0 flex-1 font-medium">
                   Grabando nota de voz · {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
@@ -2640,7 +2640,7 @@ export function ChatWidget({
             ) : null}
 
             {pendingFile ? (
-              <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              <div className="mb-2 flex items-center gap-2 rounded-md bg-slate-50 p-2 ring-1 ring-slate-200">
                 {pendingPreview ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -2673,7 +2673,7 @@ export function ChatWidget({
               snapshot?.type === 'GRUPO' ||
               (bootstrap?.frontiEnabled && snapshot?.type !== 'FRONTI')
             ) ? (
-              <div className="mb-2 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200">
+              <div className="mb-2 overflow-hidden rounded-md bg-white shadow-lg ring-1 ring-slate-200">
                 <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
                   <AtSign className="h-3.5 w-3.5" aria-hidden="true" />
                   Mencionar
@@ -2746,7 +2746,7 @@ export function ChatWidget({
             ) : null}
 
             {plusOpen ? (
-              <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              <div className="mb-2 grid grid-cols-2 gap-2 rounded-md bg-slate-50 p-2 ring-1 ring-slate-200">
                 <button
                   type="button"
                   onClick={() => {
@@ -2757,7 +2757,7 @@ export function ChatWidget({
                     setStickersOpen(false);
                     void loadGifPreferences();
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                 >
                   <ImageIcon className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   GIF
@@ -2771,7 +2771,7 @@ export function ChatWidget({
                     setGifsOpen(false);
                     void loadStickerLibrary();
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                 >
                   <span className="text-lg" aria-hidden="true">🖼️</span>
                   Stickers
@@ -2783,7 +2783,7 @@ export function ChatWidget({
                     setPlusOpen(false);
                     fileInputRef.current?.click();
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Paperclip className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   Foto / archivo
@@ -2794,7 +2794,7 @@ export function ChatWidget({
                     attachCurrentContext();
                     setPlusOpen(false);
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                 >
                   <Link2 className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   Compartir Libro
@@ -2803,7 +2803,7 @@ export function ChatWidget({
                   type="button"
                   disabled={!storageAvailable || recording}
                   onClick={() => void startVoiceRecording()}
-                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Mic className="h-5 w-5 text-petrol-700" aria-hidden="true" />
                   Nota de voz
@@ -2821,7 +2821,7 @@ export function ChatWidget({
             ) : null}
 
             {emojisOpen ? (
-              <div className="mb-2 max-h-40 overflow-y-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              <div className="mb-2 max-h-40 overflow-y-auto rounded-md bg-slate-50 p-2 ring-1 ring-slate-200">
                 <div className="grid grid-cols-10 gap-1">
                   {CHAT_EMOJIS.map((emoji) => (
                     <button
@@ -2839,7 +2839,7 @@ export function ChatWidget({
             ) : null}
 
             {stickersOpen ? (
-              <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              <div className="mb-2 rounded-md bg-slate-50 p-2 ring-1 ring-slate-200">
                 <div className="mb-2 flex items-center gap-1 overflow-x-auto">
                   {([
                     ['favorites', '⭐ Favoritos'],
@@ -2897,7 +2897,7 @@ export function ChatWidget({
                   ) : (
                     <div className="grid grid-cols-4 gap-2">
                       {visibleCustomStickers.map((sticker) => (
-                        <div key={sticker.id} className="group/sticker relative rounded-xl bg-white p-1 ring-1 ring-slate-200">
+                        <div key={sticker.id} className="group/sticker relative rounded-md bg-white p-1 ring-1 ring-slate-200">
                           <button
                             type="button"
                             onClick={() => {
@@ -2938,7 +2938,7 @@ export function ChatWidget({
             ) : null}
 
             {gifsOpen ? (
-              <div className="mb-2 rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              <div className="mb-2 rounded-md bg-slate-50 p-2 ring-1 ring-slate-200">
                 <div className="mb-2 flex gap-1">
                   {([
                     ['search', 'Buscar'],
@@ -3124,13 +3124,13 @@ export function ChatWidget({
                       ? 'Mensaje para Fronti…'
                       : 'Mensaje…'
                 }
-                className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
+                className="max-h-28 min-h-10 min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-petrol-400 focus:bg-white sm:text-sm"
               />
               <button
                 type="button"
                 onClick={() => void sendMessage()}
                 disabled={frontiBusy || uploading || (!body.trim() && !context && !pendingFile)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-petrol-800 text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-petrol-800 text-white hover:bg-petrol-700 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Enviar"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />

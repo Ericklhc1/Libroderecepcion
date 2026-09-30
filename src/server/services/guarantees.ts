@@ -127,6 +127,21 @@ export async function createGuarantee(
   const initialState = input.state ?? GuaranteeState.PENDIENTE;
 
   const guarantee = await prisma.$transaction(async (tx) => {
+    const selectedRoom = input.roomId
+      ? await tx.room.findFirst({
+          where: { id: input.roomId, active: true },
+          select: { id: true, number: true },
+        })
+      : input.roomNumber?.trim()
+        ? await tx.room.findFirst({
+            where: { number: input.roomNumber.trim(), active: true },
+            select: { id: true, number: true },
+          })
+        : null;
+    if ((input.roomId || input.roomNumber?.trim()) && !selectedRoom) {
+      throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+    }
+
     const legacyReservation = input.reservationReferenceId
       ? await tx.reservationReference.findFirst({
           where: { id: input.reservationReferenceId, deletedAt: null },
@@ -144,7 +159,7 @@ export async function createGuarantee(
         reservationReferenceId: legacyReservation?.id ?? null,
         stayId: input.stayId ?? null,
         guestName: input.guestName?.trim() || legacyReservation?.guest?.fullName || null,
-        roomNumber: input.roomNumber?.trim() || legacyReservation?.roomNumber || null,
+        roomNumber: selectedRoom?.number || legacyReservation?.roomNumber || null,
         reference: input.reference?.trim() || legacyReservation?.code || null,
         dueAt: input.dueAt ?? null,
         kind: input.kind,

@@ -18,6 +18,7 @@ import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getMetrics, defaultRange } from '@/server/services/metrics';
+import { getRoomMonitor } from '@/server/services/room-monitor';
 import {
   getOperationalHealth,
   operationalHealthRange,
@@ -656,6 +657,11 @@ export async function executeFrontiPageContextTool(
           limit: 30,
           onlyOpen: page.sectionKey !== 'historial',
         }),
+      };
+    case 'habitaciones-operativas':
+      return {
+        ...base,
+        snapshot: await getRoomMonitor(page.filters.habitacion ?? null),
       };
     case 'tareas':
       return {

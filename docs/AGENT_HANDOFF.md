@@ -6,6 +6,10 @@
 - Regla de arquitectura: **AROH no es PMS**. FNSRooms u otro PMS sigue siendo la fuente de reservas, estadías, habitaciones, check-in/out, tarifas, ocupación y ciclo de huésped.
 - AROH se concentra en reportería/continuidad operativa: Novedades, Incidencias, Tareas, Seguimientos, Alertas, Notificaciones, Turnos, Caja, Llaves, Supervisión, Auditoría y Gerencia.
 - Se retira `/central-reservas` del menú y del tutorial; la ruta histórica redirige a Novedades.
+- Novedades incorpora la vista **Por habitación** en `/libro/habitaciones`: cuadrícula interactiva de las 89 habitaciones (401–429, 501–530, 601–630), coloreada sólo por actividad operativa AROH, nunca por ocupación/check-in/out.
+- El monitor agrega Novedades/Incidencias, Tareas, Seguimientos, Alertas vinculadas, Garantías, Multas/Daños y folios de Gimnasio/Estacionamiento.
+- Los formularios operativos que piden habitación usan catálogo desplegable; Novedad y Tarea guardan `Room.id`, las tareas derivadas heredan la habitación del registro de origen y Garantías validan contra el catálogo.
+- Estacionamiento cambia **Patente** por **ID Reserva**. `GymPass.reservationCode` es contexto externo de texto; `vehiclePlate` queda sólo para compatibilidad histórica.
 - La clave técnica `reservation.center.view` se conserva sólo por compatibilidad y se presenta como **Consultar contexto externo del PMS**.
 - Fronti proactivo deja de vigilar `ReservationReference`, llegadas, in-house, saldos o garantías PMS. Vigila hechos operativos de AROH y observabilidad.
 - Gerencia deja de usar llegadas/pre-arrival como scorecard; usa continuidad: seguimientos abiertos/vencidos y alertas activas/vencidas, además de tareas, incidencias, turnos, Caja, llaves y auditoría.
@@ -13,7 +17,7 @@
 - Adaptación inspirada en OPERA Notes/Traces sin copiar el PMS: **Novedad = contexto persistente**; desde ella el usuario puede derivar explícitamente **Tarea**, **Seguimiento** o **Alerta**, siempre vinculada al registro original.
 - No introducir una entidad nueva `Trace`: Tarea/Seguimiento/Alerta ya cubren las semánticas accionables y crear otra entidad duplicaría flujo.
 - Una Novedad no genera automáticamente Tarea, Seguimiento ni Alerta.
-- Release objetivo: **v1.36.0**. Sin migración Prisma.
+- Release objetivo: **v1.36.0**. Migración aditiva: `GymPass.reservationCode`.
 
 
 ## 30/09/2026 · AROH 1.35.0 · Gerencia estratégica

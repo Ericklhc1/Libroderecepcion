@@ -81,7 +81,6 @@ export default async function HistoryPage({
       <Filters
         action="/historial"
         fields={[
-          'q',
           'clase',
           'tipo',
           'estado',

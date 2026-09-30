@@ -47,7 +47,7 @@ describe('folios de gimnasio autónomos en Caja', () => {
     expect(pass.serviceDate.toISOString()).toBe('2026-09-22T00:00:00.000Z');
 
     expect(pass.reservationReferenceId).toBeNull();
-    expect(pass.roomId).toBeNull();
+    expect(pass.roomId).not.toBeNull();
     expect(pass.operationalEntryId).toBeNull();
     expect(pass.currency).toBeNull();
     expect(pass.amount).toBeNull();
@@ -101,7 +101,7 @@ describe('folios de gimnasio autónomos en Caja', () => {
     expect(summary.rows.every((row) => row.receptionistName === 'Recepcionista Rango')).toBe(true);
   });
 
-  it('emite estacionamiento con patente usando el mismo folio operativo sin contaminar gimnasio', async () => {
+  it('emite estacionamiento con ID Reserva usando el mismo folio operativo sin contaminar gimnasio', async () => {
     const receptionist = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,
       name: 'Recepcionista Estacionamiento',
@@ -112,7 +112,7 @@ describe('folios de gimnasio autónomos en Caja', () => {
       serviceDate: '2026-09-28',
       roomNumber: '601',
       guestName: 'Huésped Vehículo',
-      vehiclePlate: 'abcd12',
+      reservationCode: 'RSV-90817',
     });
     await createGymPass(receptionist, {
       serviceDate: '2026-09-28',
@@ -122,7 +122,9 @@ describe('folios de gimnasio autónomos en Caja', () => {
 
     const persisted = await prisma.gymPass.findUniqueOrThrow({ where: { id: parking.id } });
     expect(persisted.serviceType).toBe('ESTACIONAMIENTO');
-    expect(persisted.vehiclePlate).toBe('ABCD12');
+    expect(persisted.reservationCode).toBe('RSV-90817');
+    expect(persisted.vehiclePlate).toBeNull();
+    expect(persisted.roomId).not.toBeNull();
 
     const parkingSummary = await listParkingPasses({ from: '2026-09-28', to: '2026-09-28' });
     const gymSummary = await listGymPasses({ from: '2026-09-28', to: '2026-09-28' });
@@ -130,7 +132,8 @@ describe('folios de gimnasio autónomos en Caja', () => {
     expect(parkingSummary.rows).toHaveLength(1);
     expect(parkingSummary.rows[0]).toMatchObject({
       roomNumber: '601',
-      vehiclePlate: 'ABCD12',
+      reservationCode: 'RSV-90817',
+      vehiclePlate: null,
       serviceType: 'ESTACIONAMIENTO',
     });
     expect(gymSummary.rows).toHaveLength(1);

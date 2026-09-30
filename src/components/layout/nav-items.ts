@@ -103,61 +103,6 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
-    href: '/central-reservas',
-    label: 'Central de Reservas',
-    mobileLabel: 'Reservas',
-    icon: 'guest',
-    anyOf: ['reservation.center.view'],
-    menu: [
-      {
-        title: 'Preparación',
-        items: [
-          {
-            href: '/central-reservas',
-            label: 'Bandeja completa',
-            description: 'Señales previas a la operación.',
-          },
-          {
-            href: '/central-reservas?vista=accion',
-            label: 'Requieren acción',
-            description: 'Garantías, saldos y pendientes.',
-          },
-        ],
-      },
-      {
-        title: 'Llegadas',
-        items: [
-          {
-            href: '/central-reservas?vista=24h',
-            label: 'Próximas 24 h',
-            description: 'Llegadas más inmediatas.',
-          },
-          {
-            href: '/central-reservas?vista=72h',
-            label: 'Próximas 72 h',
-            description: 'Preparación de los próximos tres días.',
-          },
-          {
-            href: '/central-reservas?vista=recientes',
-            label: 'Cambios recientes',
-            description: 'Reservas modificadas en las últimas 24 h.',
-          },
-        ],
-      },
-      {
-        title: 'Referencias',
-        items: [
-          {
-            href: '/huespedes',
-            label: 'Huéspedes y reservas',
-            description: 'Consulta de referencias operativas existentes.',
-            anyOf: ['guest.view', 'guest.manage'],
-          },
-        ],
-      },
-    ],
-  },
-  {
     href: '/caja',
     label: 'Caja',
     icon: 'cash',

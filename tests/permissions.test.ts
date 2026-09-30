@@ -144,7 +144,6 @@ describe('matriz de roles y permisos', () => {
     const reservations = await createUser({ roleKey: ROLE_KEYS.RESERVATIONS_CENTER });
 
     for (const permission of [
-      'management.dashboard.view',
       'reservation.center.view',
       'guest.view',
       'guest.manage',
@@ -178,6 +177,7 @@ describe('matriz de roles y permisos', () => {
     const management = await createUser({ roleKey: ROLE_KEYS.MANAGEMENT });
 
     for (const permission of [
+      'management.dashboard.view',
       'reservation.center.view',
       'supervision.center.view',
       'supervision.task.assign',

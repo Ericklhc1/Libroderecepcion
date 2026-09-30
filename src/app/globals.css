@@ -65,7 +65,8 @@ h4 {
   }
 
   .card-header {
-    @apply flex items-center justify-between gap-3 border-b border-slate-200 bg-[#faf9f6] px-4 py-3;
+    @apply flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3;
+    background-color: #faf9f6;
   }
 
   .card-title {

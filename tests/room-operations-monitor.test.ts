@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { EntryType, GuaranteeKind, GuaranteeState, Priority } from '@prisma/client';
 import {
@@ -150,10 +151,7 @@ describe('Novedades / Habitación', () => {
   });
 
   it('la interfaz del monitor no representa ocupación ni ciclo PMS', () => {
-    const source = require('node:fs').readFileSync(
-      'src/app/(app)/libro/habitaciones/page.tsx',
-      'utf8',
-    );
+    const source = readFileSync('src/app/(app)/libro/habitaciones/page.tsx', 'utf8');
     expect(source).toContain('No muestra ocupación');
     expect(source).not.toContain('IN_HOUSE');
     expect(source).not.toContain('CHECK_IN_LISTO');

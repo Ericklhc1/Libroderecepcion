@@ -34,6 +34,17 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
     expect(actions).toContain('router.push(href)');
   });
 
+  it('Prellegadas tampoco vuelve a consultar Alert legada', () => {
+    const service = readFileSync('src/server/services/reservation-center.ts', 'utf8');
+    const page = readFileSync('src/app/(app)/central-reservas/page.tsx', 'utf8');
+
+    expect(service).toContain('prisma.operationalAlarm.findMany');
+    expect(service).not.toContain('prisma.alert.findMany');
+    expect(service).toContain("sourceEntity: 'ReservationReference'");
+    expect(page).toContain('Prellegadas');
+    expect(page).toContain('no administra reservas ni sustituye al PMS');
+  });
+
   it('Indicadores no vuelve a contar Alert legada como alerta visible', () => {
     const metrics = readFileSync('src/server/services/metrics.ts', 'utf8');
     expect(metrics).toContain('prisma.operationalAlarm.count');

@@ -22,6 +22,12 @@ const config: Config = {
     },
     extend: {
       colors: {
+        slate: {
+          50: '#faf9f6',
+          100: '#f4f2ed',
+          200: '#e7e2d9',
+          300: '#d6cfc3',
+        },
         petrol: {
           50: '#eef5f7',
           100: '#d5e6ea',

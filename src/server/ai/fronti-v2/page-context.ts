@@ -175,7 +175,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
-  const reservationCode = pathname.match(/^\\/reservas\\/([^/]+)$/);
+  const reservationCode = pathname.match(/^\/reservas\/([^/]+)$/);
   if (reservationCode) {
     return detail('reservas', 'Reservas', 'detalle', 'Detalle de reserva', [
       'consultar_contexto_pantalla',

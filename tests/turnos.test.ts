@@ -192,6 +192,30 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     expect(assignments.find((assignment) => assignment.userId === titular.id)?.leftAt).not.toBeNull();
   });
 
+  it('si una persona retirada vuelve a entrar, reingresa como APOYO y no duplica titulares', async () => {
+    const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
+    const apoyo = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Beto' });
+
+    const { shift } = await openShift(titular, { type: ShiftType.DIA });
+    await addShiftMember(titular, { shiftId: shift.id, userId: apoyo.id });
+    await removeShiftMember(apoyo, { shiftId: shift.id, userId: titular.id });
+    await addShiftMember(apoyo, { shiftId: shift.id, userId: titular.id });
+
+    const active = await prisma.shiftAssignment.findMany({
+      where: {
+        shiftId: shift.id,
+        activatedAt: { not: null },
+        leftAt: null,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(active).toHaveLength(2);
+    expect(active.filter((assignment) => assignment.role === 'TITULAR')).toHaveLength(1);
+    expect(active.find((assignment) => assignment.userId === apoyo.id)?.role).toBe('TITULAR');
+    expect(active.find((assignment) => assignment.userId === titular.id)?.role).toBe('APOYO');
+  });
+
   it('no permite dejar un turno sin participantes activos', async () => {
     const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Ana' });
     const { shift } = await openShift(titular, { type: ShiftType.DIA });

@@ -14,6 +14,7 @@ import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 
 
 const MAX_ACTIVE_PER_CREATOR = 100;
@@ -97,6 +98,47 @@ async function resolveRecipients(
     throw new RuleError('Uno o más destinatarios ya no están activos.');
   }
   return valid.map((row) => row.id);
+}
+
+async function resolveAlarmRoomNumber(input: AlarmCreateInput): Promise<string | null> {
+  const explicit = input.roomNumber?.trim() || null;
+  if (explicit) {
+    if (!isOperationalRoomNumber(explicit)) {
+      throw new RuleError('La habitación indicada no pertenece al catálogo operativo.');
+    }
+    return explicit;
+  }
+
+  if (!input.sourceEntity || !input.sourceId) return null;
+
+  if (input.sourceEntity === 'OperationalEntry') {
+    const source = await prisma.operationalEntry.findUnique({
+      where: { id: input.sourceId },
+      select: { room: { select: { number: true } } },
+    });
+    return source?.room?.number ?? null;
+  }
+
+  if (input.sourceEntity === 'Task') {
+    const source = await prisma.task.findUnique({
+      where: { id: input.sourceId },
+      select: { room: { select: { number: true } } },
+    });
+    return source?.room?.number ?? null;
+  }
+
+  if (input.sourceEntity === 'FollowUp') {
+    const source = await prisma.followUp.findUnique({
+      where: { id: input.sourceId },
+      select: {
+        entry: { select: { room: { select: { number: true } } } },
+        task: { select: { room: { select: { number: true } } } },
+      },
+    });
+    return source?.entry?.room?.number ?? source?.task?.room?.number ?? null;
+  }
+
+  return null;
 }
 
 export async function createOperationalAlarm(user: CurrentUser, input: AlarmCreateInput) {

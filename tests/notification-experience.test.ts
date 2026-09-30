@@ -18,12 +18,18 @@ describe('experiencia de notificaciones', () => {
     expect(source).toContain('/api/notifications/stream?mode=background');
     expect(source).toContain('showDeviceNotification(item)');
     expect(source).toContain('reconcileDeviceNotifications()');
+    expect(source).toContain('syncAppBadge(unread)');
     expect(helper).toContain('Notification.requestPermission()');
+    expect(helper).toContain('setAppBadge');
+    expect(helper).toContain('clearAppBadge');
+    expect(helper).toContain("type: 'aroh:sync-badge'");
     expect(helper).toContain("serviceWorker.register('/central-notifications-sw.js'");
     expect(helper).toContain('worker.pushManager.subscribe');
     expect(helper).toContain('/api/push/subscriptions');
     expect(worker).toContain("self.addEventListener('push'");
     expect(worker).toContain("self.addEventListener('notificationclick'");
+    expect(worker).toContain("self.addEventListener('message'");
+    expect(worker).toContain("data.type !== 'aroh:sync-badge'");
     expect(worker).toContain('/api/push/payload');
     expect(push).toContain("setProtectedHeader({ alg: 'ES256', typ: 'JWT' })");
     expect(push).toContain("Authorization: await vapidAuthorization");

@@ -60,6 +60,7 @@ export async function createGymPassAction(
     revalidatePath('/caja');
     revalidatePath('/caja/gimnasio');
     revalidatePath('/caja/estacionamiento');
+    revalidatePath('/libro/habitaciones');
     return {
       ok: true as const,
       message: `Folio de gimnasio ${result.formattedFolio} generado.`,
@@ -69,7 +70,7 @@ export async function createGymPassAction(
 }
 
 const parkingPassSchema = gymPassSchema.extend({
-  vehiclePlate: z.string().trim().min(2, 'Indica la patente o matrícula.').max(20),
+  reservationCode: z.string().trim().min(2, 'Indica el ID Reserva.').max(80),
 });
 
 export async function createParkingPassAction(
@@ -82,6 +83,7 @@ export async function createParkingPassAction(
     const result = await createParkingPass(user, input);
     revalidatePath('/caja');
     revalidatePath('/caja/estacionamiento');
+    revalidatePath('/libro/habitaciones');
     return {
       ok: true as const,
       message: `Ticket de estacionamiento ${result.formattedFolio} generado.`,

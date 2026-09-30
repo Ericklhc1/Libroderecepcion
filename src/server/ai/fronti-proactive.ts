@@ -159,6 +159,15 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
         : group.length >= 4
           ? 'CRITICA'
           : 'ALTA';
+    const metadata =
+      first.metadata && typeof first.metadata === 'object' && !Array.isArray(first.metadata)
+        ? (first.metadata as Record<string, unknown>)
+        : null;
+    const floor =
+      typeof metadata?.floor === 'number' && Number.isInteger(metadata.floor)
+        ? metadata.floor
+        : null;
+
     candidates.push({
       key: `health:${key}`,
       severity,
@@ -168,18 +177,24 @@ async function observabilityCandidates(now: Date): Promise<FrontiProactiveCandid
           : 'Salud operativa',
       title:
         first.eventType === 'KEY_INVENTORY_WITH_DIFFERENCES'
-          ? 'Inventario de llaves con diferencias'
+          ? `Inventario de llaves con diferencias${floor ? ` · piso ${floor}` : ''}`
           : `Fallas repetidas: ${first.eventType}`,
       evidence: clean(
         first.eventType === 'KEY_INVENTORY_WITH_DIFFERENCES'
-          ? `Se registró una diferencia física en el inventario ${first.entityId ?? ''}.`
+          ? [
+              `El conteo físico ${first.entityId ?? 'sin ID'} registró diferencias`,
+              floor ? `piso ${floor}` : null,
+              'el inventario esperado y lo encontrado no coinciden',
+            ].filter(Boolean).join(' · ')
           : `${group.length} evento(s) ${first.eventType} en los últimos 20 minutos. Estados: ${[
               ...new Set(group.map((item) => item.status)),
             ].join(', ')}.`,
       ),
       link:
         first.eventType === 'KEY_INVENTORY_WITH_DIFFERENCES'
-          ? '/llaves'
+          ? floor
+            ? `/llaves?piso=${floor}`
+            : '/llaves?piso=todos'
           : '/supervision/salud',
       entityType: first.entityType ?? 'OperationalMetricEvent',
       entityId: first.entityId ?? key,
@@ -333,7 +348,7 @@ async function explainCandidate(
   timeoutMs: number,
 ): Promise<GeneratedExplanation> {
   const deterministicFallback =
-    'Revisa el origen de esta señal y confirma el estado vigente antes de actuar. Fronti no cambió ningún estado operativo.';
+    `Qué pasó: ${candidate.evidence}. Qué está mal / qué revisar: la señal cumple una regla de atención de AROH y requiere comprobar su estado vigente en el registro de origen. Qué hacer: abre el origen y confirma la corrección antes de cerrar el caso.`;
 
   try {
     const providers = await resolveFrontiBackgroundProviderChainRuntime({
@@ -354,7 +369,7 @@ async function explainCandidate(
         {
           role: 'system',
           content:
-            'Eres Fronti en modo proactivo de AROH Central IA. La detección ya fue hecha por reglas determinísticas. Tu tarea es EXPLICAR la señal, correlacionar únicamente lo que aparece en la evidencia y proponer una revisión humana concreta. No inventes datos, no declares causas no demostradas y no ordenes ejecutar cambios irreversibles. Responde en español, máximo 420 caracteres, sin encabezados.',
+            'Eres Fronti en modo proactivo de AROH Central IA. La detección ya fue hecha por reglas determinísticas. Explica la señal usando ÚNICAMENTE la evidencia entregada. Debes responder exactamente con tres bloques breves: "Qué pasó: ...", "Qué está mal / qué revisar: ..." y "Qué hacer: ...". Si la evidencia no demuestra la causa, dilo explícitamente. No inventes datos, montos, personas, causas ni estados. No ordenes cambios irreversibles. Máximo 520 caracteres.',
         },
         {
           role: 'user',
@@ -479,8 +494,8 @@ export async function runFrontiProactiveSweep(input: {
           [
             `Área: ${candidate.area}`,
             `Prioridad: ${candidate.severity}`,
-            `Evidencia: ${candidate.evidence}`,
-            `Lectura de Fronti: ${explanation.text}`,
+            `Qué pasó: ${candidate.evidence}`,
+            explanation.text,
           ].join(' · '),
           1800,
         ),

@@ -31,12 +31,11 @@ const IMPACT_OPTIONS = Object.values(Impact).map((impact) => ({
 /**
  * Formulario canónico del Libro desde v1.4.0.
  *
- * Novedades e Incidencias describen la operación directamente. No consultan
- * habitaciones, huéspedes, reservas ni estadías del PMS. Si una habitación es
- * relevante, se escribe en el título/descripcion o en la categoría.
+ * Novedades e Incidencias describen la operación directamente. La habitación
+ * es un contexto opcional del hecho operativo; no implica ocupación, reserva,
+ * check-in ni ninguna otra función PMS.
  *
- * defaultRoomId y defaultStayId se aceptan sólo para compatibilidad de páginas
- * antiguas todavía compilables; se ignoran deliberadamente.
+ * defaultStayId se conserva sólo por compatibilidad histórica.
  */
 export function EntryForm({
   action,
@@ -44,7 +43,7 @@ export function EntryForm({
   defaultType = EntryType.NOVEDAD,
   lockType = false,
   closeOnSuccess = true,
-  defaultRoomId: _defaultRoomId = '',
+  defaultRoomId = '',
   defaultStayId: _defaultStayId = '',
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -100,16 +99,23 @@ export function EntryForm({
         label="Descripción"
         name="description"
         required
-        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Habitación, huésped o referencia pueden escribirse aquí cuando aporten contexto."
+        hint="Describe qué ocurrió y qué necesita saber el siguiente turno. Si aplica una habitación, selecciónala abajo para que quede visible en su monitor."
       >
         <Textarea name="description" required rows={4} maxLength={8000} />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label="Habitación" name="roomId" hint="Opcional. Contexto operativo, no PMS.">
+          <Select
+            name="roomId"
+            placeholder="Sin habitación"
+            defaultValue={defaultRoomId}
+            options={options.rooms}
+          />
+        </Field>
         <Field label="Categoría" name="category" hint="Opcional. Ej.: mantenimiento, caja, seguridad.">
           <Input name="category" maxLength={120} placeholder="Categoría" />
         </Field>
-
         <Field label="Área responsable" name="departmentId">
           <Select
             name="departmentId"

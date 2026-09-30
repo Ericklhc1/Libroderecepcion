@@ -15,6 +15,7 @@ import {
 import { requireUser } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { parseHotelDateTimeLocal } from '@/domain/time';
+import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import {
   cancelOperationalAlarm,
   createOperationalAlarm,
@@ -48,6 +49,14 @@ const createSchema = z.object({
     .transform((value) => value || null)
     .refine((value) => value === null || value.startsWith('/'), {
       message: 'El vínculo de origen debe ser una ruta interna de AROH.',
+    }),
+  roomNumber: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value || null)
+    .refine((value) => value === null || isOperationalRoomNumber(value), {
+      message: 'Selecciona una habitación válida del hotel.',
     }),
   repeatMinutes: z
     .preprocess(
@@ -103,9 +112,11 @@ export async function createOperationalAlarmAction(
       sourceEntity: input.sourceEntity,
       sourceId: input.sourceId,
       sourceLink: input.sourceLink,
+      roomNumber: input.roomNumber,
       repeatMinutes: input.kind === OperationalAlarmKind.TIMER ? null : input.repeatMinutes,
     });
     revalidatePath('/alertas');
+    revalidatePath('/novedades/habitacion');
     if (input.sourceLink) revalidatePath(input.sourceLink);
     return {
       ok: true as const,
@@ -139,6 +150,7 @@ export async function updateOperationalAlarmAction(
       repeatMinutes: input.repeatMinutes,
     });
     revalidatePath('/alertas');
+    revalidatePath('/novedades/habitacion');
     if (updated.sourceLink) revalidatePath(updated.sourceLink);
     return { ok: true as const, id: updated.id, message: 'Alerta actualizada.' };
   });
@@ -153,6 +165,7 @@ export async function cancelOperationalAlarmAction(
     const input = parseOrThrow(cancelSchema, formDataToObject(formData));
     await cancelOperationalAlarm(user, input.alarmId);
     revalidatePath('/alertas');
+    revalidatePath('/novedades/habitacion');
     return { ok: true as const, message: 'Alerta eliminada de la operación activa.' };
   });
 }

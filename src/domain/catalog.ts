@@ -6,6 +6,7 @@ import {
   ROLE_DEFINITIONS,
   ROLE_PERMISSIONS,
 } from '@/lib/permissions';
+import { ROOM_RANGES, roomNumbers } from '@/domain/room-catalog';
 
 /** Áreas operativas con las que arranca cualquier instalación. */
 export const DEPARTMENTS = [
@@ -20,19 +21,6 @@ export const DEPARTMENTS = [
   { key: 'SISTEMAS', name: 'Sistemas', order: 9 },
   { key: 'AREAS_PUBLICAS', name: 'Áreas públicas', order: 10 },
   { key: 'OTRO', name: 'Otro', order: 99 },
-];
-
-/**
- * Inventario de habitaciones del hotel: pisos 4, 5 y 6.
- *
- * Es el catálogo real del Hotel HW Libertad. Las habitaciones son la entidad
- * central del módulo operativo, así que existen desde la instalación y no
- * dependen de que un informe del PMS las mencione.
- */
-export const ROOM_RANGES = [
-  { floor: 4, from: 401, to: 429 },
-  { floor: 5, from: 501, to: 530 },
-  { floor: 6, from: 601, to: 630 },
 ];
 
 /**
@@ -69,16 +57,6 @@ export const CASH_DENOMINATIONS: Array<{
   { currency: 'USD', value: 5, medium: 'BILLETE' },
   { currency: 'USD', value: 1, medium: 'BILLETE' },
 ];
-
-export function roomNumbers(): Array<{ number: string; floor: number }> {
-  const rooms: Array<{ number: string; floor: number }> = [];
-  for (const range of ROOM_RANGES) {
-    for (let number = range.from; number <= range.to; number += 1) {
-      rooms.push({ number: String(number), floor: range.floor });
-    }
-  }
-  return rooms;
-}
 
 /** Copias de llave sin asignar con las que arranca el stock del Supervisor. */
 const SPARE_KEYS = 12;

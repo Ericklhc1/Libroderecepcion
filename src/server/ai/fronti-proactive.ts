@@ -394,21 +394,29 @@ async function claimRecipients(
   now: Date,
   cutoff: Date,
 ): Promise<string[]> {
-  const claimed: string[] = [];
+  return prisma.$transaction(async (tx) => {
+    const claimed: string[] = [];
 
-  for (const userId of userIds) {
-    const rows = await prisma.$queryRaw<Array<{ userId: string }>>`
-      INSERT INTO "FrontiProactiveClaim" ("signalId", "userId", "claimedAt")
-      VALUES (${signalIdValue}, ${userId}, ${now})
-      ON CONFLICT ("signalId", "userId") DO UPDATE
-      SET "claimedAt" = EXCLUDED."claimedAt"
-      WHERE "FrontiProactiveClaim"."claimedAt" < ${cutoff}
-      RETURNING "userId"
-    `;
-    if (rows[0]?.userId) claimed.push(rows[0].userId);
-  }
+    /*
+     * Una sola transacción por señal: si dos instancias llegan a la vez, la
+     * primera conserva los locks de unicidad hasta reclamar todo el lote. La
+     * segunda espera y, al continuar, ya ve el cooldown de todos los mismos
+     * destinatarios. Así tampoco duplicamos inferencia ni auditoría.
+     */
+    for (const userId of userIds) {
+      const rows = await tx.$queryRaw<Array<{ userId: string }>>`
+        INSERT INTO "FrontiProactiveClaim" ("signalId", "userId", "claimedAt")
+        VALUES (${signalIdValue}, ${userId}, ${now})
+        ON CONFLICT ("signalId", "userId") DO UPDATE
+        SET "claimedAt" = EXCLUDED."claimedAt"
+        WHERE "FrontiProactiveClaim"."claimedAt" < ${cutoff}
+        RETURNING "userId"
+      `;
+      if (rows[0]?.userId) claimed.push(rows[0].userId);
+    }
 
-  return claimed;
+    return claimed;
+  });
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

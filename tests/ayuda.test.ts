@@ -10,6 +10,8 @@ import { ROLE_PERMISSIONS, ROLE_KEYS, type PermissionKey } from '@/lib/permissio
 
 const RECEPCION = [...ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]] as PermissionKey[];
 const SUPERVISOR = [...ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR]] as PermissionKey[];
+const MANAGEMENT = [...ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]] as PermissionKey[];
+const ADMIN = [...ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN]] as PermissionKey[];
 
 /**
  * La central de ayuda es documentación, no un modelo que adivina.
@@ -108,6 +110,51 @@ describe('central de ayuda', () => {
       if (!step.anyOf) continue;
       expect(step.anyOf.some((p) => RECEPCION.includes(p))).toBe(true);
     }
+  });
+
+
+  it('documenta las funciones nuevas críticas del producto', () => {
+    const all = HELP_TOPICS.map((topic) => topic.id);
+    expect(all).toEqual(
+      expect.arrayContaining([
+        'novedades-habitacion',
+        'tarea-programada',
+        'alerta-programada',
+        'notificacion-origen',
+        'push-dispositivo',
+        'arqueo-caja',
+        'regularizar-diferencia',
+        'folio-gimnasio',
+        'ticket-estacionamiento',
+        'gerencia-trazabilidad',
+        'fronti-hallazgo',
+        'centro-supervision',
+        'auditoria-sorpresa',
+        'medida-correctiva',
+        'usuario-oculto',
+        'roles-permisos-modulos',
+        'reportar-solicitar',
+        'bandeja-soporte',
+        'chat-interno',
+        'ids-humanos',
+        'tutorial-modulo',
+      ]),
+    );
+  });
+
+  it('la ayuda encuentra trazabilidad, Fronti, Push y tutoriales modulares', () => {
+    expect(searchHelp('descuadre', MANAGEMENT).map((topic) => topic.id)).toContain('arqueo-caja');
+    expect(searchHelp('fronti', MANAGEMENT).map((topic) => topic.id)).toContain('fronti-hallazgo');
+    expect(searchHelp('push', SUPERVISOR).map((topic) => topic.id)).toContain('push-dispositivo');
+    expect(searchHelp('tutorial modulo', ADMIN).map((topic) => topic.id)).toContain('tutorial-modulo');
+  });
+
+  it('Gerencia recibe su procedimiento de trazabilidad directa sin funciones de administración', () => {
+    const visible = visibleTopics(MANAGEMENT).map((topic) => topic.id);
+    expect(visible).toContain('gerencia-trazabilidad');
+    expect(visible).toContain('fronti-hallazgo');
+    expect(visible).not.toContain('usuario-oculto');
+    expect(visible).not.toContain('roles-permisos-modulos');
   });
 
   it('todo procedimiento tiene pasos y palabras de búsqueda', () => {

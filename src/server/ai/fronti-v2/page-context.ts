@@ -175,19 +175,29 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/libro/habitaciones') {
+    const room = filters.habitacion || null;
+    const floor = filters.piso || 'todos';
+    const state = filters.estado || 'todos';
+    return detail(
+      'habitaciones-contexto',
+      'Novedades',
+      room ? `habitacion-${room}` : `piso-${floor}`,
+      room ? `Contexto habitación ${room}` : 'Novedades · Habitaciones',
+      ['consultar_contexto_pantalla', 'consultar_novedades', 'consultar_tareas', 'consultar_alertas'],
+      room ? 'RoomNumber' : undefined,
+      room,
+    );
+  }
+
   if (pathname === '/central-reservas') {
-    const section = filters.vista || 'bandeja';
-    const labels: Record<string, string> = {
-      accion: 'Requieren acción',
-      '24h': 'Llegadas próximas 24 h',
-      '72h': 'Llegadas próximas 72 h',
-      recientes: 'Cambios recientes',
-      bandeja: 'Bandeja completa',
-    };
-    return detail('central-reservas', 'Central de Reservas', section, labels[section] ?? 'Central de Reservas', [
-      'consultar_contexto_pantalla',
-      'consultar_garantias',
-    ]);
+    return detail(
+      'habitaciones-contexto',
+      'Novedades',
+      'compatibilidad',
+      'Novedades · Habitaciones',
+      ['consultar_contexto_pantalla', 'consultar_novedades', 'consultar_tareas', 'consultar_alertas'],
+    );
   }
 
   const reservationCode = pathname.match(/^\/reservas\/([^/]+)$/);

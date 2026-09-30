@@ -1,17 +1,15 @@
 import 'server-only';
 
-import { GuaranteeStatus, OperationalAlarmStatus, ReservationStatus } from '@prisma/client';
+import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { getDashboardData } from '@/server/services/dashboard';
 import { getEntry } from '@/server/services/entries';
 import { getTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
-import { getReservationCenterSnapshot } from '@/server/services/reservation-center';
 import {
   getReservationOperationalContext,
   getReservationOperationalContextByCode,
-  reservationModuleSignals,
 } from '@/server/services/reservation-context';
 import { getRoomDetail } from '@/server/services/rooms';
 import { getLiveCashState } from '@/server/services/live-cash';
@@ -71,62 +69,16 @@ async function safeRead(
   }
 }
 
-function reservationNeedsAttention(reservation: {
-  requiresAction: boolean;
-  guaranteeStatus: GuaranteeStatus;
-  balanceDue: { toString(): string } | null;
-}): boolean {
-  return (
-    reservation.requiresAction ||
-    reservation.guaranteeStatus === GuaranteeStatus.PENDIENTE ||
-    reservation.guaranteeStatus === GuaranteeStatus.RECHAZADA ||
-    Number(reservation.balanceDue ?? 0) > 0
-  );
-}
-
 function compactReservationContext(
   reservation: NonNullable<Awaited<ReturnType<typeof getReservationOperationalContext>>>,
 ) {
-  const signals = reservationModuleSignals(reservation);
   return {
     id: reservation.id,
-    code: reservation.code,
-    status: reservation.status,
-    roomNumber: reservation.roomNumber,
+    externalReference: reservation.code,
     guest: reservation.guest?.fullName ?? null,
-    checkIn: reservation.checkIn,
-    checkOut: reservation.checkOut,
-    channel: reservation.channel,
-    guaranteeStatus: reservation.guaranteeStatus,
-    balanceDue: reservation.balanceDue ? Number(reservation.balanceDue) : null,
-    requiresAction: reservation.requiresAction,
-    actionNote: reservation.actionNote,
-    signals,
-    guarantees: reservation.guarantees.slice(0, 12).map((item) => ({
-      id: item.id,
-      reference: item.reference,
-      state: item.state,
-      kind: item.kind,
-      amount: Number(item.amount),
-      appliedAmount: Number(item.appliedAmount ?? 0),
-      penaltyAmount: Number(item.penaltyAmount ?? 0),
-      currency: item.currency,
-      dueAt: item.dueAt,
-    })),
-    activeStays: reservation.stays
-      .filter((stay) => stay.stage !== 'FINALIZADO')
-      .slice(0, 12)
-      .map((stay) => ({
-        id: stay.id,
-        room: stay.room?.number ?? null,
-        status: stay.status,
-        stage: stay.stage,
-        arrivalDate: stay.arrivalDate,
-        departureDate: stay.departureDate,
-        guestNames: stay.guestNames,
-        keys: stay.keys.map((key) => ({ code: key.code, status: key.status })),
-      })),
-    recentEntries: reservation.entries.slice(0, 10).map((entry) => ({
+    roomNumber: reservation.roomNumber,
+    note: reservation.actionNote ?? reservation.notes ?? null,
+    linkedEntries: reservation.entries.slice(0, 12).map((entry) => ({
       id: entry.id,
       ref: `#${entry.humanId}`,
       type: entry.type,
@@ -134,13 +86,20 @@ function compactReservationContext(
       status: entry.status,
       priority: entry.priority,
       owner: entry.owner?.name ?? null,
-    })),
-    alerts: reservation.alerts.slice(0, 10).map((alert) => ({
-      id: alert.id,
-      title: alert.title,
-      status: alert.status,
-      level: alert.level,
-      dueAt: alert.dueAt,
+      tasks: entry.tasks.slice(0, 8).map((task) => ({
+        id: task.id,
+        ref: `#${task.humanId}`,
+        title: task.title,
+        status: task.status,
+        assignee: task.assignee?.name ?? null,
+      })),
+      followUps: entry.followUps.slice(0, 8).map((followUp) => ({
+        id: followUp.id,
+        ref: `#${followUp.humanId}`,
+        action: followUp.action,
+        status: followUp.status,
+        owner: followUp.owner.name,
+      })),
     })),
   };
 }
@@ -167,100 +126,6 @@ async function bookSnapshot(page: FrontiResolvedPageContext) {
       overdue: item.overdue,
       href: item.href,
     })),
-  };
-}
-
-async function reservationCenterSnapshot(
-  user: CurrentUser,
-  page: FrontiResolvedPageContext,
-) {
-  requireAny(
-    user,
-    ['reservation.center.view'],
-    'No tienes permiso para consultar la Central de Reservas.',
-  );
-  const snapshot = await getReservationCenterSnapshot();
-  const view = page.filters.vista ?? '';
-  const q = (page.filters.q ?? '').toLocaleLowerCase('es-CL');
-
-  const rows = snapshot.reservations.filter((reservation) => {
-    const text = [
-      reservation.code,
-      reservation.guest?.fullName,
-      reservation.roomNumber,
-      reservation.channel,
-      reservation.actionNote,
-      reservation.notes,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLocaleLowerCase('es-CL');
-    if (q && !text.includes(q)) return false;
-    if (view === 'accion' && !reservationNeedsAttention(reservation)) return false;
-    if (
-      view === '24h' &&
-      !(
-        reservation.checkIn &&
-        reservation.checkIn >= snapshot.now &&
-        reservation.checkIn <= snapshot.horizons.in24Hours
-      )
-    ) return false;
-    if (
-      view === '72h' &&
-      !(
-        reservation.checkIn &&
-        reservation.checkIn >= snapshot.now &&
-        reservation.checkIn <= snapshot.horizons.in72Hours
-      )
-    ) return false;
-    if (view === 'recientes' && reservation.updatedAt < snapshot.horizons.oneDayAgo) return false;
-    return true;
-  });
-
-  return {
-    generatedAt: snapshot.now,
-    view: view || 'bandeja',
-    query: q || null,
-    counts: {
-      visible: rows.length,
-      attention: snapshot.reservations.filter(reservationNeedsAttention).length,
-      next24: snapshot.reservations.filter(
-        (reservation) =>
-          reservation.checkIn &&
-          reservation.checkIn >= snapshot.now &&
-          reservation.checkIn <= snapshot.horizons.in24Hours &&
-          (reservation.status === ReservationStatus.PENDIENTE ||
-            reservation.status === ReservationStatus.CONFIRMADA),
-      ).length,
-      next72: snapshot.reservations.filter(
-        (reservation) =>
-          reservation.checkIn &&
-          reservation.checkIn >= snapshot.now &&
-          reservation.checkIn <= snapshot.horizons.in72Hours &&
-          (reservation.status === ReservationStatus.PENDIENTE ||
-            reservation.status === ReservationStatus.CONFIRMADA),
-      ).length,
-    },
-    reservations: rows.slice(0, 30).map((reservation) => ({
-      id: reservation.id,
-      code: reservation.code,
-      guest: reservation.guest?.fullName ?? null,
-      vip: reservation.guest?.vip ?? false,
-      roomNumber: reservation.roomNumber,
-      checkIn: reservation.checkIn,
-      checkOut: reservation.checkOut,
-      status: reservation.status,
-      guaranteeStatus: reservation.guaranteeStatus,
-      balanceDue: reservation.balanceDue ? Number(reservation.balanceDue) : null,
-      requiresAction: reservation.requiresAction,
-      actionNote: reservation.actionNote,
-      updatedAt: reservation.updatedAt,
-    })),
-    related: {
-      tasks: snapshot.tasks.slice(0, 20),
-      alerts: snapshot.alerts.slice(0, 20),
-      followUps: snapshot.followUps.slice(0, 20),
-    },
   };
 }
 
@@ -846,7 +711,14 @@ export async function executeFrontiPageContextTool(
         snapshot: await getNotificationFeedForUser(user.id, 40),
       };
     case 'central-reservas':
-      return { ...base, snapshot: await reservationCenterSnapshot(user, page) };
+      return {
+        ...base,
+        snapshot: {
+          retired: true,
+          note:
+            'La antigua Central de Reservas fue retirada del núcleo de AROH. Usa Novedades y enlaza una referencia PMS sólo cuando aporta contexto al hecho operativo.',
+        },
+      };
     case 'reservas':
     case 'habitaciones':
       return {

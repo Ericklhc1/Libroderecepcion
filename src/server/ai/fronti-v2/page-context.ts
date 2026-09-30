@@ -98,6 +98,16 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/libro/habitaciones') {
+    return detail(
+      'habitaciones-operativas',
+      'Novedades',
+      filters.habitacion ? 'detalle-habitacion' : 'monitor',
+      filters.habitacion ? `Monitor habitación ${filters.habitacion}` : 'Monitor por habitación',
+      ['consultar_contexto_pantalla', 'consultar_prioridades'],
+    );
+  }
+
   const libroDetail = pathname.match(/^\/libro\/([^/]+)$/);
   if (libroDetail) {
     return detail('novedades', 'Novedades', 'detalle', 'Detalle de registro', [

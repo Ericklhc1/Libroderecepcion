@@ -23,12 +23,12 @@ export type FormOptions = {
 /**
  * Opciones para los formularios operativos.
  *
- * Desde v1.4.0 esta función NO consulta huéspedes, reservas, estadías ni
- * habitaciones. Novedades, tareas y Supervisión funcionan sólo con personas,
- * áreas, registros, tareas y turnos.
+ * No consulta PMS, huéspedes ni estadías. Sí carga el catálogo fijo de
+ * habitaciones porque una habitación puede ser contexto operativo transversal
+ * de Novedades, Tareas y Alertas sin convertir AROH en PMS.
  */
 export async function getFormOptions(): Promise<FormOptions> {
-  const [users, departments, entries, tasks, activeShifts] = await Promise.all([
+  const [users, departments, entries, tasks, rooms, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
       where: { active: true },
@@ -46,6 +46,11 @@ export async function getFormOptions(): Promise<FormOptions> {
       orderBy: { createdAt: 'desc' },
       select: { id: true, humanId: true, title: true },
       take: 100,
+    }),
+    prisma.room.findMany({
+      where: { active: true },
+      orderBy: [{ floor: 'asc' }, { number: 'asc' }],
+      select: { id: true, number: true },
     }),
     prisma.shift.findMany({
       where: {
@@ -74,7 +79,7 @@ export async function getFormOptions(): Promise<FormOptions> {
       value: task.id,
       label: `Tarea #${task.humanId} · ${task.title}`,
     })),
-    rooms: [],
+    rooms: rooms.map((room) => ({ value: room.id, label: room.number })),
     activeShifts: activeShifts.map((shift) => ({
       value: shift.id,
       label: `${shift.type} · ${formatCalendarDate(shift.date)}`,

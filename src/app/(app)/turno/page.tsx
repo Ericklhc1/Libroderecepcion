@@ -157,14 +157,6 @@ export default async function ShiftPage({
   const incoming = desk.pending;
   const cashIncoming = desk.cashPending;
   const pendingHandover = cashIncoming ?? incoming;
-  const pendingHandoverIsOwn = Boolean(
-    pendingHandover &&
-      desk.awaitingReceipt.some(
-        (waitingShift) =>
-          waitingShift.id === pendingHandover.fromShiftId &&
-          waitingShift.assignments.some((assignment) => assignment.userId === user.id),
-      ),
-  );
   const sharedOperationalShift =
     !shift && desk.operationalCurrent ? desk.operationalCurrent : null;
   const outgoingStillClosing = Boolean(
@@ -417,20 +409,6 @@ export default async function ShiftPage({
                     <div className="mt-3 max-w-md">
                       <EmergencyOpenShiftForm suggestedType={desk.suggestedType} />
                     </div>
-                  </div>
-                ) : pendingHandoverIsOwn ? (
-                  <div className="rounded-lg bg-amber-50 px-3 py-3 ring-1 ring-amber-300">
-                    <p className="font-semibold text-amber-950">
-                      Tu entrega ya está cerrada · espera a otro receptor
-                    </p>
-                    <p className="mt-1 text-sm leading-5 text-amber-900">
-                      No puedes recibir tu propia entrega. La recepción debe hacerla otra persona
-                      autorizada para que el recuento, la custodia y las firmas queden separados.
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-amber-800">
-                      Si excepcionalmente debes continuar tú mismo en el siguiente turno, avisa a
-                      Supervisión: ese caso no se resuelve intentando recibir tu propia entrega.
-                    </p>
                   </div>
                 ) : cashIncoming || incoming ? (
                   <div className="rounded-lg bg-gold-50 px-3 py-3 ring-1 ring-gold-300">

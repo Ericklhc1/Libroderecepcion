@@ -114,6 +114,7 @@ export function EditEntryDialog({
   entry,
   departments,
   users,
+  rooms,
 }: {
   entry: {
     id: string;
@@ -121,12 +122,14 @@ export function EditEntryDialog({
     description: string;
     dueAt: string;
     departmentId: string | null;
+    roomId: string | null;
     ownerId: string | null;
     priority: string;
     tags: string[];
   };
   departments: Array<{ value: string; label: string }>;
   users: Array<{ value: string; label: string }>;
+  rooms: Array<{ value: string; label: string }>;
 }) {
   return (
     <Dialog
@@ -160,7 +163,15 @@ export function EditEntryDialog({
             <Input type="datetime-local" name="dueAt" defaultValue={entry.dueAt} />
           </Field>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Habitación" name="roomId">
+            <Select
+              name="roomId"
+              placeholder="Sin habitación"
+              defaultValue={entry.roomId ?? ''}
+              options={rooms}
+            />
+          </Field>
           <Field label="Área" name="departmentId">
             <Select
               name="departmentId"

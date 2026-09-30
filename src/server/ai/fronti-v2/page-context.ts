@@ -305,6 +305,18 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_prioridades',
     ]);
   }
+  if (pathname === '/gerencia') {
+    return detail('gerencia', 'Gerencia', filters.dias ? `${filters.dias}d` : '30d', 'Cockpit estratégico de Gerencia', [
+      'consultar_contexto_pantalla',
+      'consultar_prioridades',
+      'consultar_supervision',
+      'consultar_caja',
+      'consultar_garantias',
+      'consultar_llaves',
+      'consultar_turnos',
+      'consultar_auditoria',
+    ]);
+  }
 
   if (pathname === '/supervision') {
     return detail('supervision', 'Centro de Supervisión', 'centro', 'Centro de Supervisión', [

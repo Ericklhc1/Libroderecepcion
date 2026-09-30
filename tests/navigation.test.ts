@@ -81,6 +81,18 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
+  it('Gerencia vive en un grupo de Dirección separado del núcleo operativo', () => {
+    const direction = NAV_GROUPS.find((group) => group.title === 'Dirección');
+    expect(direction?.items.map((item) => item.href)).toEqual(['/gerencia']);
+
+    const management = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]).map((i) => i.href);
+    expect(management).toContain('/gerencia');
+
+    for (const roleKey of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR]) {
+      expect(visibleNavItems(ROLE_PERMISSIONS[roleKey]).map((i) => i.href)).not.toContain('/gerencia');
+    }
+  });
+
   it('el Supervisor ve el Centro como módulo raíz privado', () => {
     const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SUPERVISOR];
     expect(permissions).toContain('supervision.view');

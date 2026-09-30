@@ -64,7 +64,7 @@ export function canFrontiUseTool(
     case 'consultar_caja':
       return hasAnyPermission(user, ['cash.view']);
     case 'consultar_llaves':
-      return hasAnyPermission(user, ['key.inventory']);
+      return hasAnyPermission(user, ['key.inventory', 'management.dashboard.view']);
     case 'consultar_turnos':
       return hasAnyPermission(user, [
         'shift.start',

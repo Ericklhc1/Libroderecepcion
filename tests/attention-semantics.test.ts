@@ -34,6 +34,12 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
     expect(actions).toContain('router.push(href)');
   });
 
+  it('Indicadores no vuelve a contar Alert legada como alerta visible', () => {
+    const metrics = readFileSync('src/server/services/metrics.ts', 'utf8');
+    expect(metrics).toContain('prisma.operationalAlarm.count');
+    expect(metrics).not.toContain('prisma.alert.count');
+  });
+
   it('Tareas conservan su ciclo propio, inicio programado y avisos enlazados', () => {
     const page = readFileSync('src/app/(app)/tareas/page.tsx', 'utf8');
     const service = readFileSync('src/server/services/tasks.ts', 'utf8');

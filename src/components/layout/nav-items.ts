@@ -336,6 +336,15 @@ const PRIMARY: NavItem[] = [
   },
 ];
 
+const MANAGEMENT: NavItem[] = [
+  {
+    href: '/gerencia',
+    label: 'Gerencia',
+    icon: 'metrics',
+    anyOf: ['management.dashboard.view'],
+  },
+];
+
 const SECONDARY: NavItem[] = [
   {
     href: '/admin/auditoria',
@@ -409,6 +418,7 @@ const SYSTEM: NavItem[] = [
 
 export const NAV_GROUPS: NavGroup[] = [
   { title: null, items: PRIMARY },
+  { title: 'Dirección', items: MANAGEMENT },
   { title: 'Consulta', items: SECONDARY },
   { title: 'Sistema', items: SYSTEM },
 ];

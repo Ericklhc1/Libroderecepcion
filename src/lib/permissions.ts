@@ -38,6 +38,7 @@ export const PERMISSIONS = {
   'nightaudit.run': { group: 'Auditoría nocturna', name: 'Controles y cierre nocturno' },
 
   'metrics.view': { group: 'Indicadores', name: 'Ver indicadores' },
+  'management.dashboard.view': { group: 'Gerencia', name: 'Ver cockpit estratégico de Gerencia' },
   'audit.view': { group: 'Auditoría', name: 'Ver registro de auditoría' },
 
   /*
@@ -330,6 +331,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'supervision.performance.view',
     'supervision.history.view',
     'metrics.view',
+    'management.dashboard.view',
     'room.view',
     'audit.view',
     'cash.view',

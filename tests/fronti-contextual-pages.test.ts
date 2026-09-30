@@ -72,6 +72,7 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(pages.map(routeForPage)).toContain('/central-reservas');
     expect(pages.map(routeForPage)).toContain('/caja');
     expect(pages.map(routeForPage)).toContain('/supervision');
+    expect(pages.map(routeForPage)).toContain('/gerencia');
     expect(pages.map(routeForPage)).toContain('/admin/fronti');
   });
 
@@ -117,6 +118,28 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(reservations.sectionLabel).toBe('Llegadas próximas 24 h');
     expect(reservations.filters.q).toBe('martinez');
   });
+  it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
+    const management = resolveFrontiPageContext({
+      pathname: '/gerencia',
+      search: '?dias=30',
+    });
+    expect(management.moduleKey).toBe('gerencia');
+    expect(management.sectionLabel).toBe('Cockpit estratégico de Gerencia');
+    expect(management.filters.dias).toBe('30');
+    expect(management.recommendedTools).toEqual(
+      expect.arrayContaining([
+        'consultar_contexto_pantalla',
+        'consultar_prioridades',
+        'consultar_supervision',
+        'consultar_caja',
+        'consultar_garantias',
+        'consultar_llaves',
+        'consultar_turnos',
+        'consultar_auditoria',
+      ]),
+    );
+  });
+
   it('mantiene lectura contextual disponible fuera de turno pero bloquea propuestas', () => {
     const source = readFileSync('src/server/ai/reception-assistant.ts', 'utf8');
     expect(source).toContain("const mode = frontiToolMode(name)");

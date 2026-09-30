@@ -1,5 +1,19 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 30/09/2026 · AROH 1.35.0 · Gerencia estratégica
+
+- Rama: `feature/gerencia-estrategica-v1-35-0`.
+- Nuevo módulo raíz `/gerencia`, visible mediante `management.dashboard.view`; acceso inicial para GERENCIA y Administrador de sistema.
+- El sidebar conserva la regla 1.34.1: Gerencia vive bajo el grupo «Dirección» y no despliega submenús inline.
+- El cockpit es read-only y abre con **Decisiones requeridas**; después muestra scorecard, tendencias contra período anterior, exposición de control y cobertura de fuentes.
+- Las señales se calculan con hechos determinísticos de AROH: tareas, incidencias, turnos/entregas, reservas, arqueos, llaves, auditorías y medidas correctivas.
+- No inventar ocupación, ADR, RevPAR, TRevPAR, GOPPAR, Flow Through/Flex, costo laboral/POR/PAR, reputación ni benchmark hasta conectar una fuente autoritativa.
+- No generar rankings de personas. Gerencia analiza procesos, excepciones, riesgo y capacidad de ejecución.
+- Semántica protegida: una decisión puede convertirse deliberadamente en Tarea; una atención temporal en Alerta; Notificación sigue siendo sólo aviso. El cockpit no crea objetos ni cambia estados automáticamente.
+- `/indicadores` deja de contar Alert legada y usa `OperationalAlarm` para «Alertas activas».
+- Fronti cataloga `/gerencia`, pero los hechos del cockpit no dependen de inferencia IA.
+- Release objetivo: **v1.35.0**. Migración aditiva sólo de permiso.
+
 ## 29/09/2026 · AROH 1.34.1 · sidebar simplificado
 
 - Rama: `fix/sidebar-simplificado-v1-34-1`.

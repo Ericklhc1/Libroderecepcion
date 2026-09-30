@@ -81,7 +81,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-[#f4f2ed]">
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-300 border-t-2 border-t-gold-500 bg-white/98 backdrop-blur no-print">
+        <header className="sticky top-0 z-30 border-b border-slate-300 border-t-2 border-t-gold-500 bg-white backdrop-blur no-print">
           <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-3 py-2">
             <Link href="/" className="flex shrink-0 items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-md bg-petrol-950 text-gold-400 ring-1 ring-petrol-800">

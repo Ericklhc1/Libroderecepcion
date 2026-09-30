@@ -1,5 +1,6 @@
 import { KeyStatus, KeyType } from '@prisma/client';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { roomNumbers } from './room-catalog';
 import {
   ALL_PERMISSIONS,
   PERMISSIONS,
@@ -20,19 +21,6 @@ export const DEPARTMENTS = [
   { key: 'SISTEMAS', name: 'Sistemas', order: 9 },
   { key: 'AREAS_PUBLICAS', name: 'Áreas públicas', order: 10 },
   { key: 'OTRO', name: 'Otro', order: 99 },
-];
-
-/**
- * Inventario de habitaciones del hotel: pisos 4, 5 y 6.
- *
- * Es el catálogo real del Hotel HW Libertad. Las habitaciones son la entidad
- * central del módulo operativo, así que existen desde la instalación y no
- * dependen de que un informe del PMS las mencione.
- */
-export const ROOM_RANGES = [
-  { floor: 4, from: 401, to: 429 },
-  { floor: 5, from: 501, to: 530 },
-  { floor: 6, from: 601, to: 630 },
 ];
 
 /**

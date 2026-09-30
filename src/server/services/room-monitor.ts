@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   EntryType,
+  FollowUpStatus,
   GuaranteeState,
   OperationalAlarmStatus,
   Priority,
@@ -35,6 +36,7 @@ export type RoomMonitorTile = {
   overdueTasks: number;
   activeAlarms: number;
   openGuarantees: number;
+  openFollowUps: number;
   attention: 'critical' | 'attention' | 'active' | 'clear';
   lastActivityAt: Date | null;
 };
@@ -70,7 +72,8 @@ export async function getRoomMonitorOverview(now = new Date()) {
     },
   });
 
-  const [guarantees, alarms] = await Promise.all([
+  const roomIds = rooms.map((room) => room.id);
+  const [guarantees, alarms, followUps] = await Promise.all([
     prisma.guarantee.findMany({
       where: {
         deletedAt: null,
@@ -85,6 +88,22 @@ export async function getRoomMonitorOverview(now = new Date()) {
         status: OperationalAlarmStatus.ACTIVA,
       },
       select: { roomNumber: true, updatedAt: true },
+    }),
+    prisma.followUp.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+        OR: [
+          { entry: { roomId: { in: roomIds } } },
+          { task: { roomId: { in: roomIds } } },
+        ],
+      },
+      select: {
+        status: true,
+        updatedAt: true,
+        entry: { select: { roomId: true } },
+        task: { select: { roomId: true } },
+      },
     }),
   ]);
 
@@ -106,9 +125,20 @@ export async function getRoomMonitorOverview(now = new Date()) {
     alarmMap.set(row.roomNumber, current);
   }
 
+  const followUpMap = new Map<string, { count: number; latest: Date | null }>();
+  for (const row of followUps) {
+    const roomId = row.entry?.roomId ?? row.task?.roomId;
+    if (!roomId) continue;
+    const current = followUpMap.get(roomId) ?? { count: 0, latest: null };
+    current.count += 1;
+    current.latest = latestDate([current.latest, row.updatedAt]);
+    followUpMap.set(roomId, current);
+  }
+
   const tiles: RoomMonitorTile[] = rooms.map((room) => {
     const guarantee = guaranteeMap.get(room.number);
     const alarm = alarmMap.get(room.number);
+    const followUp = followUpMap.get(room.id);
     const criticalIncidents = room.entries.filter(
       (entry) =>
         entry.type === EntryType.INCIDENCIA &&
@@ -119,12 +149,13 @@ export async function getRoomMonitorOverview(now = new Date()) {
     const openTasks = room.tasks.length;
     const activeAlarms = alarm?.count ?? 0;
     const openGuarantees = guarantee?.count ?? 0;
+    const openFollowUps = followUp?.count ?? 0;
     const attention =
       criticalIncidents > 0 || overdueTasks > 0
         ? 'critical'
         : activeAlarms > 0 || openGuarantees > 0
           ? 'attention'
-          : openEntries > 0 || openTasks > 0
+          : openEntries > 0 || openTasks > 0 || openFollowUps > 0
             ? 'active'
             : 'clear';
 
@@ -138,12 +169,14 @@ export async function getRoomMonitorOverview(now = new Date()) {
       overdueTasks,
       activeAlarms,
       openGuarantees,
+      openFollowUps,
       attention,
       lastActivityAt: latestDate([
         ...room.entries.map((entry) => entry.updatedAt ?? entry.occurredAt),
         ...room.tasks.map((task) => task.updatedAt ?? task.createdAt),
         guarantee?.latest,
         alarm?.latest,
+        followUp?.latest,
       ]),
     };
   });
@@ -158,6 +191,7 @@ export async function getRoomMonitorOverview(now = new Date()) {
       openTasks: tiles.reduce((sum, room) => sum + room.openTasks, 0),
       activeAlarms: tiles.reduce((sum, room) => sum + room.activeAlarms, 0),
       openGuarantees: tiles.reduce((sum, room) => sum + room.openGuarantees, 0),
+      openFollowUps: tiles.reduce((sum, room) => sum + room.openFollowUps, 0),
     },
   };
 }
@@ -169,7 +203,7 @@ export async function getRoomMonitorDetail(number: string) {
   });
   if (!room) throw new NotFoundError('Esa habitación no existe en el catálogo operativo.');
 
-  const [entries, tasks, alarms, guarantees, passes, fines] = await Promise.all([
+  const [entries, tasks, followUps, alarms, guarantees, passes, fines] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: { roomId: room.id, deletedAt: null },
       orderBy: [{ status: 'asc' }, { occurredAt: 'desc' }],
@@ -202,6 +236,26 @@ export async function getRoomMonitorDetail(number: string) {
         dueAt: true,
         createdAt: true,
         assignee: { select: { name: true } },
+      },
+    }),
+    prisma.followUp.findMany({
+      where: {
+        deletedAt: null,
+        OR: [{ entry: { roomId: room.id } }, { task: { roomId: room.id } }],
+      },
+      orderBy: [{ status: 'asc' }, { scheduledAt: 'asc' }, { updatedAt: 'desc' }],
+      take: 30,
+      select: {
+        id: true,
+        humanId: true,
+        action: true,
+        nextAction: true,
+        status: true,
+        priority: true,
+        scheduledAt: true,
+        owner: { select: { name: true } },
+        entryId: true,
+        taskId: true,
       },
     }),
     prisma.operationalAlarm.findMany({
@@ -274,6 +328,7 @@ export async function getRoomMonitorDetail(number: string) {
     room,
     entries,
     tasks,
+    followUps,
     alarms,
     guarantees,
     passes,

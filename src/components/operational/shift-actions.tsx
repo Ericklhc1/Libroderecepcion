@@ -71,10 +71,10 @@ function GuidedShiftSubmit({
             role="dialog"
             aria-modal="true"
             aria-labelledby="shift-guide-title"
-            className="max-h-[min(90vh,44rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+            className="max-h-[min(90vh,44rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-slate-200"
           >
             <div className="flex items-start gap-3">
-              <span className="rounded-xl bg-petrol-50 p-2 text-petrol-800">
+              <span className="rounded-md bg-petrol-50 p-2 text-petrol-800">
                 <Compass className="h-5 w-5" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
@@ -212,7 +212,7 @@ export function EmergencyOpenShiftForm({
             role="dialog"
             aria-modal="true"
             aria-labelledby="emergency-shift-title"
-            className="max-h-[min(92vh,48rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-red-200"
+            className="max-h-[min(92vh,48rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-red-200"
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -239,7 +239,7 @@ export function EmergencyOpenShiftForm({
               </button>
             </div>
 
-            <div className="mt-4 rounded-xl bg-red-50 p-3 ring-1 ring-red-200">
+            <div className="mt-4 rounded-md bg-red-50 p-3 ring-1 ring-red-200">
               <p className="text-sm font-semibold text-red-900">
                 Sólo procede por una de estas razones:
               </p>
@@ -265,7 +265,7 @@ export function EmergencyOpenShiftForm({
               </p>
             </div>
 
-            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
               <input
                 type="checkbox"
                 name="emergencyAccepted"
@@ -428,7 +428,7 @@ export function ConfirmReceptionReviewStepForm({
       <input type="hidden" name="step" value={step} />
 
       {step === 'FINAL' && urgentCount > 0 ? (
-        <label className="flex items-start gap-3 rounded-xl bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+        <label className="flex items-start gap-3 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
           <input
             type="checkbox"
             name="urgentAcknowledged"
@@ -549,7 +549,7 @@ export function ConfirmHandoverReviewStepForm({
       <input type="hidden" name="step" value={step} />
 
       {step === 'FINAL' && urgentCount > 0 ? (
-        <label className="flex items-start gap-3 rounded-xl bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+        <label className="flex items-start gap-3 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
           <input
             type="checkbox"
             name="urgentAcknowledged"
@@ -598,7 +598,7 @@ export function SendHandoverForm({ shiftId }: { shiftId: string }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="send-handover-title"
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+            className="w-full max-w-lg rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-slate-200"
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -703,7 +703,7 @@ export function CloseShiftForm({
             role="dialog"
             aria-modal="true"
             aria-labelledby="close-shift-title"
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-gold-200"
+            className="w-full max-w-lg rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-gold-200"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">Último paso</p>
             <h2 id="close-shift-title" className="mt-1 text-lg font-semibold text-petrol-950">
@@ -758,7 +758,7 @@ export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="cancel-close-title"
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-red-200"
+            className="w-full max-w-lg rounded-lg bg-white p-5 shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] ring-1 ring-red-200"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
               Volver a operación

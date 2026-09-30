@@ -249,6 +249,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'incident.close',
     'shift.manage',
     'audit.view',
+    'management.dashboard.view',
     'key.stock',
     'room.reset',
     'conflict.resolve_all',

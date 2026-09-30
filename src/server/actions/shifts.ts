@@ -27,6 +27,7 @@ import {
   openShift,
   prepareHandover,
   receiveHandover,
+  reassignShiftLead,
   startReceptionShift,
   sendHandover,
 } from '@/server/services/shifts';
@@ -161,6 +162,25 @@ export async function addShiftMemberAction(
     await addShiftMember(user, input);
     refresh(input.shiftId);
     return { ok: true as const, message: 'Persona sumada al turno.' };
+  });
+}
+
+const reassignLeadSchema = z.object({
+  shiftId: z.string().min(1),
+  userId: z.string().min(1),
+});
+
+export async function reassignShiftLeadAction(
+  _state: ActionState | null,
+  formData: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.reassign');
+    const input = parseOrThrow(reassignLeadSchema, formDataToObject(formData));
+
+    await reassignShiftLead(user, input);
+    refresh(input.shiftId);
+    return { ok: true as const, message: 'Titular del turno reasignado correctamente.' };
   });
 }
 

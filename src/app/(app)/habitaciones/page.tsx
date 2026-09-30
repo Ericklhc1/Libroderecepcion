@@ -1,14 +1,11 @@
 import { redirect } from 'next/navigation';
 
-export const metadata = { title: 'Habitaciones PMS retiradas' };
+export const metadata = { title: 'Novedades · Habitaciones' };
 
 /**
- * Ruta operativa retirada en v1.4.0.
- *
- * El Libro ya no administra PMS, habitaciones, huéspedes ni llaves. Se mantiene
- * la ruta únicamente para que marcadores y enlaces históricos lleguen al nuevo
- * núcleo operativo sin reactivar consultas legadas.
+ * Compatibilidad histórica. «Habitaciones» ya no es una pantalla PMS:
+ * redirige al monitor de contexto operativo de Novedades.
  */
-export default function RetiredOperationalRoute() {
-  redirect('/libro');
+export default function RoomContextCompatibilityRoute() {
+  redirect('/libro/habitaciones');
 }

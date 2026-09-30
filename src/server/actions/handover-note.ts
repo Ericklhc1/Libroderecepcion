@@ -30,7 +30,12 @@ export async function saveSingleHandoverNoteAction(
     if (handover.status !== HandoverStatus.BORRADOR) {
       throw new RuleError('La entrega ya fue enviada: la nota no puede modificarse.');
     }
-    if (!handover.fromShift.assignments.some((assignment) => assignment.userId === user.id)) {
+    if (
+      !handover.fromShift.assignments.some(
+        (assignment) =>
+          assignment.userId === user.id && assignment.activatedAt && !assignment.leftAt,
+      )
+    ) {
       throw new RuleError('Sólo quien está en el turno puede editar la nota de entrega.');
     }
 

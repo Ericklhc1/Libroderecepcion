@@ -1,6 +1,16 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
 
+## Actualización 30/09/2026 · AROH 1.37.2 · alineación visual transversal
+
+- Se corrige el desequilibrio visual del monitor **Novedades / habitación**: las tarjetas usan altura interna completa y distribución vertical estable; cuando existe una sola métrica (por ejemplo «Novedades 1») ocupa el ancho completo en vez de quedar perdida en la mitad izquierda. Si hay una cantidad impar de métricas, la última también se expande para conservar balance.
+- El estado «Sin contexto abierto» queda centrado en la base de la tarjeta y los indicadores críticos conservan una zona propia, evitando saltos visuales entre habitaciones.
+- Revisión de primitivas compartidas: botones reciben alturas mínimas por tamaño, badges/chips centran su contenido, inputs/selects mantienen una altura mínima coherente y las tarjetas globales usan `min-width: 0` para no desbordar grids/flex.
+- Los encabezados de Card comparten altura mínima y el gutter del topbar móvil/escritorio queda alineado con el contenido principal.
+- Se agrega una regresión visual estructural que protege estas reglas y el centrado viewport-real de los diálogos.
+- No cambia lógica operativa, permisos, datos ni Prisma. Versión: **v1.37.2**.
+
+
 ## Actualización 30/09/2026 · AROH 1.37.1 · hora Chile canónica en formularios
 
 - Causa raíz corregida: los campos HTML `datetime-local` enviaban valores sin zona (por ejemplo `2026-09-30T11:00`) y `zOptionalDate` los convertía con `new Date()` en el servidor UTC de Vercel. Al mostrarlos luego en `America/Santiago`, 11:00 quedaba como 08:00.

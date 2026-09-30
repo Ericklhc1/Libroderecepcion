@@ -1,0 +1,58 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const APP_ROOT = join(process.cwd(), 'src', 'app', '(app)');
+
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? walk(path) : [path];
+  });
+}
+
+function routeForPage(path: string): string {
+  const local = relative(APP_ROOT, path).split(sep).join('/');
+  const withoutPage = local === 'page.tsx' ? '' : local.replace(/\/page\.tsx$/, '');
+  return '/' + withoutPage;
+}
+
+describe('sistema visual corporativo · cobertura total de pantallas', () => {
+  const pages = walk(APP_ROOT).filter((path) => path.endsWith(sep + 'page.tsx'));
+
+  it('recorre todas las pantallas autenticadas actuales', () => {
+    expect(pages.length).toBeGreaterThanOrEqual(45);
+  });
+
+  it('ninguna pantalla hardcodea una geometría paralela al sistema global', () => {
+    const offenders = pages.flatMap((path) => {
+      const source = readFileSync(path, 'utf8');
+      const reasons: string[] = [];
+      if (/rounded-\[[^\]]+\]/.test(source)) reasons.push('radio arbitrario');
+      if (/borderRadius\s*:/.test(source)) reasons.push('borderRadius inline');
+      if (/fontFamily\s*:/.test(source)) reasons.push('fontFamily inline');
+      if (/font-family\s*:/.test(source)) reasons.push('font-family inline');
+      return reasons.map((reason) => `${routeForPage(path)}: ${reason}`);
+    });
+
+    expect(offenders, 'Pantallas fuera del sistema visual: ' + offenders.join(', ')).toEqual([]);
+  });
+
+  it('el shell autenticado aplica la identidad corporativa a todas las rutas', () => {
+    const layout = readFileSync(join(APP_ROOT, 'layout.tsx'), 'utf8');
+    expect(layout).toContain("bg-[#f4f2ed]");
+    expect(layout).toContain('border-t-gold-500');
+    expect(layout).toContain('bg-petrol-950 text-gold-400');
+  });
+
+  it('los tokens globales controlan geometría, superficies y neutrales', () => {
+    const config = readFileSync('tailwind.config.ts', 'utf8');
+    const css = readFileSync('src/app/globals.css', 'utf8');
+
+    expect(config).toContain("50: '#faf9f6'");
+    expect(config).toContain("100: '#f4f2ed'");
+    expect(config).toContain("lg: '5px'");
+    expect(css).toContain('border border-slate-300 bg-white shadow-card');
+    expect(css).toContain('background-color: #faf9f6');
+  });
+});

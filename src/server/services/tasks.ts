@@ -107,13 +107,22 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
   if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
   let origin = inferOrigin(input);
+  let roomId = input.roomId ?? null;
+  if (roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: roomId, active: true },
+      select: { id: true },
+    });
+    if (!room) throw new RuleError('La habitación seleccionada no existe o está inactiva.');
+  }
   if (input.entryId) {
     const entry = await prisma.operationalEntry.findFirst({
       where: { id: input.entryId, deletedAt: null },
-      select: { type: true },
+      select: { type: true, roomId: true },
     });
     if (!entry) throw new NotFoundError('El registro de origen no existe.');
     if (entry.type === 'INCIDENCIA') origin = TaskOrigin.INCIDENCIA;
+    if (!roomId && entry.roomId) roomId = entry.roomId;
   }
 
   const shift = await getMyOpenShift(user.id);
@@ -142,7 +151,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         targetType,
         targetShiftId: input.targetShiftId ?? null,
         supervisionShiftId: supervisionShift?.id ?? null,
-        roomId: input.roomId ?? null,
+        roomId,
         guestId: input.guestId ?? null,
         reservationId: input.reservationId ?? null,
         stayId: input.stayId ?? null,
@@ -232,6 +241,7 @@ const TASK_EDITABLE = [
   'startsAt',
   'dueAt',
   'departmentId',
+  'roomId',
   'tags',
   'blockedReason',
   'fulfillmentCriteria',

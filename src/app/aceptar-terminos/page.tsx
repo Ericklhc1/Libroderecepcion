@@ -23,7 +23,7 @@ export default async function AcceptTermsPage() {
   if (await hasAcceptedCurrentTerms(user.id)) redirect('/');
 
   return (
-    <main className="min-h-screen bg-[#f4f2ed] px-4 py-8">
+    <main className="min-h-screen bg-[#f3f6f8] px-4 py-8">
       <div className="mx-auto w-full max-w-3xl">
         <header className="mb-5 flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-md bg-petrol-950 text-gold-300">

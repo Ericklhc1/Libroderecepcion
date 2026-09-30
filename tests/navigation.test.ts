@@ -21,6 +21,12 @@ const ROLES = Object.values(ROLE_KEYS);
 const RETIRED_FROM_MENU = ['/tareas', '/incidencias', '/seguimientos'];
 
 describe('menú principal', () => {
+  it('no vuelve a exponer Central de Reservas como módulo', () => {
+    const hrefs = NAV_GROUPS.flatMap((group) => group.items).map((item) => item.href);
+    expect(hrefs).not.toContain('/central-reservas');
+    expect(hrefs).toContain('/novedades/habitacion');
+  });
+
   it('no ofrece tareas, incidencias y seguimientos como módulos raíz separados', () => {
     const hrefs = NAV_GROUPS.flatMap((group) => group.items).map((item) => item.href);
     for (const retired of RETIRED_FROM_MENU) {
@@ -34,7 +40,7 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual([
       '/', // ventana operativa
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
-      '/central-reservas', // preparación previa y continuidad de reservas
+      '/novedades/habitacion', // contexto operativo sobre las 89 habitaciones
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
@@ -78,7 +84,7 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/caja', '/turno', '/llaves', '/alertas']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
   it('Gerencia vive en un grupo de Dirección separado del núcleo operativo', () => {

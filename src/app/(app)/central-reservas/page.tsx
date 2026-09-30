@@ -12,7 +12,7 @@ import {
   RESERVATION_STATUS_LABEL,
 } from '@/domain/labels';
 
-export const metadata = { title: 'Central de Reservas' };
+export const metadata = { title: 'Contexto PMS' };
 export const dynamic = 'force-dynamic';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -115,12 +115,12 @@ export default async function CentralReservationsPage({
     <div className="mx-auto max-w-7xl space-y-4">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-petrol-600">
-          Preparación antes de la operación
+          Vista auxiliar · fuera del núcleo operativo
         </p>
-        <h1 className="mt-1 text-2xl font-semibold text-petrol-900">Central de Reservas</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-petrol-900">Contexto PMS</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">
-          Pendientes, garantías, saldos, cambios y llegadas próximas. Esta bandeja organiza señales
-          del Libro; no reemplaza al PMS ni crea una segunda fuente de reserva.
+          Referencias importadas desde el PMS para contextualizar trabajo operativo de AROH.
+          Aquí no se administran reservas, habitaciones, check-in/out ni tarifas.
         </p>
       </header>
 
@@ -216,10 +216,15 @@ export default async function CentralReservationsPage({
           )}
         </Card>
         <Card>
-          <CardHeader title="Alertas de reservas" count={snapshot.alerts.length} href="/alertas" hrefLabel="Abrir alertas" />
-          {snapshot.alerts.length === 0 ? <EmptyState message="Sin alertas abiertas vinculadas." /> : (
+          <CardHeader title="Alertas vinculadas" count={snapshot.alerts.length} href="/alertas" hrefLabel="Abrir alertas" />
+          {snapshot.alerts.length === 0 ? <EmptyState message="Sin alertas activas vinculadas." /> : (
             <CardScroll><ul className="divide-y divide-slate-100">{snapshot.alerts.slice(0, 12).map((alert) => (
-              <li key={alert.id} className="px-4 py-3 text-sm"><p className="font-medium text-petrol-900">#{alert.humanId} · {alert.title}</p><p className="mt-1 text-xs text-slate-500">{alert.reservation?.code ?? 'Reserva'} · {alert.level.replaceAll('_', ' ')}</p></li>
+              <li key={alert.id} className="px-4 py-3 text-sm">
+                <p className="font-medium text-petrol-900">{alert.title}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {alert.reservationCode ?? 'Referencia PMS'} · {formatDateTime(alert.dueAt)}
+                </p>
+              </li>
             ))}</ul></CardScroll>
           )}
         </Card>

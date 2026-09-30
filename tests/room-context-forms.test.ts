@@ -52,6 +52,13 @@ describe('contrato transversal de habitación', () => {
     expect(nav).not.toContain("href: '/central-reservas'");
   });
 
+  it('Caja respeta la habitación recibida desde el monitor', () => {
+    const page = readFileSync('src/app/(app)/caja/page.tsx', 'utf8');
+    expect(page).toContain("const roomContext = typeof params.habitacion === 'string'");
+    expect(page).toContain('(!roomContext || item.roomNumber === roomContext)');
+    expect(page).toContain('defaultRoomNumber={roomContext || undefined}');
+  });
+
   it('Estacionamiento usa ID Reserva y no vuelve a mostrar Patente', () => {
     const forms = readFileSync('src/components/cash/live-cash-forms.tsx', 'utf8');
     const page = readFileSync('src/app/(app)/caja/page.tsx', 'utf8');

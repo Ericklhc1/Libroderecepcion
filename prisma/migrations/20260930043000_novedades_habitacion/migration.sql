@@ -114,3 +114,14 @@ VALUES
   ('room-630', '630', 6, TRUE, NOW(), NOW())
 ON CONFLICT ("number") DO UPDATE
 SET "floor" = EXCLUDED."floor", "active" = TRUE, "updatedAt" = NOW();
+
+
+-- El módulo Central de Reservas se retira del producto. La clave se elimina
+-- después de limpiar asignaciones para que no siga apareciendo en Administración.
+DELETE FROM "RolePermission"
+WHERE "permissionId" IN (
+  SELECT "id" FROM "Permission" WHERE "key" = 'reservation.center.view'
+);
+
+DELETE FROM "Permission"
+WHERE "key" = 'reservation.center.view';

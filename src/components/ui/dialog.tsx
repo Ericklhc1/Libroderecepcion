@@ -142,7 +142,7 @@ export function Dialog({
           width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
         )}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-[#faf9f6] px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-[#f8fafc] px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-petrol-900">{title}</h2>
             {description ? (

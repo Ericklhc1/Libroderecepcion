@@ -6,6 +6,7 @@ import {
   confirmHandoverReviewStep,
   confirmReceptionReviewStep,
   getCurrentShift,
+  getMyActiveShift,
   getMyOpenShift,
   getPendingHandover,
   getShiftDesk,

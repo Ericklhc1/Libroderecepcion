@@ -168,6 +168,7 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     });
 
     expect(assignment.leftAt).not.toBeNull();
+    expect(assignment.removedExplicitly).toBe(true);
     expect(await getMyOpenShift(apoyo.id)).toBeNull();
     expect((await getMyActiveShift(apoyo.id))).toBeNull();
   });

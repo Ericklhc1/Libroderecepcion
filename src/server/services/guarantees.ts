@@ -327,11 +327,10 @@ export async function updateGuarantee(
     const currencyChanged = nextCurrency !== guarantee.currency;
     const kindChanged = nextKind !== guarantee.kind;
     const financialChanged = amountChanged || currencyChanged || kindChanged;
-    const terminal = [
-      GuaranteeState.DEVUELTA,
-      GuaranteeState.MULTA,
-      GuaranteeState.CERRADA,
-    ].includes(guarantee.state);
+    const terminal =
+      guarantee.state === GuaranteeState.DEVUELTA ||
+      guarantee.state === GuaranteeState.MULTA ||
+      guarantee.state === GuaranteeState.CERRADA;
 
     if (financialChanged && terminal) {
       throw new RuleError(

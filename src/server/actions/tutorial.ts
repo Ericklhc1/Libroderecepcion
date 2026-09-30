@@ -244,12 +244,12 @@ export async function restartModuleTutorialAction(
     const user = await requireUser();
     const [module] = moduleKeysFromForm(formData.get('tutorialModules'));
     if (!module) {
-      return { ok: false as const, message: 'Módulo de tutorial no válido.' };
+      return { ok: false as const, error: 'Módulo de tutorial no válido.' };
     }
 
     const enabled = new Set(enabledTutorialModules(user.permissions));
     if (!enabled.has(module)) {
-      return { ok: false as const, message: 'Ese módulo no está habilitado para tu cuenta.' };
+      return { ok: false as const, error: 'Ese módulo no está habilitado para tu cuenta.' };
     }
 
     const row = await prisma.user.findUnique({

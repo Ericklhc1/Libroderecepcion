@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   EntryType,
@@ -134,6 +135,51 @@ describe('Novedades / habitación', () => {
 
     // El monitor usa Room sólo como llave de contexto: no necesita RoomStay.
     expect(await prisma.roomStay.count({ where: { roomId: room.id } })).toBe(0);
+  });
+
+
+  it('muestra folios de Caja sólo como reflejo histórico de los últimos 30 días', async () => {
+    const user = await createUser({
+      roleKey: ROLE_KEYS.RECEPTIONIST,
+      name: 'Recepción folios',
+    });
+    const now = new Date('2026-09-30T12:00:00.000Z');
+
+    await prisma.gymPass.createMany({
+      data: [
+        {
+          id: 'gym-recent-room-monitor',
+          serviceDate: new Date('2026-09-29T00:00:00.000Z'),
+          serviceType: 'GIMNASIO',
+          roomNumber: '512',
+          guestName: 'Huésped reciente',
+          receptionistId: user.id,
+        },
+        {
+          id: 'gym-old-room-monitor',
+          serviceDate: new Date('2026-08-20T00:00:00.000Z'),
+          serviceType: 'ESTACIONAMIENTO',
+          roomNumber: '512',
+          guestName: 'Huésped antiguo',
+          reservationCode: 'OLD-512',
+          receptionistId: user.id,
+        },
+      ],
+    });
+
+    const detail = await getRoomMonitorDetail('512', now);
+
+    expect(detail.passes.map((item) => item.id)).toContain('gym-recent-room-monitor');
+    expect(detail.passes.map((item) => item.id)).not.toContain('gym-old-room-monitor');
+  });
+
+  it('lleva el click de habitación directamente al panel visible de detalle', () => {
+    const page = readFileSync('src/app/(app)/novedades/habitacion/page.tsx', 'utf8');
+
+    expect(page).toContain('#detalle-habitacion');
+    expect(page).toContain('id="detalle-habitacion"');
+    expect(page).toContain("detail ? 'order-first scroll-mt-28' : 'order-last'");
+    expect(page).toContain('Folios de Caja · últimos 30 días');
   });
 
   it('rechaza números fuera del catálogo', async () => {

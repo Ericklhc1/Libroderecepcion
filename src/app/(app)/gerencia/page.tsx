@@ -11,12 +11,14 @@ import {
   KeyRound,
   Minus,
   ShieldAlert,
+  Sparkles,
   Target,
   TriangleAlert,
 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import {
   getManagementCockpit,
+  getManagementDecisionAdvice,
   type ManagementDecisionSeverity,
   type ManagementTrend,
 } from '@/server/services/management';
@@ -136,6 +138,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
   const params = await searchParams;
   const requestedDays = Number(typeof params.dias === 'string' ? params.dias : 30);
   const cockpit = await getManagementCockpit(requestedDays);
+  const frontiAdvice = await getManagementDecisionAdvice(cockpit.decisions);
   const periodLabel = `${cockpit.period.days} días`;
 
   const cashSummary =
@@ -238,15 +241,62 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                       <h3 className="mt-1 text-base font-semibold text-petrol-950">{decision.title}</h3>
                       <p className="mt-2 text-sm font-medium text-slate-800">{decision.fact}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-600">{decision.why}</p>
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-black/5 pt-3">
-                        <p className="text-xs font-medium text-petrol-800">
-                          Decisión: {decision.action}
-                        </p>
+
+                      {decision.evidence.length > 0 ? (
+                        <div className="mt-3 overflow-hidden rounded-md border border-black/10 bg-white/75">
+                          <div className="border-b border-black/5 px-3 py-2">
+                            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.07em] text-slate-500">
+                              Detalle detectado · trazabilidad directa
+                            </p>
+                          </div>
+                          <ul className="divide-y divide-black/5">
+                            {decision.evidence.map((item) => (
+                              <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold text-petrol-950">{item.label}</p>
+                                  <p className="mt-0.5 text-xs leading-5 text-slate-600">{item.detail}</p>
+                                  {item.at ? (
+                                    <p className="mt-0.5 text-[0.68rem] text-slate-400">{formatDateTime(item.at)}</p>
+                                  ) : null}
+                                </div>
+                                <Link
+                                  href={item.href}
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-white px-2 py-1.5 text-[0.68rem] font-semibold text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
+                                >
+                                  Abrir registro
+                                  <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 rounded-md border border-gold-200 bg-gold-50/60 px-3 py-3">
+                        <div className="flex items-start gap-2">
+                          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-700" aria-hidden="true" />
+                          <div>
+                            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.07em] text-gold-800">
+                              {frontiAdvice[decision.id] ? 'Fronti sugiere' : 'Acción operativa'}
+                            </p>
+                            <p className="mt-1 text-sm font-medium leading-5 text-petrol-950">
+                              {frontiAdvice[decision.id] ?? decision.action}
+                            </p>
+                            {!frontiAdvice[decision.id] ? (
+                              <p className="mt-1 text-[0.68rem] leading-5 text-slate-500">
+                                Fronti no respondió en esta carga; se muestra la acción determinística definida por el sistema.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-end border-t border-black/5 pt-3">
                         <Link
                           href={decision.href}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-gold-700 hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-petrol-900 hover:underline"
                         >
-                          Ver evidencia
+                          Abrir vista relacionada
                           <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                         </Link>
                       </div>

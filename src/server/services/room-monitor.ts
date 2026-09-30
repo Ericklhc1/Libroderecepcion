@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import { ROOM_NUMBERS, roomFloor } from '@/domain/room-catalog';
 import { NotFoundError } from '@/server/errors';
 
@@ -196,7 +197,8 @@ export async function getRoomMonitorOverview(now = new Date()) {
   };
 }
 
-export async function getRoomMonitorDetail(number: string) {
+export async function getRoomMonitorDetail(number: string, now = new Date()) {
+  const passHistoryFrom = hotelDayStart(addHotelCalendarDays(now, -29));
   const room = await prisma.room.findFirst({
     where: { number, active: true },
     select: { id: true, number: true, floor: true },
@@ -291,7 +293,10 @@ export async function getRoomMonitorDetail(number: string) {
       },
     }),
     prisma.gymPass.findMany({
-      where: { roomNumber: number },
+      where: {
+        roomNumber: number,
+        serviceDate: { gte: passHistoryFrom },
+      },
       orderBy: [{ serviceDate: 'desc' }, { issuedAt: 'desc' }],
       take: 30,
       select: {

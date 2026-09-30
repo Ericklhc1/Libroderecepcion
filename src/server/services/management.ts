@@ -13,8 +13,20 @@ import { prisma } from '@/lib/prisma';
 import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { getRoomMonitorOverview } from '@/server/services/room-monitor';
+import {
+  chatWithFrontiProviderChain,
+  resolveFrontiBackgroundProviderChainRuntime,
+} from '@/server/ai/fronti-provider';
 
 export type ManagementDecisionSeverity = 'critica' | 'atencion' | 'seguimiento';
+
+export type ManagementDecisionEvidence = {
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+  at?: Date | null;
+};
 
 export type ManagementDecision = {
   id: string;
@@ -24,6 +36,7 @@ export type ManagementDecision = {
   why: string;
   action: string;
   href: string;
+  evidence: ManagementDecisionEvidence[];
 };
 
 export type ManagementTrend = {
@@ -69,6 +82,100 @@ function sortDecisions(items: ManagementDecision[]) {
   return items.sort((a, b) => order[a.severity] - order[b.severity] || a.title.localeCompare(b.title, 'es'));
 }
 
+export async function getManagementDecisionAdvice(
+  decisions: ManagementDecision[],
+): Promise<Record<string, string>> {
+  if (decisions.length === 0) return {};
+
+  try {
+    const providers = await resolveFrontiBackgroundProviderChainRuntime({ reasoningEffort: 'low' });
+    if (providers.length === 0) return {};
+
+    const response = await chatWithFrontiProviderChain({
+      providers,
+      toolChoice: 'required',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Eres Fronti, asistente operativo de AROH. Recibirás señales gerenciales ya detectadas por reglas determinísticas. ' +
+            'No inventes hechos, montos, personas, causas ni identificadores. Para cada señal entrega una recomendación breve, concreta y accionable, ' +
+            'basada únicamente en los hechos y evidencias proporcionados. Máximo 280 caracteres por recomendación.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify(
+            decisions.map((decision) => ({
+              id: decision.id,
+              title: decision.title,
+              fact: decision.fact,
+              why: decision.why,
+              baseAction: decision.action,
+              evidence: decision.evidence.map((item) => ({
+                label: item.label,
+                detail: item.detail,
+              })),
+            })),
+          ),
+        },
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'entregar_sugerencias_gerencia',
+            description: 'Devuelve una sugerencia operativa para cada señal de Gerencia.',
+            strict: true,
+            parameters: {
+              type: 'object',
+              properties: {
+                suggestions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      advice: { type: 'string' },
+                    },
+                    required: ['id', 'advice'],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ['suggestions'],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+    });
+
+    const call = response.toolCalls.find(
+      (item) => item.function.name === 'entregar_sugerencias_gerencia',
+    );
+    if (!call) return {};
+
+    const parsed = JSON.parse(call.function.arguments) as {
+      suggestions?: Array<{ id?: unknown; advice?: unknown }>;
+    };
+    const allowed = new Set(decisions.map((decision) => decision.id));
+    const result: Record<string, string> = {};
+    for (const item of parsed.suggestions ?? []) {
+      if (typeof item.id !== 'string' || !allowed.has(item.id)) continue;
+      if (typeof item.advice !== 'string') continue;
+      const advice = item.advice.trim().replace(/\s+/g, ' ').slice(0, 360);
+      if (advice) result[item.id] = advice;
+    }
+    return result;
+  } catch (error) {
+    console.warn(
+      '[management] Fronti no pudo generar sugerencias; se conserva la acción determinística.',
+      error instanceof Error ? error.message : error,
+    );
+    return {};
+  }
+}
+
 export async function getManagementCockpit(inputDays = 30) {
   const now = new Date();
   const days = normalizeDays(inputDays);
@@ -79,13 +186,13 @@ export async function getManagementCockpit(inputDays = 30) {
   const [
     currentTasksClosed,
     previousTasksClosed,
-    overdueTasks,
+    overdueTaskRows,
     currentIncidentClosures,
     previousIncidentClosures,
     currentIncidentVolume,
     previousIncidentVolume,
     openIncidents,
-    criticalOpenIncidents,
+    criticalOpenIncidentRows,
     currentHandoversSent,
     currentHandoversReceived,
     previousHandoversSent,
@@ -97,9 +204,9 @@ export async function getManagementCockpit(inputDays = 30) {
     cashAudits,
     roomMonitor,
     auditsOpen,
-    criticalFindings,
+    criticalFindingRows,
     correctiveOpen,
-    correctiveOverdue,
+    correctiveOverdueRows,
     floor4,
     floor5,
     floor6,
@@ -120,12 +227,21 @@ export async function getManagementCockpit(inputDays = 30) {
       },
       select: { completedAt: true, dueAt: true },
     }),
-    prisma.task.count({
+    prisma.task.findMany({
       where: {
         deletedAt: null,
         status: { in: TASK_OPEN_STATUSES },
         dueAt: { lt: now },
       },
+      select: {
+        id: true,
+        humanId: true,
+        title: true,
+        dueAt: true,
+        assignee: { select: { name: true } },
+      },
+      orderBy: { dueAt: 'asc' },
+      take: 30,
     }),
     prisma.operationalEntry.findMany({
       where: {
@@ -166,13 +282,23 @@ export async function getManagementCockpit(inputDays = 30) {
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
-    prisma.operationalEntry.count({
+    prisma.operationalEntry.findMany({
       where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
         priority: Priority.CRITICA,
       },
+      select: {
+        id: true,
+        humanId: true,
+        title: true,
+        occurredAt: true,
+        owner: { select: { name: true } },
+        room: { select: { number: true } },
+      },
+      orderBy: { occurredAt: 'asc' },
+      take: 30,
     }),
     prisma.shiftHandover.count({
       where: {
@@ -216,8 +342,11 @@ export async function getManagementCockpit(inputDays = 30) {
         id: true,
         humanId: true,
         currency: true,
+        expectedAmount: true,
+        countedAmount: true,
         difference: true,
         createdAt: true,
+        countedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -226,7 +355,7 @@ export async function getManagementCockpit(inputDays = 30) {
     prisma.checklistRun.count({
       where: { deletedAt: null, status: { not: 'CERRADA' } },
     }),
-    prisma.auditFinding.count({
+    prisma.auditFinding.findMany({
       where: {
         deletedAt: null,
         confirmed: true,
@@ -243,6 +372,15 @@ export async function getManagementCockpit(inputDays = 30) {
           },
         ],
       },
+      select: {
+        id: true,
+        humanId: true,
+        title: true,
+        createdAt: true,
+        audit: { select: { humanId: true, templateName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 30,
     }),
     prisma.correctiveMeasure.count({
       where: {
@@ -250,12 +388,27 @@ export async function getManagementCockpit(inputDays = 30) {
         status: { notIn: ['VALIDADA', 'CANCELADA'] },
       },
     }),
-    prisma.correctiveMeasure.count({
+    prisma.correctiveMeasure.findMany({
       where: {
         deletedAt: null,
         status: { notIn: ['VALIDADA', 'CANCELADA'] },
         dueAt: { lt: now },
       },
+      select: {
+        id: true,
+        humanId: true,
+        title: true,
+        dueAt: true,
+        taskId: true,
+        assignee: { select: { name: true } },
+        finding: {
+          select: {
+            audit: { select: { humanId: true } },
+          },
+        },
+      },
+      orderBy: { dueAt: 'asc' },
+      take: 30,
     }),
     prisma.keyInventoryCount.findFirst({
       where: { floor: 4 },
@@ -282,6 +435,11 @@ export async function getManagementCockpit(inputDays = 30) {
       },
     }),
   ]);
+
+  const overdueTasks = overdueTaskRows.length;
+  const criticalOpenIncidents = criticalOpenIncidentRows.length;
+  const criticalFindings = criticalFindingRows.length;
+  const correctiveOverdue = correctiveOverdueRows.length;
 
   const taskOnTime = (rows: typeof currentTasksClosed) =>
     rows.filter((row) => !row.dueAt || (row.completedAt && row.completedAt <= row.dueAt)).length;
@@ -349,6 +507,17 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Un hallazgo con acción vencida mantiene el riesgo abierto aunque la auditoría ya haya terminado.',
       action: 'Definir responsable, nueva fecha o escalamiento.',
       href: '/supervision/auditorias',
+      evidence: correctiveOverdueRows.slice(0, 5).map((row) => ({
+        id: `corrective-${row.id}`,
+        label: `Correctiva #${row.humanId} · ${row.title}`,
+        detail: `${row.assignee.name}${row.dueAt ? ` · venció ${row.dueAt.toISOString()}` : ''}`,
+        href: row.taskId
+          ? `/tareas/${row.taskId}`
+          : row.finding?.audit.humanId
+            ? `/supervision/auditorias?q=${row.finding.audit.humanId}`
+            : '/supervision/auditorias',
+        at: row.dueAt,
+      })),
     });
   }
   if (cashDifferences.length > 0) {
@@ -360,6 +529,17 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Las diferencias repetidas pueden indicar un problema de proceso, custodia o regularización pendiente.',
       action: 'Revisar patrón, causa y correcciones antes del siguiente cierre.',
       href: '/caja?seccion=auditorias',
+      evidence: cashDifferences.slice(0, 5).map((row) => {
+        const difference = Number(row.difference);
+        return {
+          id: `cash-${row.id}`,
+          label: `Arqueo #${row.humanId} · ${row.currency} ${difference > 0 ? '+' : ''}${difference.toLocaleString('es-CL')}`,
+          detail:
+            `Esperado ${Number(row.expectedAmount).toLocaleString('es-CL')} · contado ${Number(row.countedAmount).toLocaleString('es-CL')} · ${row.countedBy.name}`,
+          href: `/caja/arqueos/${row.id}`,
+          at: row.createdAt,
+        };
+      }),
     });
   }
   if (criticalOpenIncidents > 0) {
@@ -371,6 +551,15 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Una incidencia crítica abierta concentra riesgo operativo y puede requerir coordinación entre áreas.',
       action: 'Confirmar contención, responsable y plazo de resolución.',
       href: '/libro?clase=entry&tipo=INCIDENCIA',
+      evidence: criticalOpenIncidentRows.slice(0, 5).map((row) => ({
+        id: `incident-${row.id}`,
+        label: `Incidencia #${row.humanId} · ${row.title}`,
+        detail: [row.room?.number ? `Hab. ${row.room.number}` : null, row.owner?.name ?? null]
+          .filter(Boolean)
+          .join(' · ') || 'Incidencia crítica sin contexto adicional',
+        href: `/libro/${row.id}`,
+        at: row.occurredAt,
+      })),
     });
   }
   if (roomMonitor.summary.critical > 0) {
@@ -382,6 +571,19 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Concentrar novedades, tareas y alertas por habitación permite detectar dónde se acumula riesgo sin modelar ocupación PMS.',
       action: 'Abrir el mapa y revisar primero las habitaciones críticas.',
       href: '/novedades/habitacion',
+      evidence: roomMonitor.rooms
+        .filter((room) => room.attention === 'critical')
+        .slice(0, 6)
+        .map((room) => ({
+          id: `room-${room.id}`,
+          label: `Habitación ${room.number}`,
+          detail: [
+            room.criticalIncidents > 0 ? `${room.criticalIncidents} incidencia(s) crítica(s)` : null,
+            room.overdueTasks > 0 ? `${room.overdueTasks} tarea(s) vencida(s)` : null,
+          ].filter(Boolean).join(' · '),
+          href: `/novedades/habitacion?habitacion=${room.number}#detalle-habitacion`,
+          at: room.lastActivityAt,
+        })),
     });
   }
   if (keysMissing > 0 || keysOutOfService > 0) {
@@ -393,6 +595,15 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante la operación diaria.',
       action: 'Validar reposición, recuperación o contingencia por piso.',
       href: '/llaves?piso=todos',
+      evidence: keySnapshots
+        .filter((row) => row.missing > 0 || row.outOfService > 0)
+        .map((row) => ({
+          id: `keys-floor-${row.floor}`,
+          label: `Piso ${row.floor}`,
+          detail: `${row.missing} faltante(s) · ${row.outOfService} fuera de servicio`,
+          href: `/llaves?piso=${row.floor}`,
+          at: row.countedAt,
+        })),
     });
   }
   const handoversPending = Math.max(currentHandoversSent - currentHandoversReceived, 0);
@@ -405,6 +616,12 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Una entrega sin recepción confirmada rompe la trazabilidad de continuidad.',
       action: 'Revisar los relevos pendientes y su estado operativo.',
       href: '/supervision',
+      evidence: [{
+        id: 'handover-pending',
+        label: `${handoversPending} entrega(s) sin recepción confirmada`,
+        detail: 'La entrega fue emitida pero todavía no figura como recibida.',
+        href: '/supervision#continuidad',
+      }],
     });
   }
   if (overdueTasks > 0) {
@@ -416,6 +633,13 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'El atraso sostenido puede señalar carga, dependencia o prioridades mal calibradas.',
       action: 'Reasignar, reprogramar o retirar bloqueos explícitamente.',
       href: '/tareas',
+      evidence: overdueTaskRows.slice(0, 5).map((row) => ({
+        id: `task-${row.id}`,
+        label: `Tarea #${row.humanId} · ${row.title}`,
+        detail: row.assignee?.name ? `Responsable: ${row.assignee.name}` : 'Sin responsable asignado',
+        href: `/tareas/${row.id}`,
+        at: row.dueAt,
+      })),
     });
   }
   if (criticalFindings > 0) {
@@ -427,6 +651,13 @@ export async function getManagementCockpit(inputDays = 30) {
       why: 'Un hallazgo crítico sigue siendo riesgo mientras no exista una medida validada o un cierre explícito.',
       action: 'Asegurar medida, responsable, plazo y evidencia hasta validación.',
       href: '/supervision/auditorias',
+      evidence: criticalFindingRows.slice(0, 5).map((row) => ({
+        id: `finding-${row.id}`,
+        label: `Hallazgo #${row.humanId} · ${row.title}`,
+        detail: `Auditoría #${row.audit.humanId} · ${row.audit.templateName}`,
+        href: `/supervision/auditorias?q=${row.audit.humanId}`,
+        at: row.createdAt,
+      })),
     });
   }
 

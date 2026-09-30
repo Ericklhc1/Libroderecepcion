@@ -87,7 +87,7 @@ function RoomTile({
 
   return (
     <Link
-      href={`/novedades/habitacion?habitacion=${room.number}`}
+      href={`/novedades/habitacion?habitacion=${room.number}#detalle-habitacion`}
       aria-current={selected ? 'page' : undefined}
       className={`group min-h-[8.5rem] rounded-lg border p-3 shadow-card transition-[border-color,background-color,transform] hover:-translate-y-0.5 ${
         selected ? 'ring-2 ring-gold-500 ring-offset-2' : ''
@@ -268,7 +268,7 @@ export default async function RoomOperationsMonitor({
           ))}
         </div>
 
-        <aside className="2xl:sticky 2xl:top-28 2xl:self-start">
+        <aside id="detalle-habitacion" className={`${detail ? 'order-first scroll-mt-28' : 'order-last'} 2xl:order-last 2xl:sticky 2xl:top-28 2xl:self-start`}>
           {!detail ? (
             <Card>
               <div className="px-5 py-8">
@@ -477,12 +477,12 @@ export default async function RoomOperationsMonitor({
                     )}
                   </section>
 
-                  {detail.fines.length > 0 || detail.passes.length > 0 ? (
+                  {detail.fines.length > 0 ? (
                     <section>
                       <SectionTitle
                         icon={Receipt}
                         title="Otros registros"
-                        count={detail.fines.length + detail.passes.length}
+                        count={detail.fines.length}
                       />
                       <ul className="mt-2 space-y-2">
                         {detail.fines.slice(0, 6).map((fine) => (
@@ -495,19 +495,40 @@ export default async function RoomOperationsMonitor({
                             </p>
                           </li>
                         ))}
-                        {detail.passes.slice(0, 6).map((pass) => (
-                          <li key={pass.id} className="rounded-md border border-slate-200 bg-white p-2.5">
-                            <p className="text-sm font-semibold text-petrol-950">
-                              {pass.serviceType === 'ESTACIONAMIENTO' ? 'Estacionamiento' : 'Gimnasio'} #{pass.humanId}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatCalendarDate(pass.serviceDate)} · {pass.guestName}
-                              {pass.reservationCode ? ` · reserva ${pass.reservationCode}` : ''}
-                              {pass.status === 'ANULADO' ? ' · anulado' : ''}
-                            </p>
-                          </li>
-                        ))}
                       </ul>
+                    </section>
+                  ) : null}
+
+                  {detail.passes.length > 0 ? (
+                    <section>
+                      <SectionTitle
+                        icon={Receipt}
+                        title="Folios de Caja · últimos 30 días"
+                        count={detail.passes.length}
+                      />
+                      <ul className="mt-2 space-y-2">
+                        {detail.passes.slice(0, 10).map((pass) => {
+                          const serviceDay = pass.serviceDate.toISOString().slice(0, 10);
+                          return (
+                            <li key={pass.id} className="rounded-md border border-slate-200 bg-white p-2.5">
+                              <Link
+                                href={`/caja?q=${pass.humanId}&desde=${serviceDay}&hasta=${serviceDay}`}
+                                className="text-sm font-semibold text-petrol-950 hover:underline"
+                              >
+                                {pass.serviceType === 'ESTACIONAMIENTO' ? 'Estacionamiento' : 'Gimnasio'} #{pass.humanId}
+                              </Link>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatCalendarDate(pass.serviceDate)} · {pass.guestName}
+                                {pass.reservationCode ? ` · reserva ${pass.reservationCode}` : ''}
+                                {pass.status === 'ANULADO' ? ' · anulado' : ''}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <p className="mt-2 text-[0.68rem] leading-5 text-slate-400">
+                        Reflejo histórico únicamente: el registro sigue viviendo en Caja y no se duplica como Novedad.
+                      </p>
                     </section>
                   ) : null}
                 </div>

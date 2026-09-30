@@ -13,6 +13,7 @@ import {
   CashDifferenceRegularizationForm,
   ChargeCashGuaranteeForm,
   CreateCashGuaranteeForm,
+  EditCashGuaranteeForm,
   CreateGymPassForm,
   CreateParkingPassForm,
   LiveCashAuditDialog,
@@ -21,7 +22,7 @@ import {
   ReturnCashGuaranteeForm,
   VoidGymPassDialog,
 } from '@/components/cash/live-cash-forms';
-import { formatCalendarDate, formatDateTime } from '@/lib/format';
+import { formatCalendarDate, formatDateTime, toDateTimeInput } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import type { RawSearchParams } from '@/lib/search-params';
 
@@ -86,6 +87,7 @@ export default async function LiveCashPage({
   const canManual = canManualIn || canManualOut;
   const canAudit = canOperateCash && hasPermission(user, 'cash.audit');
   const canCreateGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
+  const canEditGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
   const canReconcileDifference = canOperateCash && hasPermission(user, 'cash.approve');
   const canReturnGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_out');
 
@@ -424,25 +426,42 @@ export default async function LiveCashPage({
                             </p>
                             <Chip>{human(guarantee.state)}</Chip>
                           </div>
-                          {canReturnGuarantee ? (
+                          {canEditGuarantee || canReturnGuarantee ? (
                             <div className="flex flex-wrap justify-end gap-2">
-                              <ChargeCashGuaranteeForm
-                                guaranteeId={guarantee.id}
-                                humanId={guarantee.humanId}
-                                reference={guarantee.reference ?? guarantee.guestName}
-                                currency={guarantee.currency}
-                                amount={guarantee.amount}
-                                guestName={guarantee.guestName}
-                                roomNumber={guarantee.roomNumber}
-                              />
-                              <ReturnCashGuaranteeForm
-                                guaranteeId={guarantee.id}
-                                reference={guarantee.reference ?? guarantee.guestName}
-                                currency={guarantee.currency}
-                                amount={guarantee.amount}
-                                guestName={guarantee.guestName}
-                                roomNumber={guarantee.roomNumber}
-                              />
+                              {canEditGuarantee ? (
+                                <EditCashGuaranteeForm
+                                  guaranteeId={guarantee.id}
+                                  humanId={guarantee.humanId}
+                                  currency={guarantee.currency}
+                                  amount={guarantee.originalAmount}
+                                  guestName={guarantee.guestName}
+                                  roomNumber={guarantee.roomNumber}
+                                  reference={guarantee.reference}
+                                  dueAt={guarantee.dueAt ? toDateTimeInput(guarantee.dueAt) : ''}
+                                  notes={guarantee.notes}
+                                />
+                              ) : null}
+                              {canReturnGuarantee ? (
+                                <>
+                                  <ChargeCashGuaranteeForm
+                                    guaranteeId={guarantee.id}
+                                    humanId={guarantee.humanId}
+                                    reference={guarantee.reference ?? guarantee.guestName}
+                                    currency={guarantee.currency}
+                                    amount={guarantee.amount}
+                                    guestName={guarantee.guestName}
+                                    roomNumber={guarantee.roomNumber}
+                                  />
+                                  <ReturnCashGuaranteeForm
+                                    guaranteeId={guarantee.id}
+                                    reference={guarantee.reference ?? guarantee.guestName}
+                                    currency={guarantee.currency}
+                                    amount={guarantee.amount}
+                                    guestName={guarantee.guestName}
+                                    roomNumber={guarantee.roomNumber}
+                                  />
+                                </>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>

@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, ENTRY_TYPE_LABEL, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { ROOM_NUMBERS } from '@/domain/room-catalog';
 import { listOperationalUsers } from './users';
 
 export type Option = { value: string; label: string };
@@ -47,7 +48,7 @@ export async function getFormOptions(): Promise<FormOptions> {
       take: 100,
     }),
     prisma.room.findMany({
-      where: { active: true },
+      where: { active: true, number: { in: ROOM_NUMBERS } },
       orderBy: [{ floor: 'asc' }, { number: 'asc' }],
       select: { id: true, number: true },
     }),

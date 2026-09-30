@@ -25,6 +25,7 @@ import {
   JoinShiftForm,
   OpenShiftForm,
   PrepareHandoverForm,
+  RemoveShiftMemberForm,
   ChangeShiftTypeForm,
   StartReceptionShiftForm,
 } from '@/components/operational/shift-actions';
@@ -219,6 +220,16 @@ export default async function ShiftPage({
           };
         })
     : [];
+
+  const activeMemberOptions =
+    canAddMembers && memberTargetShift
+      ? memberTargetShift.assignments
+          .filter((assignment) => assignment.activatedAt && !assignment.leftAt)
+          .map((assignment) => ({
+            value: assignment.userId,
+            label: `${assignment.user.name} · ${ASSIGNMENT_ROLE_LABEL[assignment.role]}`,
+          }))
+      : [];
 
   const changeTypeTargetShift =
     user.permissions.includes('shift.reassign')
@@ -495,6 +506,7 @@ export default async function ShiftPage({
                   <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                     <Users className="h-3.5 w-3.5" aria-hidden="true" />
                     {shift.assignments
+                      .filter((a) => a.activatedAt && !a.leftAt)
                       .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
                       .join(' · ')}
                   </p>
@@ -512,8 +524,19 @@ export default async function ShiftPage({
                     está en el turno, desde el turno.
                   */}
                   {canAddMembers ? (
-                    <div className="mt-3 max-w-sm">
-                      <AddShiftMemberForm shiftId={memberTargetShift!.id} candidates={memberCandidates} />
+                    <div className="mt-3 grid max-w-2xl gap-3 md:grid-cols-2">
+                      <div>
+                        <AddShiftMemberForm
+                          shiftId={memberTargetShift!.id}
+                          candidates={memberCandidates}
+                        />
+                      </div>
+                      <div>
+                        <RemoveShiftMemberForm
+                          shiftId={memberTargetShift!.id}
+                          participants={activeMemberOptions}
+                        />
+                      </div>
                     </div>
                   ) : null}
                   {canChangeShiftType && changeTypeTargetShift?.id === shift.id ? (

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import {
-  AlertStatus,
+  OperationalAlarmStatus,
   FollowUpStatus,
   GuaranteeStatus,
   ReservationStatus,
@@ -10,11 +10,10 @@ import {
 import { prisma } from '@/lib/prisma';
 
 /**
- * Bandeja de Central de Reservas.
+ * Vista auxiliar de contexto PMS.
  *
- * No replica el PMS: reúne referencias ya presentes en el Libro y sus señales
- * operativas para que Reservas prepare la llegada y entregue pendientes
- * estructurados a Recepción.
+ * No administra reservas ni sustituye FNSRooms u otro PMS. Conserva referencias
+ * ya existentes únicamente para enlazarlas con trabajo operativo de AROH.
  */
 export async function getReservationCenterSnapshot(now = new Date()) {
   const in72Hours = new Date(now.getTime() + 72 * 60 * 60_000);
@@ -83,23 +82,22 @@ export async function getReservationCenterSnapshot(now = new Date()) {
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       take: 40,
     }),
-    prisma.alert.findMany({
+    prisma.operationalAlarm.findMany({
       where: {
-        deletedAt: null,
-        reservationId: { in: reservationIds },
-        status: { not: AlertStatus.RESUELTA },
+        status: OperationalAlarmStatus.ACTIVA,
+        sourceEntity: 'ReservationReference',
+        sourceId: { in: reservationIds },
       },
       select: {
         id: true,
-        humanId: true,
         title: true,
-        level: true,
+        note: true,
         status: true,
         dueAt: true,
-        reservationId: true,
-        reservation: { select: { code: true } },
+        sourceId: true,
+        sourceLink: true,
       },
-      orderBy: [{ level: 'desc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       take: 40,
     }),
     reservationIds.length === 0
@@ -136,7 +134,11 @@ export async function getReservationCenterSnapshot(now = new Date()) {
     },
     reservations,
     tasks,
-    alerts,
+    alerts: alerts.map((alert) => ({
+      ...alert,
+      reservationCode:
+        reservations.find((reservation) => reservation.id === alert.sourceId)?.code ?? null,
+    })),
     followUps,
   };
 }

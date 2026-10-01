@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -15,13 +15,21 @@ import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context
 describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
   let admin:CurrentUser,manager:CurrentUser,supervisor:CurrentUser,maid:CurrentUser,other:CurrentUser,reception:CurrentUser,area:string,roomId:string;
   const date=()=>hotelDateKey(new Date());
+  let customRoleId:string|null=null;
   beforeAll(seedCatalog);
   beforeEach(async()=>{
+    customRoleId=null;
     await resetOperationalData();
     area=(await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}})).id;
     roomId=(await prisma.room.findUniqueOrThrow({where:{number:'512'}})).id;
     admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});manager=await createUser({roleKey:ROLE_KEYS.HK_MANAGER});supervisor=await createUser({roleKey:ROLE_KEYS.HK_SUPERVISOR});maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT,name:'Mucama A'});other=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT,name:'Mucama B'});reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
     await prisma.user.updateMany({where:{id:{in:[admin.id,manager.id,supervisor.id,maid.id,other.id]}},data:{departmentId:area}});
+  });
+  afterEach(async()=>{
+    if(!customRoleId)return;
+    await prisma.user.updateMany({where:{roleId:customRoleId},data:{roleId:maid.roleId}});
+    await prisma.rolePermission.deleteMany({where:{roleId:customRoleId}});
+    await prisma.role.delete({where:{id:customRoleId}});
   });
   const input=()=>({requestKey:randomUUID(),title:'Limpiar habitación 512',description:'Revisar limpieza y reposición.',departmentId:area,workDate:date(),workKind:'LIMPIEZA' as const,roomId,priority:'MEDIA' as const,effortMinutes:35});
   async function change(user:CurrentUser,id:string,action:Parameters<typeof changeHkWork>[1]['action'],note='Verificado',assignedToId?:string){const r=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id}});return changeHkWork(user,{id,version:r.version,action,note,assignedToId});}
@@ -68,6 +76,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
   });
   it('un coordinador sin ejecución no puede ser asignado ni incorporado a carga o propuestas',async()=>{
     const coordinatorRole=await prisma.role.create({data:{key:`COORD_${randomUUID()}`,name:'Coordinación sin ejecución',level:50,permissions:{create:{permission:{connect:{key:'housekeeping.assign'}}}}}});
+    customRoleId=coordinatorRole.id;
     await prisma.user.update({where:{id:other.id},data:{roleId:coordinatorRole.id}});
     const coordinator={...other,roleKey:coordinatorRole.key,permissions:['housekeeping.assign'] as CurrentUser['permissions']};
     await expect(createHkWork(supervisor,{...input(),assignedToId:other.id})).rejects.toThrow('ejecutar');

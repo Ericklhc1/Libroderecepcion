@@ -38,3 +38,10 @@ export const HK_NOTE_REQUIRED: HkWorkAction[] = ['ASIGNAR', 'IMPEDIMENTO', 'RETO
 export function isHkFocused(user: HousekeepingAccess): boolean {
   return user.roleKey !== ROLE_KEYS.SYSTEM_ADMIN && user.permissions.some(p=>p.startsWith('housekeeping.')) && !user.permissions.some(p=>['entry.create','entry.edit','entry.close','task.create','shift.start','shift.manage','supervision.view','management.dashboard.view','system.configure','cash.view','room.manage','incident.create','incident.manage'].includes(p));
 }
+
+/** Navigation, help and onboarding share the same area-only reading scope. */
+export function hkNavigationAllowed(permissions: PermissionKey[], route?: string): boolean {
+  if (!isHkFocused({ roleKey: '', permissions }) || !route) return true;
+  const path = route.split('?')[0] ?? '';
+  return !['/', '/libro', '/tareas', '/seguimientos', '/historial', '/novedades/habitacion', '/alertas'].some(blocked => path === blocked || (blocked !== '/' && path.startsWith(`${blocked}/`)));
+}

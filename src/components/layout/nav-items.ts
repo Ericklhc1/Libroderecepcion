@@ -1,4 +1,5 @@
 import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 import {
   TECHNICAL_ADMIN_PERMISSIONS,
   type PermissionKey,
@@ -232,7 +233,7 @@ const PRIMARY: NavItem[] = [
       },
     ],
   },
-  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',
@@ -389,8 +390,8 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 
-function allowed(item: { anyOf?: PermissionKey[] }, permissions: PermissionKey[]): boolean {
-  return !item.anyOf || item.anyOf.some((permission) => permissions.includes(permission));
+function allowed(item: { anyOf?: PermissionKey[]; href?: string }, permissions: PermissionKey[]): boolean {
+  return hkNavigationAllowed(permissions, item.href) && (!item.anyOf || item.anyOf.some((permission) => permissions.includes(permission)));
 }
 
 function visibleMenu(

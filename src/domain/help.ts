@@ -1,5 +1,6 @@
 import type { PermissionKey } from '@/lib/permissions';
 import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 
 /**
  * Central de ayuda: los procedimientos reales del sistema.
@@ -734,7 +735,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 /** Filtra por permiso: nadie ve el procedimiento de algo que no puede hacer. */
 export function visibleTopics(permissions: PermissionKey[]): HelpTopic[] {
   return HELP_TOPICS.filter(
-    (topic) => !topic.anyOf || topic.anyOf.some((p) => permissions.includes(p)),
+    (topic) => hkNavigationAllowed(permissions, topic.route) && (!topic.anyOf || topic.anyOf.some((p) => permissions.includes(p))),
   );
 }
 

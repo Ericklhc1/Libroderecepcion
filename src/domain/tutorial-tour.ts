@@ -1,5 +1,6 @@
 import type { PermissionKey } from '@/lib/permissions';
 import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 
 export const TUTORIAL_MODULE_KEYS = [
   'novedades',
@@ -83,10 +84,10 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
 ];
 
 function allowed(
-  item: { anyOf?: PermissionKey[] },
+  item: { anyOf?: PermissionKey[]; route?: string },
   permissions: PermissionKey[],
 ): boolean {
-  return !item.anyOf || item.anyOf.some((permission) => permissions.includes(permission));
+  return hkNavigationAllowed(permissions, item.route) && (!item.anyOf || item.anyOf.some((permission) => permissions.includes(permission)));
 }
 
 export function isTutorialModuleKey(value: string): value is TutorialModuleKey {

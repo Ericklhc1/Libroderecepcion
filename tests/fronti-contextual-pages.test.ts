@@ -8,6 +8,7 @@ import {
 import {
   selectFrontiToolDefinitions,
   frontiToolMode,
+  canFrontiUseTool,
 } from '@/server/ai/fronti-v2/tool-registry';
 import type { FrontiConfig } from '@/server/ai/fronti-config';
 
@@ -134,8 +135,8 @@ describe('Fronti contextual · cobertura de pantallas', () => {
   });
   it('distingue planificación por área de turnos operativos y reconoce sub-secciones', () => {
     const page = resolveFrontiPageContext({ pathname: '/equipo', search: '?area=recepcion&malla=malla-1&seccion=plantillas' });
-    expect(page.moduleKey).toBe('equipo'); expect(page.sectionLabel).toBe('Plantillas y glosa'); expect(page.entityType).toBe('SchedulePlan');
-    expect(page.recommendedTools).toEqual(['consultar_contexto_pantalla']);
+    expect(page.moduleKey).toBe('equipo'); expect(page.sectionLabel).toBe('Tipos de turno'); expect(page.entityType).toBe('SchedulePlan');
+    expect(page.recommendedTools).toEqual(['consultar_contexto_pantalla', 'consultar_horarios']);
   });
   it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
     const management = resolveFrontiPageContext({
@@ -169,6 +170,13 @@ describe('Fronti contextual · cobertura de pantallas', () => {
 });
 
 describe('Fronti contextual · selección de herramientas', () => {
+  it('selecciona horarios fuera de Equipo y conserva el permiso específico', () => {
+    const names = selectFrontiToolDefinitions(config, 'Revisa el horario y la cobertura').map(t => t.name);
+    expect(names).toContain('consultar_horarios');
+    expect(canFrontiUseTool({ isSystemAdmin: false, permissions: ['schedule.self.view'] }, 'consultar_horarios')).toBe(true);
+    expect(canFrontiUseTool({ isSystemAdmin: false, permissions: ['shift.manage'] }, 'consultar_horarios')).toBe(false);
+    expect(frontiToolMode('consultar_horarios')).toBe('read');
+  });
   it('“qué falta aquí” en Garantías recibe contexto + Caja + Garantías', () => {
     const page = resolveFrontiPageContext({
       pathname: '/caja',

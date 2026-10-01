@@ -100,6 +100,7 @@ export function FrontiAssistant() {
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const lastActivityRef = useRef(Date.now());
   /** Última causa de fallo contada, para no repetir el mismo aviso. */
@@ -107,7 +108,7 @@ export function FrontiAssistant() {
 
   useEffect(() => {
     setHydrated(true);
-    setOpen(window.sessionStorage.getItem(OPEN_KEY) === '1');
+    try { setOpen(window.sessionStorage.getItem(OPEN_KEY) === '1'); } catch { /* Session storage may be unavailable. */ }
 
     let cancelled = false;
     void (async () => {
@@ -137,17 +138,19 @@ export function FrontiAssistant() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.sessionStorage.setItem(OPEN_KEY, open ? '1' : '0');
+    try { window.sessionStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch { /* Keep the assistant usable. */ }
   }, [hydrated, open]);
 
   useEffect(() => {
     const openFromHeader = () => {
       setOpen(true);
-      requestAnimationFrame(() => inputRef.current?.focus());
+      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     };
 
+    const minimizeForChat = () => setOpen(false);
+    window.addEventListener('chat:open', minimizeForChat);
     window.addEventListener('fronti:open', openFromHeader);
-    return () => window.removeEventListener('fronti:open', openFromHeader);
+    return () => { window.removeEventListener('fronti:open', openFromHeader); window.removeEventListener('chat:open', minimizeForChat); };
   }, []);
 
   useEffect(() => {
@@ -188,7 +191,11 @@ export function FrontiAssistant() {
 
   useEffect(() => {
     if (!open) return;
-    requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
+    const frame = requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (list) list.scrollTo({ top: list.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [messages, confirmations, busy, open]);
 
   function addFronti(content: string) {
@@ -207,6 +214,10 @@ export function FrontiAssistant() {
   function reportFailure(error: unknown) {
     const fallback = `${config.displayName} no pudo procesar la solicitud.`;
 
+    if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      addFronti('No recibí respuesta a tiempo. Si estabas confirmando un cambio, revisa su resultado en el módulo antes de repetirlo.');
+      return;
+    }
     if (!(error instanceof FrontiFailure)) {
       addFronti(error instanceof Error ? error.message : fallback);
       lastFailureRef.current = null;
@@ -231,6 +242,7 @@ export function FrontiAssistant() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90_000),
     });
     const data = (await response.json()) as FrontiResponse;
     if (response.status === 401) {
@@ -286,7 +298,7 @@ export function FrontiAssistant() {
       reportFailure(error);
     } finally {
       setBusy(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
+      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     }
   }
 
@@ -299,7 +311,7 @@ export function FrontiAssistant() {
       setConfirmations((current) => current.filter((candidate) => candidate.token !== item.token));
       addFronti(payload.reply || 'Acción ejecutada.');
     } catch (error) {
-      addFronti(error instanceof Error ? error.message : 'No se pudo ejecutar la acción.');
+      reportFailure(error);
     } finally {
       setBusy(false);
     }
@@ -317,7 +329,7 @@ export function FrontiAssistant() {
       addFronti(error instanceof Error ? error.message : 'No se pudo iniciar otra conversación.');
     } finally {
       setBusy(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
+      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     }
   }
 
@@ -344,7 +356,7 @@ export function FrontiAssistant() {
     <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
-          className="pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
+          className="surface-enter pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
           aria-label={config.displayName}
         >
           <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
@@ -354,7 +366,7 @@ export function FrontiAssistant() {
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-sm font-semibold">{config.displayName}</h2>
               <p className="truncate text-[0.64rem] text-petrol-100">
-                Asistente de Recepción · memoria {retentionDays} días
+                Tu asistente · recuerda {retentionDays} días
               </p>
             </div>
             <button
@@ -388,7 +400,7 @@ export function FrontiAssistant() {
             </button>
           </header>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-3">
+          <div ref={listRef} className="min-h-0 flex-1 space-y-3 overscroll-contain overflow-y-auto bg-slate-50 px-3 py-3">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -443,7 +455,7 @@ export function FrontiAssistant() {
             {busy ? (
               <div className="flex items-center gap-2 px-1 text-xs text-slate-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                {config.displayName} está procesando…
+                {config.displayName} está revisando…
               </div>
             ) : null}
             <div ref={endRef} />
@@ -451,14 +463,14 @@ export function FrontiAssistant() {
 
           <div className="border-t border-slate-200 bg-white p-3">
             <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
-              {['¿Qué debería revisar primero?', 'Próximos vencimientos'].map((suggestion) => (
+              {(pathname === '/equipo' ? ['Revisa este horario y sus errores', '¿Quién está programado hoy?'] : ['¿Qué debería revisar primero?', 'Próximos vencimientos']).map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   disabled={busy}
                   onClick={() => {
                     setText(suggestion);
-                    requestAnimationFrame(() => inputRef.current?.focus());
+                    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
                   }}
                   className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.68rem] text-slate-600 hover:border-petrol-300 hover:bg-petrol-50 hover:text-petrol-800 disabled:opacity-50"
                 >
@@ -504,9 +516,9 @@ export function FrontiAssistant() {
           type="button"
           onClick={() => {
             setOpen(true);
-            requestAnimationFrame(() => inputRef.current?.focus());
+            requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
           }}
-          className="pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
+          className="surface-enter pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
           aria-label={`Abrir ${config.displayName}`}
           title={config.displayName}
         >

@@ -100,12 +100,12 @@ export async function getScheduleCatalog(user: CurrentUser, departmentId: string
   await assertScheduleArea(user, departmentId, configurationOnly ? 'schedule.configure' : 'schedule.catalog.manage');
   const areas = await scheduleAreaIds(user);
   const [collaborators, templates, coverage, accounts, grants, holidays] = await Promise.all([
-    configurationOnly ? Promise.resolve([]) : prisma.scheduleCollaborator.findMany({ where: { memberships: { some: { departmentId } } }, include: { memberships: true, user: { select: { name: true } } }, orderBy: { name: 'asc' }, take: 500 }),
+    configurationOnly ? Promise.resolve([]) : prisma.scheduleCollaborator.findMany({ where: { memberships: { some: { departmentId } } }, include: { memberships: true, user: { select: { name: true, username: true } } }, orderBy: { name: 'asc' }, take: 500 }),
     prisma.scheduleTemplate.findMany({ where: { departmentId }, orderBy: [{ code: 'asc' }, { revision: 'desc' }], take: 500 }),
     prisma.scheduleCoverageRule.findMany({ where: { departmentId }, orderBy: { name: 'asc' } }),
     prisma.user.findMany({ where: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true }, ...(areas ? { departmentId: { in: areas } } : {}) }, select: { id: true, name: true, departmentId: true }, orderBy: { name: 'asc' }, take: 500 }),
     scheduleAllowed(user, 'schedule.configure') ? prisma.scheduleAreaGrant.findMany({ include: { user: { select: { name: true } }, department: { select: { name: true } } } }) : Promise.resolve([]),
     scheduleAllowed(user, 'schedule.configure') ? prisma.scheduleHoliday.findMany({ orderBy: { date: 'asc' }, take: 100 }) : Promise.resolve([]),
   ]);
-  return { collaborators: collaborators.map(p => ({ ...p, name: p.user?.name ?? p.name })), templates, coverage, accounts, grants, holidays };
+  return { collaborators: collaborators.map(p => ({ ...p, name: p.user?.name ?? p.name, username: p.user?.username ?? null })), templates, coverage, accounts, grants, holidays };
 }

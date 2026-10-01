@@ -74,7 +74,7 @@ export function plannedMinutes(s: IntervalSlot, from?: Date, to?: Date): number 
   const elapsed = overlap(a, b, s.startAt.getTime(), s.endAt.getTime());
   return Math.round(elapsed / 60000);
 }
-export function functionKey(value: string) { return value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es'); }
+export function functionKey(value: string) { return value.trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es'); }
 export type CoverageRule = { name: string; functionName: string | null; weekdays: number[]; startTime: string; endTime: string; crossesMidnight: boolean; minimum: number };
 export type CoverageGap = { date: string; name: string; startAt: string; endAt: string; required: number; scheduled: number };
 export function coverageGaps(days: string[], rules: CoverageRule[], slots: IntervalSlot[]): CoverageGap[] {

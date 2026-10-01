@@ -375,9 +375,9 @@ export const NAV_GROUPS: NavGroup[] = [
     href: '/equipo', label: 'Equipo y horarios', mobileLabel: 'Horarios', icon: 'shift',
     anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'],
     menu: [{ title: 'Equipo y horarios', items: [
-      { href: '/equipo', label: 'Calendario', description: 'Mallas por área, cambios, extras y feriados.' },
+      { href: '/equipo', label: 'Calendario', description: 'Horarios por área, cambios, extras y feriados.' },
       { href: '/equipo?seccion=colaboradores', label: 'Colaboradores', description: 'Usuarios existentes, áreas y referencia semanal en horas.', anyOf: ['schedule.catalog.manage'] },
-      { href: '/equipo?seccion=plantillas', label: 'Plantillas y glosa', description: 'Códigos y horarios admitidos por cada área.', anyOf: ['schedule.catalog.manage'] },
+      { href: '/equipo?seccion=plantillas', label: 'Tipos de turno', description: 'Códigos y horarios admitidos por cada área.', anyOf: ['schedule.catalog.manage'] },
       { href: '/equipo?seccion=cobertura', label: 'Cobertura mínima', description: 'Personas y funciones requeridas por franja.', anyOf: ['schedule.catalog.manage'] },
       { href: '/equipo?seccion=configuracion', label: 'Alcance y feriados', anyOf: ['schedule.configure'] },
     ] }],

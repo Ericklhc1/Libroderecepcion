@@ -358,7 +358,7 @@ export function SupervisionOpeningPanel({
             <p className="font-medium text-petrol-900">Subir informes</p>
             <p className="mt-1 text-xs text-slate-500">
               Puedes seleccionar varios PDF. La fecha se toma del propio informe y la evidencia
-              ya cargada para esa fecha se reutiliza con su trazabilidad.
+              ya cargada para esa fecha se reutiliza con su historial.
             </p>
             <div className="mt-3">
               <SupervisionAuditUpload

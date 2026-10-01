@@ -83,6 +83,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     cache: 'no-store',
+    signal: init?.signal ?? AbortSignal.timeout(90_000),
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -321,6 +322,15 @@ export function ChatWidget({
   const storageChecked = attachmentsEnabled || bootstrap !== null;
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    const minimizeForFronti = () => setOpen(false);
+    window.addEventListener('fronti:open', minimizeForFronti);
+    return () => window.removeEventListener('fronti:open', minimizeForFronti);
+  }, []);
+  useEffect(() => {
+    if (open) window.dispatchEvent(new Event('chat:open'));
+  }, [open]);
 
   const loadBootstrap = useCallback(async () => {
     try {
@@ -1383,7 +1393,7 @@ export function ChatWidget({
       onClick={() => setOpen((value) => !value)}
       aria-label={unread > 0 ? `Chat y Fronti, ${unread} mensajes sin leer` : 'Abrir Chat y Fronti'}
       aria-expanded={open}
-      className="fixed bottom-20 right-0 z-[110] flex h-12 min-w-[13.5rem] items-center gap-2 rounded-l-xl bg-petrol-900 px-3 text-left text-white shadow-xl ring-1 ring-petrol-800 transition-colors hover:bg-petrol-800 lg:bottom-0"
+      className="fixed bottom-20 right-0 z-[60] flex h-12 min-w-[13.5rem] items-center gap-2 rounded-l-xl bg-petrol-900 px-3 text-left text-white shadow-xl ring-1 ring-petrol-800 transition-colors hover:bg-petrol-800 lg:bottom-0"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-800 text-gold-300">
         <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -1408,7 +1418,7 @@ export function ChatWidget({
   if (!mounted) return null;
 
   const panel = open ? (
-    <div className="fixed inset-0 z-[120] flex flex-col border-l border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-lg sm:ring-1 sm:ring-slate-200 lg:bottom-12">
+    <div className="surface-enter fixed inset-0 z-[70] flex flex-col border-l border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:inset-auto sm:bottom-20 sm:right-0 sm:h-[min(720px,calc(100vh-6rem))] sm:w-[420px] sm:overflow-hidden sm:rounded-l-lg sm:ring-1 sm:ring-slate-200 lg:bottom-12">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
         {view !== 'list' ? (
           <button

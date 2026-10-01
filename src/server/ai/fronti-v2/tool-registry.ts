@@ -65,6 +65,8 @@ export function canFrontiUseTool(
       return hasAnyPermission(user, ['cash.view']);
     case 'consultar_llaves':
       return hasAnyPermission(user, ['key.inventory', 'management.dashboard.view']);
+    case 'consultar_horarios':
+      return user.isSystemAdmin || hasAnyPermission(user, ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure']);
     case 'consultar_turnos':
       return hasAnyPermission(user, [
         'shift.start',
@@ -139,6 +141,11 @@ export function filterFrontiToolDefinitionsForUser(
 }
 
 export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
+  {
+    type: 'function', name: 'consultar_horarios', mode: 'read', area: 'equipo', strict: true,
+    description: 'Consulta Equipo y horarios: personas, códigos y horas uniformes, programación, falta de personal y errores de archivos. Respeta área y permisos. No confirma asistencia ni modifica horarios. Usa una fecha concreta para listas largas.',
+    parameters: { type: 'object', properties: { area: { type: ['string', 'null'], description: 'Nombre o ID del área; null usa el área disponible.' }, planId: { type: ['string', 'null'], description: 'ID del horario abierto, si se conoce; null usa el horario vigente.' }, date: { type: ['string', 'null'], description: 'Fecha YYYY-MM-DD o null para el periodo.' } }, required: ['area', 'planId', 'date'], additionalProperties: false },
+  },
   {
     type: 'function',
     name: 'consultar_contexto_pantalla',
@@ -629,6 +636,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
 ] as const;
 
 const ALWAYS_AVAILABLE = new Set([
+  'consultar_horarios',
   'consultar_contexto_pantalla',
   'consultar_estado_operativo',
   'consultar_caja',
@@ -721,6 +729,7 @@ export function selectFrontiToolDefinitions(
   if (/garant/.test(text)) wanted.add('consultar_garantias');
   if (/novedad|incidencia/.test(text)) wanted.add('consultar_novedades');
   if (/llave/.test(text)) wanted.add('consultar_llaves');
+  if (/horario|malla|colaborador|programado|cobertura|plantilla|glosa|equipo|dotacion/.test(text)) wanted.add('consultar_horarios');
   if (/turno|relevo|entrega pendiente|quien esta/.test(text)) wanted.add('consultar_turnos');
   if (/venc|proxim/.test(text)) wanted.add('consultar_vencimientos');
   if (/seguimiento/.test(text)) wanted.add('consultar_seguimientos');

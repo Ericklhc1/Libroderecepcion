@@ -52,6 +52,7 @@ import {
   frontiToolMode,
   selectFrontiToolDefinitions,
 } from './fronti-v2/tool-registry';
+import { readScheduleContext, isScheduleReview, scheduleReviewReply } from './fronti-v2/schedule-context';
 import { executeFrontiV2ReadTool } from './fronti-v2/read-tools';
 import { executeFrontiPageContextTool } from './fronti-v2/page-context-tool';
 import type { FrontiRuntimeContext } from './fronti-v2/context-builder';
@@ -912,6 +913,7 @@ function systemInstructions(config: FrontiConfig): string {
   return (
     `Eres ${config.displayName}, el asistente operativo de AROH Central IA · Hotel HW Libertad. ` +
     'Responde siempre en español claro, breve y operativo. Para datos de AROH usa las herramientas disponibles; para preguntas de conocimiento general puedes responder con conocimiento del modelo sin fingir que el dato debería existir en AROH. Si una pregunta externa depende de información reciente que no puedes verificar, dilo brevemente. ' +
+    'Habla como un colega del hotel: explica qué ocurre, quién debe actuar y cuál es el siguiente paso. Di horario, persona, falta personal y revisar archivo; evita malla, entidad, snapshot, motor determinístico y JSON al conversar. Mantén códigos de turno y referencias exactos. Para Equipo usa consultar_horarios o el contexto de pantalla; diferencia borrador, publicado y asistencia. ' +
     'Nunca inventes huéspedes, reservas, montos, habitaciones, fechas, pagos, garantías ni estados. ' +
     'La respuesta vive en una burbuja estrecha: prefiere párrafos cortos, negritas y viñetas. No uses tablas Markdown salvo que el usuario pida explícitamente una tabla, columnas o un cuadro comparativo. ' +
     'Cuando una herramienta indique confirmation_required, la acción NO se ha ejecutado: explica que está preparada y que debe confirmarse en pantalla. ' +
@@ -982,6 +984,14 @@ export async function runReceptionAssistant(
     config = await getFrontiConfig();
     if (!config.enabled && !user.isSystemAdmin) {
       throw new AssistantError('DESACTIVADO');
+    }
+
+    const reviewMessage = [...messages].reverse().find(message => message.role === 'user')?.content ?? '';
+    if (runtimeContext?.page?.sectionKey === 'calendario' && isScheduleReview(reviewMessage, runtimeContext?.page?.moduleKey) && canFrontiUseTool(user, 'consultar_horarios')) {
+      const page = runtimeContext?.page;
+      const data = await readScheduleContext(user, { area: page?.filters.area, planId: page?.filters.malla });
+      recordFrontiAgentRun(telemetry, { provider: 'system', model: 'schedule-review', configuredProvider: config.provider, configuredModel: config.model, models: [], durationMs: Date.now() - startedAt, loops: 0, tools: [{ name: 'consultar_horarios', ok: true }], outcome: 'success' });
+      return { reply: scheduleReviewReply(data), confirmations: [] };
     }
 
     const providers = await resolveFrontiProviderChainRuntime({

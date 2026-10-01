@@ -9,6 +9,7 @@ const testDatabaseUrl =
   'postgresql://postgres:postgres@localhost:5432/libro_recepcion_test?schema=public';
 
 export default defineConfig({
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     globals: false,

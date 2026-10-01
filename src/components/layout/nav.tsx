@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { logoutAction } from '@/server/actions/auth';
+import { GroupedNav } from './app-sidebar';
 import type { NavGroup, NavItem } from './nav-items';
 
 const ICONS = {
@@ -305,55 +306,8 @@ export function DesktopNav({
   );
 }
 
-export function SidebarNav({
-  groups,
-  badges,
-}: {
-  groups: NavGroup[];
-  badges?: Partial<Record<string, number>>;
-}) {
-  const pathname = usePathname();
-
-  return (
-    <nav aria-label="Navegación principal" className="space-y-5">
-      {groups.map((group, index) => (
-        <div key={group.title ?? 'principal'} className="space-y-1">
-          {group.title ? (
-            <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-petrol-400">
-              {group.title}
-            </p>
-          ) : null}
-          {index > 0 && !group.title ? (
-            <hr className="mx-3 border-petrol-800" aria-hidden="true" />
-          ) : null}
-
-          {group.items.map((item) => {
-            const Icon = ICONS[item.icon];
-            const active = isActive(pathname, item.href);
-            const badge = badgeFor(badges, item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors active:bg-petrol-800',
-                  active
-                    ? 'border-gold-500 bg-petrol-800 font-semibold text-white'
-                    : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900 hover:text-white',
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="flex-1 truncate">{item.label}</span>
-                {badge && badge > 0 ? <Badge value={badge} /> : null}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
-    </nav>
-  );
+export function SidebarNav({ groups, badges }: { groups: NavGroup[]; badges?: Partial<Record<string, number>> }) {
+  return <GroupedNav groups={groups} badges={badges} />;
 }
 
 /** Barra inferior para móvil: acceso a lo que se usa de pie en el mesón. */
@@ -374,9 +328,11 @@ export function SidebarNav({
  */
 export function MobileNav({
   items,
+  groups,
   badges,
 }: {
   items: NavItem[];
+  groups?: NavGroup[];
   badges?: Partial<Record<string, number>>;
 }) {
   const pathname = usePathname();
@@ -426,31 +382,12 @@ export function MobileNav({
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
-            <ul className="space-y-1">
-              {restItems.map((item) => {
-                const Icon = ICONS[item.icon];
-                const active = isActive(pathname, item.href);
-                const badge = badgeFor(badges, item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-                        active
-                          ? 'bg-petrol-50 text-petrol-900'
-                          : 'text-slate-700 active:bg-slate-100',
-                      )}
-                    >
-                      <Icon className="h-5 w-5 shrink-0 text-petrol-600" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {badge && badge > 0 ? <Badge value={badge} /> : null}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <GroupedNav
+              groups={(groups ?? [{ title: null, items }]).map(group => ({ ...group, items: group.items.filter(item => !shownHrefs.has(item.href)) })).filter(group => group.items.length > 0)}
+              badges={badges}
+              light
+              onNavigate={() => setOpenMore(false)}
+            />
 
             {/*
               La cuenta, separada del menú por una línea: no es un destino

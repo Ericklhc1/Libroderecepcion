@@ -24,7 +24,7 @@ export function canManageHousekeeping(user: HousekeepingAccess): boolean {
 }
 
 export function canAccessHousekeeping(user: HousekeepingAccess): boolean {
-  return canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
+  return canManageHousekeeping(user) || user.permissions.some(p => p.startsWith('housekeeping.'));
 }
 
 export function isHousekeepingClosed(status: HousekeepingStatus): boolean {

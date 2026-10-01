@@ -1,6 +1,8 @@
 import 'server-only';
+import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
-import { getHousekeepingBoard } from '@/server/services/housekeeping';
+import { getHkWorkday } from '@/server/services/housekeeping-work';
+import { HK_WORK_LABELS, isHkFocused } from '@/domain/housekeeping-work';
 
 import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -520,13 +522,14 @@ async function supervisionSectionSnapshot(
 
 async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext) {
   if (page.sectionKey === 'housekeeping') {
-    const board = await getHousekeepingBoard(user);
+    const board = await getHkWorkday(user,{ date:page.filters.fecha||undefined,departmentId:page.filters.area||undefined,view:page.filters.vista||undefined });
     return {
-      pilot: false,
-      scope: 'Coordinación operativa de Housekeeping, habilitable por permisos. Las pruebas anteriores siguen identificadas.',
-      counts: { active: board.active, withoutFirstReceipt: board.pending, blocked: board.blocked, overdue: board.overdue },
-      requests: board.requests.slice(0, 12).map((request) => ({ humanId: request.humanId, isDemo: request.isDemo, title: request.sourceEntry?.title ?? request.title, status: request.status, dueAt: request.dueAt, acknowledgedAt: request.acknowledgedAt, blockReason: request.blockReason })),
-      guidance: 'Confirmar recepción no resuelve. Las acciones se ejecutan desde los botones del módulo; Fronti no cambia estos estados.',
+      pilot:false, scope:'Trabajo diario de Housekeeping, limitado al cargo, área y asignaciones del usuario.', date:board.date,
+      counts:board.counts,
+      requests:board.requests.slice(0,20).map(r=>({humanId:r.humanId,title:r.sourceEntry?.title??r.title,location:r.location,status:HK_WORK_LABELS[r.status]??r.status,responsible:r.assignedTo?.name??'Por asignar',estimatedMinutes:r.effortMinutes,requiresInspection:r.requiresInspection,dueAt:r.dueAt?formatDateTime(r.dueAt):null,blockReason:r.blockReason,result:r.resolution,inspectedBy:r.inspectedBy?.name??null})),
+      team:board.workload.map(p=>({name:p.name,available:p.available,tasks:p.tasks,estimatedMinutes:p.estimatedMinutes,scheduled:p.scheduled.map(s=>({code:s.code,start:s.startAt?formatDateTime(s.startAt):null,end:s.endAt?formatDateTime(s.endAt):null}))})),
+      suggestions:board.suggestions.map(s=>({humanId:s.humanId,responsible:s.name,reason:s.reason})),
+      guidance:'Las sugerencias de distribución usan disponibilidad declarada y carga estimada. No son asignaciones ni prueban asistencia. La confirmación se realiza en el módulo. Terminado puede requerir inspección de otra persona. Fronti no aprueba, cambia estados, modifica PMS ni consulta reservas privadas de llaves.',
     };
   }
   requireAny(
@@ -692,6 +695,10 @@ export async function executeFrontiPageContextTool(
     },
   };
 
+  if (isHkFocused(user)) {
+    if(page.moduleKey === 'inicio') return { ...base, snapshot: await adminSnapshot(user,{...page,sectionKey:'housekeeping'}) };
+    if(page.sectionKey !== 'housekeeping' && !['equipo','notificaciones','perfil'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
+  }
   const detail = await detailSnapshot(user, page);
   if (detail) return { ...base, snapshot: detail };
 

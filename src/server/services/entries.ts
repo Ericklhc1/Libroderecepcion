@@ -29,6 +29,7 @@ import {
 import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 export const entryInclude = {
+  housekeepingRequest: { select: { humanId:true, departmentId:true, status:true, resolution:true, isDemo:true, requiresInspection:true, inspectedAt:true, inspectedBy:{select:{name:true}} } },
   createdBy: { select: { id: true, name: true } },
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },

@@ -431,6 +431,12 @@ model RolePermission {
 /// y cada persona puede desactivar los avisos externos sin afectar la campana
 /// interna del Libro.
 model User {
+  hkInspections HousekeepingRequest[] @relation("hkInspected")
+  hkDayMemberships HousekeepingDayMember[]
+  hkHandoversCreated HousekeepingHandover[] @relation("hkHandoverCreated")
+  hkHandoversReceived HousekeepingHandover[] @relation("hkHandoverReceived")
+  hkDelegationsGiven HousekeepingDelegation[] @relation("hkDelegationGiven")
+  hkDelegationsReceived HousekeepingDelegation[] @relation("hkDelegationReceived")
   scheduleCollaborator ScheduleCollaborator?
   scheduleAreaGrants ScheduleAreaGrant[]
   scheduleEvents ScheduleEvent[]
@@ -640,6 +646,10 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  hkRoutines HousekeepingRoutine[]
+  hkDayMembers HousekeepingDayMember[]
+  hkHandovers HousekeepingHandover[]
+  hkDelegations HousekeepingDelegation[]
   housekeepingRequests HousekeepingRequest[]
   scheduleMemberships ScheduleMembership[]
   scheduleTemplates ScheduleTemplate[]
@@ -1109,6 +1119,7 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  hkMaintenanceWork HousekeepingRequest? @relation("hkMaintenance")
   housekeepingRequest HousekeepingRequest?
   id               String      @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -1188,6 +1199,25 @@ model OperationalEntry {
 
 // Operational coordination. Legacy administrative trials retain isDemo=true.
 model HousekeepingRequest {
+  workflowVersion Int @default(0)
+  workKind String @default("AVISO")
+  workDate String?
+  roomId String?
+  room Room? @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  zoneId String?
+  zone KeyArea? @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  effortMinutes Int @default(20)
+  requiresInspection Boolean @default(false)
+  startedAt DateTime?
+  finishedAt DateTime?
+  inspectedAt DateTime?
+  inspectedById String?
+  inspectedBy User? @relation("hkInspected", fields: [inspectedById], references: [id], onDelete: Restrict)
+  maintenanceEntryId String? @unique
+  maintenanceEntry OperationalEntry? @relation("hkMaintenance", fields: [maintenanceEntryId], references: [id], onDelete: Restrict)
+  routineId String?
+  routine HousekeepingRoutine? @relation(fields: [routineId], references: [id], onDelete: Restrict)
+
   departmentId String?
   department Department? @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   assignedToId String?
@@ -1218,6 +1248,8 @@ model HousekeepingRequest {
   events         HousekeepingEvent[]
 
   @@index([status, dueAt])
+  @@index([departmentId, workDate, status])
+  @@unique([routineId, workDate])
 }
 
 model HousekeepingEvent {
@@ -2072,6 +2104,7 @@ enum PmsImportStatus {
 }
 
 model Room {
+  housekeepingWork HousekeepingRequest[]
   id     String  @id @default(cuid())
   number String  @unique
   floor  Int?
@@ -3150,6 +3183,7 @@ model FrontiProactiveClaim {
 
 /// Destinos de llaves que no son habitaciones del PMS.
 model KeyArea {
+  housekeepingWork HousekeepingRequest[]
   id        String    @id @default(cuid())
   name      String    @unique
   active    Boolean   @default(true)
@@ -3226,4 +3260,71 @@ model KeyStaffLoanItem {
 
   @@index([loanId])
   @@index([destinationId, returnedAt])
+}
+
+/// Rutinas explícitas; se incorporan al día sólo al confirmar la planificación.
+model HousekeepingRoutine {
+  id String @id @default(cuid())
+  departmentId String
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  title String
+  description String
+  location String
+  effortMinutes Int @default(20)
+  requiresInspection Boolean @default(false)
+  active Boolean @default(true)
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  requests HousekeepingRequest[]
+  @@index([departmentId, active])
+}
+
+/// Disponibilidad declarada para organizar trabajo; nunca acredita asistencia.
+model HousekeepingDayMember {
+  id String @id @default(cuid())
+  departmentId String
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workDate String
+  available Boolean @default(true)
+  note String?
+  confirmedById String
+  updatedAt DateTime @updatedAt
+  @@unique([departmentId, workDate, userId])
+}
+
+model HousekeepingHandover {
+  id String @id @default(cuid())
+  requestKey String @unique
+  departmentId String
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  workDate String
+  note String
+  snapshot Json
+  createdById String
+  createdBy User @relation("hkHandoverCreated", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  receivedById String?
+  receivedBy User? @relation("hkHandoverReceived", fields: [receivedById], references: [id], onDelete: Restrict)
+  receivedAt DateTime?
+  @@index([departmentId, createdAt])
+}
+
+/// Cobertura temporal limitada a asignar/inspeccionar; no otorga permisos técnicos.
+model HousekeepingDelegation {
+  id String @id @default(cuid())
+  departmentId String
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation("hkDelegationReceived", fields: [userId], references: [id], onDelete: Restrict)
+  grantedById String
+  grantedBy User @relation("hkDelegationGiven", fields: [grantedById], references: [id], onDelete: Restrict)
+  startsAt DateTime
+  endsAt DateTime
+  permission String
+  reason String
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, departmentId, endsAt])
 }

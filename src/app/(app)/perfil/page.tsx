@@ -18,7 +18,7 @@ export const metadata = { title: 'Mi perfil' };
 export const dynamic = 'force-dynamic';
 
 export default async function ProfilePage() {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowAreaOperation:true });
 
   const [record, sessions] = await Promise.all([
     prisma.user.findUniqueOrThrow({

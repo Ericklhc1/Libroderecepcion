@@ -34,8 +34,12 @@ export async function resetOperationalData() {
     prisma.scheduleCollaborator.deleteMany(),
     prisma.scheduleAreaGrant.deleteMany(),
     prisma.scheduleCoverageRule.deleteMany(),
+    prisma.housekeepingDelegation.deleteMany(),
+    prisma.housekeepingHandover.deleteMany(),
+    prisma.housekeepingDayMember.deleteMany(),
     prisma.housekeepingEvent.deleteMany(),
     prisma.housekeepingRequest.deleteMany(),
+    prisma.housekeepingRoutine.deleteMany(),
     prisma.operationalMetricEvent.deleteMany(),
     prisma.keyStaffLoanItem.deleteMany(),
     prisma.keyStaffLoan.deleteMany(),
@@ -123,6 +127,8 @@ export async function resetOperationalData() {
 }
 
 export async function resetRoomsAndKeys() {
+  await prisma.housekeepingRequest.deleteMany();
+  await prisma.housekeepingRoutine.deleteMany();
   await prisma.keyStaffLoanItem.deleteMany();
   await prisma.keyStaffLoan.deleteMany();
   await prisma.supervisorKeyMovement.deleteMany();

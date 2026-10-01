@@ -1,3 +1,13 @@
+## 01/10/2026 · v1.45.0 · Housekeeping diario por cargo y área
+
+- Sustituye la portada de avisos por trabajo del día, vistas por cargo, filtros, ejecución, inspección de otra persona, impedimentos, correcciones y continuidad. Usa HousekeepingRequest existente; avisos y pruebas históricas conservan folio/historial. Organización explícita incorpora avisos operativos antiguos al circuito nuevo.
+- Permisos separados request/work/assign/inspect/plan/view.all; cargos Mucama, Supervisor/a de Housekeeping y Ama de llaves. Ámbito por área principal y pertenencias activas; no se cambian cargos de usuarios reales. Recepción solicita; Gerencia consulta. Cobertura temporal limitada, revocable, con vigencia de hasta 31 días. No afecta Caja, configuración técnica o privacidad de reservas de llaves.
+- Rutinas confirmadas por día, sin crear limpiezas por mera existencia de habitaciones. Disponibilidad declarada independiente de horario/asistencia. Propuestas Fronti determinísticas basadas en carga estimada y disponibilidad; confirmación humana por asignación. Programación lee mallas publicadas, incluyendo noches del día anterior; no crea turnos.
+- Resultado en la novedad original; incidencia Mantenimiento única vinculada por impedimento; entregas de llaves abiertas en el relevo, nunca stock privado. Relevos congelan pendientes y custodias y requieren otro receptor. Historial, notas, versiones e idempotencia preservados.
+- Migración 20261001212500_housekeeping_workday aditiva, roles/permisos explícitos y ampliación del CHECK de estados. Pruebas nuevas de circuito, privacidad, concurrencia, rutinas, cobertura, reconfirmación de origen y Fronti. Local sin PostgreSQL ni TEST_DATABASE_URL: integración se ejecuta por Compuerta en Postgres efímero; no se usa Neon Production para pruebas.
+- Lint/tipos y primera compilación local aprobados. 28 pruebas de dominio, navegación, acceso directo y catálogo Fronti aprobadas sin base. Compuerta ejecutará la migración y la regresión completa en PostgreSQL efímero antes de merge.
+- Guía operativa: docs/HOUSEKEEPING_OPERACION.md. Publicar sólo con Compuerta verde y verificar SHA/versión/tag en Production.
+
 ## 2026-10-01 · v1.44.0 · Áreas, custodia de personal y stock privado
 
 - Destinos `KeyArea` separados del catálogo PMS: las 89 habitaciones y sus mínimos no cambian. Creación, renombrado/desactivación y llaves propias; no se desactiva una área con custodia abierta.

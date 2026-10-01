@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { hasAnyPermission, hasPermission } from '@/server/auth/current-user';
+import { isHkFocused } from '@/domain/housekeeping-work';
 import { canAccessHousekeeping } from '@/domain/housekeeping';
 import { searchHousekeepingRecords } from './housekeeping';
 
@@ -37,7 +38,8 @@ const BASE_TYPES = [
 ] as const;
 
 function allowedTypes(user: CurrentUser): string[] {
-  const types = [...BASE_TYPES] as string[];
+  const hkOnly = isHkFocused(user);
+  const types = hkOnly ? [] : [...BASE_TYPES] as string[];
 
   if (hasPermission(user, 'alert.manage')) {
     types.push('Alert');
@@ -94,7 +96,7 @@ export async function searchOperationalRecords(
   if (!q) return [];
 
   const types = allowedTypes(user);
-  if (types.length === 0) return [];
+  if (types.length === 0) return canAccessHousekeeping(user) ? searchHousekeepingRecords(user, rawQuery, limit) : [];
 
   const terms = q
     .toLocaleLowerCase('es-CL')

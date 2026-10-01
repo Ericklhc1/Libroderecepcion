@@ -231,7 +231,7 @@ const PRIMARY: NavItem[] = [
       },
     ],
   },
-  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
+  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: ['housekeeping.view', 'housekeeping.manage', 'housekeeping.work', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'housekeeping.request', 'housekeeping.view.all'] },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',

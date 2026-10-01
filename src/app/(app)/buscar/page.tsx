@@ -15,7 +15,7 @@ export default async function GlobalSearchPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowAreaOperation:true });
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim() : '';
   const results = q ? await searchOperationalRecords(user, q) : [];

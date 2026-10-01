@@ -418,6 +418,7 @@ export async function updateRolePermissionsAction(
     });
 
     revalidatePath('/admin/roles');
+    revalidatePath('/', 'layout');
     return { ok: true as const, message: `Permisos del rol ${role.name} actualizados.` };
   });
 }

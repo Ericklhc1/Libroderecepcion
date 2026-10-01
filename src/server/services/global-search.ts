@@ -200,9 +200,9 @@ export async function searchOperationalRecords(
       createdAt: row.createdAt,
       href: row.href,
     }));
-  if (!canAccessHousekeeping(user.roleKey)) return results;
-  const pilot = await searchHousekeepingRecords(user, rawQuery, limit);
-  return [...results, ...pilot].sort((a, b) => {
+  if (!canAccessHousekeeping(user)) return results;
+  const housekeeping = await searchHousekeepingRecords(user, rawQuery, limit);
+  return [...results, ...housekeeping].sort((a, b) => {
     if (numeric !== null && (a.humanId === numeric || b.humanId === numeric)) return Number(b.humanId === numeric) - Number(a.humanId === numeric);
     return b.createdAt.getTime() - a.createdAt.getTime();
   }).slice(0, Math.min(100, Math.max(1, limit)));

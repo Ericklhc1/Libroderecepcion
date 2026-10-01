@@ -8,12 +8,11 @@ import {
   type PermissionKey,
 } from '@/lib/permissions';
 import { hasPermission } from '@/server/auth/current-user';
-import { assertAssignable, listOperationalUsers } from '@/server/services/users';
+import { assertAssignable, assertShiftAssignable, listOperationalUsers } from '@/server/services/users';
 import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
-import { createShift } from './helpers';
+import { listChatPeople } from '@/server/services/chat';
 import { ShiftType } from '@prisma/client';
-import { RuleError } from '@/server/errors';
 
 describe('matriz de roles y permisos', () => {
   beforeAll(async () => {
@@ -42,33 +41,17 @@ describe('matriz de roles y permisos', () => {
     }
   });
 
-  it('el Administrador de sistema queda fuera del ciclo de turnos', async () => {
+  it('el Administrador de sistema puede participar en el ciclo de turnos', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    expect(admin.roleOperational).toBe(false);
-    expect(hasPermission(admin, 'shift.start')).toBe(false);
-    expect(hasPermission(admin, 'shift.receive')).toBe(false);
-    expect(hasPermission(admin, 'shift.handover')).toBe(false);
+    expect(admin.roleOperational).toBe(true);
+    expect(hasPermission(admin, 'shift.start')).toBe(true);
+    expect(hasPermission(admin, 'shift.receive')).toBe(true);
+    expect(hasPermission(admin, 'shift.handover')).toBe(true);
   });
 
-  it('el Administrador de sistema no opera el mesón pero sí carga los informes', async () => {
-    /*
-      La regla del proyecto es que no aparezca como responsable operativo de
-      nada: no inicia, recibe ni entrega turno, no confirma salidas ni
-      entradas, no entrega llaves.
-
-      Importar los tres informes del PMS no es eso: es alimentar el sistema
-      con su fuente de datos y no asigna a nadie. Excluirlo dejaba un
-      callejón sin salida —en un hotel recién instalado la única cuenta es la
-      suya y no podía cargar el primer día— sin proteger nada.
-    */
+  it('el Administrador puede operar habitaciones y llaves con permisos explícitos', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-
-    expect(hasPermission(admin, 'pms.import')).toBe(true);
-    expect(hasPermission(admin, 'room.view')).toBe(true);
-
-    for (const operational of ['room.manage', 'key.assign'] as PermissionKey[]) {
-      expect(hasPermission(admin, operational)).toBe(false);
-    }
+    for (const permission of ['room.manage', 'key.assign', 'pms.import', 'housekeeping.view', 'housekeeping.manage'] as PermissionKey[]) expect(hasPermission(admin, permission)).toBe(true);
   });
 
   it('la matriz sembrada en la base coincide con la del código', async () => {
@@ -225,7 +208,7 @@ describe('matriz de roles y permisos', () => {
   });
 });
 
-describe('el Administrador de sistema no participa en la operación', () => {
+describe('el Administrador de sistema participa con autoría propia', () => {
   beforeAll(async () => {
     await seedCatalog();
   });
@@ -234,7 +217,7 @@ describe('el Administrador de sistema no participa en la operación', () => {
     await resetOperationalData();
   });
 
-  it('no aparece entre las personas asignables', async () => {
+  it('aparece entre las personas asignables', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
 
@@ -242,7 +225,7 @@ describe('el Administrador de sistema no participa en la operación', () => {
     const ids = assignable.map((u) => u.id);
 
     expect(ids).toContain(receptionist.id);
-    expect(ids).not.toContain(admin.id);
+    expect(ids).toContain(admin.id);
   });
 
   it('un usuario oculto sigue operativo pero desaparece de los selectores', async () => {
@@ -264,52 +247,50 @@ describe('el Administrador de sistema no participa en la operación', () => {
     expect(shift.assignments.some((assignment) => assignment.userId === hidden.id)).toBe(true);
   });
 
-  it('no puede figurar como responsable de un registro', async () => {
+  it('puede figurar como responsable de un registro y recibir tareas', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
-
-    await expect(assertAssignable(admin.id)).rejects.toThrow(/fuera de la operación/);
-
-    await expect(
-      createEntry(supervisor, {
-        type: 'NOVEDAD',
-        title: 'Registro de prueba con responsable inválido',
-        description: 'El administrador no puede ser responsable operativo.',
-        priority: 'MEDIA',
-        tags: [],
-        requiresFollowUp: false,
-        ownerId: admin.id,
-      }),
-    ).rejects.toThrow(/fuera de la operación/);
+    await expect(assertAssignable(admin.id)).resolves.toBeUndefined();
+    const entry = await createEntry(supervisor, { type: 'NOVEDAD', title: 'Responsabilidad operativa', description: 'Asignación explícita.', priority: 'MEDIA', tags: [], requiresFollowUp: false, ownerId: admin.id });
+    expect(entry.ownerId).toBe(admin.id);
+    const task = await createTask(supervisor, { title: 'Tarea asignada al administrador', priority: 'MEDIA', tags: [], checklist: [], assigneeId: admin.id });
+    expect(task.assigneeId).toBe(admin.id);
   });
 
-  it('no puede recibir tareas asignadas', async () => {
+  it('inicia un turno con su propia participación, sin saltar la recepción de Caja', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
-
-    await expect(
-      createTask(supervisor, {
-        title: 'Tarea con asignado inválido',
-        priority: 'MEDIA',
-        tags: [],
-        checklist: [],
-        assigneeId: admin.id,
-      }),
-    ).rejects.toThrow(/fuera de la operación/);
-  });
-
-  it('no puede iniciar un turno aunque esté asignado', async () => {
-    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    const shift = await createShift({ userId: admin.id, type: ShiftType.DIA });
-
-    await expect(openShiftAs(admin, shift)).rejects.toThrow(RuleError);
-    await expect(openShiftAs(admin, shift)).rejects.toThrow(
-      /no participa en la operación de turnos/,
-    );
+    const opened = await openShiftAs(admin, { type: ShiftType.DIA });
+    expect(opened.assignments.some((assignment) => assignment.userId === admin.id)).toBe(true);
+    expect(opened.createdById).toBe(admin.id);
   });
 
   it('un usuario inactivo no puede recibir asignaciones', async () => {
     const inactive = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, active: false });
     await expect(assertAssignable(inactive.id)).rejects.toThrow(/inactivo/);
   });
+  it('conserva el rechazo de roles no operativos aunque tengan permisos de turno', async () => {
+    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const role = await prisma.role.create({ data: { key: `CONSULTA_${user.id}`, name: 'Consulta técnica', operational: false } });
+    try {
+      await prisma.user.update({ where: { id: user.id }, data: { roleId: role.id } });
+      await expect(assertAssignable(user.id)).rejects.toThrow(/fuera de la operación/);
+      await expect(assertShiftAssignable(user.id)).rejects.toThrow(/no participa/);
+    } finally {
+      await prisma.user.update({ where: { id: user.id }, data: { roleId: user.roleId } });
+      await prisma.role.delete({ where: { id: role.id } });
+    }
+  });
+
+  it('el administrador participa en Chat y aparece en turno sin suplantar a otro usuario', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const shift = await openShiftAs(admin, { type: ShiftType.DIA });
+    await expect(listChatPeople(admin)).resolves.toBeDefined();
+    const people = await listChatPeople(receptionist);
+    const person = people.find((candidate) => candidate.id === admin.id);
+    expect(person?.roleName).toBe(admin.roleName);
+    expect(person?.presence.inShift).toBe(true);
+    expect(shift.assignments.some((assignment) => assignment.userId === admin.id)).toBe(true);
+  });
+
 });

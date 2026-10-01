@@ -150,13 +150,13 @@ describe('tablero de asignación', () => {
     expect(entry?.href).toContain('/libro/');
   });
 
-  it('el Administrador de sistema no aparece en la carga ni como asignable', async () => {
+  it('el Administrador de sistema aparece en la carga y como asignable', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     const board = await getAssignmentBoard();
 
-    // Su rol no es operativo: no reparte ni recibe trabajo del mesón.
-    expect(board.workload.map((row) => row.userId)).not.toContain(admin.id);
-    expect(board.assignees.map((option) => option.value)).not.toContain(admin.id);
+    // Participación operativa autorizada con identidad propia.
+    expect(board.workload.map((row) => row.userId)).toContain(admin.id);
+    expect(board.assignees.map((option) => option.value)).toContain(admin.id);
   });
 
   it('el gerente sí aparece como asignable: es el único modo de que actúe', async () => {

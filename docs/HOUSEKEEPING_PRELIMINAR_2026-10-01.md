@@ -1,5 +1,7 @@
 # Informe preliminar — Housekeeping en AROH Central IA
 
+> Actualización 1.40.0: por instrucción posterior, el módulo pasa a ser habilitable por permisos y el administrador participa en la operación. Este informe conserva el alcance preliminar del piloto 1.39.0; las pruebas anteriores siguen identificadas.
+
 Fecha: 01/10/2026. Base revisada: GitHub main `2381ecd4`, versión 1.38.0.
 Informe entregado antes de comenzar la implementación.
 

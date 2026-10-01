@@ -375,7 +375,7 @@ export default async function ShiftPage({
           <div className="space-y-3 px-4 py-4">
             {!user.roleOperational ? (
               <EmptyState
-                message="El Administrador de sistema no participa en el ciclo de turnos."
+                message="Tu rol no participa en el ciclo de turnos."
                 hint="Usa una cuenta operativa para operar turnos."
               />
             ) : (

@@ -264,11 +264,11 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     ).rejects.toThrow();
   });
 
-  it('el Administrador de sistema sigue fuera del ciclo de turnos', async () => {
+  it('el Administrador de sistema puede abrir su turno con autoría propia', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    await expect(openShift(admin, { type: ShiftType.DIA })).rejects.toThrow(
-      /no participa en la operación de turnos/,
-    );
+    const { shift } = await openShift(admin, { type: ShiftType.DIA });
+    expect(shift.createdById).toBe(admin.id);
+    expect(shift.assignments.some((assignment) => assignment.userId === admin.id)).toBe(true);
   });
 
   it('reutiliza un turno programado a mano en lugar de crear otro', async () => {
@@ -342,14 +342,15 @@ describe('modelo de turnos: dos ventanas y relevo secuencial', () => {
     ).rejects.toThrow(/Sólo se puede sumar gente a un turno en curso/);
   });
 
-  it('un rol no operativo no se puede sumar al turno', async () => {
+  it('el Administrador se puede sumar al turno con su propia identidad', async () => {
     const titular = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
 
     const { shift } = await openShift(titular, { type: ShiftType.DIA });
     await expect(
       addShiftMember(titular, { shiftId: shift.id, userId: admin.id }),
-    ).rejects.toThrow(/no participa en la operación/);
+    ).resolves.toBeUndefined();
+    expect((await getMyOpenShift(admin.id))?.id).toBe(shift.id);
   });
 
   it('Central de Reservas y Gerencia pueden recibir tareas, pero no entrar a turnos de Recepción', async () => {

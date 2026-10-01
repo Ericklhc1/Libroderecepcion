@@ -67,7 +67,7 @@ export default async function SurpriseAuditsPage({
 }) {
   const user = await requirePageUser();
   if (!hasPermission(user, 'supervision.audit.reserved')) redirect('/sin-permisos');
-  const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
+  const isSupervisor = (user.roleKey === ROLE_KEYS.SUPERVISOR || user.roleKey === ROLE_KEYS.SYSTEM_ADMIN);
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const category = typeof params.categoria === 'string' ? params.categoria : '';

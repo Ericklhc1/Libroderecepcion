@@ -147,15 +147,14 @@ export default async function AdminPage() {
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Administración</h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Control técnico del sistema. El rol Administrador de sistema se mantiene fuera de la
-          operación habitual de turnos.
+          Control técnico y operativo del sistema. Las acciones conservan su autoría y auditoría.
         </p>
       </header>
 
       {user.isSystemAdmin && (
         <Link href="/admin/housekeeping" className="card block border-amber-200 px-4 py-4 hover:bg-amber-50">
-          <span className="block font-medium text-petrol-900">Housekeeping · piloto privado</span>
-          <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Solo Administrador de sistema; pruebas sin envío al personal.</span>
+          <span className="block font-medium text-petrol-900">Housekeeping</span>
+          <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Acceso habilitable desde Roles y permisos.</span>
         </Link>
       )}
 

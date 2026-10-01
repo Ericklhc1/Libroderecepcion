@@ -6,9 +6,9 @@ import { ROLE_KEYS } from '@/lib/permissions';
 /**
  * Usuarios elegibles para la operación.
  *
- * El Administrador de sistema queda deliberadamente fuera: su rol tiene
- * `operational: false`, por lo que no aparece como responsable, asignado ni en
- * la participación en turnos.
+ * La elegibilidad depende del rol operativo, actividad y visibilidad.
+ * El Administrador de sistema puede recibir responsabilidades y participar
+ * con su propia identidad desde la versión 1.40.0.
  */
 export async function listOperationalUsers() {
   return prisma.user.findMany({

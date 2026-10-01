@@ -216,8 +216,8 @@ export type AnnouncementWithReads = {
  * Comunicados vivos con su avance de lectura, para el Supervisor.
  *
  * `expected` es el personal operativo activo, que es a quién bloquea de
- * verdad: el Administrador de sistema no opera el mesón y un comunicado para
- * todos no debería contarlo como moroso.
+ * verdad. Incluye al Administrador de sistema cuando participa como
+ * cuenta operativa; la misma elegibilidad rige para tareas y turnos.
  */
 export async function listAnnouncements(limit = 30): Promise<AnnouncementWithReads[]> {
   const [rows, operationalCount] = await Promise.all([

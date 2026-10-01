@@ -53,6 +53,28 @@ export type HelpTopic = {
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
+    id: 'habilitar-housekeeping', question: '¿Cómo habilito Housekeeping para un rol?',
+    steps: [
+      'En Administración > Roles y permisos, abre el rol que quieras habilitar.',
+      'En el grupo Housekeeping, activa «Consultar avisos de Housekeeping» para acceso de lectura o «Crear y gestionar avisos de Housekeeping» para operar.',
+      'Guarda los permisos. Las cuentas de ese rol tendrán Housekeeping en el menú; gestionar también permite consultar.',
+      'Desmarcar ambos permisos retira el acceso sin borrar los avisos ni su historial.',
+    ],
+    caveat: 'El administrador conserva acceso. Estos permisos no crean horarios ni asignación automática al personal del área.',
+    route: '/admin/roles', anyOf: ['role.manage'], keywords: ['housekeeping', 'habilitar', 'deshabilitar', 'activar', 'permisos', 'área'],
+  },
+  {
+    id: 'gestionar-housekeeping', question: '¿Cómo confirmo y gestiono un aviso de Housekeeping?',
+    steps: [
+      'Entra a Housekeeping. Revisa el contenido, prioridad y plazo del aviso.',
+      'Confirma recepción sólo después de comprender la instrucción. Si falta información, usa «Necesito aclaración».',
+      'Inicia gestión o registra un impedimento. Para resolver, indica qué se hizo y el resultado.',
+      'Si cambia la novedad original, revísala y confirma su nueva versión antes de continuar.',
+    ],
+    caveat: 'Confirmar no equivale a resolver. Las pruebas administrativas anteriores siguen identificadas y reservadas al administrador.',
+    route: '/admin/housekeeping', anyOf: ['housekeeping.view', 'housekeeping.manage'], keywords: ['housekeeping', 'confirmar', 'recibir', 'resolver', 'bloquear', 'pendiente'],
+  },
+  {
     id: 'tomar-turno',
     question: '¿Cómo inicio y recibo mi turno?',
     steps: [

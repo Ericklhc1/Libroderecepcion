@@ -24,7 +24,7 @@ export async function createHousekeepingAction(_state: ActionState | null, formD
     const input = parseOrThrow(createSchema, formDataToObject(formData));
     const request = await createHousekeepingRequest(user, input);
     revalidatePath('/admin/housekeeping');
-    return { ok: true as const, message: `Aviso de prueba #${request.humanId} guardado.`, id: request.id };
+    return { ok: true as const, message: `Aviso #${request.humanId} guardado.`, id: request.id };
   });
 }
 
@@ -34,6 +34,6 @@ export async function changeHousekeepingAction(_state: ActionState | null, formD
     const input = parseOrThrow(changeSchema, formDataToObject(formData));
     const request = await changeHousekeepingRequest(user, input);
     revalidatePath('/admin/housekeeping');
-    return { ok: true as const, message: `Aviso #${request.humanId} actualizado; acción de prueba registrada.`, id: request.id };
+    return { ok: true as const, message: `Aviso #${request.humanId} actualizado.`, id: request.id };
   });
 }

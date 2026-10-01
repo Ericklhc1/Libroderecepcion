@@ -24,9 +24,8 @@ import {
  * Acciones de los checklists de supervisión.
  *
  * La configuración y la ejecución usan permisos propios del Centro de
- * Supervisión. El servicio exige además el rol Supervisor para operar una
- * auditoría; el Administrador conserva acceso técnico, pero no aparece como
- * auditor responsable.
+ * Supervisión. El servicio admite Supervisor y Administrador de sistema;
+ * la auditoría conserva la identidad de quien la ejecuta.
  */
 
 function refresh() {

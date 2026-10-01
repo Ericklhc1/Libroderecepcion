@@ -19,8 +19,8 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { assertAssignable } from './users';
 
 function assertOperationalSupervisor(user: CurrentUser) {
-  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
-    throw new RuleError('Las auditorías sorpresa sólo pueden ser operadas por el rol Supervisor.');
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR && user.roleKey !== ROLE_KEYS.SYSTEM_ADMIN) {
+    throw new RuleError('Las auditorías sorpresa sólo pueden ser operadas por Supervisor o Administrador de sistema.');
   }
 }
 

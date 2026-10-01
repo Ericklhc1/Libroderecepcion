@@ -986,7 +986,7 @@ model OperationalEntry {
   @@index([stayId])
 }
 
-// Private administrative pilot: no participation in reception shifts or PMS.
+// Operational coordination. Legacy administrative trials retain isDemo=true.
 model HousekeepingRequest {
   id             String @id @default(cuid())
   humanId        Int @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -1005,7 +1005,7 @@ model HousekeepingRequest {
   resolution     String?
   resolvedAt     DateTime?
   version        Int @default(1)
-  isDemo         Boolean @default(true)
+  isDemo         Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   events         HousekeepingEvent[]

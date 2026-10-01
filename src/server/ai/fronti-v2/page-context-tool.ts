@@ -1,4 +1,5 @@
 import 'server-only';
+import { getScheduleBoard, getScheduleDepartments, getSchedulePlan } from '@/server/services/schedules';
 import { getHousekeepingBoard } from '@/server/services/housekeeping';
 
 import { OperationalAlarmStatus } from '@prisma/client';
@@ -904,6 +905,19 @@ export async function executeFrontiPageContextTool(
       return { ...base, snapshot: null };
     case 'administracion':
       return { ...base, snapshot: await adminSnapshot(user, page) };
+    case 'equipo': {
+      const departments = await getScheduleDepartments(user);
+      const focus = page.filters.malla ? await getSchedulePlan(user, page.filters.malla) : null;
+      const area = departments.find((d) => d.id === (page.filters.area ?? focus?.departmentId)) ?? (!page.filters.area && !focus ? departments.find((d) => d.key === 'RECEPCION') ?? departments[0] : undefined);
+      if (!area) return { ...base, snapshot: { module: 'Equipo y horarios', message: 'No hay un área o colaborador habilitado para esta consulta.' } };
+      const board = await getScheduleBoard(user, area.id, focus?.id);
+      return { ...base, snapshot: { area: { id: area.id, name: area.name }, section: page.sectionLabel,
+        plan: board.selected ? { humanId: board.selected.humanId, startDate: board.selected.startDate, endDate: board.selected.endDate, status: board.selected.status, version: board.selected.version } : null,
+        counts: { assignments: board.slots.length, coverageRules: board.rules.length, gaps: board.gaps.length, pendingExtras: board.slots.filter((s) => s.extraStatus === 'PENDIENTE').length },
+        assignments: board.slots.slice(0, 24).map((s) => ({ collaborator: s.collaborator.name, date: s.date, code: s.code, startAt: s.startAt, endAt: s.endAt, extraKind: s.extraKind, extraStatus: s.extraStatus })),
+        gaps: board.gaps.slice(0, 12),
+        guidance: 'Programación no acredita presencia ni abre turnos operativos. Sin reglas de cobertura no se puede concluir dotación suficiente. Las cargas y cambios se revisan y confirman desde Equipo; Fronti no modifica horarios.' } };
+    }
     case 'perfil':
       return {
         ...base,

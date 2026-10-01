@@ -78,7 +78,7 @@ function dateText(value: Date): string {
   ].join('/');
 }
 
-function rowsToFragments(rows: Array<Array<string | number | boolean | Date | null>>): TextFragment[] {
+function rowsToFragments(rows: Array<Array<string | number | boolean | Date | null>>, preserveClockCells = false): TextFragment[] {
   const widest = rows.reduce((maximum, row) => Math.max(maximum, row.length), 0);
   const cells = rows.reduce((total, row) => total + row.length, 0);
   if (rows.length > MAX_ROWS || widest > MAX_COLUMNS || cells > MAX_CELLS) {
@@ -91,7 +91,7 @@ function rowsToFragments(rows: Array<Array<string | number | boolean | Date | nu
   rows.forEach((row, rowIndex) => {
     row.forEach((value, columnIndex) => {
       if (value === null || value === '') return;
-      const text = value instanceof Date ? dateText(value) : String(value).trim();
+      const text = value instanceof Date ? preserveClockCells && value.getUTCFullYear() <= 1900 ? `${String(value.getUTCHours()).padStart(2, '0')}:${String(value.getUTCMinutes()).padStart(2, '0')}:${String(value.getUTCSeconds()).padStart(2, '0')}` : dateText(value) : String(value).trim();
       if (!text) return;
       fragments.push({
         page: 1,
@@ -104,7 +104,7 @@ function rowsToFragments(rows: Array<Array<string | number | boolean | Date | nu
   return fragments;
 }
 
-async function readWorkbook(name: string, data: Uint8Array): Promise<ExtractedReport[]> {
+async function readWorkbook(name: string, data: Uint8Array, preserveClockCells = false): Promise<ExtractedReport[]> {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
   const bytes = Uint8Array.from(data);
@@ -128,7 +128,7 @@ async function readWorkbook(name: string, data: Uint8Array): Promise<ExtractedRe
     if (rows.length) {
       reports.push({
         name: workbook.worksheets.length > 1 ? `${name} · ${worksheet.name}` : name,
-        fragments: rowsToFragments(rows),
+        fragments: rowsToFragments(rows, preserveClockCells),
       });
     }
   });
@@ -140,7 +140,7 @@ async function readWorkbook(name: string, data: Uint8Array): Promise<ExtractedRe
  * Convierte PDF, Excel moderno o texto delimitado al mismo lenguaje de
  * fragmentos. Desde aquí, todos pasan por el mismo reconocimiento semántico.
  */
-export async function readReportFile(name: string, data: Uint8Array): Promise<ExtractedReport[]> {
+export async function readReportFile(name: string, data: Uint8Array, options: { preserveClockCells?: boolean } = {}): Promise<ExtractedReport[]> {
   const extension = extname(name).toLowerCase();
   const signature = new TextDecoder('latin1').decode(data.slice(0, 5));
 
@@ -148,7 +148,7 @@ export async function readReportFile(name: string, data: Uint8Array): Promise<Ex
     return [{ name, fragments: await readPdfFragments(data) }];
   }
   if (extension === '.xlsx' || extension === '.xlsm' || signature.startsWith('PK')) {
-    return readWorkbook(name, data);
+    return readWorkbook(name, data, options.preserveClockCells);
   }
   if (['.csv', '.tsv', '.txt'].includes(extension)) {
     const rows = parseDelimited(decodeText(data), extension === '.tsv' ? '\t' : undefined);

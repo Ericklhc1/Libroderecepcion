@@ -41,7 +41,17 @@ function wall(key: string, time: string, strict = true): Date {
   if (!validDate(key) || !scheduleTime.safeParse(time).success) throw new Error('Fecha u hora inválida.');
   const value = hotelWallDateTime(key, Number(time.slice(0, 2)), Number(time.slice(3)));
   const p = hotelParts(value);
-  if (strict && (`${p.year}-${p.month}-${p.day}` !== key || `${p.hour}:${p.minute}` !== time)) throw new Error('Ese horario no existe por el cambio de hora de Chile. Revisa la plantilla para esa fecha.');
+  if (`${p.year}-${p.month}-${p.day}` !== key || `${p.hour}:${p.minute}` !== time) {
+    if (strict) throw new Error('Ese horario no existe por el cambio de hora de Chile. Revisa la plantilla para esa fecha.');
+    // A skipped boundary begins at the first real civil minute after the gap.
+    // The wall-time solver can otherwise return 23:00 of the previous date.
+    const target = `${key}T${time}`;
+    for (let offset = -120; offset <= 120; offset++) {
+      const candidate = new Date(value.getTime() + offset * 60000); const c = hotelParts(candidate);
+      if (`${c.year}-${c.month}-${c.day}T${c.hour}:${c.minute}` >= target) return candidate;
+    }
+    throw new Error('No se pudo resolver el límite de cobertura para esa fecha.');
+  }
   return value;
 }
 export function dayWindow(date: string) { return { startAt: wall(date, '00:00', false), endAt: wall(datePlus(date, 1), '00:00', false) }; }

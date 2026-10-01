@@ -132,6 +132,11 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(legacy.moduleKey).toBe('novedades-habitacion');
     expect(legacy.sectionKey).toBe('redireccion');
   });
+  it('distingue planificación por área de turnos operativos y reconoce sub-secciones', () => {
+    const page = resolveFrontiPageContext({ pathname: '/equipo', search: '?area=recepcion&malla=malla-1&seccion=plantillas' });
+    expect(page.moduleKey).toBe('equipo'); expect(page.sectionLabel).toBe('Plantillas y glosa'); expect(page.entityType).toBe('SchedulePlan');
+    expect(page.recommendedTools).toEqual(['consultar_contexto_pantalla']);
+  });
   it('entiende Gerencia como contexto estratégico de sólo lectura', () => {
     const management = resolveFrontiPageContext({
       pathname: '/gerencia',

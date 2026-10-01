@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverageSlots, scheduledAt, coverageGaps, dateDays, holidayDates, plannedMinutes, scheduleAllowed, slotSchema, templateSchema, templateWindow, weeklyTotals, type IntervalSlot } from '@/domain/schedule';
+import { coverageSlots, scheduledAt, dayWindow, coverageGaps, dateDays, holidayDates, plannedMinutes, scheduleAllowed, slotSchema, templateSchema, templateWindow, weeklyTotals, type IntervalSlot } from '@/domain/schedule';
 import { HOTEL_TIME_ZONE } from '@/domain/time';
 const clock = (startTime: string, endTime: string, crossesMidnight = false) => ({ startTime, endTime, crossesMidnight, breakMinutes: 0, breakPaid: false });
 function slot(id: string, date: string, start: string, end: string, night = false): IntervalSlot { return { collaboratorId: id, functionName: 'Recepcionista', kind: 'TURNO', ...templateWindow(date, clock(start, end, night)), breakPaid: false }; }
@@ -12,6 +12,14 @@ describe('malla: fechas, glosa y horas', () => {
     expect(plannedMinutes(slot('a', '2026-04-04', '21:00', '08:00', true))).toBe(720);
     expect(plannedMinutes(slot('a', '2026-09-05', '21:00', '08:00', true))).toBe(600);
     expect(() => templateWindow('2026-09-06', clock('00:30', '08:00'))).toThrow('no existe');
+  });
+  it('usa el inicio civil real cuando la medianoche se omite y no incluye la fecha anterior', () => {
+    const spring = dayWindow('2026-09-06'); const before = dayWindow('2026-09-05'); const autumn = dayWindow('2026-04-04');
+    expect(spring.startAt.toISOString()).toBe('2026-09-06T04:00:00.000Z');
+    expect((spring.endAt.getTime() - spring.startAt.getTime()) / 3600000).toBe(23);
+    expect((before.endAt.getTime() - before.startAt.getTime()) / 3600000).toBe(24);
+    expect((autumn.endAt.getTime() - autumn.startAt.getTime()) / 3600000).toBe(25);
+    expect(holidayDates(slot('a', '2026-09-05', '21:00', '23:30'), [{ date: '2026-09-06', name: 'Prueba' }])).toEqual([]);
   });
   it('exige colación dentro de la jornada y distingue cómputo de cobertura', () => {
     const window = templateWindow('2026-10-01', { ...clock('08:00', '19:00'), breakStartTime: '13:00', breakMinutes: 60 });

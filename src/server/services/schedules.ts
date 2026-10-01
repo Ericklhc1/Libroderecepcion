@@ -252,7 +252,8 @@ export async function getScheduleBoard(user: CurrentUser, departmentId: string, 
   const plans = await prisma.schedulePlan.findMany({ where: { departmentId, ...(!canManage && !canPublish ? { status: 'PUBLICADO' } : {}), ...(!team ? { OR: [{ slots: { some: { collaborator: { userId: user.id }, cancelledAt: null } } }, { acknowledgments: { some: { userId: user.id } } }] } : {}) }, orderBy: { startDate: 'desc' }, take: 24 });
   const focused = focusId ? await getSchedulePlan(user, focusId) : null;
   if (focused && focused.departmentId !== departmentId) throw new NotFoundError();
-  const selected = focused ?? plans.find((p) => p.endDate >= hotelCalendarDate()) ?? plans[0];
+  const today = hotelCalendarDate();
+  const selected = focused ?? plans.find((p) => p.startDate <= today && p.endDate >= today) ?? [...plans].filter((p) => p.startDate > today).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0] ?? plans[0];
   if (focused && !plans.some((p) => p.id === focused.id)) plans.push(focused);
   const collaborators = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true } : {}) }, orderBy: { name: 'asc' }, take: 500 });
   const templates = canManage ? await prisma.scheduleTemplate.findMany({ where: { departmentId, active: true }, orderBy: { code: 'asc' } }) : [];

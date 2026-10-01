@@ -5,6 +5,8 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { saveScheduleCollaborator, saveScheduleTemplate, saveScheduleCoverage, saveScheduleGrant } from '@/server/services/schedule-catalog';
 import { createSchedulePlan, addScheduleSlot, getScheduleBoard, getSchedulePlan, moveScheduleSlot, cancelScheduleSlot, publishSchedulePlan, changeScheduleExtra, acknowledgeSchedule } from '@/server/services/schedules';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import { reviewScheduleImport, applyScheduleImport } from '@/server/services/schedule-import';
 
@@ -178,6 +180,19 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     await changeScheduleExtra(admin, await mutation(planId, 'Extensión innecesaria'), { slotId: s.id, action: 'RECHAZAR' });
     const rejected = await slot(); expect(rejected.endAt).toEqual(rejected.baseEndAt); expect(rejected.extraMinutes).toBe(120);
     expect(Object.values((await getScheduleBoard(admin, area, planId)).totals).reduce((sum, n) => sum + n, 0)).toBe(660);
+  });
+
+  it('Fronti usa permisos canónicos y no revela horarios ajenos a la consulta propia', async () => {
+    await add(); await add(b); await publishSchedulePlan(admin, await mutation(planId, 'Malla revisada'));
+    const page = resolveFrontiPageContext({ pathname: '/equipo', search: `?area=${area}&malla=${planId}` });
+    await expect(executeFrontiPageContextTool(reader, page)).rejects.toThrow('no está habilitado');
+    const response = await executeFrontiPageContextTool(own, page) as { snapshot: { assignments: { collaborator: string }[] } };
+    expect(response.snapshot.assignments).toHaveLength(1); expect(response.snapshot.assignments[0]?.collaborator).toBe('Colaborador Uno');
+  });
+
+  it('elige por defecto la malla vigente o la futura más cercana', async () => {
+    await createSchedulePlan(admin, { departmentId: area, startDate: '2090-10-09', endDate: '2090-10-16' });
+    expect((await getScheduleBoard(admin, area)).selected?.id).toBe(planId);
   });
 
 });

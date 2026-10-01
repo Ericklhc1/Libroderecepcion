@@ -14,7 +14,7 @@ export async function reviewScheduleImport(user: CurrentUser, planId: string, fi
   if (!/\.(pdf|xlsx|csv|tsv)$/i.test(fileName) || bytes.length === 0 || bytes.length > 3 * 1024 * 1024) throw new RuleError('Usa PDF, XLSX, CSV o TSV de hasta 3 MB.');
   const fileHash = createHash('sha256').update(bytes).digest('hex');
   const existing = await prisma.scheduleImport.findFirst({ where: { planId, fileHash, OR: [{ baseVersion: plan.version }, { status: 'APLICADO' }] } }); if (existing) return existing;
-  const files = await readReportFile(fileName, bytes);
+  const files = await readReportFile(fileName, bytes, { preserveClockCells: true });
   const extracted = files.map((f) => extractScheduleRoster(f.fragments, plan.startDate.toISOString().slice(0, 10), plan.endDate.toISOString().slice(0, 10)));
   const people = await prisma.scheduleCollaborator.findMany({ where: { active: true, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
   const templates = await prisma.scheduleTemplate.findMany({ where: { departmentId: plan.departmentId, active: true } });

@@ -54,3 +54,9 @@ Servicios canónicos: schedule-catalog.ts, schedules.ts, schedule-import.ts; acc
 Migración aditiva revisada, probada en PostgreSQL desechable de Compuerta antes de Production. No cambios automáticos a personal real, mallas reales, Shift, BoxSession, caja o custodia. La ruta /equipo queda exenta del bloqueo visual de recepción de turno porque consultar planificación no es registrar operación.
 
 La entrega automática de incidencias al siguiente colaborador de área, escalamiento y reporte diario constituyen una fase posterior. Ningún turno de Recepción se reutiliza como presencia de Housekeeping/Mantenimiento.
+
+### Revisión de archivos y ayuda de Fronti (1.43.0)
+
+Después de añadir usuarios al área o corregir un tipo de turno, usa **Volver a revisar coincidencias** en el archivo ya leído. No necesitas cargar de nuevo el PDF. Revisa las observaciones y confirma la incorporación; revisar no cambia el calendario.
+
+Los horarios usan siempre el código y reloj de 24 horas. **Día siguiente** identifica las noches. Fronti puede consultar personas, programación, cobertura y observaciones con los mismos permisos del usuario. Dentro del calendario, «Revisa este horario y sus errores» ofrece una revisión de datos verificados. Publicar el horario no inicia un turno ni confirma asistencia.

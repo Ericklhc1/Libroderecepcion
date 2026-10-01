@@ -180,7 +180,7 @@ export function GuaranteeEditDialog({
 
         {terminal ? (
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-            Esta garantía ya fue resuelta. Por trazabilidad financiera, monto, moneda y forma quedan históricos; todavía puedes corregir contexto y observaciones.
+            Esta garantía ya fue resuelta. El historial conserva el monto, la moneda y la forma de pago; todavía puedes corregir contexto y observaciones.
           </p>
         ) : null}
 

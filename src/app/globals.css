@@ -256,3 +256,12 @@ h4 {
     touch-action: manipulation;
   }
 }
+
+/* Entry animations finish without retaining a transform or an invisible layer. */
+@keyframes surface-appear { from { opacity: 0.65; } to { opacity: 1; } }
+.surface-enter { animation: surface-appear 160ms ease-out; }
+.dialog-enter { animation: surface-appear 140ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media print { .surface-enter, .dialog-enter { animation: none !important; } }

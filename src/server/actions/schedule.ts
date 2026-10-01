@@ -7,10 +7,10 @@ import { runAction, formDataToObject, type ActionState } from '@/server/action';
 import { mutationSchema, scheduleId } from '@/domain/schedule';
 import { createSchedulePlan, addScheduleSlot, moveScheduleSlot, cancelScheduleSlot, publishSchedulePlan, changeScheduleExtra, acknowledgeSchedule } from '@/server/services/schedules';
 import { saveScheduleCollaborator, saveScheduleTemplate, saveScheduleCoverage, saveScheduleGrant, saveScheduleHoliday } from '@/server/services/schedule-catalog';
-import { reviewScheduleImport, applyScheduleImport } from '@/server/services/schedule-import';
+import { reviewScheduleImport, applyScheduleImport, refreshScheduleImport } from '@/server/services/schedule-import';
 import { RuleError } from '@/server/errors';
 
-type Command = 'plan' | 'slot' | 'move' | 'cancel' | 'publish' | 'extra' | 'ack' | 'collaborator' | 'template' | 'coverage' | 'grant' | 'holiday' | 'review' | 'import';
+type Command = 'plan' | 'slot' | 'move' | 'cancel' | 'publish' | 'extra' | 'ack' | 'collaborator' | 'template' | 'coverage' | 'grant' | 'holiday' | 'review' | 'import' | 'refresh';
 async function execute(command: Command, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const user = await requireUser(); const values = formDataToObject(formData); let id: string | undefined;
@@ -33,6 +33,7 @@ async function execute(command: Command, formData: FormData): Promise<ActionStat
       if (file.size > 3 * 1024 * 1024) throw new RuleError('La carga admite archivos de hasta 3 MB.');
       id = (await reviewScheduleImport(user, scheduleId.parse(values.planId), file.name, new Uint8Array(await file.arrayBuffer()))).id;
     }
+    if (command === 'refresh') id = (await refreshScheduleImport(user, scheduleId.parse(values.importId))).id;
     if (command === 'import') id = (await applyScheduleImport(user, mutation(), scheduleId.parse(values.importId))).id;
     revalidatePath('/equipo');
     if (command === 'grant') revalidatePath('/', 'layout');
@@ -53,3 +54,5 @@ export async function saveScheduleGrantAction(_state: ActionState | null, data: 
 export async function saveScheduleHolidayAction(_state: ActionState | null, data: FormData) { return execute('holiday', data); }
 export async function reviewScheduleImportAction(_state: ActionState | null, data: FormData) { return execute('review', data); }
 export async function applyScheduleImportAction(_state: ActionState | null, data: FormData) { return execute('import', data); }
+
+export async function refreshScheduleImportAction(_state: ActionState | null, data: FormData) { return execute('refresh', data); }

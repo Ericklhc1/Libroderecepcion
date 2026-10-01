@@ -246,7 +246,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                         <div className="mt-3 overflow-hidden rounded-md border border-black/10 bg-white/75">
                           <div className="border-b border-black/5 px-3 py-2">
                             <p className="text-[0.64rem] font-semibold uppercase tracking-[0.07em] text-slate-500">
-                              Detalle detectado · trazabilidad directa
+                              Ver el registro y su historial
                             </p>
                           </div>
                           <ul className="divide-y divide-black/5">

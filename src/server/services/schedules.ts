@@ -254,24 +254,24 @@ export async function getScheduleBoard(user: CurrentUser, departmentId: string, 
   const today = hotelCalendarDate();
   const selected = focused ?? plans.find((p) => p.startDate <= today && p.endDate >= today) ?? [...plans].filter((p) => p.startDate > today).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0] ?? plans[0];
   if (focused && !plans.some((p) => p.id === focused.id)) plans.push(focused);
-  const catalogPeople = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } } } : {}) }, include: { user: { select: { name: true } } }, orderBy: { name: 'asc' }, take: 500 });
+  const catalogPeople = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } } } : {}) }, include: { user: { select: { name: true, username: true } } }, orderBy: { name: 'asc' }, take: 500 });
   const templates = canManage ? await prisma.scheduleTemplate.findMany({ where: { departmentId, active: true }, orderBy: { code: 'asc' } }) : [];
-  const collaborators = catalogPeople.map(({ user: account, ...p }) => ({ ...p, name: account?.name ?? p.name }));
+  const collaborators = catalogPeople.map(({ user: account, ...p }) => ({ ...p, name: account?.name ?? p.name, username: account?.username ?? null }));
   if (!selected) return { plans, selected: null, collaborators, templates, slots: [], contextSlots: [], rules: [], gaps: [], totals: {}, holidays: [], events: [], acknowledgments: [], imports: [], canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
   const from = datePlus(selected.startDate.toISOString().slice(0, 10), -7); const to = datePlus(selected.endDate.toISOString().slice(0, 10), 7);
   const [slots, contextSlots, rules, holidays, events, acknowledgments, imports] = await Promise.all([
-    prisma.scheduleSlot.findMany({ where: { planId: selected.id, cancelledAt: null, ...(team ? {} : { collaborator: { userId: user.id } }) }, include: { collaborator: { select: { id: true, name: true, employeeCode: true, weeklyMinutes: true, userId: true } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] }),
+    prisma.scheduleSlot.findMany({ where: { planId: selected.id, cancelledAt: null, ...(team ? {} : { collaborator: { userId: user.id } }) }, include: { collaborator: { select: { id: true, name: true, employeeCode: true, weeklyMinutes: true, userId: true, user: { select: { name: true, username: true } } } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] }),
     prisma.scheduleSlot.findMany({ where: { cancelledAt: null, date: { gte: new Date(from), lte: new Date(to) }, ...(team ? { OR: [{ plan: { departmentId, status: 'PUBLICADO' } }, { planId: selected.id }] } : { collaborator: { userId: user.id }, plan: { departmentId, status: 'PUBLICADO' } }) } }),
     team ? prisma.scheduleCoverageRule.findMany({ where: { departmentId, active: true } }) : Promise.resolve([]),
     prisma.scheduleHoliday.findMany({ where: { active: true, date: { gte: new Date(from), lte: new Date(to) } }, orderBy: { date: 'asc' } }),
     canManage || canPublish ? prisma.scheduleEvent.findMany({ where: { planId: selected.id }, include: { actor: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }) : Promise.resolve([]),
     prisma.scheduleAcknowledgment.findMany({ where: { planId: selected.id, ...(!canManage && !canPublish ? { userId: user.id } : {}) }, include: { user: { select: { name: true } } }, orderBy: { version: 'desc' }, distinct: ['userId'], take: 500 }),
-    canManage ? prisma.scheduleImport.findMany({ where: { planId: selected.id, status: 'REVISION' }, orderBy: { createdAt: 'desc' }, take: 10 }) : Promise.resolve([]),
+    canManage ? prisma.scheduleImport.findMany({ where: { planId: selected.id, status: 'REVISION' }, orderBy: [{ baseVersion: 'desc' }, { createdAt: 'desc' }], distinct: ['fileHash'], take: 10 }) : Promise.resolve([]),
   ]);
   const days = dateDays(selected.startDate.toISOString().slice(0, 10), selected.endDate.toISOString().slice(0, 10));
   const effective = coverageSlots(contextSlots);
   // Aggregate published work across areas without returning other areas' records.
   const personIds = [...new Set([...collaborators.map((p) => p.id), ...slots.map((s) => s.collaboratorId)])];
   const weeklySlots = await prisma.scheduleSlot.findMany({ where: { collaboratorId: { in: personIds }, cancelledAt: null, date: { gte: new Date(from), lte: new Date(to) }, OR: [{ plan: { status: 'PUBLICADO' } }, { planId: selected.id }] } });
-  return { plans, selected, collaborators, templates, slots, contextSlots, rules, gaps: coverageGaps(days, rules, effective), totals: weeklyTotals(weeklySlots), holidays, events, acknowledgments, imports, canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
+  return { plans, selected, collaborators, templates, slots: slots.map(s => ({ ...s, collaborator: { ...s.collaborator, name: s.collaborator.user?.name ?? s.collaborator.name } })), contextSlots, rules, gaps: coverageGaps(days, rules, effective), totals: weeklyTotals(weeklySlots), holidays, events, acknowledgments, imports, canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
 }

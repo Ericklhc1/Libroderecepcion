@@ -16,7 +16,7 @@ export function ScheduleCollaboratorForm({ accounts, departmentId, person, edita
       <Field label="Usuario" name="userId"><Select name="userId" required defaultValue={person?.userId ?? ''} options={[{ value: '', label: 'Seleccionar usuario' }, ...accounts.filter(a => !person?.userId || a.id === person.userId).map(a => ({ value: a.id, label: a.name }))]} /></Field>
       <Field label="Función operativa" name="functionName"><Input name="functionName" maxLength={100} defaultValue={person?.functionName} placeholder="Se usa el rol del usuario si no indicas otra función" /></Field>
       <input type="hidden" name="departmentIds" value={departmentId} />
-      {person && <><Field label="Referencia semanal (horas)" name="weeklyHours" hint="0 = sin referencia."><Input name="weeklyHours" type="number" min={0} max={168} step="0.01" defaultValue={(person.weeklyMinutes ?? 0) / 60} /></Field><label className="flex gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={person.active} />Usuario habilitado para la malla</label></>}
+      {person && <><Field label="Referencia semanal (horas)" name="weeklyHours" hint="0 = sin referencia."><Input name="weeklyHours" type="number" min={0} max={168} step="0.01" defaultValue={Math.round((person.weeklyMinutes ?? 0) / 60 * 100) / 100} /></Field><label className="flex gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={person.active} />Usuario habilitado para el horario</label></>}
       <SubmitButton>{person ? 'Guardar referencia' : 'Añadir usuario'}</SubmitButton>
     </ActionForm>
   </Dialog>;

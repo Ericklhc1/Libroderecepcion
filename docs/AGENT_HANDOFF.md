@@ -1,5 +1,17 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 2026-10-01 · v1.43.0 · Equipo, Fronti y uso humano
+
+- Production anterior v1.42.0 confirmada: PR #231, commit 6d2f19b, Compuerta y Release verdes.
+- Evidencia real: carga PDF de 192 filas conserva errores de usuarios de una revisión anterior; Fronti respondió con horas UTC como si fueran locales y afirmó erróneamente que publicar abre turnos. No hubo errores de runtime registrados en las últimas 12 horas; errores de push del 29/09 ya corregidos en código vigente.
+- `refreshScheduleImport` revisa las filas extraídas contra personas/códigos actuales sin reasignar, publicar ni sobrescribir casillas. Re-subir el mismo archivo recalcula una revisión no aplicada. Versiones y permisos se validan al incorporar. Las observaciones de extracción se conservan.
+- Identidad del colaborador usa nombre vigente del usuario en calendario, detalles y Fronti; UI muestra @usuario y oculta identificadores USR internos. Códigos de turno se conservan; formato común `RD01 · 08:00–19:00`, noche `RN01 · 21:00–08:00 (día siguiente)`.
+- Fronti recibe herramienta `consultar_horarios`, lector compartido con Equipo, alcance y filtros propios/públicos originales, tipos de turno, cobertura, personas, configuración y revisión de archivos. Horas ya formateadas en zona del hotel. Revisión de errores dentro del calendario devuelve datos verificados sin inferencia ni dependencia de proveedor. No confirma asistencia ni inicia turnos. Otras conversaciones/propuestas conservan proveedor, memoria, permisos y confirmación existentes.
+- Transiciones de entrada breves sólo con opacidad; no pisan centrado, no dejan capas al cerrar, respetan movimiento reducido e impresión. Diálogos anidados: Escape y foco sólo en el superior; restauran scroll al cerrar. Chat por debajo de diálogos y apertura mutuamente excluyente con Fronti; auto-scroll sólo dentro del asistente. Tiempo máximo de espera visible y almacenamiento de sesión opcional.
+- Vocabulario más simple en Equipo, navegación, Fronti, reservas, garantías, Caja y supervisión. No se renombran estados, roles ni campos persistidos. Observaciones y falta de personal desplegables para evitar páginas interminables.
+- Validación: lint y tipos; regresiones de Fronti/contexto/proveedores/navegación/horarios locales. Integración completa en Compuerta PostgreSQL desechable antes de merge. Sin migración nueva ni cambio de credenciales/proveedores/costos.
+
+
 ## 01/10/2026 · AROH 1.42.0 · Operación práctica autorizada
 
 - Usuario = colaborador: cuenta existente obligatoria para altas y nuevas asignaciones; nombre canónico, identidad única por usuario, pertenencias aditivas y referencia semanal en horas. Añadir otra área conserva referencia, función e historial. Edición global exige alcance sobre todas las áreas. Se mantienen perfiles históricos sin cuenta para vincularlos, sin borrarlos.

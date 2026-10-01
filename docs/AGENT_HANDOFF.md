@@ -4,6 +4,7 @@
 
 - Captura real: una jornada iniciada abortaba la importación mensual completa. Regla temporal compartida con edición; la carga omite las filas pasadas/iniciadas y conserva las futuras.
 - Pantalla y Fronti muestran el conteo. Filas omitidas y motivo quedan en evento/auditoría; no se alteran casillas históricas ni se registra asistencia. Se recalcula al incorporar, con permisos, atomicidad, idempotencia y control de contradicciones.
+- Primera Compuerta: 1.243 pruebas aprobadas y una omisión previa; falló la nueva fixture por añadir una noche a una casilla del mismo colaborador ya ocupada. El servicio rechazó correctamente la contradicción. Fixture corregida para una casilla libre; repetir Compuerta completa, sin relajar la regla.
 - Archivo totalmente pasado no ofrece incorporar ni cambia versión. Regresiones de límites horarios/noches/zona y lote mixto/idempotente/totalmente pasado en PostgreSQL desechable. 81 pruebas locales, lint y tipos aprobados; Compuerta antes de merge. Sin migración.
 
 ## 2026-10-01 · v1.43.2 · Publicación de horarios verificada

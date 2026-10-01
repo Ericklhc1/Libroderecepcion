@@ -88,14 +88,13 @@ export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
       const earlier = a.startAt <= b.startAt ? a : b; const later = earlier === a ? b : a;
       const gap = (later.startAt!.getTime() - earlier.endAt!.getTime()) / 60000;
       if (gap < 0) rule(`${person.name} tiene turnos superpuestos, incluso al cruzar medianoche o cambiar de área.`);
-      if (gap < person.minRestMinutes && later.startAt! > new Date()) rule(`${person.name} no cumple el descanso mínimo configurado de ${person.minRestMinutes / 60} horas.`);
     }
   }
 }
 export async function buildScheduleSlot(tx: Tx, plan: SchedulePlan, input: SlotInput): Promise<Prisma.ScheduleSlotUncheckedCreateInput> {
   const date = new Date(`${input.date}T00:00:00Z`);
   if (date < plan.startDate || date > plan.endDate) rule('La fecha está fuera de la malla.');
-  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, active: true, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
+  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } }, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
   if (!person) rule('El colaborador debe estar activo y habilitado en esta área.');
   if (input.kind !== 'TURNO') {
     if (date < hotelCalendarDate()) rule('No se pueden crear descansos o ausencias retroactivos.');
@@ -255,8 +254,9 @@ export async function getScheduleBoard(user: CurrentUser, departmentId: string, 
   const today = hotelCalendarDate();
   const selected = focused ?? plans.find((p) => p.startDate <= today && p.endDate >= today) ?? [...plans].filter((p) => p.startDate > today).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0] ?? plans[0];
   if (focused && !plans.some((p) => p.id === focused.id)) plans.push(focused);
-  const collaborators = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true } : {}) }, orderBy: { name: 'asc' }, take: 500 });
+  const catalogPeople = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } } } : {}) }, include: { user: { select: { name: true } } }, orderBy: { name: 'asc' }, take: 500 });
   const templates = canManage ? await prisma.scheduleTemplate.findMany({ where: { departmentId, active: true }, orderBy: { code: 'asc' } }) : [];
+  const collaborators = catalogPeople.map(({ user: account, ...p }) => ({ ...p, name: account?.name ?? p.name }));
   if (!selected) return { plans, selected: null, collaborators, templates, slots: [], contextSlots: [], rules: [], gaps: [], totals: {}, holidays: [], events: [], acknowledgments: [], imports: [], canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
   const from = datePlus(selected.startDate.toISOString().slice(0, 10), -7); const to = datePlus(selected.endDate.toISOString().slice(0, 10), 7);
   const [slots, contextSlots, rules, holidays, events, acknowledgments, imports] = await Promise.all([

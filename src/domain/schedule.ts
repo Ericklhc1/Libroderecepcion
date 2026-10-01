@@ -29,7 +29,6 @@ export const slotSchema = z.object({ collaboratorId: scheduleId, date: scheduleD
 export type SlotInput = z.infer<typeof slotSchema>;
 export const templateSchema = z.object({ departmentId: scheduleId, code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{1,16}$/), label: z.string().trim().min(1).max(100), startTime: scheduleTime, endTime: scheduleTime, crossesMidnight: z.boolean(), breakStartTime: z.string().optional().default(''), breakMinutes: z.coerce.number().int().min(0).max(180).default(0), breakPaid: z.boolean().default(false) }).superRefine((s, ctx) => {
   if ((!s.crossesMidnight && s.endTime <= s.startTime) || (s.crossesMidnight && s.endTime > s.startTime)) ctx.addIssue({ code: 'custom', message: 'Revisa el horario y el cruce de medianoche.' });
-  if (s.breakMinutes > 0 && !scheduleTime.safeParse(s.breakStartTime).success) ctx.addIssue({ code: 'custom', message: 'Indica el inicio de colación para medir cobertura.', path: ['breakStartTime'] });
 });
 export type TemplateClock = { startTime: string; endTime: string; crossesMidnight: boolean; breakStartTime?: string | null; breakMinutes: number; breakPaid: boolean };
 export function datePlus(key: string, days: number): string { return addCalendarDateDays(new Date(`${key}T00:00:00Z`), days).toISOString().slice(0, 10); }
@@ -58,14 +57,7 @@ export function dayWindow(date: string) { return { startAt: wall(date, '00:00', 
 export function templateWindow(date: string, t: TemplateClock) {
   const startAt = wall(date, t.startTime); const endAt = wall(t.crossesMidnight ? datePlus(date, 1) : date, t.endTime);
   if (endAt <= startAt || endAt.getTime() - startAt.getTime() > 25 * 3600000) throw new Error('La plantilla debe terminar después de comenzar y durar como máximo un día.');
-  let breakStartAt: Date | null = null; let breakEndAt: Date | null = null;
-  if (t.breakMinutes > 0) {
-    if (!t.breakStartTime) throw new Error('Falta el horario de colación.');
-    breakStartAt = wall(t.crossesMidnight && t.breakStartTime < t.startTime ? datePlus(date, 1) : date, t.breakStartTime);
-    breakEndAt = new Date(breakStartAt.getTime() + t.breakMinutes * 60000);
-    if (breakStartAt < startAt || breakEndAt > endAt) throw new Error('La colación debe estar dentro del turno.');
-  }
-  return { startAt, endAt, breakStartAt, breakEndAt };
+  return { startAt, endAt, breakStartAt: null, breakEndAt: null };
 }
 export type IntervalSlot = { collaboratorId: string; functionName: string; kind: string; startAt: Date | null; endAt: Date | null; baseEndAt?: Date | null; breakStartAt: Date | null; breakEndAt: Date | null; breakPaid: boolean; cancelledAt?: Date | null; extraStatus?: string; extraKind?: string };
 export function coverageSlots<T extends IntervalSlot>(slots: T[]): T[] {
@@ -73,15 +65,14 @@ export function coverageSlots<T extends IntervalSlot>(slots: T[]): T[] {
   return slots.filter((s) => !s.cancelledAt && (s.extraKind !== 'TURNO_EXTRA' || approved(s))).map((s) => s.extraKind === 'EXTENSION' && !approved(s) ? { ...s, endAt: s.baseEndAt ?? s.endAt } : s);
 }
 export function scheduledAt(s: IntervalSlot, now: Date): boolean {
-  return s.kind === 'TURNO' && !!s.startAt && !!s.endAt && s.startAt <= now && s.endAt > now && !(s.breakStartAt && s.breakEndAt && s.breakStartAt <= now && s.breakEndAt > now);
+  return s.kind === 'TURNO' && !!s.startAt && !!s.endAt && s.startAt <= now && s.endAt > now;
 }
 function overlap(a: number, b: number, c: number, d: number): number { return Math.max(0, Math.min(b, d) - Math.max(a, c)); }
 export function plannedMinutes(s: IntervalSlot, from?: Date, to?: Date): number {
   if (s.cancelledAt || s.kind !== 'TURNO' || !s.startAt || !s.endAt) return 0;
   const a = from?.getTime() ?? s.startAt.getTime(); const b = to?.getTime() ?? s.endAt.getTime();
   const elapsed = overlap(a, b, s.startAt.getTime(), s.endAt.getTime());
-  const pause = !s.breakPaid && s.breakStartAt && s.breakEndAt ? overlap(a, b, s.breakStartAt.getTime(), s.breakEndAt.getTime()) : 0;
-  return Math.round((elapsed - pause) / 60000);
+  return Math.round(elapsed / 60000);
 }
 export function functionKey(value: string) { return value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es'); }
 export type CoverageRule = { name: string; functionName: string | null; weekdays: number[]; startTime: string; endTime: string; crossesMidnight: boolean; minimum: number };
@@ -97,7 +88,7 @@ export function coverageGaps(days: string[], rules: CoverageRule[], slots: Inter
     const points = [...new Set([w.startAt.getTime(), w.endAt.getTime(), ...candidates.flatMap((s) => [s.startAt!, s.endAt!, s.breakStartAt, s.breakEndAt].filter((d): d is Date => !!d).map((d) => d.getTime()).filter((n) => n > w.startAt.getTime() && n < w.endAt.getTime()))])].sort((a, b) => a - b);
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i]!; const b = points[i + 1]!;
-      const available = new Set(candidates.filter((s) => s.startAt!.getTime() <= a && s.endAt!.getTime() >= b && !(s.breakStartAt && s.breakEndAt && s.breakStartAt.getTime() < b && s.breakEndAt.getTime() > a)).map((s) => s.collaboratorId)).size;
+      const available = new Set(candidates.filter((s) => s.startAt!.getTime() <= a && s.endAt!.getTime() >= b).map((s) => s.collaboratorId)).size;
       if (available >= rule.minimum) continue;
       const previous = gaps[gaps.length - 1];
       if (previous?.date === date && previous.name === rule.name && previous.scheduled === available && previous.endAt === new Date(a).toISOString()) previous.endAt = new Date(b).toISOString();

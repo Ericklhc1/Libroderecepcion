@@ -1,0 +1,16 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
+import { requirePageAnyPermission } from '@/server/auth/guard';
+import { formatDateTime } from '@/lib/format';
+import { PrintButton } from '@/components/operational/handover-notes';
+export const metadata = { title: 'Inventario de llaves · impresión' };
+export const dynamic = 'force-dynamic';
+export default async function InventoryPrintPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePageAnyPermission(['key.assign', 'key.inventory', 'key.stock']);
+  const { id } = await params;
+  const count = await prisma.keyInventoryCount.findUnique({ where: { id }, include: { countedBy: { select: { name: true } }, items: { include: { room: { select: { number: true } } }, orderBy: { room: { number: 'asc' } } } } });
+  if (!count) notFound();
+  const totals = count.items.reduce((a,i) => ({ useful: a.useful+i.found, custody: a.custody+i.accountedElsewhere, missing: a.missing+Math.max(0,i.expected-i.found-i.accountedElsewhere), unusable:a.unusable+i.outOfService }), { useful:0,custody:0,missing:0,unusable:0 });
+  return <><div className="no-print mb-4 flex flex-wrap justify-between gap-3"><Link className="underline" href="/llaves?vista=historial">Volver al historial</Link><PrintButton label="Imprimir inventario" /></div><article className="print-report rounded border bg-white p-5"><h1 className="text-xl font-semibold">Inventario de llaves #{count.humanId}</h1><p>{count.floor ? `Piso ${count.floor} · inventario histórico` : 'Pisos 4, 5 y 6 · inventario completo'}</p><p>{formatDateTime(count.countedAt)} · Responsable: {count.countedBy.name}</p><p className="mt-2 text-sm">Resumen: {count.items.length} habitaciones · {totals.useful} físicas útiles · {totals.custody} en custodia conocida · {totals.missing} faltantes · {totals.unusable} fuera de servicio</p>{count.notes && <p className="mt-2">{count.notes}</p>}{[4, 5, 6].map(floor => { const rows = count.items.filter(i => Number((i.roomNumberSnapshot ?? i.room.number).slice(0,1)) === floor); if (!rows.length) return null; return <section key={floor} className="mt-4"><h2 className="font-semibold">Piso {floor} · {rows.length} habitaciones</h2><table className="mt-2 w-full text-xs"><thead><tr>{['Habitación','Mínimo','Físicas útiles','Custodia conocida','Fuera servicio','Faltantes','Observación'].map(label => <th className="border p-1 text-left" key={label}>{label}</th>)}</tr></thead><tbody>{rows.map(i => <tr key={i.id}><td className="border p-1">{i.roomNumberSnapshot ?? i.room.number}</td><td className="border p-1">{i.expected}</td><td className="border p-1">{i.found}</td><td className="border p-1">{i.accountedElsewhere}</td><td className="border p-1">{i.outOfService}</td><td className="border p-1">{Math.max(0,i.expected-i.found-i.accountedElsewhere)}</td><td className="border p-1 whitespace-pre-wrap">{i.notes ?? '—'}</td></tr>)}</tbody></table></section>; })}<div className="mt-6 grid grid-cols-2 gap-8"><p className="border-t pt-2">Firma responsable del conteo</p><p className="border-t pt-2">Firma recepción / supervisor</p></div><p className="mt-4 text-xs">Este documento reproduce el inventario guardado. No modifica entregas ni estados de llaves.</p></article></>;
+}

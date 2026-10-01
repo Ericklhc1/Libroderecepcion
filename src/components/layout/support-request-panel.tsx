@@ -1,5 +1,7 @@
 'use client';
 
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
+
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -169,8 +171,7 @@ export function SupportRequestPanel({
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockBodyScroll = lockBodyScroll();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && state.status !== 'sending') setOpen(false);
@@ -178,7 +179,7 @@ export function SupportRequestPanel({
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
     };
   }, [open, state.status]);
 

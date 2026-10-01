@@ -2,7 +2,7 @@ import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 
 export const HOUSEKEEPING_STATUSES = ['PENDIENTE', 'RECIBIDO', 'EN_GESTION', 'BLOQUEADO', 'RESUELTO', 'CANCELADO'] as const;
 export type HousekeepingStatus = (typeof HOUSEKEEPING_STATUSES)[number];
-export const HOUSEKEEPING_ACTIONS = ['CONFIRMAR', 'INICIAR', 'ACLARAR', 'BLOQUEAR', 'RETOMAR', 'RESOLVER', 'CANCELAR', 'REABRIR'] as const;
+export const HOUSEKEEPING_ACTIONS = ['TOMAR', 'DERIVAR', 'CONFIRMAR', 'INICIAR', 'ACLARAR', 'BLOQUEAR', 'RETOMAR', 'RESOLVER', 'CANCELAR', 'REABRIR'] as const;
 export type HousekeepingAction = (typeof HOUSEKEEPING_ACTIONS)[number];
 
 export const HOUSEKEEPING_LABELS: Record<HousekeepingStatus, string> = {
@@ -11,6 +11,7 @@ export const HOUSEKEEPING_LABELS: Record<HousekeepingStatus, string> = {
 };
 
 export const HOUSEKEEPING_ACTION_LABELS: Record<HousekeepingAction, string> = {
+  TOMAR: 'Tomar y comenzar', DERIVAR: 'Derivar / relevar',
   CONFIRMAR: 'Confirmar recepción', INICIAR: 'Iniciar gestión',
   ACLARAR: 'Necesito aclaración', BLOQUEAR: 'Registrar impedimento', RETOMAR: 'Retomar gestión',
   RESOLVER: 'Registrar resultado', CANCELAR: 'Cancelar con motivo', REABRIR: 'Reabrir con motivo',
@@ -34,10 +35,10 @@ export function housekeepingActions(status: HousekeepingStatus, sourceChanged = 
   if (isHousekeepingClosed(status)) return ['REABRIR'];
   if (sourceChanged) return ['CONFIRMAR', 'ACLARAR', 'CANCELAR'];
   switch (status) {
-    case 'PENDIENTE': return ['CONFIRMAR', 'ACLARAR', 'CANCELAR'];
-    case 'RECIBIDO': return ['INICIAR', 'ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR'];
-    case 'EN_GESTION': return ['ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR'];
-    case 'BLOQUEADO': return ['CONFIRMAR', 'RETOMAR', 'CANCELAR'];
+    case 'PENDIENTE': return ['TOMAR', 'DERIVAR', 'CONFIRMAR', 'ACLARAR', 'CANCELAR'];
+    case 'RECIBIDO': return ['DERIVAR', 'INICIAR', 'ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR'];
+    case 'EN_GESTION': return ['DERIVAR', 'ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR'];
+    case 'BLOQUEADO': return ['DERIVAR', 'CONFIRMAR', 'RETOMAR', 'CANCELAR'];
   }
   return [];
 }
@@ -46,6 +47,8 @@ export function housekeepingTransition(status: HousekeepingStatus, action: House
   if (action === 'CONFIRMAR' && !isHousekeepingClosed(status)) return status === 'PENDIENTE' ? 'RECIBIDO' : status;
   if (!housekeepingActions(status).includes(action)) throw new Error('La acción no corresponde al estado actual.');
   switch (action) {
+    case 'TOMAR': return 'EN_GESTION';
+    case 'DERIVAR': return 'PENDIENTE';
     case 'INICIAR': case 'RETOMAR':
       if (!acknowledged) throw new Error('Confirma primero la recepción del aviso.');
       return 'EN_GESTION';
@@ -60,5 +63,5 @@ export function housekeepingTransition(status: HousekeepingStatus, action: House
 }
 
 export function housekeepingNeedsNote(action: HousekeepingAction): boolean {
-  return ['ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR', 'REABRIR'].includes(action);
+  return ['DERIVAR', 'ACLARAR', 'BLOQUEAR', 'RESOLVER', 'CANCELAR', 'REABRIR'].includes(action);
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { KeyStatus, KeyType } from '@prisma/client';
 import {
@@ -47,6 +48,21 @@ describe('inventario físico de llaves independiente de PMS', () => {
     expect(floor6.rooms.at(-1)?.roomNumber).toBe('630');
   });
 
+  it('guarda 89 habitaciones una sola vez, conserva snapshot y distingue custodia de faltante', async () => {
+    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const floors = await Promise.all(([4,5,6] as const).map(floor => getPhysicalKeyInventory({ floor })));
+    const items = floors.flatMap(f => f.rooms).map((r,i) => ({ roomId:r.roomId, found:i === 0 ? 0 : 1, accountedElsewhere:i === 0 ? 1 : 0, outOfService:0, notes:i === 0 ? 'Entregada a responsable identificado' : null }));
+    const input = { floor:'todos' as const, requestKey:randomUUID(), items };
+    const results = await Promise.all([savePhysicalKeyInventoryCount(user,input),savePhysicalKeyInventoryCount(user,input)]);
+    expect(results[0].id).toBe(results[1].id); expect(results[0].floor).toBeNull(); expect(results[0].items).toHaveLength(89); expect(results[0].totals.missing).toBe(0);
+    expect(await prisma.keyInventoryCount.count()).toBe(1);
+    const first = results[0].items[0]!; expect(first.roomNumberSnapshot).toBe('401'); expect(first.custodySnapshot).not.toBeNull();
+    await prisma.roomKey.updateMany({ where:{roomId:first.roomId},data:{status:KeyStatus.EXTRAVIADA} });
+    expect((await prisma.keyInventoryItem.findUniqueOrThrow({where:{id:first.id}})).custodySnapshot).toEqual(first.custodySnapshot);
+    await expect(savePhysicalKeyInventoryCount(user,{...input,items:items.slice(1)})).rejects.toThrow('todas');
+    await expect(savePhysicalKeyInventoryCount(user,{...input,items:items.map((i,n)=>n===1?{...i,found:2}:i)})).rejects.toThrow('otro contenido');
+    await expect(savePhysicalKeyInventoryCount(user,{...input,requestKey:randomUUID(),items:items.map((i,n)=>n===0?{...i,notes:null}:i)})).rejects.toThrow('custodia');
+  });
   it('exige observación o justificación cuando falta una llave mínima', async () => {
     const receptionist = await createUser({
       roleKey: ROLE_KEYS.RECEPTIONIST,

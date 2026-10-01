@@ -8,12 +8,15 @@ import { HOUSEKEEPING_ACTIONS } from '@/domain/housekeeping';
 import { createHousekeepingRequest, changeHousekeepingRequest } from '@/server/services/housekeeping';
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
+const destinationFields = { departmentId: optionalText(100).transform(v => v || undefined), assignedToId: optionalText(100).transform(v => v || undefined) };
 const createSchema = z.object({
+  ...destinationFields,
   requestKey: z.string().uuid(), title: optionalText(160), description: optionalText(3000),
   sourceEntryId: optionalText(100).transform((v) => v || undefined), location: optionalText(160),
   priority: z.enum(['BAJA', 'MEDIA', 'ALTA', 'CRITICA']).default('MEDIA'), dueAt: zOptionalDate,
 });
 const changeSchema = z.object({
+  ...destinationFields,
   id: z.string().min(1).max(100), version: z.coerce.number().int().min(1),
   action: z.enum(HOUSEKEEPING_ACTIONS), note: optionalText(3000), dueAt: zOptionalDate,
 });

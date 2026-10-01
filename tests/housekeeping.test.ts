@@ -4,7 +4,7 @@ import { Priority } from '@prisma/client';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { createHousekeepingRequest, changeHousekeepingRequest, getHousekeepingBoard, getHousekeepingSources, housekeepingAuditVisibility } from '@/server/services/housekeeping';
+import { createHousekeepingRequest, changeHousekeepingRequest, getHousekeepingBoard, getHousekeepingSources, housekeepingAuditVisibility, escalateHousekeepingRequests } from '@/server/services/housekeeping';
 import { searchOperationalRecords } from '@/server/services/global-search';
 
 describe('Housekeeping privado: persistencia y protección', () => {
@@ -44,6 +44,27 @@ describe('Housekeeping privado: persistencia y protección', () => {
     expect(await prisma.housekeepingEvent.count({ where: { requestId: request.id } })).toBe(3);
     expect(await prisma.auditLog.count({ where: { entityId: request.id, isDemo: false } })).toBe(3);
     expect(await prisma.task.count()).toBe(0); expect(await prisma.shiftAssignment.count()).toBe(0); expect(await prisma.notification.count()).toBe(0);
+  });
+  it('toma y releva entre áreas, exige nueva recepción y devuelve el resultado al solicitante', async () => {
+    const manager = await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const area = await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const destination = await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await prisma.user.update({where:{id:manager.id},data:{departmentId:area.id}});
+    const r = await createHousekeepingRequest(admin,{...input(),departmentId:area.id,assignedToId:manager.id,dueAt:new Date('2020-01-01')});
+    expect(await prisma.notification.count({where:{userId:manager.id,entityId:r.id}})).toBe(1);
+    await changeHousekeepingRequest(manager,{id:r.id,version:1,action:'TOMAR'});
+    expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('EN_GESTION');
+    await changeHousekeepingRequest(manager,{id:r.id,version:2,action:'DERIVAR',departmentId:destination.id,note:'Recepción debe confirmar disponibilidad antes de continuar'});
+    const handed = await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}});
+    expect(handed.departmentId).toBe(destination.id); expect(handed.status).toBe('PENDIENTE'); expect(handed.acknowledgedAt).toBeNull(); expect(handed.assignedToId).toBeNull();
+    await expect(changeHousekeepingRequest(admin,{id:r.id,version:3,action:'RESOLVER',note:'Listo'})).rejects.toThrow();
+    await escalateHousekeepingRequests(); const alerts = await prisma.notification.count({where:{entityId:r.id}});
+    await escalateHousekeepingRequests(); expect(await prisma.notification.count({where:{entityId:r.id}})).toBe(alerts);
+    await changeHousekeepingRequest(manager,{id:r.id,version:3,action:'TOMAR'});
+    await changeHousekeepingRequest(manager,{id:r.id,version:4,action:'RESOLVER',note:'Disponibilidad confirmada y atención completada'});
+    expect(await prisma.notification.count({where:{userId:admin.id,entityId:r.id,title:{contains:'Resultado'}}})).toBe(1);
+    expect((await getHousekeepingBoard(manager,false,1,undefined,true)).requests).toHaveLength(0);
+    await expect(createHousekeepingRequest(admin,{...input(),assignedToId:reception.id,departmentId:area.id})).rejects.toThrow('responsable');
   });
   it('no duplica reintentos ni vínculos al registro original', async () => {
     const original = await source();

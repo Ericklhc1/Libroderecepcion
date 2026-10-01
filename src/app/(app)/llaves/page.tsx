@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import { CompleteKeyInventory } from '@/components/keys/inventory-count';
 import { KeyStatus, KeyType } from '@prisma/client';
-import { KeyRound, Plus, RotateCcw, TriangleAlert } from 'lucide-react';
+import { KeyRound, Plus, RotateCcw } from 'lucide-react';
 import { requirePageAnyPermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import {
@@ -17,7 +18,6 @@ import {
   recoverPhysicalKeyAction,
   retirePhysicalKeyAction,
   returnPhysicalKeyAction,
-  savePhysicalKeyCountAction,
 } from '@/server/actions/key-inventory';
 import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
@@ -26,7 +26,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
-import { KeyInventoryMetricBoundary } from '@/components/observability/key-inventory-metric-boundary';
+
 import type { Tone } from '@/domain/labels';
 
 export const metadata = { title: 'Llaves' };
@@ -69,7 +69,8 @@ export default async function KeysPage({
 }) {
   const user = await requirePageAnyPermission(['key.assign', 'key.inventory', 'key.stock']);
   const params = await searchParams;
-  const floorParam = readOne(params.piso) || '4';
+  const floorParam = readOne(params.piso) || 'todos';
+  const section = readOne(params.vista) || 'inventario';
   const allFloors = floorParam === 'todos';
   const requestedFloor = Number(floorParam);
   const floor = isInventoryFloor(requestedFloor) ? requestedFloor : 4;
@@ -79,7 +80,7 @@ export default async function KeysPage({
     ? (statusRaw as KeyStatus)
     : null;
 
-  const [inventory, recentCounts] = await Promise.all([
+  const [inventory, recentCounts, completeFloors] = await Promise.all([
     allFloors
       ? Promise.all(
           ([4, 5, 6] as const).map((value) =>
@@ -99,25 +100,15 @@ export default async function KeysPage({
           ),
         }))
       : getPhysicalKeyInventory({ floor, query: q, status }),
-    allFloors ? Promise.resolve([]) : listRecentPhysicalKeyCounts(floor),
+    listRecentPhysicalKeyCounts('todos'),
+    Promise.all(([4, 5, 6] as const).map(floor => getPhysicalKeyInventory({ floor }))),
   ]);
 
   const canAssign = hasPermission(user, 'key.assign');
   const canInventory = hasPermission(user, 'key.inventory') || hasPermission(user, 'key.stock');
   const canStock = hasPermission(user, 'key.stock');
-  const filtersActive = Boolean(q || status);
-  const latest = recentCounts[0] ?? null;
-  const latestByRoom = new Map(
-    latest?.items.map((item) => [
-      item.roomId,
-      {
-        found: item.found,
-        expected: item.expected,
-        outOfService: item.outOfService,
-      },
-    ]) ?? [],
-  );
 
+  const latest = recentCounts[0] ?? null;
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -179,9 +170,9 @@ export default async function KeysPage({
         ) : null}
       </header>
 
-      <nav className="flex flex-wrap gap-2" aria-label="Pisos">
+      {section === 'llaves' && <nav className="flex flex-wrap gap-2" aria-label="Pisos">
         <Link
-          href="/llaves?piso=todos"
+          href="/llaves?vista=llaves&piso=todos"
           className={
             allFloors
               ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
@@ -193,7 +184,7 @@ export default async function KeysPage({
         {([4, 5, 6] as const).map((value) => (
           <Link
             key={value}
-            href={`/llaves?piso=${value}`}
+            href={`/llaves?vista=llaves&piso=${value}`}
             className={
               !allFloors && value === floor
                 ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
@@ -203,14 +194,14 @@ export default async function KeysPage({
             Piso {value} · {KEY_INVENTORY_MINIMUM_BY_FLOOR[value]} hab.
           </Link>
         ))}
-      </nav>
+      </nav>}
 
-      <ListFilterBar
+      {section === 'llaves' && <ListFilterBar
         searchValue={q}
         searchPlaceholder="Buscar habitación o código de llave…"
-        clearHref={allFloors ? '/llaves?piso=todos' : `/llaves?piso=${floor}`}
+        clearHref={allFloors ? '/llaves?vista=llaves&piso=todos' : `/llaves?vista=llaves&piso=${floor}`}
       >
-        <input type="hidden" name="piso" value={allFloors ? 'todos' : floor} />
+        <input type="hidden" name="vista" value="llaves" /><input type="hidden" name="piso" value={allFloors ? 'todos' : floor} />
         <label className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
           <select name="estado" defaultValue={status ?? ''} className="input-base w-full">
@@ -222,7 +213,7 @@ export default async function KeysPage({
             ))}
           </select>
         </label>
-      </ListFilterBar>
+      </ListFilterBar>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Mínimo hotel" value={KEY_INVENTORY_MINIMUM_TOTAL} hint="89 habitaciones" />
@@ -249,118 +240,10 @@ export default async function KeysPage({
         />
       </div>
 
-      {canInventory && allFloors ? (
-        <Card>
-          <CardHeader title="Inventario oficial por piso" />
-          <div className="flex items-start gap-3 px-4 py-5 text-sm text-slate-600">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-            La vista «Todos los pisos» es de consulta. Para guardar un inventario físico oficial,
-            selecciona Piso 4, 5 o 6: cada conteo conserva su responsable, fecha y trazabilidad.
-          </div>
-        </Card>
-      ) : canInventory ? (
-        <Card>
-          <CardHeader
-            title={`Tomar inventario · Piso ${floor}`}
-            action={
-              filtersActive ? (
-                <Chip>Quita los filtros para registrar un inventario oficial</Chip>
-              ) : latest ? (
-                <Chip>Último: {formatDateTime(latest.countedAt)} · {latest.countedBy.name}</Chip>
-              ) : null
-            }
-          />
-          {filtersActive ? (
-            <div className="flex items-start gap-3 px-4 py-5 text-sm text-slate-600">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-              El inventario oficial exige todas las habitaciones del piso. La búsqueda y el filtro
-              sirven para consulta, pero no para guardar un inventario parcial.
-            </div>
-          ) : (
-            <ActionForm action={savePhysicalKeyCountAction} refreshOnSuccess>
-              <KeyInventoryMetricBoundary floor={floor}>
-                <input type="hidden" name="floor" value={floor} />
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[52rem] text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2.5">Habitación</th>
-                      <th className="px-3 py-2.5 text-center">Mínimo</th>
-                      <th className="px-3 py-2.5 text-center">Encontradas</th>
-                      <th className="px-3 py-2.5 text-center">Fuera servicio</th>
-                      <th className="px-3 py-2.5">Observación</th>
-                      <th className="px-4 py-2.5">Último inventario</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {inventory.rooms.map((room) => {
-                      const previous = latestByRoom.get(room.roomId);
-                      return (
-                        <tr key={room.roomId}>
-                          <td className="px-4 py-2.5 font-semibold text-petrol-900">
-                            {room.roomNumber}
-                            <input type="hidden" name="roomId" value={room.roomId} />
-                          </td>
-                          <td className="px-3 py-2.5 text-center tabular">{room.expected}</td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              required
-                              name={`found:${room.roomId}`}
-                              defaultValue={previous?.found ?? ''}
-                              className="input-base mx-auto w-24 text-center tabular"
-                              aria-label={`Llaves encontradas habitación ${room.roomNumber}`}
-                            />
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              required
-                              name={`outOfService:${room.roomId}`}
-                              defaultValue={previous?.outOfService ?? room.outOfService}
-                              className="input-base mx-auto w-24 text-center tabular"
-                              aria-label={`Llaves fuera de servicio habitación ${room.roomNumber}`}
-                            />
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              name={`notes:${room.roomId}`}
-                              maxLength={180}
-                              className="input-base w-full min-w-[12rem]"
-                              placeholder="Obligatoria si falta la llave"
-                              aria-label={`Observación habitación ${room.roomNumber}`}
-                            />
-                          </td>
-                          <td className="px-4 py-2.5 text-xs text-slate-500">
-                            {previous
-                              ? `${previous.found}/${previous.expected}`
-                              : 'Sin inventario previo'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="border-t border-slate-200 p-4">
-                <Field label="Observación general del inventario" name="notes">
-                  <Input name="notes" maxLength={300} placeholder="Opcional" />
-                </Field>
-                <div className="mt-3 flex justify-end">
-                  <SubmitButton pendingLabel="Guardando inventario…">Guardar inventario del piso {floor}</SubmitButton>
-                </div>
-              </div>
-              </KeyInventoryMetricBoundary>
-            </ActionForm>
-          )}
-        </Card>
-      ) : null}
+      <nav className="flex flex-wrap gap-2" aria-label="Secciones de Llaves">{[['inventario', 'Inventario completo'], ['llaves', 'Llaves y entregas'], ['historial', 'Historial e impresión']].map(([value, label]) => <Link key={value} className={`rounded border px-3 py-2 text-sm ${section === value ? 'bg-petrol-800 text-white' : 'bg-white'}`} href={`/llaves?vista=${value}&piso=${floorParam}`}>{label}</Link>)}</nav>
+      {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms)} initialFloor={floorParam} /></Card>}
 
-      <Card>
+      {section === 'llaves' && <Card>
         <CardHeader title={allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />
         {inventory.rooms.length === 0 ? (
           <EmptyState
@@ -538,17 +421,17 @@ export default async function KeysPage({
             </div>
           </CardScroll>
         )}
-      </Card>
+      </Card>}
 
-      <Card>
-        <CardHeader title={`Historial de inventarios · Piso ${floor}`} count={recentCounts.length} />
+      {section === 'historial' && <Card>
+        <CardHeader title="Historial de inventarios · todos los pisos" count={recentCounts.length} />
         {recentCounts.length === 0 ? (
-          <EmptyState message="Todavía no hay inventarios físicos guardados para este piso." />
+          <EmptyState message="Todavía no hay inventarios físicos guardados para el hotel." />
         ) : (
           <ul className="divide-y divide-slate-100">
             {recentCounts.map((count) => (
               <li key={count.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm">
-                <span className="font-medium text-petrol-900">{formatDateTime(count.countedAt)}</span>
+                <Link className="font-medium text-petrol-900 underline" href={`/llaves/inventarios/${count.id}`}>#{count.humanId} · {formatDateTime(count.countedAt)} · {count.floor ? `Piso ${count.floor} (histórico)` : 'Tres pisos'} · Ver e imprimir</Link>
                 <span className="text-slate-600">{count.countedBy.name}</span>
                 <Chip>{count.totals.found}/{count.totals.expected} encontradas</Chip>
                 {count.totals.missing ? <Badge tone="critico">{count.totals.missing} faltante(s)</Badge> : null}
@@ -560,7 +443,7 @@ export default async function KeysPage({
             ))}
           </ul>
         )}
-      </Card>
+      </Card>}
     </div>
   );
 }

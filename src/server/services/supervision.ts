@@ -309,6 +309,7 @@ export async function getSupervisionData(
             expected: true,
             found: true,
             outOfService: true,
+            accountedElsewhere: true,
             room: { select: { number: true } },
           },
         },
@@ -326,7 +327,7 @@ export async function getSupervisionData(
     (audit) => Number(audit.difference) !== 0,
   );
 
-  const latestKeyByFloor = new Map<number, (typeof keyCounts)[number]>();
+  const latestKeyByFloor = new Map<number | null, (typeof keyCounts)[number]>();
   for (const count of keyCounts) {
     if (!latestKeyByFloor.has(count.floor)) latestKeyByFloor.set(count.floor, count);
   }
@@ -334,11 +335,11 @@ export async function getSupervisionData(
     .map((count) => ({
       ...count,
       missing: count.items.reduce(
-        (sum, item) => sum + Math.max(item.expected - item.found, 0),
+        (sum, item) => sum + Math.max(item.expected - item.found - item.accountedElsewhere, 0),
         0,
       ),
       missingRooms: count.items
-        .filter((item) => item.found < item.expected)
+        .filter((item) => item.found + item.accountedElsewhere < item.expected)
         .map((item) => item.room.number),
     }))
     .filter((count) => count.missing > 0);
@@ -455,12 +456,12 @@ export async function getSupervisionData(
       tone: 'atencion',
       rows: latestKeyCounts.map((count) => ({
         id: count.id,
-        ref: `Piso ${count.floor}`,
+        ref: count.floor ? `Piso ${count.floor}` : 'Tres pisos',
         title: `${count.missing} llave(s) faltante(s)`,
         detail: count.missingRooms.length > 0
           ? `Habitaciones: ${count.missingRooms.join(', ')}`
           : null,
-        href: `/llaves?piso=${count.floor}`,
+        href: `/llaves/inventarios/${count.id}`,
         meta: `${count.countedBy.name} · ${formatCalendarDate(count.countedAt)}`,
         sourceEntity: 'KeyInventoryCount',
         sourceId: count.id,

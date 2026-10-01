@@ -146,11 +146,11 @@ describe('tareas', () => {
     ).toBe(1);
   });
 
-  it('no permite asignar a alguien fuera de la operación', async () => {
+  it('permite asignar al Administrador operativo', async () => {
     const task = await createTask(supervisor, base);
     await expect(
       assignTask(supervisor, { id: task.id, assigneeId: admin.id }),
-    ).rejects.toThrow(/fuera de la operación/);
+    ).resolves.toBeDefined();
   });
 
   it('respeta las transiciones válidas de estado', async () => {

@@ -4,11 +4,16 @@ import { visibleNavGroups } from '@/components/layout/nav-items';
 import { canAccessHousekeeping, housekeepingActions, housekeepingTransition } from '@/domain/housekeeping';
 
 describe('Housekeeping privado: decisiones operativas', () => {
-  it('solo permite el rol administrador, aunque otros tengan permisos técnicos', () => {
-    for (const role of Object.values(ROLE_KEYS)) expect(canAccessHousekeeping(role)).toBe(role === ROLE_KEYS.SYSTEM_ADMIN);
-    expect(canAccessHousekeeping('ROL_PERSONALIZADO')).toBe(false);
-    expect(visibleNavGroups(ALL_PERMISSIONS).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(false);
-    expect(visibleNavGroups(ALL_PERMISSIONS, true).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(true);
+  it('habilita acceso y gestión mediante permisos, con acceso permanente del administrador', () => {
+    expect(canAccessHousekeeping({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, permissions: [] })).toBe(true);
+    for (const role of [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.SUPERVISOR, 'ROL_PERSONALIZADO']) {
+      expect(canAccessHousekeeping({ roleKey: role, permissions: [] })).toBe(false);
+      expect(canAccessHousekeeping({ roleKey: role, permissions: ['housekeeping.view'] })).toBe(true);
+      expect(canAccessHousekeeping({ roleKey: role, permissions: ['housekeeping.manage'] })).toBe(true);
+    }
+    expect(visibleNavGroups([]).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(false);
+    expect(visibleNavGroups(['housekeeping.view']).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(true);
+    expect(visibleNavGroups(ALL_PERMISSIONS, true).flatMap((g) => g.items).filter((i) => i.href === '/admin/housekeeping')).toHaveLength(1);
   });
   it('confirmar recepción no resuelve ni inicia la tarea', () => {
     expect(housekeepingTransition('PENDIENTE', 'CONFIRMAR', false)).toBe('RECIBIDO');

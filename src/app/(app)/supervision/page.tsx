@@ -139,7 +139,7 @@ export default async function SupervisionCenterPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';
   const period = parsePeriod(params);
-  const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
+  const isSupervisor = (user.roleKey === ROLE_KEYS.SUPERVISOR || user.roleKey === ROLE_KEYS.SYSTEM_ADMIN);
   const canPerformance = hasPermission(user, 'supervision.performance.view');
   const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
   const canFollow = hasPermission(user, 'supervision.followup.manage');

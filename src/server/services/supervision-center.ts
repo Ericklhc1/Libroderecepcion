@@ -43,8 +43,8 @@ const OPEN_SUPERVISION_STATUSES = [
 ] as const;
 
 function assertSupervisor(user: CurrentUser) {
-  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
-    throw new RuleError('El turno de Supervisión sólo puede ser operado por el rol Supervisor.');
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR && user.roleKey !== ROLE_KEYS.SYSTEM_ADMIN) {
+    throw new RuleError('El turno de Supervisión sólo puede ser operado por Supervisor o Administrador de sistema.');
   }
 }
 

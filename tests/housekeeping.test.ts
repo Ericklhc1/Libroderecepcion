@@ -21,15 +21,15 @@ describe('Housekeeping privado: persistencia y protección', () => {
     return prisma.operationalEntry.create({ data: { type: 'NOVEDAD', title: 'Extensión confirmada en PMS', description: 'Comunicar a Housekeeping.', createdById: reception.id, priority: 'ALTA' } });
   }
   it('rechaza todos los servicios para una cuenta operativa, incluso con permisos técnicos', async () => {
-    const fake = { ...reception, permissions: admin.permissions, isSystemAdmin: true };
-    await expect(getHousekeepingBoard(fake)).rejects.toThrow('únicamente');
-    await expect(getHousekeepingSources(fake)).rejects.toThrow('únicamente');
-    await expect(createHousekeepingRequest(fake, input())).rejects.toThrow('únicamente');
-    await expect(changeHousekeepingRequest(fake, { id: 'x', version: 1, action: 'CONFIRMAR' })).rejects.toThrow('únicamente');
+    const fake = { ...reception, permissions: ['system.configure'] as CurrentUser['permissions'], isSystemAdmin: true };
+    await expect(getHousekeepingBoard(fake)).rejects.toThrow();
+    await expect(getHousekeepingSources(fake)).rejects.toThrow();
+    await expect(createHousekeepingRequest(fake, input())).rejects.toThrow();
+    await expect(changeHousekeepingRequest(fake, { id: 'x', version: 1, action: 'CONFIRMAR' })).rejects.toThrow();
   });
   it('persiste aviso, confirmación y resultado con evidencias distintas, sin afectar la operación', async () => {
     const request = await createHousekeepingRequest(admin, input());
-    expect(request.isDemo).toBe(true);
+    expect(request.isDemo).toBe(false);
     expect(request.humanId).toBeGreaterThanOrEqual(1000);
     expect((await getHousekeepingBoard(admin)).pending).toBe(1);
     await changeHousekeepingRequest(admin, { id: request.id, version: 1, action: 'CONFIRMAR' });
@@ -42,7 +42,7 @@ describe('Housekeeping privado: persistencia y protección', () => {
     expect((await getHousekeepingBoard(admin)).active).toBe(0);
     expect((await getHousekeepingBoard(admin, true)).requests).toHaveLength(1);
     expect(await prisma.housekeepingEvent.count({ where: { requestId: request.id } })).toBe(3);
-    expect(await prisma.auditLog.count({ where: { entityId: request.id, isDemo: true } })).toBe(3);
+    expect(await prisma.auditLog.count({ where: { entityId: request.id, isDemo: false } })).toBe(3);
     expect(await prisma.task.count()).toBe(0); expect(await prisma.shiftAssignment.count()).toBe(0); expect(await prisma.notification.count()).toBe(0);
   });
   it('no duplica reintentos ni vínculos al registro original', async () => {
@@ -101,4 +101,32 @@ describe('Housekeeping privado: persistencia y protección', () => {
     expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(reception)], entityId: r.id } })).toBe(0);
     expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(admin)], entityId: r.id } })).toBe(1);
   });
+  it('habilita gestión para un rol operativo y revoca el acceso sin perder los pendientes', async () => {
+    const enabled = { ...reception, permissions: [...reception.permissions, 'housekeeping.manage' as const] };
+    const request = await createHousekeepingRequest(enabled, input());
+    await changeHousekeepingRequest(enabled, { id: request.id, version: 1, action: 'CONFIRMAR' });
+    expect((await getHousekeepingBoard(enabled)).requests[0]?.status).toBe('RECIBIDO');
+    expect((await searchOperationalRecords(enabled, `#${request.humanId}`)).some((r) => r.entityId === request.id)).toBe(true);
+    await expect(getHousekeepingBoard(reception)).rejects.toThrow();
+    await expect(changeHousekeepingRequest(reception, { id: request.id, version: 2, action: 'INICIAR' })).rejects.toThrow();
+    expect((await getHousekeepingBoard(admin)).requests[0]?.status).toBe('RECIBIDO');
+    const event = await prisma.housekeepingEvent.findFirstOrThrow({ where: { requestId: request.id, action: 'CONFIRMAR' } });
+    expect(event.actorId).toBe(reception.id);
+  });
+  it('separa consulta de escritura y mantiene privadas las pruebas anteriores', async () => {
+    const read = { ...reception, permissions: ['housekeeping.view' as const] };
+    const operational = await createHousekeepingRequest(admin, input());
+    const legacy = await prisma.housekeepingRequest.create({ data: { ...input(), isDemo: true } });
+    await prisma.auditLog.create({ data: { entity: 'HousekeepingRequest', entityId: legacy.id, action: 'CREAR', userId: admin.id, summary: 'Prueba anterior', isDemo: true } });
+    expect((await getHousekeepingBoard(read)).requests.map((r) => r.id)).toEqual([operational.id]);
+    expect((await getHousekeepingBoard(read)).active).toBe(1);
+    await expect(createHousekeepingRequest(read, input())).rejects.toThrow();
+    await expect(changeHousekeepingRequest(read, { id: operational.id, version: 1, action: 'CONFIRMAR' })).rejects.toThrow();
+    const manager = { ...reception, permissions: ['housekeeping.manage' as const] };
+    await expect(changeHousekeepingRequest(manager, { id: legacy.id, version: 1, action: 'CONFIRMAR' })).rejects.toThrow();
+    expect((await searchOperationalRecords(read, `#${legacy.humanId}`)).some((r) => r.entityId === legacy.id)).toBe(false);
+    expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(read)], entityId: legacy.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(read)], entityId: operational.id } })).toBe(1);
+  });
+
 });

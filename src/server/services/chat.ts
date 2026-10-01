@@ -97,7 +97,7 @@ const presenceSelect = (now: Date) =>
 type PresenceUser = Prisma.UserGetPayload<{ select: ReturnType<typeof presenceSelect> }>;
 
 function assertChatActor(user: CurrentUser) {
-  if (!user.roleOperational || user.isSystemAdmin) {
+  if (!user.roleOperational) {
     throw new RuleError('El chat está disponible sólo para cuentas operativas.');
   }
 }

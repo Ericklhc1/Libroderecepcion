@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 
 const mocks = vi.hoisted(() => ({
-  user: { roleKey: 'RECEPCIONISTA' },
+  user: { roleKey: 'RECEPCIONISTA', permissions: [] as PermissionKey[] },
   create: vi.fn(), change: vi.fn(), board: vi.fn(), sources: vi.fn(),
 }));
 vi.mock('@/server/auth/guard', () => ({ requireUser: async () => mocks.user, requirePageUser: async () => mocks.user }));
@@ -16,7 +16,7 @@ import { createHousekeepingAction, changeHousekeepingAction } from '@/server/act
 import { requireHousekeepingPageUser } from '@/server/auth/housekeeping';
 
 describe('Housekeeping: página y acciones directas', () => {
-  beforeEach(() => { vi.clearAllMocks(); mocks.user.roleKey = ROLE_KEYS.RECEPTIONIST; });
+  beforeEach(() => { vi.clearAllMocks(); mocks.user.roleKey = ROLE_KEYS.RECEPTIONIST; mocks.user.permissions = []; });
   it.each([ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.SUPERVISOR, ROLE_KEYS.MANAGEMENT, 'CUSTOM_ADMIN'])('rechaza la URL y las acciones para %s antes de leer o escribir', async (role) => {
     mocks.user.roleKey = role;
     await expect(requireHousekeepingPageUser()).rejects.toThrow('redirect:/sin-permisos');
@@ -26,4 +26,12 @@ describe('Housekeeping: página y acciones directas', () => {
     expect(mocks.board).not.toHaveBeenCalled(); expect(mocks.sources).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.change).not.toHaveBeenCalled();
   });
+  it('permite consultar, pero bloquea acciones directas con permiso de lectura', async () => {
+    mocks.user.permissions = ['housekeeping.view'];
+    await expect(requireHousekeepingPageUser()).resolves.toBe(mocks.user);
+    expect((await createHousekeepingAction(null, new FormData())).ok).toBe(false);
+    expect((await changeHousekeepingAction(null, new FormData())).ok).toBe(false);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.change).not.toHaveBeenCalled();
+  });
+
 });

@@ -15,6 +15,9 @@ export const PERMISSIONS = {
   'entry.reopen': { group: 'Libro operativo', name: 'Reabrir registros' },
   'entry.restore': { group: 'Libro operativo', name: 'Restaurar registros eliminados' },
 
+  'housekeeping.view': { group: 'Housekeeping', name: 'Consultar avisos de Housekeeping' },
+  'housekeeping.manage': { group: 'Housekeeping', name: 'Crear y gestionar avisos de Housekeeping' },
+
   'task.create': { group: 'Tareas', name: 'Crear tareas' },
   'task.assign': { group: 'Tareas', name: 'Asignar y reasignar tareas' },
   'task.edit': { group: 'Tareas', name: 'Editar tareas' },
@@ -211,37 +214,9 @@ const OPERATIONAL_BASE: PermissionKey[] = [
   'cash.close',
 ];
 
-/**
- * Matriz inicial de permisos por rol.
- *
- * El Administrador de sistema concentra el control técnico y queda fuera de la
- * operación habitual: no recibe permisos de turno porque no debe participar en
- * el ciclo operativo (ver `operational: false` en el rol).
- */
+/** Matriz inicial. El administrador también puede participar en la operación. */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
-  /*
-    El Administrador de sistema queda fuera de la **operación habitual**: no
-    inicia, recibe ni entrega turno, no confirma salidas ni entradas, y no
-    entrega llaves. Esas son las acciones en que aparecería como responsable
-    operativo de algo, y es justo lo que no debe ocurrir.
-
-    Sí importa los informes del PMS. Cargar los tres informes del día no es
-    operar: es alimentar el sistema con su fuente de datos, más cerca de la
-    configuración que del mesón. Excluirlo dejaba un callejón sin salida —la
-    persona que instala el hotel no podía cargar el primer día de datos— sin
-    proteger nada, porque la importación no asigna a nadie como responsable.
-  */
-  [ROLE_KEYS.SYSTEM_ADMIN]: ALL_PERMISSIONS.filter(
-    (p) =>
-      ![
-        'shift.start',
-        'shift.receive',
-        'shift.handover',
-        'shift.reassign',
-        'room.manage',
-        'key.assign',
-      ].includes(p),
-  ),
+  [ROLE_KEYS.SYSTEM_ADMIN]: [...ALL_PERMISSIONS],
   [ROLE_KEYS.SUPERVISOR]: [
     ...OPERATIONAL_BASE,
     'entry.reopen',
@@ -354,9 +329,9 @@ export const ROLE_DEFINITIONS: Array<{
     key: ROLE_KEYS.SYSTEM_ADMIN,
     name: 'Administrador de sistema',
     description:
-      'Control técnico total: usuarios, roles, permisos, configuración, auditoría, eliminación y recuperación de registros. Fuera de la operación habitual.',
+      'Control técnico y operativo: usuarios, permisos, configuración, responsabilidades, turnos y acciones auditadas.',
     level: 100,
-    operational: false,
+    operational: true,
   },
   {
     key: ROLE_KEYS.SUPERVISOR,

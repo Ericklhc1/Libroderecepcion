@@ -3,18 +3,21 @@ import { Prisma, type Priority } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
-import { canAccessHousekeeping, housekeepingActions, housekeepingNeedsNote, housekeepingTransition, isHousekeepingClosed, type HousekeepingAction, type HousekeepingStatus } from '@/domain/housekeeping';
+import { canAccessHousekeeping, canManageHousekeeping, housekeepingActions, housekeepingNeedsNote, housekeepingTransition, isHousekeepingClosed, type HousekeepingAction, type HousekeepingStatus } from '@/domain/housekeeping';
 import type { GlobalSearchResult } from './global-search';
 
-// Deliberately role-bound during the private pilot: technical permissions alone
-// cannot enable the module for any operational/custom role.
-export function assertHousekeepingAdmin(user: Pick<CurrentUser, 'roleKey'>) {
-  if (!canAccessHousekeeping(user.roleKey)) throw new ForbiddenError('Housekeeping está disponible únicamente para el Administrador de sistema.');
+export function assertHousekeepingAccess(user: Pick<CurrentUser, 'roleKey' | 'permissions'>, manage = false) {
+  if (!(manage ? canManageHousekeeping(user) : canAccessHousekeeping(user))) throw new ForbiddenError(manage ? 'No tienes permiso para gestionar Housekeeping.' : 'Housekeeping no está habilitado para tu rol.');
 }
 
-/** Private pilot content must not leak through shared history or Fronti. */
-export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey'>): Prisma.AuditLogWhereInput {
-  return canAccessHousekeeping(user.roleKey) ? {} : { NOT: { entity: 'HousekeepingRequest' } };
+/** Legacy administrative trials remain private; operational records follow permissions. */
+export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey' | 'permissions'>): Prisma.AuditLogWhereInput {
+  if (user.roleKey === 'ADMINISTRADOR_SISTEMA') return {};
+  return canAccessHousekeeping(user) ? { OR: [{ NOT: { entity: 'HousekeepingRequest' } }, { isDemo: false }] } : { NOT: { entity: 'HousekeepingRequest' } };
+}
+
+function housekeepingVisibility(user: CurrentUser): Prisma.HousekeepingRequestWhereInput {
+  return user.roleKey === 'ADMINISTRADOR_SISTEMA' ? {} : { isDemo: false };
 }
 
 const include = {
@@ -27,46 +30,47 @@ export function housekeepingSourceChanged(request: { acknowledgedAt: Date | null
 }
 
 export async function getHousekeepingBoard(user: CurrentUser, history = false, page = 1, focusId?: number) {
-  assertHousekeepingAdmin(user);
+  assertHousekeepingAccess(user);
   const terminal = ['RESUELTO', 'CANCELADO'];
   const currentPage = Number.isSafeInteger(page) ? Math.min(10000, Math.max(1, page)) : 1;
   const selectedStatus = history ? { in: terminal } : { notIn: terminal };
-  const where = { status: selectedStatus, ...(Number.isSafeInteger(focusId) && focusId! > 0 ? { humanId: focusId } : {}) };
+  const visibility = housekeepingVisibility(user);
+  const where = { ...visibility, status: selectedStatus, ...(Number.isSafeInteger(focusId) && focusId! > 0 ? { humanId: focusId } : {}) };
   const [requests, total, active, pending, blocked, overdue] = await Promise.all([
     prisma.housekeepingRequest.findMany({
       where, include,
       orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }, { id: 'asc' }], take: 25, skip: (currentPage - 1) * 25,
     }),
     prisma.housekeepingRequest.count({ where }),
-    prisma.housekeepingRequest.count({ where: { status: { notIn: terminal } } }),
-    prisma.housekeepingRequest.count({ where: { acknowledgedAt: null, status: { notIn: terminal } } }),
-    prisma.housekeepingRequest.count({ where: { status: 'BLOQUEADO' } }),
-    prisma.housekeepingRequest.count({ where: { status: { notIn: terminal }, dueAt: { lt: new Date() } } }),
+    prisma.housekeepingRequest.count({ where: { ...visibility, status: { notIn: terminal } } }),
+    prisma.housekeepingRequest.count({ where: { ...visibility, acknowledgedAt: null, status: { notIn: terminal } } }),
+    prisma.housekeepingRequest.count({ where: { ...visibility, status: 'BLOQUEADO' } }),
+    prisma.housekeepingRequest.count({ where: { ...visibility, status: { notIn: terminal }, dueAt: { lt: new Date() } } }),
   ]);
   return { requests, total, page: currentPage, active, pending, blocked, overdue };
 }
 
 export async function searchHousekeepingRecords(user: CurrentUser, query: string, limit = 60): Promise<GlobalSearchResult[]> {
-  assertHousekeepingAdmin(user);
+  assertHousekeepingAccess(user);
   const text = query.trim().replace(/^#/, '').slice(0, 200);
   if (!text) return [];
   const terms = text.toLocaleLowerCase('es-CL').split(/\s+/).filter(Boolean).slice(0, 8);
-  const haystack = Prisma.sql`lower(concat_ws(' ', h."humanId"::text, 'Housekeeping piloto', coalesce(e."title", h."title"), coalesce(e."description", h."description"), h."location", h."status"))`;
+  const haystack = Prisma.sql`lower(concat_ws(' ', h."humanId"::text, 'Housekeeping', coalesce(e."title", h."title"), coalesce(e."description", h."description"), h."location", h."status"))`;
   return prisma.$queryRaw<GlobalSearchResult[]>(Prisma.sql`
     SELECT h."humanId", 'HousekeepingRequest'::text AS "entityType", h."id" AS "entityId",
-      'Housekeeping · prueba administrativa'::text AS "kind", coalesce(e."title", h."title") AS "title",
+      'Housekeeping'::text AS "kind", coalesce(e."title", h."title") AS "title",
       coalesce(e."description", h."description") AS "summary", h."status", h."location" AS "roomNumber",
-      NULL::text AS "guestName", NULL::text AS "responsible", 'Piloto privado'::text AS "category", h."createdAt",
+      NULL::text AS "guestName", NULL::text AS "responsible", CASE WHEN h."isDemo" THEN 'Prueba administrativa' ELSE 'Operación' END AS "category", h."createdAt",
       '/admin/housekeeping?vista=' || CASE WHEN h."status" IN ('RESUELTO', 'CANCELADO') THEN 'historial' ELSE 'pendientes' END || '&aviso=' || h."humanId"::text || '#aviso-' || h."humanId"::text AS "href"
     FROM "HousekeepingRequest" h LEFT JOIN "OperationalEntry" e ON e."id" = h."sourceEntryId"
-    WHERE ${Prisma.join(terms.map((term) => Prisma.sql`${haystack} LIKE ${`%${term}%`}`), ' AND ')}
+    WHERE (h."isDemo" = false OR ${user.roleKey === 'ADMINISTRADOR_SISTEMA'}) AND ${Prisma.join(terms.map((term) => Prisma.sql`${haystack} LIKE ${`%${term}%`}`), ' AND ')}
     ORDER BY CASE WHEN h."humanId"::text = ${text} THEN 0 ELSE 1 END, h."createdAt" DESC
     LIMIT ${Math.min(100, Math.max(1, limit))}
   `);
 }
 
 export async function getHousekeepingSources(user: CurrentUser, query = '') {
-  assertHousekeepingAdmin(user);
+  assertHousekeepingAccess(user, true);
   const text = query.trim().slice(0, 100);
   const number = /^#?\d+$/.test(text) ? Number(text.replace('#', '')) : undefined;
   return prisma.operationalEntry.findMany({
@@ -83,28 +87,28 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
 type CreateInput = { requestKey: string; title?: string; description?: string; sourceEntryId?: string; location?: string; priority: Priority; dueAt?: Date | null };
 
 export async function createHousekeepingRequest(user: CurrentUser, input: CreateInput) {
-  assertHousekeepingAdmin(user);
+  assertHousekeepingAccess(user, true);
   if (!input.sourceEntryId && (!input.title?.trim() || !input.description?.trim())) throw new RuleError('Indica qué necesita Housekeeping y el contexto.');
   const existing = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
-  if (existing) return existing;
+  if (existing) { if (existing.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA') throw new ForbiddenError(); return existing; }
   try {
     return await prisma.$transaction(async (tx) => {
       const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] } } }) : null;
       if (input.sourceEntryId && !source) throw new NotFoundError('La novedad ya no está disponible para vincular.');
       const request = await tx.housekeepingRequest.create({ data: {
-        requestKey: input.requestKey, sourceEntryId: source?.id,
+        requestKey: input.requestKey, sourceEntryId: source?.id, isDemo: false,
         // Linked notices read their content from the canonical entry. No copy.
         title: source ? null : input.title!.trim(), description: source ? null : input.description!.trim(),
         location: input.location?.trim() || null, priority: source?.priority ?? input.priority, dueAt: input.dueAt ?? source?.dueAt,
-        events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Aviso creado en el piloto administrativo; no enviado al personal.' } },
+        events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Aviso operativo creado. Recepción y resultado se registran por separado.' } },
       } });
-      await tx.auditLog.create({ data: { entity: 'HousekeepingRequest', entityId: request.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Piloto Housekeeping: aviso #${request.humanId}`, isDemo: true } });
+      await tx.auditLog.create({ data: { entity: 'HousekeepingRequest', entityId: request.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Housekeeping: aviso #${request.humanId}`, isDemo: false } });
       return request;
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const repeated = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
-      if (repeated) return repeated;
+      if (repeated) { if (repeated.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA') throw new ForbiddenError(); return repeated; }
       throw new RuleError('Esta novedad ya está vinculada a Housekeeping. Abre el aviso existente.');
     }
     throw error;
@@ -114,12 +118,12 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
 type ChangeInput = { id: string; version: number; action: HousekeepingAction; note?: string; dueAt?: Date | null };
 
 export async function changeHousekeepingRequest(user: CurrentUser, input: ChangeInput) {
-  assertHousekeepingAdmin(user);
+  assertHousekeepingAccess(user, true);
   const note = input.note?.trim() || null;
   if (housekeepingNeedsNote(input.action) && !note) throw new RuleError('Registra el motivo o resultado para conservar la trazabilidad.');
   return prisma.$transaction(async (tx) => {
     const current = await tx.housekeepingRequest.findUnique({ where: { id: input.id }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true } } } });
-    if (!current) throw new NotFoundError();
+    if (!current || (current.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new NotFoundError();
     if (current.sourceEntryId) {
       // Freeze the exact source version during acknowledgement/transition.
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${current.sourceEntryId} FOR SHARE`;
@@ -145,11 +149,11 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
         ...(isHousekeepingClosed(next) ? { resolvedAt: new Date() } : {}),
       },
     });
-    if (update.count !== 1) throw new RuleError('Otro administrador actualizó este aviso. Recarga la página.');
+    if (update.count !== 1) throw new RuleError('Otra persona actualizó este aviso. Recarga la página.');
     await tx.housekeepingEvent.create({ data: { requestId: current.id, actorId: user.id, action: input.action, fromStatus: current.status, toStatus: next, note } });
     await tx.auditLog.create({ data: {
       entity: 'HousekeepingRequest', entityId: current.id, action: 'CAMBIO_ESTADO', userId: user.id, sessionId: user.sessionId,
-      summary: `Piloto Housekeeping #${current.humanId}: ${input.action}`, before: { status: current.status, version: current.version }, after: { status: next, version: current.version + 1 }, reason: note, isDemo: true,
+      summary: `Housekeeping #${current.humanId}: ${input.action}`, before: { status: current.status, version: current.version }, after: { status: next, version: current.version + 1 }, reason: note, isDemo: current.isDemo,
     } });
     return { id: current.id, humanId: current.humanId };
   });

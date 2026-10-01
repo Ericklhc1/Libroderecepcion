@@ -43,6 +43,7 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
+  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
   {
     href: '/libro?clase=entry',
     label: 'Novedades',
@@ -413,6 +414,6 @@ export function visibleNavGroups(permissions: PermissionKey[], isSystemAdmin = f
         menu: visibleMenu(item.menu, permissions),
       })),
   })).filter((group) => group.items.length > 0);
-  if (isSystemAdmin) groups.push({ title: 'Pilotos privados', items: [{ href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room' }] });
+  if (isSystemAdmin && !groups.some((group) => group.items.some((item) => item.href === '/admin/housekeeping'))) groups.push({ title: 'Operación', items: [{ href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room' }] });
   return groups;
 }

@@ -1,4 +1,4 @@
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 
 export const HOUSEKEEPING_STATUSES = ['PENDIENTE', 'RECIBIDO', 'EN_GESTION', 'BLOQUEADO', 'RESUELTO', 'CANCELADO'] as const;
 export type HousekeepingStatus = (typeof HOUSEKEEPING_STATUSES)[number];
@@ -11,13 +11,19 @@ export const HOUSEKEEPING_LABELS: Record<HousekeepingStatus, string> = {
 };
 
 export const HOUSEKEEPING_ACTION_LABELS: Record<HousekeepingAction, string> = {
-  CONFIRMAR: 'Confirmar recepción de prueba', INICIAR: 'Iniciar gestión',
+  CONFIRMAR: 'Confirmar recepción', INICIAR: 'Iniciar gestión',
   ACLARAR: 'Necesito aclaración', BLOQUEAR: 'Registrar impedimento', RETOMAR: 'Retomar gestión',
   RESOLVER: 'Registrar resultado', CANCELAR: 'Cancelar con motivo', REABRIR: 'Reabrir con motivo',
 };
 
-export function canAccessHousekeeping(roleKey: string): boolean {
-  return roleKey === ROLE_KEYS.SYSTEM_ADMIN;
+export type HousekeepingAccess = { roleKey: string; permissions: readonly PermissionKey[] };
+
+export function canManageHousekeeping(user: HousekeepingAccess): boolean {
+  return user.roleKey === ROLE_KEYS.SYSTEM_ADMIN || user.permissions.includes('housekeeping.manage');
+}
+
+export function canAccessHousekeeping(user: HousekeepingAccess): boolean {
+  return canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
 }
 
 export function isHousekeepingClosed(status: HousekeepingStatus): boolean {

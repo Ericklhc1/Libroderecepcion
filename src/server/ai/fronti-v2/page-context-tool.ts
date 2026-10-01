@@ -509,11 +509,11 @@ async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext)
   if (page.sectionKey === 'housekeeping') {
     const board = await getHousekeepingBoard(user);
     return {
-      pilot: true,
-      scope: 'Pruebas administrativas exclusivas. No acredita trabajo del personal y no envía instrucciones a Housekeeping.',
+      pilot: false,
+      scope: 'Coordinación operativa de Housekeeping, habilitable por permisos. Las pruebas anteriores siguen identificadas.',
       counts: { active: board.active, withoutFirstReceipt: board.pending, blocked: board.blocked, overdue: board.overdue },
-      requests: board.requests.slice(0, 12).map((request) => ({ humanId: request.humanId, title: request.sourceEntry?.title ?? request.title, status: request.status, dueAt: request.dueAt, acknowledgedAt: request.acknowledgedAt, blockReason: request.blockReason })),
-      guidance: 'Confirmar recepción no resuelve. Las acciones se ejecutan desde los botones del piloto; Fronti no cambia estos estados.',
+      requests: board.requests.slice(0, 12).map((request) => ({ humanId: request.humanId, isDemo: request.isDemo, title: request.sourceEntry?.title ?? request.title, status: request.status, dueAt: request.dueAt, acknowledgedAt: request.acknowledgedAt, blockReason: request.blockReason })),
+      guidance: 'Confirmar recepción no resuelve. Las acciones se ejecutan desde los botones del módulo; Fronti no cambia estos estados.',
     };
   }
   requireAny(

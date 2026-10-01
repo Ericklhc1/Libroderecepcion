@@ -96,13 +96,13 @@ describe('rol de gerencia', () => {
     await expect(assertAssignable(gerente.id)).resolves.toBeUndefined();
   });
 
-  it('el Administrador de sistema sigue sin poder ser responsable', async () => {
+  it('el Administrador de sistema también puede ser responsable', async () => {
     await seedCatalog();
     await resetOperationalData();
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
 
-    // Gerencia es operativa; el administrador no. Son cosas distintas.
-    await expect(assertAssignable(admin.id)).rejects.toThrow(/fuera de la operación/);
+    // La participación administrativa fue autorizada expresamente.
+    await expect(assertAssignable(admin.id)).resolves.toBeUndefined();
   });
 });
 

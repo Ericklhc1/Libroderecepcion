@@ -273,7 +273,7 @@ describe('comunicados obligatorios', () => {
     expect(pendientes[0]?.title).toBe('Para ti');
   });
 
-  it('el avance de lectura cuenta al personal operativo, no al administrador', async () => {
+  it('el avance de lectura incluye al administrador operativo', async () => {
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     await createAnnouncement(supervisor, {
       title: 'Aviso',
@@ -282,11 +282,7 @@ describe('comunicados obligatorios', () => {
     });
 
     const [listado] = await listAnnouncements();
-    /*
-      El Administrador de sistema no opera el mesón, así que no debería
-      contarse como moroso de un comunicado operativo. Quedan el supervisor y
-      los dos recepcionistas.
-      */
-    expect(listado?.expected).toBe(3);
+    // Supervisor, dos recepcionistas y administrador operativo.
+    expect(listado?.expected).toBe(4);
   });
 });

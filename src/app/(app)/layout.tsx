@@ -69,7 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       where: { id: user.id },
       select: { tutorialDoneAt: true, tutorialKnownModules: true },
     }),
-    user.roleOperational && !user.isSystemAdmin
+    user.roleOperational
       ? getChatUnreadCount(user.id)
       : Promise.resolve(0),
     getFrontiConfig(),
@@ -154,7 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <SupportRequestPanel version={packageJson.version} hotelName={hotelName} />
                 <NotificationCenter initialSnapshot={notificationFeed} />
 
-                {user.roleOperational && !user.isSystemAdmin ? (
+                {user.roleOperational ? (
                   <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
                 ) : null}
 

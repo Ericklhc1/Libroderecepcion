@@ -556,8 +556,8 @@ export async function mergeSupervisionAuditReport(
     };
   },
 ) {
-  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
-    throw new RuleError('Sólo el Supervisor operativo puede cargar la auditoría diaria.');
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR && user.roleKey !== ROLE_KEYS.SYSTEM_ADMIN) {
+    throw new RuleError('Sólo Supervisor o Administrador de sistema puede cargar la auditoría diaria.');
   }
 
   return prisma.$transaction(async (tx) => {
@@ -682,8 +682,8 @@ function assertActiveAuditReviewOwner(
   user: CurrentUser,
   row: { supervisionShift: { supervisorId: string; status: SupervisionShiftStatus } },
 ) {
-  if (user.roleKey !== ROLE_KEYS.SUPERVISOR || user.isSystemAdmin) {
-    throw new RuleError('Sólo el Supervisor operativo puede actualizar la revisión diaria.');
+  if (user.roleKey !== ROLE_KEYS.SUPERVISOR && user.roleKey !== ROLE_KEYS.SYSTEM_ADMIN) {
+    throw new RuleError('Sólo Supervisor o Administrador de sistema puede actualizar la revisión diaria.');
   }
   if (row.supervisionShift.supervisorId !== user.id) {
     throw new RuleError('Esa auditoría diaria pertenece al turno de otro Supervisor.');

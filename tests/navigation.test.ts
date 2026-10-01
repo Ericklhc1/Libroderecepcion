@@ -147,18 +147,11 @@ describe('visibilidad por rol', () => {
     expect(hrefs).not.toContain('/supervision');
   });
 
-  it('el Administrador de sistema queda fuera de la operación del turno', () => {
-    /*
-      Ve Turno porque supervisa su historial (`shift.manage`), pero no
-      puede iniciar, recibir ni entregar: es la exclusión que lo mantiene
-      fuera de la operación habitual, y vive en los permisos, no en el menú.
-    */
+  it('el Administrador de sistema puede gestionar y operar turnos', () => {
     const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN];
-    expect(permissions).toContain('shift.manage');
-    for (const operational of ['shift.start', 'shift.receive', 'shift.handover'] as const) {
-      expect(permissions).not.toContain(operational);
-    }
-    expect(visibleNavItems(permissions).map((i) => i.href)).toContain('/admin');
+    for (const permission of ['shift.manage', 'shift.start', 'shift.receive', 'shift.handover'] as const) expect(permissions).toContain(permission);
+    const hrefs = visibleNavItems(permissions).map((item) => item.href);
+    expect(hrefs).toContain('/admin'); expect(hrefs).toContain('/turno'); expect(hrefs).toContain('/admin/housekeeping');
   });
 
   it('no deja grupos vacíos en el menú', () => {

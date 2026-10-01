@@ -161,37 +161,15 @@ describe('Centro de Supervisión', () => {
     expect(persisted.result).toContain('fuente de origen');
   });
 
-  it('reserva la operación al Supervisor y excluye al Administrador de asignaciones', async () => {
-    expect(supervisor.permissions).toContain('supervision.center.view');
-    expect(supervisor.permissions).toContain('supervision.shift.manage');
-    expect(receptionist.permissions).not.toContain('supervision.center.view');
-
-    await expect(startSupervisionShift(receptionist, { priorities: [] })).rejects.toThrow(
-      /sólo puede ser operado por el rol Supervisor/,
-    );
-    await expect(startSupervisionShift(admin, { priorities: [] })).rejects.toThrow(
-      /sólo puede ser operado por el rol Supervisor/,
-    );
-
-    const assignable = await listOperationalUsers();
-    expect(assignable.map((person) => person.id)).not.toContain(admin.id);
-    await expect(
-      createTask(supervisor, {
-        title: 'Tarea improcedente',
-        priority: Priority.MEDIA,
-        assigneeId: admin.id,
-        tags: [],
-        checklist: [],
-      }),
-    ).rejects.toThrow(/fuera de la operación/);
-    const teamTask = await createTask(supervisor, {
-      title: 'Tarea para el equipo operativo',
-      priority: Priority.MEDIA,
-      targetType: TaskTargetType.EQUIPO,
-      tags: [],
-      checklist: [],
-    });
-    expect(teamTask.participants.map((participant) => participant.userId)).not.toContain(admin.id);
+  it('permite al Administrador operar Supervisión y recibir asignaciones', async () => {
+    await expect(startSupervisionShift(receptionist, { priorities: [] })).rejects.toThrow(/sólo puede ser operado/);
+    const adminShift = await startSupervisionShift(admin, { priorities: [] });
+    expect(adminShift.supervisorId).toBe(admin.id);
+    expect((await listOperationalUsers()).map((person) => person.id)).toContain(admin.id);
+    const task = await createTask(supervisor, { title: 'Responsabilidad administrativa', priority: Priority.MEDIA, assigneeId: admin.id, tags: [], checklist: [] });
+    expect(task.assigneeId).toBe(admin.id);
+    const teamTask = await createTask(supervisor, { title: 'Tarea para el equipo operativo', priority: Priority.MEDIA, targetType: TaskTargetType.EQUIPO, tags: [], checklist: [] });
+    expect(teamTask.participants.map((participant) => participant.userId)).toContain(admin.id);
   });
 
   it('mantiene turnos de Supervisión simultáneos e independientes de Recepción', async () => {
@@ -464,7 +442,7 @@ describe('Centro de Supervisión', () => {
       await prisma.notification.count({
         where: { entityId: operational.run.id, userId: admin.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
   });
 
   it('calcula indicadores explicables y bloquea la consulta entre recepcionistas', async () => {

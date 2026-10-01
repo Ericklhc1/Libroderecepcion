@@ -69,7 +69,7 @@ export default async function AssignmentBoardPage({
     redirect('/sin-permisos');
   }
 
-  const isSupervisor = user.roleKey === ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin;
+  const isSupervisor = (user.roleKey === ROLE_KEYS.SUPERVISOR || user.roleKey === ROLE_KEYS.SYSTEM_ADMIN);
   const canAssign = isSupervisor && hasPermission(user, 'supervision.task.assign');
   const canConfigure = isSupervisor && hasPermission(user, 'supervision.audit.create');
 

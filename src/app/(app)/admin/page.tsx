@@ -17,6 +17,7 @@ import {
 import { requirePageUser } from '@/server/auth/guard';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import { RunMaintenanceForm } from './admin-forms';
 import {
@@ -138,7 +139,7 @@ export default async function AdminPage() {
     prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
     prisma.operationalEntry.count({ where: { NOT: { deletedAt: null } } }),
     prisma.task.count({ where: { NOT: { deletedAt: null } } }),
-    prisma.auditLog.count(),
+    prisma.auditLog.count({ where: housekeepingAuditVisibility(user) }),
   ]);
 
   return (
@@ -150,6 +151,13 @@ export default async function AdminPage() {
           operación habitual de turnos.
         </p>
       </header>
+
+      {user.isSystemAdmin && (
+        <Link href="/admin/housekeeping" className="card block border-amber-200 px-4 py-4 hover:bg-amber-50">
+          <span className="block font-medium text-petrol-900">Housekeeping · piloto privado</span>
+          <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Solo Administrador de sistema; pruebas sin envío al personal.</span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Usuarios" value={users} />

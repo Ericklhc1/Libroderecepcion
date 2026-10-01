@@ -403,8 +403,8 @@ export function visibleNavItems(permissions: PermissionKey[]): NavItem[] {
   }));
 }
 
-export function visibleNavGroups(permissions: PermissionKey[]): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({
+export function visibleNavGroups(permissions: PermissionKey[], isSystemAdmin = false): NavGroup[] {
+  const groups: NavGroup[] = NAV_GROUPS.map((group) => ({
     title: group.title,
     items: group.items
       .filter((item) => allowed(item, permissions))
@@ -413,4 +413,6 @@ export function visibleNavGroups(permissions: PermissionKey[]): NavGroup[] {
         menu: visibleMenu(item.menu, permissions),
       })),
   })).filter((group) => group.items.length > 0);
+  if (isSystemAdmin) groups.push({ title: 'Pilotos privados', items: [{ href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room' }] });
+  return groups;
 }

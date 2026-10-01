@@ -10,6 +10,7 @@ import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
 import { pageHref, type RawSearchParams } from '@/lib/search-params';
 import { hasTechnicalAdminAccess } from '@/lib/permissions';
+import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 
 export const metadata = { title: 'Auditoría' };
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,7 @@ export default async function AuditPage({
   const q = typeof params.q === 'string' ? params.q : undefined;
 
   const where: Prisma.AuditLogWhereInput = {
+    AND: [housekeepingAuditVisibility(user)],
     ...(accion && accion in AuditAction ? { action: accion as AuditAction } : {}),
     ...(entidad ? { entity: entidad } : {}),
     ...(usuario ? { userId: usuario } : {}),

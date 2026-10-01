@@ -1,5 +1,16 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 01/10/2026 · AROH 1.39.0 · Housekeeping privado
+
+- Piloto exclusivo del rol ADMINISTRADOR_SISTEMA en /admin/housekeeping. Guardas en página, acciones y todos los servicios; sin nuevos permisos que puedan habilitarlo accidentalmente.
+- Avisos manuales o vínculo único a novedades abiertas existentes; contenido original sin copias ni cambios del estado de origen.
+- Recepción, gestión, aclaración/bloqueo, resultado, cancelación y reapertura con historial transaccional. Cambios del origen exigen reconfirmar; versiones optimistas impiden cambios concurrentes incompatibles.
+- Todos los avisos son isDemo=true, con restricción SQL. No hay asignaciones operativas del administrador, notificaciones a personal ni cambios PMS/Recepción.
+- # global, fechas Chile, formularios compartidos y auditoría existente. Migración aditiva 20261001123000_housekeeping_pilot; limpieza técnica incorpora las dependencias sin ejecutarse durante esta implementación.
+- Informe previo: docs/HOUSEKEEPING_PRELIMINAR_2026-10-01.md. Pruebas: dominio, acceso a página/acciones y flujo persistente/concurrencia en PostgreSQL desechable de CI.
+- Horarios, responsables del área, escalamiento real y permisos del personal quedan para la siguiente fase acordada.
+
+
 ## 30/09/2026 · AROH 1.38.0 · Fronti: acciones continuas y confirmación verificable
 
 - Causa raíz: el catálogo de herramientas se elegía únicamente con el último mensaje; una respuesta por campos perdía la intención previa de crear. La selección conserva ahora la solicitud literal reciente del usuario, sin convertir mensajes del modelo en autorizaciones; preguntas nuevas y cancelaciones cortan la continuidad.

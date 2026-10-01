@@ -46,7 +46,7 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(page).toContain('Foco por habitación');
     expect(page).toContain('Contexto por habitación');
     expect(page).toContain('FNSrooms continúa siendo la fuente PMS');
-    expect(page).toContain('Detalle detectado · trazabilidad directa');
+    expect(page).toContain('Ver el registro y su historial');
     expect(page).toContain('Fronti sugiere');
     expect(page).toContain('Abrir registro');
     expect(page).not.toContain('Ver evidencia');

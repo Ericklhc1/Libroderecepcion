@@ -120,7 +120,7 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
   });
   it('incorpora filas futuras de un archivo mixto y conserva las jornadas iniciadas', async () => {
     await add(); const original = await slot();
-    const bytes = new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-02;LIBRE\nTEST_COL001;2090-10-03;TEST_DIA\nTEST_COL001;2090-10-03;TEST_NOCHE\nTEST_COL002;2090-10-04;TEST_DIA\n');
+    const bytes = new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-02;LIBRE\nTEST_COL001;2090-10-03;TEST_DIA\nTEST_COL002;2090-10-03;TEST_NOCHE\nTEST_COL002;2090-10-04;TEST_DIA\n');
     const draft = await reviewScheduleImport(admin, planId, 'mes.csv', bytes);
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2090-10-03T18:00:00Z'));
     expect((await getScheduleBoard(admin, area, planId)).imports[0]?.omittedRows).toEqual([0, 1]);

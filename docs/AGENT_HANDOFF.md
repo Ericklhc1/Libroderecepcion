@@ -1,5 +1,20 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 01/10/2026 · AROH 1.41.0 · Equipo y horarios
+
+- Nuevo /equipo: calendario por área con vistas semana, ciclo de ocho días y mes; glosa junto al colaborador. Navegación agrupada en Operación, Equipo, Gestión y Administración, conservando permisos anteriores.
+- Activado inicialmente sólo para Administrador de sistema. Ocho permisos schedule.* habilitables por rol; alcance por área principal y concesiones adicionales. schedule.view.all sólo consulta publicados y no amplía permisos de escritura. schedule.self.view sólo muestra asignaciones propias publicadas.
+- Colaboradores independientes de cuentas de acceso, membresía por área y vínculo opcional a cuenta operativa real. Plantillas inmutables por revisión; RD01/RD02/RN01 precargadas en Recepción sin personas ni jornadas reales. Configurar colaciones antes de interpretar horas/cobertura.
+- Mallas borrador/publicadas, cambios atómicos con versión optimista e idempotencia: mover, reasignar, intercambiar o agregar. Prohíbe solapes personales entre áreas, conflictos con ausencias y descansos mínimos configurados. Sin borrado físico ni cambios retroactivos de jornadas iniciadas.
+- Lectura determinística PDF/XLSX/CSV/TSV con revisión previa y coincidencia exacta de personas, códigos y horarios; no sobrescribe casillas. Fixture anonimizada reproduce las 192 casillas de la malla aportada. Su fila de suma de horas y firmas intercaladas obligan a reconocer filas por glosa, no por posición adyacente.
+- Extras separados en extensión y turno adicional: solicitud, aprobación/rechazo, realización informada y validación. Pendientes no cubren brechas; colación reduce cobertura aun si se paga. Totales semanales cruzan áreas publicadas y separan noches por semana civil; no confundir el bloque de ocho días con una semana.
+- Publicación/cambios publicados generan notificación y recepción persistida por revisión para cuentas vinculadas y habilitadas. Confirmación de horario no prueba asistencia. Calendario consultable fuera del turno operativo; no crea ni abre Shift, Caja o custodia.
+- Catálogo nacional de feriados 2026 y administración manual con fuente; noches pueden cruzar dos feriados. Horas America/Santiago con DST, no offset fijo. Franjas de cobertura toleran medianoche omitida; asignaciones con horas inexistentes se rechazan explícitamente.
+- Migración aditiva 20261001143000_equipo_horarios: tablas aisladas, restricciones y permisos sólo admin. Documento operativo/técnico: docs/EQUIPO_HORARIOS.md.
+- Verificación local: lint y typecheck aprobados; build aprobado; pruebas de dominio/importación/navegación/tutorial aprobadas. PostgreSQL y regresión completa pendientes de Compuerta de esta PR; no se usa Neon Production para pruebas.
+- Pendiente posterior: entrega automática de avisos Housekeeping/Mantenimiento al iniciar el turno de área, escalamiento/reintentos y reportes diarios. Esta release prepara la planificación; no agrega un motor de asistencia, remuneraciones o reservas.
+
+
 ## 01/10/2026 · AROH 1.40.0 · Housekeeping habilitable y administrador operativo
 
 - Instrucción humana vigente sustituye la separación técnica anterior: Administrador de sistema ahora es operativo, asignable y dispone de permisos de turno, habitaciones, llaves y Supervisión. Actúa con su propia identidad; no suplanta usuarios ni se saltan estados, custodia o comprobaciones de propiedad.

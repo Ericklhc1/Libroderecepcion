@@ -18,7 +18,8 @@ export function ReceptionOperationGate({
   if (
     pathname === '/turno' ||
     pathname.startsWith('/turno/entrega/') ||
-    pathname === '/perfil'
+    pathname === '/perfil' ||
+    pathname === '/equipo'
   ) {
     return null;
   }

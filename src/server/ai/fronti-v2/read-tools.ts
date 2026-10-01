@@ -1,3 +1,4 @@
+import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import 'server-only';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 
@@ -381,7 +382,7 @@ async function auditTool(user: CurrentUser, args: Record<string, unknown>) {
       : null;
 
   const rows = await prisma.auditLog.findMany({
-    where: { AND: [housekeepingAuditVisibility(user)], ...(entity ? { entity } : {}) },
+    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)], ...(entity ? { entity } : {}) },
     select: {
       id: true,
       entity: true,

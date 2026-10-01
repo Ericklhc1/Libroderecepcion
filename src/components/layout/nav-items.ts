@@ -369,10 +369,21 @@ const SYSTEM: NavItem[] = [
 ];
 
 export const NAV_GROUPS: NavGroup[] = [
-  { title: null, items: PRIMARY },
-  { title: 'Dirección', items: MANAGEMENT },
-  { title: 'Consulta', items: SECONDARY },
-  { title: 'Sistema', items: SYSTEM },
+  { title: null, items: PRIMARY.filter((item) => item.href === '/') },
+  { title: 'Operación', items: PRIMARY.filter((item) => item.href !== '/' && item.href !== '/supervision') },
+  { title: 'Equipo', items: [{
+    href: '/equipo', label: 'Equipo y horarios', mobileLabel: 'Horarios', icon: 'shift',
+    anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'],
+    menu: [{ title: 'Equipo y horarios', items: [
+      { href: '/equipo', label: 'Calendario', description: 'Mallas por área, cambios, extras y feriados.' },
+      { href: '/equipo?seccion=colaboradores', label: 'Colaboradores', description: 'Personal programable, con o sin cuenta de acceso.', anyOf: ['schedule.catalog.manage'] },
+      { href: '/equipo?seccion=plantillas', label: 'Plantillas y glosa', description: 'Códigos y horarios admitidos por cada área.', anyOf: ['schedule.catalog.manage'] },
+      { href: '/equipo?seccion=cobertura', label: 'Cobertura mínima', description: 'Personas y funciones requeridas por franja.', anyOf: ['schedule.catalog.manage'] },
+      { href: '/equipo?seccion=configuracion', label: 'Alcance y feriados', anyOf: ['schedule.configure'] },
+    ] }],
+  }] },
+  { title: 'Gestión', items: [...PRIMARY.filter((item) => item.href === '/supervision'), ...MANAGEMENT, ...SECONDARY] },
+  { title: 'Administración', items: SYSTEM },
 ];
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);

@@ -1,3 +1,4 @@
+import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 import { ChevronLeft, ChevronRight, History, Printer } from 'lucide-react';
@@ -48,7 +49,7 @@ export default async function HistoryPage({
     user.permissions.includes('audit.view')
       ? prisma.auditLog.findMany({
           where: {
-            AND: [housekeepingAuditVisibility(user)],
+            AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)],
             ...(filters.q ? { summary: { contains: filters.q, mode: 'insensitive' as const } } : {}),
           },
           include: { user: { select: { name: true } } },

@@ -1,0 +1,43 @@
+name: Prepare equipo user hours patch
+
+on:
+  push:
+    branches: [fix/equipo-usuarios-horas-20261001]
+    paths:
+      - scripts/_apply_equipo_user_hours.py
+      - scripts/_apply_equipo_identity_followup.py
+      - .github/workflows/_equipo-user-hours-edit.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: equipo-user-hours-patch
+  cancel-in-progress: false
+
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/equipo-usuarios-horas-20261001
+          fetch-depth: 1
+      - name: Apply bounded source edits
+        run: |
+          test "$(git branch --show-current)" = "fix/equipo-usuarios-horas-20261001"
+          python -m py_compile scripts/_apply_equipo_user_hours.py
+          python scripts/_apply_equipo_user_hours.py
+          if test -f scripts/_apply_equipo_identity_followup.py; then
+            python scripts/_apply_equipo_identity_followup.py
+          fi
+          git diff --check
+          rm .github/workflows/_equipo-user-hours-edit.yml scripts/_apply_equipo_user_hours.py
+          rm -f scripts/_apply_equipo_identity_followup.py
+          git add src tests package.json package-lock.json docs PROJECT_CONTEXT.md .github/workflows/_equipo-user-hours-edit.yml scripts/_apply_equipo_user_hours.py
+          git add -u scripts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(equipo): use existing users and weekly hours without rest deductions"
+          git push origin HEAD:refs/heads/fix/equipo-usuarios-horas-20261001

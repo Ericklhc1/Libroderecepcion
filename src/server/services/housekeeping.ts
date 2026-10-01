@@ -195,8 +195,8 @@ async function notifyHousekeeping(tx: Prisma.TransactionClient, request: { id: s
     role: { OR: [{ key: 'ADMINISTRADOR_SISTEMA' }, { permissions: { some: { permission: { key: { in: ['housekeeping.manage', 'housekeeping.view'] } } } } }] },
     OR: [
       ...(request.createdById ? [{ id: request.createdById }] : []),
-      ...(request.assignedToId && !escalation ? [{ id: request.assignedToId }] : []),
-      ...(!request.assignedToId && request.departmentId ? [{ departmentId: request.departmentId, role: eligibleManager.role }] : []),
+      ...(request.assignedToId ? [{ id: request.assignedToId }] : []),
+      ...(!request.assignedToId && request.departmentId ? [{ OR: [{ departmentId: request.departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId: request.departmentId, active: true } } } }], role: eligibleManager.role }] : []),
       ...(escalation ? [{ role: { key: { in: ['ADMINISTRADOR_SISTEMA', 'SUPERVISOR_RECEPCION'] } } }] : []),
     ],
   }, select: { id: true } });

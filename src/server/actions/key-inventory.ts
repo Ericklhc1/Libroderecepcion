@@ -70,12 +70,12 @@ function metricCorrelationId(value: FormDataEntryValue | null, floor: number): s
 }
 
 export async function startKeyInventoryMetricAction(input: {
-  floor: number;
+  floor: number | 'todos';
   correlationId: string;
   startedAtMs: number;
 }): Promise<void> {
   const user = await requireKeyInventoryAccess();
-  if (!isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
+  if (input.floor !== 'todos' && !isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
   if (input.correlationId.length < 10 || input.correlationId.length > 128) return;
 
   const startedAt = operationalStartedAtFromEpoch(input.startedAtMs);

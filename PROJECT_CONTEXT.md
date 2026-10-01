@@ -7,7 +7,7 @@
 - Llaves: toma única de 89 habitaciones, cambios de piso dentro del mismo borrador y confirmación agrupada después de revisión física. Excepciones y custodia conocida explícitas. Documento imprimible propio por toma guardada; snapshots y referencia idempotente. Conteos antiguos por piso siguen consultables.
 - Housekeeping: área receptora, responsable opcional, tomar y comenzar, derivar/relevar con motivo y nueva recepción. Notifica creación, movimiento y resultado a usuarios habilitados; vencimientos mediante cron existente, una vez por revisión. No amplía permisos, no confirma asistencia ni altera el registro original vinculado.
 - Navegación: listas de página sin límite interno vertical, calendario horizontal y bloqueo de desplazamiento compartido entre diálogos, ayuda y soporte. Separa inventario, movimientos e historial; Housekeeping incorpora Mis avisos y vinculación independiente.
-- Migración aditiva: 20261001180000_operacion_practica. Guía operativa docs/OPERACION_PRACTICA.md. Validación local de dominio (20 pruebas), lint, tipos y build aprobada; Compuerta PostgreSQL y publicación aún pendientes en esta revisión.
+- Migración aditiva: 20261001180000_operacion_practica. Guía operativa docs/OPERACION_PRACTICA.md. Validación local: 20 pruebas de dominio y 57 de navegación/diálogos/contexto, lint, tipos y build aprobados. Las regresiones completas de PostgreSQL desechable aprobaron en la segunda revisión de PR #231. La revisión final incorpora seguimiento de inicio y notificaciones por pertenencia compartida; integrar sólo con Compuerta final aprobada. Publicación por main y comprobación de Production/tag v1.42.0 mediante el workflow de release.
 
 ## 01/10/2026 · AROH 1.41.1 · Menú plegable y barra reducible
 

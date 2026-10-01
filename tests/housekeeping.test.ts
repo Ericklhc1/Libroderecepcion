@@ -66,6 +66,19 @@ describe('Housekeeping privado: persistencia y protección', () => {
     expect((await getHousekeepingBoard(manager,false,1,undefined,true)).requests).toHaveLength(0);
     await expect(createHousekeepingRequest(admin,{...input(),assignedToId:reception.id,departmentId:area.id})).rejects.toThrow('responsable');
   });
+  it('avisa al equipo compartido del área sin ampliar permisos y omite cuentas desactivadas', async () => {
+    const manager = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const area = await prisma.department.findUniqueOrThrow({ where: { key: 'HOUSEKEEPING' } });
+    const primary = await prisma.department.findUniqueOrThrow({ where: { key: 'RECEPCION' } });
+    await prisma.user.update({ where: { id: manager.id }, data: { departmentId: primary.id } });
+    await prisma.scheduleCollaborator.create({ data: { employeeCode: 'TEST_SHARED_HK', name: manager.name, functionName: 'Coordinación', userId: manager.id, memberships: { create: { departmentId: area.id } } } });
+    const r = await createHousekeepingRequest(admin, { ...input(), departmentId: area.id });
+    expect(await prisma.notification.count({ where: { userId: manager.id, entityId: r.id } })).toBe(1);
+    expect(await prisma.notification.count({ where: { userId: reception.id, entityId: r.id } })).toBe(0);
+    await prisma.user.update({ where: { id: manager.id }, data: { active: false } });
+    const next = await createHousekeepingRequest(admin, { ...input(), departmentId: area.id });
+    expect(await prisma.notification.count({ where: { userId: manager.id, entityId: next.id } })).toBe(0);
+  });
   it('no duplica reintentos ni vínculos al registro original', async () => {
     const original = await source();
     const data = { ...input(), sourceEntryId: original.id };

@@ -7,6 +7,7 @@ import { readReportFile } from '@/server/pms/read-report-file';
 import { extractScheduleRoster, type RosterRow } from '@/domain/schedule-import';
 import { functionKey, mutationSchema, scheduleId, slotSchema, type SlotInput } from '@/domain/schedule';
 import { assertScheduleArea } from './schedule-access';
+import { scheduleImportRowStarted } from '@/domain/schedule-import-timing';
 import { buildScheduleSlot, getSchedulePlan, mutateSchedulePlan, lockScheduleCollaborators } from './schedules';
 
 export async function reviewScheduleImport(user: CurrentUser, planId: string, fileName: string, bytes: Uint8Array) {
@@ -29,16 +30,21 @@ export async function applyScheduleImport(user: CurrentUser, raw: unknown, impor
     const rows = draft.rows as unknown as Array<{ input: SlotInput | null }>;
     await lockScheduleCollaborators(tx, rows.map((row) => slotSchema.parse(row.input).collaboratorId));
     const current = await tx.scheduleSlot.findMany({ where: { planId: plan.id, cancelledAt: null } });
-    const after = []; const affected: string[] = [];
+    const templates = await tx.scheduleTemplate.findMany({ where: { departmentId: plan.departmentId, active: true } });
+    const now = new Date();
+    const after = []; const affected: string[] = []; const omitted: unknown[] = [];
     for (const row of rows) {
-      const input = slotSchema.parse(row.input); const data = await buildScheduleSlot(tx, plan, input);
+      const input = slotSchema.parse(row.input);
+      if (scheduleImportRowStarted(input, templates, now)) { omitted.push(row); continue; }
+      const data = await buildScheduleSlot(tx, plan, input, now);
       const identical = current.find((s) => s.collaboratorId === input.collaboratorId && s.date.toISOString().slice(0, 10) === input.date && s.kind === input.kind && s.code === data.code && s.startAt?.getTime() === (data.startAt as Date | undefined)?.getTime() && s.endAt?.getTime() === (data.endAt as Date | undefined)?.getTime() && s.extraKind === 'NINGUNO');
       if (identical) continue;
       if (current.some((s) => s.collaboratorId === input.collaboratorId && s.date.toISOString().slice(0, 10) === input.date)) throw new RuleError('La carga contradice una casilla existente. Corrígela desde el calendario; no se sobrescribe.');
       const slot = await tx.scheduleSlot.create({ data }); after.push(slot); affected.push(slot.collaboratorId);
     }
-    await tx.scheduleImport.update({ where: { id: draft.id }, data: { status: 'APLICADO', appliedAt: new Date() } });
-    return { after: { importId, fileName: draft.fileName, fileHash: draft.fileHash, assignments: after }, affected };
+    if (omitted.length === rows.length) throw new RuleError('No quedan asignaciones futuras para incorporar. Las filas pasadas o ya iniciadas se conservan en la revisión.');
+    await tx.scheduleImport.update({ where: { id: draft.id }, data: { status: 'APLICADO', appliedAt: now } });
+    return { after: { importId, fileName: draft.fileName, fileHash: draft.fileHash, assignments: after, omitted, omittedReason: 'Pasadas o ya iniciadas' }, affected };
   });
 }
 

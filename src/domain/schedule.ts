@@ -54,6 +54,9 @@ function wall(key: string, time: string, strict = true): Date {
   return value;
 }
 export function dayWindow(date: string) { return { startAt: wall(date, '00:00', false), endAt: wall(datePlus(date, 1), '00:00', false) }; }
+export function scheduleAssignmentStarted(slot: { date: Date; startAt: Date | null }, now = new Date()) {
+  return slot.startAt ? slot.startAt <= now : slot.date.toISOString().slice(0, 10) < hotelDateKey(now);
+}
 export function templateWindow(date: string, t: TemplateClock) {
   const startAt = wall(date, t.startTime); const endAt = wall(t.crossesMidnight ? datePlus(date, 1) : date, t.endTime);
   if (endAt <= startAt || endAt.getTime() - startAt.getTime() > 25 * 3600000) throw new Error('La plantilla debe terminar después de comenzar y durar como máximo un día.');

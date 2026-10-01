@@ -1,4 +1,5 @@
 import 'server-only';
+import { getHousekeepingBoard } from '@/server/services/housekeeping';
 
 import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -505,6 +506,16 @@ async function supervisionSectionSnapshot(
 }
 
 async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext) {
+  if (page.sectionKey === 'housekeeping') {
+    const board = await getHousekeepingBoard(user);
+    return {
+      pilot: true,
+      scope: 'Pruebas administrativas exclusivas. No acredita trabajo del personal y no envía instrucciones a Housekeeping.',
+      counts: { active: board.active, withoutFirstReceipt: board.pending, blocked: board.blocked, overdue: board.overdue },
+      requests: board.requests.slice(0, 12).map((request) => ({ humanId: request.humanId, title: request.sourceEntry?.title ?? request.title, status: request.status, dueAt: request.dueAt, acknowledgedAt: request.acknowledgedAt, blockReason: request.blockReason })),
+      guidance: 'Confirmar recepción no resuelve. Las acciones se ejecutan desde los botones del piloto; Fronti no cambia estos estados.',
+    };
+  }
   requireAny(
     user,
     ['system.configure', 'user.manage', 'role.manage', 'audit.view', 'shift.manage'],

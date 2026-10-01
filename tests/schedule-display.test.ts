@@ -19,5 +19,9 @@ describe('horarios comprensibles y uniformes', () => {
     expect(isScheduleReview('Revisa esto y publica el horario', 'equipo')).toBe(false);
     expect(isScheduleReview('Revisa la caja', 'equipo')).toBe(false);
     expect(isScheduleReview('Revisa el horario', 'caja')).toBe(false);
+    expect(isScheduleReview('¿Publicar el horario abre un turno operativo?', 'equipo')).toBe(true);
+    expect(isScheduleReview('No guardes esto: ¿cuál es el horario de Javier? Aclara si publicar abre un turno operativo.', 'equipo')).toBe(true);
+    expect(isScheduleReview('Publica el horario y explica si inicia turnos', 'equipo')).toBe(false);
+    expect(isScheduleReview('¿Qué pasa al publicar un horario?', 'caja')).toBe(false);
   });
 });

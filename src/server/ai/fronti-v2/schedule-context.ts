@@ -52,6 +52,13 @@ export async function readScheduleContext(user: CurrentUser, args: { area?: stri
 
 export function isScheduleReview(message: string, module: string | undefined): boolean {
   const text = functionKey(message);
+  // Questions about publication must use verified facts even when prior chat
+  // messages incorrectly claimed that a roster creates operational shifts.
+  const publishingQuestion = /\bpublicar\b/.test(text)
+    && /\b(?:turnos?|asistencia|caja|recepcion)\b/.test(text)
+    && /\?|aclara|explica|que ocurre|que pasa/.test(text)
+    && !/\b(?:crea|publica|asigna|mueve|borra|cancela|modifica|guarda|cambia)\b/.test(text);
+  if (module === 'equipo' && publishingQuestion) return true;
   return module === 'equipo' && /horario|malla|archivo|equipo|programa|cobertura|coincidencias|aqui|aca|esto/.test(text) && !/caja|garant|llave|habitacion|reserva/.test(text) && /revisa|errores|problemas|resumen|que falta|coincidencias/.test(text)
     && !/\b(?:crea(?:r)?|publica(?:r|lo)?|asigna(?:r)?|mueve|borra(?:r)?|cancela(?:r)?|modifica(?:r)?|guarda(?:r)?|cambia(?:r)?)\b/.test(text);
 }
@@ -72,6 +79,6 @@ export function scheduleReviewReply(data: Awaited<ReturnType<typeof readSchedule
     lines.push(draft.nextStep);
   }
   if (data.counts.pendingExtras) lines.push(`${data.counts.pendingExtras} extras pendientes de aprobación.`);
-  lines.push('Revisa los periodos sin cubrir en «Cobertura y coordinación» y completa las asignaciones desde el calendario. Publica cuando el horario esté revisado. Publicar no inicia turnos ni confirma asistencia.');
+  lines.push('Revisa los periodos sin cubrir en «Cobertura y coordinación» y completa las asignaciones desde el calendario. Publica cuando el horario esté revisado. Publicar no inicia turnos ni confirma asistencia. Tampoco genera turnos operativos de Recepción o Caja: cada turno se abre desde Mi turno, independientemente del horario publicado.');
   return lines.join('\n\n');
 }

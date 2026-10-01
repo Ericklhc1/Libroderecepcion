@@ -1,5 +1,11 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 2026-10-01 · v1.43.1 · Publicación de horarios verificada
+
+- Verificación real consecutiva de Fronti detectó que una consulta libre volvió a sugerir generación de turnos y firma de asistencia, pese a dar la hora correcta.
+- Las preguntas sobre el efecto de publicar un horario pasan por el lector verificado; se conserva el rechazo de instrucciones de escritura. Publicación nunca crea Shift, abre Caja ni registra asistencia.
+- Regresión de clasificación y ejecución persistente; nueva Compuerta antes de merge. Sin migración, cambio de permisos, proveedores o registros operativos.
+
 ## 2026-10-01 · v1.43.0 · Equipo, Fronti y uso humano
 
 - Production anterior v1.42.0 confirmada: PR #231, commit 6d2f19b, Compuerta y Release verdes.

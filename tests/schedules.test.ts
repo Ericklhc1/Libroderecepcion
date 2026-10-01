@@ -147,6 +147,10 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     const result = await runReceptionAssistant(admin, [{ role: 'user', content: 'Revisa este horario y el archivo: qué errores hay' }], context);
     expect(result.reply).toContain('08:00–19:00'); expect(result.reply).toContain('Borrador');
     expect(result.confirmations).toEqual([]); expect(await prisma.shift.count()).toBe(0);
+    const publication = await runReceptionAssistant(admin, [{ role: 'user', content: '¿Publicar el horario abre un turno operativo?' }], context);
+    expect(publication.reply).toContain('Tampoco genera turnos operativos');
+    expect(publication.reply).toContain('independientemente del horario publicado');
+    expect(publication.confirmations).toEqual([]);
     await expect(readScheduleContext(reader, { area, planId })).rejects.toThrow();
     await publishSchedulePlan(admin, await mutation(planId, 'Publicación revisada'));
     const mine = await readScheduleContext(own, { area, planId, date: '2090-10-03' });

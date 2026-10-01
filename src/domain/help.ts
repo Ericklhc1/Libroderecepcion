@@ -499,8 +499,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: 'fronti-hallazgo',
     question: '¿Qué significa cuando Fronti me avisa que detectó algo?',
     steps: [
-      'Lee primero «Qué pasó»: debe describir el hecho o señal concreta que AROH detectó.',
-      'Después revisa «Qué está mal / qué revisar»: Fronti explica por qué merece atención usando sólo la evidencia disponible.',
+      'Lee el resumen: el título identifica el hecho y el texto destaca el dato decisivo y la acción concreta cuando el registro la indica.',
+      'Usa «Ver detalle» para consultar el texto completo de un aviso anterior; los avisos de conteos de llaves relacionados se agrupan conservando cada uno.',
       'Abre el enlace incluido para llegar al origen de la señal.',
       'Confirma el estado real antes de ejecutar una acción sensible; Fronti no debe inventar causas, montos ni responsables.',
     ],

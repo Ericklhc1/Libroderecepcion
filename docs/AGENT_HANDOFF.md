@@ -1,10 +1,20 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
-## 2026-10-01 · v1.43.1 · Publicación de horarios verificada
+## 2026-10-01 · v1.43.2 · Publicación de horarios verificada
 
-- Verificación real consecutiva de Fronti detectó que una consulta libre volvió a sugerir generación de turnos y firma de asistencia, pese a dar la hora correcta.
-- Las preguntas sobre el efecto de publicar un horario pasan por el lector verificado; se conserva el rechazo de instrucciones de escritura. Publicación nunca crea Shift, abre Caja ni registra asistencia.
-- Regresión de clasificación y ejecución persistente; nueva Compuerta antes de merge. Sin migración, cambio de permisos, proveedores o registros operativos.
+- Una consulta real consecutiva devolvió la hora correcta pero inventó generación de turnos y firma de asistencia. Las preguntas sobre publicar ahora usan el lector verificado; las instrucciones de escritura conservan su flujo.
+- Publicar nunca genera turnos operativos, abre Caja ni acredita asistencia. Regresiones de clasificación y ejecución sin proveedor en PostgreSQL desechable.
+- Integra sobre v1.43.1 conservando las mejoras de avisos. Compuerta requerida antes de merge; prueba real consecutiva posterior. Sin migración ni cambios de permisos, proveedores o costos.
+
+## 01/10/2026 · AROH 1.43.1 · Notificaciones resumidas
+
+- Sustituye el contrato de tres bloques de Fronti proactivo por un título concreto y un resumen de hasta 240 caracteres. Arqueos, tareas vencidas, conteos de llaves y fallas utilizan resúmenes determinísticos específicos; las novedades usan la cadena de proveedores existente para seleccionar el dato decisivo y la acción explícita.
+- La respuesta de IA debe ser JSON breve, sin metadatos ni IDs internos. Se rechazan cifras no presentes en la evidencia, plazos omitidos, plantillas largas y reinterpretaciones de habitaciones como equipos/salas. Si falla la inferencia, se conserva un extracto del registro, sin inventar una gestión.
+- La campana, el historial, los toasts y el push comparten la presentación canónica. Los avisos anteriores se resumen al leerlos; «Ver detalle» conserva el texto original. No se reescriben registros históricos.
+- Los avisos de diferencias de llaves de un mismo día del hotel se agrupan en campana y en cada lote de push. Cada aviso conserva su ID, enlace, fecha y lectura individual. El contador de no leídas y el cursor de push siguen contando avisos originales; no se suman descuadres entre arqueos ni se afirma que avisos históricos sean incidencias vigentes.
+- Sin migraciones, cambios de permisos, credenciales o políticas de prioridad. Los datos de origen y la evidencia completa permanecen en los registros/auditoría. El barrido conserva sus reglas de acceso, cooldown, deduplicación concurrente y límites.
+- Rama: fix/notificaciones-resumen-inteligente. Validación de integración por Compuerta con PostgreSQL efímero, nunca Neon Production. Publicación por el flujo existente main → Vercel y verificación de SHA/versión/tag.
+
 
 ## 2026-10-01 · v1.43.0 · Equipo, Fronti y uso humano
 

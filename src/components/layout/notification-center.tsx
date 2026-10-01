@@ -21,6 +21,8 @@ import {
   type NotificationFeedSnapshot,
 } from '@/domain/notifications';
 import { playChime, primeNotificationAudio } from './notification-chime';
+import { NotificationMessage } from './notification-message';
+import { groupNotificationItems, notificationDeviceItems, notificationPresentation } from '@/domain/notification-summary';
 import type { ChatNotificationTone, ChatProfile } from '@/domain/chat';
 import {
   disableDeviceNotifications,
@@ -68,7 +70,42 @@ function typeLabel(type: string): string {
 }
 
 function isUrgent(item: NotificationFeedItem): boolean {
-  return URGENT_NOTIFICATION_TYPES.has(item.type);
+  return URGENT_NOTIFICATION_TYPES.has(item.type) ||
+    (item.type === 'FRONTI_HALLAZGO' && (/^Crítica ·/i.test(item.title) || /Prioridad:\s*CRITICA\b/i.test(item.body ?? '')));
+}
+
+function NotificationListItem({ item, onOpen, onRead }: {
+  item: NotificationFeedItem;
+  onOpen: (item: NotificationFeedItem) => Promise<void>;
+  onRead: (id: string) => Promise<void>;
+}) {
+  const urgent = isUrgent(item);
+  return (
+    <li className={item.readAt ? 'bg-white' : 'bg-gold-50/40'}>
+      <div className="flex gap-3 px-4 py-3">
+        <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+          item.readAt ? 'bg-slate-300' : urgent ? 'bg-red-600' : 'bg-gold-500'
+        }`} aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">{typeLabel(item.type)}</span>
+            <span className="ml-auto shrink-0 text-[0.68rem] tabular text-slate-400">{relativeLabel(item.createdAt)}</span>
+          </div>
+          <NotificationMessage notification={item} />
+          <div className="mt-2 flex items-center gap-2">
+            {item.link ? (
+              <button type="button" onClick={() => void onOpen(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-petrol-700 hover:underline">
+                Abrir <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            ) : null}
+            {!item.readAt ? (
+              <button type="button" onClick={() => void onRead(item.id)} className="text-xs font-medium text-slate-500 hover:text-petrol-700">Marcar leída</button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </li>
+  );
 }
 
 export function NotificationCenter({
@@ -197,7 +234,7 @@ export function NotificationCenter({
           document.visibilityState !== 'visible' &&
           deviceEnabledRef.current
         ) {
-          for (const item of fresh.slice(0, 3)) {
+          for (const item of notificationDeviceItems(fresh).slice(0, 3)) {
             void showDeviceNotification(item);
           }
         }
@@ -473,6 +510,8 @@ export function NotificationCenter({
     }
   };
 
+  const toastPresentation = toast ? notificationPresentation(toast) : null;
+
   return (
     <>
       <button
@@ -573,11 +612,11 @@ export function NotificationCenter({
                 {typeLabel(toast.type)}
               </span>
               <span className="mt-0.5 block text-sm font-semibold text-petrol-900">
-                {toast.title}
+                {toastPresentation?.title}
               </span>
-              {toast.body ? (
+              {toastPresentation?.body ? (
                 <span className="mt-0.5 line-clamp-2 block text-xs text-slate-600">
-                  {toast.body}
+                  {toastPresentation.body}
                 </span>
               ) : null}
             </span>
@@ -691,65 +730,23 @@ export function NotificationCenter({
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {items.map((item) => {
-                    const urgent = isUrgent(item);
-                    return (
-                      <li
-                        key={item.id}
-                        className={item.readAt ? 'bg-white' : 'bg-gold-50/40'}
-                      >
-                        <div className="flex gap-3 px-4 py-3">
-                          <span
-                            className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${
-                              item.readAt
-                                ? 'bg-slate-300'
-                                : urgent
-                                  ? 'bg-red-600'
-                                  : 'bg-gold-500'
-                            }`}
-                            aria-hidden="true"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">
-                                {typeLabel(item.type)}
-                              </span>
-                              <span className="ml-auto shrink-0 text-[0.68rem] tabular text-slate-400">
-                                {relativeLabel(item.createdAt)}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm font-semibold text-petrol-900">
-                              {item.title}
-                            </p>
-                            {item.body ? (
-                              <p className="mt-0.5 text-sm leading-5 text-slate-600">{item.body}</p>
-                            ) : null}
-                            <div className="mt-2 flex items-center gap-2">
-                              {item.link ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void openItem(item)}
-                                  className="inline-flex items-center gap-1 text-xs font-semibold text-petrol-700 hover:underline"
-                                >
-                                  Abrir
-                                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              ) : null}
-                              {!item.readAt ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void markRead(item.id)}
-                                  className="text-xs font-medium text-slate-500 hover:text-petrol-700"
-                                >
-                                  Marcar leída
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
+                  {groupNotificationItems(items).map((group) => group.title ? (
+                    <li key={group.id} className="px-4 py-3">
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 text-sm font-semibold text-petrol-900">{group.title}</p>
+                        <span className="shrink-0 text-[0.68rem] text-slate-400">{relativeLabel(group.items[0]!.createdAt)}</span>
+                      </div>
+                      <p className="mt-0.5 text-sm leading-5 text-slate-600">{group.body}</p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs font-semibold text-petrol-700">
+                          Ver {group.items.length} avisos · {group.items.filter((item) => !item.readAt).length} sin leer
+                        </summary>
+                        <ul className="mt-2 divide-y divide-slate-100">
+                          {group.items.map((item) => <NotificationListItem key={item.id} item={item} onOpen={openItem} onRead={markRead} />)}
+                        </ul>
+                      </details>
+                    </li>
+                  ) : group.items.map((item) => <NotificationListItem key={item.id} item={item} onOpen={openItem} onRead={markRead} />))}
                 </ul>
               )}
             </div>

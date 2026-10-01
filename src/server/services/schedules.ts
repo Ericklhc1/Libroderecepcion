@@ -74,7 +74,7 @@ export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
   for (const person of people) {
     const slots = person.slots;
     for (const s of slots) {
-      if (s.date >= hotelCalendarDate() && (!person.userId || !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId))) rule(`${person.name} no está habilitado en el área de una asignación futura.`);
+      if (s.date >= hotelCalendarDate() && !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId)) rule(`${person.name} no está habilitado en el área de una asignación futura.`);
     }
     for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
       const a = slots[i]!; const b = slots[j]!;

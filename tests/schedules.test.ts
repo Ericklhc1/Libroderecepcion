@@ -269,4 +269,23 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     await expect(saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [area], minRestMinutes: 720 })).rejects.toThrow('descanso');
   });
 
+  it('añadir un usuario a un área no borra áreas ni horas existentes', async () => {
+    let person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    person = await saveScheduleCollaborator(admin, { id: a, version: person.version, userId: own.id, departmentIds: [area, other], weeklyHours: 42 });
+    const added = await saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [area], weeklyHours: '' });
+    expect(added.id).toBe(person.id); expect(added.weeklyMinutes).toBe(2520);
+    const memberships = await prisma.scheduleMembership.findMany({ where: { collaboratorId: a, active: true } });
+    expect(memberships.map((m) => m.departmentId).sort()).toEqual([area, other].sort());
+    expect(await prisma.scheduleCollaborator.count({ where: { userId: own.id } })).toBe(1);
+  });
+  it('permite retirar una asignación heredada sin cuenta y conserva las restantes', async () => {
+    await add(a, '2090-10-03'); await add(a, '2090-10-05');
+    const inherited = await prisma.scheduleCollaborator.create({ data: { employeeCode: 'TEST_LEGACY', name: 'Histórico sin cuenta', functionName: 'Recepcionista', memberships: { create: { departmentId: area } } } });
+    await prisma.scheduleSlot.updateMany({ where: { collaboratorId: a }, data: { collaboratorId: inherited.id } });
+    const first = await slot(inherited.id, '2090-10-03');
+    await cancelScheduleSlot(admin, await mutation(planId, 'Retiro de asignación heredada'), first.id);
+    expect((await prisma.scheduleSlot.findUniqueOrThrow({ where: { id: first.id } })).cancelledAt).not.toBeNull();
+    expect(await prisma.scheduleSlot.count({ where: { collaboratorId: inherited.id, cancelledAt: null } })).toBe(1);
+  });
+
 });

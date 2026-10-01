@@ -19,7 +19,7 @@ export const collaboratorSchema = z.object({
   id: z.string().max(100).optional(), version: z.coerce.number().int().min(0).default(0),
   userId: scheduleId, departmentIds: z.array(scheduleId).min(1).max(20),
   employeeCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{1,32}$/).optional(),
-  weeklyHours: weeklyHoursSchema.optional(),
+  weeklyHours: z.preprocess((value) => value === '' ? undefined : value, weeklyHoursSchema.optional()),
 });
 export async function saveScheduleCollaborator(user: CurrentUser, raw: unknown) {
   assertSchedulePermission(user, 'schedule.catalog.manage');
@@ -30,8 +30,10 @@ export async function saveScheduleCollaborator(user: CurrentUser, raw: unknown) 
       ? await tx.scheduleCollaborator.findUnique({ where: { id: input.id }, include: { memberships: true } })
       : await tx.scheduleCollaborator.findUnique({ where: { userId: input.userId }, include: { memberships: true } });
     if (input.id && !existing) throw new NotFoundError();
+    // Adding an existing user is additive; editing an identified profile is explicit.
+    const departmentIds = input.id ? input.departmentIds : [...new Set([...input.departmentIds, ...(existing?.memberships.filter((m) => m.active).map((m) => m.departmentId) ?? [])])];
     if (existing?.userId && existing.userId !== input.userId) throw new RuleError('El colaborador es el usuario. No se puede sustituir su identidad por otra persona.');
-    const areas = [...new Set([...input.departmentIds, ...(existing?.memberships.map((m) => m.departmentId) ?? [])])];
+    const areas = [...new Set([...departmentIds, ...(existing?.memberships.map((m) => m.departmentId) ?? [])])];
     for (const area of areas) await assertScheduleArea(user, area, 'schedule.catalog.manage', tx);
     await lockScheduleAreas(tx, areas);
     if (existing) {
@@ -40,21 +42,21 @@ export async function saveScheduleCollaborator(user: CurrentUser, raw: unknown) 
       if (input.id && current.version !== input.version) throw new RuleError('El usuario cambió. Actualiza antes de guardar.');
     }
     const linked = await tx.user.findFirst({ where: { id: input.userId, ...scheduleEligibleUser }, include: { role: { select: { name: true } } } });
-    if (!linked || (!scheduleAllowed(user, 'schedule.configure') && (!linked.departmentId || !input.departmentIds.includes(linked.departmentId)))) throw new RuleError('Selecciona un usuario activo y visible del alcance autorizado.');
+    if (!linked || (!scheduleAllowed(user, 'schedule.configure') && (!linked.departmentId || !departmentIds.includes(linked.departmentId)))) throw new RuleError('Selecciona un usuario activo y visible del alcance autorizado.');
     const duplicate = await tx.scheduleCollaborator.findUnique({ where: { userId: linked.id } });
     if (duplicate && duplicate.id !== existing?.id) throw new RuleError('Este usuario ya tiene su perfil de horarios. No se puede duplicar.');
-    const activeDepartments = await tx.department.count({ where: { id: { in: input.departmentIds }, active: true } });
-    if (activeDepartments !== new Set(input.departmentIds).size) throw new RuleError('Selecciona áreas activas.');
+    const activeDepartments = await tx.department.count({ where: { id: { in: departmentIds }, active: true } });
+    if (activeDepartments !== new Set(departmentIds).size) throw new RuleError('Selecciona áreas activas.');
     if (existing) {
-      const conflicting = await tx.scheduleSlot.findFirst({ where: { collaboratorId: existing.id, cancelledAt: null, plan: { departmentId: { notIn: input.departmentIds } }, OR: [{ endAt: { gt: new Date() } }, { date: { gte: hotelCalendarDate() }, kind: { not: 'TURNO' } }] } });
+      const conflicting = await tx.scheduleSlot.findFirst({ where: { collaboratorId: existing.id, cancelledAt: null, plan: { departmentId: { notIn: departmentIds } }, OR: [{ endAt: { gt: new Date() } }, { date: { gte: hotelCalendarDate() }, kind: { not: 'TURNO' } }] } });
       if (conflicting) throw new RuleError('Hay asignaciones futuras en un área que intentas retirar.');
     }
     const weeklyMinutes = input.weeklyHours === undefined ? existing?.weeklyMinutes ?? null : weeklyHoursToMinutes(input.weeklyHours) || null;
     const data = { employeeCode: existing?.employeeCode ?? input.employeeCode ?? scheduleEmployeeCode(linked.id), name: linked.name, functionName: linked.role.name, userId: linked.id, active: true, weeklyMinutes, minRestMinutes: 0 };
     const saved = existing ? await tx.scheduleCollaborator.update({ where: { id: existing.id }, data: { ...data, version: { increment: 1 } } }) : await tx.scheduleCollaborator.create({ data });
-    await tx.scheduleMembership.updateMany({ where: { collaboratorId: saved.id, departmentId: { notIn: input.departmentIds } }, data: { active: false } });
-    for (const departmentId of [...new Set(input.departmentIds)]) await tx.scheduleMembership.upsert({ where: { collaboratorId_departmentId: { collaboratorId: saved.id, departmentId } }, create: { collaboratorId: saved.id, departmentId }, update: { active: true } });
-    for (const area of areas) await scheduleCatalogAudit(tx, user, area, 'Datos de planificación del usuario actualizados', { id: saved.id, userId: linked.id, weeklyHours: weeklyMinutes === null ? null : weeklyMinutes / 60, departmentIds: input.departmentIds });
+    await tx.scheduleMembership.updateMany({ where: { collaboratorId: saved.id, departmentId: { notIn: departmentIds } }, data: { active: false } });
+    for (const departmentId of [...new Set(departmentIds)]) await tx.scheduleMembership.upsert({ where: { collaboratorId_departmentId: { collaboratorId: saved.id, departmentId } }, create: { collaboratorId: saved.id, departmentId }, update: { active: true } });
+    for (const area of areas) await scheduleCatalogAudit(tx, user, area, 'Datos de planificación del usuario actualizados', { id: saved.id, userId: linked.id, weeklyHours: weeklyMinutes === null ? null : weeklyMinutes / 60, departmentIds: departmentIds });
     return saved;
   });
 }

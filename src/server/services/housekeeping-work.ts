@@ -208,7 +208,7 @@ export async function prepareHkDay(user: CurrentUser, departmentId:string, date:
   validDate(date); await requireCapability(user,departmentId,'housekeeping.assign');
   if(date<hotelDateKey(new Date()))throw new RuleError('Prepara hoy o una fecha futura. Los pendientes anteriores ya conservan su continuidad.');
   return prisma.$transaction(async tx=>{
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`hk_prepare_${departmentId}_${date}`}))`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`hk_prepare_${departmentId}_${date}`}))::text`;
     const routines=await tx.housekeepingRoutine.findMany({where:{departmentId,active:true},take:300});
     const existing=await tx.housekeepingRequest.findMany({where:{routineId:{in:routines.map(r=>r.id)},workDate:date},select:{routineId:true}});
     const present=new Set(existing.map(r=>r.routineId));const missing=routines.filter(r=>!present.has(r.id));

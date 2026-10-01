@@ -29,7 +29,7 @@ No se generan 89 limpiezas por la mera existencia de 89 habitaciones. Las necesi
 - Limpieza de habitación y revisión crítica siempre requieren inspección. En reposición y otras atenciones, la inspección puede exigirse al crear el trabajo.
 - **Terminar** registra el resultado. Si requiere inspección, aún no está aprobado.
 - Otra persona habilitada inspecciona y aprueba, o devuelve para corregir con una instrucción obligatoria.
-- Impedimento conserva el motivo. No se puede marcar terminado mientras esté bloqueado.
+- Impedimento conserva el motivo, incluso al reasignar. Retomar exige explicar por qué se puede continuar. No se puede marcar terminado mientras esté bloqueado.
 - Cada transición compara la versión e incorpora autoría e historial; dos ventanas no pueden modificar la misma versión.
 
 Una edición de la novedad de origen después de comenzar exige revisión del supervisor. Si el trabajo esperaba inspección, aceptar la nueva instrucción vuelve a pendiente y requiere ejecutar la nueva versión.

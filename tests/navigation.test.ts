@@ -85,7 +85,9 @@ describe('menú principal', () => {
 describe('visibilidad por rol', () => {
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas']);
+    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas', '/admin/housekeeping']);
+    expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).toContain('housekeeping.request');
+    expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).not.toContain('housekeeping.assign');
   });
 
   it('Gestión reúne Supervisión, Gerencia y Auditoría con permisos independientes', () => {

@@ -50,8 +50,8 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
   it('el shell autenticado aplica la identidad corporativa a todas las rutas', () => {
     const layout = readFileSync(join(APP_ROOT, 'layout.tsx'), 'utf8');
     expect(layout).toContain("bg-[#f3f6f8]");
-    expect(layout).toContain('<SidebarNav groups={groups} badges={badges} />');
-    expect(layout).toContain('bg-petrol-950 lg:flex');
+    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 
   it('las entradas públicas también usan la identidad compartida', () => {

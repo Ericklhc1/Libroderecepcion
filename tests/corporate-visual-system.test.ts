@@ -19,9 +19,9 @@ describe('sistema visual corporativo AROH', () => {
 
   it('da al sidebar de escritorio el tratamiento oscuro corporativo', () => {
     const nav = readFileSync('src/components/layout/nav.tsx', 'utf8');
-    expect(nav).toContain('rounded-md border-l-2');
-    expect(nav).toContain('border-gold-500 bg-petrol-800');
-    expect(nav).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('rounded-md border-l-2');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('border-gold-500 bg-petrol-800');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
     const sidebar = nav.slice(nav.indexOf('export function SidebarNav'), nav.indexOf('/** Barra inferior para móvil'));
     expect(sidebar).not.toContain('section.items.map((subitem)');
   });
@@ -30,8 +30,8 @@ describe('sistema visual corporativo AROH', () => {
     const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
     expect(layout).toContain('AROH');
     expect(layout).toContain('Central IA');
-    expect(layout).toContain('{hotelName}');
-    expect(layout).toContain('<SidebarNav groups={groups} badges={badges} />');
-    expect(layout).toContain('bg-petrol-950 lg:flex');
+    expect(layout).toContain('hotelName={hotelName}');
+    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 });

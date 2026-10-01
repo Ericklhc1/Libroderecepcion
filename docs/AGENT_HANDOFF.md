@@ -1,5 +1,16 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 01/10/2026 · AROH 1.41.1 · Menú plegable y barra reducible
+
+- Corrige la agrupación meramente visual: sólo un grupo abierto, por defecto el de la ruta actual. Se puede cerrar también el grupo activo. Módulos con subopciones tienen flecha independiente del acceso principal; grupos de un módulo muestran directamente sus destinos para evitar clics redundantes.
+- Barra fija reducible de 224 a 64 px: iconos por módulo, etiquetas accesibles y título al pasar el cursor. Subopciones en panel flotante fuera del contenedor desplazable; cierre por Escape, clic externo, navegación y cambio de ventana. Avisos pendientes visibles en grupos cerrados y modo reducido.
+- Preferencia local versionada por usuario, sin datos de autorización. Permisos filtrados por visibleNavGroups en servidor; no se amplían roles ni se modifican datos operativos.
+- Móvil reutiliza los grupos plegables dentro de Más; conserva perfil y cierre de sesión, sin duplicar los cuatro accesos inferiores.
+- Selección específica por ruta y consulta: Housekeeping y Auditoría no activan Administración, y una sección de Equipo no marca todas sus subopciones. Suspense delimita useSearchParams.
+- Verificación local: 47 pruebas de navegación/representación/identidad aprobadas; compilación de producción aprobada. Suite completa pendiente de Compuerta con PostgreSQL desechable; no se prueba con Neon Production. No se dispone de navegador local para prueba visual autenticada.
+- Cambio de interfaz únicamente, sin migración. Publicación por PR y flujo normal de Production; incrementar a 1.41.1.
+
+
 ## 01/10/2026 · AROH 1.41.0 · Equipo y horarios
 
 - Nuevo /equipo: calendario por área con vistas semana, ciclo de ocho días y mes; glosa junto al colaborador. Navegación agrupada en Operación, Equipo, Gestión y Administración, conservando permisos anteriores.
@@ -11,7 +22,7 @@
 - Publicación/cambios publicados generan notificación y recepción persistida por revisión para cuentas vinculadas y habilitadas. Confirmación de horario no prueba asistencia. Calendario consultable fuera del turno operativo; no crea ni abre Shift, Caja o custodia.
 - Catálogo nacional de feriados 2026 y administración manual con fuente; noches pueden cruzar dos feriados. Horas America/Santiago con DST, no offset fijo. Franjas de cobertura toleran medianoche omitida; asignaciones con horas inexistentes se rechazan explícitamente.
 - Migración aditiva 20261001143000_equipo_horarios: tablas aisladas, restricciones y permisos sólo admin. Documento operativo/técnico: docs/EQUIPO_HORARIOS.md.
-- Verificación local: lint y typecheck aprobados; build aprobado; 73 pruebas locales de dominio/importación/navegación/tutorial/contexto Fronti aprobadas y lectura directa del PDF mediante pdf.js (192 casillas / 96 Libre) aprobada. Primera Compuerta: migración aprobada y 1.199 pruebas aprobadas; una regresión exigió registrar /equipo en el contexto Fronti. Se integra lector canónico con prueba de privacidad. Se verifica XLSX real con horas formateadas y empaquetado del worker PDF en /equipo; no se omite la regresión. Compuerta final pendiente; no se usa Neon Production para pruebas.
+- Verificación local: lint y typecheck aprobados; build aprobado; 73 pruebas locales de dominio/importación/navegación/tutorial/contexto Fronti aprobadas y lectura directa del PDF mediante pdf.js (192 casillas / 96 Libre) aprobada. Primera Compuerta: migración aprobada y 1.199 pruebas aprobadas; una regresión exigió registrar /equipo en el contexto Fronti. Se integra lector canónico con prueba de privacidad. Se verifica XLSX real con horas formateadas y empaquetado del worker PDF en /equipo; no se omite la regresión. Cierre verificado: PR #228, Compuerta aprobada (1.209 pruebas; una omisión previa de empaquetado PDF antes del build), Production 1.41.0 y tag v1.41.0 comprobados; no se usa Neon Production para pruebas.
 - Pendiente posterior: entrega automática de avisos Housekeeping/Mantenimiento al iniciar el turno de área, escalamiento/reintentos y reportes diarios. Esta release prepara la planificación; no agrega un motor de asistencia, remuneraciones o reservas.
 
 
@@ -761,4 +772,3 @@ Production.
 - Las alertas de validación de los cierres del 26–27/09 quedan resueltas bajo autorización de Supervisión y las tareas vinculadas pasan a VALIDADA.
 - En adelante, resolver una alerta `shift-validation:*` valida también su tarea vinculada para evitar el estado contradictorio «alerta resuelta + tarea pendiente».
 - Migración: `20260927214500_regularizar_turnos_26_27_sept`.
-

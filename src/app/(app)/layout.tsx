@@ -11,7 +11,8 @@ import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 import { visibleNavGroups } from '@/components/layout/nav-items';
-import { MobileNav, SidebarNav } from '@/components/layout/nav';
+import { MobileNav } from '@/components/layout/nav';
+import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
@@ -90,27 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-[#f3f6f8]">
       <div className="flex min-h-screen min-w-0">
-        <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 self-start flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print">
-          <Link href="/" className="block shrink-0 border-b border-petrol-800 px-4 py-4">
-            <span className="block truncate text-base font-light tracking-tight text-white">
-              AROH <span className="font-semibold text-gold-400">Central IA</span>
-            </span>
-            <span className="mt-1 block truncate text-[0.68rem] font-medium text-petrol-300">
-              {hotelName}
-            </span>
-          </Link>
-
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-            <SidebarNav groups={groups} badges={badges} />
-          </div>
-
-          <div className="shrink-0 border-t border-petrol-800 px-4 py-3">
-            <p className="text-[0.65rem] font-medium uppercase tracking-[0.08em] text-petrol-400">
-              Opera con sentido.
-            </p>
-            <p className="mt-1 text-[0.62rem] text-petrol-500">v{packageJson.version}</p>
-          </div>
-        </aside>
+        <AppSidebar groups={groups} badges={badges} hotelName={hotelName} version={packageJson.version} userId={user.id} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
@@ -182,7 +163,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </div>
 
-      <MobileNav items={items} badges={badges} />
+      <MobileNav items={items} groups={groups} badges={badges} />
 
       {frontiVisible ? <ReceptionAssistant /> : null}
 

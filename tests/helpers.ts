@@ -37,6 +37,10 @@ export async function resetOperationalData() {
     prisma.housekeepingEvent.deleteMany(),
     prisma.housekeepingRequest.deleteMany(),
     prisma.operationalMetricEvent.deleteMany(),
+    prisma.keyStaffLoanItem.deleteMany(),
+    prisma.keyStaffLoan.deleteMany(),
+    prisma.supervisorKeyMovement.deleteMany(),
+    prisma.supervisorKey.deleteMany(),
     prisma.keyInventoryCount.deleteMany(),
     prisma.keyMovement.deleteMany(),
     prisma.roomKey.updateMany({
@@ -117,6 +121,10 @@ export async function resetOperationalData() {
 }
 
 export async function resetRoomsAndKeys() {
+  await prisma.keyStaffLoanItem.deleteMany();
+  await prisma.keyStaffLoan.deleteMany();
+  await prisma.supervisorKeyMovement.deleteMany();
+  await prisma.supervisorKey.deleteMany();
   await prisma.keyInventoryCount.deleteMany();
   await prisma.fine.deleteMany();
   await prisma.cashMovement.deleteMany();
@@ -126,6 +134,7 @@ export async function resetRoomsAndKeys() {
   await prisma.roomStay.deleteMany();
   await prisma.pmsImportBatch.deleteMany();
   await prisma.roomKey.deleteMany();
+  await prisma.keyArea.deleteMany();
   await prisma.room.deleteMany();
 }
 

@@ -10,6 +10,8 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { areaCountSnapshots } from '@/domain/key-custody';
+import { listStaffLoans } from '@/server/services/key-staff';
 import { NotFoundError, RuleError } from '@/server/errors';
 
 const INVENTORY_FLOORS = [4, 5, 6] as const;
@@ -73,6 +75,7 @@ export type PhysicalKeyInventory = {
 
 function locationFor(status: KeyStatus): string {
   switch (status) {
+    case KeyStatus.ENTREGADA_PERSONAL: return 'Personal · custodia registrada';
     case KeyStatus.DISPONIBLE:
       return 'Recepción · inventario físico';
     case KeyStatus.ASIGNADA:
@@ -208,6 +211,7 @@ export type InventoryCountInput = {
   floor: InventoryFloor | 'todos';
   requestKey?: string;
   notes?: string | null;
+  areas?: Array<{ areaId: string; found: number; accountedElsewhere: number; outOfService: number; notes?: string | null }>;
   items: Array<{
     roomId: string;
     found: number;
@@ -268,15 +272,30 @@ export async function savePhysicalKeyInventoryCount(
       const previous = await tx.keyInventoryCount.findUnique({ where: { requestKey: input.requestKey }, include: { countedBy: { select: { name: true } }, items: { include: { room: { select: { number: true } } }, orderBy: { room: { number: 'asc' } } } } });
       if (previous) {
         if (previous.countedById !== user.id) throw new RuleError('Este inventario pertenece a otro usuario.');
-        const same = previous.floor === (input.floor === 'todos' ? null : input.floor) && previous.notes === (input.notes?.trim() || null) && previous.items.every(p => { const i = input.items.find(i => i.roomId === p.roomId); return i && p.found === i.found && p.outOfService === i.outOfService && p.accountedElsewhere === (i.accountedElsewhere ?? 0) && p.notes === (i.notes?.trim() || null); });
+        const savedAreas = areaCountSnapshots(previous.areasSnapshot);
+        const sameAreas = savedAreas.length === (input.areas?.length ?? 0) && savedAreas.every(p => { const i = input.areas?.find(i => i.areaId === p.areaId); return i && i.found === p.found && i.accountedElsewhere === p.accountedElsewhere && i.outOfService === p.outOfService && p.notes === (i.notes?.trim() || null); });
+        const same = sameAreas && previous.floor === (input.floor === 'todos' ? null : input.floor) && previous.notes === (input.notes?.trim() || null) && previous.items.every(p => { const i = input.items.find(i => i.roomId === p.roomId); return i && p.found === i.found && p.outOfService === i.outOfService && p.accountedElsewhere === (i.accountedElsewhere ?? 0) && p.notes === (i.notes?.trim() || null); });
         if (!same) throw new RuleError('Este inventario ya fue guardado con otro contenido. Abre el documento o inicia una nueva toma.');
         return previous;
       }
     }
+    const areaRows = input.floor === 'todos' ? await tx.keyArea.findMany({ where: { active: true }, orderBy: { name: 'asc' }, include: { keys: { include: { movements: { orderBy: { at: 'desc' }, take: 1 } } } } }) : [];
+    const areaInput = input.areas ?? [];
+    if (areaInput.length !== areaRows.length || new Set(areaInput.map(a => a.areaId)).size !== areaRows.length || areaRows.some(a => !areaInput.some(i => i.areaId === a.id))) throw new RuleError('El inventario completo debe incluir todas las áreas activas. Recarga para revisar los destinos actuales.');
+    const areasSnapshot = areaRows.map(area => {
+      const i = areaInput.find(i => i.areaId === area.id)!;
+      if (![i.found,i.accountedElsewhere,i.outOfService].every(n => Number.isInteger(n) && n >= 0 && n <= 100)) throw new RuleError('Las cantidades de áreas deben ser enteros entre cero y cien.');
+      const expected = area.keys.filter(k => k.movements[0]?.action !== 'BAJA').length;
+      if ((i.accountedElsewhere > 0 || i.found + i.accountedElsewhere < expected) && !i.notes?.trim()) throw new RuleError(`Indica la custodia o el faltante del área ${area.name}.`);
+      return { areaId:area.id,name:area.name,expected,found:i.found,accountedElsewhere:i.accountedElsewhere,outOfService:i.outOfService,notes:i.notes?.trim() || null };
+    });
+    const staffCustodySnapshot = (await listStaffLoans(user, tx)).map(l => ({ humanId:l.humanId, departmentName:l.departmentName,collaboratorName:l.collaboratorName,authorizedByName:l.authorizedByName,items:l.items.filter(i => !i.returnedAt && (input.floor === 'todos' || rooms.some(r => r.id === i.destinationId))).map(i => ({keyCode:i.keyCode,destinationId:i.destinationId,destinationName:i.destinationName,destinationKind:i.destinationKind})) })).filter(l => l.items.length);
     const saved = await tx.keyInventoryCount.create({
     data: {
       floor: input.floor === 'todos' ? null : input.floor,
       requestKey: input.requestKey,
+      areasSnapshot,
+      staffCustodySnapshot,
       countedById: user.id,
       notes: input.notes?.trim() || null,
       items: {
@@ -421,9 +440,12 @@ export async function assignPhysicalKey(
   input: { keyId: string; roomId: string; note?: string | null },
 ) {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
     if (key.status !== KeyStatus.DISPONIBLE) throw new RuleError('La llave no está disponible.');
+    if (key.areaId) throw new RuleError('Entrega las llaves de áreas desde Entregas a personal.');
 
     const room = await tx.room.findFirst({ where: { id: input.roomId, active: true } });
     if (!room) throw new NotFoundError('La habitación no existe o está inactiva.');
@@ -460,7 +482,9 @@ export async function returnPhysicalKey(
   input: { keyId: string; note?: string | null },
 ) {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
     if (!([KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION] as KeyStatus[]).includes(key.status)) {
       throw new RuleError('La llave no está entregada ni pendiente de devolución.');
@@ -496,7 +520,9 @@ export async function markPhysicalKeyIncident(
 ) {
   const target = input.status === 'EXTRAVIADA' ? KeyStatus.EXTRAVIADA : KeyStatus.FUERA_DE_SERVICIO;
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
 
     const updated = await tx.roomKey.update({
@@ -530,6 +556,7 @@ export async function recoverPhysicalKey(
       where: { id: input.keyId },
       include: { movements: { take: 1, orderBy: { at: 'desc' }, select: { action: true } } },
     });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
     if (key.movements[0]?.action === KeyAction.BAJA) {
       throw new RuleError('Una llave dada de baja no se recupera: registra una nueva llave física.');
@@ -562,7 +589,9 @@ export async function retirePhysicalKey(
   if (reason.length < 5) throw new RuleError('Explica el motivo de la baja.');
 
   const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
     const result = await tx.roomKey.update({
       where: { id: key.id },

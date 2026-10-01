@@ -271,7 +271,7 @@ async function detailSnapshot(
 
   if (page.entityType === 'KeyInventoryCount') {
     requireAny(user, ['key.assign', 'key.inventory', 'key.stock'], 'No tienes permiso para consultar inventarios de llaves.');
-    const count = await prisma.keyInventoryCount.findUnique({ where: { id: page.entityId }, select: { id: true, humanId: true, floor: true, countedAt: true, notes: true, countedBy: { select: { name: true } }, items: { select: { roomNumberSnapshot: true, room: { select: { number: true } }, expected: true, found: true, accountedElsewhere: true, outOfService: true, notes: true } } } });
+    const count = await prisma.keyInventoryCount.findUnique({ where: { id: page.entityId }, select: { id: true, humanId: true, floor: true, countedAt: true, notes: true, areasSnapshot: true, staffCustodySnapshot: true, countedBy: { select: { name: true } }, items: { select: { roomNumberSnapshot: true, room: { select: { number: true } }, expected: true, found: true, accountedElsewhere: true, outOfService: true, notes: true } } } });
     return count ? { ...count, items: count.items.map(({ room, ...item }) => ({ ...item, roomNumber: item.roomNumberSnapshot ?? room.number })) } : { found: false };
   }
 

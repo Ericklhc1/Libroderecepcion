@@ -2041,6 +2041,7 @@ enum KeyType {
 }
 
 enum KeyStatus {
+  ENTREGADA_PERSONAL
   DISPONIBLE
   ASIGNADA
   COPIA_ADICIONAL
@@ -2204,6 +2205,10 @@ model RoomKey {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  areaId String?
+  area KeyArea? @relation(fields: [areaId], references: [id])
+  staffLoans KeyStaffLoanItem[]
+
   movements KeyMovement[]
 
   @@index([status])
@@ -2250,6 +2255,8 @@ model KeyInventoryCount {
   countedAt   DateTime @default(now())
   notes       String?
 
+  areasSnapshot Json?
+  staffCustodySnapshot Json?
   items KeyInventoryItem[]
 
   @@index([floor, countedAt])
@@ -3139,4 +3146,84 @@ model FrontiProactiveClaim {
 
   @@id([signalId, userId])
   @@index([claimedAt])
+}
+
+/// Destinos de llaves que no son habitaciones del PMS.
+model KeyArea {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  keys      RoomKey[]
+}
+
+/// Reserva física privada: nunca se consulta desde inventario público ni Fronti.
+model SupervisorKey {
+  id          String                  @id @default(cuid())
+  ownerId     String
+  code        String
+  destination String
+  notes       String?
+  status      KeyStatus               @default(DISPONIBLE)
+  version     Int                     @default(0)
+  retired     Boolean                 @default(false)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  loans       KeyStaffLoanItem[]
+  movements   SupervisorKeyMovement[]
+
+  @@unique([ownerId, code])
+  @@index([ownerId, status])
+}
+
+model SupervisorKeyMovement {
+  id      String        @id @default(cuid())
+  keyId   String
+  key     SupervisorKey @relation(fields: [keyId], references: [id])
+  actorId String
+  action  String
+  detail  Json
+  at      DateTime      @default(now())
+
+  @@index([keyId, at])
+}
+
+/// Personas y área congeladas para conservar la evidencia histórica.
+model KeyStaffLoan {
+  id               String             @id @default(cuid())
+  humanId          Int                @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  requestKey       String             @unique
+  departmentId     String
+  departmentName   String
+  collaboratorId   String?
+  collaboratorName String?
+  authorizedById   String
+  authorizedByName String
+  createdById      String
+  createdByName    String
+  notes            String?
+  createdAt        DateTime           @default(now())
+  items            KeyStaffLoanItem[]
+
+  @@index([createdAt])
+}
+
+model KeyStaffLoanItem {
+  id              String         @id @default(cuid())
+  loanId          String
+  loan            KeyStaffLoan   @relation(fields: [loanId], references: [id])
+  roomKeyId       String?
+  roomKey         RoomKey?       @relation(fields: [roomKeyId], references: [id])
+  supervisorKeyId String?
+  supervisorKey   SupervisorKey? @relation(fields: [supervisorKeyId], references: [id])
+  keyCode         String
+  destinationId   String
+  destinationName String
+  destinationKind String
+  returnedAt      DateTime?
+  returnedById    String?
+  returnNote      String?
+
+  @@index([loanId])
+  @@index([destinationId, returnedAt])
 }

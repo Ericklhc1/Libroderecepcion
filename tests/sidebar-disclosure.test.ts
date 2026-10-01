@@ -31,10 +31,12 @@ describe('menú plegable y barra de iconos', () => {
     expect(html).not.toContain('href="/admin/usuarios"');
     expect(html).not.toContain('Opciones de Equipo y horarios');
   });
-  it('el modo reducido conserva todos los módulos con nombre accesible', () => {
+  it('el modo reducido conserva grupos y no vuelve a listar cada módulo', () => {
     location.pathname = '/'; location.search = '';
     const html = renderToStaticMarkup(createElement(GroupedNav, { groups, compact: true }));
-    for (const item of groups.flatMap(group => group.items)) expect(html).toContain('aria-label="' + item.label + '"');
+    for (const group of groups.filter(group => group.title)) expect(html).toContain('aria-label="' + group.title + '"');
+    expect(html.match(/<svg/g)).toHaveLength(groups.length);
+    expect(html).not.toContain('aria-label="Garantías"');
     expect(html).not.toContain('href="/admin/usuarios"');
   });
   it('no confunde Housekeeping, Auditoría o historial de turnos con Administración', () => {

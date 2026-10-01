@@ -1053,6 +1053,7 @@ export async function sendChatMessage(
         : ChatMessageKind.TEXTO;
   const now = new Date();
 
+  let pushRecipients: string[] = [];
   const result = await prisma.$transaction(async (tx) => {
     const conversation = await tx.chatConversation.findFirst({
       where: { id: input.conversationId, deletedAt: null },
@@ -1246,15 +1247,14 @@ export async function sendChatMessage(
       }
     }
 
-    scheduleWebPushForUsers(
-      recipients
+    pushRecipients = recipients
         .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
-        .map((recipient) => recipient.userId),
-    );
+        .map((recipient) => recipient.userId);
 
     return message;
   });
 
+  scheduleWebPushForUsers(pushRecipients);
   return result;
 }
 
@@ -1415,7 +1415,8 @@ export async function finalizeChatAttachmentUpload(
     if (!target) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
   }
 
-  return prisma.$transaction(async (tx) => {
+  let pushRecipients: string[] = [];
+  const result = await prisma.$transaction(async (tx) => {
     const conversation = await tx.chatConversation.findFirst({
       where: { id: input.conversationId, deletedAt: null },
       include: {
@@ -1548,14 +1549,14 @@ export async function finalizeChatAttachmentUpload(
       });
     }
 
-    scheduleWebPushForUsers(
-      recipients
+    pushRecipients = recipients
         .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
-        .map((recipient) => recipient.userId),
-    );
+        .map((recipient) => recipient.userId);
 
     return message;
   });
+  scheduleWebPushForUsers(pushRecipients);
+  return result;
 }
 
 export async function beginChatStickerUpload(
@@ -1654,7 +1655,8 @@ export async function createChatAttachmentMessage(
       if (!target) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
     }
 
-    return await prisma.$transaction(async (tx) => {
+    let pushRecipients: string[] = [];
+    const result = await prisma.$transaction(async (tx) => {
       const conversation = await tx.chatConversation.findFirst({
         where: { id: input.conversationId, deletedAt: null },
         include: {
@@ -1722,14 +1724,14 @@ export async function createChatAttachmentMessage(
         });
       }
 
-      scheduleWebPushForUsers(
-        recipients
+      pushRecipients = recipients
           .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
-          .map((recipient) => recipient.userId),
-      );
+          .map((recipient) => recipient.userId);
 
       return message;
     });
+    scheduleWebPushForUsers(pushRecipients);
+    return result;
   } catch (error) {
     await deleteR2Object(storageKey).catch(() => undefined);
     throw error;
@@ -1857,6 +1859,7 @@ export async function sendCustomStickerMessage(
     if (!replyTarget) throw new RuleError('El mensaje al que intentas responder ya no está disponible.');
   }
 
+  let pushRecipients: string[] = [];
   const result = await prisma.$transaction(async (tx) => {
     const conversation = await tx.chatConversation.findFirst({
       where: { id: input.conversationId, deletedAt: null },
@@ -1924,15 +1927,14 @@ export async function sendCustomStickerMessage(
       update: { usedAt: now },
     });
 
-    scheduleWebPushForUsers(
-      recipients
+    pushRecipients = recipients
         .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
-        .map((recipient) => recipient.userId),
-    );
+        .map((recipient) => recipient.userId);
 
     return message;
   });
 
+  scheduleWebPushForUsers(pushRecipients);
   return result;
 }
 

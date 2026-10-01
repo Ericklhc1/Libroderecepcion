@@ -54,7 +54,7 @@ async function showPushPayload() {
     await self.registration.showNotification(item.title, {
       body: item.body || undefined,
       tag: `aroh-${item.id}`,
-      renotify: urgent,
+      renotify: urgent || item.type === 'CHAT_MENSAJE' || item.type === 'MENCION',
       requireInteraction: urgent,
       data: {
         url: item.link || '/notificaciones',

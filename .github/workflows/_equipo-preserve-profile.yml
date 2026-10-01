@@ -1,0 +1,68 @@
+name: Preserve existing equipo profile
+on:
+  push:
+    branches: [fix/equipo-usuarios-horas-20261001]
+    paths: [.github/workflows/_equipo-preserve-profile.yml]
+permissions:
+  contents: write
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/equipo-usuarios-horas-20261001
+      - name: Preserve existing configuration when adding users
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          def edit(file, old, new):
+              p = Path(file); text = p.read_text()
+              assert text.count(old) == 1, f'{file}: {old[:100]}'
+              p.write_text(text.replace(old, new))
+          file = 'src/server/services/schedule-catalog.ts'
+          edit(file, 'weeklyHours: weeklyHoursSchema.optional(),', "weeklyHours: z.preprocess((value) => value === '' ? undefined : value, weeklyHoursSchema.optional()),")
+          p = Path(file); text = p.read_text(); a = text.index('export async function saveScheduleCollaborator'); b = text.index('export async function saveScheduleTemplate'); part = text[a:b]
+          assert part.count('input.departmentIds') >= 6
+          part = part.replace('input.departmentIds', 'departmentIds')
+          anchor = '    if (input.id && !existing) throw new NotFoundError();'
+          assert part.count(anchor) == 1
+          part = part.replace(anchor, anchor + '\n    // Adding an existing user is additive; editing an identified profile is explicit.\n    const departmentIds = input.id ? input.departmentIds : [...new Set([...input.departmentIds, ...(existing?.memberships.filter((m) => m.active).map((m) => m.departmentId) ?? [])])];')
+          p.write_text(text[:a] + part + text[b:])
+          file = 'src/components/schedule/catalog-forms.tsx'
+          edit(file, '<Input name="weeklyHours" type="number" min={0} max={168} step="any" required defaultValue={(person?.weeklyMinutes ?? 0) / 60} />', '<Input name="weeklyHours" type="number" min={0} max={168} step="any" required={!!person} defaultValue={person ? (person.weeklyMinutes ?? 0) / 60 : \'\'} />')
+          edit(file, 'Ejemplo: 42 o 42,5 horas. 0 = sin referencia. No incluye descuentos ni controles de descanso.', 'Ejemplo: 42 o 42,5 horas. Vacío conserva la referencia existente; 0 = sin referencia. No incluye descuentos de descanso.')
+          # Removal/reassignment of legacy records must remain possible. Only new destinations
+          # and publication require a live user; existing evidence is not stranded.
+          edit('src/server/services/schedules.ts', '(!person.userId || !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId))', '!person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId)')
+          file = 'tests/schedules.test.ts'; p = Path(file); text = p.read_text(); at = text.rfind('\n});'); assert at >= 0
+          tests = '''
+            it('añadir un usuario a un área no borra áreas ni horas existentes', async () => {
+              let person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+              person = await saveScheduleCollaborator(admin, { id: a, version: person.version, userId: own.id, departmentIds: [area, other], weeklyHours: 42 });
+              const added = await saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [area], weeklyHours: '' });
+              expect(added.id).toBe(person.id); expect(added.weeklyMinutes).toBe(2520);
+              const memberships = await prisma.scheduleMembership.findMany({ where: { collaboratorId: a, active: true } });
+              expect(memberships.map((m) => m.departmentId).sort()).toEqual([area, other].sort());
+              expect(await prisma.scheduleCollaborator.count({ where: { userId: own.id } })).toBe(1);
+            });
+            it('permite retirar una asignación heredada sin cuenta y conserva las restantes', async () => {
+              await add(a, '2090-10-03'); await add(a, '2090-10-05');
+              const inherited = await prisma.scheduleCollaborator.create({ data: { employeeCode: 'TEST_LEGACY', name: 'Histórico sin cuenta', functionName: 'Recepcionista', memberships: { create: { departmentId: area } } } });
+              await prisma.scheduleSlot.updateMany({ where: { collaboratorId: a }, data: { collaboratorId: inherited.id } });
+              const first = await slot(inherited.id, '2090-10-03');
+              await cancelScheduleSlot(admin, await mutation(planId, 'Retiro de asignación heredada'), first.id);
+              expect((await prisma.scheduleSlot.findUniqueOrThrow({ where: { id: first.id } })).cancelledAt).not.toBeNull();
+              expect(await prisma.scheduleSlot.count({ where: { collaboratorId: inherited.id, cancelledAt: null } })).toBe(1);
+            });
+          '''
+          p.write_text(text[:at] + tests + text[at:])
+          PY
+          git diff --check
+          rm .github/workflows/_equipo-preserve-profile.yml
+          git add src tests .github/workflows/_equipo-preserve-profile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(equipo): preserve areas and hours when selecting existing users"
+          git push origin HEAD:refs/heads/fix/equipo-usuarios-horas-20261001

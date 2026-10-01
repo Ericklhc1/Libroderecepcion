@@ -137,7 +137,7 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     }
     const next = input.action === 'RECONFIRMAR' && changed && current.status === 'POR_REVISAR' ? 'PENDIENTE' : hkNextStatus(current.status, input.action, current.requiresInspection); const now = new Date();
     const data: Prisma.HousekeepingRequestUncheckedUpdateManyInput = { status: next, version: { increment: 1 }, maintenanceEntryId,
-      ...(input.action === 'ASIGNAR' ? { assignedToId: input.assignedToId, acknowledgedAt: null, sourceVersion: null, finishedAt: null, inspectedAt: null, inspectedById: null, startedAt: null, blockReason: null, resolution: null, ...(input.dueAt ? { dueAt: input.dueAt } : {}) } : {}),
+      ...(input.action === 'ASIGNAR' ? { assignedToId: input.assignedToId, acknowledgedAt: null, sourceVersion: null, finishedAt: null, inspectedAt: null, inspectedById: null, startedAt: null, blockReason: current.status === 'BLOQUEADO' ? current.blockReason : null, resolution: null, ...(input.dueAt ? { dueAt: input.dueAt } : {}) } : {}),
       ...(['COMENZAR','RETOMAR'].includes(input.action) ? { startedAt: current.startedAt ?? now, acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null, blockReason: null } : {}),
       ...(input.action === 'RECONFIRMAR' ? { acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null, ...(changed && current.status === 'POR_REVISAR' ? { finishedAt:null,inspectedAt:null,inspectedById:null,resolution:null } : {}) } : {}),
       ...(input.action === 'IMPEDIMENTO' ? { blockReason: note } : {}),

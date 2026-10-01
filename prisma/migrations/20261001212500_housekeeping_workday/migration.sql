@@ -145,7 +145,7 @@ ALTER TABLE "HousekeepingDelegation" ADD CONSTRAINT "HousekeepingDelegation_gran
 -- Extend the existing workflow without rewriting historical notices.
 ALTER TABLE "HousekeepingRequest" DROP CONSTRAINT "HousekeepingRequest_status_check";
 ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_status_check" CHECK ("status" IN ('PENDIENTE','RECIBIDO','EN_GESTION','BLOQUEADO','POR_REVISAR','RESUELTO','CANCELADO'));
-ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_work_check" CHECK ("workflowVersion" IN (0,1) AND "effortMinutes" BETWEEN 1 AND 480 AND NOT ("roomId" IS NOT NULL AND "zoneId" IS NOT NULL) AND ("workflowVersion" = 0 OR ("workDate" ~ '^\d{4}-\d{2}-\d{2}$' AND "departmentId" IS NOT NULL AND "workKind" IN ('LIMPIEZA','ZONA_COMUN','REPOSICION','REVISION','ATENCION') AND ("workKind" <> 'LIMPIEZA' OR ("roomId" IS NOT NULL AND "requiresInspection" = true)) AND ("workKind" <> 'REVISION' OR "requiresInspection" = true))));
+ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_work_check" CHECK ("workflowVersion" IN (0,1) AND "effortMinutes" BETWEEN 1 AND 480 AND NOT ("roomId" IS NOT NULL AND "zoneId" IS NOT NULL) AND ("workflowVersion" = 0 OR ("workDate" IS NOT NULL AND "workDate" ~ '^\d{4}-\d{2}-\d{2}$' AND "departmentId" IS NOT NULL AND "workKind" IN ('LIMPIEZA','ZONA_COMUN','REPOSICION','REVISION','ATENCION') AND ("workKind" <> 'LIMPIEZA' OR ("roomId" IS NOT NULL AND "requiresInspection" = true)) AND ("workKind" <> 'REVISION' OR "requiresInspection" = true))));
 ALTER TABLE "HousekeepingRoutine" ADD CONSTRAINT "HousekeepingRoutine_effort_check" CHECK ("effortMinutes" BETWEEN 1 AND 480);
 ALTER TABLE "HousekeepingDelegation" ADD CONSTRAINT "HousekeepingDelegation_window_check" CHECK ("startsAt" < "endsAt" AND "endsAt" - "startsAt" <= interval '31 days' AND "permission" IN ('housekeeping.assign','housekeeping.inspect'));
 
@@ -165,3 +165,14 @@ INSERT INTO "RolePermission" ("roleId","permissionId") SELECT r."id",p."id" FROM
 INSERT INTO "Role" ("id","key","name","description","level","operational","isSystem","createdAt","updatedAt") VALUES ('role_ama_de_llaves','AMA_DE_LLAVES','Ama de llaves','Operación de Housekeeping limitada a sus áreas.',65,true,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT ("key") DO NOTHING;
 INSERT INTO "RolePermission" ("roleId","permissionId") SELECT r."id",p."id" FROM "Role" r CROSS JOIN "Permission" p WHERE r."key"='AMA_DE_LLAVES' AND p."key" IN ('housekeeping.view','housekeeping.work','housekeeping.request','housekeeping.assign','housekeeping.inspect','housekeeping.plan','schedule.self.view','schedule.view','schedule.manage','schedule.publish','schedule.catalog.manage','schedule.extra.approve') ON CONFLICT DO NOTHING;
 INSERT INTO "RolePermission" ("roleId","permissionId") SELECT r."id",p."id" FROM "Role" r CROSS JOIN "Permission" p WHERE (r."key"='ADMINISTRADOR_SISTEMA' AND p."key" LIKE 'housekeeping.%') OR (r."key" IN ('RECEPCIONISTA','AUDITOR_NOCTURNO','SUPERVISOR') AND p."key"='housekeeping.request') OR (r."key"='GERENCIA' AND p."key"='housekeeping.view.all') ON CONFLICT DO NOTHING;
+
+-- A new cleaning cannot be closed without a recorded inspection by another person.
+ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_inspection_evidence_check" CHECK (
+  "workflowVersion" = 0 OR (
+    ("status" <> 'POR_REVISAR' OR "finishedAt" IS NOT NULL) AND
+    ("status" <> 'RESUELTO' OR NOT "requiresInspection" OR (
+      "finishedAt" IS NOT NULL AND "inspectedAt" IS NOT NULL AND "inspectedById" IS NOT NULL AND
+      "assignedToId" IS NOT NULL AND "inspectedById" <> "assignedToId"
+    ))
+  )
+);

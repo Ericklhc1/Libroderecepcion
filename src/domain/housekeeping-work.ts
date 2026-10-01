@@ -18,12 +18,13 @@ export function hkAllowedActions(status: string, assigned: boolean, sourceChange
   if (sourceChanged) return ['RECONFIRMAR', 'IMPEDIMENTO', 'CANCELAR'];
   if (status === 'POR_REVISAR') return ['APROBAR', 'CORREGIR', 'IMPEDIMENTO', 'CANCELAR'];
   if (status === 'BLOQUEADO') return ['ASIGNAR', ...(assigned ? ['RETOMAR' as const] : []), 'MANTENIMIENTO', 'CANCELAR'];
-  if (status === 'EN_GESTION') return ['ASIGNAR', 'IMPEDIMENTO', 'TERMINAR', 'CANCELAR'];
+  if (status === 'EN_GESTION') return ['ASIGNAR', 'IMPEDIMENTO', 'RETOMAR', 'TERMINAR', 'CANCELAR'];
   return ['ASIGNAR', ...(assigned ? ['COMENZAR' as const, 'IMPEDIMENTO' as const] : []), 'CANCELAR'];
 }
 export function hkNextStatus(status: string, action: HkWorkAction, requiresInspection: boolean): string {
   if (!hkAllowedActions(status, true).includes(action) && action !== 'RECONFIRMAR') throw new Error('Esta acción no corresponde al estado del trabajo.');
-  if (action === 'ASIGNAR' || action === 'REABRIR' || action === 'CORREGIR') return 'PENDIENTE';
+  if (action === 'ASIGNAR') return status === 'BLOQUEADO' ? 'BLOQUEADO' : 'PENDIENTE';
+  if (action === 'REABRIR' || action === 'CORREGIR') return 'PENDIENTE';
   if (action === 'COMENZAR' || action === 'RETOMAR') return 'EN_GESTION';
   if (action === 'IMPEDIMENTO') return 'BLOQUEADO';
   if (action === 'TERMINAR') return requiresInspection ? 'POR_REVISAR' : 'RESUELTO';
@@ -31,7 +32,7 @@ export function hkNextStatus(status: string, action: HkWorkAction, requiresInspe
   if (action === 'CANCELAR') return 'CANCELADO';
   return status;
 }
-export const HK_NOTE_REQUIRED: HkWorkAction[] = ['ASIGNAR', 'IMPEDIMENTO', 'TERMINAR', 'APROBAR', 'CORREGIR', 'CANCELAR', 'REABRIR', 'MANTENIMIENTO', 'RECONFIRMAR'];
+export const HK_NOTE_REQUIRED: HkWorkAction[] = ['ASIGNAR', 'IMPEDIMENTO', 'RETOMAR', 'TERMINAR', 'APROBAR', 'CORREGIR', 'CANCELAR', 'REABRIR', 'MANTENIMIENTO', 'RECONFIRMAR'];
 
 /** Area-only accounts must not inherit Reception's generic book/home readers. */
 export function isHkFocused(user: HousekeepingAccess): boolean {

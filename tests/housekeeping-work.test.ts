@@ -20,7 +20,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     await resetOperationalData();
     area=(await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}})).id;
     roomId=(await prisma.room.findUniqueOrThrow({where:{number:'512'}})).id;
-    admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});manager=await createUser({roleKey:ROLE_KEYS.HK_MANAGER});supervisor=await createUser({roleKey:ROLE_KEYS.HK_SUPERVISOR});maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});other=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});manager=await createUser({roleKey:ROLE_KEYS.HK_MANAGER});supervisor=await createUser({roleKey:ROLE_KEYS.HK_SUPERVISOR});maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT,name:'Mucama A'});other=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT,name:'Mucama B'});reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
     await prisma.user.updateMany({where:{id:{in:[admin.id,manager.id,supervisor.id,maid.id,other.id]}},data:{departmentId:area}});
   });
   const input=()=>({requestKey:randomUUID(),title:'Limpiar habitación 512',description:'Revisar limpieza y reposición.',departmentId:area,workDate:date(),workKind:'LIMPIEZA' as const,roomId,priority:'MEDIA' as const,effortMinutes:35});

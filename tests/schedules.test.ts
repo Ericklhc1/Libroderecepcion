@@ -160,4 +160,24 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     expect(board.contextSlots.every((s) => s.planId === planId)).toBe(true);
   });
 
+  it('no permite informar un extra propio de un borrador no publicado', async () => {
+    await add(a, '2090-10-03', day, 'EXTENSION', 120); const s = await slot();
+    await changeScheduleExtra(admin, await mutation(planId, 'Refuerzo'), { slotId: s.id, action: 'APROBAR' });
+    await expect(changeScheduleExtra(own, await mutation(planId, 'Informe propio'), { slotId: s.id, action: 'REPORTAR', reportedMinutes: 120 })).rejects.toThrow('no existe');
+  });
+
+  it('rechazar un turno adicional libera la casilla y conserva su evidencia', async () => {
+    await add(a, '2090-10-03', day, 'TURNO_EXTRA'); const s = await slot();
+    await changeScheduleExtra(admin, await mutation(planId, 'Refuerzo innecesario'), { slotId: s.id, action: 'RECHAZAR' });
+    const rejected = await prisma.scheduleSlot.findUniqueOrThrow({ where: { id: s.id } });
+    expect(rejected.extraStatus).toBe('RECHAZADO'); expect(rejected.cancelledAt).not.toBeNull();
+    await add(); expect((await getScheduleBoard(admin, area, planId)).slots).toHaveLength(1);
+  });
+  it('rechazar extensión conserva horario base y libera minutos adicionales', async () => {
+    await add(a, '2090-10-03', day, 'EXTENSION', 120); const s = await slot();
+    await changeScheduleExtra(admin, await mutation(planId, 'Extensión innecesaria'), { slotId: s.id, action: 'RECHAZAR' });
+    const rejected = await slot(); expect(rejected.endAt).toEqual(rejected.baseEndAt); expect(rejected.extraMinutes).toBe(120);
+    expect(Object.values((await getScheduleBoard(admin, area, planId)).totals).reduce((sum, n) => sum + n, 0)).toBe(660);
+  });
+
 });

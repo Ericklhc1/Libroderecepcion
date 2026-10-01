@@ -109,12 +109,12 @@ export async function buildScheduleSlot(tx: Tx, plan: SchedulePlan, input: SlotI
   const endAt = new Date(window.endAt.getTime() + input.extraMinutes * 60000);
   return { planId: plan.id, collaboratorId: person.id, date, kind: 'TURNO', templateId: template.id, code: template.code, functionName: person.functionName, startTime: template.startTime, endTime: template.endTime, crossesMidnight: template.crossesMidnight, ...window, baseEndAt: window.endAt, endAt, breakMinutes: template.breakMinutes, breakPaid: template.breakPaid, extraKind: input.extraKind, extraMinutes: input.extraMinutes, extraStatus: input.extraKind === 'NINGUNO' ? 'NO_APLICA' : 'PENDIENTE', note: input.note || null };
 }
-async function schedulePublication(tx: Tx, plan: SchedulePlan, version: number, affected: string[], first: boolean): Promise<string[]> {
+async function schedulePublication(tx: Tx, plan: SchedulePlan, version: number, affected: string[], first: boolean, reason: string): Promise<string[]> {
   const people = await tx.scheduleCollaborator.findMany({ where: { id: { in: affected }, user: { is: { active: true, deletedAt: null, role: { permissions: { some: { permission: { key: { in: [...['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure']] } } } } } } } }, select: { userId: true } });
   const users = [...new Set(people.flatMap((p) => p.userId ? [p.userId] : []))];
   if (users.length) {
     await tx.scheduleAcknowledgment.createMany({ data: users.map((userId) => ({ planId: plan.id, userId, version })), skipDuplicates: true });
-    await tx.notification.createMany({ data: users.map((userId) => ({ userId, type: 'ACCION_REQUERIDA' as const, entity: 'SchedulePlan', entityId: plan.id, title: first ? 'Tu horario fue publicado' : 'Tu horario cambió', body: `Revisa y confirma la malla #${plan.humanId}. Confirmar recepción no acredita asistencia.`, link: `/equipo?area=${plan.departmentId}&malla=${plan.id}` })) });
+    await tx.notification.createMany({ data: users.map((userId) => ({ userId, type: 'ACCION_REQUERIDA' as const, entity: 'SchedulePlan', entityId: plan.id, title: first ? 'Tu horario fue publicado' : 'Tu horario cambió', body: `Revisa y confirma la malla #${plan.humanId}.${reason ? ` Motivo: ${reason}` : ''} Confirmar recepción no acredita asistencia.`, link: `/equipo?area=${plan.departmentId}&malla=${plan.id}` })) });
   }
   return users;
 }
@@ -127,6 +127,7 @@ export async function mutateSchedulePlan(user: CurrentUser, raw: Mutation, actio
     await lockScheduleAreas(tx, [seen.departmentId]);
     await tx.$queryRaw`SELECT "id" FROM "SchedulePlan" WHERE "id" = ${input.planId} FOR UPDATE`;
     const plan = await tx.schedulePlan.findUniqueOrThrow({ where: { id: input.planId } });
+    if (options.ownSlotId && plan.status !== 'PUBLICADO') throw new NotFoundError();
     if (options.ownSlotId && !await tx.scheduleSlot.findFirst({ where: { id: options.ownSlotId, planId: plan.id, cancelledAt: null, collaborator: { userId: user.id } } })) throw new NotFoundError();
     const prior = await tx.scheduleEvent.findUnique({ where: { requestKey: input.requestKey } });
     if (prior) {
@@ -144,7 +145,7 @@ export async function mutateSchedulePlan(user: CurrentUser, raw: Mutation, actio
     const updated = await tx.schedulePlan.update({ where: { id: plan.id }, data: { version, ...(shouldPublish ? { status: 'PUBLICADO', publishedAt: new Date(), publishedVersion: version } : {}) } });
     await tx.scheduleEvent.create({ data: { planId: plan.id, actorId: user.id, requestKey: input.requestKey, requestHash: hash, action, version, reason: input.reason || null, before: json(change.before), after: json(change.after) } });
     await tx.auditLog.create({ data: { entity: 'SchedulePlan', entityId: plan.id, action: 'EDITAR', userId: user.id, sessionId: user.sessionId, summary: `Malla #${plan.humanId}: ${action} · revisión ${version}`, reason: input.reason || null, before: json(change.before), after: json(change.after) } });
-    const notifyUsers = shouldPublish ? await schedulePublication(tx, plan, version, change.affected, !published) : [];
+    const notifyUsers = shouldPublish ? await schedulePublication(tx, plan, version, change.affected, !published, input.reason) : [];
     return { plan: updated, notifyUsers };
   }, { maxWait: 10000, timeout: 30000 });
   if (result.notifyUsers.length) scheduleWebPushForUsers(result.notifyUsers);
@@ -224,7 +225,12 @@ export async function changeScheduleExtra(user: CurrentUser, mutation: Mutation,
     } else {
       if (slot.extraStatus !== 'REPORTADO') rule('Primero debe informarse la realización del extra.'); extraStatus = 'VALIDADO';
     }
-    const after = await tx.scheduleSlot.update({ where: { id: slot.id }, data: { extraStatus, ...(reportedExtraMinutes !== undefined ? { reportedExtraMinutes } : {}) } });
+    await lockScheduleCollaborators(tx, [slot.collaboratorId]);
+    if (input.action === 'RECHAZAR') {
+      const extraStart = slot.extraKind === 'EXTENSION' ? slot.baseEndAt : slot.startAt;
+      if (!extraStart || extraStart <= new Date()) rule('El extra ya comenzó. Conserva su registro y revisa la realización; no se rechaza retroactivamente.');
+    }
+    const after = await tx.scheduleSlot.update({ where: { id: slot.id }, data: { extraStatus, ...(input.action === 'RECHAZAR' ? slot.extraKind === 'TURNO_EXTRA' ? { cancelledAt: new Date() } : { endAt: slot.baseEndAt } : {}), ...(reportedExtraMinutes !== undefined ? { reportedExtraMinutes } : {}) } });
     return { before: slot, after, affected: [slot.collaboratorId] };
   }, { noScheduleChange: ['REPORTAR', 'VALIDAR'].includes(input.action), ...(own ? { ownSlotId: input.slotId } : {}) });
 }
@@ -253,7 +259,7 @@ export async function getScheduleBoard(user: CurrentUser, departmentId: string, 
   if (!selected) return { plans, selected: null, collaborators, templates, slots: [], contextSlots: [], rules: [], gaps: [], totals: {}, holidays: [], events: [], acknowledgments: [], imports: [], canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
   const from = datePlus(selected.startDate.toISOString().slice(0, 10), -7); const to = datePlus(selected.endDate.toISOString().slice(0, 10), 7);
   const [slots, contextSlots, rules, holidays, events, acknowledgments, imports] = await Promise.all([
-    prisma.scheduleSlot.findMany({ where: { planId: selected.id, cancelledAt: null, ...(team ? {} : { collaborator: { userId: user.id } }) }, include: { collaborator: { select: { id: true, name: true, employeeCode: true, weeklyMinutes: true } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] }),
+    prisma.scheduleSlot.findMany({ where: { planId: selected.id, cancelledAt: null, ...(team ? {} : { collaborator: { userId: user.id } }) }, include: { collaborator: { select: { id: true, name: true, employeeCode: true, weeklyMinutes: true, userId: true } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] }),
     prisma.scheduleSlot.findMany({ where: { cancelledAt: null, date: { gte: new Date(from), lte: new Date(to) }, ...(team ? { OR: [{ plan: { departmentId, status: 'PUBLICADO' } }, { planId: selected.id }] } : { collaborator: { userId: user.id }, plan: { departmentId, status: 'PUBLICADO' } }) } }),
     team ? prisma.scheduleCoverageRule.findMany({ where: { departmentId, active: true } }) : Promise.resolve([]),
     prisma.scheduleHoliday.findMany({ where: { active: true, date: { gte: new Date(from), lte: new Date(to) } }, orderBy: { date: 'asc' } }),

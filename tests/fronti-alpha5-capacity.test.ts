@@ -75,7 +75,7 @@ describe('FRONTI alpha.5 · capacidad y presupuesto', () => {
     expect(names).not.toContain('proponer_multa');
   });
 
-  it('el Administrador de sistema tampoco recibe operaciones excluidas de su perfil', () => {
+  it('el Administrador opera con permisos y no evita una revocación explícita', () => {
     const enabled = enabledFrontiToolDefinitions(config);
     const visible = filterFrontiToolDefinitionsForUser(
       {
@@ -87,7 +87,9 @@ describe('FRONTI alpha.5 · capacidad y presupuesto', () => {
 
     expect(visible).toContain('consultar_configuracion_operativa');
     expect(visible).toContain('consultar_auditoria');
-    expect(visible).not.toContain('proponer_checkouts');
+    expect(visible).toContain('proponer_checkouts');
+    const restricted = filterFrontiToolDefinitionsForUser({ isSystemAdmin: true, permissions: ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN].filter((permission) => permission !== 'room.manage') }, enabled).map((tool) => tool.name);
+    expect(restricted).not.toContain('proponer_checkouts');
   });
 
   it('usa Groq -> Cloudflare -> Groq y limita salida', () => {

@@ -7,6 +7,7 @@
 - Los avisos nuevos son operativos (isDemo=false). Pruebas administrativas anteriores conservan isDemo=true, su historial y privacidad; sólo el administrador las consulta/gestiona. No se convierten ni se borran registros anteriores.
 - Migración 20261001130000_housekeeping_access_admin_operation registra los permisos, habilita la participación del administrador y elimina únicamente la restricción de pruebas para nuevos avisos. No cambia permisos de otros roles.
 - Se habilitan selectores de responsables, Mi turno, Chat y operación de Supervisión para el administrador. Se conservan bloqueos por estado, concurrencia, notas obligatorias y autoría auditada.
+- Verificación inicial: 1.160 pruebas aprobadas; dos fallos explicados por el nuevo destino sin tutorial y una expectativa antigua de Fronti que excluía operaciones del administrador. Se incorpora el recorrido modular de Housekeeping y se comprueba que una revocación explícita sigue filtrando herramientas de Fronti. No se omiten pruebas.
 - Alcance: habilitar acceso y participación. La asignación automática por horarios de Housekeeping, escalamiento y notificaciones persistentes al personal siguen pendientes; no se inventan turnos del área ni se confunden con Recepción.
 
 

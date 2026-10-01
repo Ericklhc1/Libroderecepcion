@@ -7,6 +7,7 @@ export const TUTORIAL_MODULE_KEYS = [
   'turno',
   'llaves',
   'alertas',
+  'housekeeping',
   'supervision',
   'gerencia',
   'auditoria',
@@ -51,6 +52,7 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   { key: 'alertas', label: 'Alertas', route: '/alertas' },
+  { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
   {
     key: 'supervision',
     label: 'Centro de Supervisión',
@@ -208,6 +210,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: ROUTE_TARGET,
   },
   {
+    id: 'housekeeping', module: 'housekeeping', title: 'Housekeeping',
+    description: 'Coordina avisos, confirma su recepción y registra impedimentos o resultados. Confirmar no resuelve. El acceso de consulta o gestión se habilita por rol.',
+    route: '/admin/housekeeping', target: ROUTE_TARGET, anyOf: ['housekeeping.view', 'housekeeping.manage'],
+  },
+  {
     id: 'supervision',
     module: 'supervision',
     title: 'Centro de Supervisión',
@@ -257,6 +264,18 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
 ];
 
 export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
+  housekeeping: [
+    {
+      id: 'mod-housekeeping-recepcion', module: 'housekeeping', title: 'Revisa y confirma la instrucción',
+      description: 'Lee el contenido, prioridad y plazo. Confirma recepción después de comprenderlo o pide aclaración si falta información. Una novedad vinculada conserva su contenido original.',
+      route: '/admin/housekeeping', target: ROUTE_TARGET,
+    },
+    {
+      id: 'mod-housekeeping-resultado', module: 'housekeeping', title: 'El pendiente termina con un resultado',
+      description: 'Inicia gestión, registra impedimentos y resuelve indicando qué se hizo. Cada acción conserva su autoría. El acceso de consulta permite revisar; el de gestión permite cambiar estados.',
+      route: '/admin/housekeeping', target: ROUTE_TARGET,
+    },
+  ],
   novedades: [
     {
       id: 'mod-novedades-registro',

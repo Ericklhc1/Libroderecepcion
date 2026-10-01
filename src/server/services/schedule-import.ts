@@ -7,16 +7,18 @@ import { readReportFile } from '@/server/pms/read-report-file';
 import { extractScheduleRoster, type RosterRow } from '@/domain/schedule-import';
 import { functionKey, mutationSchema, scheduleId, slotSchema, type SlotInput } from '@/domain/schedule';
 import { assertScheduleArea } from './schedule-access';
+import { ensureScheduleUsers, scheduleEligibleUser, scheduleIdentitySelect, schedulePerson } from './schedule-users';
 import { buildScheduleSlot, getSchedulePlan, mutateSchedulePlan, lockScheduleCollaborators } from './schedules';
 
 export async function reviewScheduleImport(user: CurrentUser, planId: string, fileName: string, bytes: Uint8Array) {
   scheduleId.parse(planId); const plan = await getSchedulePlan(user, planId); await assertScheduleArea(user, plan.departmentId, 'schedule.manage');
   if (!/\.(pdf|xlsx|csv|tsv)$/i.test(fileName) || bytes.length === 0 || bytes.length > 3 * 1024 * 1024) throw new RuleError('Usa PDF, XLSX, CSV o TSV de hasta 3 MB.');
+  await ensureScheduleUsers(user, plan.departmentId);
   const fileHash = createHash('sha256').update(bytes).digest('hex');
-  const existing = await prisma.scheduleImport.findFirst({ where: { planId, fileHash, OR: [{ baseVersion: plan.version }, { status: 'APLICADO' }] } }); if (existing) return existing;
+  const existing = await prisma.scheduleImport.findFirst({ where: { planId, fileHash, status: 'APLICADO' } }); if (existing) return existing;
   const files = await readReportFile(fileName, bytes, { preserveClockCells: true });
   const extracted = files.map((f) => extractScheduleRoster(f.fragments, plan.startDate.toISOString().slice(0, 10), plan.endDate.toISOString().slice(0, 10)));
-  const people = await prisma.scheduleCollaborator.findMany({ where: { active: true, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
+  const people = await prisma.scheduleCollaborator.findMany({ where: { user: { is: scheduleEligibleUser }, memberships: { some: { departmentId: plan.departmentId, active: true } } } }, include: { user: { select: scheduleIdentitySelect } } }).then((rows) => rows.map(schedulePerson));
   const templates = await prisma.scheduleTemplate.findMany({ where: { departmentId: plan.departmentId, active: true } });
   const issues = extracted.flatMap((e) => e.issues); const rows = extracted.flatMap((e) => e.rows);
   if (rows.length > 2000) throw new RuleError('La carga admite como máximo 2.000 asignaciones.');
@@ -27,7 +29,7 @@ export async function reviewScheduleImport(user: CurrentUser, planId: string, fi
     const matches = row.employeeCode ? identified : people.filter((p) => row.name && functionKey(p.name) === functionKey(row.name));
     let issue: string | null = null; let input: SlotInput | null = null;
     const person = matches.length === 1 ? matches[0] : undefined;
-    if (!person) issue = 'Colaborador no reconocido o nombre ambiguo. Regístralo con su código antes de cargar.';
+    if (!person) issue = 'Usuario no reconocido o nombre ambiguo. Revisa la cuenta existente y su área; no crees otra persona.';
     if (person && row.employeeCode && row.name && row.name !== row.employeeCode && functionKey(person.name) !== functionKey(row.name)) issue = 'El código y el nombre indican colaboradores diferentes.';
     const template = templates.find((t) => t.code === row.code);
     const kind = ['LIBRE', 'VACACIONES', 'AUSENCIA'].includes(row.code) ? row.code as 'LIBRE' | 'VACACIONES' | 'AUSENCIA' : 'TURNO';
@@ -42,7 +44,7 @@ export async function reviewScheduleImport(user: CurrentUser, planId: string, fi
     if (issue) issues.push(`${row.name ?? row.employeeCode} · ${row.date}: ${issue}`);
     resolved.push({ source: row, input, issue });
   }
-  return prisma.scheduleImport.upsert({ where: { planId_fileHash_baseVersion: { planId, fileHash, baseVersion: plan.version } }, create: { planId, fileName: fileName.slice(0, 200), fileHash, baseVersion: plan.version, rows: JSON.parse(JSON.stringify(resolved)), issues }, update: {} });
+  return prisma.scheduleImport.upsert({ where: { planId_fileHash_baseVersion: { planId, fileHash, baseVersion: plan.version } }, create: { planId, fileName: fileName.slice(0, 200), fileHash, baseVersion: plan.version, rows: JSON.parse(JSON.stringify(resolved)), issues }, update: { rows: JSON.parse(JSON.stringify(resolved)), issues } });
 }
 export async function applyScheduleImport(user: CurrentUser, raw: unknown, importId: string) {
   const mutation = mutationSchema.parse(raw); scheduleId.parse(importId);

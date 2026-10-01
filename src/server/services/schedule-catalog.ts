@@ -22,7 +22,9 @@ export const collaboratorSchema = z.object({
   weeklyHours: weeklyHoursSchema.optional(),
 });
 export async function saveScheduleCollaborator(user: CurrentUser, raw: unknown) {
-  assertSchedulePermission(user, 'schedule.catalog.manage'); const input = collaboratorSchema.parse(raw);
+  assertSchedulePermission(user, 'schedule.catalog.manage');
+  if (raw && typeof raw === 'object' && ['weeklyMinutes', 'minRestMinutes'].some((key) => key in raw)) throw new RuleError('Usa horas semanales. Los minutos y el descanso no se configuran en este módulo.');
+  const input = collaboratorSchema.parse(raw);
   return prisma.$transaction(async (tx) => {
     const existing = input.id
       ? await tx.scheduleCollaborator.findUnique({ where: { id: input.id }, include: { memberships: true } })

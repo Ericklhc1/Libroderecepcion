@@ -245,4 +245,28 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     await expect(getScheduleBoard(reader, area)).rejects.toThrow('no está habilitado');
   });
 
+  it('usa el rol actual en asignaciones nuevas sin reescribir el historial', async () => {
+    await add(); const original = await slot();
+    await prisma.user.update({ where: { id: own.id }, data: { roleId: reader.roleId } });
+    await add(a, '2090-10-05');
+    const currentRole = await prisma.role.findUniqueOrThrow({ where: { id: reader.roleId } });
+    expect((await slot(a, '2090-10-05')).functionName).toBe(currentRole.name);
+    expect((await slot()).functionName).toBe(original.functionName);
+  });
+  it('la carga relee el nombre vigente del usuario sin alta duplicada', async () => {
+    const bytes = new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO;INICIO;TERMINO\nTEST_COL001;2090-10-05;TEST_DIA;08:00;19:00\n');
+    await prisma.user.update({ where: { id: own.id }, data: { name: 'Nombre actual para carga' } });
+    const reviewed = await reviewScheduleImport(admin, planId, 'malla.csv', bytes);
+    expect(reviewed.issues).toEqual([]);
+    await prisma.user.update({ where: { id: own.id }, data: { active: false } });
+    const again = await reviewScheduleImport(admin, planId, 'malla.csv', bytes);
+    expect(again.id).toBe(reviewed.id);
+    expect(JSON.stringify(again.issues)).toContain('Usuario no reconocido');
+    await expect(applyScheduleImport(admin, await mutation(), again.id)).rejects.toThrow('observaciones');
+  });
+  it('rechaza unidades y controles antiguos en la entrada de planificación', async () => {
+    await expect(saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [area], weeklyMinutes: 2520 })).rejects.toThrow('horas semanales');
+    await expect(saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [area], minRestMinutes: 720 })).rejects.toThrow('descanso');
+  });
+
 });

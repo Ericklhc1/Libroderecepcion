@@ -74,7 +74,7 @@ export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
   for (const person of people) {
     const slots = person.slots;
     for (const s of slots) {
-      if (s.date >= hotelCalendarDate() && (!person.active || !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId))) rule(`${person.name} no está habilitado en el área de una asignación futura.`);
+      if (s.date >= hotelCalendarDate() && (!person.userId || !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId))) rule(`${person.name} no está habilitado en el área de una asignación futura.`);
     }
     for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
       const a = slots[i]!; const b = slots[j]!;
@@ -95,11 +95,11 @@ export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
 export async function buildScheduleSlot(tx: Tx, plan: SchedulePlan, input: SlotInput): Promise<Prisma.ScheduleSlotUncheckedCreateInput> {
   const date = new Date(`${input.date}T00:00:00Z`);
   if (date < plan.startDate || date > plan.endDate) rule('La fecha está fuera de la malla.');
-  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, user: { is: scheduleEligibleUser }, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
+  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, user: { is: scheduleEligibleUser }, memberships: { some: { departmentId: plan.departmentId, active: true } } }, include: { user: { select: { role: { select: { name: true } } } } } });
   if (!person) rule('El colaborador debe estar activo y habilitado en esta área.');
   if (input.kind !== 'TURNO') {
     if (date < hotelCalendarDate()) rule('No se pueden crear descansos o ausencias retroactivos.');
-    return { planId: plan.id, collaboratorId: person.id, date, kind: input.kind, code: input.kind, functionName: person.functionName, note: input.note || null };
+    return { planId: plan.id, collaboratorId: person.id, date, kind: input.kind, code: input.kind, functionName: person.user!.role.name, note: input.note || null };
   }
   const template = await tx.scheduleTemplate.findFirst({ where: { id: input.templateId, departmentId: plan.departmentId, active: true } });
   if (!template) rule('Selecciona una plantilla activa del área.');
@@ -107,7 +107,7 @@ export async function buildScheduleSlot(tx: Tx, plan: SchedulePlan, input: SlotI
   try { window = templateWindow(input.date, template); } catch (e) { rule((e as Error).message); }
   futureSlot({ startAt: window.startAt, date });
   const endAt = new Date(window.endAt.getTime() + input.extraMinutes * 60000);
-  return { planId: plan.id, collaboratorId: person.id, date, kind: 'TURNO', templateId: template.id, code: template.code, functionName: person.functionName, startTime: template.startTime, endTime: template.endTime, crossesMidnight: template.crossesMidnight, ...window, baseEndAt: window.endAt, endAt, breakMinutes: 0, breakPaid: false, extraKind: input.extraKind, extraMinutes: input.extraMinutes, extraStatus: input.extraKind === 'NINGUNO' ? 'NO_APLICA' : 'PENDIENTE', note: input.note || null };
+  return { planId: plan.id, collaboratorId: person.id, date, kind: 'TURNO', templateId: template.id, code: template.code, functionName: person.user!.role.name, startTime: template.startTime, endTime: template.endTime, crossesMidnight: template.crossesMidnight, ...window, baseEndAt: window.endAt, endAt, breakMinutes: 0, breakPaid: false, extraKind: input.extraKind, extraMinutes: input.extraMinutes, extraStatus: input.extraKind === 'NINGUNO' ? 'NO_APLICA' : 'PENDIENTE', note: input.note || null };
 }
 async function schedulePublication(tx: Tx, plan: SchedulePlan, version: number, affected: string[], first: boolean, reason: string): Promise<string[]> {
   const people = await tx.scheduleCollaborator.findMany({ where: { id: { in: affected }, user: { is: { active: true, deletedAt: null, role: { permissions: { some: { permission: { key: { in: [...['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure']] } } } } } } } }, select: { userId: true } });
@@ -179,10 +179,10 @@ export async function moveScheduleSlot(user: CurrentUser, mutation: Mutation, ra
     }
     await lockScheduleCollaborators(tx, [source.collaboratorId, input.targetCollaboratorId]);
     const clone = async (s: ScheduleSlot, collaboratorId: string, dateKey: string) => {
-      const person = await tx.scheduleCollaborator.findFirst({ where: { id: collaboratorId, user: { is: scheduleEligibleUser }, memberships: { some: { departmentId: plan.departmentId, active: true } } } }); if (!person) rule('El destino no pertenece al área o está inactivo.');
+      const person = await tx.scheduleCollaborator.findFirst({ where: { id: collaboratorId, user: { is: scheduleEligibleUser }, memberships: { some: { departmentId: plan.departmentId, active: true } } }, include: { user: { select: { role: { select: { name: true } } } } } }); if (!person) rule('El destino no pertenece al área o está inactivo.');
       const { id: _id, createdAt: _created, updatedAt: _updated, ...values } = s;
       const clocks = s.kind === 'TURNO' ? templateWindow(dateKey, { startTime: s.startTime!, endTime: s.endTime!, crossesMidnight: s.crossesMidnight, breakStartTime: s.breakStartAt ? `${hotelPartsTime(s.breakStartAt)}` : null, breakMinutes: s.breakMinutes, breakPaid: s.breakPaid }) : { startAt: null, endAt: null, breakStartAt: null, breakEndAt: null };
-      const data = { ...values, ...clocks, breakMinutes: 0, breakPaid: false, baseEndAt: clocks.endAt, collaboratorId, date: new Date(`${dateKey}T00:00:00Z`), functionName: person.functionName, cancelledAt: null };
+      const data = { ...values, ...clocks, breakMinutes: 0, breakPaid: false, baseEndAt: clocks.endAt, collaboratorId, date: new Date(`${dateKey}T00:00:00Z`), functionName: person.user!.role.name, cancelledAt: null };
       futureSlot(data); return tx.scheduleSlot.create({ data });
     };
     const before = target ? [source, target] : [source];

@@ -1,6 +1,7 @@
 'use client';
 
 import type { NotificationFeedItem } from '@/domain/notifications';
+import { notificationPresentation } from '@/domain/notification-summary';
 
 export const DEVICE_NOTIFICATIONS_KEY = 'central.deviceNotifications.enabled';
 
@@ -280,8 +281,9 @@ export async function showDeviceNotification(item: NotificationFeedItem): Promis
   if (!worker) return;
 
   try {
-    await worker.showNotification(item.title, {
-      body: item.body ?? undefined,
+    const presentation = notificationPresentation(item);
+    await worker.showNotification(presentation.title, {
+      body: presentation.body ?? undefined,
       tag: `aroh-${item.id}`,
       data: {
         url: item.link ?? '/notificaciones',

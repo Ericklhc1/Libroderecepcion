@@ -260,7 +260,7 @@ describe('Fronti proactivo', () => {
   });
 
 
-  it('estructura el aviso de Fronti como qué pasó, qué está mal y qué hacer', async () => {
+  it('resume el aviso de Fronti sin copiar metadatos ni instrucciones genéricas', async () => {
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Administrador Fronti' });
     const author = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Recepción Fronti' });
     await createOperationalSignal(author.id, {
@@ -278,9 +278,11 @@ describe('Fronti proactivo', () => {
       orderBy: { createdAt: 'desc' },
     });
 
-    expect(notification.body).toContain('Qué pasó:');
-    expect(notification.body).toContain('Qué está mal / qué revisar:');
-    expect(notification.body).toContain('Qué hacer:');
+    expect(notification.body).toBe('Señal operativa determinística para Fronti proactivo.');
+    expect(notification.body!.length).toBeLessThanOrEqual(240);
+    expect(notification.body).not.toContain('Qué pasó:');
+    expect(notification.body).not.toContain('abre el origen');
+    expect(notification.title).not.toContain('Fronti ·');
     expect(notification.link).toMatch(/^\/libro\//);
   });
 

@@ -7,6 +7,7 @@ import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
+import { NotificationMessage } from '@/components/layout/notification-message';
 import {
   MarkAllReadForm,
   MarkOneReadForm,
@@ -121,10 +122,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-1 text-sm font-medium text-petrol-900">{notification.title}</p>
-                    {notification.body ? (
-                      <p className="mt-0.5 text-sm text-slate-600">{notification.body}</p>
-                    ) : null}
+                    <NotificationMessage notification={notification} />
                     {notification.link ? (
                       <OpenNotificationButton
                         id={notification.id}

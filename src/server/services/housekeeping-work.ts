@@ -13,7 +13,7 @@ const ADMIN = ROLE_KEYS.SYSTEM_ADMIN;
 const terminal = ['RESUELTO', 'CANCELADO'];
 const nextDate = (date:string,days:number) => calendarDateKey(addCalendarDateDays(new Date(`${date}T00:00:00Z`),days));
 const membership = (departmentId: string): Prisma.UserWhereInput => ({ active: true, deletedAt: null, hiddenFromSelectors: false, OR: [{ departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId, active: true } } } }] });
-const workerPermissions = ['housekeeping.work', 'housekeeping.manage', 'housekeeping.assign'];
+const workerPermissions = ['housekeeping.work', 'housekeeping.manage'];
 const worker = { role: { OR: [{ key: ADMIN }, { permissions: { some: { permission: { key: { in: workerPermissions } } } } }] } } satisfies Prisma.UserWhereInput;
 const relations = {
   assignedTo: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } }, department: { select: { id: true, name: true } },
@@ -60,11 +60,19 @@ export async function hkWorkVisibility(user: CurrentUser, tx: Tx = prisma): Prom
 async function record(tx: Tx, user: CurrentUser, id: string, humanId: number | null, action: string, note: string) {
   await tx.auditLog.create({ data: { entity: 'HousekeepingWork', entityId: id, userId: user.id, sessionId: user.sessionId, action: 'CAMBIO_ESTADO', summary: humanId ? `Housekeeping #${humanId}: ${action}` : `Housekeeping: ${action}`, reason: note } });
 }
+async function coordinatingTeam(tx: Tx, departmentId: string, permissions: string[]) {
+  const now = new Date();
+  const delegated = await tx.housekeepingDelegation.findMany({where:{departmentId,permission:{in:permissions},startsAt:{lte:now},endsAt:{gt:now},revokedAt:null,grantedBy:{active:true,deletedAt:null,role:{OR:[{key:ADMIN},{permissions:{some:{permission:{key:'housekeeping.plan'}}}}]}}},select:{userId:true}});
+  return tx.user.findMany({where:{...membership(departmentId),AND:[{OR:[{role:{key:ADMIN}},{role:{permissions:{some:{permission:{key:{in:permissions}}}}}},{id:{in:delegated.map(d=>d.userId)}}]}]},select:{id:true}});
+}
+function sourceScope(user: CurrentUser, departmentId: string, canAssign: boolean): Prisma.OperationalEntryWhereInput {
+  if (user.roleKey === ADMIN || user.permissions.includes('entry.create')) return {};
+  return canAssign ? { OR: [{ departmentId }, { createdById: user.id }] } : { createdById: user.id };
+}
 export async function notifyHkWork(tx: Tx, request: { id: string; humanId: number; departmentId: string | null; assignedToId: string | null; createdById: string | null; requiresInspection: boolean; status: string }, actorId: string, message: string) {
   if (!request.departmentId) return;
   const permissions = request.status === 'POR_REVISAR' ? ['housekeeping.inspect','housekeeping.plan','housekeeping.manage'] : ['housekeeping.assign','housekeeping.plan','housekeeping.manage'];
-  const delegated = await tx.housekeepingDelegation.findMany({where:{departmentId:request.departmentId,permission:{in:permissions},startsAt:{lte:new Date()},endsAt:{gt:new Date()},revokedAt:null,grantedBy:{active:true,deletedAt:null,role:{OR:[{key:ADMIN},{permissions:{some:{permission:{key:'housekeeping.plan'}}}}]}}},select:{userId:true}});
-  const team = await tx.user.findMany({where:{...membership(request.departmentId),AND:[{OR:[{role:{key:ADMIN}},{role:{permissions:{some:{permission:{key:{in:permissions}}}}}},{id:{in:delegated.map(d=>d.userId)}}]}]},select:{id:true}});
+  const team = await coordinatingTeam(tx, request.departmentId, permissions);
   const ids = [...new Set([request.assignedToId, request.createdById, ...team.map(u => u.id)].filter((id): id is string => !!id && id !== actorId))];
   const active = await tx.user.findMany({ where: { id: { in: ids }, active: true, deletedAt: null }, select: { id: true } });
   await notify(active.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/admin/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
@@ -83,7 +91,6 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
   const area = await prisma.department.findFirst({ where: { id: input.departmentId, active: true }, select: { key: true } });
   if (!area || (!canAssign && !['HOUSEKEEPING', 'AREAS_PUBLICAS'].includes(area.key))) throw new ForbiddenError('Las solicitudes deben dirigirse a Housekeeping o Áreas públicas.');
   if (input.assignedToId && !canAssign) throw new ForbiddenError('La asignación corresponde al supervisor del área.');
-  if (input.sourceEntryId && user.roleKey !== ADMIN && !user.permissions.includes('entry.create') && !canAssign) throw new ForbiddenError('No puedes vincular ese registro.');
   const repeated = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
   if (repeated) { if (repeated.createdById !== user.id) throw new ForbiddenError(); return repeated; }
   try { return await prisma.$transaction(async tx => {
@@ -93,7 +100,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     if (input.workKind === 'LIMPIEZA' && !room) throw new RuleError('Selecciona la habitación que requiere limpieza.');
     if (!room && !zone && !input.location?.trim()) throw new RuleError('Indica la habitación o zona donde se hará el trabajo.');
     if (input.assignedToId) await validateWorker(tx, input.departmentId, input.assignedToId, input.workDate);
-    const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, ...(user.roleKey === ADMIN || user.permissions.includes('entry.create') ? {} : {OR:[{departmentId:input.departmentId},{createdById:user.id}]}) }, select: { id: true, roomId: true } }) : null;
+    const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, ...sourceScope(user, input.departmentId, canAssign) }, select: { id: true, roomId: true } }) : null;
     if(source?.roomId&&room?.id!==source.roomId)throw new RuleError('La habitación debe coincidir con la novedad de origen.');
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
     const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
@@ -218,7 +225,7 @@ export async function prepareHkDay(user: CurrentUser, departmentId:string, date:
     // A transaction-scoped advisory lock serializes preparation for this area/day.
     const created=await tx.housekeepingRequest.findMany({where:{id:{in:missing.map(r=>`hk_routine_${r.id}_${date}`)},events:{none:{}}},select:{id:true,humanId:true}});
     if(created.length){await tx.housekeepingEvent.createMany({data:created.map(r=>({requestId:r.id,actorId:user.id,action:'CREAR',toStatus:'PENDIENTE',note:'Rutina incorporada al día tras confirmación del supervisor.'}))});await tx.auditLog.createMany({data:created.map(r=>({entity:'HousekeepingWork',entityId:r.id,action:'CREAR' as const,userId:user.id,sessionId:user.sessionId,summary:`Housekeeping #${r.humanId}: rutina del día`} ))});
-    const team=await tx.user.findMany({where:{...membership(departmentId),role:{OR:[{key:ADMIN},{permissions:{some:{permission:{key:{in:['housekeeping.assign','housekeeping.plan','housekeeping.manage']}}}}}]}},select:{id:true}});
+    const team=await coordinatingTeam(tx, departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);
     await notify(team.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:`Housekeeping: ${result.count} rutinas preparadas para ${date}`,link:`/admin/housekeeping?area=${departmentId}&fecha=${date}`,entity:'HousekeepingWork',entityId:batchKey})),tx);}
     return{created:result.count};
   },{timeout:15000});
@@ -235,7 +242,7 @@ export async function saveHkHandover(user:CurrentUser,input:{requestKey:string;d
     const [work,loans]=await Promise.all([tx.housekeepingRequest.findMany({where:{departmentId:input.departmentId,isDemo:false,status:{notIn:terminal},OR:[{workDate:{lte:input.workDate}},{workDate:null}]},select:{humanId:true,title:true,sourceEntry:{select:{title:true}},location:true,status:true,blockReason:true,resolution:true,assignedTo:{select:{name:true}},dueAt:true,version:true}}),tx.keyStaffLoan.findMany({where:{departmentId:input.departmentId,items:{some:{returnedAt:null}}},select:{humanId:true,collaboratorName:true,items:{where:{returnedAt:null},select:{keyCode:true,destinationName:true}}}})]);
     const snapshot=JSON.parse(JSON.stringify({work,loans})) as Prisma.InputJsonValue;
     const row=await tx.housekeepingHandover.create({data:{...input,note:input.note.trim(),snapshot,createdById:user.id}});
-    const receivers=await tx.user.findMany({where:{...membership(input.departmentId),role:{OR:[{key:ADMIN},{permissions:{some:{permission:{key:{in:['housekeeping.assign','housekeeping.plan','housekeeping.manage']}}}}}]}},select:{id:true}});
+    const receivers=await coordinatingTeam(tx, input.departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);
     await notify(receivers.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:'Housekeeping: relevo del área por recibir',link:`/admin/housekeeping?area=${input.departmentId}&vista=continuidad`,entity:'HousekeepingHandover',entityId:row.id})),tx);await record(tx,user,row.id,null,'ENTREGAR_CONTINUIDAD',input.note);return row;
   });
 }
@@ -253,7 +260,7 @@ export async function revokeHkDelegation(user:CurrentUser,id:string){return pris
 export async function getHkSources(user:CurrentUser,departmentId:string,query=''){
   hasAccess(user);const assign=await hkCapability(user,departmentId,'housekeeping.assign');if(!assign&&!hkHas(user,'housekeeping.request'))throw new ForbiddenError();
   const number=/^#?\d+$/.test(query)?Number(query.replace('#','')):undefined;
-  return prisma.operationalEntry.findMany({where:{deletedAt:null,housekeepingRequest:null,status:{notIn:['CERRADO','RESUELTO']},...(user.roleKey===ADMIN?{}:user.permissions.includes('entry.create')?{}:{OR:[{departmentId},{createdById:user.id}]}),...(query.trim()?{AND:[{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
+  return prisma.operationalEntry.findMany({where:{deletedAt:null,housekeepingRequest:null,status:{notIn:['CERRADO','RESUELTO']},...sourceScope(user,departmentId,assign),...(query.trim()?{AND:[{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
 }
 export async function organizeLegacyHkWork(user:CurrentUser,input:{id:string;version:number;departmentId:string;workDate:string;workKind:HkWorkKind;roomId?:string;effortMinutes:number;requiresInspection:boolean;assignedToId?:string;note:string}){
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');

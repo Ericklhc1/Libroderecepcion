@@ -1,4 +1,5 @@
 import type { PermissionKey } from '@/lib/permissions';
+import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
 
 /**
  * Central de ayuda: los procedimientos reales del sistema.
@@ -66,23 +67,23 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: 'habilitar-housekeeping', question: '¿Cómo habilito Housekeeping para un rol?',
     steps: [
       'En Administración > Roles y permisos, abre el rol que quieras habilitar.',
-      'En el grupo Housekeeping, activa «Consultar avisos de Housekeeping» para acceso de lectura o «Crear y gestionar avisos de Housekeeping» para operar.',
-      'Guarda los permisos. Las cuentas de ese rol tendrán Housekeeping en el menú; gestionar también permite consultar.',
-      'Desmarcar ambos permisos retira el acceso sin borrar los avisos ni su historial.',
+      'Usa los cargos Mucama, Supervisor/a de Housekeeping o Ama de llaves, o habilita expresamente solicitar, ejecutar, asignar, inspeccionar o planificar en un rol personalizado.',
+      'Asigna el cargo y el área a la cuenta existente. La mucama opera sus trabajos; la supervisora coordina e inspecciona dentro de su área; el ama de llaves también planifica.',
+      'Retirar todos los permisos de Housekeeping quita el acceso sin borrar los trabajos ni su historial.',
     ],
     caveat: 'El administrador conserva acceso. Estos permisos no crean horarios ni asignación automática al personal del área.',
     route: '/admin/roles', anyOf: ['role.manage'], keywords: ['housekeeping', 'habilitar', 'deshabilitar', 'activar', 'permisos', 'área'],
   },
   {
-    id: 'gestionar-housekeeping', question: '¿Cómo confirmo y gestiono un aviso de Housekeeping?',
+    id: 'gestionar-housekeeping', question: '¿Cómo organizo, ejecuto y reviso el trabajo de Housekeeping?',
     steps: [
-      'Entra a Housekeeping. Revisa el contenido, prioridad y plazo del aviso.',
-      'Confirma recepción sólo después de comprender la instrucción. Si falta información, usa «Necesito aclaración».',
-      'Inicia gestión o registra un impedimento. Para resolver, indica qué se hizo y el resultado.',
-      'Si cambia la novedad original, revísala y confirma su nueva versión antes de continuar.',
+      'Selecciona el día y el área. Recepción solicita atención; la supervisora revisa disponibilidad, pendientes y asignaciones; cada mucama ve su trabajo.',
+      'La persona asignada comienza, registra impedimentos y marca terminado indicando el resultado. Retomar un impedimento exige explicar por qué se puede continuar.',
+      'Limpieza y revisión crítica requieren inspección de otra persona habilitada: puede aprobar o devolver para corregir con una instrucción.',
+      'Si cambia la novedad original, la supervisora debe revisar la nueva instrucción. Deja pendientes y llaves en el relevo para otra persona; Fronti sólo propone asignaciones que debes confirmar.',
     ],
-    caveat: 'Confirmar no equivale a resolver. Las pruebas administrativas anteriores siguen identificadas y reservadas al administrador.',
-    route: '/admin/housekeeping', anyOf: ['housekeeping.view', 'housekeeping.manage'], keywords: ['housekeeping', 'confirmar', 'recibir', 'resolver', 'bloquear', 'pendiente'],
+    caveat: 'Marcar terminado no aprueba una limpieza. Los avisos anteriores conservan historial y requieren organización explícita para incorporarse al trabajo diario. Los permisos siempre respetan el área.',
+    route: '/admin/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS, keywords: ['housekeeping', 'mucama', 'asignar', 'inspección', 'supervisor', 'ama de llaves', 'relevo', 'bloquear', 'pendiente'],
   },
   {
     id: 'tomar-turno',

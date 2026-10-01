@@ -4,7 +4,7 @@ import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { hotelDateKey } from '@/domain/time';
-import { createHkWork, changeHkWork, getHkWorkday, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
+import { createHkWork, changeHkWork, getHkWorkday, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork, getHkSources } from '@/server/services/housekeeping-work';
 import { changeHousekeepingRequest } from '@/server/services/housekeeping';
 import { searchOperationalRecords } from '@/server/services/global-search';
 import { getEntry } from '@/server/services/entries';
@@ -65,6 +65,35 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     await expect(createHkWork(supervisor,{...input(),assignedToId:maid.id})).rejects.toThrow('no disponible');
     await prisma.user.update({where:{id:other.id},data:{active:false}});await expect(createHkWork(supervisor,{...input(),assignedToId:other.id})).rejects.toThrow('activo');
     await expect(createHkWork(supervisor,{...input(),roomId:undefined,location:'Vestíbulo'})).rejects.toThrow('habitación');
+  });
+  it('un coordinador sin ejecución no puede ser asignado ni incorporado a carga o propuestas',async()=>{
+    const coordinatorRole=await prisma.role.create({data:{key:`COORD_${randomUUID()}`,name:'Coordinación sin ejecución',level:50,permissions:{create:{permission:{connect:{key:'housekeeping.assign'}}}}}});
+    await prisma.user.update({where:{id:other.id},data:{roleId:coordinatorRole.id}});
+    const coordinator={...other,roleKey:coordinatorRole.key,permissions:['housekeeping.assign'] as CurrentUser['permissions']};
+    await expect(createHkWork(supervisor,{...input(),assignedToId:other.id})).rejects.toThrow('ejecutar');
+    await expect(confirmHkAvailability(supervisor,{departmentId:area,workDate:date(),userId:other.id,available:true,note:'Disponibilidad'})).rejects.toThrow('ejecutar');
+    await createHkWork(coordinator,input());const board=await getHkWorkday(coordinator);
+    expect(board.canAssign).toBe(true);expect(board.workload.some(p=>p.id===other.id)).toBe(false);expect(board.suggestions.some(p=>p.userId===other.id)).toBe(false);
+  });
+  it('la consulta y vinculación de una mucama sólo permiten novedades propias; coordinación mantiene su área',async()=>{
+    const foreign=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Privada de otra persona',description:'No compartir',departmentId:area,roomId,createdById:other.id}});
+    const own=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Solicitud propia',description:'Reponer',departmentId:area,roomId,createdById:maid.id}});
+    const sources=await getHkSources(maid,area);expect(sources.map(s=>s.id)).toEqual([own.id]);
+    expect((await getHkSources(maid,area,String(foreign.humanId)))).toHaveLength(0);
+    await expect(createHkWork(maid,{...input(),sourceEntryId:foreign.id})).rejects.toThrow('vincular');
+    expect((await getHkSources(supervisor,area)).map(s=>s.id)).toEqual(expect.arrayContaining([own.id,foreign.id]));
+    const r=await createHkWork(maid,{...input(),sourceEntryId:own.id});expect(r.sourceEntryId).toBe(own.id);expect(r.assignedToId).toBeNull();
+  });
+  it('notifica el relevo a coberturas activas y omite delegaciones revocadas o vencidas',async()=>{
+    const delegation=await delegateHk(manager,{departmentId:area,userId:maid.id,permission:'housekeeping.assign',startsAt:new Date(Date.now()-1000),endsAt:new Date(Date.now()+3600000),reason:'Cobertura'});
+    const first=await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Recibir pendientes'});
+    expect(await prisma.notification.count({where:{userId:maid.id,entityId:first.id}})).toBe(1);await receiveHkHandover(maid,first.id);
+    await revokeHkDelegation(manager,delegation.id);
+    const revoked=await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Otro relevo'});
+    expect(await prisma.notification.count({where:{userId:maid.id,entityId:revoked.id}})).toBe(0);
+    await prisma.housekeepingDelegation.update({where:{id:delegation.id},data:{revokedAt:null,startsAt:new Date(Date.now()-7200000),endsAt:new Date(Date.now()-1000)}});
+    const expired=await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Relevo sin cobertura vencida'});
+    expect(await prisma.notification.count({where:{userId:maid.id,entityId:expired.id}})).toBe(0);await expect(receiveHkHandover(maid,expired.id)).rejects.toThrow();
   });
   it('prepara rutinas de manera idempotente, conserva snapshots y no crea 89 limpiezas',async()=>{
     const routine=await saveHkRoutine(manager,{departmentId:area,title:'Vestíbulo',description:'Limpiar superficies',location:'Vestíbulo',effortMinutes:25,requiresInspection:false,active:true});

@@ -11,6 +11,7 @@ import { hasPermission } from '@/server/auth/current-user';
 import { assertAssignable, assertShiftAssignable, listOperationalUsers } from '@/server/services/users';
 import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
+import { listChatPeople } from '@/server/services/chat';
 import { ShiftType } from '@prisma/client';
 
 describe('matriz de roles y permisos', () => {
@@ -278,6 +279,18 @@ describe('el Administrador de sistema participa con autoría propia', () => {
       await prisma.user.update({ where: { id: user.id }, data: { roleId: user.roleId } });
       await prisma.role.delete({ where: { id: role.id } });
     }
+  });
+
+  it('el administrador participa en Chat y aparece en turno sin suplantar a otro usuario', async () => {
+    const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
+    const receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    const shift = await openShiftAs(admin, { type: ShiftType.DIA });
+    await expect(listChatPeople(admin)).resolves.toBeDefined();
+    const people = await listChatPeople(receptionist);
+    const person = people.find((candidate) => candidate.id === admin.id);
+    expect(person?.roleName).toBe(admin.roleName);
+    expect(person?.presence.inShift).toBe(true);
+    expect(shift.assignments.some((assignment) => assignment.userId === admin.id)).toBe(true);
   });
 
 });

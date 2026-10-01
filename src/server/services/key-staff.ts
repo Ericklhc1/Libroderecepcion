@@ -113,7 +113,7 @@ export async function lendStaffKeys(user: CurrentUser, input: StaffLoanInput) {
       } else {
         const key = await tx.supervisorKey.findFirst({ where: { id: item.keyId, ownerId: user.id, retired: false, status: 'DISPONIBLE' } });
         if (!key) throw new RuleError('La llave no está disponible en tu stock.');
-        if ((await tx.supervisorKey.updateMany({ where: { id: key.id, ownerId: user.id, status: 'DISPONIBLE', retired: false }, data: { status: 'ENTREGADA_PERSONAL', version: { increment: 1 } } })).count !== 1) throw new RuleError('Otra entrega acaba de ocupar la llave.');
+        if ((await tx.supervisorKey.updateMany({ where: { id: key.id, ownerId: user.id, status: 'DISPONIBLE', retired: false, version: key.version }, data: { status: 'ENTREGADA_PERSONAL', version: { increment: 1 } } })).count !== 1) throw new RuleError('Otra entrega acaba de ocupar la llave.');
         code = key.code;
         await tx.supervisorKeyMovement.create({ data: { keyId: key.id, actorId: user.id, action: 'ENTREGA', detail: { loanId: loan.id, destinationName } } });
       }

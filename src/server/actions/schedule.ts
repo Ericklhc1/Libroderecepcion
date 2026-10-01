@@ -23,7 +23,7 @@ async function execute(command: Command, formData: FormData): Promise<ActionStat
     if (command === 'publish') id = (await publishSchedulePlan(user, mutation())).id;
     if (command === 'extra') id = (await changeScheduleExtra(user, mutation(), values)).id;
     if (command === 'ack') await acknowledgeSchedule(user, scheduleId.parse(values.planId), z.coerce.number().int().positive().parse(values.version));
-    if (command === 'collaborator') id = (await saveScheduleCollaborator(user, { ...values, departmentIds: formData.getAll('departmentIds').map(String), active: flag('active') } as Parameters<typeof saveScheduleCollaborator>[1])).id;
+    if (command === 'collaborator') id = (await saveScheduleCollaborator(user, { ...values, departmentIds: formData.getAll('departmentIds').map(String), active: values.id ? flag('active') : undefined, functionName: values.functionName || undefined } as Parameters<typeof saveScheduleCollaborator>[1])).id;
     if (command === 'template') id = (await saveScheduleTemplate(user, { ...values, crossesMidnight: flag('crossesMidnight'), breakPaid: flag('breakPaid') } as Parameters<typeof saveScheduleTemplate>[1])).id;
     if (command === 'coverage') id = (await saveScheduleCoverage(user, { ...values, weekdays: formData.getAll('weekdays').map(Number), crossesMidnight: flag('crossesMidnight'), active: flag('active') } as Parameters<typeof saveScheduleCoverage>[1])).id;
     if (command === 'grant') await saveScheduleGrant(user, scheduleId.parse(values.userId), scheduleId.parse(values.departmentId), flag('enabled'));

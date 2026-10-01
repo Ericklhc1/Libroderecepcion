@@ -1,5 +1,7 @@
 'use client';
 
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -104,13 +106,12 @@ export function Dialog({
     };
     document.addEventListener('keydown', onKey);
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockBodyScroll = lockBodyScroll();
     requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
 
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       const previous = previousFocusRef.current;
       if (previous?.isConnected) requestAnimationFrame(() => previous.focus());
     };

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { canAccessHousekeeping, canManageHousekeeping, housekeepingActions, housekeepingNeedsNote, housekeepingTransition, isHousekeepingClosed, type HousekeepingAction, type HousekeepingStatus } from '@/domain/housekeeping';
+import { notify } from '@/server/notifications';
 import type { GlobalSearchResult } from './global-search';
 
 export function assertHousekeepingAccess(user: Pick<CurrentUser, 'roleKey' | 'permissions'>, manage = false) {
@@ -21,6 +22,7 @@ function housekeepingVisibility(user: CurrentUser): Prisma.HousekeepingRequestWh
 }
 
 const include = {
+  assignedTo: { select: { name: true } }, department: { select: { name: true } }, createdBy: { select: { name: true } },
   sourceEntry: { select: { id: true, humanId: true, title: true, description: true, updatedAt: true, deletedAt: true, status: true, room: { select: { number: true } } } },
   events: { include: { actor: { select: { name: true } } }, orderBy: { createdAt: 'desc' as const }, take: 20 },
 } satisfies Prisma.HousekeepingRequestInclude;
@@ -29,13 +31,13 @@ export function housekeepingSourceChanged(request: { acknowledgedAt: Date | null
   return !!request.acknowledgedAt && !!request.sourceEntry && request.sourceVersion?.getTime() !== request.sourceEntry.updatedAt.getTime();
 }
 
-export async function getHousekeepingBoard(user: CurrentUser, history = false, page = 1, focusId?: number) {
+export async function getHousekeepingBoard(user: CurrentUser, history = false, page = 1, focusId?: number, mine = false) {
   assertHousekeepingAccess(user);
   const terminal = ['RESUELTO', 'CANCELADO'];
   const currentPage = Number.isSafeInteger(page) ? Math.min(10000, Math.max(1, page)) : 1;
   const selectedStatus = history ? { in: terminal } : { notIn: terminal };
   const visibility = housekeepingVisibility(user);
-  const where = { ...visibility, status: selectedStatus, ...(Number.isSafeInteger(focusId) && focusId! > 0 ? { humanId: focusId } : {}) };
+  const where = { ...visibility, ...(mine ? { assignedToId: user.id } : {}), status: selectedStatus, ...(Number.isSafeInteger(focusId) && focusId! > 0 ? { humanId: focusId } : {}) };
   const [requests, total, active, pending, blocked, overdue] = await Promise.all([
     prisma.housekeepingRequest.findMany({
       where, include,
@@ -84,7 +86,7 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
   });
 }
 
-type CreateInput = { requestKey: string; title?: string; description?: string; sourceEntryId?: string; location?: string; priority: Priority; dueAt?: Date | null };
+type CreateInput = { requestKey: string; title?: string; description?: string; sourceEntryId?: string; location?: string; priority: Priority; dueAt?: Date | null; departmentId?: string; assignedToId?: string };
 
 export async function createHousekeepingRequest(user: CurrentUser, input: CreateInput) {
   assertHousekeepingAccess(user, true);
@@ -93,16 +95,20 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
   if (existing) { if (existing.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA') throw new ForbiddenError(); return existing; }
   try {
     return await prisma.$transaction(async (tx) => {
+      const departmentId = input.departmentId || (await tx.department.findUnique({ where: { key: 'HOUSEKEEPING' }, select: { id: true } }))?.id;
+      await validateDestination(tx, departmentId, input.assignedToId);
       const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] } } }) : null;
       if (input.sourceEntryId && !source) throw new NotFoundError('La novedad ya no está disponible para vincular.');
       const request = await tx.housekeepingRequest.create({ data: {
         requestKey: input.requestKey, sourceEntryId: source?.id, isDemo: false,
+        createdById: user.id, departmentId, assignedToId: input.assignedToId || null,
         // Linked notices read their content from the canonical entry. No copy.
         title: source ? null : input.title!.trim(), description: source ? null : input.description!.trim(),
         location: input.location?.trim() || null, priority: source?.priority ?? input.priority, dueAt: input.dueAt ?? source?.dueAt,
         events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Aviso operativo creado. Recepción y resultado se registran por separado.' } },
       } });
       await tx.auditLog.create({ data: { entity: 'HousekeepingRequest', entityId: request.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Housekeeping: aviso #${request.humanId}`, isDemo: false } });
+      await notifyHousekeeping(tx, request, user.id, 'Nuevo aviso');
       return request;
     });
   } catch (error) {
@@ -115,7 +121,7 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
   }
 }
 
-type ChangeInput = { id: string; version: number; action: HousekeepingAction; note?: string; dueAt?: Date | null };
+type ChangeInput = { id: string; version: number; action: HousekeepingAction; note?: string; dueAt?: Date | null; departmentId?: string; assignedToId?: string };
 
 export async function changeHousekeepingRequest(user: CurrentUser, input: ChangeInput) {
   assertHousekeepingAccess(user, true);
@@ -136,11 +142,16 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
     let next: HousekeepingStatus;
     try { next = housekeepingTransition(current.status as HousekeepingStatus, input.action, !!current.acknowledgedAt); }
     catch (error) { throw new RuleError((error as Error).message); }
-    const confirm = input.action === 'CONFIRMAR';
+    const transfer = input.action === 'DERIVAR';
+    if (transfer && !input.departmentId) throw new RuleError('Selecciona el área que recibirá el aviso.');
+    if (transfer) await validateDestination(tx, input.departmentId, input.assignedToId);
+    const confirm = input.action === 'CONFIRMAR' || input.action === 'TOMAR';
     const reopen = input.action === 'REABRIR';
     const update = await tx.housekeepingRequest.updateMany({
       where: { id: current.id, version: input.version }, data: {
         status: next, version: { increment: 1 },
+        ...(confirm || input.action === 'INICIAR' || input.action === 'RETOMAR' ? { assignedToId: user.id } : {}),
+        ...(transfer ? { departmentId: input.departmentId, assignedToId: input.assignedToId || null, acknowledgedAt: null, sourceVersion: null, blockReason: null } : {}),
         ...(confirm ? { acknowledgedAt: new Date(), sourceVersion: current.sourceEntry?.updatedAt ?? null, ...(input.dueAt ? { dueAt: input.dueAt } : {}) } : {}),
         ...(reopen ? { acknowledgedAt: null, sourceVersion: null, resolvedAt: null, resolution: null, blockReason: null } : {}),
         ...(['ACLARAR', 'BLOQUEAR'].includes(input.action) ? { blockReason: note } : {}),
@@ -150,11 +161,59 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
       },
     });
     if (update.count !== 1) throw new RuleError('Otra persona actualizó este aviso. Recarga la página.');
-    await tx.housekeepingEvent.create({ data: { requestId: current.id, actorId: user.id, action: input.action, fromStatus: current.status, toStatus: next, note } });
+    await tx.housekeepingEvent.create({ data: { requestId: current.id, actorId: user.id, action: input.action, fromStatus: current.status, toStatus: next, note: transfer ? `${note} · Área: ${(await tx.department.findUniqueOrThrow({ where: { id: input.departmentId! } })).name} · Responsable: ${input.assignedToId ? (await tx.user.findUniqueOrThrow({ where: { id: input.assignedToId } })).name : 'Por tomar'}` : note } });
     await tx.auditLog.create({ data: {
       entity: 'HousekeepingRequest', entityId: current.id, action: 'CAMBIO_ESTADO', userId: user.id, sessionId: user.sessionId,
       summary: `Housekeeping #${current.humanId}: ${input.action}`, before: { status: current.status, version: current.version }, after: { status: next, version: current.version + 1 }, reason: note, isDemo: current.isDemo,
     } });
+    const updated = await tx.housekeepingRequest.findUniqueOrThrow({ where: { id: current.id } });
+    await notifyHousekeeping(tx, updated, user.id, input.action === 'RESOLVER' ? 'Resultado registrado' : input.action === 'DERIVAR' ? 'Aviso derivado / relevo' : 'Aviso actualizado');
     return { id: current.id, humanId: current.humanId };
   });
+}
+
+const eligibleManager = {
+  active: true, deletedAt: null, hiddenFromSelectors: false,
+  role: { OR: [{ key: 'ADMINISTRADOR_SISTEMA' }, { permissions: { some: { permission: { key: 'housekeeping.manage' } } } }] },
+} satisfies Prisma.UserWhereInput;
+async function validateDestination(tx: Prisma.TransactionClient, departmentId?: string, assignedToId?: string) {
+  if (!departmentId || !await tx.department.findFirst({ where: { id: departmentId, active: true } })) throw new RuleError('El área seleccionada no está disponible.');
+  if (assignedToId && !await tx.user.findFirst({ where: { ...eligibleManager, id: assignedToId, OR: [{ departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId, active: true } } } }] } })) throw new RuleError('El responsable debe pertenecer al área y tener permiso para gestionar avisos.');
+}
+export async function getHousekeepingDestinations(user: CurrentUser) {
+  assertHousekeepingAccess(user, true);
+  const [departments, users] = await Promise.all([
+    prisma.department.findMany({ where: { active: true }, select: { id: true, name: true, key: true }, orderBy: { order: 'asc' } }),
+    prisma.user.findMany({ where: eligibleManager, select: { id: true, name: true, departmentId: true, scheduleCollaborator: { select: { active: true, memberships: { where: { active: true }, select: { departmentId: true } } } } }, orderBy: { name: 'asc' } }),
+  ]);
+  return { departments, users: users.map(u => ({ id: u.id, name: u.name, departmentIds: [...new Set([u.departmentId, ...(u.scheduleCollaborator?.active ? u.scheduleCollaborator.memberships.map(m => m.departmentId) : [])].filter((id): id is string => !!id))] })) };
+}
+async function notifyHousekeeping(tx: Prisma.TransactionClient, request: { id: string; humanId: number; departmentId: string | null; assignedToId: string | null; createdById: string | null; isDemo: boolean }, actorId: string, title: string, escalation = false) {
+  if (request.isDemo) return;
+  const users = await tx.user.findMany({ where: {
+    active: true, deletedAt: null, hiddenFromSelectors: false, id: { not: actorId },
+    role: { OR: [{ key: 'ADMINISTRADOR_SISTEMA' }, { permissions: { some: { permission: { key: { in: ['housekeeping.manage', 'housekeeping.view'] } } } } }] },
+    OR: [
+      ...(request.createdById ? [{ id: request.createdById }] : []),
+      ...(request.assignedToId ? [{ id: request.assignedToId }] : []),
+      ...(!request.assignedToId && request.departmentId ? [{ OR: [{ departmentId: request.departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId: request.departmentId, active: true } } } }], role: eligibleManager.role }] : []),
+      ...(escalation ? [{ role: { key: { in: ['ADMINISTRADOR_SISTEMA', 'SUPERVISOR_RECEPCION'] } } }] : []),
+    ],
+  }, select: { id: true } });
+  await notify(users.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${title}`, link: `/admin/housekeeping?aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
+}
+/** Cron durable: one escalation per revision; no fake receipt or automatic closure. */
+export async function escalateHousekeepingRequests(now = new Date()) {
+  const candidates = await prisma.housekeepingRequest.findMany({ where: { isDemo: false, status: { notIn: ['RESUELTO', 'CANCELADO'] }, dueAt: { lt: now }, OR: [{ escalatedVersion: null }, { NOT: { escalatedVersion: { equals: prisma.housekeepingRequest.fields.version } } }] }, orderBy: { dueAt: 'asc' }, take: 100 });
+  let escalated = 0;
+  for (const request of candidates) {
+    if (request.escalatedVersion === request.version) continue;
+    await prisma.$transaction(async tx => {
+      const claimed = await tx.housekeepingRequest.updateMany({ where: { id: request.id, version: request.version, OR: [{ escalatedVersion: null }, { escalatedVersion: { not: request.version } }], status: { notIn: ['RESUELTO', 'CANCELADO'] } }, data: { escalatedVersion: request.version } });
+      if (!claimed.count) return;
+      await notifyHousekeeping(tx, request, '', 'Plazo vencido: requiere seguimiento', true);
+      escalated++;
+    });
+  }
+  return { escalated };
 }

@@ -1,0 +1,10 @@
+ALTER TABLE "KeyInventoryCount" ALTER COLUMN "floor" DROP NOT NULL;
+ALTER TABLE "KeyInventoryCount" ADD COLUMN "requestKey" TEXT;
+CREATE UNIQUE INDEX "KeyInventoryCount_requestKey_key" ON "KeyInventoryCount"("requestKey");
+ALTER TABLE "KeyInventoryItem" ADD COLUMN "accountedElsewhere" INTEGER NOT NULL DEFAULT 0, ADD COLUMN "roomNumberSnapshot" TEXT, ADD COLUMN "custodySnapshot" JSONB;
+ALTER TABLE "HousekeepingRequest" ADD COLUMN "departmentId" TEXT, ADD COLUMN "assignedToId" TEXT, ADD COLUMN "createdById" TEXT, ADD COLUMN "escalatedVersion" INTEGER;
+ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_assignedToId_fkey" FOREIGN KEY ("assignedToId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "HousekeepingRequest" ADD CONSTRAINT "HousekeepingRequest_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+UPDATE "HousekeepingRequest" SET "departmentId" = (SELECT "id" FROM "Department" WHERE "key" = 'HOUSEKEEPING');
+UPDATE "HousekeepingRequest" h SET "createdById" = (SELECT e."actorId" FROM "HousekeepingEvent" e WHERE e."requestId" = h."id" AND e."action" = 'CREAR' ORDER BY e."createdAt" ASC LIMIT 1);

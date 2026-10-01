@@ -21,11 +21,11 @@ describe('malla: fechas, glosa y horas', () => {
     expect((autumn.endAt.getTime() - autumn.startAt.getTime()) / 3600000).toBe(25);
     expect(holidayDates(slot('a', '2026-09-05', '21:00', '23:30'), [{ date: '2026-09-06', name: 'Prueba' }])).toEqual([]);
   });
-  it('exige colación dentro de la jornada y distingue cómputo de cobertura', () => {
+  it('conserva la jornada completa sin descuentos de colaciones históricas', () => {
     const window = templateWindow('2026-10-01', { ...clock('08:00', '19:00'), breakStartTime: '13:00', breakMinutes: 60 });
     const s = { collaboratorId: 'a', functionName: 'Recepcionista', kind: 'TURNO', ...window, breakPaid: false };
-    expect(plannedMinutes(s)).toBe(600); expect(plannedMinutes({ ...s, breakPaid: true })).toBe(660);
-    expect(() => templateWindow('2026-10-01', { ...clock('08:00', '19:00'), breakStartTime: '18:30', breakMinutes: 60 })).toThrow('dentro');
+    expect(plannedMinutes(s)).toBe(660); expect(plannedMinutes({ ...s, breakPaid: true })).toBe(660);
+    expect(window.breakStartAt).toBeNull(); expect(window.breakEndAt).toBeNull();
   });
   it('reconoce los dos feriados atravesados por una noche', () => {
     const s = slot('a', '2026-10-31', '21:00', '08:00', true);
@@ -57,19 +57,19 @@ describe('cobertura por franja y función', () => {
     const people = [slot('a', '2026-10-03', '08:00', '19:00'), slot('b', '2026-10-03', '11:00', '22:00'), slot('c', '2026-10-03', '21:00', '08:00', true)];
     const gaps = coverageGaps(['2026-10-03'], [rule], people); expect(gaps).toHaveLength(1); expect(gaps[0]?.scheduled).toBe(1); expect(gaps[0]?.required).toBe(2);
   });
-  it('cuenta personas únicas, funciones exactas y colaciones aunque sean pagadas', () => {
+  it('cuenta personas únicas y funciones exactas sin colaciones', () => {
     const base = slot('a', '2026-10-03', '19:00', '22:00');
     const other = { ...slot('b', '2026-10-03', '19:00', '22:00'), ...templateWindow('2026-10-03', { ...clock('19:00', '22:00'), breakStartTime: '20:00', breakMinutes: 30, breakPaid: true }), breakPaid: true };
     const irrelevant = { ...slot('c', '2026-10-03', '19:00', '22:00'), functionName: 'Seguridad' };
-    const gaps = coverageGaps(['2026-10-03'], [rule], [base, base, other, irrelevant]); expect(gaps).toHaveLength(1); expect(gaps[0]?.scheduled).toBe(1); expect(gaps[0]?.endAt).toBe('2026-10-03T23:30:00.000Z');
+    const gaps = coverageGaps(['2026-10-03'], [rule], [base, base, other, irrelevant]); expect(gaps).toEqual([]);
   });
-  it('no cuenta extras pendientes y descuenta colación en la franja actual', () => {
+  it('no cuenta extras pendientes y conserva cobertura en colaciones históricas', () => {
     const base = slot('a', '2026-10-03', '19:00', '22:00');
     const extension = { ...base, baseEndAt: base.endAt, endAt: new Date(base.endAt!.getTime() + 3600000), extraKind: 'EXTENSION', extraStatus: 'PENDIENTE' };
     expect(scheduledAt(coverageSlots([extension])[0]!, new Date('2026-10-04T01:30:00Z'))).toBe(false);
     expect(coverageSlots([{ ...base, extraKind: 'TURNO_EXTRA', extraStatus: 'PENDIENTE' }])).toEqual([]);
     expect(coverageSlots([{ ...base, extraKind: 'TURNO_EXTRA', extraStatus: 'APROBADO' }])).toHaveLength(1);
-    expect(scheduledAt({ ...base, breakStartAt: base.startAt, breakEndAt: new Date(base.startAt!.getTime() + 1800000) }, base.startAt!)).toBe(false);
+    expect(scheduledAt({ ...base, breakStartAt: base.startAt, breakEndAt: new Date(base.startAt!.getTime() + 1800000) }, base.startAt!)).toBe(true);
   });
   it('evalúa una franja que comienza en la medianoche omitida por cambio de hora', () => {
     const night = slot('a', '2026-09-05', '21:00', '08:00', true);

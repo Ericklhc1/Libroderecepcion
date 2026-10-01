@@ -70,12 +70,12 @@ function metricCorrelationId(value: FormDataEntryValue | null, floor: number): s
 }
 
 export async function startKeyInventoryMetricAction(input: {
-  floor: number;
+  floor: number | 'todos';
   correlationId: string;
   startedAtMs: number;
 }): Promise<void> {
   const user = await requireKeyInventoryAccess();
-  if (!isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
+  if (input.floor !== 'todos' && !isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
   if (input.correlationId.length < 10 || input.correlationId.length > 128) return;
 
   const startedAt = operationalStartedAtFromEpoch(input.startedAtMs);
@@ -98,8 +98,8 @@ export async function savePhysicalKeyCountAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requireKeyInventoryAccess();
-    const floor = Number(formData.get('floor'));
-    if (!isInventoryFloor(floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
+    const floor = formData.get('floor') === 'todos' ? 'todos' : Number(formData.get('floor'));
+    if (floor !== 'todos' && !isInventoryFloor(floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
 
     const roomIds = formData
       .getAll('roomId')
@@ -107,7 +107,7 @@ export async function savePhysicalKeyCountAction(
 
     if (!roomIds.length) throw new RuleError('No hay habitaciones para contar en este piso.');
 
-    const correlationId = metricCorrelationId(formData.get('metricCorrelationId'), floor);
+    const correlationId = metricCorrelationId(formData.get('metricCorrelationId'), typeof floor === 'number' ? floor : 0);
     const startedAt = operationalStartedAtFromEpoch(formData.get('metricStartedAt'));
     const hasClientStart =
       typeof formData.get('metricCorrelationId') === 'string' &&
@@ -130,9 +130,11 @@ export async function savePhysicalKeyCountAction(
 
     const result = await savePhysicalKeyInventoryCount(user, {
       floor,
+      requestKey: requiredString(formData, 'requestKey', 'Referencia de inventario'),
       notes: optionalString(formData, 'notes'),
       items: roomIds.map((roomId) => ({
         roomId,
+        accountedElsewhere: nonNegativeInteger(formData.get(`elsewhere:${roomId}`), 'Cantidad en custodia conocida'),
         found: nonNegativeInteger(formData.get(`found:${roomId}`), 'Cantidad encontrada'),
         outOfService: nonNegativeInteger(
           formData.get(`outOfService:${roomId}`),
@@ -175,8 +177,9 @@ export async function savePhysicalKeyCountAction(
     refreshKeys();
     return {
       ok: true as const,
+      id: result.id,
       message:
-        `Inventario del piso ${floor} guardado: ${result.totals.found}/${result.totals.expected} encontradas; ` +
+        `Inventario ${floor === 'todos' ? 'de los tres pisos' : `del piso ${floor}`} #${result.humanId} guardado: ${result.totals.found}/${result.totals.expected} encontradas; ` +
         `${result.totals.missing} faltante(s), ${result.totals.surplus} sobrante(s), ` +
         `${result.totals.outOfService} fuera de servicio.`,
     };

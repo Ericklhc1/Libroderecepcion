@@ -268,7 +268,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
 
 export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
   equipo: [
-    { id: 'mod-equipo-calendario', module: 'equipo', title: 'Planifica por área', description: 'Registra colaboradores con códigos estables y plantillas del área. Crea una malla y programa por casillas o revisa una carga. Los bloques de ocho días y la semana calendario tienen vistas independientes.', route: '/equipo', target: ROUTE_TARGET },
+    { id: 'mod-equipo-calendario', module: 'equipo', title: 'Planifica por área', description: 'Añade usuarios existentes al área y define su referencia semanal en horas. La jornada se computa completa. Crea una malla y programa por casillas o revisa una carga. Los bloques de ocho días y la semana calendario tienen vistas independientes.', route: '/equipo', target: ROUTE_TARGET },
     { id: 'mod-equipo-cambios', module: 'equipo', title: 'Revisa antes de cambiar', description: 'Mover, reasignar, intercambiar y agregar cobertura tienen efectos distintos. El servidor comprueba pertenencia, solapamientos y descanso configurado. Una asignación anterior permanece en el historial.', route: '/equipo', target: ROUTE_TARGET },
     { id: 'mod-equipo-publicar', module: 'equipo', title: 'Publicar y recibir el horario', description: 'Los borradores están reservados a quienes administran o publican el área. Publicar avisa a las cuentas vinculadas y deja pendiente confirmar recepción. Los extras requieren aprobación y la malla no acredita asistencia ni abre Recepción o Caja.', route: '/equipo', target: ROUTE_TARGET },
   ],

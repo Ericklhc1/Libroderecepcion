@@ -205,11 +205,13 @@ export async function getPhysicalKeyInventory(input: {
 }
 
 export type InventoryCountInput = {
-  floor: InventoryFloor;
+  floor: InventoryFloor | 'todos';
+  requestKey?: string;
   notes?: string | null;
   items: Array<{
     roomId: string;
     found: number;
+    accountedElsewhere?: number;
     outOfService: number;
     notes?: string | null;
   }>;
@@ -219,19 +221,20 @@ export async function savePhysicalKeyInventoryCount(
   user: CurrentUser,
   input: InventoryCountInput,
 ) {
-  if (!isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
+  if (input.requestKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestKey)) throw new RuleError('Identificador de inventario inválido.');
+  if (input.floor !== 'todos' && !isInventoryFloor(input.floor)) throw new RuleError('El piso debe ser 4, 5 o 6.');
 
   const rooms = await prisma.room.findMany({
     where: {
       active: true,
-      floor: input.floor,
-      number: { in: KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR[input.floor] },
+      floor: input.floor === 'todos' ? { in: [4, 5, 6] } : input.floor,
+      number: { in: input.floor === 'todos' ? Object.values(KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR).flat() : KEY_INVENTORY_ROOM_NUMBERS_BY_FLOOR[input.floor] },
     },
     orderBy: { number: 'asc' },
-    select: { id: true, number: true },
+    select: { id: true, number: true, keys: { select: { code: true, status: true, notes: true } } },
   });
 
-  const requiredRooms = KEY_INVENTORY_MINIMUM_BY_FLOOR[input.floor];
+  const requiredRooms = input.floor === 'todos' ? 89 : KEY_INVENTORY_MINIMUM_BY_FLOOR[input.floor];
   if (rooms.length !== requiredRooms) {
     throw new RuleError(
       `El piso ${input.floor} debe tener ${requiredRooms} habitaciones activas para tomar inventario; actualmente hay ${rooms.length}.`,
@@ -241,7 +244,7 @@ export async function savePhysicalKeyInventoryCount(
   const roomIds = new Set(rooms.map((room) => room.id));
   const roomNumberById = new Map(rooms.map((room) => [room.id, room.number]));
   const received = new Set(input.items.map((item) => item.roomId));
-  if (received.size !== roomIds.size || [...roomIds].some((id) => !received.has(id))) {
+  if (input.items.length !== roomIds.size || received.size !== roomIds.size || [...roomIds].some((id) => !received.has(id))) {
     throw new RuleError('El inventario debe incluir todas las habitaciones activas del piso.');
   }
   for (const item of input.items) {
@@ -250,16 +253,30 @@ export async function savePhysicalKeyInventoryCount(
     if (!Number.isInteger(item.outOfService) || item.outOfService < 0) {
       throw new RuleError('La cantidad fuera de servicio debe ser un entero igual o mayor que cero.');
     }
-    if (item.found < MINIMUM_KEYS_PER_ROOM && !item.notes?.trim()) {
+    if (!Number.isInteger(item.accountedElsewhere ?? 0) || (item.accountedElsewhere ?? 0) < 0) throw new RuleError('La cantidad en custodia debe ser un entero igual o mayor que cero.');
+    if ((item.accountedElsewhere ?? 0) > 0 && !item.notes?.trim()) throw new RuleError('Indica la custodia conocida de la llave entregada.');
+    if (item.found + (item.accountedElsewhere ?? 0) < MINIMUM_KEYS_PER_ROOM && !item.notes?.trim()) {
       throw new RuleError(
         `La habitación ${roomNumberById.get(item.roomId) ?? item.roomId} tiene una llave faltante: agrega una observación o justificación.`,
       );
     }
   }
 
-  const created = await prisma.keyInventoryCount.create({
+  const created = await prisma.$transaction(async tx => {
+    if (input.requestKey) {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestKey}))::text`;
+      const previous = await tx.keyInventoryCount.findUnique({ where: { requestKey: input.requestKey }, include: { countedBy: { select: { name: true } }, items: { include: { room: { select: { number: true } } }, orderBy: { room: { number: 'asc' } } } } });
+      if (previous) {
+        if (previous.countedById !== user.id) throw new RuleError('Este inventario pertenece a otro usuario.');
+        const same = previous.floor === (input.floor === 'todos' ? null : input.floor) && previous.notes === (input.notes?.trim() || null) && previous.items.every(p => { const i = input.items.find(i => i.roomId === p.roomId); return i && p.found === i.found && p.outOfService === i.outOfService && p.accountedElsewhere === (i.accountedElsewhere ?? 0) && p.notes === (i.notes?.trim() || null); });
+        if (!same) throw new RuleError('Este inventario ya fue guardado con otro contenido. Abre el documento o inicia una nueva toma.');
+        return previous;
+      }
+    }
+    const saved = await tx.keyInventoryCount.create({
     data: {
-      floor: input.floor,
+      floor: input.floor === 'todos' ? null : input.floor,
+      requestKey: input.requestKey,
       countedById: user.id,
       notes: input.notes?.trim() || null,
       items: {
@@ -267,6 +284,9 @@ export async function savePhysicalKeyInventoryCount(
           roomId: item.roomId,
           expected: MINIMUM_KEYS_PER_ROOM,
           found: item.found,
+          accountedElsewhere: item.accountedElsewhere ?? 0,
+          roomNumberSnapshot: roomNumberById.get(item.roomId),
+          custodySnapshot: rooms.find(r => r.id === item.roomId)?.keys ?? [],
           outOfService: item.outOfService,
           notes: item.notes?.trim() || null,
         })),
@@ -277,34 +297,28 @@ export async function savePhysicalKeyInventoryCount(
       items: { include: { room: { select: { number: true } } }, orderBy: { room: { number: 'asc' } } },
     },
   });
+    await tx.auditLog.create({ data: { entity: 'KeyInventoryCount', entityId: saved.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Inventario de llaves #${saved.humanId} · ${input.floor === 'todos' ? 'tres pisos' : `piso ${input.floor}`}` } });
+    return saved;
+  });
 
   const totals = created.items.reduce(
     (acc, item) => {
       acc.expected += item.expected;
       acc.found += item.found;
       acc.outOfService += item.outOfService;
-      acc.missing += Math.max(item.expected - item.found, 0);
-      acc.surplus += Math.max(item.found - item.expected, 0);
+      acc.missing += Math.max(item.expected - item.found - item.accountedElsewhere, 0);
+      acc.surplus += Math.max(item.found + item.accountedElsewhere - item.expected, 0);
       return acc;
     },
     { expected: 0, found: 0, missing: 0, surplus: 0, outOfService: 0 },
   );
 
-  await recordAudit({
-    entity: 'KeyInventoryCount',
-    entityId: created.id,
-    action: AuditAction.CREAR,
-    user,
-    summary: `Inventario físico de llaves del piso ${input.floor}: ${totals.found}/${totals.expected} encontradas`,
-    after: totals,
-  });
-
   return { ...created, totals };
 }
 
-export async function listRecentPhysicalKeyCounts(floor: InventoryFloor, take = 8) {
+export async function listRecentPhysicalKeyCounts(floor: InventoryFloor | 'todos', take = 8) {
   const counts = await prisma.keyInventoryCount.findMany({
-    where: { floor },
+    where: floor === 'todos' ? {} : { OR: [{ floor }, { floor: null }] },
     orderBy: { countedAt: 'desc' },
     take,
     include: {
@@ -319,8 +333,8 @@ export async function listRecentPhysicalKeyCounts(floor: InventoryFloor, take = 
         acc.expected += item.expected;
         acc.found += item.found;
         acc.outOfService += item.outOfService;
-        acc.missing += Math.max(item.expected - item.found, 0);
-        acc.surplus += Math.max(item.found - item.expected, 0);
+        acc.missing += Math.max(item.expected - item.found - item.accountedElsewhere, 0);
+        acc.surplus += Math.max(item.found + item.accountedElsewhere - item.expected, 0);
         return acc;
       },
       { expected: 0, found: 0, missing: 0, surplus: 0, outOfService: 0 },

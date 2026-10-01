@@ -17,11 +17,11 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     await resetOperationalData();
     admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
     reader = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
-    own = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    own = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Colaborador Uno' });
     area = (await prisma.department.findUniqueOrThrow({ where: { key: 'RECEPCION' } })).id;
     other = (await prisma.department.findUniqueOrThrow({ where: { key: 'HOUSEKEEPING' } })).id;
     const person = await saveScheduleCollaborator(admin, { employeeCode: 'TEST_COL001', name: 'Colaborador Uno', functionName: 'Recepcionista', userId: own.id, departmentIds: [area, other], active: true }); a = person.id;
-    b = (await saveScheduleCollaborator(admin, { employeeCode: 'TEST_COL002', name: 'Colaborador Dos', functionName: 'Recepcionista', departmentIds: [area], active: true })).id;
+    b = (await saveScheduleCollaborator(admin, { employeeCode: 'TEST_COL002', name: 'Colaborador Dos', userId: (await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Colaborador Dos' })).id, functionName: 'Recepcionista', departmentIds: [area], active: true })).id;
     day = (await saveScheduleTemplate(admin, { departmentId: area, code: 'TEST_DIA', label: 'Día', startTime: '08:00', endTime: '19:00', crossesMidnight: false })).id;
     night = (await saveScheduleTemplate(admin, { departmentId: area, code: 'TEST_NOCHE', label: 'Noche', startTime: '21:00', endTime: '08:00', crossesMidnight: true })).id;
     planId = (await createSchedulePlan(admin, { departmentId: area, startDate: '2090-10-01', endDate: '2090-10-08' })).id;
@@ -31,10 +31,21 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
   const mutation = async (id = planId, reason = '') => ({ planId: id, version: (await prisma.schedulePlan.findUniqueOrThrow({ where: { id } })).version, requestKey: randomUUID(), reason });
   const add = async (person = a, date = '2090-10-03', templateId = day, extraKind = 'NINGUNO', extraMinutes = 0) => addScheduleSlot(admin, await mutation(planId, 'Planificación revisada'), { collaboratorId: person, date, kind: 'TURNO', templateId, extraKind, extraMinutes });
   const slot = async (person = a, date = '2090-10-03') => prisma.scheduleSlot.findFirstOrThrow({ where: { planId, collaboratorId: person, date: new Date(date), cancelledAt: null } });
-  it('registra colaboradores sin cuenta, mantiene área explícita y no crea un turno operativo', async () => {
-    expect((await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: b } })).userId).toBeNull();
+  it('reutiliza usuarios existentes, mantiene área explícita y no crea un turno operativo', async () => {
+    expect((await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: b } })).userId).not.toBeNull();
     await add(); expect(await prisma.shift.count()).toBe(0); expect(await prisma.shiftAssignment.count()).toBe(0); expect(await prisma.cashMovement.count()).toBe(0);
     expect((await getScheduleBoard(admin, area, planId)).collaborators).toHaveLength(2);
+  });
+  it('añadir el mismo usuario conserva identidad, áreas y referencia; edita en horas', async () => {
+    const original = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    const updated = await saveScheduleCollaborator(admin, { id: a, version: original.version, userId: own.id, departmentIds: [area], weeklyHours: 44 });
+    const added = await saveScheduleCollaborator(admin, { userId: own.id, departmentIds: [other], weeklyHours: 8, functionName: 'Otra función' });
+    expect(added.id).toBe(a); expect(added.weeklyMinutes).toBe(2640); expect(added.functionName).toBe(updated.functionName);
+    expect(await prisma.scheduleMembership.count({ where: { collaboratorId: a, active: true } })).toBe(2);
+    expect(await prisma.scheduleCollaborator.count({ where: { userId: own.id } })).toBe(1);
+    await expect(saveScheduleCollaborator(admin, { userId: '', departmentIds: [area] })).rejects.toThrow();
+    await prisma.user.update({ where: { id: own.id }, data: { active: false } });
+    await expect(add()).rejects.toThrow('activo');
   });
   it('deja el módulo deshabilitado para otros roles y separa lectura, edición y alcance', async () => {
     await expect(getScheduleBoard(reader, area)).rejects.toThrow('no está habilitado');
@@ -85,10 +96,10 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     await expect(addScheduleSlot(admin, m, { ...data, collaboratorId: b })).rejects.toThrow('otros datos');
     const concurrent = await mutation(); const results = await Promise.allSettled([addScheduleSlot(admin, concurrent, { ...data, date: '2090-10-04' }), addScheduleSlot(admin, { ...concurrent, requestKey: randomUUID() }, { ...data, collaboratorId: b, date: '2090-10-04' })]); expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   });
-  it('exige descanso configurado y diferencia Libre de ausencia que cruza una noche', async () => {
-    const person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } }); await saveScheduleCollaborator(admin, { ...person, userId: person.userId!, weeklyMinutes: 0, minRestMinutes: 720, departmentIds: [area, other] });
-    await add(a, '2090-10-03', night); await expect(add(a, '2090-10-04', day)).rejects.toThrow('descanso mínimo');
-    await addScheduleSlot(admin, await mutation(), { collaboratorId: a, date: '2090-10-04', kind: 'LIBRE' });
+  it('ignora descanso histórico y conserva control de ausencias superpuestas', async () => {
+    const person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } }); await prisma.scheduleCollaborator.update({ where: { id: person.id }, data: { minRestMinutes: 720 } });
+    await add(a, '2090-10-03', night); await add(a, '2090-10-04', day);
+    await addScheduleSlot(admin, await mutation(planId, 'Revisar ausencia'), { collaboratorId: a, date: '2090-10-04', kind: 'LIBRE' }, (await slot(a, '2090-10-04')).id);
     const free = await slot(a, '2090-10-04'); await expect(addScheduleSlot(admin, await mutation(), { collaboratorId: a, date: '2090-10-04', kind: 'VACACIONES' }, free.id)).rejects.toThrow();
   });
   it('conserva snapshots al revisar una plantilla y exige horas exactas al cargar', async () => {

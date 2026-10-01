@@ -1,5 +1,14 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## 01/10/2026 · AROH 1.42.0 · Operación práctica autorizada
+
+- Usuario = colaborador: cuenta existente obligatoria para altas y nuevas asignaciones; nombre canónico, identidad única por usuario, pertenencias aditivas y referencia semanal en horas. Añadir otra área conserva referencia, función e historial. Edición global exige alcance sobre todas las áreas. Se mantienen perfiles históricos sin cuenta para vincularlos, sin borrarlos.
+- Horario completo: sin configuración ni descuentos de colación o descanso mínimo. Se preservan snapshots históricos y se mantienen solapes, ausencias, versiones y permisos. Estas reglas reemplazan las opciones descritas en 1.41.0.
+- Llaves: toma única de 89 habitaciones, cambios de piso dentro del mismo borrador y confirmación agrupada después de revisión física. Excepciones y custodia conocida explícitas. Documento imprimible propio por toma guardada; snapshots y referencia idempotente. Conteos antiguos por piso siguen consultables.
+- Housekeeping: área receptora, responsable opcional, tomar y comenzar, derivar/relevar con motivo y nueva recepción. Notifica creación, movimiento y resultado a usuarios habilitados; vencimientos mediante cron existente, una vez por revisión. No amplía permisos, no confirma asistencia ni altera el registro original vinculado.
+- Navegación: listas de página sin límite interno vertical, calendario horizontal y bloqueo de desplazamiento compartido entre diálogos, ayuda y soporte. Separa inventario, movimientos e historial; Housekeeping incorpora Mis avisos y vinculación independiente.
+- Migración aditiva: 20261001180000_operacion_practica. Guía operativa docs/OPERACION_PRACTICA.md. Validación local: 20 pruebas de dominio y 57 de navegación/diálogos/contexto, lint, tipos y build aprobados. Las regresiones completas de PostgreSQL desechable aprobaron en la segunda revisión de PR #231. La revisión final incorpora seguimiento de inicio y notificaciones por pertenencia compartida; integrar sólo con Compuerta final aprobada. Publicación por main y comprobación de Production/tag v1.42.0 mediante el workflow de release.
+
 ## 01/10/2026 · AROH 1.41.1 · Menú plegable y barra reducible
 
 - Corrige la agrupación meramente visual: sólo un grupo abierto, por defecto el de la ruta actual. Se puede cerrar también el grupo activo. Módulos con subopciones tienen flecha independiente del acceso principal; grupos de un módulo muestran directamente sus destinos para evitar clics redundantes.

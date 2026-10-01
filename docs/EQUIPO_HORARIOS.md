@@ -1,4 +1,4 @@
-# Equipo y horarios · AROH 1.41.0
+# Equipo y horarios · AROH 1.42.0
 
 ## Propósito y límite
 
@@ -6,8 +6,8 @@ Planificar personal por área, revisar brechas y conservar evidencia de la recep
 
 ## Puesta en marcha
 
-1. Administrador abre Equipo → Colaboradores y registra código único, nombre, función y áreas. Crear una cuenta Housekeeping no crea automáticamente un colaborador ni un turno; el vínculo es explícito y opcional.
-2. En Plantillas configura códigos y glosa. Recepción trae RD01 08–19, RD02 11–22 y RN01 21–08 del día siguiente. Son once horas de permanencia; configura colación para obtener horas de referencia y cobertura. Revisar una plantilla conserva las asignaciones anteriores.
+1. Administrador abre Equipo → Colaboradores y selecciona un usuario existente y lo añade al área. El nombre proviene de la cuenta; una misma persona conserva una identidad, áreas e historial. Referencia semanal expresada en horas. Los perfiles anteriores sin cuenta se conservan como históricos y deben vincularse antes de programar nuevas asignaciones.
+2. En Plantillas configura códigos y glosa. Recepción trae RD01 08–19, RD02 11–22 y RN01 21–08 del día siguiente. Son once horas de permanencia y referencia; se cuenta la jornada completa sin configuración ni descuento de colaciones o descansos. Revisar una plantilla conserva las asignaciones anteriores.
 3. En Cobertura mínima define días, franjas, función exacta opcional y cantidad de personas. Sin reglas no se afirma que la dotación sea suficiente. En Alcance y feriados revisa fechas y concesiones adicionales por cuenta.
 4. Crea malla futura de 1–63 días, sin periodos superpuestos en el área. Completa manualmente o carga archivo y revisa observaciones antes de incorporar. Casilla vacía significa sin programar; Libre es un registro explícito.
 5. Publica con motivo. Sólo los roles habilitados acceden; personas vinculadas reciben aviso y confirmación por revisión. Horarios personales siguen accesibles fuera del turno operativo. Confirmar recepción no cierra avisos Housekeeping ni acredita asistencia.
@@ -29,7 +29,7 @@ Administrador tiene acceso completo. Otros roles conservan todos estos permisos 
 
 ## Cambios en calendario
 
-Arrastrar abre una decisión explícita; también existe botón/formulario para móvil y teclado. Mover mantiene persona, Reasignar cambia persona y cancela origen, Intercambiar conserva ambos turnos en destinos invertidos, Agregar conserva origen y suma una asignación. El servidor comprueba solapes, pertenencia, descansos y versión; cancela/crea en una única transacción. Los registros anteriores quedan auditados. Asignaciones con extras requieren revisión específica y no transfieren aprobaciones mediante arrastre.
+Arrastrar abre una decisión explícita; también existe botón/formulario para móvil y teclado. Mover mantiene persona, Reasignar cambia persona y cancela origen, Intercambiar conserva ambos turnos en destinos invertidos, Agregar conserva origen y suma una asignación. El servidor comprueba solapes, pertenencia y versión; cancela/crea en una única transacción. Los registros anteriores quedan auditados. Asignaciones con extras requieren revisión específica y no transfieren aprobaciones mediante arrastre.
 
 Cambios publicados exigen motivo, generan nueva revisión publicada y notificación a afectados habilitados, incluida la persona cuyo turno fue retirado. La confirmación anterior no cubre cambios nuevos. El estado pendiente sigue visible hasta confirmar; no hay todavía un servicio periódico de recordatorio/escalamiento.
 
@@ -41,7 +41,7 @@ Revisar guarda nombre/hash de archivo, versión, filas normalizadas y observacio
 
 ## Horas, extras y feriados
 
-America/Santiago calcula instantes reales y cambios estacionales. Una noche puede durar diez/doce horas al cambiar el reloj; horarios locales inexistentes no se normalizan silenciosamente. Colación fuera del turno se rechaza. Referencia semanal configurable por persona, sin aplicar automáticamente una política laboral universal; semanas comienzan lunes y reparten noches por día civil, incluyendo otras áreas publicadas sólo como total agregado.
+America/Santiago calcula instantes reales y cambios estacionales. Una noche puede durar diez/doce horas al cambiar el reloj; horarios locales inexistentes no se normalizan silenciosamente. Colaciones y descanso mínimo de registros antiguos no descuentan horas ni cobertura, ni bloquean nuevas asignaciones; los solapes y ausencias incompatibles sí se validan. Referencia semanal configurable por persona, sin aplicar automáticamente una política laboral universal; semanas comienzan lunes y reparten noches por día civil, incluyendo otras áreas publicadas sólo como total agregado.
 
 Extensión suma minutos al término; turno adicional registra jornada completa. Estados: pendiente → aprobado/rechazado; aprobado → realización informada → validada. Aprobación no acredita realización. Rechazar un turno adicional futuro cancela su asignación y libera la casilla conservando evidencia; rechazar una extensión futura conserva horario base y libera los minutos adicionales. No se rechazan extras ya iniciados. Una extensión pendiente aporta sólo horario base; un turno adicional pendiente no cubre dotación. Solicitudes se muestran por separado para supervisión. Informar realización requiere término del extra aprobado, minutos y evidencia textual.
 

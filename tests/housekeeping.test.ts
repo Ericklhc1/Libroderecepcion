@@ -4,7 +4,7 @@ import { Priority } from '@prisma/client';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { createHousekeepingRequest, changeHousekeepingRequest, getHousekeepingBoard, getHousekeepingSources } from '@/server/services/housekeeping';
+import { createHousekeepingRequest, changeHousekeepingRequest, getHousekeepingBoard, getHousekeepingSources, housekeepingAuditVisibility } from '@/server/services/housekeeping';
 import { searchOperationalRecords } from '@/server/services/global-search';
 
 describe('Housekeeping privado: persistencia y protección', () => {
@@ -98,5 +98,7 @@ describe('Housekeeping privado: persistencia y protección', () => {
     expect(results.some((v) => v.entityId === r.id && v.href.includes(`aviso=${r.humanId}`))).toBe(true);
     expect((await searchOperationalRecords(reception, `#${r.humanId}`)).some((v) => v.entityId === r.id)).toBe(false);
     expect((await getHousekeepingBoard(admin, false, 1, r.humanId)).requests).toHaveLength(1);
+    expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(reception)], entityId: r.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(admin)], entityId: r.id } })).toBe(1);
   });
 });

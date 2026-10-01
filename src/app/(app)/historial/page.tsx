@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 import { ChevronLeft, ChevronRight, History, Printer } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { getBookItems } from '@/server/services/book';
@@ -46,9 +47,10 @@ export default async function HistoryPage({
     getShiftOptions(),
     user.permissions.includes('audit.view')
       ? prisma.auditLog.findMany({
-          where: filters.q
-            ? { summary: { contains: filters.q, mode: 'insensitive' } }
-            : undefined,
+          where: {
+            AND: [housekeepingAuditVisibility(user)],
+            ...(filters.q ? { summary: { contains: filters.q, mode: 'insensitive' as const } } : {}),
+          },
           include: { user: { select: { name: true } } },
           orderBy: { createdAt: 'desc' },
           take: 25,

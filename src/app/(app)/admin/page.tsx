@@ -17,6 +17,7 @@ import {
 import { requirePageUser } from '@/server/auth/guard';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 import { Card, CardHeader, StatTile } from '@/components/ui/card';
 import { RunMaintenanceForm } from './admin-forms';
 import {
@@ -138,7 +139,7 @@ export default async function AdminPage() {
     prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
     prisma.operationalEntry.count({ where: { NOT: { deletedAt: null } } }),
     prisma.task.count({ where: { NOT: { deletedAt: null } } }),
-    prisma.auditLog.count(),
+    prisma.auditLog.count({ where: housekeepingAuditVisibility(user) }),
   ]);
 
   return (

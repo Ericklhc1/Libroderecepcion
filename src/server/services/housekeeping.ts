@@ -12,6 +12,11 @@ export function assertHousekeepingAdmin(user: Pick<CurrentUser, 'roleKey'>) {
   if (!canAccessHousekeeping(user.roleKey)) throw new ForbiddenError('Housekeeping está disponible únicamente para el Administrador de sistema.');
 }
 
+/** Private pilot content must not leak through shared history or Fronti. */
+export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey'>): Prisma.AuditLogWhereInput {
+  return canAccessHousekeeping(user.roleKey) ? {} : { NOT: { entity: 'HousekeepingRequest' } };
+}
+
 const include = {
   sourceEntry: { select: { id: true, humanId: true, title: true, description: true, updatedAt: true, deletedAt: true, status: true, room: { select: { number: true } } } },
   events: { include: { actor: { select: { name: true } } }, orderBy: { createdAt: 'desc' as const }, take: 20 },

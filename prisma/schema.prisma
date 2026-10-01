@@ -431,6 +431,7 @@ model RolePermission {
 /// y cada persona puede desactivar los avisos externos sin afectar la campana
 /// interna del Libro.
 model User {
+  housekeepingEvents HousekeepingEvent[]
   id                 String      @id @default(cuid())
   /// Nombre de usuario corto, del estilo @EHerrera. Es la identidad de la
   /// cuenta: con esto se inicia sesión y esto decide qué permisos aplican.
@@ -908,6 +909,7 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  housekeepingRequest HousekeepingRequest?
   id               String      @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   seq              Int         @unique @default(autoincrement())
@@ -982,6 +984,48 @@ model OperationalEntry {
   @@index([departmentId])
   @@index([roomId])
   @@index([stayId])
+}
+
+// Private administrative pilot: no participation in reception shifts or PMS.
+model HousekeepingRequest {
+  id             String @id @default(cuid())
+  humanId        Int @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  requestKey     String @unique
+  sourceEntryId  String? @unique
+  sourceEntry    OperationalEntry? @relation(fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  title          String?
+  description    String?
+  location       String?
+  priority       Priority @default(MEDIA)
+  status         String @default("PENDIENTE")
+  dueAt          DateTime?
+  acknowledgedAt DateTime?
+  sourceVersion  DateTime?
+  blockReason    String?
+  resolution     String?
+  resolvedAt     DateTime?
+  version        Int @default(1)
+  isDemo         Boolean @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  events         HousekeepingEvent[]
+
+  @@index([status, dueAt])
+}
+
+model HousekeepingEvent {
+  id          String @id @default(cuid())
+  requestId   String
+  request     HousekeepingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action      String
+  fromStatus  String?
+  toStatus    String
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([requestId, createdAt])
 }
 
 model Task {

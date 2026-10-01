@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { hasAnyPermission, hasPermission } from '@/server/auth/current-user';
+import { canAccessHousekeeping } from '@/domain/housekeeping';
+import { searchHousekeepingRecords } from './housekeeping';
 
 export type GlobalSearchResult = {
   humanId: number;
@@ -158,7 +160,7 @@ export async function searchOperationalRecords(
   const canManageAnnouncements = hasPermission(user, 'announcement.manage');
   const canSeeSupervisionFollowUps = hasPermission(user, 'supervision.followup.manage');
 
-  return rows
+  const results = rows
     .filter((row) => {
       if (row.entityType === 'Announcement') {
         return canManageAnnouncements || row.scope === 'TODOS' || row.targetUserId === user.id;
@@ -198,4 +200,10 @@ export async function searchOperationalRecords(
       createdAt: row.createdAt,
       href: row.href,
     }));
+  if (!canAccessHousekeeping(user.roleKey)) return results;
+  const pilot = await searchHousekeepingRecords(user, rawQuery, limit);
+  return [...results, ...pilot].sort((a, b) => {
+    if (numeric !== null && (a.humanId === numeric || b.humanId === numeric)) return Number(b.humanId === numeric) - Number(a.humanId === numeric);
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  }).slice(0, Math.min(100, Math.max(1, limit)));
 }

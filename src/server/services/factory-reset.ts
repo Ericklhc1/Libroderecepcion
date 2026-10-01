@@ -49,6 +49,7 @@ export type ResetSummary = {
 
 /** Lo que hay hoy, para poder mostrarlo ANTES de tocar nada. */
 export async function getResetPreview() {
+  const housekeeping = await prisma.housekeepingRequest.count();
   const [
     entries,
     tasks,
@@ -128,6 +129,7 @@ export async function getResetPreview() {
   ]);
 
   return {
+    housekeeping,
     entries,
     tasks,
     followUps,
@@ -222,6 +224,7 @@ export async function runFactoryReset(
         data: { stayId: null, status: 'DISPONIBLE', assignedAt: null, assignedById: null },
       });
 
+      count('Piloto Housekeeping', await tx.housekeepingRequest.deleteMany());
       count('Suscripciones push', await tx.pushSubscription.deleteMany());
       count('Notificaciones', await tx.notification.deleteMany());
       count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());

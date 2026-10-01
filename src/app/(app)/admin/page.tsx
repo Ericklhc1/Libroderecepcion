@@ -151,6 +151,13 @@ export default async function AdminPage() {
         </p>
       </header>
 
+      {user.isSystemAdmin && (
+        <Link href="/admin/housekeeping" className="card block border-amber-200 px-4 py-4 hover:bg-amber-50">
+          <span className="block font-medium text-petrol-900">Housekeeping · piloto privado</span>
+          <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Solo Administrador de sistema; pruebas sin envío al personal.</span>
+        </Link>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Usuarios" value={users} />
         <StatTile label="Sesiones activas" value={activeSessions} />

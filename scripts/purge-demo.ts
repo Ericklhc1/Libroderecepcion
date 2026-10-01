@@ -39,6 +39,7 @@ async function main() {
 
   // Orden inverso a las dependencias para no violar claves foráneas.
   const steps: Array<[string, () => Promise<{ count: number }>]> = [
+    ['piloto Housekeeping', () => prisma.housekeepingRequest.deleteMany({ where: { isDemo: true } })],
     ['notificaciones', () => prisma.notification.deleteMany({ where: { isDemo: true } })],
     ['auditoría demo', () => prisma.auditLog.deleteMany({ where: { isDemo: true } })],
     ['adjuntos', () => prisma.attachment.deleteMany({ where: { isDemo: true } })],

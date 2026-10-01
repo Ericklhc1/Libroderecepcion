@@ -1,5 +1,14 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
+## 01/10/2026 · AROH 1.39.0 · Housekeeping privado
+
+- /admin/housekeeping ofrece coordinación y continuidad de avisos, no funcionalidades de PMS.
+- Acceso exclusivo del rol Administrador de sistema, comprobado en servidor. Acciones administrativas de prueba sin asignaciones del administrador ni avisos al personal.
+- La novedad vinculada permanece como fuente canónica. Confirmar no resuelve; bloquear/resolver/cancelar exige evidencia textual. El cambio de origen requiere reconfirmación y la reapertura vuelve a pedir recepción.
+- HousekeepingRequest/HousekeepingEvent mantienen persistencia aislada, # global e historial auditado. Migración aditiva 20261001123000_housekeeping_pilot.
+- Informe preliminar, riesgos, límites y criterios: docs/HOUSEKEEPING_PRELIMINAR_2026-10-01.md.
+
+
 ## 30/09/2026 · AROH 1.38.0 · Fronti: acciones continuas y confirmación verificable
 
 - Causa raíz: el catálogo de herramientas se elegía únicamente con el último mensaje; una respuesta por campos perdía la intención previa de crear. La selección conserva ahora la solicitud literal reciente del usuario, sin convertir mensajes del modelo en autorizaciones; preguntas nuevas y cancelaciones cortan la continuidad.

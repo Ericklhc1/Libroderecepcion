@@ -18,8 +18,10 @@ export function notificationPresentation(item: NotificationText): { title: strin
     return { title: item.title, body: item.body ? compactNotificationText(item.body) : null };
   }
 
-  const title = item.title.replace(/^Fronti\s*·\s*/i, '').replace(/^Novedad requiere seguimiento:\s*/i, '');
+  const sourceTitle = item.title.replace(/^Fronti\s*·\s*/i, '').replace(/^Novedad requiere seguimiento:\s*/i, '');
   const original = item.body ?? '';
+  const title = /Prioridad:\s*CRITICA\b/i.test(original) && !/^Crítica ·/i.test(sourceTitle)
+    ? `Crítica · ${sourceTitle}` : sourceTitle;
   const legacy = /Qué pasó:|Lectura de Fronti:|Evidencia:/i.test(original);
   if (!legacy) return { title, body: original ? compactNotificationText(original) : null };
 
@@ -42,7 +44,7 @@ export function notificationPresentation(item: NotificationText): { title: strin
   if (/Inventario de llaves con diferencias/i.test(title)) {
     return { title, body: 'El conteo físico registró diferencias. Revisa las llaves y contrasta el conteo guardado.' };
   }
-  if (/^Tarea #\d+ vencida/i.test(title)) {
+  if (/^Tarea #\d+ vencida/i.test(sourceTitle)) {
     const assignee = fact.match(/responsable ([^·]+)/i)?.[1]?.trim();
     const due = fact.match(/fecha límite ([\dT:.Z+-]+)/i)?.[1];
     const date = due ? new Date(due) : null;

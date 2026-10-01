@@ -11,7 +11,7 @@ import {
 import type { NotificationFeedItem } from '@/domain/notifications';
 import { NotificationMessage } from '@/components/layout/notification-message';
 
-const legacyBody = 'Área: Inventario de llaves · Prioridad: ALTA · Qué pasó: El conteo físico cmupqiokk001ajq04ny5lwbsg registró diferencias · piso 6 · el inventario esperado y lo encontrado no coinciden. Qué está mal / qué revisar: la señal cumple una regla de atención de AROH. Qué hacer: abre el origen y confirma la corrección antes de cerrar el caso.';
+const legacyBody = 'Área: Inventario de llaves · Prioridad: ALTA · Qué pasó: El conteo físico c0000000000000000000000000 registró diferencias · piso 6 · el inventario esperado y lo encontrado no coinciden. Qué está mal / qué revisar: la señal cumple una regla de atención de AROH. Qué hacer: abre el origen y confirma la corrección antes de cerrar el caso.';
 function keyNotice(id: string, floor: number, createdAt = '2026-10-01T15:00:00.000Z'): NotificationFeedItem {
   return { id, type: 'FRONTI_HALLAZGO', title: `Fronti · Inventario de llaves con diferencias · piso ${floor}`,
     body: legacyBody, link: `/llaves?piso=${floor}`, entity: 'FrontiProactiveSignal', entityId: id, readAt: null, createdAt };
@@ -22,7 +22,7 @@ describe('resúmenes operativos de notificaciones', () => {
     const result = notificationPresentation(keyNotice('a', 6));
     expect(result.title).toBe('Inventario de llaves con diferencias · piso 6');
     expect(result.body).toBe('El conteo físico registró diferencias. Revisa las llaves y contrasta el conteo guardado.');
-    expect(result.body).not.toContain('cmupqiokk');
+    expect(result.body).not.toContain('c000000');
     expect(result.body).not.toContain('abre el origen');
   });
 
@@ -43,6 +43,13 @@ describe('resúmenes operativos de notificaciones', () => {
       body: 'Área: Alertas operativas · Evidencia: El registro sigue abierto. · Lectura de Fronti: verificar el equipo 606 y el objeto crítico.' });
     expect(result.body).not.toMatch(/equipo|crítico/);
     expect(result.title).toBe('PRENDA OLVIDADA EN 606');
+  });
+
+  it('mantiene visible la prioridad crítica al retirar metadatos del párrafo', () => {
+    const result = notificationPresentation({ type: 'FRONTI_HALLAZGO', title: 'Fronti · Garantía por resolver: 123',
+      body: 'Área: Caja · Prioridad: CRITICA · Evidencia: Fecha objetivo vencida. Lectura de Fronti: revisar.' });
+    expect(result.title).toBe('Crítica · Garantía por resolver: 123');
+    expect(result.body).not.toContain('Prioridad:');
   });
 
   it('expresa el vencimiento histórico en la zona del hotel', () => {
@@ -93,10 +100,10 @@ describe('resúmenes operativos de notificaciones', () => {
     const html = renderToStaticMarkup(createElement(NotificationMessage, { notification: keyNotice('a', 6) }));
     const preview = html.split('<details')[0]!;
     expect(preview).toContain('El conteo físico registró diferencias.');
-    expect(preview).not.toContain('cmupqiokk');
+    expect(preview).not.toContain('c000000');
     expect(html).toContain('<summary');
     expect(html).toContain('Ver detalle');
-    expect(html).toContain('cmupqiokk');
+    expect(html).toContain('c000000');
   });
 
   it('acota textos largos en el límite de una palabra', () => {

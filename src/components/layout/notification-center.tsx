@@ -70,7 +70,8 @@ function typeLabel(type: string): string {
 }
 
 function isUrgent(item: NotificationFeedItem): boolean {
-  return URGENT_NOTIFICATION_TYPES.has(item.type);
+  return URGENT_NOTIFICATION_TYPES.has(item.type) ||
+    (item.type === 'FRONTI_HALLAZGO' && (/^Crítica ·/i.test(item.title) || /Prioridad:\s*CRITICA\b/i.test(item.body ?? '')));
 }
 
 function NotificationListItem({ item, onOpen, onRead }: {

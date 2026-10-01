@@ -618,7 +618,7 @@ export async function runFrontiProactiveSweep(input: {
       claimedUserIds.map((userId) => ({
         userId,
         type: NotificationType.FRONTI_HALLAZGO,
-        title: candidate.title,
+        title: `${candidate.severity === 'CRITICA' ? 'Crítica · ' : ''}${candidate.title}`,
         body: explanation.text,
         link: candidate.link,
         entity: 'FrontiProactiveSignal',

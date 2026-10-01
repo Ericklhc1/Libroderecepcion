@@ -218,6 +218,10 @@ export async function runFactoryReset(
       });
 
       // --- Lo que cuelga de otras cosas, primero. ---
+      count('Custodias de personal', await tx.keyStaffLoanItem.deleteMany());
+      count('Entregas de personal', await tx.keyStaffLoan.deleteMany());
+      count('Movimientos privados', await tx.supervisorKeyMovement.deleteMany());
+      count('Stock privado', await tx.supervisorKey.deleteMany());
       count('Movimientos de llave', await tx.keyMovement.deleteMany());
       // Las llaves vuelven al inventario en lugar de borrarse: son catálogo.
       await tx.roomKey.updateMany({

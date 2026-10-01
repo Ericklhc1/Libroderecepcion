@@ -26,6 +26,7 @@ export type StayFacts = {
 };
 
 export type KeyStatusValue =
+  | 'ENTREGADA_PERSONAL'
   | 'DISPONIBLE'
   | 'ASIGNADA'
   | 'COPIA_ADICIONAL'
@@ -312,6 +313,7 @@ export function expectedKeys(status: StayStatus, stage: StayStage): { min: numbe
 }
 
 export const KEY_STATUS_LABELS: Record<KeyStatusValue, string> = {
+  ENTREGADA_PERSONAL: 'Entregada a personal',
   DISPONIBLE: 'Disponible',
   ASIGNADA: 'Asignada a habitación',
   COPIA_ADICIONAL: 'Copia adicional',
@@ -328,6 +330,7 @@ export const KEY_TYPE_LABELS: Record<KeyTypeValue, string> = {
 
 /** Estados en los que la llave está fuera del stock disponible. */
 export const KEY_OUT_OF_STOCK: KeyStatusValue[] = [
+  'ENTREGADA_PERSONAL',
   'ASIGNADA',
   'COPIA_ADICIONAL',
   'PENDIENTE_DEVOLUCION',
@@ -381,6 +384,7 @@ export const INCOMING_STATE_TONE: Record<IncomingState, Tone> = {
 };
 
 export const KEY_STATUS_TONE: Record<KeyStatusValue, Tone> = {
+  ENTREGADA_PERSONAL: 'curso',
   DISPONIBLE: 'resuelto',
   ASIGNADA: 'curso',
   COPIA_ADICIONAL: 'curso',

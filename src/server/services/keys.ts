@@ -33,6 +33,7 @@ type Tx = Prisma.TransactionClient;
 
 /** Estados en los que la llave está fuera del stock. */
 const OUT_OF_STOCK: KeyStatus[] = [
+  KeyStatus.ENTREGADA_PERSONAL,
   KeyStatus.ASIGNADA,
   KeyStatus.COPIA_ADICIONAL,
   KeyStatus.PENDIENTE_DEVOLUCION,
@@ -128,6 +129,7 @@ export async function reconcilePrincipalKeys(
   }
   if (!holderByRoom.size) return 0;
 
+  if (holderByRoom.size) await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "roomId" IN (${Prisma.join([...holderByRoom.keys()])}) AND "type" = 'PRINCIPAL' ORDER BY "id" FOR UPDATE`;
   const principals = await tx.roomKey.findMany({
     where: { roomId: { in: [...holderByRoom.keys()] }, type: KeyType.PRINCIPAL },
     select: { id: true, roomId: true, status: true, stayId: true },
@@ -157,7 +159,7 @@ export async function reconcilePrincipalKeys(
     if (heldByOther) continue;
 
     // Extraviada o fuera de servicio: el conflicto es real y se conserva.
-    if (key.status === KeyStatus.EXTRAVIADA || key.status === KeyStatus.FUERA_DE_SERVICIO) {
+    if (key.status === KeyStatus.ENTREGADA_PERSONAL || key.status === KeyStatus.EXTRAVIADA || key.status === KeyStatus.FUERA_DE_SERVICIO) {
       continue;
     }
 
@@ -225,14 +227,14 @@ export async function assignMainKey(
         where: { roomId: input.roomId, type: KeyType.PRINCIPAL, status: KeyStatus.DISPONIBLE },
       })) ??
       (await tx.roomKey.findFirst({
-        where: { roomId: null, type: KeyType.COPIA, status: KeyStatus.DISPONIBLE },
+        where: { roomId: null, areaId: null, type: KeyType.COPIA, status: KeyStatus.DISPONIBLE },
         orderBy: { code: 'asc' },
       })));
 
   if (!chosen) return null;
 
-  await tx.roomKey.update({
-    where: { id: chosen.id },
+  const assigned = await tx.roomKey.updateMany({
+    where: { id: chosen.id, status: KeyStatus.DISPONIBLE, areaId: null },
     data: {
       roomId: input.roomId,
       stayId: input.stayId,
@@ -241,6 +243,7 @@ export async function assignMainKey(
       assignedById: user.id,
     },
   });
+  if (assigned.count !== 1) throw new RuleError('La llave dejó de estar disponible. Recarga el inventario.');
   await logMovement(tx, user, {
     keyId: chosen.id,
     action: KeyAction.ASIGNADA,
@@ -412,7 +415,9 @@ export async function returnKey(
   input: { keyId: string; note?: string | null },
 ): Promise<{ code: string }> {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL || key?.areaId) throw new RuleError('Gestiona esta llave desde Áreas y Entregas a personal.');
     if (!key) throw new NotFoundError('Esa llave no existe en el inventario.');
     if (!HELD_BY_GUEST.includes(key.status)) {
       throw new RuleError('Esa llave no está entregada, así que no hay nada que recibir.');
@@ -467,10 +472,10 @@ export async function giveExtraCopy(
 
     const copy = input.keyId
       ? await tx.roomKey.findFirst({
-          where: { id: input.keyId, status: KeyStatus.DISPONIBLE, type: { not: KeyType.PRINCIPAL } },
+          where: { id: input.keyId, areaId: null, status: KeyStatus.DISPONIBLE, type: { not: KeyType.PRINCIPAL } },
         })
       : await tx.roomKey.findFirst({
-          where: { status: KeyStatus.DISPONIBLE, type: KeyType.COPIA, roomId: null },
+          where: { status: KeyStatus.DISPONIBLE, type: KeyType.COPIA, roomId: null, areaId: null },
           orderBy: { code: 'asc' },
         });
     if (!copy) {
@@ -479,8 +484,8 @@ export async function giveExtraCopy(
       );
     }
 
-    await tx.roomKey.update({
-      where: { id: copy.id },
+    const copied = await tx.roomKey.updateMany({
+      where: { id: copy.id, status: KeyStatus.DISPONIBLE, areaId: null },
       data: {
         roomId: room.id,
         stayId: occupant?.id ?? null,
@@ -490,6 +495,7 @@ export async function giveExtraCopy(
         notes: input.note ?? copy.notes,
       },
     });
+    if (copied.count !== 1) throw new RuleError('La copia dejó de estar disponible. Recarga el inventario.');
     await logMovement(tx, user, {
       keyId: copy.id,
       action: KeyAction.COPIA_ENTREGADA,
@@ -522,7 +528,9 @@ export async function setKeyIncidentStatus(
   const target = input.status === 'EXTRAVIADA' ? KeyStatus.EXTRAVIADA : KeyStatus.FUERA_DE_SERVICIO;
 
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL || key?.areaId) throw new RuleError('Gestiona esta llave desde Áreas y Entregas a personal.');
     if (!key) throw new NotFoundError('Esa llave no existe en el inventario.');
     if (key.status === target) throw new RuleError('La llave ya está en ese estado.');
 
@@ -563,7 +571,9 @@ export async function reinstateKey(
   input: { keyId: string; note?: string | null },
 ): Promise<{ code: string }> {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
+    if (key?.status === KeyStatus.ENTREGADA_PERSONAL || key?.areaId) throw new RuleError('Gestiona esta llave desde Áreas y Entregas a personal.');
     if (!key) throw new NotFoundError('Esa llave no existe en el inventario.');
     const reinstatable: KeyStatus[] = [KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO];
     if (!reinstatable.includes(key.status)) {
@@ -647,6 +657,7 @@ export type KeyRow = {
   type: KeyType;
   status: KeyStatus;
   roomNumber: string | null;
+  areaName?: string | null;
   guest: string | null;
   assignedAt: Date | null;
   assignedBy: string | null;
@@ -680,6 +691,7 @@ export async function getKeyInventory(): Promise<KeyInventory> {
       notes: true,
       assignedAt: true,
       room: { select: { number: true } },
+      area: {select:{name:true}},
       stay: { select: { guestNames: true } },
       assignedBy: { select: { name: true } },
     },
@@ -691,6 +703,7 @@ export async function getKeyInventory(): Promise<KeyInventory> {
     type: key.type,
     status: key.status,
     roomNumber: key.room?.number ?? null,
+    areaName: key.area?.name ?? null,
     guest: key.stay?.guestNames[0] ?? null,
     assignedAt: key.assignedAt,
     assignedBy: key.assignedBy?.name ?? null,
@@ -703,7 +716,7 @@ export async function getKeyInventory(): Promise<KeyInventory> {
     keys: rows,
     stock: {
       copiesAvailable: count(
-        (row) => row.status === KeyStatus.DISPONIBLE && row.type !== KeyType.PRINCIPAL && !row.roomNumber,
+        (row) => row.status === KeyStatus.DISPONIBLE && row.type !== KeyType.PRINCIPAL && !row.roomNumber && !row.areaName,
       ),
       principalsAvailable: count(
         (row) => row.status === KeyStatus.DISPONIBLE && row.type === KeyType.PRINCIPAL,
@@ -763,7 +776,7 @@ export async function listKeyMovements(limit = 60): Promise<MovementRow[]> {
 /** Llaves que pueden entregarse ahora mismo, para los selectores de la interfaz. */
 export async function listAvailableKeys(): Promise<Array<{ value: string; label: string }>> {
   const keys = await prisma.roomKey.findMany({
-    where: { status: KeyStatus.DISPONIBLE },
+    where: { status: KeyStatus.DISPONIBLE, areaId: null },
     orderBy: [{ type: 'asc' }, { code: 'asc' }],
     select: { id: true, code: true, type: true, room: { select: { number: true } } },
   });

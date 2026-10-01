@@ -132,6 +132,7 @@ export async function savePhysicalKeyCountAction(
       floor,
       requestKey: requiredString(formData, 'requestKey', 'Referencia de inventario'),
       notes: optionalString(formData, 'notes'),
+      areas: formData.getAll('areaId').map(String).map(areaId => ({ areaId, found: nonNegativeInteger(formData.get(`found:${areaId}`), 'Cantidad del área'), accountedElsewhere: nonNegativeInteger(formData.get(`elsewhere:${areaId}`), 'Custodia del área'), outOfService: nonNegativeInteger(formData.get(`outOfService:${areaId}`), 'Fuera de servicio del área'), notes: optionalString(formData, `notes:${areaId}`) })),
       items: roomIds.map((roomId) => ({
         roomId,
         accountedElsewhere: nonNegativeInteger(formData.get(`elsewhere:${roomId}`), 'Cantidad en custodia conocida'),

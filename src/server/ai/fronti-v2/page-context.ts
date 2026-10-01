@@ -272,6 +272,9 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  const staffLoan = pathname.match(/^\/llaves\/personal\/([^/]+)$/);
+  if (staffLoan) return detail('llaves', 'Llaves', 'entrega-personal', 'Entrega de llaves a personal', ['consultar_contexto_pantalla'], 'KeyStaffLoan', staffLoan[1] ?? null);
+  if (pathname === '/llaves/personal') return detail('llaves', 'Llaves', 'personal', 'Áreas y entregas a personal', ['consultar_contexto_pantalla','consultar_llaves']);
   const keyCount = pathname.match(/^\/llaves\/inventarios\/([^/]+)$/);
   if (keyCount) return detail('llaves', 'Llaves', 'inventario-guardado', 'Inventario guardado e impresión', ['consultar_contexto_pantalla', 'consultar_llaves'], 'KeyInventoryCount', keyCount[1] ?? null);
   if (pathname === '/llaves') {

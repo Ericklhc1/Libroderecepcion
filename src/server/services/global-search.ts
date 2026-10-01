@@ -74,8 +74,8 @@ function allowedTypes(user: CurrentUser): string[] {
     );
   }
 
-  if (hasAnyPermission(user, ['key.inventory', 'key.stock'])) {
-    types.push('KeyInventoryCount');
+  if (hasAnyPermission(user, ['key.assign', 'key.inventory', 'key.stock'])) {
+    types.push('KeyInventoryCount', 'KeyStaffLoan');
   }
 
   return types;
@@ -200,9 +200,10 @@ export async function searchOperationalRecords(
       createdAt: row.createdAt,
       href: row.href,
     }));
-  if (!canAccessHousekeeping(user)) return results;
-  const housekeeping = await searchHousekeepingRecords(user, rawQuery, limit);
-  return [...results, ...housekeeping].sort((a, b) => {
+  const staffLoans = hasAnyPermission(user, ['key.assign','key.inventory','key.stock']) ? await prisma.keyStaffLoan.findMany({ where: numeric !== null ? {humanId:numeric} : {AND:terms.map(term => ({OR:[{departmentName:{contains:term,mode:'insensitive' as const}},{collaboratorName:{contains:term,mode:'insensitive' as const}},{authorizedByName:{contains:term,mode:'insensitive' as const}},{notes:{contains:term,mode:'insensitive' as const}}]}))}, orderBy:{createdAt:'desc'},take:Math.min(100,Math.max(1,limit)),include:{items:{select:{returnedAt:true}}} }) : [];
+  const staffResults: GlobalSearchResult[] = staffLoans.map(l => ({humanId:l.humanId,entityType:'KeyStaffLoan',entityId:l.id,kind:'Entrega a personal',title:`Llaves · ${l.departmentName}`,summary:l.notes,status:l.items.some(i=>!i.returnedAt)?'EN CUSTODIA':'DEVUELTA',roomNumber:null,guestName:null,responsible:l.collaboratorName ?? l.departmentName,category:'LLAVES',createdAt:l.createdAt,href:`/llaves/personal/${l.id}`}));
+  const housekeeping = canAccessHousekeeping(user) ? await searchHousekeepingRecords(user, rawQuery, limit) : [];
+  return [...results, ...housekeeping, ...staffResults].sort((a, b) => {
     if (numeric !== null && (a.humanId === numeric || b.humanId === numeric)) return Number(b.humanId === numeric) - Number(a.humanId === numeric);
     return b.createdAt.getTime() - a.createdAt.getTime();
   }).slice(0, Math.min(100, Math.max(1, limit)));

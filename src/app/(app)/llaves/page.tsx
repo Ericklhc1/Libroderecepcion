@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { prisma } from '@/lib/prisma';
+import { listStaffLoans } from '@/server/services/key-staff';
 import { CompleteKeyInventory } from '@/components/keys/inventory-count';
 import { KeyStatus, KeyType } from '@prisma/client';
 import { KeyRound, Plus, RotateCcw } from 'lucide-react';
@@ -35,6 +37,7 @@ export const dynamic = 'force-dynamic';
 type SearchParams = Record<string, string | string[] | undefined>;
 
 const STATUS_LABEL: Record<KeyStatus, string> = {
+  ENTREGADA_PERSONAL: 'Entregada a personal',
   DISPONIBLE: 'Disponible',
   ASIGNADA: 'Entregada / asignada',
   COPIA_ADICIONAL: 'Copia adicional',
@@ -68,6 +71,8 @@ export default async function KeysPage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await requirePageAnyPermission(['key.assign', 'key.inventory', 'key.stock']);
+  const [staffLoans, areas] = await Promise.all([listStaffLoans(user), prisma.keyArea.findMany({ where: {active:true}, orderBy:{name:'asc'}, include:{keys:{include:{movements:{orderBy:{at:'desc'},take:1}}}} })]);
+  const custody = staffLoans.flatMap(l => l.items.filter(i => !i.returnedAt).map(i => ({ destinationId:i.destinationId,label:`${i.keyCode} · ${l.departmentName}${l.collaboratorName ? ` · ${l.collaboratorName}` : ''} · Autorizó: ${l.authorizedByName} · Entrega #${l.humanId}` })));
   const params = await searchParams;
   const floorParam = readOne(params.piso) || 'todos';
   const section = readOne(params.vista) || 'inventario';
@@ -246,8 +251,9 @@ export default async function KeysPage({
         />
       </div>
 
+      <Link className="inline-flex rounded border bg-white px-3 py-2 text-sm font-semibold" href="/llaves/personal">Áreas · Entregar a personal · Mi stock</Link>
       <nav className="flex flex-wrap gap-2" aria-label="Secciones de Llaves">{[['inventario', 'Inventario completo'], ['llaves', 'Llaves y entregas'], ['historial', 'Historial e impresión']].map(([value, label]) => <Link key={value} className={`rounded border px-3 py-2 text-sm ${section === value ? 'bg-petrol-800 text-white' : 'bg-white'}`} href={`/llaves?vista=${value}&piso=${floorParam}`}>{label}</Link>)}</nav>
-      {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms)} initialFloor={floorParam} /></Card>}
+      {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms).map(r => ({...r,custody:custody.filter(c => c.destinationId === r.roomId).map(c => c.label)}))} areas={areas.map(a => ({roomId:a.id,roomNumber:a.name,floor:0,expected:a.keys.filter(k => k.movements[0]?.action !== 'BAJA').length,keys:a.keys,custody:custody.filter(c => c.destinationId === a.id).map(c => c.label)}))} initialFloor={floorParam} /></Card>}
 
       {section === 'llaves' && <Card>
         <CardHeader title={allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />

@@ -96,33 +96,56 @@ export async function lendStaffKeys(user: CurrentUser, input: StaffLoanInput) {
     if (!authorizer) throw new RuleError('La persona que autorizó debe estar activa y tener rol de Supervisor o superior.');
     const collaborator = input.collaboratorId ? await tx.user.findFirst({ where: { id: input.collaboratorId, active: true, deletedAt: null, OR: [{departmentId: department.id},{scheduleCollaborator: {active:true,memberships:{some:{departmentId:department.id,active:true}}}}] } }) : null;
     if (input.collaboratorId && !collaborator) throw new RuleError('El colaborador debe pertenecer al área receptora.');
-    const loan = await tx.keyStaffLoan.create({ data: { requestKey: input.requestKey, departmentId: department.id, departmentName: department.name, collaboratorId: collaborator?.id, collaboratorName: collaborator?.name, authorizedById: authorizer.id, authorizedByName: authorizer.name, createdById: user.id, createdByName: user.name, notes: input.notes?.trim() || null } });
-    for (const item of [...input.items].sort((a,b) => a.keyId.localeCompare(b.keyId))) {
-      if (!['ROOM', 'AREA'].includes(item.destinationKind) || !['public', 'private'].includes(item.source)) throw new RuleError('Selección de llave inválida.');
-      const destination = item.destinationKind === 'ROOM' ? await tx.room.findFirst({ where: { id: item.destinationId, active: true } }) : await tx.keyArea.findFirst({ where: { id: item.destinationId, active: true } });
+    const roomIds = input.items.filter(i=>i.destinationKind === 'ROOM').map(i=>i.destinationId);
+    const areaIds = input.items.filter(i=>i.destinationKind === 'AREA').map(i=>i.destinationId);
+    const publicIds = input.items.filter(i=>i.source === 'public').map(i=>i.keyId);
+    const privateIds = input.items.filter(i=>i.source === 'private').map(i=>i.keyId);
+    const [rooms, areas, publicKeys, privateKeys] = await Promise.all([
+      tx.room.findMany({where:{id:{in:roomIds},active:true},select:{id:true,number:true}}),
+      tx.keyArea.findMany({where:{id:{in:areaIds},active:true},select:{id:true,name:true}}),
+      tx.roomKey.findMany({where:{id:{in:publicIds}}}),
+      tx.supervisorKey.findMany({where:{id:{in:privateIds},ownerId:user.id,retired:false,status:'DISPONIBLE'}}),
+    ]);
+    const roomById = new Map(rooms.map(r=>[r.id,r]));
+    const areaById = new Map(areas.map(a=>[a.id,a]));
+    const publicById = new Map(publicKeys.map(k=>[k.id,k]));
+    const privateById = new Map(privateKeys.map(k=>[k.id,k]));
+    const prepared = input.items.map(item=> {
+      if (!['ROOM','AREA'].includes(item.destinationKind) || !['public','private'].includes(item.source)) throw new RuleError('Selección de llave inválida.');
+      const destination = item.destinationKind === 'ROOM' ? roomById.get(item.destinationId) : areaById.get(item.destinationId);
       if (!destination) throw new RuleError('El destino no existe o está inactivo.');
       const destinationName = 'number' in destination ? `Habitación ${destination.number}` : destination.name;
       let code: string;
       if (item.source === 'public') {
-        const key = await tx.roomKey.findUnique({ where: { id: item.keyId } });
+        const key = publicById.get(item.keyId);
         const poolKey = key && !key.roomId && !key.areaId && key.type !== KeyType.PRINCIPAL;
         if (!key || key.status !== KeyStatus.DISPONIBLE || (!poolKey && (item.destinationKind === 'ROOM' ? key.roomId !== destination.id || key.areaId !== null : key.areaId !== destination.id || key.roomId !== null))) throw new RuleError('La llave debe estar disponible y pertenecer al destino seleccionado.');
-        const changed = await tx.roomKey.updateMany({ where: { id: key.id, status: 'DISPONIBLE' }, data: { status: 'ENTREGADA_PERSONAL', assignedAt: new Date(), assignedById: user.id, stayId: null } });
-        if (changed.count !== 1) throw new RuleError('Otra entrega acaba de ocupar la llave.');
         code = key.code;
-        await tx.keyMovement.create({ data: { keyId: key.id, action: 'ASIGNADA', fromStatus: 'DISPONIBLE', toStatus: 'ENTREGADA_PERSONAL', roomId: item.destinationKind === 'ROOM' ? destination.id : null, userId: user.id, note: `Entrega #${loan.humanId} · ${department.name} · ${collaborator?.name ?? 'personal del área'} · Autorizó: ${authorizer.name}` } });
       } else {
-        const key = await tx.supervisorKey.findFirst({ where: { id: item.keyId, ownerId: user.id, retired: false, status: 'DISPONIBLE' } });
+        const key = privateById.get(item.keyId);
         if (!key) throw new RuleError('La llave no está disponible en tu stock.');
-        if ((await tx.supervisorKey.updateMany({ where: { id: key.id, ownerId: user.id, status: 'DISPONIBLE', retired: false, version: key.version }, data: { status: 'ENTREGADA_PERSONAL', version: { increment: 1 } } })).count !== 1) throw new RuleError('Otra entrega acaba de ocupar la llave.');
         code = key.code;
-        await tx.supervisorKeyMovement.create({ data: { keyId: key.id, actorId: user.id, action: 'ENTREGA', detail: { loanId: loan.id, destinationName } } });
       }
-      await tx.keyStaffLoanItem.create({ data: { loanId: loan.id, roomKeyId: item.source === 'public' ? item.keyId : null, supervisorKeyId: item.source === 'private' ? item.keyId : null, keyCode: code, destinationId: destination.id, destinationName, destinationKind: item.destinationKind } });
+      return {...item,keyCode:code,destinationName};
+    });
+    // Reclamación atómica del lote. Se conservan el destino base y las versiones
+    // leídas: ninguna llave puede cambiar de stock/custodia a mitad de la entrega.
+    const assignedAt = new Date();
+    if (publicIds.length) {
+      const changed = await tx.roomKey.updateMany({where:{status:'DISPONIBLE',OR:publicKeys.map(k=>({id:k.id,roomId:k.roomId,areaId:k.areaId}))},data:{status:'ENTREGADA_PERSONAL',assignedAt,assignedById:user.id,stayId:null}});
+      if (changed.count !== publicIds.length) throw new RuleError('Otra entrega acaba de ocupar una llave. Recarga el inventario.');
     }
+    if (privateIds.length) {
+      const changed = await tx.supervisorKey.updateMany({where:{ownerId:user.id,status:'DISPONIBLE',retired:false,OR:privateKeys.map(k=>({id:k.id,version:k.version}))},data:{status:'ENTREGADA_PERSONAL',version:{increment:1}}});
+      if (changed.count !== privateIds.length) throw new RuleError('El stock cambió. Recarga antes de entregar.');
+    }
+    const loan = await tx.keyStaffLoan.create({ data: { requestKey: input.requestKey, departmentId: department.id, departmentName: department.name, collaboratorId: collaborator?.id, collaboratorName: collaborator?.name, authorizedById: authorizer.id, authorizedByName: authorizer.name, createdById: user.id, createdByName: user.name, notes: input.notes?.trim() || null } });
+    if (publicIds.length) await tx.keyMovement.createMany({data:prepared.filter(i=>i.source === 'public').map(i=>({keyId:i.keyId,action:'ASIGNADA' as const,fromStatus:'DISPONIBLE' as const,toStatus:'ENTREGADA_PERSONAL' as const,roomId:i.destinationKind === 'ROOM' ? i.destinationId : null,userId:user.id,note:`Entrega #${loan.humanId} · ${department.name} · ${collaborator?.name ?? 'personal del área'} · Autorizó: ${authorizer.name}`}))});
+    if (privateIds.length) await tx.supervisorKeyMovement.createMany({data:prepared.filter(i=>i.source === 'private').map(i=>({keyId:i.keyId,actorId:user.id,action:'ENTREGA',detail:{loanId:loan.id,destinationName:i.destinationName}}))});
+    await tx.keyStaffLoanItem.createMany({data:prepared.map(i=>({loanId:loan.id,roomKeyId:i.source === 'public' ? i.keyId : null,supervisorKeyId:i.source === 'private' ? i.keyId : null,keyCode:i.keyCode,destinationId:i.destinationId,destinationName:i.destinationName,destinationKind:i.destinationKind}))});
     await tx.auditLog.create({ data: { entity: 'KeyStaffLoan', entityId: loan.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Entrega a personal #${loan.humanId} · ${department.name} · ${input.items.length} llave(s) · Autorizó: ${authorizer.name}` } });
     return loan;
-  });
+  }, { timeout:15000 });
 }
 export async function returnStaffKey(user: CurrentUser, itemId: string, note: string) {
   publicAccess(user, true);

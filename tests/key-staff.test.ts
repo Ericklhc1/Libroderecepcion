@@ -32,6 +32,15 @@ describe('áreas, custodia de personal y reserva privada de llaves', () => {
     expect((await listStaffLoans(receptionist))[0]!.items.filter(i=>!i.returnedAt)).toHaveLength(1);
     expect(await prisma.keyMovement.count({where:{keyId:loan.items[0]!.roomKeyId!,action:'DEVUELTA'}})).toBe(1);
   });
+  it('registra un lote completo de 89 llaves sin entregas parciales', async () => {
+    const {receptionist,input} = await setup();
+    const keys = await prisma.roomKey.findMany({where:{type:'PRINCIPAL',roomId:{not:null}},select:{id:true,roomId:true}});
+    const batch = {...input,items:keys.map(k=>({keyId:k.id,source:'public' as const,destinationId:k.roomId!,destinationKind:'ROOM' as const}))};
+    await lendStaffKeys(receptionist,batch);
+    expect(await prisma.keyStaffLoanItem.count({where:{returnedAt:null}})).toBe(89);
+    expect(await prisma.roomKey.count({where:{status:'ENTREGADA_PERSONAL'}})).toBe(89);
+    expect(await prisma.keyMovement.count({where:{toStatus:'ENTREGADA_PERSONAL'}})).toBe(89);
+  });
   it('exige área, autorizador habilitado, destino correcto y colaborador de esa área', async () => {
     const {supervisor,receptionist,department,input} = await setup();
     await expect(lendStaffKeys(receptionist,{...input,departmentId:''})).rejects.toThrow('área');

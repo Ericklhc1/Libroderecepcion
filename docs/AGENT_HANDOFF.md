@@ -1,6 +1,6 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
-## 01/10/2026 · AROH 1.42.1 · Notificaciones resumidas
+## 01/10/2026 · AROH 1.43.1 · Notificaciones resumidas
 
 - Sustituye el contrato de tres bloques de Fronti proactivo por un título concreto y un resumen de hasta 240 caracteres. Arqueos, tareas vencidas, conteos de llaves y fallas utilizan resúmenes determinísticos específicos; las novedades usan la cadena de proveedores existente para seleccionar el dato decisivo y la acción explícita.
 - La respuesta de IA debe ser JSON breve, sin metadatos ni IDs internos. Se rechazan cifras no presentes en la evidencia, plazos omitidos, plantillas largas y reinterpretaciones de habitaciones como equipos/salas. Si falla la inferencia, se conserva un extracto del registro, sin inventar una gestión.
@@ -8,6 +8,18 @@
 - Los avisos de diferencias de llaves de un mismo día del hotel se agrupan en campana y en cada lote de push. Cada aviso conserva su ID, enlace, fecha y lectura individual. El contador de no leídas y el cursor de push siguen contando avisos originales; no se suman descuadres entre arqueos ni se afirma que avisos históricos sean incidencias vigentes.
 - Sin migraciones, cambios de permisos, credenciales o políticas de prioridad. Los datos de origen y la evidencia completa permanecen en los registros/auditoría. El barrido conserva sus reglas de acceso, cooldown, deduplicación concurrente y límites.
 - Rama: fix/notificaciones-resumen-inteligente. Validación de integración por Compuerta con PostgreSQL efímero, nunca Neon Production. Publicación por el flujo existente main → Vercel y verificación de SHA/versión/tag.
+
+
+## 2026-10-01 · v1.43.0 · Equipo, Fronti y uso humano
+
+- Production anterior v1.42.0 confirmada: PR #231, commit 6d2f19b, Compuerta y Release verdes.
+- Evidencia real: carga PDF de 192 filas conserva errores de usuarios de una revisión anterior; Fronti respondió con horas UTC como si fueran locales y afirmó erróneamente que publicar abre turnos. No hubo errores de runtime registrados en las últimas 12 horas; errores de push del 29/09 ya corregidos en código vigente.
+- `refreshScheduleImport` revisa las filas extraídas contra personas/códigos actuales sin reasignar, publicar ni sobrescribir casillas. Re-subir el mismo archivo recalcula una revisión no aplicada. Versiones y permisos se validan al incorporar. Las observaciones de extracción se conservan.
+- Identidad del colaborador usa nombre vigente del usuario en calendario, detalles y Fronti; UI muestra @usuario y oculta identificadores USR internos. Códigos de turno se conservan; formato común `RD01 · 08:00–19:00`, noche `RN01 · 21:00–08:00 (día siguiente)`.
+- Fronti recibe herramienta `consultar_horarios`, lector compartido con Equipo, alcance y filtros propios/públicos originales, tipos de turno, cobertura, personas, configuración y revisión de archivos. Horas ya formateadas en zona del hotel. Revisión de errores dentro del calendario devuelve datos verificados sin inferencia ni dependencia de proveedor. No confirma asistencia ni inicia turnos. Otras conversaciones/propuestas conservan proveedor, memoria, permisos y confirmación existentes.
+- Transiciones de entrada breves sólo con opacidad; no pisan centrado, no dejan capas al cerrar, respetan movimiento reducido e impresión. Diálogos anidados: Escape y foco sólo en el superior; restauran scroll al cerrar. Chat por debajo de diálogos y apertura mutuamente excluyente con Fronti; auto-scroll sólo dentro del asistente. Tiempo máximo de espera visible y almacenamiento de sesión opcional.
+- Vocabulario más simple en Equipo, navegación, Fronti, reservas, garantías, Caja y supervisión. No se renombran estados, roles ni campos persistidos. Observaciones y falta de personal desplegables para evitar páginas interminables.
+- Validación: lint y tipos; regresiones de Fronti/contexto/proveedores/navegación/horarios locales. Integración completa en Compuerta PostgreSQL desechable antes de merge. Sin migración nueva ni cambio de credenciales/proveedores/costos.
 
 
 ## 01/10/2026 · AROH 1.42.0 · Operación práctica autorizada

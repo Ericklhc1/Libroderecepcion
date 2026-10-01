@@ -88,7 +88,7 @@ export function SupervisionAuditUpload({
           <p>
             Los PDF se leen uno por uno y se descartan inmediatamente. Una nueva carga del mismo tipo
             actualiza la fotografía del informe. Después puedes resolver, retirar o ajustar los pendientes
-            desde el propio panel sin alterar la evidencia original ni su trazabilidad.
+            desde el propio panel sin alterar la evidencia original ni su historial.
           </p>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { readScheduleContext } from './schedule-context';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import 'server-only';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
@@ -18,6 +19,7 @@ import { getAllSettings } from '@/server/services/settings';
 import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 
 const READ_TOOL_NAMES = new Set([
+  'consultar_horarios',
   'consultar_turnos',
   'consultar_novedades',
   'consultar_garantias',
@@ -466,6 +468,8 @@ export async function executeFrontiV2ReadTool(
   if (!READ_TOOL_NAMES.has(name)) return { handled: false };
 
   switch (name) {
+    case 'consultar_horarios':
+      return { handled: true, result: await readScheduleContext(user, { area: typeof args.area === 'string' ? args.area : null, planId: typeof args.planId === 'string' ? args.planId : null, date: typeof args.date === 'string' ? args.date : null }) };
     case 'consultar_turnos':
       return { handled: true, result: await shiftsTool(user) };
     case 'consultar_novedades':

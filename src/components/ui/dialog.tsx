@@ -9,6 +9,8 @@ import { cn } from '@/lib/cn';
 import { DialogProvider } from './form';
 import { Button } from './button';
 
+const activeDialogs: symbol[] = [];
+
 /**
  * Modal simple y accesible para las acciones rápidas del Libro.
  *
@@ -63,19 +65,30 @@ export function Dialog({
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const layerId = useRef(Symbol('dialog'));
+  const closeRef = useRef(setOpen);
+  const [layer, setLayer] = useState(100);
+
+  useEffect(() => { closeRef.current = setOpen; }, [setOpen]);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
 
+    const id = layerId.current;
+    activeDialogs.push(id);
+    setLayer(100 + activeDialogs.length);
+
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const onKey = (event: KeyboardEvent) => {
+      if (activeDialogs.at(-1) !== id) return;
       if (dismissible && event.key === 'Escape') {
         event.preventDefault();
-        setOpen(false);
+        event.stopImmediatePropagation();
+        closeRef.current(false);
         return;
       }
 
@@ -84,7 +97,7 @@ export function Dialog({
         panelRef.current.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
-      ).filter((element) => !element.hasAttribute('hidden'));
+      ).filter((element) => !element.hasAttribute('hidden') && element.getClientRects().length > 0);
 
       if (focusable.length === 0) {
         event.preventDefault();
@@ -107,19 +120,26 @@ export function Dialog({
     document.addEventListener('keydown', onKey);
 
     const unlockBodyScroll = lockBodyScroll();
-    requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
+    const frame = requestAnimationFrame(() => {
+      if (activeDialogs.at(-1) === id) panelRef.current?.focus({ preventScroll: true });
+    });
 
     return () => {
       document.removeEventListener('keydown', onKey);
+      cancelAnimationFrame(frame);
+      const wasTop = activeDialogs.at(-1) === id;
+      const index = activeDialogs.indexOf(id);
+      if (index >= 0) activeDialogs.splice(index, 1);
       unlockBodyScroll();
       const previous = previousFocusRef.current;
-      if (previous?.isConnected) requestAnimationFrame(() => previous.focus());
+      if (wasTop && previous?.isConnected) requestAnimationFrame(() => previous.focus({ preventScroll: true }));
     };
-  }, [open, dismissible, setOpen]);
+  }, [open, dismissible]);
 
   const overlay = (
     <div
       className="fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain"
+      style={{ zIndex: layer }}
       onMouseDown={(event) => {
         if (dismissible && event.target === event.currentTarget) setOpen(false);
       }}
@@ -139,7 +159,7 @@ export function Dialog({
             Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
             `transform` y pisaría el `translate` que hace el centrado.
           */
-          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none',
+          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none dialog-enter',
           width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
         )}
       >

@@ -286,7 +286,7 @@ export function CashDifferenceRegularizationForm() {
       </Field>
 
       <p className="rounded-lg bg-gold-50 px-3 py-2 text-xs text-gold-900 ring-1 ring-gold-200">
-        Esta operación corrige una diferencia física real: actualiza el efectivo esperado y deja trazabilidad, pero no se trata como un ingreso o egreso operacional nuevo.
+        Esta operación corrige una diferencia física real: actualiza el efectivo esperado y guarda el motivo en el historial; no registra un nuevo ingreso ni egreso.
       </p>
 
       <div className="flex justify-end">
@@ -901,7 +901,7 @@ export function VoidGymPassDialog({ id, folio }: { id: string; folio: number }) 
   return (
     <Dialog
       title={`Anular folio ${formatFolio(folio)}`}
-      description="El folio no se elimina ni se reutiliza. La anulación conserva toda la trazabilidad del pase."
+      description="El folio no se elimina ni se reutiliza. La anulación conserva todo el historial del pase."
       triggerVariant="ghost"
       triggerSize="sm"
       width="sm"

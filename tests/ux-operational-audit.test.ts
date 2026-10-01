@@ -68,7 +68,9 @@ describe('auditoría UX operativa 1.10.10', () => {
     const dialog = readFileSync('src/components/ui/dialog.tsx', 'utf8');
     expect(dialog).toContain("event.key !== 'Tab'");
     expect(dialog).toContain('previousFocusRef');
-    expect(dialog).toContain('previous.focus()');
+    expect(dialog).toContain('previous.focus({ preventScroll: true })');
+    expect(dialog).toContain('if (activeDialogs.at(-1) !== id) return;');
+    expect(dialog).toContain('wasTop && previous?.isConnected');
   });
 
   it('Inicio describe el cierre secuencial vigente', () => {

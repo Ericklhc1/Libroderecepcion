@@ -7,8 +7,11 @@ import { saveScheduleCollaborator, saveScheduleTemplate, saveScheduleCoverage, s
 import { createSchedulePlan, addScheduleSlot, getScheduleBoard, getSchedulePlan, moveScheduleSlot, cancelScheduleSlot, publishSchedulePlan, changeScheduleExtra, acknowledgeSchedule } from '@/server/services/schedules';
 import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
 import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
+import { readScheduleContext, scheduleReviewReply } from '@/server/ai/fronti-v2/schedule-context';
+import { runReceptionAssistant } from '@/server/ai/reception-assistant';
+import { buildFrontiRuntimeContext } from '@/server/ai/fronti-v2/context-builder';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
-import { reviewScheduleImport, applyScheduleImport } from '@/server/services/schedule-import';
+import { reviewScheduleImport, applyScheduleImport, refreshScheduleImport } from '@/server/services/schedule-import';
 
 describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => {
   let admin: CurrentUser; let reader: CurrentUser; let own: CurrentUser; let area: string; let other: string; let planId: string; let a: string; let b: string; let day: string; let night: string;
@@ -117,6 +120,38 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
   it('una revisión de archivo obsoleta no pisa cambios posteriores', async () => {
     const draft = await reviewScheduleImport(admin, planId, 'malla.csv', new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-03;TEST_DIA\n')); await add(b, '2090-10-05');
     await expect(applyScheduleImport(admin, await mutation(), draft.id)).rejects.toThrow('desde la revisión'); expect(await prisma.scheduleSlot.count({ where: { planId, cancelledAt: null } })).toBe(1);
+  });
+
+  it('vuelve a revisar un archivo al corregir nombres sin aplicar horarios', async () => {
+    const bytes = new TextEncoder().encode('NOMBRE;FECHA;CODIGO\nNombre corregido;2090-10-03;TEST_DIA\n');
+    const draft = await reviewScheduleImport(admin, planId, 'horario.csv', bytes);
+    expect(draft.issues).not.toEqual([]);
+    await prisma.user.update({ where: { id: own.id }, data: { name: 'Nombre corregido' } });
+    const refreshed = await refreshScheduleImport(admin, draft.id);
+    expect(refreshed.issues).toEqual([]);
+    expect((await reviewScheduleImport(admin, planId, 'horario.csv', bytes)).issues).toEqual([]);
+    expect(await prisma.scheduleSlot.count({ where: { planId } })).toBe(0);
+    await add(b, '2090-10-05');
+    const current = await refreshScheduleImport(admin, draft.id);
+    expect(current.baseVersion).toBe((await mutation()).version);
+    await expect(refreshScheduleImport(reader, current.id)).rejects.toThrow();
+    await applyScheduleImport(admin, await mutation(planId, 'Archivo revisado'), current.id);
+    expect(await prisma.scheduleSlot.count({ where: { planId, cancelledAt: null } })).toBe(2);
+  });
+  it('Fronti revisa horas y archivos desde las fuentes reales, sin modelo ni asistencia inventada', async () => {
+    await add();
+    const data = await readScheduleContext(admin, { area, planId });
+    expect(data.assignments?.[0]?.label).toBe('TEST_DIA · 08:00–19:00');
+    expect(scheduleReviewReply(data)).toContain('no inicia turnos');
+    const context = await buildFrontiRuntimeContext(admin, { pathname: '/equipo', search: `?area=${area}&malla=${planId}` });
+    const result = await runReceptionAssistant(admin, [{ role: 'user', content: 'Revisa este horario y el archivo: qué errores hay' }], context);
+    expect(result.reply).toContain('08:00–19:00'); expect(result.reply).toContain('Borrador');
+    expect(result.confirmations).toEqual([]); expect(await prisma.shift.count()).toBe(0);
+    await expect(readScheduleContext(reader, { area, planId })).rejects.toThrow();
+    await publishSchedulePlan(admin, await mutation(planId, 'Publicación revisada'));
+    const mine = await readScheduleContext(own, { area, planId, date: '2090-10-03' });
+    expect(mine.assignments).toHaveLength(1); expect(mine.imports).toEqual([]);
+    await expect(readScheduleContext({ ...reader, departmentId: area, permissions: ['schedule.view'] }, { area: other })).rejects.toThrow();
   });
   it('publica, notifica y confirma por persona; confirmar no registra asistencia', async () => {
     await add(); await add(b); await publishSchedulePlan(admin, await mutation(planId, 'Cobertura confirmada'));

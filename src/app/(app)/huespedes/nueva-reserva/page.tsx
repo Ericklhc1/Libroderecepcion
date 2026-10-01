@@ -30,7 +30,7 @@ export default async function NewReservationPdfPage({ searchParams }: { searchPa
       <header>
         <h1 className="text-xl font-semibold text-petrol-900">Cargar nueva reserva</h1>
         <p className="mt-1 text-sm text-slate-600">
-          El PDF se lee primero y no cambia nada hasta que confirmes la revisión. El ID PMS es la identidad canónica: si ya existe, se reconcilia en vez de duplicarse.
+          El PDF se lee primero y no cambia nada hasta que confirmes la revisión. El ID de reserva del PMS permite reconocer una reserva ya registrada y actualizarla sin duplicarla.
         </p>
       </header>
 
@@ -59,7 +59,7 @@ export default async function NewReservationPdfPage({ searchParams }: { searchPa
             <ActionForm action={applyReservationPdfAction} className="space-y-4 p-4">
               <input type="hidden" name="draftId" value={draft.id} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="ID PMS / reserva" name="code" required hint="Clave canónica de deduplicación.">
+                <Field label="ID PMS / reserva" name="code" required hint="Usa el mismo ID que aparece en el PMS para evitar reservas duplicadas.">
                   <Input name="code" required defaultValue={draft.extracted.code ?? ''} />
                 </Field>
                 <Field label="Huésped principal" name="guestName">

@@ -13,10 +13,10 @@ const icons = { home: Home, book: BookOpen, shift: CalendarClock, supervision: S
 export function activeModule(groups: NavGroup[], pathname: string): string | null {
   const candidates = groups.flatMap(group => group.items).flatMap(item =>
     [item.href, ...(item.menu ?? []).flatMap(section => section.items.map(link => link.href))]
-      .map(href => ({ root: item.href, path: href.split(/[?#]/)[0] ?? href }))
+      .map(href => ({ root: item.href, path: href.split(/[?#]/)[0] ?? href, primary: href === item.href }))
   ).filter(candidate => candidate.path === '/' ? pathname === '/' :
     pathname === candidate.path || pathname.startsWith(candidate.path + '/'));
-  return candidates.sort((a, b) => b.path.length - a.path.length)[0]?.root ?? null;
+  return candidates.sort((a, b) => b.path.length - a.path.length || Number(b.primary) - Number(a.primary))[0]?.root ?? null;
 }
 
 export function activeDestination(item: NavItem, pathname: string, search: string): string | null {

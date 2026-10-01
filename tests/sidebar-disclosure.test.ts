@@ -38,6 +38,7 @@ describe('menú plegable y barra de iconos', () => {
     expect(html).not.toContain('href="/admin/usuarios"');
   });
   it('no confunde Housekeeping, Auditoría o historial de turnos con Administración', () => {
+    expect(activeModule(groups, '/alertas')).toBe('/alertas');
     expect(activeModule(groups, '/admin/housekeeping')).toBe('/admin/housekeeping');
     expect(activeModule(groups, '/admin/auditoria')).toBe('/admin/auditoria');
     expect(activeModule(groups, '/admin/turnos')).toBe('/turno');

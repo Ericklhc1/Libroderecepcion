@@ -1,5 +1,11 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 2026-10-01 · v1.43.2 · Publicación de horarios verificada
+
+- Una consulta real consecutiva devolvió la hora correcta pero inventó generación de turnos y firma de asistencia. Las preguntas sobre publicar ahora usan el lector verificado; las instrucciones de escritura conservan su flujo.
+- Publicar nunca genera turnos operativos, abre Caja ni acredita asistencia. Regresiones de clasificación y ejecución sin proveedor en PostgreSQL desechable.
+- Integra sobre v1.43.1 conservando las mejoras de avisos. Compuerta requerida antes de merge; prueba real consecutiva posterior. Sin migración ni cambios de permisos, proveedores o costos.
+
 ## 01/10/2026 · AROH 1.43.1 · Notificaciones resumidas
 
 - Sustituye el contrato de tres bloques de Fronti proactivo por un título concreto y un resumen de hasta 240 caracteres. Arqueos, tareas vencidas, conteos de llaves y fallas utilizan resúmenes determinísticos específicos; las novedades usan la cadena de proveedores existente para seleccionar el dato decisivo y la acción explícita.

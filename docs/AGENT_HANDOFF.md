@@ -3,7 +3,7 @@
 - Push conserva destinatarios por solicitud; se programa después del commit de mensajes, adjuntos y stickers. Respuestas Fronti incluyen al invocador con las mismas reglas de silencio. El worker vuelve a avisar en mensajes nuevos que reutilizan el ID.
 - Móvil: viewport-fit y área segura inferior; Más en portal, scroll bloqueado/restituido, Escape y foco contenido; apertura breve y movimiento reducido. Cabecera con buscador en su propia fila, sin ancho mínimo que fuerce vista de escritorio. Chat por encima de la barra segura.
 - Barra reducida conserva un icono por grupo autorizado; grupos/módulos desplegables y ancho con transición. Paneles cerrados se desmontan para no dejar capas invisibles.
-- Sin migraciones, cambios de datos operativos ni credenciales. Validación local: lint, tipos y 74 pruebas específicas aprobadas; incluye rollback, silencio, aislamiento de solicitudes y avisos repetidos en worker. Suite completa en Compuerta con PostgreSQL efímero. Entrega real en iPhone pendiente de prueba en dispositivo.
+- Sin migraciones, cambios de datos operativos ni credenciales. Validación local: lint, tipos y 74 pruebas específicas aprobadas; incluye rollback, silencio, aislamiento de solicitudes y avisos repetidos en worker. Suite completa en Compuerta con PostgreSQL efímero. Entrega real en iPhone pendiente de prueba en dispositivo. La primera Compuerta tuvo 1250 pruebas aprobadas y falló sólo ui-alignment-system por orden literal de clases de cabecera; se conserva el orden esperado sin cambiar la disposición responsive y se repite la Compuerta.
 
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 

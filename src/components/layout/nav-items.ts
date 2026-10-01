@@ -43,7 +43,6 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
-  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
   {
     href: '/libro?clase=entry',
     label: 'Novedades',
@@ -232,6 +231,7 @@ const PRIMARY: NavItem[] = [
       },
     ],
   },
+  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',

@@ -45,6 +45,7 @@ describe('menú principal', () => {
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
       '/alertas', // llamadas de atención programables
+      '/admin/housekeeping', // coordinación habilitable por permisos
       '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
   });

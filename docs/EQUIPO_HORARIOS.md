@@ -1,5 +1,16 @@
 # Equipo y horarios · AROH 1.41.0
 
+## 01/10/2026 · AROH 1.41.1 · Usuarios y horas en Equipo
+
+- La instrucción actual sustituye el alta independiente de colaboradores de 1.41.0: colaborador = Usuario. ScheduleCollaborator conserva sólo la extensión técnica de planificación y sus referencias históricas; userId único es la identidad canónica. No se aceptan altas sin usuario ni sustituciones de identidad.
+- Usuarios activos y visibles del área principal aparecen automáticamente al preparar su malla, sin crear cuentas ni asignaciones. Las áreas adicionales y horas se configuran sobre la cuenta existente. Registros históricos sin vínculo no se borran ni se vinculan por conjetura; se vinculan explícitamente.
+- Nombre, rol y estado se leen del usuario. Inactivos/ocultos no son destinos de asignación; sus horarios siguen conservados y pueden retirarse con auditoría. No se amplían permisos schedule.* de ningún rol.
+- Referencia semanal: entrada y presentación en horas (42 / 42,5), validación de 0–168 h. Persistencia interna en minutos para no reinterpretar valores históricos ni migrar datos.
+- Fuera de este módulo: colación, descuentos de pausa y descanso mínimo entre jornadas. Se conservan Libre, vacaciones y ausencias como estados de la malla, así como solapamientos, medianoche, versión, publicación y auditoría. Snapshots históricos no se borran.
+- Sin cambios de esquema, dependencias, caja, turnos operativos, DNS ni infraestructura. Validación por Compuerta en PostgreSQL desechable; comprobar el resultado del PR y Production antes de dar por desplegado.
+
+## Historial de diseño 1.41.0 (sustituido donde contradiga la corrección anterior)
+
 ## Propósito y límite
 
 Planificar personal por área, revisar brechas y conservar evidencia de la recepción de cambios. La malla no representa presencia física, control biométrico, nómina ni turnos de caja/Recepción. No incorpora funcionalidad PMS.

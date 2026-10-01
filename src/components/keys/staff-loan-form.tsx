@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActionForm, Field, Input } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { lendStaffKeysAction } from '@/server/actions/key-staff';
@@ -19,8 +19,9 @@ export function StaffLoanForm({ initialRequestKey, departments, collaborators, a
   const [selected, setSelected] = useState<string[]>([]);
   const [privateDestination, setPrivateDestination] = useState<Record<string,string>>({});
   const extraKeys = [...sharedKeys.map(k=>({...k,source:'public' as const})),...privateKeys.map(k=>({...k,source:'private' as const}))];
+  const onSaved = useCallback(() => {setSelected([]);setRequestKey(crypto.randomUUID());},[]);
   const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(k => k !== id) : [...old, id]);
-  return <ActionForm action={lendStaffKeysAction} resetOnSuccess={false} onSuccess={() => { setSelected([]); setRequestKey(crypto.randomUUID()); }}>
+  return <ActionForm action={lendStaffKeysAction} resetOnSuccess={false} refreshOnSuccess onSuccess={onSaved}>
     <input type="hidden" name="requestKey" value={requestKey} />
     <div className="grid gap-3 sm:grid-cols-2"><Field label="1. Área receptora (obligatorio)" name="departmentId"><select className="input-base w-full" id="departmentId" name="departmentId" required value={department} onChange={e => setDepartment(e.target.value)}><option value="">Seleccionar área…</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
     </div>

@@ -17,6 +17,7 @@ import {
 import { getRoomDetail } from '@/server/services/rooms';
 import { getRoomMonitorDetail, getRoomMonitorOverview } from '@/server/services/room-monitor';
 import { getLiveCashState } from '@/server/services/live-cash';
+import { listStaffLoans } from '@/server/services/key-staff';
 import { getKeyInventory } from '@/server/services/keys';
 import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
@@ -267,6 +268,11 @@ async function detailSnapshot(
       keysOut: room.snapshot.keysOut.map((key) => ({ code: key.code, status: key.status })),
       openIncidents: room.openIncidents,
     };
+  }
+
+  if (page.entityType === 'KeyStaffLoan') {
+    requireAny(user, ['key.assign','key.inventory','key.stock'], 'No tienes permiso para consultar entregas de llaves.');
+    return await prisma.keyStaffLoan.findUnique({where:{id:page.entityId},select:{humanId:true,departmentName:true,collaboratorName:true,authorizedByName:true,createdByName:true,createdAt:true,notes:true,items:{select:{keyCode:true,destinationName:true,destinationKind:true,returnedAt:true,returnNote:true}}}}) ?? {found:false};
   }
 
   if (page.entityType === 'KeyInventoryCount') {
@@ -843,6 +849,10 @@ export async function executeFrontiPageContextTool(
       };
     case 'llaves': {
       requireAny(user, ['key.assign', 'key.inventory', 'key.stock'], 'No tienes permiso para consultar llaves.');
+      if (page.sectionKey === 'personal') {
+        const [loans,areas] = await Promise.all([listStaffLoans(user),prisma.keyArea.findMany({where:{active:true},select:{name:true,keys:{select:{code:true,status:true}}}})]);
+        return {...base,snapshot:{areas,deliveries:loans.map(l=>({humanId:l.humanId,department:l.departmentName,collaborator:l.collaboratorName,authorizedBy:l.authorizedByName,createdBy:l.createdByName,items:l.items.filter(i=>!i.returnedAt).map(i=>({keyCode:i.keyCode,destination:i.destinationName}))})),privateStock:'La reserva privada se consulta exclusivamente en el panel de su propietario.'}};
+      }
       const inventory = await getKeyInventory();
       const floor = page.filters.piso;
       return {

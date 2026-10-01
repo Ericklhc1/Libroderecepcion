@@ -5,6 +5,8 @@ import { createAreaKey, lendStaffKeys, listStaffLoans, listSupervisorKeys, retur
 import { getPhysicalKeyInventory, markPhysicalKeyIncident, savePhysicalKeyInventoryCount } from '@/server/services/key-inventory';
 import { getKeyInventory, giveExtraCopy, listAvailableKeys, reconcilePrincipalKeys, setKeyIncidentStatus } from '@/server/services/keys';
 import { areaCountSnapshots, staffCustodySnapshots } from '@/domain/key-custody';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
 import { searchOperationalRecords } from '@/server/services/global-search';
 
 describe('áreas, custodia de personal y reserva privada de llaves', () => {
@@ -119,6 +121,11 @@ describe('áreas, custodia de personal y reserva privada de llaves', () => {
     await lendStaffKeys(supervisor,privateInput);
     const loan = (await listStaffLoans(receptionist))[0]!; expect(loan.items[0]!.keyCode).toBe(key.code);
     expect(JSON.stringify(loan)).not.toContain(unused.code);
+    const fronti = await executeFrontiPageContextTool(receptionist,resolveFrontiPageContext({pathname:'/llaves/personal'}));
+    expect(JSON.stringify(fronti)).toContain(key.code); expect(JSON.stringify(fronti)).not.toContain(unused.code);
+    const receipt = await executeFrontiPageContextTool(receptionist,resolveFrontiPageContext({pathname:`/llaves/personal/${loan.id}`}));
+    expect(JSON.stringify(receipt)).toContain(key.code); expect(JSON.stringify(receipt)).not.toContain(unused.code);
+    await expect(executeFrontiPageContextTool({...receptionist,permissions:[]},resolveFrontiPageContext({pathname:'/llaves/personal'}))).rejects.toThrow('permiso');
     await expect(returnStaffKey(receptionist,loan.items[0]!.id,'Recibida')).rejects.toThrow('propietario');
     await expect(saveSupervisorKey(supervisor,{id:key.id,version:1,code:key.code,destination:'Editar prestada'})).rejects.toThrow('Recibe');
     await returnStaffKey(supervisor,loan.items[0]!.id,'Recibida en mi stock');

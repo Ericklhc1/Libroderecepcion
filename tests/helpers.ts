@@ -43,6 +43,8 @@ export async function resetOperationalData() {
     prisma.supervisorKey.deleteMany(),
     prisma.keyInventoryCount.deleteMany(),
     prisma.keyMovement.deleteMany(),
+    prisma.roomKey.deleteMany({ where: {areaId:{not:null}} }),
+    prisma.keyArea.deleteMany(),
     prisma.roomKey.updateMany({
       data: {
         stayId: null,

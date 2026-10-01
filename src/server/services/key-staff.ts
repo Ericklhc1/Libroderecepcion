@@ -105,11 +105,12 @@ export async function lendStaffKeys(user: CurrentUser, input: StaffLoanInput) {
       let code: string;
       if (item.source === 'public') {
         const key = await tx.roomKey.findUnique({ where: { id: item.keyId } });
-        if (!key || key.status !== KeyStatus.DISPONIBLE || (item.destinationKind === 'ROOM' ? key.roomId !== destination.id || key.areaId !== null : key.areaId !== destination.id || key.roomId !== null)) throw new RuleError('La llave debe estar disponible y pertenecer al destino seleccionado.');
+        const poolKey = key && !key.roomId && !key.areaId && key.type !== KeyType.PRINCIPAL;
+        if (!key || key.status !== KeyStatus.DISPONIBLE || (!poolKey && (item.destinationKind === 'ROOM' ? key.roomId !== destination.id || key.areaId !== null : key.areaId !== destination.id || key.roomId !== null))) throw new RuleError('La llave debe estar disponible y pertenecer al destino seleccionado.');
         const changed = await tx.roomKey.updateMany({ where: { id: key.id, status: 'DISPONIBLE' }, data: { status: 'ENTREGADA_PERSONAL', assignedAt: new Date(), assignedById: user.id, stayId: null } });
         if (changed.count !== 1) throw new RuleError('Otra entrega acaba de ocupar la llave.');
         code = key.code;
-        await tx.keyMovement.create({ data: { keyId: key.id, action: 'ASIGNADA', fromStatus: 'DISPONIBLE', toStatus: 'ENTREGADA_PERSONAL', roomId: key.roomId, userId: user.id, note: `Entrega #${loan.humanId} · ${department.name} · ${collaborator?.name ?? 'personal del área'} · Autorizó: ${authorizer.name}` } });
+        await tx.keyMovement.create({ data: { keyId: key.id, action: 'ASIGNADA', fromStatus: 'DISPONIBLE', toStatus: 'ENTREGADA_PERSONAL', roomId: item.destinationKind === 'ROOM' ? destination.id : null, userId: user.id, note: `Entrega #${loan.humanId} · ${department.name} · ${collaborator?.name ?? 'personal del área'} · Autorizó: ${authorizer.name}` } });
       } else {
         const key = await tx.supervisorKey.findFirst({ where: { id: item.keyId, ownerId: user.id, retired: false, status: 'DISPONIBLE' } });
         if (!key) throw new RuleError('La llave no está disponible en tu stock.');

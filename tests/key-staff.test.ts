@@ -77,6 +77,16 @@ describe('áreas, custodia de personal y reserva privada de llaves', () => {
     await lendStaffKeys(receptionist,{...input,items:[{keyId:key.id,source:'public',destinationId:area.id,destinationKind:'AREA'}]});
     await expect(saveKeyArea(supervisor,{id:area.id,name:area.name,active:false})).rejects.toThrow('Recibe');
   });
+  it('presta una copia libre y la devuelve a recepción sin cambiar su destino original', async () => {
+    const {receptionist,input} = await setup();
+    const copy = await prisma.roomKey.findFirstOrThrow({where:{roomId:null,areaId:null,type:'COPIA',status:'DISPONIBLE'}});
+    await lendStaffKeys(receptionist,{...input,items:[{...input.items[0]!,keyId:copy.id}]});
+    const loan = (await listStaffLoans(receptionist))[0]!;
+    expect(loan.items[0]!.destinationId).toBe(input.items[0]!.destinationId);
+    await returnStaffKey(receptionist,loan.items[0]!.id,'Copia recibida en recepción');
+    const returned = await prisma.roomKey.findUniqueOrThrow({where:{id:copy.id}});
+    expect(returned.status).toBe('DISPONIBLE'); expect(returned.roomId).toBeNull(); expect(returned.areaId).toBeNull();
+  });
   it('el stock y su edición son exclusivos del supervisor propietario, incluso frente al administrador', async () => {
     const {supervisor,receptionist} = await setup();
     const other = await createUser({roleKey:ROLE_KEYS.SUPERVISOR}); const admin = await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

@@ -15,6 +15,7 @@ describe('horarios comprensibles y uniformes', () => {
   });
   it('la revisión verificada no sustituye escrituras ni preguntas de otro módulo', () => {
     expect(isScheduleReview('Revisa este horario y el archivo', 'equipo')).toBe(true);
+    expect(isScheduleReview('Revisa los errores del horario publicado', 'equipo')).toBe(true);
     expect(isScheduleReview('Revisa esto y publica el horario', 'equipo')).toBe(false);
     expect(isScheduleReview('Revisa la caja', 'equipo')).toBe(false);
     expect(isScheduleReview('Revisa el horario', 'caja')).toBe(false);

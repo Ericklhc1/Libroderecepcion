@@ -53,7 +53,7 @@ export async function readScheduleContext(user: CurrentUser, args: { area?: stri
 export function isScheduleReview(message: string, module: string | undefined): boolean {
   const text = functionKey(message);
   return module === 'equipo' && /horario|malla|archivo|equipo|programa|cobertura|coincidencias|aqui|aca|esto/.test(text) && !/caja|garant|llave|habitacion|reserva/.test(text) && /revisa|errores|problemas|resumen|que falta|coincidencias/.test(text)
-    && !/crea|publica|asigna|mueve|borra|cancel|modifica|guarda|cambia/.test(text);
+    && !/\b(?:crea(?:r)?|publica(?:r|lo)?|asigna(?:r)?|mueve|borra(?:r)?|cancela(?:r)?|modifica(?:r)?|guarda(?:r)?|cambia(?:r)?)\b/.test(text);
 }
 
 export function scheduleReviewReply(data: Awaited<ReturnType<typeof readScheduleContext>>): string {

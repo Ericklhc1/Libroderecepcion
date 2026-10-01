@@ -17,7 +17,7 @@ export async function reviewScheduleImport(user: CurrentUser, planId: string, fi
   const files = await readReportFile(fileName, bytes, { preserveClockCells: true });
   const extracted = files.map((f) => extractScheduleRoster(f.fragments, plan.startDate.toISOString().slice(0, 10), plan.endDate.toISOString().slice(0, 10)));
   const { resolved, issues } = await resolveRows(plan, extracted.flatMap((e) => e.rows), extracted.flatMap((e) => e.issues));
-  return prisma.scheduleImport.upsert({ where: { planId_fileHash_baseVersion: { planId, fileHash, baseVersion: plan.version } }, create: { planId, fileName: fileName.slice(0, 200), fileHash, baseVersion: plan.version, rows: JSON.parse(JSON.stringify(resolved)), issues }, update: { rows: JSON.parse(JSON.stringify(resolved)), issues } });
+  return saveReview(plan, fileName.slice(0, 200), fileHash, resolved, issues);
 }
 export async function applyScheduleImport(user: CurrentUser, raw: unknown, importId: string) {
   const mutation = mutationSchema.parse(raw); scheduleId.parse(importId);
@@ -88,9 +88,21 @@ export async function refreshScheduleImport(user: CurrentUser, importId: string)
   const oldRowIssues = new Set(old.filter((row) => row.issue).map((row) => `${row.source.name ?? row.source.employeeCode} · ${row.source.date}: ${row.issue}`));
   const parseIssues = draft.issues.map(String).filter((issue) => !oldRowIssues.has(issue));
   const { resolved, issues } = await resolveRows(plan, old.map((row) => row.source), parseIssues);
-  return prisma.scheduleImport.upsert({
-    where: { planId_fileHash_baseVersion: { planId: plan.id, fileHash: draft.fileHash, baseVersion: plan.version } },
-    create: { planId: plan.id, fileName: draft.fileName, fileHash: draft.fileHash, baseVersion: plan.version, rows: JSON.parse(JSON.stringify(resolved)), issues },
-    update: { rows: JSON.parse(JSON.stringify(resolved)), issues },
+  return saveReview(plan, draft.fileName, draft.fileHash, resolved, issues);
+}
+
+async function saveReview(plan: Awaited<ReturnType<typeof getSchedulePlan>>, fileName: string, fileHash: string, rows: unknown[], issues: string[]) {
+  return prisma.$transaction(async tx => {
+    // The same plan lock as application: an applied review stays immutable.
+    await tx.$queryRaw`SELECT "id" FROM "SchedulePlan" WHERE "id" = ${plan.id} FOR UPDATE`;
+    const current = await tx.schedulePlan.findUniqueOrThrow({ where: { id: plan.id } });
+    if (current.version !== plan.version) throw new RuleError('El horario cambió durante la revisión. Vuelve a revisar las coincidencias.');
+    const applied = await tx.scheduleImport.findFirst({ where: { planId: plan.id, fileHash, status: 'APLICADO' } });
+    if (applied) return applied;
+    return tx.scheduleImport.upsert({
+      where: { planId_fileHash_baseVersion: { planId: plan.id, fileHash, baseVersion: plan.version } },
+      create: { planId: plan.id, fileName, fileHash, baseVersion: plan.version, rows: JSON.parse(JSON.stringify(rows)), issues },
+      update: { rows: JSON.parse(JSON.stringify(rows)), issues },
+    });
   });
 }

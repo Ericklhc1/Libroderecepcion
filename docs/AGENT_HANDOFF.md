@@ -1,4 +1,4 @@
-## 01/10/2026 · 1.43.3 · Chat push y navegación móvil
+## 01/10/2026 · 1.43.4 · Chat push y navegación móvil
 
 - Push conserva destinatarios por solicitud; se programa después del commit de mensajes, adjuntos y stickers. Respuestas Fronti incluyen al invocador con las mismas reglas de silencio. El worker vuelve a avisar en mensajes nuevos que reutilizan el ID.
 - Móvil: viewport-fit y área segura inferior; Más en portal, scroll bloqueado/restituido, Escape y foco contenido; apertura breve y movimiento reducido. Cabecera con buscador en su propia fila, sin ancho mínimo que fuerce vista de escritorio. Chat por encima de la barra segura.
@@ -6,6 +6,13 @@
 - Sin migraciones, cambios de datos operativos ni credenciales. Validación local: lint, tipos y 74 pruebas específicas aprobadas; incluye rollback, silencio, aislamiento de solicitudes y avisos repetidos en worker. Suite completa en Compuerta con PostgreSQL efímero. Entrega real en iPhone pendiente de prueba en dispositivo.
 
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
+
+## 2026-10-01 · v1.43.3 · Carga de horarios con filas iniciadas
+
+- Captura real: una jornada iniciada abortaba la importación mensual completa. Regla temporal compartida con edición; la carga omite las filas pasadas/iniciadas y conserva las futuras.
+- Pantalla y Fronti muestran el conteo. Filas omitidas y motivo quedan en evento/auditoría; no se alteran casillas históricas ni se registra asistencia. Se recalcula al incorporar, con permisos, atomicidad, idempotencia y control de contradicciones.
+- Primera Compuerta: 1.243 pruebas aprobadas y una omisión previa; falló la nueva fixture por añadir una noche a una casilla del mismo colaborador ya ocupada. El servicio rechazó correctamente la contradicción. Fixture corregida para una casilla libre; repetir Compuerta completa, sin relajar la regla.
+- Archivo totalmente pasado no ofrece incorporar ni cambia versión. Regresiones de límites horarios/noches/zona y lote mixto/idempotente/totalmente pasado en PostgreSQL desechable. 81 pruebas locales, lint y tipos aprobados; Compuerta antes de merge. Sin migración.
 
 ## 2026-10-01 · v1.43.2 · Publicación de horarios verificada
 

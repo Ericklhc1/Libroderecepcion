@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
@@ -16,6 +16,7 @@ import { reviewScheduleImport, applyScheduleImport, refreshScheduleImport } from
 describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => {
   let admin: CurrentUser; let reader: CurrentUser; let own: CurrentUser; let area: string; let other: string; let planId: string; let a: string; let b: string; let day: string; let night: string;
   beforeAll(seedCatalog);
+  afterEach(() => vi.useRealTimers());
   beforeEach(async () => {
     await resetOperationalData();
     admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
@@ -116,6 +117,30 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     const draft = await reviewScheduleImport(admin, planId, 'malla.csv', bytes); expect(draft.issues).toEqual([]); expect(await prisma.scheduleSlot.count({ where: { planId } })).toBe(0);
     const m = await mutation(); await applyScheduleImport(admin, m, draft.id); await applyScheduleImport(admin, m, draft.id); expect(await prisma.scheduleSlot.count({ where: { planId, cancelledAt: null } })).toBe(2);
     expect((await reviewScheduleImport(admin, planId, 'malla.csv', bytes)).status).toBe('APLICADO');
+  });
+  it('incorpora filas futuras de un archivo mixto y conserva las jornadas iniciadas', async () => {
+    await add(); const original = await slot();
+    const bytes = new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-02;LIBRE\nTEST_COL001;2090-10-03;TEST_DIA\nTEST_COL002;2090-10-03;TEST_NOCHE\nTEST_COL002;2090-10-04;TEST_DIA\n');
+    const draft = await reviewScheduleImport(admin, planId, 'mes.csv', bytes);
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2090-10-03T18:00:00Z'));
+    expect((await getScheduleBoard(admin, area, planId)).imports[0]?.omittedRows).toEqual([0, 1]);
+    const m = await mutation(); await applyScheduleImport(admin, m, draft.id); await applyScheduleImport(admin, m, draft.id);
+    expect(await prisma.scheduleSlot.count({ where: { planId, cancelledAt: null } })).toBe(3);
+    expect(await prisma.scheduleSlot.findUnique({ where: { id: original.id } })).toEqual(original);
+    expect(await prisma.scheduleSlot.count({ where: { planId, date: new Date('2090-10-02') } })).toBe(0);
+    const event = await prisma.scheduleEvent.findUniqueOrThrow({ where: { requestKey: m.requestKey } });
+    expect((event.after as { omitted: unknown[] }).omitted).toHaveLength(2);
+    expect((await prisma.scheduleImport.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('APLICADO');
+    await expect(cancelScheduleSlot(admin, await mutation(planId, 'No modificar historia'), original.id)).rejects.toThrow('ya comenzó');
+    expect(await prisma.shift.count()).toBe(0); expect(await prisma.shiftAssignment.count()).toBe(0);
+  });
+  it('una carga totalmente pasada no modifica la versión ni crea asignaciones', async () => {
+    const draft = await reviewScheduleImport(admin, planId, 'pasado.csv', new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-02;TEST_DIA\nTEST_COL002;2090-10-02;LIBRE\n'));
+    const m = await mutation(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2090-10-03T18:00:00Z'));
+    await expect(applyScheduleImport(admin, m, draft.id)).rejects.toThrow('No quedan asignaciones futuras');
+    expect((await mutation()).version).toBe(m.version);
+    expect(await prisma.scheduleSlot.count({ where: { planId } })).toBe(0);
+    expect((await prisma.scheduleImport.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe('REVISION');
   });
   it('una revisión de archivo obsoleta no pisa cambios posteriores', async () => {
     const draft = await reviewScheduleImport(admin, planId, 'malla.csv', new TextEncoder().encode('ID_COLABORADOR;FECHA;CODIGO\nTEST_COL001;2090-10-03;TEST_DIA\n')); await add(b, '2090-10-05');

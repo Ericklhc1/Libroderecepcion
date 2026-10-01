@@ -45,7 +45,7 @@ export async function readScheduleContext(user: CurrentUser, args: { area?: stri
     assignments: assignments.slice(0, 40).map((s) => ({ collaborator: s.collaborator.name, date: formatCalendarDate(s.date), label: scheduleLabel(s), startAt: s.startAt ? formatDateTime(s.startAt) : null, endAt: s.endAt ? formatDateTime(s.endAt) : null, extraKind: s.extraKind, extraStatus: s.extraStatus })),
     shownAssignments: Math.min(assignments.length, 40), matchingAssignments: assignments.length, dateFilter: date,
     gaps: board.gaps.filter((g) => !date || g.date === date).slice(0, 12).map(g => ({ ...g, startAt: formatDateTime(g.startAt), endAt: formatDateTime(g.endAt) })),
-    imports: board.imports.slice(0, 3).map((draft) => ({ file: draft.fileName, baseVersion: draft.baseVersion, needsReview: draft.baseVersion !== board.selected?.version, rows: Array.isArray(draft.rows) ? draft.rows.length : 0, issueCount: Array.isArray(draft.issues) ? draft.issues.length : 0, issues: Array.isArray(draft.issues) ? draft.issues.slice(0, 8) : [], nextStep: 'Usa «Volver a revisar coincidencias» después de corregir personas o turnos. Revisa el resultado antes de incorporarlo.' })),
+    imports: board.imports.slice(0, 3).map((draft) => ({ file: draft.fileName, omitted: draft.omittedRows.length, baseVersion: draft.baseVersion, needsReview: draft.baseVersion !== board.selected?.version, rows: Array.isArray(draft.rows) ? draft.rows.length : 0, issueCount: Array.isArray(draft.issues) ? draft.issues.length : 0, issues: Array.isArray(draft.issues) ? draft.issues.slice(0, 8) : [], nextStep: 'Usa «Volver a revisar coincidencias» después de corregir personas o turnos. Revisa el resultado antes de incorporarlo.' })),
     guidance: 'El horario indica quién está programado; no confirma asistencia ni abre Recepción o Caja. Sin personas mínimas definidas no puedes afirmar que el área está cubierta. Si la lista está recortada, consulta una fecha concreta. Los cambios se revisan y confirman en Equipo; esta consulta no modifica horarios.',
   };
 }
@@ -75,6 +75,7 @@ export function scheduleReviewReply(data: Awaited<ReturnType<typeof readSchedule
   }
   for (const draft of data.imports) {
     lines.push(`Archivo «${draft.file}»: ${draft.rows} asignaciones leídas y ${draft.issueCount} observaciones${draft.needsReview ? '; revisión anterior al último cambio' : ''}.`);
+    if (draft.omitted) lines.push(`${draft.omitted} filas pasadas o ya iniciadas se omiten; no bloquean las coincidencias futuras ni alteran asignaciones guardadas.`);
     if (draft.issues.length) lines.push(...[...new Set(draft.issues.map(issue => String(issue).replace(/ · \d{4}-\d{2}-\d{2}:/, ':')))].slice(0, 4).map(issue => `• ${issue}`));
     lines.push(draft.nextStep);
   }

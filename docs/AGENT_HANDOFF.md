@@ -1,5 +1,15 @@
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
+## 01/10/2026 · AROH 1.43.1 · Notificaciones resumidas
+
+- Sustituye el contrato de tres bloques de Fronti proactivo por un título concreto y un resumen de hasta 240 caracteres. Arqueos, tareas vencidas, conteos de llaves y fallas utilizan resúmenes determinísticos específicos; las novedades usan la cadena de proveedores existente para seleccionar el dato decisivo y la acción explícita.
+- La respuesta de IA debe ser JSON breve, sin metadatos ni IDs internos. Se rechazan cifras no presentes en la evidencia, plazos omitidos, plantillas largas y reinterpretaciones de habitaciones como equipos/salas. Si falla la inferencia, se conserva un extracto del registro, sin inventar una gestión.
+- La campana, el historial, los toasts y el push comparten la presentación canónica. Los avisos anteriores se resumen al leerlos; «Ver detalle» conserva el texto original. No se reescriben registros históricos.
+- Los avisos de diferencias de llaves de un mismo día del hotel se agrupan en campana y en cada lote de push. Cada aviso conserva su ID, enlace, fecha y lectura individual. El contador de no leídas y el cursor de push siguen contando avisos originales; no se suman descuadres entre arqueos ni se afirma que avisos históricos sean incidencias vigentes.
+- Sin migraciones, cambios de permisos, credenciales o políticas de prioridad. Los datos de origen y la evidencia completa permanecen en los registros/auditoría. El barrido conserva sus reglas de acceso, cooldown, deduplicación concurrente y límites.
+- Rama: fix/notificaciones-resumen-inteligente. Validación de integración por Compuerta con PostgreSQL efímero, nunca Neon Production. Publicación por el flujo existente main → Vercel y verificación de SHA/versión/tag.
+
+
 ## 2026-10-01 · v1.43.0 · Equipo, Fronti y uso humano
 
 - Production anterior v1.42.0 confirmada: PR #231, commit 6d2f19b, Compuerta y Release verdes.

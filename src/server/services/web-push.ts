@@ -1,4 +1,5 @@
 import 'server-only';
+import { notificationDeviceItems, notificationPresentation } from '@/domain/notification-summary';
 
 import { generateKeyPairSync } from 'node:crypto';
 import { SignJWT, importJWK } from 'jose';
@@ -429,13 +430,18 @@ export async function getWebPushPayload(input: {
     });
   }
 
-  const visible = rows.slice(-3).map((row) => ({
+  const visible = notificationDeviceItems(rows.map((row) => ({
+    ...row,
+    entity: null,
+    entityId: null,
+    readAt: null,
+    createdAt: row.createdAt.toISOString(),
+  }))).slice(0, 3).map((row) => ({
     id: row.id,
     type: row.type,
-    title: row.title,
-    body: row.body,
+    ...notificationPresentation(row),
     link: row.link,
-    createdAt: row.createdAt.toISOString(),
+    createdAt: row.createdAt,
   }));
 
   return {

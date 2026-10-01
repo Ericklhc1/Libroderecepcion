@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function NotificationsPage({ searchParams }: { searchParams: SearchParams }) {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowAreaOperation:true });
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';

@@ -1,5 +1,7 @@
 import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 
+export const HOUSEKEEPING_ACCESS_PERMISSIONS: PermissionKey[] = ['housekeeping.view', 'housekeeping.manage', 'housekeeping.request', 'housekeeping.work', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'housekeeping.view.all'];
+
 export const HOUSEKEEPING_STATUSES = ['PENDIENTE', 'RECIBIDO', 'EN_GESTION', 'BLOQUEADO', 'RESUELTO', 'CANCELADO'] as const;
 export type HousekeepingStatus = (typeof HOUSEKEEPING_STATUSES)[number];
 export const HOUSEKEEPING_ACTIONS = ['TOMAR', 'DERIVAR', 'CONFIRMAR', 'INICIAR', 'ACLARAR', 'BLOQUEAR', 'RETOMAR', 'RESOLVER', 'CANCELAR', 'REABRIR'] as const;
@@ -24,7 +26,7 @@ export function canManageHousekeeping(user: HousekeepingAccess): boolean {
 }
 
 export function canAccessHousekeeping(user: HousekeepingAccess): boolean {
-  return canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
+  return canManageHousekeeping(user) || HOUSEKEEPING_ACCESS_PERMISSIONS.some(p => user.permissions.includes(p));
 }
 
 export function isHousekeepingClosed(status: HousekeepingStatus): boolean {

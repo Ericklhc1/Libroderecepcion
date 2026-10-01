@@ -1,4 +1,5 @@
 import 'server-only';
+import { isHkFocused } from '@/domain/housekeeping-work';
 import { redirect } from 'next/navigation';
 import { AuthError, ForbiddenError } from '@/server/errors';
 import type { PermissionKey } from '@/lib/permissions';
@@ -90,7 +91,7 @@ export async function requirePermissionOrOwner(
  * al acceso operativo: cambiar contraseña y aceptar términos.
  */
 export async function requirePageUser(
-  options: { allowIncompleteAccess?: boolean } = {},
+  options: { allowIncompleteAccess?: boolean; allowAreaOperation?: boolean } = {},
 ): Promise<CurrentUser> {
   const user = await requireAuthenticatedUser().catch(() => null);
   if (!user) redirect('/login');
@@ -100,13 +101,14 @@ export async function requirePageUser(
     if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
   }
 
+  if (!options.allowIncompleteAccess && !options.allowAreaOperation && isHkFocused(user)) redirect('/admin/housekeeping');
   return user;
 }
 
 export async function requirePagePermission(
   permission: PermissionKey,
 ): Promise<CurrentUser> {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowAreaOperation:true });
   if (!hasPermission(user, permission)) redirect('/sin-permisos');
   return user;
 }
@@ -122,7 +124,7 @@ export async function requirePagePermission(
 export async function requirePageAnyPermission(
   permissions: PermissionKey[],
 ): Promise<CurrentUser> {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowAreaOperation:true });
   if (!permissions.some((permission) => hasPermission(user, permission))) {
     redirect('/sin-permisos');
   }

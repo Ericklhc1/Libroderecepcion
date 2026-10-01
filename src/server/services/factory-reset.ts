@@ -228,7 +228,11 @@ export async function runFactoryReset(
         data: { stayId: null, status: 'DISPONIBLE', assignedAt: null, assignedById: null },
       });
 
-      count('Piloto Housekeeping', await tx.housekeepingRequest.deleteMany());
+      count('Coberturas Housekeeping', await tx.housekeepingDelegation.deleteMany());
+      count('Relevos Housekeeping', await tx.housekeepingHandover.deleteMany());
+      count('Disponibilidad Housekeeping', await tx.housekeepingDayMember.deleteMany());
+      count('Trabajos Housekeeping', await tx.housekeepingRequest.deleteMany());
+      count('Rutinas Housekeeping', await tx.housekeepingRoutine.deleteMany());
       count('Suscripciones push', await tx.pushSubscription.deleteMany());
       count('Notificaciones', await tx.notification.deleteMany());
       count('Confirmaciones de Fronti', await tx.assistantActionReceipt.deleteMany());

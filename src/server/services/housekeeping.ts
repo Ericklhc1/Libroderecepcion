@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { canAccessHousekeeping, canManageHousekeeping, housekeepingActions, housekeepingNeedsNote, housekeepingTransition, isHousekeepingClosed, type HousekeepingAction, type HousekeepingStatus } from '@/domain/housekeeping';
+import { hkWorkVisibility, notifyHkWork } from './housekeeping-work';
 import { notify } from '@/server/notifications';
 import type { GlobalSearchResult } from './global-search';
 
@@ -14,7 +15,7 @@ export function assertHousekeepingAccess(user: Pick<CurrentUser, 'roleKey' | 'pe
 /** Legacy administrative trials remain private; operational records follow permissions. */
 export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey' | 'permissions'>): Prisma.AuditLogWhereInput {
   if (user.roleKey === 'ADMINISTRADOR_SISTEMA') return {};
-  return canAccessHousekeeping(user) ? { OR: [{ NOT: { entity: 'HousekeepingRequest' } }, { isDemo: false }] } : { NOT: { entity: 'HousekeepingRequest' } };
+  return canManageHousekeeping(user) || user.permissions.includes('housekeeping.view') || user.permissions.includes('housekeeping.view.all') ? { OR: [{ NOT: { entity: { in: ['HousekeepingRequest','HousekeepingWork'] } } }, { isDemo: false }] } : { NOT: { entity: { in: ['HousekeepingRequest','HousekeepingWork'] } } };
 }
 
 function housekeepingVisibility(user: CurrentUser): Prisma.HousekeepingRequestWhereInput {
@@ -32,11 +33,11 @@ export function housekeepingSourceChanged(request: { acknowledgedAt: Date | null
 }
 
 export async function getHousekeepingBoard(user: CurrentUser, history = false, page = 1, focusId?: number, mine = false) {
-  assertHousekeepingAccess(user);
+  if (!canManageHousekeeping(user) && !user.permissions.includes('housekeeping.view')) throw new ForbiddenError();
   const terminal = ['RESUELTO', 'CANCELADO'];
   const currentPage = Number.isSafeInteger(page) ? Math.min(10000, Math.max(1, page)) : 1;
   const selectedStatus = history ? { in: terminal } : { notIn: terminal };
-  const visibility = housekeepingVisibility(user);
+  const visibility = { ...housekeepingVisibility(user), workflowVersion:0 };
   const where = { ...visibility, ...(mine ? { assignedToId: user.id } : {}), status: selectedStatus, ...(Number.isSafeInteger(focusId) && focusId! > 0 ? { humanId: focusId } : {}) };
   const [requests, total, active, pending, blocked, overdue] = await Promise.all([
     prisma.housekeepingRequest.findMany({
@@ -56,19 +57,10 @@ export async function searchHousekeepingRecords(user: CurrentUser, query: string
   assertHousekeepingAccess(user);
   const text = query.trim().replace(/^#/, '').slice(0, 200);
   if (!text) return [];
-  const terms = text.toLocaleLowerCase('es-CL').split(/\s+/).filter(Boolean).slice(0, 8);
-  const haystack = Prisma.sql`lower(concat_ws(' ', h."humanId"::text, 'Housekeeping', coalesce(e."title", h."title"), coalesce(e."description", h."description"), h."location", h."status"))`;
-  return prisma.$queryRaw<GlobalSearchResult[]>(Prisma.sql`
-    SELECT h."humanId", 'HousekeepingRequest'::text AS "entityType", h."id" AS "entityId",
-      'Housekeeping'::text AS "kind", coalesce(e."title", h."title") AS "title",
-      coalesce(e."description", h."description") AS "summary", h."status", h."location" AS "roomNumber",
-      NULL::text AS "guestName", NULL::text AS "responsible", CASE WHEN h."isDemo" THEN 'Prueba administrativa' ELSE 'Operación' END AS "category", h."createdAt",
-      '/admin/housekeeping?vista=' || CASE WHEN h."status" IN ('RESUELTO', 'CANCELADO') THEN 'historial' ELSE 'pendientes' END || '&aviso=' || h."humanId"::text || '#aviso-' || h."humanId"::text AS "href"
-    FROM "HousekeepingRequest" h LEFT JOIN "OperationalEntry" e ON e."id" = h."sourceEntryId"
-    WHERE (h."isDemo" = false OR ${user.roleKey === 'ADMINISTRADOR_SISTEMA'}) AND ${Prisma.join(terms.map((term) => Prisma.sql`${haystack} LIKE ${`%${term}%`}`), ' AND ')}
-    ORDER BY CASE WHEN h."humanId"::text = ${text} THEN 0 ELSE 1 END, h."createdAt" DESC
-    LIMIT ${Math.min(100, Math.max(1, limit))}
-  `);
+  const visible = await hkWorkVisibility(user);
+  const legacy = canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
+  const records = await prisma.housekeepingRequest.findMany({ where: { AND: [{ OR: [{ workflowVersion: 1, AND: [visible] }, ...(legacy ? [{ workflowVersion: 0, ...housekeepingVisibility(user) }] : [{ workflowVersion: 0, createdById: user.id, isDemo: false }])] }, { OR: [...(Number.isSafeInteger(Number(text)) ? [{humanId:Number(text)}] : []), {title:{contains:text,mode:'insensitive'}},{description:{contains:text,mode:'insensitive'}},{location:{contains:text,mode:'insensitive'}},{sourceEntry:{title:{contains:text,mode:'insensitive'}}}] }] }, include:{sourceEntry:{select:{title:true,description:true}},assignedTo:{select:{name:true}}},orderBy:{createdAt:'desc'},take:Math.min(100,Math.max(1,limit)) });
+  return records.map(h=>({humanId:h.humanId,entityType:'HousekeepingRequest',entityId:h.id,kind:'Housekeeping',title:h.sourceEntry?.title??h.title??'Trabajo',summary:h.sourceEntry?.description??h.description,status:h.status,roomNumber:h.location,guestName:null,responsible:h.assignedTo?.name??null,category:h.isDemo?'Prueba administrativa':'Operación',createdAt:h.createdAt,href:`/admin/housekeeping?area=${h.departmentId??''}&vista=${isHousekeepingClosed(h.status as HousekeepingStatus)?'historial':'pendientes'}&aviso=${h.humanId}#aviso-${h.humanId}`}));
 }
 
 export async function getHousekeepingSources(user: CurrentUser, query = '') {
@@ -135,6 +127,7 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${current.sourceEntryId} FOR SHARE`;
       current.sourceEntry = await tx.operationalEntry.findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true } });
     }
+    if (current.workflowVersion === 1) throw new RuleError('Gestiona este trabajo desde el tablero diario de Housekeeping.');
     if (current.version !== input.version) throw new RuleError('Este aviso cambió en otra ventana. Actualiza la página antes de continuar.');
     const changed = housekeepingSourceChanged(current);
     if (!housekeepingActions(current.status as HousekeepingStatus, changed).includes(input.action)) throw new RuleError(changed ? 'La novedad cambió: revisa y confirma su nueva versión antes de avanzar.' : 'La acción no corresponde al estado actual.');
@@ -211,7 +204,8 @@ export async function escalateHousekeepingRequests(now = new Date()) {
     await prisma.$transaction(async tx => {
       const claimed = await tx.housekeepingRequest.updateMany({ where: { id: request.id, version: request.version, OR: [{ escalatedVersion: null }, { escalatedVersion: { not: request.version } }], status: { notIn: ['RESUELTO', 'CANCELADO'] } }, data: { escalatedVersion: request.version } });
       if (!claimed.count) return;
-      await notifyHousekeeping(tx, request, '', 'Plazo vencido: requiere seguimiento', true);
+      if(request.workflowVersion===1)await notifyHkWork(tx,request,'','Plazo vencido: requiere seguimiento');
+      else await notifyHousekeeping(tx, request, '', 'Plazo vencido: requiere seguimiento', true);
       escalated++;
     });
   }

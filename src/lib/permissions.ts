@@ -23,6 +23,12 @@ export const PERMISSIONS = {
   'entry.reopen': { group: 'Libro operativo', name: 'Reabrir registros' },
   'entry.restore': { group: 'Libro operativo', name: 'Restaurar registros eliminados' },
 
+  'housekeeping.request': { group: 'Housekeeping', name: 'Solicitar una atención a Housekeeping y consultar su resultado' },
+  'housekeeping.work': { group: 'Housekeeping', name: 'Ejecutar mis trabajos asignados' },
+  'housekeeping.assign': { group: 'Housekeeping', name: 'Organizar y asignar trabajo de mis áreas' },
+  'housekeeping.inspect': { group: 'Housekeeping', name: 'Inspeccionar trabajos de otras personas en mis áreas' },
+  'housekeeping.plan': { group: 'Housekeeping', name: 'Planificar rutinas y delegar cobertura de mis áreas' },
+  'housekeeping.view.all': { group: 'Housekeeping', name: 'Consultar el trabajo de todas las áreas, sin modificarlo' },
   'housekeeping.view': { group: 'Housekeeping', name: 'Consultar avisos de Housekeeping' },
   'housekeeping.manage': { group: 'Housekeeping', name: 'Crear y gestionar avisos de Housekeeping' },
 
@@ -153,6 +159,9 @@ export const ROLE_KEYS = {
   NIGHT_AUDITOR: 'AUDITOR_NOCTURNO',
   RESERVATIONS_CENTER: 'CENTRAL_RESERVAS',
   MANAGEMENT: 'GERENCIA',
+  HK_ATTENDANT: 'MUCAMA',
+  HK_SUPERVISOR: 'SUPERVISOR_HOUSEKEEPING',
+  HK_MANAGER: 'AMA_DE_LLAVES',
 } as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS];
@@ -224,8 +233,12 @@ const OPERATIONAL_BASE: PermissionKey[] = [
 
 /** Matriz inicial. El administrador también puede participar en la operación. */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
+  [ROLE_KEYS.HK_ATTENDANT]: ['housekeeping.work', 'housekeeping.request', 'schedule.self.view'],
+  [ROLE_KEYS.HK_SUPERVISOR]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'schedule.self.view'],
+  [ROLE_KEYS.HK_MANAGER]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'schedule.self.view', 'schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve'],
   [ROLE_KEYS.SYSTEM_ADMIN]: [...ALL_PERMISSIONS],
   [ROLE_KEYS.SUPERVISOR]: [
+    'housekeeping.request',
     ...OPERATIONAL_BASE,
     'entry.reopen',
     'entry.delete',
@@ -256,7 +269,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'cash.reopen',
     'cash.approve',
   ],
-  [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE],
+  [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE, 'housekeeping.request'],
   /*
     El Auditor nocturno es un perfil DE RECEPCIÓN, y por eso NO lleva
     `supervision.view`. Lo llevaba, y con eso le aparecía la pestaña de
@@ -267,6 +280,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     registrar y mover una incidencia sin despertar a nadie.
   */
   [ROLE_KEYS.NIGHT_AUDITOR]: [
+    'housekeeping.request',
     ...OPERATIONAL_BASE,
     'incident.manage',
     'nightaudit.run',
@@ -303,6 +317,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     reparación global auditada, no una operación habitual.
   */
   [ROLE_KEYS.MANAGEMENT]: [
+    'housekeeping.view.all',
     'guest.view',
     'supervision.view',
     'supervision.center.view',
@@ -381,4 +396,8 @@ export const ROLE_DEFINITIONS: Array<{
     level: 40,
     operational: true,
   },
+  { key: ROLE_KEYS.HK_ATTENDANT, name: 'Mucama', description: 'Ejecuta trabajos propios de Housekeeping e informa avances e impedimentos.', level: 30, operational: true },
+  { key: ROLE_KEYS.HK_SUPERVISOR, name: 'Supervisor/a de Housekeeping', description: 'Organiza el trabajo e inspecciona resultados dentro de sus áreas.', level: 60, operational: true },
+  { key: ROLE_KEYS.HK_MANAGER, name: 'Ama de llaves', description: 'Dirige Housekeeping, planifica rutinas, horarios y coberturas temporales de sus áreas.', level: 65, operational: true },
+
 ];

@@ -110,17 +110,20 @@ export async function seedCatalog(
     skipDuplicates: true,
   });
 
-  const roles = await client.role.findMany({ select: { id: true, key: true } });
+  const roles = await client.role.findMany({ select: { id:true,key:true,name:true,description:true,level:true,operational:true,isSystem:true } });
   const roleIdByKey = new Map(roles.map((role) => [role.key, role.id]));
 
   /*
-    Los roles que ya existían pueden traer nombre o nivel antiguos: se
-    actualizan, que son cuatro filas. Los permisos y las áreas no se tocan
+    Los roles que ya existían pueden traer nombre o nivel antiguos. Sólo se
+    actualizan las definiciones que realmente cambiaron; añadir cargos no
+    genera una actualización por cada fila del catálogo. Los permisos y las áreas no se tocan
     porque su nombre no cambia con el tiempo.
   */
   for (const definition of ROLE_DEFINITIONS) {
     const id = roleIdByKey.get(definition.key);
     if (!id) continue;
+    const current = roles.find(role => role.id === id);
+    if (current?.name === definition.name && current.description === definition.description && current.level === definition.level && current.operational === definition.operational && current.isSystem) continue;
     await client.role.update({
       where: { id },
       data: {

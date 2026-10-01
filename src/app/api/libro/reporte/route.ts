@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { isHkFocused } from '@/domain/housekeeping-work';
 import { requireUser } from '@/server/auth/guard';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
@@ -46,6 +47,7 @@ async function collect(filters: BookFilters): Promise<BookItem[]> {
 
 export async function GET(request: NextRequest) {
   const user = await requireUser();
+  if (isHkFocused(user)) return Response.json({error:'Tu cuenta no tiene acceso al informe general de Recepción.'},{status:403});
   const url = new URL(request.url);
   const raw = Object.fromEntries(url.searchParams.entries()) as RawSearchParams;
   const view = url.searchParams.get('vista') === 'novedades' ? 'novedades' : 'historial';

@@ -1,4 +1,6 @@
 import type { PermissionKey } from '@/lib/permissions';
+import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 
 export const TUTORIAL_MODULE_KEYS = [
   'novedades',
@@ -53,7 +55,7 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   { key: 'alertas', label: 'Alertas', route: '/alertas' },
-  { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
+  { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
   { key: 'equipo', label: 'Equipo y horarios', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     key: 'supervision',
@@ -82,10 +84,10 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
 ];
 
 function allowed(
-  item: { anyOf?: PermissionKey[] },
+  item: { anyOf?: PermissionKey[]; route?: string },
   permissions: PermissionKey[],
 ): boolean {
-  return !item.anyOf || item.anyOf.some((permission) => permissions.includes(permission));
+  return hkNavigationAllowed(permissions, item.route) && (!item.anyOf || item.anyOf.some((permission) => permissions.includes(permission)));
 }
 
 export function isTutorialModuleKey(value: string): value is TutorialModuleKey {
@@ -214,8 +216,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'housekeeping', module: 'housekeeping', title: 'Housekeeping',
-    description: 'Coordina avisos, confirma su recepción y registra impedimentos o resultados. Confirmar no resuelve. El acceso de consulta o gestión se habilita por rol.',
-    route: '/admin/housekeeping', target: ROUTE_TARGET, anyOf: ['housekeeping.view', 'housekeeping.manage'],
+    description: 'Organiza el trabajo del día: solicita, asigna, ejecuta y revisa según tu cargo y área. Una limpieza terminada requiere inspección de otra persona antes de aprobarse.',
+    route: '/admin/housekeeping', target: ROUTE_TARGET, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS,
   },
   {
     id: 'supervision',
@@ -274,13 +276,13 @@ export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = 
   ],
   housekeeping: [
     {
-      id: 'mod-housekeeping-recepcion', module: 'housekeeping', title: 'Revisa y confirma la instrucción',
-      description: 'Lee el contenido, prioridad y plazo. Confirma recepción después de comprenderlo o pide aclaración si falta información. Una novedad vinculada conserva su contenido original.',
+      id: 'mod-housekeeping-recepcion', module: 'housekeeping', title: 'Ubica tu trabajo del día',
+      description: 'Selecciona fecha y área. Recepción solicita; la supervisora organiza disponibilidad y asignaciones; cada mucama ejecuta sus trabajos. La novedad vinculada conserva su contenido original.',
       route: '/admin/housekeeping', target: ROUTE_TARGET,
     },
     {
-      id: 'mod-housekeeping-resultado', module: 'housekeeping', title: 'El pendiente termina con un resultado',
-      description: 'Inicia gestión, registra impedimentos y resuelve indicando qué se hizo. Cada acción conserva su autoría. El acceso de consulta permite revisar; el de gestión permite cambiar estados.',
+      id: 'mod-housekeeping-resultado', module: 'housekeeping', title: 'Termina, inspecciona y da continuidad',
+      description: 'Comienza tu asignación, registra impedimentos y marca terminado con un resultado. Otra persona habilitada inspecciona la limpieza y aprueba o devuelve para corregir. El relevo conserva pendientes y llaves; Fronti propone y tú confirmas.',
       route: '/admin/housekeeping', target: ROUTE_TARGET,
     },
   ],

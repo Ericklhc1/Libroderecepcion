@@ -48,6 +48,8 @@ import {
   TASK_STATUS_TONE,
   isOverdue,
 } from '@/domain/labels';
+import { HK_WORK_LABELS } from '@/domain/housekeeping-work';
+import { canAccessHousekeeping } from '@/domain/housekeeping';
 import { SHIFT_TYPE_LABEL } from '@/domain/shift';
 import { formatDate, formatDateTime, relativeTime, toDateTimeInput } from '@/lib/format';
 
@@ -219,6 +221,7 @@ export default async function EntryDetailPage({
             </div>
           </dl>
 
+          {entry.housekeepingRequest && (!entry.housekeepingRequest.isDemo || user.isSystemAdmin) && <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-petrol-900"><strong>Housekeeping #{entry.housekeepingRequest.humanId} · {HK_WORK_LABELS[entry.housekeepingRequest.status] ?? entry.housekeepingRequest.status}</strong>{entry.housekeepingRequest.resolution && <p className="mt-1 whitespace-pre-wrap">{entry.housekeepingRequest.resolution}</p>}{entry.housekeepingRequest.inspectedBy && <p className="mt-1 text-xs">Revisado por {entry.housekeepingRequest.inspectedBy.name}</p>}{canAccessHousekeeping(user) && <Link className="mt-2 inline-block underline" href={`/admin/housekeeping?area=${entry.housekeepingRequest.departmentId??''}&aviso=${entry.housekeepingRequest.humanId}`}>Ver atención</Link>}<p className="mt-1 text-xs text-slate-600">El resultado del área no cierra automáticamente esta novedad.</p></div>}
           {entry.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1">
               {entry.tags.map((tag) => (

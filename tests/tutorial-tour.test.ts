@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { NAV_ITEMS } from '@/components/layout/nav-items';
 import {
   TUTORIAL_STEPS,
+  guidedTourSteps,
   enabledTutorialModules,
   moduleTutorialSteps,
   shouldNavigateTutorial,
 } from '@/domain/tutorial-tour';
+import { HELP_TOPICS, visibleTopics } from '@/domain/help';
 import { ROLE_KEYS, ROLE_PERMISSIONS } from '@/lib/permissions';
 
 describe('recorrido guiado', () => {
@@ -83,6 +85,20 @@ describe('recorrido guiado', () => {
     expect(steps.every((step) => step.module === 'gerencia')).toBe(true);
     expect(steps.map((step) => step.id)).toContain('mod-gerencia-trazabilidad');
     expect(steps.map((step) => step.id)).toContain('mod-gerencia-fronti');
+  });
+
+  it('ofrece ayuda y recorrido de Housekeeping a todos los cargos habilitados',()=>{
+    for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER,ROLE_KEYS.RECEPTIONIST,ROLE_KEYS.MANAGEMENT]){
+      const permissions=ROLE_PERMISSIONS[role];expect(enabledTutorialModules(permissions)).toContain('housekeeping');
+      const steps=moduleTutorialSteps(['housekeeping'],permissions);expect(steps).toHaveLength(2);expect(steps.map(s=>s.description).join(' ')).toContain('inspecciona');
+      expect(HELP_TOPICS.find(t=>t.id==='gestionar-housekeeping')?.anyOf?.some(p=>permissions.includes(p))).toBe(true);
+    }
+    for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER]){
+      const permissions=ROLE_PERMISSIONS[role];expect(enabledTutorialModules(permissions)).not.toContain('novedades');
+      expect(guidedTourSteps(permissions).some(s=>s.route?.startsWith('/libro'))).toBe(false);
+      expect(visibleTopics(permissions).some(t=>t.route?.startsWith('/libro'))).toBe(false);
+    }
+    expect(enabledTutorialModules([])).not.toContain('housekeeping');
   });
 
   it('el layout ofrece onboarding sólo para módulos nuevos ya después del tutorial general', async () => {

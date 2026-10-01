@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { logoutAction } from '@/server/actions/auth';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 import { GroupedNav } from './app-sidebar';
 import type { NavGroup, NavItem } from './nav-items';
 
@@ -337,6 +338,10 @@ export function MobileNav({
 }) {
   const pathname = usePathname();
   const [openMore, setOpenMore] = useState(false);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const morePanelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const mobileItems = items.filter((item) => item.mobile).slice(0, 4);
   const shownHrefs = new Set(mobileItems.map((item) => item.href));
@@ -350,11 +355,22 @@ export function MobileNav({
   // Escape cierra, como cualquier panel del sistema.
   useEffect(() => {
     if (!openMore) return;
+    const trigger = moreTriggerRef.current;
+    const unlock = lockBodyScroll();
+    morePanelRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenMore(false);
+      if (event.key === 'Escape') { setOpenMore(false); moreTriggerRef.current?.focus(); }
+      if (event.key === 'Tab') {
+        const controls = morePanelRef.current?.querySelectorAll<HTMLElement>('a[href], button, [tabindex="0"]');
+        const first = controls?.[0]; const last = controls?.[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     };
+    const onResize = () => { if (window.innerWidth >= 1024) setOpenMore(false); };
+    window.addEventListener('resize', onResize);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); unlock(); trigger?.focus(); };
   }, [openMore]);
 
   const restHasBadge = restItems.some((item) => (badges?.[item.href] ?? 0) > 0);
@@ -362,15 +378,15 @@ export function MobileNav({
 
   return (
     <>
-      {openMore ? (
-        <div className="fixed inset-0 z-40 lg:hidden no-print">
+      {openMore && mounted ? createPortal(
+        <div className="fixed inset-0 z-[60] lg:hidden no-print">
           <button
             type="button"
-            className="absolute inset-0 bg-petrol-950/40"
+            className="surface-enter absolute inset-0 bg-petrol-950/40"
             aria-label="Cerrar el menú"
             onClick={() => setOpenMore(false)}
           />
-          <div className="absolute inset-x-0 bottom-[3.75rem] max-h-[70vh] overflow-y-auto rounded-t-lg border-t-2 border-t-gold-500 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
+          <div ref={morePanelRef} role="dialog" aria-modal="true" aria-label="Todo el menú" className="mobile-menu-enter absolute inset-x-0 bottom-[var(--mobile-nav-height)] max-h-[calc(100dvh-var(--mobile-nav-height)-env(safe-area-inset-top)-1rem)] overflow-y-auto overscroll-contain rounded-t-lg border-t-2 border-t-gold-500 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-sm font-semibold text-petrol-900">Todo el menú</p>
               <button
@@ -412,11 +428,11 @@ export function MobileNav({
               </form>
             </div>
           </div>
-        </div>
+        </div>, document.body
       ) : null}
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-petrol-800 bg-petrol-950 lg:hidden no-print"
+        className="fixed inset-x-0 bottom-0 z-40 flex pb-[env(safe-area-inset-bottom)] border-t border-petrol-800 bg-petrol-950 lg:hidden no-print"
         aria-label="Navegación rápida"
       >
       {mobileItems.map((item) => {
@@ -429,7 +445,7 @@ export function MobileNav({
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
+              'relative flex h-[3.75rem] flex-1 flex-col justify-center items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
               active ? 'text-white' : 'text-petrol-200',
             )}
           >
@@ -448,10 +464,11 @@ export function MobileNav({
       {restItems.length > 0 ? (
         <button
           type="button"
+          ref={moreTriggerRef}
           onClick={() => setOpenMore((open) => !open)}
           aria-expanded={openMore}
           className={cn(
-            'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
+            'relative flex h-[3.75rem] flex-1 flex-col justify-center items-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-50',
             openMore || restIsActive ? 'text-white' : 'text-petrol-200',
           )}
         >

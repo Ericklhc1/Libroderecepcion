@@ -265,3 +265,10 @@ h4 {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 @media print { .surface-enter, .dialog-enter { animation: none !important; } }
+
+:root { --mobile-nav-height: calc(3.75rem + env(safe-area-inset-bottom, 0px)); }
+@keyframes nav-disclosure { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0); } }
+@keyframes mobile-menu-open { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
+.nav-disclosure-enter { animation: nav-disclosure 180ms ease-out; }
+.mobile-menu-enter { animation: mobile-menu-open 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .nav-disclosure-enter, .mobile-menu-enter { animation: none; } }

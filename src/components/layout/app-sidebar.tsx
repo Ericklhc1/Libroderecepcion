@@ -49,7 +49,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
   const [selection, setSelection] = useState<{ route: string; group: number | null; item: string | null } | null>(null);
   const openGroup = selection?.route === route ? selection.group : activeGroup >= 0 ? activeGroup : null;
   const openItem = selection?.route === route ? selection.item : null;
-  const [flyout, setFlyout] = useState<{ item: NavItem; route: string; left: number; top: number } | null>(null);
+  const [flyout, setFlyout] = useState<{ item: NavItem; group?: NavGroup; route: string; left: number; top: number } | null>(null);
   const flyoutRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const id = useId();
@@ -120,17 +120,35 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
           aria-controls={openItem === item.href ? id + '-module-' + groupIndex + '-' + groupIndexForItem(item) : undefined}
           className={cn('rounded p-2', light ? 'text-slate-600' : 'text-petrol-300')}
           onClick={() => setSelection({ route, group: groupIndex, item: openItem === item.href ? null : item.href })}>
-          <ChevronDown className={cn('h-4 w-4', openItem === item.href && 'rotate-180')} aria-hidden="true" />
+          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', openItem === item.href && 'rotate-180')} aria-hidden="true" />
         </button> : null}
       </div>
-      {hasMenu && openItem === item.href ? <div id={id + '-module-' + groupIndex + '-' + groupIndexForItem(item)} className="ml-4 border-l border-petrol-700 pl-1">{destinations(item)}</div> : null}
+      {hasMenu && openItem === item.href ? <div id={id + '-module-' + groupIndex + '-' + groupIndexForItem(item)} className="nav-disclosure-enter ml-4 border-l border-petrol-700 pl-1">{destinations(item)}</div> : null}
     </div>;
   };
   function groupIndexForItem(item: NavItem) { return groups.flatMap(group => group.items).findIndex(candidate => candidate.href === item.href); }
 
   return <nav aria-label="Navegación principal" className="space-y-2">
     {groups.map((group, index) => {
-      if (compact) return <div key={group.title ?? 'principal'} className={cn('space-y-1', index > 0 && 'border-t border-petrol-800 pt-2')}>{group.items.map(item => moduleRow(item, index))}</div>;
+      if (compact && group.title) {
+        const first = group.items[0];
+        if (!first) return null;
+        const Icon = icons[first.icon];
+        const expanded = currentFlyout?.group === group;
+        return <div key={group.title + index} className="relative">
+          <button type="button" aria-label={group.title} title={group.title} aria-expanded={expanded}
+            aria-controls={expanded ? id + '-flyout' : undefined}
+            className={cn(row, 'w-full justify-center px-2', activeGroup === index && selected)}
+            onClick={event => {
+              if (expanded) { setFlyout(null); return; }
+              triggerRef.current = event.currentTarget;
+              const rect = event.currentTarget.getBoundingClientRect();
+              setFlyout({ item: first, group, route, left: Math.max(12, Math.min(rect.right + 8, window.innerWidth - 332)), top: Math.max(12, Math.min(rect.top, window.innerHeight - 360)) });
+            }}><Icon className="h-5 w-5 shrink-0" aria-hidden="true" /></button>
+          <span className="pointer-events-none absolute right-0 top-0"><Count value={group.items.reduce((total, item) => total + badge(item), 0)} /></span>
+        </div>;
+      }
+      if (compact) return <div key={'principal-' + index}>{group.items.map(item => moduleRow(item, index))}</div>;
       if (!group.title) return <div key="principal">{group.items.map(item => moduleRow(item, index))}</div>;
       const single = group.items.length === 1 ? group.items[0] : null;
       if (single && !single.menu?.length) return <div key={group.title}>{moduleRow(single, index)}</div>;
@@ -145,18 +163,20 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
           className={cn(row, 'w-full text-left', activeGroup === index && selected)}
           onClick={() => setSelection({ route, group: openGroup === index ? null : index, item: null })}>
           <span className="flex-1">{group.title}</span><Count value={group.items.reduce((total, item) => total + badge(item), 0)} />
-          <ChevronDown className={cn('h-4 w-4', openGroup === index && 'rotate-180')} aria-hidden="true" />
+          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', openGroup === index && 'rotate-180')} aria-hidden="true" />
         </button>
-        {openGroup === index ? <div id={id + '-group-' + index} className="mt-1 space-y-1">
+        {openGroup === index ? <div id={id + '-group-' + index} className="nav-disclosure-enter mt-1 space-y-1">
           {single?.menu?.length ? destinations(single) : group.items.map(item => moduleRow(item, index))}
         </div> : null}
       </div>;
     })}
     {currentFlyout && typeof document !== 'undefined' ? createPortal(<div ref={flyoutRef} id={id + '-flyout'}
-      aria-label={'Opciones de ' + currentFlyout.item.label} className="fixed z-50 w-80 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
+      aria-label={'Opciones de ' + (currentFlyout.group?.title ?? currentFlyout.item.label)} className="nav-dropdown-enter fixed z-50 w-80 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
       style={{ left: currentFlyout.left, top: currentFlyout.top, maxHeight: 'calc(100dvh - ' + (currentFlyout.top + 12) + 'px)' }}>
-      <Link href={currentFlyout.item.href} onClick={() => setFlyout(null)} className="block rounded-md px-3 py-2 font-semibold text-petrol-900 hover:bg-slate-100">Abrir {currentFlyout.item.label}</Link>
-      {destinations(currentFlyout.item)}
+      {(currentFlyout.group?.items ?? [currentFlyout.item]).map(item => <div key={item.href}>
+        <Link href={item.href} onClick={() => { setFlyout(null); onNavigate?.(); }} className="block rounded-md px-3 py-2 font-semibold text-petrol-900 hover:bg-slate-100">{item.label}</Link>
+        {destinations(item)}
+      </div>)}
     </div>, document.body) : null}
   </nav>;
 }
@@ -170,7 +190,7 @@ export function AppSidebar({ groups, badges, hotelName, version, userId }: Props
     try { localStorage.setItem(storageKey, next ? 'compact' : 'expanded'); } catch { /* Storage disabled. */ }
     setCompact(next);
   };
-  return <aside className={cn('sticky top-0 hidden h-dvh shrink-0 self-start flex-col border-r border-petrol-800 bg-petrol-950 lg:flex no-print', compact ? 'w-16' : 'w-56')}>
+  return <aside className={cn('sticky top-0 hidden h-dvh shrink-0 self-start flex-col border-r border-petrol-800 bg-petrol-950 lg:flex transition-[width] duration-200 ease-out no-print', compact ? 'w-16' : 'w-56')}>
     <Link href="/" title={'AROH Central IA · ' + hotelName} className="block shrink-0 border-b border-petrol-800 px-3 py-4">
       {compact ? <span className="block text-center font-semibold text-gold-400">A</span> : <><span className="block truncate text-base text-white">AROH <span className="font-semibold text-gold-400">Central IA</span></span><span className="mt-1 block truncate text-xs text-petrol-300">{hotelName}</span></>}
     </Link>

@@ -1,3 +1,10 @@
+## 01/10/2026 · 1.43.3 · Chat push y navegación móvil
+
+- Push conserva destinatarios por solicitud; se programa después del commit de mensajes, adjuntos y stickers. Respuestas Fronti incluyen al invocador con las mismas reglas de silencio. El worker vuelve a avisar en mensajes nuevos que reutilizan el ID.
+- Móvil: viewport-fit y área segura inferior; Más en portal, scroll bloqueado/restituido, Escape y foco contenido; apertura breve y movimiento reducido. Cabecera con buscador en su propia fila, sin ancho mínimo que fuerce vista de escritorio. Chat por encima de la barra segura.
+- Barra reducida conserva un icono por grupo autorizado; grupos/módulos desplegables y ancho con transición. Paneles cerrados se desmontan para no dejar capas invisibles.
+- Sin migraciones, cambios de datos operativos ni credenciales. Validación local: lint, tipos y 74 pruebas específicas aprobadas; incluye rollback, silencio, aislamiento de solicitudes y avisos repetidos en worker. Suite completa en Compuerta con PostgreSQL efímero. Entrega real en iPhone pendiente de prueba en dispositivo.
+
 # Relevo de agentes — AROH Central IA · Hotel HW Libertad
 
 ## 2026-10-01 · v1.43.2 · Publicación de horarios verificada

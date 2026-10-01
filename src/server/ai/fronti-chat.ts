@@ -130,6 +130,7 @@ async function persistFrontiChatMessage(input: {
   reply: string;
 }): Promise<string> {
   const now = new Date();
+  let pushRecipients: string[] = [];
   const message = await prisma.$transaction(async (tx) => {
     const conversation = await tx.chatConversation.findFirst({
       where: { id: input.conversationId, deletedAt: null },
@@ -158,9 +159,7 @@ async function persistFrontiChatMessage(input: {
       data: { lastMessageAt: now },
     });
 
-    const recipients = conversation.participants.filter(
-      (participant) => participant.userId !== input.invokedById,
-    );
+    const recipients = conversation.participants;
     if (recipients.length) {
       await tx.chatParticipant.updateMany({
         where: {
@@ -190,15 +189,14 @@ async function persistFrontiChatMessage(input: {
       });
     }
 
-    scheduleWebPushForUsers(
-      recipients
-        .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
-        .map((recipient) => recipient.userId),
-    );
+    pushRecipients = recipients
+      .filter((recipient) => !recipient.mutedUntil || recipient.mutedUntil <= now)
+      .map((recipient) => recipient.userId);
 
     return created;
   });
 
+  scheduleWebPushForUsers(pushRecipients);
   return message.id;
 }
 

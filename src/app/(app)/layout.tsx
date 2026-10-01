@@ -95,7 +95,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
-            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2">
+            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 flex-wrap items-center gap-2 px-4 py-2 lg:flex-nowrap">
               <Link href="/" className="flex shrink-0 items-baseline gap-1 lg:hidden">
                 <span className="text-sm font-semibold text-petrol-950">AROH</span>
                 <span className="text-sm font-semibold text-gold-600">Central IA</span>
@@ -103,7 +103,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
               <form
                 action="/buscar"
-                className="relative min-w-[11rem] flex-1 xl:max-w-2xl"
+                className="relative order-last w-full min-w-0 lg:order-none lg:w-auto lg:flex-1 xl:max-w-2xl"
                 data-tour="global-search"
               >
                 <Search
@@ -150,11 +150,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </header>
 
-          <main className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-24 pt-5 lg:pb-8">
+          <main className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
             {children}
           </main>
 
-          <div className="mx-auto w-full max-w-[1680px] px-4 pb-24 lg:pb-4">
+          <div className="mx-auto w-full max-w-[1680px] px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">
             <AiAttribution />
             <p className="mt-1 text-center text-[0.65rem] text-slate-400 lg:hidden">
               AROH Central IA v{packageJson.version}

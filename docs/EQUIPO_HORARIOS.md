@@ -1,4 +1,4 @@
-# Equipo y horarios · AROH 1.41.1
+# Equipo y horarios · AROH 1.41.2
 
 ## Propósito y límite
 
@@ -48,7 +48,7 @@ Internamente se conservan columnas de minutos para compatibilidad y precisión. 
 | schedule.extra.approve | Aprobar/rechazar y validar extras en áreas autorizadas. |
 | schedule.configure | Administrar alcance adicional y feriados globales. |
 
-Administrador tiene acceso completo. La corrección 1.41.1 no habilita permisos a otros roles. Preparar una malla y publicarla son facultades distintas. Un perfil con manage sin publish no cambia horarios ya publicados. Poder ser programado no concede acceso al calendario del equipo.
+Administrador tiene acceso completo. La corrección 1.41.2 no habilita permisos a otros roles. Preparar una malla y publicarla son facultades distintas. Un perfil con manage sin publish no cambia horarios ya publicados. Poder ser programado no concede acceso al calendario del equipo.
 
 ## Cambios en calendario
 

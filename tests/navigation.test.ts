@@ -170,11 +170,11 @@ describe('shell corporativo con sidebar', () => {
   const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
 
   it('usa sidebar oscuro en escritorio y conserva navegación móvil separada', () => {
-    expect(layout).toContain('<SidebarNav groups={groups} badges={badges} />');
-    expect(layout).toContain('<aside');
+    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('<aside');
     expect(layout).not.toContain('<DesktopNav groups={groups} badges={badges} />');
     expect(nav).toContain('export function SidebarNav');
-    expect(layout).toContain('bg-petrol-950 lg:flex');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 
   it('la cabecera global conserva sólo utilidades globales', () => {
@@ -185,12 +185,12 @@ describe('shell corporativo con sidebar', () => {
     expect(layout).not.toContain('<QuickActions');
   });
 
-  it('mantiene el sidebar reducido a módulos raíz', () => {
+  it('mantiene módulos raíz y delega los grupos al menú plegable compartido', () => {
     const sidebarStart = nav.indexOf('export function SidebarNav');
     const sidebarEnd = nav.indexOf('/** Barra inferior para móvil', sidebarStart);
     const sidebar = nav.slice(sidebarStart, sidebarEnd);
 
-    expect(sidebar).toContain('group.items.map((item)');
+    expect(sidebar).toContain('<GroupedNav groups={groups} badges={badges} />');
     expect(sidebar).not.toContain('item.menu?.length');
     expect(sidebar).not.toContain('section.items.map((subitem)');
     expect(sidebar).not.toContain('useSearchParams');
@@ -238,11 +238,11 @@ describe('shell corporativo con sidebar', () => {
   });
 
   it('usa geometría recta y cian como acento visual del estado activo', () => {
-    expect(nav).toContain('rounded-md border-l-2');
-    expect(nav).toContain('border-gold-500 bg-petrol-800');
-    expect(nav).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
-    expect(layout).toContain('w-56');
-    expect(layout).toContain('text-gold-400');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('rounded-md border-l-2');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('border-gold-500 bg-petrol-800');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain("compact ? 'w-16' : 'w-56'");
+    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-gold-400');
     expect(layout).toContain('max-w-[1680px]');
   });
 });

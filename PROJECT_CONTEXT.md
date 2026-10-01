@@ -1,6 +1,6 @@
 # AROH Central IA · Hotel HW Libertad — contexto técnico
 
-## 01/10/2026 · AROH 1.41.1 · Usuarios y horas en Equipo
+## 01/10/2026 · AROH 1.41.2 · Usuarios y horas en Equipo
 
 - La instrucción actual sustituye el alta independiente de colaboradores de 1.41.0: colaborador = Usuario. ScheduleCollaborator conserva sólo la extensión técnica de planificación y sus referencias históricas; userId único es la identidad canónica. No se aceptan altas sin usuario ni sustituciones de identidad.
 - Usuarios activos y visibles del área principal aparecen automáticamente al preparar su malla, sin crear cuentas ni asignaciones. Las áreas adicionales y horas se configuran sobre la cuenta existente. Registros históricos sin vínculo no se borran ni se vinculan por conjetura; se vinculan explícitamente.
@@ -8,6 +8,17 @@
 - Referencia semanal: entrada y presentación en horas (42 / 42,5), validación de 0–168 h. Persistencia interna en minutos para no reinterpretar valores históricos ni migrar datos.
 - Fuera de este módulo: colación, descuentos de pausa y descanso mínimo entre jornadas. Se conservan Libre, vacaciones y ausencias como estados de la malla, así como solapamientos, medianoche, versión, publicación y auditoría. Snapshots históricos no se borran.
 - Sin cambios de esquema, dependencias, caja, turnos operativos, DNS ni infraestructura. Validación por Compuerta en PostgreSQL desechable; comprobar el resultado del PR y Production antes de dar por desplegado.
+
+
+## 01/10/2026 · AROH 1.41.1 · Menú plegable y barra reducible
+
+- Corrige la agrupación meramente visual: sólo un grupo abierto, por defecto el de la ruta actual. Se puede cerrar también el grupo activo. Módulos con subopciones tienen flecha independiente del acceso principal; grupos de un módulo muestran directamente sus destinos para evitar clics redundantes.
+- Barra fija reducible de 224 a 64 px: iconos por módulo, etiquetas accesibles y título al pasar el cursor. Subopciones en panel flotante fuera del contenedor desplazable; cierre por Escape, clic externo, navegación y cambio de ventana. Avisos pendientes visibles en grupos cerrados y modo reducido.
+- Preferencia local versionada por usuario, sin datos de autorización. Permisos filtrados por visibleNavGroups en servidor; no se amplían roles ni se modifican datos operativos.
+- Móvil reutiliza los grupos plegables dentro de Más; conserva perfil y cierre de sesión, sin duplicar los cuatro accesos inferiores.
+- Selección específica por ruta y consulta: Housekeeping y Auditoría no activan Administración, y una sección de Equipo no marca todas sus subopciones. Suspense delimita useSearchParams.
+- Verificación local: 47 pruebas de navegación/representación/identidad aprobadas; compilación de producción aprobada. Suite completa pendiente de Compuerta con PostgreSQL desechable; no se prueba con Neon Production. No se dispone de navegador local para prueba visual autenticada.
+- Cambio de interfaz únicamente, sin migración. Publicación por PR y flujo normal de Production; incrementar a 1.41.1.
 
 
 ## 01/10/2026 · AROH 1.41.0 · Equipo y horarios

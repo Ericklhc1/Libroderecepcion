@@ -99,7 +99,7 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
   it('ignora descanso histórico y conserva control de ausencias superpuestas', async () => {
     const person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } }); await prisma.scheduleCollaborator.update({ where: { id: person.id }, data: { minRestMinutes: 720 } });
     await add(a, '2090-10-03', night); await add(a, '2090-10-04', day);
-    await addScheduleSlot(admin, await mutation(), { collaboratorId: a, date: '2090-10-04', kind: 'LIBRE' }, (await slot(a, '2090-10-04')).id);
+    await addScheduleSlot(admin, await mutation(planId, 'Revisar ausencia'), { collaboratorId: a, date: '2090-10-04', kind: 'LIBRE' }, (await slot(a, '2090-10-04')).id);
     const free = await slot(a, '2090-10-04'); await expect(addScheduleSlot(admin, await mutation(), { collaboratorId: a, date: '2090-10-04', kind: 'VACACIONES' }, free.id)).rejects.toThrow();
   });
   it('conserva snapshots al revisar una plantilla y exige horas exactas al cargar', async () => {

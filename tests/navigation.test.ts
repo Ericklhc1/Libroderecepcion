@@ -215,7 +215,7 @@ describe('shell corporativo con sidebar', () => {
 
     const llaves = readFileSync('src/app/(app)/llaves/page.tsx', 'utf-8');
     expect(llaves).toContain('([4, 5, 6] as const).map');
-    expect(llaves).toContain('href={`/llaves?piso=${value}`}');
+    expect(llaves).toContain('href={`/llaves?vista=llaves&piso=${value}`}');
 
     const turno = readFileSync('src/app/(app)/turno/page.tsx', 'utf-8');
     expect(turno).toContain('href="/admin/turnos"');

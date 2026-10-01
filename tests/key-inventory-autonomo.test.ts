@@ -18,6 +18,8 @@ import {
   returnPhysicalKey,
   savePhysicalKeyInventoryCount,
 } from '@/server/services/key-inventory';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
 import { ROLE_PERMISSIONS } from '@/lib/permissions';
 
 describe('inventario físico de llaves independiente de PMS', () => {
@@ -56,6 +58,10 @@ describe('inventario físico de llaves independiente de PMS', () => {
     const results = await Promise.all([savePhysicalKeyInventoryCount(user,input),savePhysicalKeyInventoryCount(user,input)]);
     expect(results[0].id).toBe(results[1].id); expect(results[0].floor).toBeNull(); expect(results[0].items).toHaveLength(89); expect(results[0].totals.missing).toBe(0);
     expect(await prisma.keyInventoryCount.count()).toBe(1);
+    const context = resolveFrontiPageContext({ pathname: `/llaves/inventarios/${results[0].id}` });
+    const read = await executeFrontiPageContextTool(user,context) as {snapshot:{humanId:number;items:unknown[]}};
+    expect(read.snapshot.humanId).toBe(results[0].humanId); expect(read.snapshot.items).toHaveLength(89);
+    await expect(executeFrontiPageContextTool({...user,permissions:[],roleKey:'ROL_PERSONALIZADO'},context)).rejects.toThrow('permiso');
     const first = results[0].items[0]!; expect(first.roomNumberSnapshot).toBe('401'); expect(first.custodySnapshot).not.toBeNull();
     await prisma.roomKey.updateMany({ where:{roomId:first.roomId},data:{status:KeyStatus.EXTRAVIADA} });
     expect((await prisma.keyInventoryItem.findUniqueOrThrow({where:{id:first.id}})).custodySnapshot).toEqual(first.custodySnapshot);

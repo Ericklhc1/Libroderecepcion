@@ -22,7 +22,7 @@ describe('central de ayuda en móvil', () => {
   });
 
   it('bloquea el scroll de fondo y lo restaura al cerrar', () => {
-    expect(source).toContain("document.body.style.overflow = 'hidden'");
-    expect(source).toContain('previousOverflow');
+    expect(source).toContain('lockBodyScroll()');
+    expect(source).toContain('unlockBodyScroll()');
   });
 });

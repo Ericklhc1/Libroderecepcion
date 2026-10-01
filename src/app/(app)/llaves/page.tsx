@@ -71,7 +71,7 @@ export default async function KeysPage({
   const params = await searchParams;
   const floorParam = readOne(params.piso) || 'todos';
   const section = readOne(params.vista) || 'inventario';
-  const allFloors = floorParam === 'todos';
+  const allFloors = section !== 'llaves' || floorParam === 'todos';
   const requestedFloor = Number(floorParam);
   const floor = isInventoryFloor(requestedFloor) ? requestedFloor : 4;
   const q = readOne(params.q).trim();
@@ -80,8 +80,8 @@ export default async function KeysPage({
     ? (statusRaw as KeyStatus)
     : null;
 
-  const [inventory, recentCounts, completeFloors] = await Promise.all([
-    allFloors
+  const [filteredInventory, recentCounts, completeFloors] = await Promise.all([
+    section !== 'llaves' ? Promise.resolve(null) : allFloors
       ? Promise.all(
           ([4, 5, 6] as const).map((value) =>
             getPhysicalKeyInventory({ floor: value, query: q, status }),
@@ -103,6 +103,12 @@ export default async function KeysPage({
     listRecentPhysicalKeyCounts('todos'),
     Promise.all(([4, 5, 6] as const).map(floor => getPhysicalKeyInventory({ floor }))),
   ]);
+
+  const inventory = filteredInventory ?? {
+    floor: 4 as const,
+    rooms: completeFloors.flatMap(f => f.rooms),
+    summary: completeFloors.reduce((a, f) => ({ expected: a.expected + f.summary.expected, registered: a.registered + f.summary.registered, outOfService: a.outOfService + f.summary.outOfService, lost: a.lost + f.summary.lost }), { expected: 0, registered: 0, outOfService: 0, lost: 0 }),
+  };
 
   const canAssign = hasPermission(user, 'key.assign');
   const canInventory = hasPermission(user, 'key.inventory') || hasPermission(user, 'key.stock');

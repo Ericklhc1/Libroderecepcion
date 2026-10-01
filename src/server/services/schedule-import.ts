@@ -16,7 +16,8 @@ export async function reviewScheduleImport(user: CurrentUser, planId: string, fi
   const existing = await prisma.scheduleImport.findFirst({ where: { planId, fileHash, OR: [{ baseVersion: plan.version }, { status: 'APLICADO' }] } }); if (existing) return existing;
   const files = await readReportFile(fileName, bytes, { preserveClockCells: true });
   const extracted = files.map((f) => extractScheduleRoster(f.fragments, plan.startDate.toISOString().slice(0, 10), plan.endDate.toISOString().slice(0, 10)));
-  const people = await prisma.scheduleCollaborator.findMany({ where: { active: true, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
+  const accounts = await prisma.scheduleCollaborator.findMany({ where: { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } }, memberships: { some: { departmentId: plan.departmentId, active: true } } }, include: { user: { select: { name: true } } } });
+  const people = accounts.map(({ user, ...p }) => ({ ...p, name: user?.name ?? p.name }));
   const templates = await prisma.scheduleTemplate.findMany({ where: { departmentId: plan.departmentId, active: true } });
   const issues = extracted.flatMap((e) => e.issues); const rows = extracted.flatMap((e) => e.rows);
   if (rows.length > 2000) throw new RuleError('La carga admite como máximo 2.000 asignaciones.');

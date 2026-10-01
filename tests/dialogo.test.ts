@@ -69,7 +69,8 @@ describe('el enfoque no arrastra el scroll', () => {
 
 describe('al cerrar, la página queda como estaba', () => {
   it('restaura el overflow anterior en vez de vaciarlo', () => {
-    expect(source).toContain('previousOverflow');
+    expect(source).toContain('lockBodyScroll()');
+    expect(source).toContain('unlockBodyScroll()');
     expect(source).not.toMatch(/document\.body\.style\.overflow = ''/);
   });
 });

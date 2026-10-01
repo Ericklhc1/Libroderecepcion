@@ -272,6 +272,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  const keyCount = pathname.match(/^\/llaves\/inventarios\/([^/]+)$/);
+  if (keyCount) return detail('llaves', 'Llaves', 'inventario-guardado', 'Inventario guardado e impresión', ['consultar_contexto_pantalla', 'consultar_llaves'], 'KeyInventoryCount', keyCount[1] ?? null);
   if (pathname === '/llaves') {
     return detail('llaves', 'Llaves', filters.piso ? `piso-${filters.piso}` : 'inventario', filters.piso ? `Inventario piso ${filters.piso}` : 'Inventario de llaves', [
       'consultar_contexto_pantalla',

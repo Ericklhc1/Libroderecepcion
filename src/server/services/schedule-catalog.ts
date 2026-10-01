@@ -44,7 +44,7 @@ export async function saveScheduleCollaborator(user: CurrentUser, raw: z.input<t
     if (await tx.department.count({ where: { id: { in: input.departmentIds }, active: true } }) !== new Set(input.departmentIds).size) throw new RuleError('Selecciona áreas activas.');
     const editing = !!input.id;
     const data = {
-      employeeCode: existing?.employeeCode ?? input.employeeCode ?? `USR_${account.id}`,
+      employeeCode: existing?.employeeCode ?? input.employeeCode ?? `USR_${account.id}`.toUpperCase(),
       name: account.name, functionName: editing ? input.functionName ?? existing!.functionName : existing?.functionName ?? input.functionName ?? account.role.name,
       userId: account.id, active: editing ? input.active ?? existing!.active : existing?.active ?? true,
       weeklyMinutes: editing || !existing ? (input.weeklyHours === undefined ? existing?.weeklyMinutes ?? null : Math.round(input.weeklyHours * 60) || null) : existing.weeklyMinutes,

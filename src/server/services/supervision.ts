@@ -306,6 +306,7 @@ export async function getSupervisionData(
         countedBy: { select: { name: true } },
         items: {
           select: {
+            roomId: true,
             expected: true,
             found: true,
             outOfService: true,
@@ -327,11 +328,12 @@ export async function getSupervisionData(
     (audit) => Number(audit.difference) !== 0,
   );
 
-  const latestKeyByFloor = new Map<number | null, (typeof keyCounts)[number]>();
-  for (const count of keyCounts) {
-    if (!latestKeyByFloor.has(count.floor)) latestKeyByFloor.set(count.floor, count);
-  }
-  const latestKeyCounts = Array.from(latestKeyByFloor.values())
+  const coveredRooms = new Set<string>();
+  const currentKeyCounts = keyCounts.map(count => ({ ...count, items: count.items.filter(item => {
+    if (coveredRooms.has(item.roomId)) return false;
+    coveredRooms.add(item.roomId); return true;
+  }) })).filter(count => count.items.length > 0);
+  const latestKeyCounts = currentKeyCounts
     .map((count) => ({
       ...count,
       missing: count.items.reduce(

@@ -1,3 +1,4 @@
+import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
 import {
   Bug,
@@ -139,7 +140,7 @@ export default async function AdminPage() {
     prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
     prisma.operationalEntry.count({ where: { NOT: { deletedAt: null } } }),
     prisma.task.count({ where: { NOT: { deletedAt: null } } }),
-    prisma.auditLog.count({ where: housekeepingAuditVisibility(user) }),
+    prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)] } }),
   ]);
 
   return (

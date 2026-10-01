@@ -8,6 +8,14 @@
  */
 
 export const PERMISSIONS = {
+  'schedule.self.view': { group: 'Equipo y horarios', name: 'Consultar y confirmar mi horario publicado' },
+  'schedule.view': { group: 'Equipo y horarios', name: 'Consultar horarios publicados de mis áreas' },
+  'schedule.view.all': { group: 'Equipo y horarios', name: 'Consultar horarios publicados de todas las áreas' },
+  'schedule.manage': { group: 'Equipo y horarios', name: 'Crear, cargar y modificar mallas de mis áreas' },
+  'schedule.publish': { group: 'Equipo y horarios', name: 'Publicar horarios y cambios de mis áreas' },
+  'schedule.catalog.manage': { group: 'Equipo y horarios', name: 'Gestionar colaboradores, plantillas y cobertura de mis áreas' },
+  'schedule.extra.approve': { group: 'Equipo y horarios', name: 'Aprobar y validar extras de mis áreas' },
+  'schedule.configure': { group: 'Equipo y horarios', name: 'Administrar alcance por área y feriados' },
   'entry.create': { group: 'Libro operativo', name: 'Crear registros' },
   'entry.edit': { group: 'Libro operativo', name: 'Editar registros' },
   'entry.delete': { group: 'Libro operativo', name: 'Eliminar registros' },

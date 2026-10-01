@@ -22,6 +22,7 @@ const nextConfig = {
     /habitaciones/importar sólo redirige y /turno ya no procesa PDF.
   */
   outputFileTracingIncludes: {
+    '/equipo': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
     '/huespedes/importar': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
     '/api/supervision/auditoria-diaria': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
   },

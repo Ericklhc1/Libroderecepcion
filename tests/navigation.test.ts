@@ -37,8 +37,8 @@ describe('menú principal', () => {
   it('expone el núcleo operativo y el Centro privado', () => {
     const primary = NAV_GROUPS[0]!;
     expect(primary.title).toBeNull();
-    expect(primary.items.map((item) => item.href)).toEqual([
-      '/', // ventana operativa
+    expect(primary.items.map((item) => item.href)).toEqual(['/']);
+    expect(NAV_GROUPS.find((group) => group.title === 'Operación')?.items.map((item) => item.href)).toEqual([
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
       '/novedades/habitacion', // contexto operativo sobre las 89 habitaciones
       '/caja', // centralización financiera
@@ -46,8 +46,8 @@ describe('menú principal', () => {
       '/llaves', // inventario físico autónomo
       '/alertas', // llamadas de atención programables
       '/admin/housekeeping', // coordinación habilitable por permisos
-      '/supervision', // Centro privado, sólo visible con permiso específico
     ]);
+    expect(NAV_GROUPS.find((group) => group.title === 'Equipo')?.items.map((item) => item.href)).toEqual(['/equipo']);
   });
 
   /*
@@ -88,9 +88,9 @@ describe('visibilidad por rol', () => {
     expect(hrefs).toEqual(['/', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas']);
   });
 
-  it('Gerencia vive en un grupo de Dirección separado del núcleo operativo', () => {
-    const direction = NAV_GROUPS.find((group) => group.title === 'Dirección');
-    expect(direction?.items.map((item) => item.href)).toEqual(['/gerencia']);
+  it('Gestión reúne Supervisión, Gerencia y Auditoría con permisos independientes', () => {
+    const direction = NAV_GROUPS.find((group) => group.title === 'Gestión');
+    expect(direction?.items.map((item) => item.href)).toEqual(['/supervision', '/gerencia', '/admin/auditoria']);
 
     const management = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.MANAGEMENT]).map((i) => i.href);
     expect(management).toContain('/gerencia');

@@ -8,6 +8,7 @@ export const TUTORIAL_MODULE_KEYS = [
   'llaves',
   'alertas',
   'housekeeping',
+  'equipo',
   'supervision',
   'gerencia',
   'auditoria',
@@ -53,6 +54,7 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
   },
   { key: 'alertas', label: 'Alertas', route: '/alertas' },
   { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: ['housekeeping.view', 'housekeeping.manage'] },
+  { key: 'equipo', label: 'Equipo y horarios', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     key: 'supervision',
     label: 'Centro de Supervisión',
@@ -129,6 +131,7 @@ export function shouldNavigateTutorial(
  * módulo nuevo se habilita para la cuenta.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
+  { id: 'equipo', module: 'equipo', title: 'Equipo y horarios', description: 'Calendario de personal por área, colaboradores, glosa, cobertura, cambios y extras. Publicar no acredita asistencia ni cambia el turno operativo.', route: '/equipo', target: ROUTE_TARGET, anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     id: 'inicio',
     title: 'Inicio: tu radar del turno',
@@ -264,6 +267,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
 ];
 
 export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
+  equipo: [
+    { id: 'mod-equipo-calendario', module: 'equipo', title: 'Planifica por área', description: 'Registra colaboradores con códigos estables y plantillas del área. Crea una malla y programa por casillas o revisa una carga. Los bloques de ocho días y la semana calendario tienen vistas independientes.', route: '/equipo', target: ROUTE_TARGET },
+    { id: 'mod-equipo-cambios', module: 'equipo', title: 'Revisa antes de cambiar', description: 'Mover, reasignar, intercambiar y agregar cobertura tienen efectos distintos. El servidor comprueba pertenencia, solapamientos y descanso configurado. Una asignación anterior permanece en el historial.', route: '/equipo', target: ROUTE_TARGET },
+    { id: 'mod-equipo-publicar', module: 'equipo', title: 'Publicar y recibir el horario', description: 'Los borradores están reservados a quienes administran o publican el área. Publicar avisa a las cuentas vinculadas y deja pendiente confirmar recepción. Los extras requieren aprobación y la malla no acredita asistencia ni abre Recepción o Caja.', route: '/equipo', target: ROUTE_TARGET },
+  ],
   housekeeping: [
     {
       id: 'mod-housekeeping-recepcion', module: 'housekeeping', title: 'Revisa y confirma la instrucción',

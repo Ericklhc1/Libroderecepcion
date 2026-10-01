@@ -431,6 +431,10 @@ model RolePermission {
 /// y cada persona puede desactivar los avisos externos sin afectar la campana
 /// interna del Libro.
 model User {
+  scheduleCollaborator ScheduleCollaborator?
+  scheduleAreaGrants ScheduleAreaGrant[]
+  scheduleEvents ScheduleEvent[]
+  scheduleAcknowledgments ScheduleAcknowledgment[]
   housekeepingEvents HousekeepingEvent[]
   id                 String      @id @default(cuid())
   /// Nombre de usuario corto, del estilo @EHerrera. Es la identidad de la
@@ -634,6 +638,11 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  scheduleMemberships ScheduleMembership[]
+  scheduleTemplates ScheduleTemplate[]
+  schedulePlans SchedulePlan[]
+  scheduleCoverageRules ScheduleCoverageRule[]
+  scheduleAreaGrants ScheduleAreaGrant[]
   id        String   @id @default(cuid())
   key       String   @unique
   name      String
@@ -647,6 +656,194 @@ model Department {
   entries OperationalEntry[]
   tasks   Task[]
   alerts  Alert[]
+}
+
+// Personnel planning is independent of Reception Shift / cash custody.
+model ScheduleCollaborator {
+  id             String               @id @default(cuid())
+  employeeCode   String               @unique
+  name           String
+  functionName   String
+  userId         String?              @unique
+  user           User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  active         Boolean              @default(true)
+  weeklyMinutes  Int?
+  minRestMinutes Int                  @default(0)
+  version        Int                  @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  memberships    ScheduleMembership[]
+  slots          ScheduleSlot[]
+}
+
+model ScheduleMembership {
+  collaboratorId String
+  collaborator   ScheduleCollaborator @relation(fields: [collaboratorId], references: [id], onDelete: Restrict)
+  departmentId   String
+  department     Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  active         Boolean              @default(true)
+
+  @@id([collaboratorId, departmentId])
+}
+
+model ScheduleAreaGrant {
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@id([userId, departmentId])
+}
+
+model ScheduleTemplate {
+  id              String         @id @default(cuid())
+  departmentId    String
+  department      Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  code            String
+  label           String
+  revision        Int            @default(1)
+  startTime       String
+  endTime         String
+  crossesMidnight Boolean        @default(false)
+  breakStartTime  String?
+  breakMinutes    Int            @default(0)
+  breakPaid       Boolean        @default(false)
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  slots           ScheduleSlot[]
+
+  @@unique([departmentId, code, revision])
+  @@index([departmentId, active])
+}
+
+model SchedulePlan {
+  id               String                   @id @default(cuid())
+  humanId          Int                      @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  departmentId     String
+  department       Department               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  startDate        DateTime                 @db.Date
+  endDate          DateTime                 @db.Date
+  status           String                   @default("BORRADOR")
+  version          Int                      @default(1)
+  publishedVersion Int?
+  publishedAt      DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  slots            ScheduleSlot[]
+  events           ScheduleEvent[]
+  acknowledgments  ScheduleAcknowledgment[]
+  imports          ScheduleImport[]
+
+  @@unique([departmentId, startDate, endDate])
+  @@index([departmentId, status])
+}
+
+model ScheduleSlot {
+  id                   String               @id @default(cuid())
+  planId               String
+  plan                 SchedulePlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  collaboratorId       String
+  collaborator         ScheduleCollaborator @relation(fields: [collaboratorId], references: [id], onDelete: Restrict)
+  date                 DateTime             @db.Date
+  kind                 String               @default("TURNO")
+  templateId           String?
+  template             ScheduleTemplate?    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  code                 String
+  functionName         String
+  startTime            String?
+  endTime              String?
+  crossesMidnight      Boolean              @default(false)
+  startAt              DateTime?
+  endAt                DateTime?
+  baseEndAt            DateTime?
+  breakStartAt         DateTime?
+  breakEndAt           DateTime?
+  breakMinutes         Int                  @default(0)
+  breakPaid            Boolean              @default(false)
+  extraKind            String               @default("NINGUNO")
+  extraMinutes         Int                  @default(0)
+  extraStatus          String               @default("NO_APLICA")
+  reportedExtraMinutes Int?
+  note                 String?
+  cancelledAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([planId, date])
+  @@index([collaboratorId, startAt, endAt])
+}
+
+model ScheduleEvent {
+  id          String       @id @default(cuid())
+  planId      String
+  plan        SchedulePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  actorId     String
+  actor       User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  requestKey  String       @unique
+  requestHash String
+  action      String
+  version     Int
+  reason      String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime     @default(now())
+
+  @@index([planId, createdAt])
+}
+
+model ScheduleAcknowledgment {
+  id             String       @id @default(cuid())
+  planId         String
+  plan           SchedulePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  version        Int
+  acknowledgedAt DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([planId, userId, version])
+}
+
+model ScheduleImport {
+  id          String       @id @default(cuid())
+  planId      String
+  plan        SchedulePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  fileName    String
+  fileHash    String
+  baseVersion Int
+  rows        Json
+  issues      Json
+  status      String       @default("REVISION")
+  createdAt   DateTime     @default(now())
+  appliedAt   DateTime?
+
+  @@unique([planId, fileHash, baseVersion])
+}
+
+model ScheduleCoverageRule {
+  id              String     @id @default(cuid())
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  name            String
+  functionName    String?
+  weekdays        Int[]      @default([0, 1, 2, 3, 4, 5, 6])
+  startTime       String
+  endTime         String
+  crossesMidnight Boolean    @default(false)
+  minimum         Int
+  active          Boolean    @default(true)
+
+  @@index([departmentId, active])
+}
+
+model ScheduleHoliday {
+  id     String   @id @default(cuid())
+  date   DateTime @unique @db.Date
+  name   String
+  source String
+  active Boolean  @default(true)
+
+  @@index([date, active])
 }
 
 // ================================= TURNOS =================================

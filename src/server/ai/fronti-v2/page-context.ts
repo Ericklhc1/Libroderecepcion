@@ -376,6 +376,12 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ], 'ChecklistRun', auditResult[1] ?? null);
   }
 
+  if (pathname === '/equipo') {
+    const sections: Record<string, string> = { calendario: 'Calendario del equipo', colaboradores: 'Colaboradores por área', plantillas: 'Plantillas y glosa', cobertura: 'Cobertura mínima', configuracion: 'Alcance y feriados' };
+    const section = filters.seccion && sections[filters.seccion] ? filters.seccion : 'calendario';
+    return detail('equipo', 'Equipo y horarios', section, sections[section]!, ['consultar_contexto_pantalla'], filters.malla ? 'SchedulePlan' : null, filters.malla ?? null);
+  }
+
   if (pathname === '/perfil') {
     return detail('perfil', 'Mi cuenta', 'perfil', 'Mi perfil', [
       'consultar_contexto_pantalla',

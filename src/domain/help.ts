@@ -53,6 +53,16 @@ export type HelpTopic = {
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
+    id: 'equipo-horarios', question: '¿Cómo preparo y publico los horarios de un área?',
+    steps: ['En Equipo y horarios selecciona el área. Registra colaboradores con un código único; vincula una cuenta sólo cuando corresponda a esa misma persona.', 'Configura las plantillas y colaciones, y define la cobertura mínima por función y franja. RD01, RD02 y RN01 están precargados sólo para Recepción.', 'Crea una malla de hasta 63 días. Pulsa las casillas para asignar turnos, libres, vacaciones o ausencias. También puedes cargar PDF, XLSX, CSV o TSV y revisar coincidencias antes de incorporarlas.', 'Revisa las brechas y publica con motivo. Las cuentas vinculadas y habilitadas reciben un aviso y pueden confirmar la recepción de su horario.'],
+    caveat: 'Una malla no acredita asistencia ni modifica Mi turno o Caja. Los otros roles quedan deshabilitados por defecto; sus acciones y alcance por área se habilitan expresamente.', route: '/equipo', anyOf: ['schedule.manage', 'schedule.publish', 'schedule.catalog.manage'], keywords: ['equipo', 'horarios', 'malla', 'calendario', 'colaboradores', 'área', 'carga', 'glosa'],
+  },
+  {
+    id: 'equipo-cambios-extras', question: '¿Cómo cambio una asignación o registro un extra?',
+    steps: ['Pulsa una asignación futura. «Editar / registrar extra» permite solicitar una extensión en minutos o un turno adicional completo.', '«Cambiar asignación» o arrastrar abre la revisión: mover conserva la persona, reasignar cambia la persona, intercambiar cambia ambas asignaciones juntas y agregar cobertura conserva el original.', 'Registra el motivo de los cambios publicados. Los solapamientos, ausencias incompatibles y descansos mínimos configurados bloquean el cambio.', 'Aprueba o rechaza los extras con el permiso correspondiente. Después del término se informa su realización y una persona autorizada puede validarla.'],
+    caveat: 'La programación, la recepción del horario, la aprobación y la realización son evidencias diferentes. Los turnos iniciados o pasados no se arrastran ni borran; los extras pendientes no cubren una brecha.', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.extra.approve'], keywords: ['horarios', 'intercambiar', 'arrastrar', 'reasignar', 'extra', 'feriado', 'confirmar'],
+  },
+  {
     id: 'habilitar-housekeeping', question: '¿Cómo habilito Housekeeping para un rol?',
     steps: [
       'En Administración > Roles y permisos, abre el rol que quieras habilitar.',

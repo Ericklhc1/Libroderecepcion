@@ -157,6 +157,15 @@ export async function seedCatalog(
 
   // --- Áreas --------------------------------------------------------------
   await client.department.createMany({ data: DEPARTMENTS, skipDuplicates: true });
+  const receptionArea = await client.department.findUnique({ where: { key: 'RECEPCION' }, select: { id: true } });
+  if (receptionArea) await client.scheduleTemplate.createMany({
+    data: [
+      { code: 'RD01', startTime: '08:00', endTime: '19:00', crossesMidnight: false },
+      { code: 'RD02', startTime: '11:00', endTime: '22:00', crossesMidnight: false },
+      { code: 'RN01', startTime: '21:00', endTime: '08:00', crossesMidnight: true },
+    ].map((t) => ({ ...t, id: `schedule_template_recepcion_${t.code.toLowerCase()}_1`, departmentId: receptionArea.id, label: `Glosa de recepción ${t.code}`, revision: 1 })),
+    skipDuplicates: true,
+  });
 
   // --- Habitaciones y llaves ----------------------------------------------
   await client.room.createMany({ data: roomNumbers(), skipDuplicates: true });

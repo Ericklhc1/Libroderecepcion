@@ -903,3 +903,11 @@ Verificación de esta revisión: dominio local anterior 143/143; nuevas pruebas 
 ## Corrección de compuerta y cuarta revisión Copilot
 
 CI 37037311294 sobre 0e114e0e: 1418 aprobadas, 4 fallidas, 1 omitida; fallo PostgreSQL 23514 por CHECK de autorización que no admite DYNAMIC. Build/navegador omitidos. Se amplía el CHECK conservando ventanas, parentesco y límites, con regresiones negativas. Revisión Copilot 5394563088 recibida: también se corrigen fin de día inclusivo, enlace a indicadores y recuentos obsoletos. Revisión autorizada propagada a edición/asignación/archivo/restauración de tareas, novedades, seguimientos y garantías: comparación dentro del servicio y CAS/lock en la escritura. No basta la comprobación previa del chat. Dominio local 143/143, lint con dos avisos previos; nuevo CI requerido. Producción intacta.
+
+## Entrega autorizada · 2 octubre, 14:42 Santiago
+
+El usuario autorizó explícitamente integrar/desplegar después de compuerta; la prohibición anterior de publicar quedó sustituida. PR #241 fusionado en main: 8fcfe2a0966c352ed9eb600ff051a963b6fc35fa, mismo árbol que su head aprobado 50fb561e. PR #244 retargeteado a main, sin cambios funcionales nuevos. Su bloque SQL/CAS tiene CI 37039196791 verde: 1424 pruebas + 1 omitida, 153 archivos, migraciones PostgreSQL 16, lint/tipos/build y navegador 1280/390. Artefacto 11242060533.
+
+CRON_SECRET confirmado como Secret de Production en la interfaz Vercel, agregado por el usuario, sin leer valor. Su redeploy 1.45.0 dpl_GbRr5NpDAcpVzTBjzjWrxfgTCLKf está READY. Despliegue 1.46.0 dpl_9cE2YRUeALVcrK5WGULzz1bbopUD en curso. Verificar salud SHA/versión y registros cron bajo autenticación estricta; esperar Release antes de la siguiente versión. No activar políticas nuevas ni realizar pruebas operativas reales.
+
+Copilot: cuatro revisiones reales; respuesta 5394647977 indica cuota agotada y no constituye quinta revisión. No habilitar sobrecoste. Safari físico sigue pendiente. Siguiente acción: compuerta de #244 reconciliado con main, integrar una vez verde, verificar 1.47.0, después continuar cobertura restante por grupos.

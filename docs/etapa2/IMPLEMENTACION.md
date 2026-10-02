@@ -57,10 +57,10 @@ Las reglas activas sustituyen sólo su condición/área/tipo/prioridad y rechaza
 1. Revisión e integración humana de #241; no la realiza este agente.
 2. Reconciliar esta rama sobre la Etapa 1 integrada y repetir Compuerta.
 3. Completar pendientes de aceptación y revisar SQL aditivo, configuración cron y dispositivos físicos.
-4. Sólo con nueva autorización humana: publicación/migración por el flujo existente, comprobar versión y SHA.
+4. La autorización de publicación fue concedida el 2 de octubre: publicar/migrar por el flujo existente después de compuerta, comprobar versión y SHA.
 5. Simular cada política y revisar destinatarios, alcance y efectos. Habilitar requiere además `AROH_AUTOMATION_EXECUTION_ENABLED=true`. **No establecer esa variable ni habilitar reglas reales en esta implementación.** El calendario operativo permanece en el cron de la aplicación; GitHub Actions sólo prueba código.
 
-CRON_SECRET no pudo acreditarse con la conexión Vercel disponible. No se afirma que exista o falte, ni se ha leído su valor. Ramas sin despliegue automático: `vercel.json` conserva `git.deploymentEnabled={"**":false,"main":true}`; los workflows no despliegan esta rama. Vercel listó cero despliegues nuevos desde las subidas.
+CRON_SECRET fue confirmado en la interfaz Vercel como Secret de Production el 2 de octubre a las 14:42 de Santiago; lo agregó el propietario. No se leyó su valor. Verificar autenticación de cron después del despliegue. Ramas sin despliegue automático: `vercel.json` conserva `git.deploymentEnabled={"**":false,"main":true}`; los workflows no despliegan esta rama. Vercel listó cero despliegues nuevos desde las subidas.
 
 ## GitHub y Copilot utilizados realmente
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { frontiPlanSchema, parseExactFrontiCommand, instructionMode, canonicalJson, executionStatus } from '@/domain/fronti-execution';
+import { frontiPlanSchema, frontiDelegationSchema, parseExactFrontiCommand, instructionMode, canonicalJson, executionStatus } from '@/domain/fronti-execution';
 import { procedureOccurrences, matchesAutomation } from '@/domain/operational-automation';
 import { FRONTI_ACTIONS, validateStep } from '@/server/ai/execution/catalog';
 const procedure = { title:'Revisión sintética', description:'Verificar filtro', ownerId:'responsable', priority:'MEDIA', nextAction:'Registrar resultado', evidenceRequired:'Evidencia declarada', checklist:['Revisar'], startDate:'2026-01-01', localTime:'09:00', weekdays:[0,1,2,3,4,5,6], deadlineMinutes:60, catchUpDays:7, maxOccurrences:2 };
@@ -17,6 +17,16 @@ describe('Etapa 2: contrato de autorización y recurrencias', () => {
     expect(()=>validateStep({...step,fields:{...step.fields,userId:'otro'}})).toThrow();
     expect(()=>validateStep({action:'executeSql',fields:{sql:'DELETE'}})).toThrow();
     expect(()=>validateStep({action:'saveSettingAction',fields:{key:'OPENAI_API_KEY',value:'no-secret'}})).toThrow();
+  });
+  it('delegaciones exigen objetivo, período acotado y parámetros finitos sin identidad ni comodines',()=>{
+    const input={requestKey:randomUUID(),instruction:'Delegar estas acciones exactas',objective:'Revisar dos equipos',availableAt:'2026-10-02T12:00:00-03:00',expiresAt:'2026-10-03T12:00:00-03:00',steps:[{action:'createTaskAction',fields:{title:'Revisión sintética'}}]};
+    expect(frontiDelegationSchema.parse(input).steps).toHaveLength(1);
+    expect(()=>frontiDelegationSchema.parse({...input,expiresAt:'2026-10-01T12:00:00-03:00'})).toThrow();
+    expect(()=>frontiDelegationSchema.parse({...input,expiresAt:'2026-12-01T12:00:00-03:00'})).toThrow();
+    expect(()=>frontiDelegationSchema.parse({...input,availableAt:'2026-10-02T12:00:00'})).toThrow();
+    expect(()=>frontiDelegationSchema.parse({...input,userId:'otra-persona'})).toThrow();
+    expect(()=>frontiDelegationSchema.parse({...input,repeat:'forever'})).toThrow();
+    expect(()=>frontiPlanSchema.parse(input)).toThrow(); // Model preparation cannot grant a mandate.
   });
   it('mantiene nombres únicos y rechaza campos de identidad/SQL en cada adaptador', () => {
     expect(new Set(FRONTI_ACTIONS.map(a=>a.name)).size).toBe(FRONTI_ACTIONS.length);

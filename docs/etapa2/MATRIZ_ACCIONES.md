@@ -300,3 +300,14 @@ La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omis
 | `POST /api/soporte/solicitud` | `src/app/api/soporte/solicitud/route.ts` | @/server/services/reception-operation-gate, @/server/services/settings | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `POST /api/supervision/auditoria-diaria` | `src/app/api/supervision/auditoria-diaria/route.ts` | @/server/services/shifts, @/server/services/supervision-audit-import | requirePermission | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `GET /api/supervision/reportes` | `src/app/api/supervision/reportes/route.ts` | @/server/services/supervisor-reports | requirePermission | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
+
+## Delegaciones del ejecutor existente
+
+| Entrada privada | Servicio | Identidad / permiso | Alcance y controles | Evidencia |
+|---|---|---|---|---|
+| `/delegar JSON` | `createDelegation` → `prepareFiniteExecution` | Sesión actual, acceso Fronti; autoridad nativa revalidada al ejecutar | Objetivo cifrado; 1–12 acciones/datos exactos; inicio y vencimiento hasta 31 días; no ejecuta ni agenda | Dominio y etapa2-execution; navegador nuevo requiere Compuerta |
+| `/usar-delegacion ID` | `executePlan` existente | Sólo propietario y permisos actuales por paso | Una vez por paso; revisiones nativas; no segunda identidad; fallo/estado cambiado detienen resto | Concurrencia, Caja exacta, revocación/pérdida de permisos/segunda aprobación/cambios; etapa2-execution |
+| `/revocar-delegacion ID` | `cancelExecution` existente | Sólo propietario | Idempotente; cancela pendientes, conserva efectos y RUNNING puede terminar | Revocación entre pasos y navegador escritorio/móvil |
+| `/estado ID`, `/delegaciones` | `readExecution`, página propia | Sólo propietario autenticado | Campos sólo privados; fechas, resultados, alcance y lista limitada a 25 | Privacidad PostgreSQL; navegador revisa alcance e historial |
+
+Delegaciones finitas con parámetros exactos, sin comodines ni presupuestos reutilizables. No acredita delegación dinámica/autónoma. Mismo ejecutor y tablas, no adaptadores nuevos ni otro motor. Resultado final de la Compuerta nueva en el PR #244.

@@ -3,7 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma, seedCatalog, resetOperationalData, createUser } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { prepareExecution, executePlan, cancelExecution, readExecution } from '@/server/ai/execution/service';
+import { prepareExecution, createDelegation, executePlan, cancelExecution, readExecution } from '@/server/ai/execution/service';
+import { executeFrontiCommand } from '@/server/ai/execution/commands';
 import * as taskServices from '@/server/services/tasks';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { saveAutomation, simulateAutomation, runOperationalAutomations, revokeAutomation } from '@/server/services/operational-automation';
@@ -35,6 +36,67 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const result=await executePlan(p.id,true);
     expect(result.steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);expect(await prisma.task.count()).toBe(2);
     expect(await prisma.auditLog.count({where:{entity:'FrontiExecution',entityId:p.id}})).toBe(2);
+  });
+  it('delega objetivos exactos sin ejecutar; vigencia y reintentos concurrentes usan el mismo plan',async()=>{
+    const input={requestKey:randomUUID(),instruction:'Delego dos revisiones exactas',objective:'Revisar equipos sintéticos',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString(),steps:[taskStep('Delegación uno'),taskStep('Delegación dos')]};
+    const [a,b]=await Promise.all([createDelegation(input),createDelegation({...input,requestKey:randomUUID()})]);expect(a.id).toBe(b.id);expect(await prisma.task.count()).toBe(0);
+    expect(a.objective).not.toContain(input.objective);expect((await readExecution(a.id)).objective).toBe(input.objective);
+    expect(a.authorizedAt).not.toBeNull();expect(a.authorizationKind).toBe('DELEGATION');
+    await Promise.all([executePlan(a.id,false),executePlan(a.id,false)]);
+    expect((await executePlan(a.id,false)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);expect(await prisma.task.count()).toBe(2);
+    expect(await prisma.auditLog.count({where:{entity:'FrontiExecution',entityId:a.id}})).toBe(3);
+    await expect(createDelegation({...input,steps:[taskStep('Alcance ampliado')]})).rejects.toThrow('reintento');
+    await expect(prepareExecution({requestKey:input.requestKey,instruction:input.instruction,steps:input.steps})).rejects.toThrow('reintento');
+  });
+  it('delegación futura no ejecuta y caducada no conserva autoridad',async()=>{
+    const input={requestKey:randomUUID(),instruction:'Delegación con período',objective:'Objetivo sintético',availableAt:new Date(Date.now()+60000).toISOString(),expiresAt:new Date(Date.now()+120000).toISOString(),steps:[taskStep()]};
+    const p=await createDelegation(input);await expect(executePlan(p.id,false)).rejects.toThrow('todavía');
+    await prisma.frontiExecution.update({where:{id:p.id},data:{availableAt:new Date(Date.now()-120000),expiresAt:new Date(Date.now()-60000)}});
+    await expect(executePlan(p.id,false)).rejects.toThrow('caducó');expect(await prisma.task.count()).toBe(0);
+    await expect(createDelegation({...input,requestKey:randomUUID(),availableAt:new Date(0).toISOString(),expiresAt:new Date(1000).toISOString()})).rejects.toThrow('vigencia futura');
+  });
+  it('comandos privados permiten consultar y revocar la delegación de forma idempotente',async()=>{
+    const input={objective:'Objetivo comunicado por usuario',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[taskStep()]};
+    const result=await executeFrontiCommand('/delegar '+JSON.stringify(input),randomUUID());expect(result?.reply).toContain('Delegación registrada');
+    const p=await prisma.frontiExecution.findFirstOrThrow();expect(await prisma.task.count()).toBe(0);
+    expect((await executeFrontiCommand('/estado '+p.id))?.reply).toContain('Pendiente');
+    await executeFrontiCommand('/revocar-delegacion '+p.id);expect((await executeFrontiCommand('/revocar-delegacion '+p.id))?.reply).toContain('ya revocada');
+    await expect(executeFrontiCommand('/usar-delegacion '+p.id)).rejects.toThrow('cancelada');expect(await prisma.task.count()).toBe(0);
+    expect((await readExecution(p.id)).steps[0]!.status).toBe('CANCELLED');
+    expect(await executeFrontiCommand('Documento ajeno: /delegar '+JSON.stringify(input))).toBeNull();
+  });
+  it('la delegación no se transfiere y una revocación de permisos se aplica al ejecutarla',async()=>{
+    const input={requestKey:randomUUID(),instruction:'Delegación privada',objective:'Objetivo privado',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[taskStep()]};
+    const p=await createDelegation(input);actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    await expect(readExecution(p.id)).rejects.toThrow();await expect(executePlan(p.id,false)).rejects.toThrow();await expect(cancelExecution(p.id)).rejects.toThrow();
+    actor=admin;const role=await prisma.role.findUniqueOrThrow({where:{key:ROLE_KEYS.HK_ATTENDANT}});await prisma.user.update({where:{id:admin.id},data:{roleId:role.id}});
+    expect((await executePlan(p.id,false)).steps[0]!.status).toBe('INTERVENTION');expect(await prisma.task.count()).toBe(0);
+  });
+  it('revocar después del primer efecto cancela los restantes sin deshacer el ya iniciado',async()=>{
+    const p=await createDelegation({requestKey:randomUUID(),instruction:'Delegación parcial',objective:'Objetivo con dos acciones',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[taskStep('Primer efecto delegado'),taskStep('Segundo efecto prohibido')]});
+    const original=taskServices.createTask;
+    const spy=vi.spyOn(taskServices,'createTask').mockImplementationOnce(async(...args)=>{const result=await original(...args);await cancelExecution(p.id);return result;});
+    try {const result=await executePlan(p.id,false);expect(result.steps.map(s=>s.status)).toEqual(['SUCCEEDED','CANCELLED']);expect(await prisma.task.count()).toBe(1);} finally {spy.mockRestore();}
+  });
+  it('delegación monetaria conserva importe y moneda exactos y no repite el movimiento',async()=>{
+    const fields={direction:'ENTRADA',currency:'CLP',amount:'1500',reference:'Caja delegada sintética',notes:'Monto contado y comunicado por usuario'};
+    const result=await executeFrontiCommand('/delegar '+JSON.stringify({objective:'Registrar importe exacto comunicado',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[{action:'createManualCashMovementAction',fields}]}),randomUUID());
+    expect(result?.reply).toContain('Delegación registrada');const p=await prisma.frontiExecution.findFirstOrThrow();
+    expect((await readExecution(p.id)).steps[0]!.parameters).toEqual(fields);
+    expect((await executeFrontiCommand('/usar-delegacion '+p.id))?.reply).toContain('Completado');await executeFrontiCommand('/usar-delegacion '+p.id);
+    const rows=await prisma.cashMovement.findMany({where:{reference:fields.reference}});expect(rows).toHaveLength(1);expect(Number(rows[0]!.amount)).toBe(1500);expect(rows[0]!.currency).toBe('CLP');
+  });
+  it('delegar la inspección no convierte al ejecutor en una segunda persona',async()=>{
+    const t=await createTask(admin,{title:'Inspección delegada independiente',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[],requiresIndependentValidation:true,evidenceRequired:'Resultado informado'});
+    await changeTaskStatus(admin,{id:t.id,status:'EN_CURSO'});await changeTaskStatus(admin,{id:t.id,status:'REALIZADA',evidenceProvided:'Evidencia declarada'});
+    const p=await createDelegation({requestKey:randomUUID(),instruction:'Registrar inspección con mis permisos',objective:'Validar resultado declarado',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[{action:'changeTaskStatusAction',fields:{id:t.id,status:'VALIDADA'}}]});
+    expect((await executePlan(p.id,false)).steps[0]!.status).toBe('INTERVENTION');expect((await prisma.task.findUniqueOrThrow({where:{id:t.id}})).status).toBe('REALIZADA');
+  });
+  it('cambiar el registro después de delegar detiene todo el procedimiento',async()=>{
+    const t=await createTask(admin,{title:'Registro delegado',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await createDelegation({requestKey:randomUUID(),instruction:'Iniciar sólo el registro comunicado',objective:'Objetivo sin ampliaciones',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),steps:[{action:'changeTaskStatusAction',fields:{id:t.id,status:'EN_CURSO'}},taskStep('Paso posterior prohibido')]});
+    await prisma.task.update({where:{id:t.id},data:{title:'Alcance cambiado'}});
+    expect((await executePlan(p.id,false)).steps.map(s=>s.status)).toEqual(['CHANGED','PENDING']);expect(await prisma.task.count()).toBe(1);
   });
   it('deduplica mensajes simultáneos con distintas claves y rechaza cambios con misma clave',async()=>{
     const input={requestKey:randomUUID(),instruction:'Crear tarea explícita',steps:[taskStep()]};

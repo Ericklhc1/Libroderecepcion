@@ -7,7 +7,7 @@ import { requireUser } from '@/server/auth/guard';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { canUseFronti } from '@/server/ai/fronti-access';
 import { getFrontiConfig } from '@/server/ai/fronti-config';
-import { canonicalJson, executionStatus, frontiPlanSchema, type FrontiStep } from '@/domain/fronti-execution';
+import { canonicalJson, executionStatus, frontiPlanSchema, frontiDelegationSchema, type FrontiStep } from '@/domain/fronti-execution';
 import { actionDefinition, invokeNativeAction, validateStep } from './catalog';
 
 const digest = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
@@ -20,6 +20,18 @@ export async function executionActor() {
 }
 
 export async function prepareExecution(input: unknown) {
+  return prepareFiniteExecution(input);
+}
+
+/** Called only by an explicit authenticated command, never by a model tool. */
+export async function createDelegation(input: unknown) {
+  const parsed = frontiDelegationSchema.parse(input);
+  const availableAt = new Date(parsed.availableAt), expiresAt = new Date(parsed.expiresAt);
+  if (expiresAt <= new Date() || availableAt.getTime() > Date.now() + 31 * 86400000) throw new RuleError('La delegación debe tener vigencia futura y comenzar dentro de los próximos 31 días.');
+  return prepareFiniteExecution({ requestKey: parsed.requestKey, instruction: parsed.instruction, steps: parsed.steps }, { objective: parsed.objective, availableAt, expiresAt });
+}
+
+async function prepareFiniteExecution(input: unknown, delegation?: { objective: string; availableAt: Date; expiresAt: Date }) {
   const user = await executionActor();
   const plan = frontiPlanSchema.parse(input);
   const steps = plan.steps.map(validateStep);
@@ -32,7 +44,7 @@ export async function prepareExecution(input: unknown) {
     }
     if(step.action==='updateUserAction'&&!user.permissions.includes('user.manage'))throw new ForbiddenError();
   }
-  const fingerprint = digest({ instruction: plan.instruction, steps });
+  const fingerprint = digest({ instruction: plan.instruction, steps, ...(delegation ? { delegation: { ...delegation, availableAt: delegation.availableAt.toISOString(), expiresAt: delegation.expiresAt.toISOString() } } : {}) });
   const revisions = await Promise.all(steps.map(revisionForStep));
   return prisma.$transaction(async tx => {
     // Serialize retries before reading; no long-running native service runs under this lock.
@@ -53,12 +65,16 @@ export async function prepareExecution(input: unknown) {
       await tx.frontiExecutionRequest.create({data:{userId:user.id,requestKey:plan.requestKey,executionId:duplicate.id}});
       return duplicate;
     }
-    return tx.frontiExecution.create({ data: {
+    const created = await tx.frontiExecution.create({ data: {
       requests: {create:{userId:user.id,requestKey:plan.requestKey}},
       userId: user.id, sessionId: user.sessionId, requestKey: plan.requestKey, fingerprint,
-      instruction: digest(plan.instruction), expiresAt: new Date(Date.now() + 15 * 60_000),
+      instruction: digest(plan.instruction), expiresAt: delegation?.expiresAt ?? new Date(Date.now() + 15 * 60_000),
+      ...(delegation ? { authorizationKind: 'DELEGATION', availableAt: delegation.availableAt, objective: sealSecret(delegation.objective, purpose(user.id)), authorizedAt: new Date(), status: 'AUTHORIZED' } : {}),
       steps: { create: steps.map((step, position) => ({ position, revision: revisions[position], action: step.action, fields: { sealed: sealSecret(JSON.stringify(step.fields), purpose(user.id)) } })) },
     } });
+    if (delegation) await tx.auditLog.create({ data: { entity: 'FrontiExecution', entityId: created.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId,
+      summary: 'Fronti: delegación finita autorizada; sin ejecutar pasos.', after: { authorization: created.instruction, requestKey: plan.requestKey, fingerprint, availableAt: delegation.availableAt.toISOString(), expiresAt: delegation.expiresAt.toISOString(), actions: steps.map(step => step.action), maxActions: steps.length } } });
+    return created;
   });
 }
 
@@ -68,7 +84,9 @@ export async function readExecution(id: string) {
   const row = await prisma.frontiExecution.findFirst({ where: { id, userId: user.id }, include: { steps: { orderBy: { position: 'asc' } } } });
   if (!row) throw new NotFoundError();
   return { id: row.id, status: executionStatus(row), createdAt: row.createdAt, expiresAt: row.expiresAt, cancelledAt: row.cancelledAt,
-    steps: row.steps.map(s => ({ action: s.action, label: actionDefinition(s.action).label, status: s.status, result: s.result, startedAt: s.startedAt, completedAt: s.completedAt })),
+    authorizationKind: row.authorizationKind, availableAt: row.availableAt, objective: row.objective ? openSecret(row.objective, purpose(user.id)) : null,
+    steps: row.steps.map(s => ({ action: s.action, label: actionDefinition(s.action).label, status: s.status, result: s.result, startedAt: s.startedAt, completedAt: s.completedAt,
+      parameters: row.authorizationKind === 'DELEGATION' ? JSON.parse(openSecret((s.fields as { sealed: string }).sealed, purpose(user.id)) ?? '{}') as Record<string, string | string[]> : null })),
     href: `/fronti/procedimientos?ejecucion=${row.id}` };
 }
 
@@ -76,6 +94,7 @@ export async function executionCard(id: string) {
   const user = await executionActor();
   const row = await prisma.frontiExecution.findFirst({ where: { id, userId: user.id }, include: { steps: { orderBy: { position: 'asc' } } } });
   if (!row) throw new NotFoundError();
+  if (row.authorizationKind === 'DELEGATION') throw new RuleError('La delegación ya contiene una autorización explícita; consulta su vigencia y sus pasos.');
   const lines = row.steps.map((s, i) => {
     const definition = actionDefinition(s.action);
     const fields = openSecret((s.fields as { sealed: string }).sealed, purpose(user.id));
@@ -103,6 +122,7 @@ export async function executePlan(id: string, authorize: boolean) {
   const row = await prisma.frontiExecution.findFirst({ where: { id, userId: user.id }, include: { steps: { orderBy: { position: 'asc' } } } });
   if (!row) throw new NotFoundError();
   if (row.cancelledAt || row.expiresAt <= new Date()) throw new RuleError('La autorización fue cancelada o caducó.');
+  if (row.availableAt && row.availableAt > new Date()) throw new RuleError('La delegación todavía no está vigente. No se ha ejecutado ningún paso.');
   if (!row.authorizedAt && !authorize) throw new RuleError('Este procedimiento todavía necesita autorización.');
   if (authorize && !row.authorizedAt) await prisma.frontiExecution.updateMany({ where: { id, userId: user.id, cancelledAt: null, expiresAt: { gt: new Date() } }, data: { authorizedAt: new Date(), status: 'AUTHORIZED' } });
 
@@ -112,7 +132,7 @@ export async function executePlan(id: string, authorize: boolean) {
     user = await executionActor();
     if (user.id !== row.userId) throw new ForbiddenError();
     const claim = await prisma.frontiExecutionStep.updateMany({ where: {
-      id: step.id, status: 'PENDING', execution: { userId: user.id, authorizedAt: { not: null }, cancelledAt: null, expiresAt: { gt: new Date() } },
+      id: step.id, status: 'PENDING', execution: { userId: user.id, authorizedAt: { not: null }, cancelledAt: null, expiresAt: { gt: new Date() }, OR: [{ availableAt: null }, { availableAt: { lte: new Date() } }] },
     }, data: { status: 'RUNNING', startedAt: new Date() } });
     if (!claim.count) break;
     const value = openSecret((step.fields as { sealed: string }).sealed, purpose(user.id));
@@ -132,7 +152,7 @@ export async function executePlan(id: string, authorize: boolean) {
       await prisma.$transaction(async tx => {
         await tx.frontiExecutionStep.update({ where: { id: step.id }, data: { status, result: safeResult, completedAt: new Date() } });
         await tx.auditLog.create({ data: { entity: 'FrontiExecution', entityId: id, action: 'EDITAR', userId: user.id, sessionId: user.sessionId,
-          summary: `Fronti: ${step.action} · ${status}`, after: { position: step.position, requestKey: row.requestKey, authorization: row.instruction, result: safeResult },
+          summary: `Fronti: ${step.action} · ${status}`, after: { position: step.position, requestKey: row.requestKey, authorization: row.instruction, authorizationKind: row.authorizationKind, result: safeResult },
         } });
       });
       if (!result.ok) break;

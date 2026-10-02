@@ -13,6 +13,23 @@ export const frontiPlanSchema = z.object({
 export type FrontiStep = z.infer<typeof frontiStepSchema>;
 export type FrontiPlan = z.infer<typeof frontiPlanSchema>;
 
+/** A finite mandate, never a wildcard permission or a recurring instruction. */
+export const frontiDelegationSchema = frontiPlanSchema.extend({
+  objective: z.string().trim().min(3).max(500),
+  availableAt: z.string().datetime({ offset: true }),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict().superRefine((value, context) => {
+  const start = Date.parse(value.availableAt), end = Date.parse(value.expiresAt);
+  if (end <= start || end - start > 31 * 86400000) context.addIssue({ code: 'custom', message: 'La delegación debe durar entre un instante y 31 días.', path: ['expiresAt'] });
+});
+
+export const DELEGATION_STOPS = [
+  'Revocación o vencimiento de la autorización.',
+  'Sesión o permisos vigentes insuficientes.',
+  'Cambio del registro autorizado o control nativo no satisfecho.',
+  'Error o resultado incierto de cualquier paso: los siguientes quedan detenidos.',
+] as const;
+
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => JSON.stringify(k) + ':' + canonicalJson(v)).join(',') + '}';

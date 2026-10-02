@@ -75,5 +75,17 @@ for path in sorted(Path('src/app/api').rglob('route.ts')):
         elif '/auth/' in route or '/session/' in route:status='Autenticación/sesión nativa; Fronti no puede fabricar credenciales ni sesión'
         api_rows.append(f"| `{method} {route}` | `{path}` | {', '.join(services) or 'Implementación/lector en la ruta'} | {', '.join(controls) or 'Revisar autorización contextual de la ruta'} | {status} |")
 api_section='\n## Inventario adicional de rutas HTTP\n\n'+str(len(api_rows))+' métodos detectados. Los controles de esta tabla son referencias de código, no una acreditación de seguridad. Las exportaciones, adjuntos y lecturas deben validarse con el mismo alcance de usuario antes de conectarlas. No se activa ningún cron por inventariarlo.\n\n| Entrada | Archivo | Servicios existentes | Controles detectados | Cobertura de Fronti |\n|---|---|---|---|---|\n'+'\n'.join(api_rows)+'\n'
-Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n'+api_section)
+delegations='''
+## Delegaciones del ejecutor existente
+
+| Entrada privada | Servicio | Identidad / permiso | Alcance y controles | Evidencia |
+|---|---|---|---|---|
+| `/delegar JSON` | `createDelegation` → `prepareFiniteExecution` | Sesión actual, acceso Fronti; autoridad nativa revalidada al ejecutar | Objetivo cifrado; 1–12 acciones/datos exactos; inicio y vencimiento hasta 31 días; no ejecuta ni agenda | Dominio y etapa2-execution; navegador nuevo requiere Compuerta |
+| `/usar-delegacion ID` | `executePlan` existente | Sólo propietario y permisos actuales por paso | Una vez por paso; revisiones nativas; no segunda identidad; fallo/estado cambiado detienen resto | Concurrencia, Caja exacta, revocación/pérdida de permisos/segunda aprobación/cambios; etapa2-execution |
+| `/revocar-delegacion ID` | `cancelExecution` existente | Sólo propietario | Idempotente; cancela pendientes, conserva efectos y RUNNING puede terminar | Revocación entre pasos y navegador escritorio/móvil |
+| `/estado ID`, `/delegaciones` | `readExecution`, página propia | Sólo propietario autenticado | Campos sólo privados; fechas, resultados, alcance y lista limitada a 25 | Privacidad PostgreSQL; navegador revisa alcance e historial |
+
+Delegaciones finitas con parámetros exactos, sin comodines ni presupuestos reutilizables. No acredita delegación dinámica/autónoma. Mismo ejecutor y tablas, no adaptadores nuevos ni otro motor. Resultado final de la Compuerta nueva en el PR #244.
+'''
+Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n'+api_section+delegations)
 print(f'{len(rows)} acciones inventariadas; {len(catalog)} adaptadores conectados')

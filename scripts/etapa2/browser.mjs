@@ -43,6 +43,34 @@ try {
   await panel.getByRole('link',{name:`/fronti/procedimientos?ejecucion=${uiId}`,exact:true}).click();
   await page.getByRole('heading',{name:'Resultado: Completado',exact:true}).waitFor();
   await panel.getByRole('button',{name:'Minimizar Fronti',exact:true}).click();
+  // A finite delegation uses the existing executor; creation is inert, retries never repeat effects.
+  const delegationTitle=`ETAPA2_DELEGATION_${width}`;
+  const delegationMessage='/delegar '+JSON.stringify({objective:`Revisión delegada ${width}`,availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString(),steps:[{action:'createTaskAction',fields:{title:delegationTitle,description:'Dato sintético comunicado',priority:'MEDIA',targetType:'PROPIO'}}]});
+  await page.getByRole('button',{name:'Abrir Fronti',exact:true}).first().click();
+  await panel.getByRole('textbox',{name:'Mensaje para Fronti',exact:true}).fill(delegationMessage);
+  const [delegationResponse]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/fronti'),panel.getByRole('button',{name:'Enviar a Fronti',exact:true}).click()]);
+  const delegationBody=await delegationResponse.json();assert.equal(delegationResponse.status(),200,delegationBody.error);assert.match(delegationBody.reply,/Delegación registrada/);
+  const delegationId=/ejecucion=([a-z0-9]+)/.exec(delegationBody.reply)?.[1];assert.ok(delegationId);
+  assert.equal(await db.task.count({where:{title:delegationTitle}}),0,'Creating a mandate must not execute it');
+  await panel.getByRole('textbox',{name:'Mensaje para Fronti',exact:true}).fill('/usar-delegacion '+delegationId);
+  const delegationStart=performance.now();
+  const [runResponse]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/fronti'),panel.getByRole('button',{name:'Enviar a Fronti',exact:true}).click()]);
+  const runBody=await runResponse.json();assert.equal(runResponse.status(),200,runBody.error);assert.match(runBody.reply,/Completado/);
+  await panel.getByText('1. Crear tarea con lista de comprobación: Completado', {exact:false}).last().waitFor();
+  const delegationMs=Math.round(performance.now()-delegationStart);assert.ok(delegationMs<=3000,`Delegation visible ${delegationMs} ms exceeds 3000 ms`);
+  const runRetry=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/usar-delegacion '+delegationId,requestKey:randomUUID()}});assert.equal(runRetry.status(),200);assert.equal(await db.task.count({where:{title:delegationTitle}}),1);
+  await page.goto('http://localhost:3000/fronti/procedimientos?ejecucion='+delegationId);
+  await page.getByRole('heading',{name:`Delegación: Revisión delegada ${width}`,exact:true}).waitFor();
+  await page.getByText('Alcance y datos autorizados',{exact:true}).click();await page.getByText(delegationTitle,{exact:true}).waitFor();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
+  const revokedTitle=`ETAPA2_REVOKED_${width}`;
+  const revokeInput={objective:'Revocación sintética',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString(),steps:[{action:'createTaskAction',fields:{title:revokedTitle,description:'No ejecutar',priority:'MEDIA'}}]};
+  const createdRevocation=await context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:'/delegar '+JSON.stringify(revokeInput),requestKey:randomUUID()}});assert.equal(createdRevocation.status(),200);
+  const revokedId=/ejecucion=([a-z0-9]+)/.exec((await createdRevocation.json()).reply)?.[1];assert.ok(revokedId);
+  const revoked=await context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:'/revocar-delegacion '+revokedId,requestKey:randomUUID()}});assert.equal(revoked.status(),200);
+  const blocked=await context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:'/usar-delegacion '+revokedId,requestKey:randomUUID()}});assert.notEqual(blocked.status(),200);assert.equal(await db.task.count({where:{title:revokedTitle}}),0);
+  await page.goto('http://localhost:3000/fronti/procedimientos?ejecucion='+revokedId);await page.getByRole('heading',{name:'Resultado: Cancelado',exact:true}).waitFor();
+  results.push({width,scenario:'delegation-chat-create-inert-execute-retry-scope-revoke',ms:delegationMs,budgetMs:3000,status:'passed',provider:'not-used'});
   const summary=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/resumen',requestKey:randomUUID()}});assert.equal(summary.status(),200);assert.match((await summary.json()).reply,/Coordinación: \/coordinacion/);
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('deshabilitada'));
   // The same public form saves a paused version, simulates without effects, then pauses/revokes.

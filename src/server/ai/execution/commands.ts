@@ -1,7 +1,8 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
-import { executionSummary, parseExactFrontiCommand, type FrontiStep } from '@/domain/fronti-execution';
-import { prepareExecution, executePlan, readExecution, cancelExecution } from './service';
+import { DELEGATION_STOPS, executionSummary, parseExactFrontiCommand, type FrontiStep } from '@/domain/fronti-execution';
+import { prepareExecution, createDelegation, executePlan, readExecution, cancelExecution } from './service';
+import { RuleError } from '@/server/errors';
 import { automationSummary } from '@/server/services/operational-automation';
 import { formatDateTime } from '@/lib/format';
 import { executionActor } from './service';
@@ -9,6 +10,22 @@ import { FRONTI_ACTIONS } from './catalog';
 
 /** Deterministic commands use only this authenticated user's current message. */
 export async function executeFrontiCommand(message: string, requestKey?: string) {
+  if (message.startsWith('/delegar ')) {
+    const input: unknown = JSON.parse(message.slice(9));
+    if (!input || typeof input !== 'object' || Array.isArray(input) || 'requestKey' in input || 'instruction' in input) throw new RuleError('Indica objetivo, vigencia y pasos exactos; la referencia de autorización proviene de tu mensaje.');
+    const plan = await createDelegation({ ...input, requestKey: requestKey ?? randomUUID(), instruction: message });
+    const result = await readExecution(plan.id);
+    return { reply: `Delegación registrada. ${result.steps.length} acciones exactas, cada una como máximo una vez. Vigencia: ${formatDateTime(result.availableAt!)} a ${formatDateTime(result.expiresAt)}. Crear la delegación no ejecuta acciones ni programa un cron.\n${DELEGATION_STOPS.join('\n')}\nEjecutar: /usar-delegacion ${plan.id}\nRevocar: /revocar-delegacion ${plan.id}\n${executionSummary(result.steps)}\n${result.href}`, confirmations: [] };
+  }
+  const delegation = /^\/(usar|revocar)-delegacion ([a-z0-9]+)$/.exec(message);
+  if (delegation) {
+    const current = await readExecution(delegation[2]!);
+    if (current.authorizationKind !== 'DELEGATION') throw new RuleError('La referencia no corresponde a una delegación.');
+    if (delegation[1] === 'revocar') return { reply: (current.cancelledAt ? 'Delegación ya revocada. El historial y los efectos realizados se conservan.' : (await cancelExecution(current.id)).message) + '\n' + current.href, confirmations: [] };
+    const result = await executePlan(current.id, false);
+    return { reply: executionSummary(result.steps) + '\n' + result.href, confirmations: [] };
+  }
+  if (message.trim().toLowerCase() === '/delegaciones') return { reply: 'Consulta tus delegaciones, vigencia, límites y resultados en /fronti/procedimientos?delegaciones=1. Sólo tú puedes utilizarlas; cada paso se ejecuta como máximo una vez.', confirmations: [] };
   if (message.trim().toLowerCase() === '/resumen') {
     const user=await executionActor(); const summary=await automationSummary(user,user.departmentId ?? undefined);
     return {reply:`Resumen al ${formatDateTime(summary.generatedAt)}. Alcance: ${summary.scope}. ${summary.complete?'Lectura completa dentro de este acceso.':'Lectura parcial: se alcanzó el límite de consulta.'}\n${summary.denominator} asuntos: ${summary.metrics.unassigned} sin responsable, ${summary.metrics.unreceived} asignados sin recibir, ${summary.metrics.overdue} vencidos, ${summary.metrics.blocked} bloqueados.\n${summary.sources.map(r=>`• ${r.title}: ${r.owner}. ${r.nextAction}${r.dueAt?' · Plazo '+formatDateTime(r.dueAt):''} · ${r.href}`).join('\n')}\nSe muestran ${summary.sources.length} fuentes de ${summary.denominator}. ${summary.note}\nTus procedimientos Fronti: /fronti/procedimientos · Coordinación: /coordinacion`,confirmations:[]};

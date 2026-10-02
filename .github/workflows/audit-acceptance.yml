@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - finding: H01
-            sha: e2811f276c2880bb781ea0c27337d9257c80708a
+            sha: c335e2e8c3bf9455dce97bf06c04e91f67bc9b36
             tests: tests/followup-privacy.test.ts
     services:
       postgres:
@@ -119,11 +119,11 @@ jobs:
           NODE_ENV: production
         run: |
           node audit-validation/guard.cjs
-          NODE_OPTIONS="--require=$PWD/audit-validation/no-external.cjs" npm run start -- --hostname 127.0.0.1 > /tmp/aroh-browser-server.log 2>&1 &
+          NODE_OPTIONS="--require=$PWD/audit-validation/no-external.cjs" npm run start -- --hostname localhost > /tmp/aroh-browser-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/login > /dev/null; then break; fi
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
           PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node audit-validation/browser.mjs || {

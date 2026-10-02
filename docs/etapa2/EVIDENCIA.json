@@ -139,6 +139,20 @@
         "failed": 0,
         "build": "passed",
         "browser": "Coordination desktop/mobile passed again. Fronti chat command visible passed at 1280 px; policy form selector Área lacked an unambiguous accessible label. Corrected; complete policy/mobile Fronti journey still pending."
+      },
+      {
+        "id": 37019633610,
+        "result": "browser failure opening policy editor",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": {
+          "coordination": "desktop/mobile passed",
+          "frontiDesktopApiMs": 125,
+          "frontiDesktopVisibleChatMs": 142,
+          "policy": "Save paused and no-effects simulation passed; editor link did not expose current responsible field. Use explicit document navigation to reload current policy/options; rerun pending."
+        }
       }
     ]
   },

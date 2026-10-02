@@ -72,6 +72,7 @@ try {
   try {
     await policy.getByRole('link',{name:'Preparar nueva versión',exact:true}).click();
     const editing=page.locator('details[open]').filter({has:page.getByText('Nueva versión del procedimiento',{exact:true})});
+    try { await editing.getByLabel('Responsable',{exact:true}).waitFor(); } catch(error) { console.log('Policy editor diagnostics',page.url(),await page.locator('summary').allTextContents());throw error;}
     assert.equal(await editing.getByLabel('Responsable',{exact:true}).inputValue(),f.users.worker.id);
     assert.equal(await editing.getByLabel('Área',{exact:true}).inputValue(),f.areaId);
     assert.match(await editing.getByLabel('Responsable',{exact:true}).innerText(),/actual no disponible/);

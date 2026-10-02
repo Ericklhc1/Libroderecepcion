@@ -70,6 +70,12 @@ const PRIMARY: NavItem[] = [
             label: 'Mis tareas',
             description: 'Trabajo operativo asignado a tu cuenta.',
           },
+          {
+            href: '/custodia',
+            label: 'Objetos olvidados',
+            description: 'Hallazgos, custodia, entrega y disposición final.',
+            anyOf: ['custody.view','custody.manage'],
+          },
         ],
       },
       {
@@ -235,7 +241,6 @@ const PRIMARY: NavItem[] = [
     ],
   },
   { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
-  { href: '/custodia', label: 'Objetos olvidados', mobileLabel: 'Custodia', icon: 'key', anyOf: ['custody.view','custody.manage'] },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',

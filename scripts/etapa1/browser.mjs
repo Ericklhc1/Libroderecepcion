@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
-const results=[];
+const results=[];let activePage;
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});
  await context.addCookies([{name:'lor_session',value:f.users[name].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
@@ -14,8 +14,9 @@ async function actor(name,width){
 try{
  for(const [index,width] of [1280,390].entries()){
   const t=f.tasks[index];const admin=await actor('admin',width);const worker=await actor('worker',width);
-  const response=await admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`);
-  assert.equal(response.status(),200);
+  activePage=admin.page;const response=await admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`);
+  assert.equal(response.status(),200);assert.equal(new URL(admin.page.url()).pathname,'/coordinacion','Synthetic session must pass real authentication');
+  await admin.page.getByRole('heading',{name:'Coordinación y continuidad',exact:true}).waitFor();
   if(width===1280){
     await admin.page.getByRole('button',{name:'Reducir barra lateral a iconos',exact:true}).click();
     assert.equal(await admin.page.locator('aside nav a').count(),1,'Compact sidebar shows group controls, not every module');
@@ -36,7 +37,7 @@ try{
   await card.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
   await card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
   await card.getByText('Etapa1 worker',{exact:true}).waitFor();
-  await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
+  activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
   await own.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
@@ -55,4 +56,4 @@ try{
  }
  const anon=await browser.newContext();const page=await anon.newPage();await page.goto('http://localhost:3000/coordinacion');assert.ok(page.url().includes('/login'));await anon.close();
  writeFileSync('etapa1-browser-results.json',JSON.stringify(results,null,2));console.log('Etapa 1 authenticated desktop/mobile journeys passed.');
-}finally{await browser.close();}
+}catch(error){if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{await browser.close();}

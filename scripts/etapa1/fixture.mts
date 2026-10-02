@@ -5,6 +5,7 @@ import {SignJWT} from 'jose';
 import {resetOperationalData,prisma as testDb} from '../../tests/helpers';
 import {TUTORIAL_MODULE_KEYS} from '../../src/domain/tutorial-tour';
 import {TERMS_DOCUMENT,TERMS_VERSION} from '../../src/domain/legal';
+if((process.env.AUTH_SECRET??'').length<32)throw new Error('Synthetic authentication key must satisfy the real session contract');
 const db=new PrismaClient();
 await resetOperationalData();
 await testDb.$disconnect();

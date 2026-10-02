@@ -1,5 +1,5 @@
 export const RECEIPT_MINUTES = 30;
-export type CoordinationKind = 'entry' | 'task' | 'housekeeping';
+export type CoordinationKind = 'entry' | 'task' | 'housekeeping' | 'followup';
 export function receiptDueAt(assignedAt: Date | null, startsAt: Date | null = null): Date | null {
   if (!assignedAt) return null;
   return new Date(Math.max(assignedAt.getTime(), startsAt?.getTime() ?? 0) + RECEIPT_MINUTES * 60000);
@@ -12,6 +12,6 @@ export function nextWorkAction(status: string, owner: string | null, received: D
   if (['POR_REVISAR','REALIZADA'].includes(status)) return 'Validar el resultado';
   if (!owner) return 'Asignar responsable';
   if (['BLOQUEADO','BLOQUEADA'].includes(status)) return note || 'Resolver el impedimento';
-  if (!received) return 'Confirmar recepción';
+  if (!received) return note || 'Confirmar recepción';
   return note || (['ABIERTO','PENDIENTE','RECIBIDO','ACEPTADA'].includes(status) ? 'Comenzar la atención' : 'Registrar el resultado');
 }

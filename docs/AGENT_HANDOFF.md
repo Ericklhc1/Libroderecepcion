@@ -4,9 +4,10 @@
 - `/coordinacion` agrupa fuentes existentes, confirma recepción, reasigna con siguiente acción y conserva continuidad. Lectura de horarios con permisos; sin gestión PMS, asistencia o descuentos de descansos.
 - HK separa recepción/inicio y recepción/aceptación de relevo. Mantenimiento exige gravedad y crea continuidad atómica mediante servicio canónico. No se generan movimientos de Caja/llaves.
 - Migración aditiva `20261002093000_operacion_conectada`; privacidad de nuevos lectores y cron fail-closed son dependencias concretas, no cierre general de H01/H08. Reconciliar estos PR antes de publicar y confirmar secreto de cron.
-- Tipos y 63 pruebas locales de dominio/navegación/contexto aprobados. Compuerta debe ejecutar integración y recorridos autenticados en PostgreSQL sintético; no hay servidor PostgreSQL local ni pruebas sobre Neon.
+- Tipos y 111 pruebas locales de dominio/navegación/contexto aprobados. Compuerta debe ejecutar integración y recorridos autenticados en PostgreSQL sintético; no hay servidor PostgreSQL local ni pruebas sobre Neon.
 - Primera Compuerta: migración/lint/tipos aprobados, 1340 pruebas aprobadas y una omisión previa; falló únicamente cobertura del tutorial por la ruta nueva. Añadido paso de Coordinación. Segunda revisión añade horario futuro, tareas con origen cerrado, recepción HK y menú real; repetir Compuerta.
-- Guía: `docs/ETAPA_1_OPERACION_CONECTADA.md`. Métricas etiquetadas por página/muestra. Sin datos históricos inventados. Pendientes globales de auditoría conservados.
+- Segunda Compuerta: 1343 pruebas aprobadas (1 omisión previa), migración/lint/tipos/build aprobados. Navegador detectó sesión sintética rechazada: AUTH_SECRET de CI era más corto que el mínimo real. Corregida sólo la clave ficticia de CI; la autenticación de producción permanece intacta. Repetir navegador y suite con agregados por área, paginación y seguimientos independientes.
+- Guía: `docs/ETAPA_1_OPERACION_CONECTADA.md`. Carga por área completa y métricas temporales etiquetadas por página/muestra. Sin datos históricos inventados. Pendientes globales de auditoría conservados.
 
 ## 01/10/2026 · v1.45.0 · Housekeeping diario por cargo y área
 

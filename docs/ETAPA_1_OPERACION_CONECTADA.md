@@ -2,7 +2,7 @@
 
 ## Recorridos
 
-- **Operación → Coordinación** reúne novedades/incidencias con sus tareas y seguimientos autorizados, tareas independientes y trabajo de Housekeeping. Cada tarjeta enlaza al registro original. Una atención HK sustituye la tarjeta del registro vinculado cuando el lector puede verla; el origen sigue enlazado para registrar su cierre.
+- **Operación → Coordinación** reúne novedades/incidencias con sus tareas y seguimientos autorizados, tareas y seguimientos independientes y trabajo de Housekeeping. Cada tarjeta enlaza al registro original. Una atención HK sustituye la tarjeta del registro vinculado cuando el lector puede verla; el origen sigue enlazado para registrar su cierre.
 - Filtrar por área permite elegir un **usuario existente**, registrar siguiente acción y reasignar. La recepción anterior se invalida y se solicita confirmación al nuevo responsable. El horario publicado se muestra únicamente dentro del alcance de Equipo del lector y no acredita asistencia; horas y descansos no cambian.
 - El responsable confirma **recepción** y después atiende/resuelve desde el registro original. La recepción no inicia ni resuelve el trabajo. La ejecución, validación, evidencia y permisos de cierre siguen en los servicios nativos. No se cierran tareas, seguimientos ni novedades en cascada por aceptar una tarjeta.
 - Un pendiente sigue accesible después del turno de origen. La nueva asignación conserva instrucciones y auditoría. Entrega/recepción de Caja y llaves siguen sus recorridos nativos y no se generan movimientos desde Coordinación.
@@ -10,11 +10,13 @@
 - Un impedimento derivado a Mantenimiento exige gravedad. Incidencia, tarea, seguimiento y vínculo al trabajo original se guardan en una transacción. La tarea técnica queda por asignar; el creador conserva el seguimiento de coordinación. El resultado de Mantenimiento se consulta mediante el vínculo original; no se crea otra incidencia al reintentar.
 - Gerencia, Supervisión y Equipo incluyen acceso a la bandeja común. Las cuentas de HK mantienen sólo su alcance de área; las proyecciones de tareas y seguimientos respetan privados por creador, reservados por permiso y operativos por creador/asignado/gestor.
 
+Los seguimientos conservan su dueño, siguiente acción, resultado y circuito nativo; su recepción corresponde al trabajo de ejecución vinculado. Los independientes se muestran bajo el área actual de su responsable y no se les atribuyen tiempos de recepción inexistentes.
+
 ## Medición y aviso pendiente
 
 Los nuevos campos en Task y OperationalEntry guardan asignación, recepción, primer inicio, siguiente acción y marca de escalamiento, sin copiar contenido operativo ni inventar eventos históricos. Housekeeping reutiliza sus marcas actuales.
 
-La bandeja muestra totales filtrados y estadísticas **de la página visible** con denominador: confirmación, espera hasta inicio y resolución. Los tiempos sin datos aparecen como «—»; no se presentan como cero. La paginación trae hasta 25 asuntos por origen, con sus vínculos limitados a 20; el detalle original permite consultar el resto.
+La bandeja muestra carga agregada por área para todas las páginas del filtro y estadísticas **de la página visible** con denominador: confirmación, espera hasta inicio y resolución. Los tiempos sin datos aparecen como «—»; no se presentan como cero. La paginación trae hasta 25 asuntos por origen, con sus vínculos limitados a 20; el detalle original permite consultar el resto.
 
 Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la disponibilidad programada se escalan una vez al creador/coordinador mediante el cron existente. En Housekeeping se avisa al equipo coordinador; no se anticipan avisos de recepción para trabajos de días futuros. Reasignar reinicia el ciclo. La bandeja permanece consultable aunque falle push o no corra el cron. Los registros anteriores sin marca de asignación no reciben un plazo histórico inventado. Este umbral está centralizado en `RECEIPT_MINUTES`.
 

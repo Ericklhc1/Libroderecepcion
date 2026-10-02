@@ -10,7 +10,7 @@ import { escalateHousekeepingRequests } from '@/server/services/housekeeping';
 import { hotelDateKey } from '@/domain/time';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
-vi.mock('@/server/services/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
+vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
 
 describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
   let admin:CurrentUser,a:CurrentUser,b:CurrentUser,maid:CurrentUser,area:string,hkArea:string;
@@ -37,7 +37,7 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
   });
   it('reasignar obliga nueva recepción; el responsable saliente no puede confirmar',async()=>{
     const t=await task();await mutate(a,t.id,'task','RECIBIR');await mutate(admin,t.id,'task','ASIGNAR',b.id);
-    const reassigned=await prisma.task.findUniqueOrThrow({where:{id:t.id}});expect(reassigned.workAcknowledgedAt).toBeNull();expect(reassigned.assigneeId).toBe(b.id);
+    const reassigned=await prisma.task.findUniqueOrThrow({where:{id:t.id}});expect(reassigned.workAcknowledgedAt).toBeNull();expect(reassigned.assigneeId).toBe(b.id);expect((await getCoordinationBoard(b)).rows.find(r=>r.id===t.id)!.nextAction).toBe('Verificar y registrar resultado');
     await expect(mutate(a,t.id,'task','RECIBIR')).rejects.toThrow();await mutate(b,t.id,'task','RECIBIR');
     expect(await prisma.taskAssignment.count({where:{taskId:t.id,userId:b.id,role:'PRINCIPAL',removedAt:null}})).toBe(1);
     await assignTask(admin,{id:t.id,assigneeId:a.id,reason:'Relevo desde pantalla original'});expect((await prisma.task.findUniqueOrThrow({where:{id:t.id}})).workAcknowledgedAt).toBeNull();
@@ -66,7 +66,17 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     const e=await entry();const f=await prisma.followUp.create({data:{action:'PRIVADO_NO_MOSTRAR',ownerId:a.id,createdById:admin.id,entryId:e.id,visibility:'PRIVADO'}});
     await prisma.task.create({data:{title:'PRIVADO_TAREA',createdById:admin.id,assigneeId:a.id,followUpId:f.id,entryId:e.id}});
     await createTask(admin,{title:'Atención visible',entryId:e.id,assigneeId:a.id,priority:'MEDIA',tags:[],checklist:[]});
-    const board=await getCoordinationBoard(a);expect(board.rows).toHaveLength(1);expect(board.rows[0]!.children).toHaveLength(1);expect(JSON.stringify(board)).not.toContain('PRIVADO');
+    const board=await getCoordinationBoard(a);expect(board.rows).toHaveLength(1);expect(board.rows[0]!.children).toHaveLength(1);expect(board.total).toBe(1);expect(board.byArea.reduce((total,row)=>total+row.total,0)).toBe(1);expect(JSON.stringify(board)).not.toContain('PRIVADO');
+  });
+  it('la carga por área incluye las páginas restantes sin duplicar fuentes',async()=>{
+    await prisma.task.createMany({data:Array.from({length:27},(_,i)=>({title:`Carga sintética ${i}`,createdById:admin.id,assigneeId:a.id,departmentId:area}))});
+    const first=await getCoordinationBoard(a,{mine:true});const second=await getCoordinationBoard(a,{mine:true,page:2});
+    expect(first.rows).toHaveLength(25);expect(second.rows).toHaveLength(2);expect(first.total).toBe(27);expect(first.hasMore).toBe(true);expect(second.hasMore).toBe(false);expect(first.byArea).toEqual(second.byArea);expect(first.byArea[0]!.total).toBe(27);
+  });
+  it('incluye seguimientos independientes autorizados y enlaces al recorrido existente',async()=>{
+    const visible=await prisma.followUp.create({data:{action:'Continuidad independiente',ownerId:a.id,createdById:admin.id,nextAction:'Verificar resultado',visibility:'OPERATIVO'}});
+    await prisma.followUp.create({data:{action:'PRIVADO_OCULTO',ownerId:a.id,createdById:admin.id,visibility:'PRIVADO'}});
+    const board=await getCoordinationBoard(a,{departmentId:area});expect(board.total).toBe(1);expect(board.rows[0]!.id).toBe(visible.id);expect(board.rows[0]!.href).toBe(`/seguimientos?q=${visible.humanId}&estado=todos`);expect(JSON.stringify(board)).not.toContain('PRIVADO_OCULTO');
   });
   it('escalamiento persistente una sola vez y cancelado por la recepción',async()=>{
     const t=await task();const old=new Date(Date.now()-3600000);await prisma.task.update({where:{id:t.id},data:{workAssignedAt:old}});

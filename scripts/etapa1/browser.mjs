@@ -4,11 +4,13 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
-const results=[];let activePage;
+const results=[];const timings=[];let activePage;
+async function measured(label,work){const start=performance.now();try{return await work();}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
 async function submit(page,button){
+ const started=performance.now();
  const path=new URL(page.url()).pathname;
  const [response]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path),button.click()]);
- assert.ok(response.ok(),'Server action response succeeds');
+ assert.ok(response.ok(),'Server action response succeeds');timings.push({label:'POST '+path,ms:Math.round(performance.now()-started)});
 }
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});
@@ -19,7 +21,7 @@ async function actor(name,width){
 try{
  for(const [index,width] of [1280,390].entries()){
   console.log('Starting synthetic viewport',width);const t=f.tasks[index];const admin=await actor('admin',width);const worker=await actor('worker',width);
-  activePage=admin.page;const response=await admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`);
+  activePage=admin.page;const response=await measured(`navigation coordinator ${width}`,()=>admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`));
   assert.equal(response.status(),200);assert.equal(new URL(admin.page.url()).pathname,'/coordinacion','Synthetic session must pass real authentication');
   await admin.page.getByRole('heading',{name:'Coordinación y continuidad',exact:true}).waitFor();
   if(width===1280){
@@ -40,8 +42,7 @@ try{
   await card.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
   await card.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
   await card.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
-  await submit(admin.page,card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));
-  await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();console.log('Assignment visible',width);
+  await measured(`assign visible ${width}`,async()=>{await submit(admin.page,card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
   activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
@@ -49,9 +50,8 @@ try{
   await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));
   await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();console.log('Receipt visible',width);
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
-  await worker.page.goto(`http://localhost:3000/tareas/${t.id}`);
-  await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));
-  await worker.page.getByText('Completada',{exact:true}).first().waitFor();console.log('Resolution visible',width);
+  await measured(`navigation task ${width}`,()=>worker.page.goto(`http://localhost:3000/tareas/${t.id}`));
+  await measured(`resolve visible ${width}`,async()=>{await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));await worker.page.getByText('Completada',{exact:true}).first().waitFor();});console.log('Resolution visible',width);
   await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
   await worker.page.locator('article').filter({hasText:t.title}).waitFor();
   const maid=await actor('maid',width);await maid.page.goto('http://localhost:3000/coordinacion');
@@ -60,5 +60,5 @@ try{
   await admin.context.close();await worker.context.close();await maid.context.close();
  }
  const anon=await browser.newContext();const page=await anon.newPage();await page.goto('http://localhost:3000/coordinacion');assert.ok(page.url().includes('/login'));await anon.close();
- writeFileSync('etapa1-browser-results.json',JSON.stringify(results,null,2));console.log('Etapa 1 authenticated desktop/mobile journeys passed.');
+ writeFileSync('etapa1-browser-results.json',JSON.stringify({results,timings},null,2));console.log('Etapa 1 authenticated desktop/mobile journeys passed.');
 }catch(error){if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{await browser.close();}

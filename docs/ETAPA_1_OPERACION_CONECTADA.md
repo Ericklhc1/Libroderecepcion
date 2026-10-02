@@ -18,7 +18,7 @@ Los nuevos campos en Task y OperationalEntry guardan asignación, recepción, pr
 
 La bandeja muestra carga agregada por área para todas las páginas del filtro y estadísticas **de la página visible** con denominador: confirmación, espera hasta inicio y resolución. Los tiempos sin datos aparecen como «—»; no se presentan como cero. La paginación trae hasta 25 asuntos por origen, con sus vínculos limitados a 20; el detalle original permite consultar el resto.
 
-Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la disponibilidad programada se escalan una vez al creador/coordinador mediante el cron existente. En Housekeeping se avisa al equipo coordinador; no se anticipan avisos de recepción para trabajos de días futuros. Reasignar reinicia el ciclo. La bandeja permanece consultable aunque falle push o no corra el cron. Los registros anteriores sin marca de asignación no reciben un plazo histórico inventado. Este umbral está centralizado en `RECEIPT_MINUTES`.
+Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la disponibilidad programada se escalan una vez al creador con acceso y a los coordinadores autorizados del área destinataria mediante el cron existente. En Housekeeping se avisa al equipo coordinador; pantalla y cron cuentan los 30 minutos desde el comienzo del día local de trabajo, o desde la asignación si fue posterior. Quitar al responsable elimina el plazo de recepción. Reasignar reinicia el ciclo. La bandeja permanece consultable aunque falle push o no corra el cron. Los registros anteriores sin marca de asignación no reciben un plazo histórico inventado. Este umbral está centralizado en `RECEIPT_MINUTES`.
 
 ## Arquitectura y controles
 
@@ -26,7 +26,7 @@ Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la dis
 - Escrituras de Coordinación bloquean la fila original, verifican revisión y autorización, conservan una clave de reintento con hash de contenido y guardan auditoría/participación en la misma transacción. El reintento exacto no duplica efectos; clave reutilizada con otro contenido se rechaza.
 - La asignación desde pantallas nativas invalida la recepción anterior. No se añaden permisos de Caja, llaves privadas, administración o IA.
 - Dependencias concretas de auditoría: autenticación fail-closed de cron (H08), política de privacidad para las nuevas proyecciones (parte de H01), creación/continuidad atómica de Mantenimiento desde HK (H04/H05 en esa ruta). Esto **no cierra** el resto de los hallazgos de auditoría.
-- Coordinar no requiere proveedor de IA. El catálogo de contexto registra la pantalla sin añadir herramientas de automatización de etapas 2/3.
+- Coordinar no requiere proveedor de IA. El contexto de Fronti consulta el mismo lector autorizado de Coordinación, sin permisos administrativos ni herramientas de automatización de etapas 2/3.
 
 ## Verificación
 

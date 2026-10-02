@@ -1,3 +1,4 @@
+import { hotelWallDateTime } from './time';
 export const RECEIPT_MINUTES = 30;
 export type CoordinationKind = 'entry' | 'task' | 'housekeeping' | 'followup';
 export function receiptDueAt(assignedAt: Date | null, startsAt: Date | null = null): Date | null {
@@ -14,4 +15,9 @@ export function nextWorkAction(status: string, owner: string | null, received: D
   if (['BLOQUEADO','BLOQUEADA'].includes(status)) return note || 'Resolver el impedimento';
   if (!received) return note || 'Confirmar recepción';
   return note || (['ABIERTO','PENDIENTE','RECIBIDO','ACEPTADA'].includes(status) ? 'Comenzar la atención' : 'Registrar el resultado');
+}
+
+/** A day-only plan becomes available at the start of that hotel-local day. */
+export function hkReceiptAvailableAt(workDate: string | null): Date | null {
+  return workDate ? hotelWallDateTime(workDate, 0, 0) : null;
 }

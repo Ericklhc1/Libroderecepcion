@@ -342,7 +342,7 @@ export async function assignTask(
   return prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
       where: { id: input.id },
-      data: { assigneeId: input.assigneeId ?? null, workAssignedAt: new Date(), workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
+      data: { assigneeId: input.assigneeId ?? null, workAssignedAt: input.assigneeId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
       include: taskInclude,
     });
     await recordAudit(

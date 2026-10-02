@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { coordinateWork,getCoordinationBoard,escalateUnreceivedWork,getCoordinationTeam } from '@/server/services/coordination';
+import { coordinateWork,getCoordinationBoard,escalateUnreceivedWork,getCoordinationTeam,coordinationMetrics } from '@/server/services/coordination';
 import { createTask,assignTask,changeTaskStatus } from '@/server/services/tasks';
-import { createEntry,changeEntryStatus } from '@/server/services/entries';
-import { createHkWork,changeHkWork,saveHkHandover,receiveHkHandover,acceptHkHandover } from '@/server/services/housekeeping-work';
+import { createEntry,changeEntryStatus,updateEntry } from '@/server/services/entries';
+import { createHkWork,changeHkWork,saveHkHandover,receiveHkHandover,acceptHkHandover,organizeLegacyHkWork } from '@/server/services/housekeeping-work';
 import { escalateHousekeepingRequests } from '@/server/services/housekeeping';
-import { hotelDateKey } from '@/domain/time';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
+import { receiptDueAt } from '@/domain/coordination';
+import { hotelDateKey, hotelWallDateTime } from '@/domain/time';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
 vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
@@ -116,6 +119,50 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     const t=await task();await prisma.task.update({where:{id:t.id},data:{workAssignedAt:new Date(Date.now()-3600000),startsAt:new Date(Date.now()+3600000)}});
     expect((await escalateUnreceivedWork()).escalated).toBe(0);await expect(mutate(a,t.id,'task','RECIBIR')).rejects.toThrow('programación');
   });
+
+  it('quitar responsable elimina el plazo y no escala filas históricas sin dueño',async()=>{
+    const t=await task();const e=await entry();
+    await assignTask(admin,{id:t.id,assigneeId:null,reason:'Pendiente de nueva cobertura'});await updateEntry(admin,{id:e.id,ownerId:null});
+    expect((await prisma.task.findUniqueOrThrow({where:{id:t.id}})).workAssignedAt).toBeNull();expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).workAssignedAt).toBeNull();
+    const old=new Date(Date.now()-3600000);await prisma.task.update({where:{id:t.id},data:{workAssignedAt:old}});await prisma.operationalEntry.update({where:{id:e.id},data:{workAssignedAt:old}});
+    expect((await escalateUnreceivedWork()).escalated).toBe(0);expect(await prisma.notification.count({where:{title:{contains:'sin confirmar recepción'}}})).toBe(0);
+  });
+  it('iniciar una novedad desde su fuente confirma recepción sólo para su responsable',async()=>{
+    const e=await entry();await prisma.operationalEntry.update({where:{id:e.id},data:{workAssignedAt:new Date(Date.now()-3600000)}});
+    await changeEntryStatus(a,{id:e.id,status:'EN_CURSO'});const started=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});expect(started.workAcknowledgedAt).toEqual(started.workStartedAt);expect(started.workAcknowledgedById).toBe(a.id);expect((await escalateUnreceivedWork()).escalated).toBe(0);
+    const other=await entry();await changeEntryStatus(b,{id:other.id,status:'EN_CURSO'});expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:other.id}})).workAcknowledgedAt).toBeNull();
+  });
+  it('organizar un aviso antiguo marca la nueva asignación y permite escalamiento',async()=>{
+    const old=await prisma.housekeepingRequest.create({data:{requestKey:randomUUID(),title:'Aviso antiguo',description:'Reponer',location:'Zona sintética',departmentId:hkArea,createdById:admin.id}});
+    await organizeLegacyHkWork(admin,{id:old.id,version:old.version,departmentId:hkArea,workDate:hotelDateKey(new Date()),workKind:'REPOSICION',effortMinutes:10,requiresInspection:false,assignedToId:maid.id,note:'Continuar trabajo'});
+    const organized=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:old.id}});expect(organized.workAssignedAt).not.toBeNull();expect((await escalateHousekeepingRequests(new Date(organized.workAssignedAt!.getTime()+1800001))).escalated).toBe(1);
+  });
+  it('el plazo HK empieza en su día disponible y coincide entre pantalla y cron',async()=>{
+    const workDate='2030-10-02';const start=hotelWallDateTime(workDate,0,0);
+    const r=await createHkWork(admin,{requestKey:randomUUID(),title:'Programado',description:'Futuro',departmentId:hkArea,workDate,workKind:'REPOSICION',location:'Zona sintética',priority:'MEDIA',effortMinutes:10,assignedToId:maid.id});
+    await prisma.housekeepingRequest.update({where:{id:r.id},data:{workAssignedAt:new Date(start.getTime()-86400000)}});
+    const row=(await getCoordinationBoard(maid)).rows.find(v=>v.id===r.id)!;expect(row.availableAt).toEqual(start);expect(receiptDueAt(row.assignedAt,row.availableAt)).toEqual(new Date(start.getTime()+1800000));
+    expect(coordinationMetrics([row],new Date(start.getTime()-1)).receiptLate).toBe(0);expect((await escalateHousekeepingRequests(new Date(start.getTime()+1799999))).escalated).toBe(0);expect((await escalateHousekeepingRequests(new Date(start.getTime()+1800000))).escalated).toBe(1);
+  });
+  it('escala al coordinador de Mantenimiento que puede actuar y no al creador HK sin acceso',async()=>{
+    const maintenance=(await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}})).id;
+    await prisma.user.updateMany({where:{id:{in:[a.id,b.id]}},data:{departmentId:maintenance}});
+    const e=await prisma.operationalEntry.create({data:{type:'INCIDENCIA',title:'Derivación sintética',description:'Revisar',createdById:maid.id,ownerId:a.id,departmentId:maintenance,workAssignedAt:new Date(Date.now()-3600000)}});
+    expect((await escalateUnreceivedWork()).escalated).toBe(1);
+    const notifications=await prisma.notification.findMany({where:{entityId:e.id,title:{contains:'sin confirmar recepción'}}});expect(notifications.map(n=>n.userId)).toContain(b.id);expect(notifications.map(n=>n.userId)).not.toContain(maid.id);
+  });
+  it('escalar una tarea reservada no revela su existencia a coordinadores sin acceso',async()=>{
+    const f=await prisma.followUp.create({data:{action:'Reservado',createdById:admin.id,ownerId:a.id,visibility:'PRIVADO'}});
+    const t=await prisma.task.create({data:{title:'Reservada',createdById:admin.id,assigneeId:a.id,departmentId:area,followUpId:f.id,workAssignedAt:new Date(Date.now()-3600000)}});
+    await escalateUnreceivedWork();const notifications=await prisma.notification.findMany({where:{entityId:t.id,title:{contains:'sin confirmar recepción'}}});expect(notifications.map(n=>n.userId)).toEqual([admin.id]);
+  });
+  it('Fronti lee Coordinación con los mismos permisos y filtros de Recepción y HK',async()=>{
+    const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await task();
+    const page=resolveFrontiPageContext({pathname:'/coordinacion',search:`?area=${area}`});expect(page.moduleKey).toBe('coordinacion');expect(page.recommendedTools).toContain('consultar_contexto_pantalla');
+    const reception=await executeFrontiPageContextTool(receptionist,page) as {snapshot:{total:number}};expect(reception.snapshot.total).toBe(1);
+    const hk=await executeFrontiPageContextTool(maid,page) as {snapshot:{total:number}};expect(hk.snapshot.total).toBe(0);
+  });
+
   it('equipo conserva usuarios existentes y no expone horario sin permiso',async()=>{
     const team=await getCoordinationTeam(a,area);expect(team.some(u=>u.id===b.id)).toBe(true);
     const without={...a,permissions:a.permissions.filter(p=>!p.startsWith('schedule.'))};expect((await getCoordinationTeam(without,area)).every(u=>!u.scheduleVisible&&!u.scheduled)).toBe(true);

@@ -1,3 +1,10 @@
+## 02/10/2026 · Continuación de Etapa 1 / PR #241
+
+- Se mantiene autorización de implementación y preparación de PR; sin merge ni despliegue. Base main 52f7f229, último commit anterior 622ce10b con Compuerta aprobada: 1345 pruebas + navegador escritorio/ancho móvil.
+- Corregidas las seis observaciones de revisión: sin plazo al quitar responsable, exclusión defensiva de filas sin dueño en cron, recepción al iniciar una novedad propia, asignación fechada al organizar HK histórico, fecha de disponibilidad HK compartida por pantalla/cron y escalamiento a coordinadores autorizados del área destinataria.
+- Fronti cataloga Coordinación como módulo operativo y reutiliza el lector filtrado de la bandeja, incluyendo cuentas exclusivas HK. Regresiones para acceso y filtros; no añade acciones de IA ni permisos administrativos.
+- Se añaden siete regresiones PostgreSQL. Tipos/lint y Compuerta del nuevo commit deben verificarse antes de integrar. El navegador registra tiempos separados de navegación, respuesta POST y estado visible para investigar la demora de unos 30 s; todavía no se atribuye causa.
+
 ## 02/10/2026 · v1.46.0 · Etapa 1 en rama, sin merge ni despliegue
 
 - Rama `feat/etapa-1-operacion-conectada` sobre main 52f7f229. Usuario autoriza implementación y PR; prohíbe merge/despliegue.

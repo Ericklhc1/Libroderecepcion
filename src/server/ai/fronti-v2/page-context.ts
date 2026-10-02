@@ -393,6 +393,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/coordinacion') return detail('coordinacion', 'Coordinación', 'pendientes', 'Coordinación y continuidad', ['consultar_contexto_pantalla']);
+
   if (pathname === '/admin') {
     return detail('administracion', 'Administración', 'inicio', 'Inicio de Administración', [
       'consultar_contexto_pantalla',
@@ -410,7 +412,6 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     '/admin/puesta-en-cero': ['puesta-en-cero', 'Puesta en cero', ['consultar_contexto_pantalla']],
     '/admin/roles': ['roles', 'Roles y permisos', ['consultar_contexto_pantalla', 'consultar_usuarios']],
     '/admin/soporte': ['soporte', 'Reportes y solicitudes', ['consultar_contexto_pantalla']],
-    '/coordinacion': ['coordinacion', 'Coordinación y continuidad', []],
     '/admin/housekeeping': ['housekeeping', 'Housekeeping', ['consultar_contexto_pantalla']],
     '/admin/turnos': ['turnos', 'Historial de turnos', ['consultar_contexto_pantalla', 'consultar_turnos', 'consultar_auditoria']],
     '/admin/usuarios': ['usuarios', 'Usuarios', ['consultar_contexto_pantalla', 'consultar_usuarios']],

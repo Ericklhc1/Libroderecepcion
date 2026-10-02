@@ -1,6 +1,7 @@
 import 'server-only';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
+import { getCoordinationBoard, coordinationMetrics } from '@/server/services/coordination';
 import { getHkWorkday } from '@/server/services/housekeeping-work';
 import { HK_WORK_LABELS, isHkFocused } from '@/domain/housekeeping-work';
 
@@ -697,12 +698,16 @@ export async function executeFrontiPageContextTool(
 
   if (isHkFocused(user)) {
     if(page.moduleKey === 'inicio') return { ...base, snapshot: await adminSnapshot(user,{...page,sectionKey:'housekeeping'}) };
-    if(page.sectionKey !== 'housekeeping' && !['equipo','notificaciones','perfil'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
+    if(page.sectionKey !== 'housekeeping' && !['coordinacion','equipo','notificaciones','perfil'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
   }
   const detail = await detailSnapshot(user, page);
   if (detail) return { ...base, snapshot: detail };
 
   switch (page.moduleKey) {
+    case 'coordinacion': {
+      const board=await getCoordinationBoard(user,{departmentId:page.filters.area,mine:page.filters.mios==='1',history:page.filters.historial==='1',page:Number(page.filters.pagina)||1});
+      return {...base,snapshot:{...board,metrics:coordinationMetrics(board.rows),metricsScope:'página visible',note:'Lectura del mismo alcance que Coordinación. Recibir no resuelve ni acredita asistencia.'}};
+    }
     case 'inicio':
       return { ...base, snapshot: await getDashboardData(user) };
     case 'buscar':

@@ -1,3 +1,4 @@
+import { followUpAuditVisibility } from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
@@ -43,13 +44,13 @@ export default async function HistoryPage({
   reportParams.set('vista', 'historial');
 
   const [result, options, shifts, auditLogs] = await Promise.all([
-    getBookItems(filters),
+    getBookItems(user, filters),
     getFormOptions(),
     getShiftOptions(),
     user.permissions.includes('audit.view')
       ? prisma.auditLog.findMany({
           where: {
-            AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)],
+            AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user), await followUpAuditVisibility(user)],
             ...(filters.q ? { summary: { contains: filters.q, mode: 'insensitive' as const } } : {}),
           },
           include: { user: { select: { name: true } } },

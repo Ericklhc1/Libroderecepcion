@@ -1,3 +1,4 @@
+import type { FollowUpReader } from './followup-access';
 import 'server-only';
 
 import {
@@ -176,7 +177,7 @@ export async function getManagementDecisionAdvice(
   }
 }
 
-export async function getManagementCockpit(inputDays = 30) {
+export async function getManagementCockpit(user: FollowUpReader, inputDays = 30) {
   const now = new Date();
   const days = normalizeDays(inputDays);
   const period = periodFor(days, now);
@@ -351,7 +352,7 @@ export async function getManagementCockpit(inputDays = 30) {
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
-    getRoomMonitorOverview(now),
+    getRoomMonitorOverview(user, now),
     prisma.checklistRun.count({
       where: { deletedAt: null, status: { not: 'CERRADA' } },
     }),

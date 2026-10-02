@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const payload = await getWebPushPayload({
-      userId: user.id,
+      user,
       endpoint: input.endpoint,
     });
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });

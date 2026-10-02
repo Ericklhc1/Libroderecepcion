@@ -1,3 +1,4 @@
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -252,10 +253,10 @@ const EDITABLE_FIELDS = [
   'tags',
 ] as const;
 
-export async function getEntry(id: string): Promise<EntryWithRelations> {
+export async function getEntry(id: string, user: FollowUpReader): Promise<EntryWithRelations> {
   const entry = await prisma.operationalEntry.findUnique({
     where: { id },
-    include: entryInclude,
+    include: { ...entryInclude, _count: { select: { ...entryInclude._count.select, followUps: { where: followUpReadWhere(user) } } } },
   });
   if (!entry) throw new NotFoundError('El registro no existe.');
   return entry;

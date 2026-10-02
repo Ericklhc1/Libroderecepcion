@@ -1,3 +1,4 @@
+import { followUpReadWhere, followUpAlertVisibility } from './followup-access';
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -122,6 +123,13 @@ export async function searchOperationalRecords(
     (term) => Prisma.sql`${haystack} LIKE ${contains(term)}`,
   );
 
+  const readable = await prisma.followUp.findMany({ where: followUpReadWhere(user), select: { id: true } });
+  const followUpIds = readable.map(row => row.id);
+  const followUpFilter = followUpIds.length ? Prisma.sql`"entityType" <> 'FollowUp' OR "entityId" IN (${Prisma.join(followUpIds)})` : Prisma.sql`"entityType" <> 'FollowUp'`;
+
+  const alerts = await prisma.alert.findMany({ where: followUpAlertVisibility(user), select: { id: true } });
+  const alertIds = alerts.map(row => row.id);
+  const alertFilter = alertIds.length ? Prisma.sql`"entityType" <> 'Alert' OR "entityId" IN (${Prisma.join(alertIds)})` : Prisma.sql`"entityType" <> 'Alert'`;
   const rows = await prisma.$queryRaw<SearchRow[]>(Prisma.sql`
     SELECT
       "humanId",
@@ -142,6 +150,8 @@ export async function searchOperationalRecords(
       "createdByUserId"
     FROM "HumanOperationalRecord"
     WHERE "entityType" IN (${Prisma.join(types)})
+      AND (${followUpFilter})
+      AND (${alertFilter})
       AND ${Prisma.join(termFilters, ' AND ')}
     ORDER BY
       CASE
@@ -160,7 +170,6 @@ export async function searchOperationalRecords(
   `);
 
   const canManageAnnouncements = hasPermission(user, 'announcement.manage');
-  const canSeeSupervisionFollowUps = hasPermission(user, 'supervision.followup.manage');
 
   const results = rows
     .filter((row) => {
@@ -176,13 +185,6 @@ export async function searchOperationalRecords(
           !hasPermission(user, 'cash.approve')
         ) {
           return false;
-        }
-      }
-      if (row.entityType === 'FollowUp') {
-        if (row.scope === 'PRIVADO') return row.createdByUserId === user.id;
-        if (row.scope === 'SUPERVISION') return canSeeSupervisionFollowUps;
-        if (row.scope === 'OPERATIVO') {
-          return canSeeSupervisionFollowUps || row.targetUserId === user.id || row.createdByUserId === user.id;
         }
       }
       return true;

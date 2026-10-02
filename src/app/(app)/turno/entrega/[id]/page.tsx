@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { visibleHandoverItems } from '@/server/services/followup-access';
 import { notFound } from 'next/navigation';
 import { CashCountKind, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
 import { ArrowLeft, CheckCircle2, Clock, User } from 'lucide-react';
@@ -73,9 +74,10 @@ export default async function HandoverPage({
     },
   });
   if (!handover) notFound();
+  handover.items = await visibleHandoverItems(user, handover.items);
 
   const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
-    getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
+    getHistory(user, { entity: 'ShiftHandover', entityId: handover.id }),
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),

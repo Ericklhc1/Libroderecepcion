@@ -26,7 +26,7 @@ export default async function AlertsPage() {
   const user = await requirePageUser();
   const [candidates, alarms] = await Promise.all([
     listAlarmCandidates(),
-    listMyOperationalAlarms(user.id),
+    listMyOperationalAlarms(user),
   ]);
 
   const active = alarms.filter((alarm) => alarm.status === OperationalAlarmStatus.ACTIVA);

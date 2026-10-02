@@ -25,7 +25,7 @@ export async function GET() {
   }
 
   try {
-    const counts = await getUnreadCountsForUser(user.id);
+    const counts = await getUnreadCountsForUser(user);
     return NextResponse.json(counts, { headers });
   } catch (error) {
     console.error('[notificaciones-poll]', error);

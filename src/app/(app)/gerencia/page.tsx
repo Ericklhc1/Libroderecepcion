@@ -134,10 +134,10 @@ function SourceState({
 }
 
 export default async function ManagementPage({ searchParams }: { searchParams: SearchParams }) {
-  await requirePagePermission('management.dashboard.view');
+  const user = await requirePagePermission('management.dashboard.view');
   const params = await searchParams;
   const requestedDays = Number(typeof params.dias === 'string' ? params.dias : 30);
-  const cockpit = await getManagementCockpit(requestedDays);
+  const cockpit = await getManagementCockpit(user, requestedDays);
   const frontiAdvice = await getManagementDecisionAdvice(cockpit.decisions);
   const periodLabel = `${cockpit.period.days} días`;
 

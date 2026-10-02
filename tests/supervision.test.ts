@@ -40,7 +40,7 @@ describe('mesa de supervisión', () => {
     blocks.find((block) => block.key === key)?.rows ?? [];
 
   it('parte vacía cuando no hay nada que intervenir', async () => {
-    const { total, blocks } = await getSupervisionData();
+    const { total, blocks } = await getSupervisionData(supervisor);
     expect(total).toBe(0);
     // Los bloques existen siempre: la pantalla no cambia de forma.
     expect(blocks.map((block) => block.key)).toContain('sin-responsable');
@@ -59,7 +59,7 @@ describe('mesa de supervisión', () => {
       requiresFollowUp: false,
     });
 
-    const rows = rowsOf((await getSupervisionData()).blocks, 'incidencias');
+    const rows = rowsOf((await getSupervisionData(supervisor)).blocks, 'incidencias');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.ref).toBe(`#${entry.humanId}`);
     // Enlaza al registro del libro, no a un módulo aparte.
@@ -83,7 +83,7 @@ describe('mesa de supervisión', () => {
       checklist: [],
     });
 
-    const rows = rowsOf((await getSupervisionData()).blocks, 'tareas');
+    const rows = rowsOf((await getSupervisionData(supervisor)).blocks, 'tareas');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.ref).toBe(`#${vencida.humanId}`);
     expect(rows[0]!.meta).toContain('vencida hace 3 h');
@@ -111,7 +111,7 @@ describe('mesa de supervisión', () => {
       requiresFollowUp: false,
     });
 
-    const refs = rowsOf((await getSupervisionData()).blocks, 'sin-responsable').map((r) => r.ref);
+    const refs = rowsOf((await getSupervisionData(supervisor)).blocks, 'sin-responsable').map((r) => r.ref);
     expect(refs).toContain(`#${huerfana.humanId}`);
     expect(refs).not.toContain(`#${asignada.humanId}`);
   });
@@ -128,17 +128,17 @@ describe('mesa de supervisión', () => {
       tags: [],
       requiresFollowUp: false,
     });
-    expect(rowsOf((await getSupervisionData()).blocks, 'incidencias')).toHaveLength(1);
+    expect(rowsOf((await getSupervisionData(supervisor)).blocks, 'incidencias')).toHaveLength(1);
 
     await prisma.operationalEntry.update({
       where: { id: entry.id },
       data: { deletedAt: new Date(), deletedById: supervisor.id, deletionReason: 'duplicada' },
     });
-    expect(rowsOf((await getSupervisionData()).blocks, 'incidencias')).toHaveLength(0);
+    expect(rowsOf((await getSupervisionData(supervisor)).blocks, 'incidencias')).toHaveLength(0);
   });
 
   it('no proyecta conflictos PMS ni de llaves', async () => {
-    const keys = (await getSupervisionData()).blocks.map((block) => block.key);
+    const keys = (await getSupervisionData(supervisor)).blocks.map((block) => block.key);
     expect(keys).not.toContain('conflictos-llaves');
     expect(keys).not.toContain('conflictos-habitacion');
     expect(keys).not.toContain('salidas');

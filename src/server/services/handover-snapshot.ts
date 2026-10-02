@@ -1,3 +1,4 @@
+import { followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -77,6 +78,7 @@ type SnapshotOptions = {
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
  */
 export async function buildHandoverSnapshot(
+  user: FollowUpReader,
   now = new Date(),
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
@@ -147,7 +149,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.alert.findMany({
-      where: LIVE_ALERT_WHERE(now),
+      where: { AND: [LIVE_ALERT_WHERE(now), followUpAlertVisibility(user)] },
       select: {
         id: true,
         type: true,
@@ -163,7 +165,7 @@ export async function buildHandoverSnapshot(
       take: 100,
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)], visibility: 'OPERATIVO',
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }],
@@ -195,7 +197,7 @@ export async function buildHandoverSnapshot(
             title: true,
             resolution: true,
             closedAt: true,
-            _count: { select: { tasks: true, followUps: true } },
+            _count: { select: { tasks: true, followUps: { where: { AND: [followUpReadWhere(user)], visibility: 'OPERATIVO' } } } },
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
           take: 150,

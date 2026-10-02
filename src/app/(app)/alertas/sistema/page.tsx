@@ -1,3 +1,4 @@
+import { followUpAlertVisibility } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { AlertStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -78,7 +79,7 @@ export default async function AlertsPage({
 
   const where: Prisma.AlertWhereInput = {
     deletedAt: null,
-    ...(accessFilter ? { AND: [accessFilter] } : {}),
+    AND: [followUpAlertVisibility(user), ...(accessFilter ? [accessFilter] : [])],
     ...(estado === 'activas'
       ? {
           OR: [
@@ -121,7 +122,7 @@ export default async function AlertsPage({
       by: ['status'],
       where: {
         deletedAt: null,
-        ...(accessFilter ? { AND: [accessFilter] } : {}),
+        AND: [followUpAlertVisibility(user), ...(accessFilter ? [accessFilter] : [])],
       },
       _count: { _all: true },
     }),

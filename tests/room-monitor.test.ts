@@ -27,17 +27,19 @@ import {
 } from '@/server/services/room-monitor';
 
 describe('Novedades / habitación', () => {
+  let reader: Awaited<ReturnType<typeof createUser>>;
   beforeAll(async () => {
     await seedCatalog();
   });
 
   beforeEach(async () => {
     await resetOperationalData();
+    reader = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     await seedCatalog();
   });
 
   it('siempre representa exactamente las 89 habitaciones canónicas', async () => {
-    const overview = await getRoomMonitorOverview();
+    const overview = await getRoomMonitorOverview(reader);
 
     expect(overview.rooms).toHaveLength(89);
     expect(overview.summary.total).toBe(89);
@@ -113,7 +115,7 @@ describe('Novedades / habitación', () => {
     expect(task.roomId).toBe(room.id);
     expect(alarm.roomNumber).toBe('512');
 
-    const overview = await getRoomMonitorOverview();
+    const overview = await getRoomMonitorOverview(reader);
     const tile = overview.rooms.find((item) => item.number === '512');
 
     expect(tile).toMatchObject({
@@ -126,7 +128,7 @@ describe('Novedades / habitación', () => {
       attention: 'critical',
     });
 
-    const detail = await getRoomMonitorDetail('512');
+    const detail = await getRoomMonitorDetail(reader, '512');
     expect(detail.entries.map((item) => item.id)).toContain(entry.id);
     expect(detail.tasks.map((item) => item.id)).toContain(task.id);
     expect(detail.followUps).toHaveLength(1);
@@ -167,7 +169,7 @@ describe('Novedades / habitación', () => {
       ],
     });
 
-    const detail = await getRoomMonitorDetail('512', now);
+    const detail = await getRoomMonitorDetail(reader, '512', now);
 
     expect(detail.passes.map((item) => item.id)).toContain('gym-recent-room-monitor');
     expect(detail.passes.map((item) => item.id)).not.toContain('gym-old-room-monitor');
@@ -183,6 +185,6 @@ describe('Novedades / habitación', () => {
   });
 
   it('rechaza números fuera del catálogo', async () => {
-    await expect(getRoomMonitorDetail('999')).rejects.toThrow(/no existe/i);
+    await expect(getRoomMonitorDetail(reader, '999')).rejects.toThrow(/no existe/i);
   });
 });

@@ -1,4 +1,5 @@
 'use server';
+import { followUpReadWhere, type FollowUpReader } from '@/server/services/followup-access';
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
@@ -50,7 +51,7 @@ function dateTime(date: Date) {
   }).format(date);
 }
 
-async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null> {
+async function loadRecord(user: FollowUpReader, kind: BookKind, id: string): Promise<MailRecord | null> {
   if (kind === 'entry') {
     const row = await prisma.operationalEntry.findUnique({
       where: { id },
@@ -113,8 +114,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
   }
 
   if (kind === 'followup') {
-    const row = await prisma.followUp.findUnique({
-      where: { id },
+    const row = await prisma.followUp.findFirst({
+      where: { id, AND: [followUpReadWhere(user)] },
       include: {
         owner: { select: { name: true } },
         createdBy: { select: { name: true } },
@@ -207,7 +208,7 @@ export async function sendBookItemMailAction(
     const user = await requireUser();
     await assertReceptionOperationPermission(user, 'entry.edit');
     const input = parseOrThrow(schema, formDataToObject(formData));
-    const record = await loadRecord(input.kind, input.id);
+    const record = await loadRecord(user, input.kind, input.id);
     if (!record) throw new RuleError('Ese registro ya no existe o no está disponible.');
 
     const body = render(record, input.note);

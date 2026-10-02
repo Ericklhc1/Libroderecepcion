@@ -1,3 +1,4 @@
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 
 import {
@@ -42,7 +43,7 @@ export type RoomMonitorTile = {
   lastActivityAt: Date | null;
 };
 
-export async function getRoomMonitorOverview(now = new Date()) {
+export async function getRoomMonitorOverview(user: FollowUpReader, now = new Date()) {
   const rooms = await prisma.room.findMany({
     where: { active: true, number: { in: ROOM_NUMBERS } },
     orderBy: [{ floor: 'asc' }, { number: 'asc' }],
@@ -91,7 +92,7 @@ export async function getRoomMonitorOverview(now = new Date()) {
       select: { roomNumber: true, updatedAt: true },
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)],
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
         OR: [
@@ -197,7 +198,7 @@ export async function getRoomMonitorOverview(now = new Date()) {
   };
 }
 
-export async function getRoomMonitorDetail(number: string, now = new Date()) {
+export async function getRoomMonitorDetail(user: FollowUpReader, number: string, now = new Date()) {
   const passHistoryFrom = hotelDayStart(addHotelCalendarDays(now, -29));
   const room = await prisma.room.findFirst({
     where: { number, active: true },
@@ -241,7 +242,7 @@ export async function getRoomMonitorDetail(number: string, now = new Date()) {
       },
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)],
         deletedAt: null,
         OR: [{ entry: { roomId: room.id } }, { task: { roomId: room.id } }],
       },

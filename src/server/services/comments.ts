@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpReadWhere } from './followup-access';
 import { AuditAction, NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -98,11 +99,11 @@ export async function addComment(
     link = `/tareas/${task.id}`;
   } else if (input.followUpId) {
     const followUp = await prisma.followUp.findFirst({
-      where: { id: input.followUpId, deletedAt: null },
-      select: { id: true, action: true, ownerId: true, createdById: true, entryId: true },
+      where: { id: input.followUpId, AND: [followUpReadWhere(user)] },
+      select: { id: true, action: true, ownerId: true, createdById: true, entryId: true, visibility: true },
     });
     if (!followUp) throw new NotFoundError('El seguimiento no existe.');
-    recipients.add(followUp.ownerId);
+    if (followUp.visibility !== 'PRIVADO') recipients.add(followUp.ownerId);
     recipients.add(followUp.createdById);
     summaryRef = `seguimiento "${followUp.action}"`;
     link = followUp.entryId ? `/libro/${followUp.entryId}` : '/seguimientos';

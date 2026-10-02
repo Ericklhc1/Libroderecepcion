@@ -1,3 +1,4 @@
+import { followUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EntryType, FollowUpStatus, OperationalAlarmStatus } from '@prisma/client';
@@ -63,12 +64,12 @@ export default async function EntryDetailPage({
   const user = await requirePageUser();
   const { id } = await params;
 
-  const entry = await getEntry(id).catch(() => null);
+  const entry = await getEntry(id, user).catch(() => null);
   if (!entry) notFound();
 
   const [followUps, tasks, linkedAlerts, alertCandidates, history, options] = await Promise.all([
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)],
         entryId: entry.id,
         deletedAt: null,
         OR: [
@@ -100,7 +101,7 @@ export default async function EntryDetailPage({
       take: 50,
     }),
     listAlarmCandidates(),
-    getHistory({ entity: 'OperationalEntry', entityId: entry.id }),
+    getHistory(user, { entity: 'OperationalEntry', entityId: entry.id }),
     getFormOptions(),
   ]);
 

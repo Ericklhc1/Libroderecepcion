@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ dispatched: 0 }, { headers });
     }
 
-    const snapshot = await getNotificationFeedForUser(user.id);
+    const snapshot = await getNotificationFeedForUser(user);
     if (alarmOnly) {
       return NextResponse.json({ dispatched, snapshot }, { headers });
     }

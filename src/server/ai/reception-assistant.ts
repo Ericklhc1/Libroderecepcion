@@ -1,3 +1,4 @@
+import { followUpReadWhere } from '@/server/services/followup-access';
 import 'server-only';
 
 import { revalidatePath } from 'next/cache';
@@ -15,7 +16,6 @@ import {
   FollowUpStatus,
   Priority,
   Severity,
-  SupervisionVisibility,
   TaskStatus,
 } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -325,13 +325,6 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ['followup.create', 'followup.manage', 'metrics.view'].some((permission) =>
       hasPermission(user, permission),
     );
-  const canSeeSupervisionFollowUps =
-    user.isSystemAdmin ||
-    [
-      'supervision.view',
-      'supervision.center.view',
-      'supervision.followup.manage',
-    ].some((permission) => hasPermission(user, permission));
   const canEntries =
     user.isSystemAdmin ||
     [
@@ -383,34 +376,10 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
       : Promise.resolve([]),
     canFollowUps
       ? prisma.followUp.findMany({
-          where: {
+          where: { AND: [followUpReadWhere(user)],
             deletedAt: null,
             status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
             scheduledAt: { lte: until },
-            OR: canSeeSupervisionFollowUps
-              ? [
-                  { visibility: SupervisionVisibility.OPERATIVO },
-                  { visibility: SupervisionVisibility.SUPERVISION },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    createdById: user.id,
-                  },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    ownerId: user.id,
-                  },
-                ]
-              : [
-                  { visibility: SupervisionVisibility.OPERATIVO },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    createdById: user.id,
-                  },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    ownerId: user.id,
-                  },
-                ],
           },
           select: {
             id: true,

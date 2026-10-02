@@ -134,7 +134,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Atención 512',description:'Instrucción inicial',roomId,createdById:reception.id}});
     const r=await createHkWork(reception,{...input(),sourceEntryId:source.id});await change(supervisor,r.id,'ASIGNAR','Atender',maid.id);await change(maid,r.id,'COMENZAR');await change(maid,r.id,'TERMINAR','Hecho');
     await prisma.operationalEntry.update({where:{id:source.id},data:{description:'Nueva instrucción',updatedAt:new Date(Date.now()+2000)}});await expect(change(supervisor,r.id,'APROBAR')).rejects.toThrow('instrucción cambió');await change(supervisor,r.id,'RECONFIRMAR','Revisada nueva instrucción');
-    expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('PENDIENTE');expect((await getEntry(source.id)).housekeepingRequest?.humanId).toBe(r.humanId);expect((await getEntry(source.id)).status).toBe('ABIERTO');
+    expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('PENDIENTE');expect((await getEntry(source.id, supervisor)).housekeepingRequest?.humanId).toBe(r.humanId);expect((await getEntry(source.id, supervisor)).status).toBe('ABIERTO');
   });
   it('sólo una actualización concurrente modifica la misma versión',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});const results=await Promise.allSettled([changeHkWork(maid,{id:r.id,version:1,action:'COMENZAR'}),changeHkWork(maid,{id:r.id,version:1,action:'IMPEDIMENTO',note:'No hay acceso'})]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(await prisma.housekeepingEvent.count({where:{requestId:r.id}})).toBe(2);

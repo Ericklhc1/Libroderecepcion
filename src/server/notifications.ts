@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import 'server-only';
+import { followUpReadWhere, followUpAlertVisibility } from '@/server/services/followup-access';
+import type { PermissionKey } from '@/lib/permissions';
 import type { NotificationType, Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
@@ -33,7 +35,22 @@ export async function notify(
   input: NotifyInput | NotifyInput[],
   client: Client = prisma,
 ): Promise<void> {
-  const list = Array.isArray(input) ? input : [input];
+  let list = Array.isArray(input) ? input : [input];
+  const protectedItems = list.filter(item => item.entityId && (item.entity === 'FollowUp' || item.entity === 'Alert'));
+  if (protectedItems.length) {
+    const users = await client.user.findMany({ where: { id: { in: [...new Set(protectedItems.map(item => item.userId))] }, active: true, deletedAt: null }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
+    const permitted = new Set<NotifyInput>();
+    for (const recipient of users) {
+      const actor = { id: recipient.id, permissions: recipient.role.permissions.map(row => row.permission.key as PermissionKey) };
+      for (const item of protectedItems.filter(row => row.userId === recipient.id)) {
+        const readable = item.entity === 'FollowUp'
+          ? await client.followUp.count({ where: { id: item.entityId!, AND: [followUpReadWhere(actor)] } })
+          : await client.alert.count({ where: { id: item.entityId!, AND: [followUpAlertVisibility(actor)] } });
+        if (readable) permitted.add(item);
+      }
+    }
+    list = list.filter(item => !protectedItems.includes(item) || permitted.has(item));
+  }
   if (list.length === 0) return;
   try {
     await client.notification.createMany({

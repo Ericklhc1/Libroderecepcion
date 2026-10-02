@@ -1,3 +1,4 @@
+import { followUpNotificationVisibility } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
 import type { Prisma } from '@prisma/client';
@@ -25,7 +26,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';
 
-  const notificationWhere: Prisma.NotificationWhereInput = {
+  const notificationWhere: Prisma.NotificationWhereInput = { AND: [await followUpNotificationVisibility(user)],
     userId: user.id,
     ...(estado === 'nuevas'
       ? { readAt: null }

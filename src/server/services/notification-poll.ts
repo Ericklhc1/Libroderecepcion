@@ -1,3 +1,4 @@
+import { followUpNotificationVisibility, type FollowUpReader } from './followup-access';
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
@@ -21,15 +22,17 @@ function refreshFrontiIfDue(): void {
   scheduleFrontiProactiveSweep('notification-poll');
 }
 
-export async function getUnreadCountsForUser(userId: string): Promise<{
+export async function getUnreadCountsForUser(user: FollowUpReader): Promise<{
   notifications: number;
   alerts: number;
 }> {
+  const userId = user.id;
+  const visibility = await followUpNotificationVisibility(user);
   refreshFrontiIfDue();
 
   const [notifications, alerts] = await Promise.all([
-    prisma.notification.count({ where: { userId, readAt: null } }),
-    countMyActiveOperationalAlarms(userId),
+    prisma.notification.count({ where: { userId, readAt: null, AND: [visibility] } }),
+    countMyActiveOperationalAlarms(user),
   ]);
 
   return { notifications, alerts };

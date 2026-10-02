@@ -86,7 +86,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
 
   it('mantiene el Libro normal en registros, tareas y seguimientos', async () => {
     await seedBook();
-    const result = await getBookItems({});
+    const result = await getBookItems(supervisor, {});
 
     const kinds = new Set(result.items.map((item) => item.kind));
     expect(kinds).toEqual(new Set(['entry', 'task', 'followup']));
@@ -99,37 +99,37 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
   it('filtra por clase de objeto', async () => {
     await seedBook();
 
-    const soloTareas = await getBookItems({ kinds: ['task'] });
+    const soloTareas = await getBookItems(supervisor, { kinds: ['task'] });
     expect(soloTareas.items.every((item) => item.kind === 'task')).toBe(true);
     expect(soloTareas.items).toHaveLength(1);
 
-    const soloAlertas = await getBookItems({ kinds: ['alert'] });
+    const soloAlertas = await getBookItems(supervisor, { kinds: ['alert'] });
     expect(soloAlertas.items).toHaveLength(1);
   });
 
   it('busca por título, descripción, categoría, etiqueta y responsable', async () => {
     await seedBook();
 
-    const porCaso = await getBookItems({ q: 'aire acondicionado' });
+    const porCaso = await getBookItems(supervisor, { q: 'aire acondicionado' });
     expect(porCaso.items).toHaveLength(3);
     expect(new Set(porCaso.items.map((item) => item.kind))).toEqual(
       new Set(['entry', 'task', 'followup']),
     );
-    expect((await getBookItems({ q: 'E-04' })).items).toHaveLength(1);
-    expect((await getBookItems({ q: 'climatizacion' })).items.length).toBeGreaterThanOrEqual(2);
-    const porPersonaEnTexto = await getBookItems({ q: 'Whitaker' });
+    expect((await getBookItems(supervisor, { q: 'E-04' })).items).toHaveLength(1);
+    expect((await getBookItems(supervisor, { q: 'climatizacion' })).items.length).toBeGreaterThanOrEqual(2);
+    const porPersonaEnTexto = await getBookItems(supervisor, { q: 'Whitaker' });
     expect(porPersonaEnTexto.items).toHaveLength(3);
     expect(new Set(porPersonaEnTexto.items.map((item) => item.kind))).toEqual(
       new Set(['entry', 'task', 'followup']),
     );
-    expect((await getBookItems({ q: 'Diego Alarcón' })).items.length).toBeGreaterThanOrEqual(2);
-    expect((await getBookItems({ q: 'no-existe-en-ningun-registro' })).items).toHaveLength(0);
+    expect((await getBookItems(supervisor, { q: 'Diego Alarcón' })).items.length).toBeGreaterThanOrEqual(2);
+    expect((await getBookItems(supervisor, { q: 'no-existe-en-ningun-registro' })).items).toHaveLength(0);
   });
 
   it('una habitación escrita como texto se encuentra sin relación PMS', async () => {
     const { incident, task, followUp } = await seedBook();
 
-    const result = await getBookItems({ q: '318' });
+    const result = await getBookItems(supervisor, { q: '318' });
     const ids = result.items.map((item) => item.id);
 
     expect(ids).toEqual(expect.arrayContaining([incident.id, task.id, followUp.id]));
@@ -139,22 +139,22 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
   it('filtra por área, tipo, prioridad y responsable', async () => {
     const { maintenance, incident, task } = await seedBook();
 
-    const porArea = await getBookItems({ departmentId: maintenance.id });
+    const porArea = await getBookItems(supervisor, { departmentId: maintenance.id });
     expect(porArea.items.map((item) => item.id)).toContain(incident.id);
     expect(porArea.items.some((item) => item.title.includes('Codificador'))).toBe(false);
 
-    expect((await getBookItems({ entryType: EntryType.INCIDENCIA, kinds: ['entry'] })).items)
+    expect((await getBookItems(supervisor, { entryType: EntryType.INCIDENCIA, kinds: ['entry'] })).items)
       .toHaveLength(1);
-    expect((await getBookItems({ priority: 'ALTA', kinds: ['entry'] })).items).toHaveLength(1);
+    expect((await getBookItems(supervisor, { priority: 'ALTA', kinds: ['entry'] })).items).toHaveLength(1);
 
-    const deOther = await getBookItems({ ownerId: other.id, kinds: ['entry', 'task'] });
+    const deOther = await getBookItems(supervisor, { ownerId: other.id, kinds: ['entry', 'task'] });
     expect(deOther.items.map((item) => item.id).sort()).toEqual([incident.id, task.id].sort());
   });
 
   it('combina varios filtros a la vez', async () => {
     const { maintenance } = await seedBook();
 
-    const combinado = await getBookItems({
+    const combinado = await getBookItems(supervisor, {
       q: 'aire',
       kinds: ['entry'],
       departmentId: maintenance.id,
@@ -165,7 +165,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     expect(combinado.items[0]?.title).toContain('Aire acondicionado');
 
     expect(
-      (await getBookItems({ q: 'aire', priority: 'BAJA', kinds: ['entry'] })).items,
+      (await getBookItems(supervisor, { q: 'aire', priority: 'BAJA', kinds: ['entry'] })).items,
     ).toHaveLength(0);
   });
 
@@ -184,7 +184,7 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
       requiresFollowUp: false,
     });
 
-    const result = await getBookItems({ kinds: ['entry'] });
+    const result = await getBookItems(supervisor, { kinds: ['entry'] });
     const row = result.items[0]!;
 
     expect(row.shiftLabel).toContain('DIA');
@@ -199,10 +199,10 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
     const { novedad } = await seedBook();
     await softDeleteEntry(supervisor, { id: novedad.id, reason: 'Registro duplicado.' });
 
-    const normal = await getBookItems({ kinds: ['entry'] });
+    const normal = await getBookItems(supervisor, { kinds: ['entry'] });
     expect(normal.items.map((item) => item.id)).not.toContain(novedad.id);
 
-    const conEliminados = await getBookItems({ kinds: ['entry'], includeDeleted: true });
+    const conEliminados = await getBookItems(await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN }), { kinds: ['entry'], includeDeleted: true });
     const found = conEliminados.items.find((item) => item.id === novedad.id);
     expect(found?.deleted).toBe(true);
   });
@@ -219,11 +219,11 @@ describe('libro operativo: búsqueda y filtros combinados', () => {
       });
     }
 
-    const first = await getBookItems({ kinds: ['entry'], pageSize: 10, page: 1 });
+    const first = await getBookItems(supervisor, { kinds: ['entry'], pageSize: 10, page: 1 });
     expect(first.items).toHaveLength(10);
     expect(first.hasMore).toBe(true);
 
-    const second = await getBookItems({ kinds: ['entry'], pageSize: 10, page: 2 });
+    const second = await getBookItems(supervisor, { kinds: ['entry'], pageSize: 10, page: 2 });
     expect(second.items).toHaveLength(2);
     expect(second.hasMore).toBe(false);
 

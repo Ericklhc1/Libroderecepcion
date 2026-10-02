@@ -36,7 +36,7 @@ describe('informes de Supervisión', () => {
       data: { createdAt: new Date('2026-09-01T12:00:00.000Z') },
     });
 
-    const report = await buildSupervisorReport(
+    const report = await buildSupervisorReport(supervisor,
       'estado',
       reportDateRange('2026-09-27', '2026-09-27'),
     );

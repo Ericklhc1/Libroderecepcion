@@ -1,3 +1,4 @@
+import { followUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { EntryType, Severity } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -31,7 +32,7 @@ export default async function IncidentsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePageUser();
+  const user = await requirePageUser();
   const params = await searchParams;
   const values = filterValues(params);
   const gravedad = typeof params.gravedad === 'string' ? params.gravedad : undefined;
@@ -71,7 +72,7 @@ export default async function IncidentsPage({
   const [incidents, options, bySeverity, openCount] = await Promise.all([
     prisma.operationalEntry.findMany({
       where,
-      include: entryInclude,
+      include: { ...entryInclude, _count: { select: { ...entryInclude._count.select, followUps: { where: followUpReadWhere(user) } } } },
       orderBy: [{ severity: 'desc' }, { occurredAt: 'desc' }],
       take: 150,
     }),

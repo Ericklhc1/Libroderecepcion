@@ -60,8 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     receptionGate,
   ] = await Promise.all([
     getSettingString('hotel.name', 'Hotel'),
-    countMyActiveOperationalAlarms(user.id),
-    getNotificationFeedForUser(user.id),
+    countMyActiveOperationalAlarms(user),
+    getNotificationFeedForUser(user),
     prisma.task.count({
       where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
     }),

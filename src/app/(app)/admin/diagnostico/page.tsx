@@ -20,12 +20,12 @@ export default async function DiagnosticsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('system.configure');
+  const user = await requirePagePermission('system.configure');
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const enabled = await getSettingBool('diagnostics.enabled', true);
-  const report = enabled ? await getDiagnosticReport() : null;
+  const report = enabled ? await getDiagnosticReport(user) : null;
 
   const matches = (values: Array<string | number | null | undefined>) =>
     !q ||

@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpMemoryVisibilitySql } from '@/server/services/followup-access';
 
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
@@ -283,12 +284,14 @@ async function storeMessage(
 async function relevantMemories(user: CurrentUser, query: string): Promise<MemoryRow[]> {
   const config = await getFrontiConfig();
   const shiftId = await currentShiftId(user.id);
+  const visibility = await followUpMemoryVisibilitySql(user);
   const rows = shiftId
     ? await prisma.$queryRaw<MemoryRow[]>`
         SELECT id, scope, summary, entity_type, entity_id, importance, updated_at, expires_at
           FROM ai_memory
          WHERE user_id = ${user.id}
            AND expires_at > NOW()
+           AND ${visibility}
            AND (scope = 'PERSONAL' OR (scope = 'TURNO' AND shift_id = ${shiftId}))
          ORDER BY updated_at DESC
          LIMIT ${MEMORY_CANDIDATE_LIMIT}
@@ -298,6 +301,7 @@ async function relevantMemories(user: CurrentUser, query: string): Promise<Memor
           FROM ai_memory
          WHERE user_id = ${user.id}
            AND expires_at > NOW()
+           AND ${visibility}
            AND scope = 'PERSONAL'
          ORDER BY updated_at DESC
          LIMIT ${MEMORY_CANDIDATE_LIMIT}

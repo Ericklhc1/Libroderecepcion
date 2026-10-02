@@ -118,6 +118,10 @@ export async function createFollowUp(
       include: followUpInclude,
     });
 
+    if (user.followUpAudience?.length && await tx.followUp.count({ where: { id: created.id, AND: [followUpReadWhere(user)] } }) === 0) {
+      throw new RuleError('Este seguimiento no puede compartirse con todos los participantes del chat. Créalo en tu conversación individual.');
+    }
+
     // El registro asociado queda marcado como "con seguimiento".
     if (created.entryId) {
       await tx.operationalEntry.update({

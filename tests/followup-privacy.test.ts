@@ -12,7 +12,10 @@ import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getWebPushPayload } from '@/server/services/web-push';
 import { listComments, addComment } from '@/server/services/comments';
-import { updateFollowUp } from '@/server/services/followups';
+import { frontiChatReader } from '@/server/ai/fronti-chat';
+import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
+import { prepareAssistantContext } from '@/server/ai/memory';
+import { createFollowUp, updateFollowUp } from '@/server/services/followups';
 import { sendBookItemMailAction } from '@/server/actions/book-mail';
 import { notify } from '@/server/notifications';
 import { GET as report } from '@/app/api/libro/reporte/route';
@@ -71,6 +74,14 @@ function assertProjection(value: unknown, indices: number[]) {
       expect(text).not.toContain(`SUMMARY_${row.action}`);
     }
   }
+}
+
+async function sharedActor(members: CurrentUser[]) {
+  const conversation = await prisma.chatConversation.create({ data: {
+    type: 'GRUPO', createdById: a.id,
+    participants: { create: members.map(member => ({ userId: member.id })) },
+  } });
+  return { conversation, actor: await frontiChatReader(a, conversation.id) };
 }
 
 describe('H01 canonical privacy with real PostgreSQL and crossed negative cases', () => {
@@ -181,4 +192,60 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
   it('actor is mandatory even when a filter is empty', () => {
     expect(() => followUpReadWhere(undefined as never)).toThrow('identidad');
   });
+  it('Fronti shared audience intersects effective permissions without disclosing creator private records', async () => {
+    const { conversation, actor } = await sharedActor([a, b]);
+    const result = await executeFrontiV2ReadTool(actor, 'consultar_seguimientos', { onlyOpen: false });
+    assertProjection(result, [3]);
+    expect((result.result as { items: { id: string }[] }).items.map(row => row.id)).toEqual([rows[3]!.id]);
+    await expect(frontiChatReader(supervisor, conversation.id)).rejects.toThrow('conversación');
+    // A role change is read from the database, not from an audience supplied by the client.
+    await prisma.user.update({ where: { id: b.id }, data: { roleId: supervisor.roleId } });
+    const changed = await frontiChatReader(a, conversation.id);
+    assertProjection(await executeFrontiV2ReadTool(changed, 'consultar_seguimientos', { onlyOpen: false }), [2, 3, 4]);
+    expect((await prisma.followUp.findMany({ where: followUpReadWhere(changed) })).map(row => row.id).sort()).toEqual([2, 3, 4].map(i => rows[i]!.id).sort());
+  });
+
+  it('Fronti rejects private creation in a shared chat atomically, preserving legitimate operative creation', async () => {
+    const { actor } = await sharedActor([a, b]);
+    const before = await prisma.followUp.count();
+    const audits = await prisma.auditLog.count();
+    await expect(createFollowUp(actor, { entryId: entry.id, action: 'SHARED_PRIVATE', visibility: 'PRIVADO', ownerId: b.id })).rejects.toThrow('participantes');
+    expect(await prisma.followUp.count()).toBe(before);
+    expect(await prisma.auditLog.count()).toBe(audits);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({ where: { id: entry.id } })).requiresFollowUp).toBe(false);
+    const positive = await createFollowUp(actor, { entryId: entry.id, action: 'SHARED_OPERATIVE', visibility: 'OPERATIVO', ownerId: b.id });
+    expect(await prisma.followUp.count({ where: { id: positive.id, AND: [followUpReadWhere(actor)] } })).toBe(1);
+    const personal = await createFollowUp(a, { action: 'PERSONAL_PRIVATE', visibility: 'PRIVADO', ownerId: b.id });
+    expect(await prisma.followUp.count({ where: { id: personal.id, AND: [followUpReadWhere(a)] } })).toBe(1);
+    expect(await prisma.followUp.count({ where: { id: personal.id, AND: [followUpReadWhere(b)] } })).toBe(0);
+  });
+
+  it('Fronti personal conversation remains individual and an incompatible audience is rejected', async () => {
+    const conversation = await prisma.chatConversation.create({ data: { type: 'FRONTI', createdById: a.id, participants: { create: { userId: a.id } } } });
+    const actor = await frontiChatReader(a, conversation.id);
+    expect(await prisma.followUp.count({ where: { id: rows[0]!.id, AND: [followUpReadWhere(actor)] } })).toBe(1);
+    await prisma.chatParticipant.create({ data: { conversationId: conversation.id, userId: b.id } });
+    await expect(frontiChatReader(a, conversation.id)).rejects.toThrow('audiencia incompatible');
+  });
+
+  it('Fronti shift memory applies source privacy before its limit and preserves stored history', async () => {
+    const shift = await prisma.shift.create({ data: { date: new Date(), type: 'DIA', status: 'ACTIVO', plannedStart: new Date(), plannedEnd: new Date(Date.now() + 3600000), assignments: { create: { userId: b.id } } } });
+    for (let i = 0; i < 13; i++) await prisma.ai_memory.create({ data: { id: `private-memory-${i}`, user_id: a.id, shift_id: shift.id, scope: 'TURNO', summary: 'PRIVATE_MEMORY', entity_type: 'FollowUp', entity_id: rows[0]!.id, importance: 5, expires_at: new Date(Date.now() + 3600000) } });
+    await prisma.ai_memory.create({ data: { id: 'visible-memory', user_id: a.id, shift_id: shift.id, scope: 'TURNO', summary: 'VISIBLE_MEMORY', entity_type: 'FollowUp', entity_id: rows[3]!.id, importance: 1, expires_at: new Date(Date.now() + 3600000) } });
+    const context = await getSharedShiftMemoryContext(b);
+    expect(context).toContain('VISIBLE_MEMORY');
+    expect(context).not.toContain('PRIVATE_MEMORY');
+    expect(context).not.toContain(rows[0]!.id);
+    expect(await prisma.ai_memory.count()).toBe(14);
+  });
+
+  it('Fronti personal referenced memory cannot retain access after ownership or permission changes', async () => {
+    for (const [i, row] of rows.entries()) await prisma.ai_memory.create({ data: { id: `personal-memory-${i}`, user_id: b.id, scope: 'PERSONAL', summary: row.action, entity_type: 'FollowUp', entity_id: row.id, expires_at: new Date(Date.now() + 3600000) } });
+    const context = await prepareAssistantContext(b, 'seguimientos #no-guardar');
+    expect(context.memoryContext).toContain('PRIVATE_B');
+    expect(context.memoryContext).toContain('OPERATIVE_ASSIGNED');
+    assertProjection(context.memoryContext, [1, 3]);
+    expect(await prisma.ai_memory.count()).toBe(8);
+  });
+
 });

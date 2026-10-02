@@ -10,6 +10,9 @@ import { FRONTI_ACTIONS } from './catalog';
 
 /** Deterministic commands use only this authenticated user's current message. */
 export async function executeFrontiCommand(message: string, requestKey?: string) {
+  const {executeNaturalHousekeeping}=await import('./natural-housekeeping');
+  const natural=await executeNaturalHousekeeping(message,requestKey);
+  if(natural)return natural;
   if(message.startsWith('/delegar-dinamica ')){
     const input:unknown=JSON.parse(message.slice('/delegar-dinamica '.length));
     if(!input||typeof input!=='object'||Array.isArray(input)||'requestKey' in input||'instruction' in input)throw new RuleError('La autorización debe provenir de tu mensaje actual.');

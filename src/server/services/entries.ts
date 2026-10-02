@@ -1,5 +1,6 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
+import { publishHkMaintenanceUpdate } from './housekeeping-maintenance';
 import {
   AuditAction,
   EntryStatus,
@@ -321,7 +322,7 @@ export async function updateEntry(
 
     const updated = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
-      data: { ...data, ...(changes.changed.includes('ownerId') ? { workAssignedAt: input.ownerId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null } : {}) },
+      data: { ...data, updatedAt:new Date(Math.max(Date.now(),current.updatedAt.getTime()+1)), ...(changes.changed.includes('ownerId') ? { workAssignedAt: input.ownerId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null } : {}) },
       include: entryInclude,
     });
 
@@ -360,6 +361,7 @@ export async function updateEntry(
       );
     }
 
+    await publishHkMaintenanceUpdate(tx, user, current, updated);
     if (updated.type === EntryType.INCIDENCIA) {
       await ensureIncidentWorkflow(updated.id, tx);
       return tx.operationalEntry.findUniqueOrThrow({ where: { id: updated.id }, include: entryInclude });
@@ -437,6 +439,7 @@ export async function changeEntryStatus(
     const updated = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt:current.updatedAt },
       data: {
+        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime()+1)),
         status: input.status,
         ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now, ...(current.ownerId === user.id ? {workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id} : {}) } : {}),
         resolution: input.resolution ?? current.resolution,
@@ -493,6 +496,7 @@ export async function changeEntryStatus(
       tx,
     );
 
+    await publishHkMaintenanceUpdate(tx, user, current, updated);
     return updated;
   });
 

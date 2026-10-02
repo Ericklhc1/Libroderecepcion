@@ -1,3 +1,13 @@
+## 02/10/2026 · Etapa 3 bloque 1 · PR #248
+
+Base de Production comprobada una vez: 1.47.1 / d9472e4. Esta modificación prepara 1.48.0; consultar la PR para pruebas/commit/despliegue real. No atribuir publicación por la presencia de este documento.
+
+Conecta devolución nativa Mantenimiento→HK en la transacción de la incidencia: resultado obligatorio, historial y aviso con alcance actual, versión del trabajo invalidada. Housekeeping conserva estado/responsable y exige retomar e inspeccionar donde corresponda; no modifica disponibilidad comercial. Fronti utiliza sus servicios/ejecutor para frases naturales concretas de consulta, asignación, atención, impedimento, resultado y revisión. Reintentos con la misma referencia conservan el plan autorizado.
+
+Pruebas nuevas PostgreSQL y recorrido Chromium 1280/390 agregado a la compuerta existente, sin aumentar sus límites. Copilot debe revisarse una vez sobre el bloque terminado; cuota anterior agotada, no comprar créditos. Sin migración nueva, sin datos operativos de prueba en Production y sin permisos ampliados. Entorno local dejó de ejecutar; preparación mediante objetos Git en CI, sin mover referencias desde el token del workflow. Los archivos temporales de preparación no forman parte del árbol final.
+
+Lista única: docs/etapa3/PENDIENTES.md. Etapa 3 no está completa; custodia, resto de coordinación y supervisión/gerencia pendientes. Safari/iPhone físico no acreditado.
+
 ## Actualización Etapa 2 · delegaciones finitas · 2 de octubre de 2026
 
 PR draft #244 depende de #241 abierto, base/head comprobados al retomar. Última Compuerta anterior completa: 37022894691, head 671632bd, 1398 pruebas + una omisión previa, PG/migraciones/lint/tipos/build/browser escritorio y móvil. Evidencia detallada y tiempos en el cuerpo del PR. Vercel sigue sin despliegues nuevos; no se tocó producción.

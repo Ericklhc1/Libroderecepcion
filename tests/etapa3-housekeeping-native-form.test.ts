@@ -1,0 +1,27 @@
+import {randomUUID} from 'node:crypto';
+import {beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {prisma,seedCatalog,resetOperationalData,createUser} from './helpers';
+import {ROLE_KEYS} from '@/lib/permissions';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {invokeNativeAction} from '@/server/ai/execution/catalog';
+let actor:CurrentUser;
+vi.mock('@/server/auth/guard',async original=>({...await original<object>(),requireUser:async()=>actor}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
+vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
+beforeAll(seedCatalog);
+beforeEach(resetOperationalData);
+it.each([undefined,'false','true'])('Fronti crea limpieza con revisión obligatoria aunque la casilla sea %s',async(requiresInspection)=>{
+ actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+ const maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
+ const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+ const room=await prisma.room.findUniqueOrThrow({where:{number:'512'}});
+ await prisma.user.update({where:{id:maid.id},data:{departmentId:area.id}});
+ const requestKey=randomUUID();
+ const workDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const result=await invokeNativeAction({action:'createHkWorkAction',fields:{requestKey,title:'Limpieza sintética',description:'Limpiar tras revisión de fuga sintética',workKind:'LIMPIEZA',workDate,departmentId:area.id,roomId:room.id,priority:'ALTA',effortMinutes:'25',assignedToId:maid.id,...(requiresInspection===undefined?{}:{requiresInspection})}});
+ expect(result.ok,JSON.stringify(result)).toBe(true);
+ const work=await prisma.housekeepingRequest.findUniqueOrThrow({where:{requestKey}});
+ expect(work.requiresInspection).toBe(true);expect(work.assignedToId).toBe(maid.id);expect(work.workDate).toBe(workDate);
+ expect(await prisma.housekeepingRequest.count({where:{requestKey}})).toBe(1);
+});

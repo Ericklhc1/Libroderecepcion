@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/server/auth/guard';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
-import { runAction, parseOrThrow, formDataToObject, zOptionalDate, type ActionState } from '@/server/action';
+import { parseOrThrow, formDataToObject, zOptionalDate, type ActionState } from '@/server/action';
+import { runHkAction as runAction } from '@/server/housekeeping-action';
 import { HK_WORK_KINDS, HK_WORK_ACTIONS } from '@/domain/housekeeping-work';
 import { acceptHkHandover, createHkWork, changeHkWork, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
 const text = (n:number) => z.string().trim().max(n);
@@ -25,7 +26,5 @@ export async function saveHkHandoverAction(_state:ActionState|null,form:FormData
 export async function receiveHkHandoverAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await receiveHkHandover(user,input.id);refresh();return{ok:true as const,message:'Relevo recibido. Revisa los pendientes antes de continuar.'};});}
 export async function delegateHkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({...area,userId:text(100).min(1),permission:z.enum(['housekeeping.assign','housekeeping.inspect']),startsAt:zOptionalDate.refine(v=>!!v,'Indica el inicio'),endsAt:zOptionalDate.refine(v=>!!v,'Indica el término'),reason:text(3000).min(1)}),formDataToObject(form));await delegateHk(user,{...input,startsAt:input.startsAt!,endsAt:input.endsAt!});refresh();return{ok:true as const,message:'Cobertura temporal registrada.'};});}
 export async function revokeHkDelegationAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await revokeHkDelegation(user,input.id);refresh();return{ok:true as const,message:'Cobertura revocada.'};});}
-
 export async function organizeLegacyHkWorkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({...area,id:text(100).min(1),version:z.coerce.number().int().min(1),workDate:day,workKind:z.enum(HK_WORK_KINDS),roomId:optional(100),effortMinutes:z.coerce.number().int().min(1).max(480),requiresInspection:bool,assignedToId:optional(100),note:text(3000).min(1)}),formDataToObject(form));const result=await organizeLegacyHkWork(user,input);refresh();return{ok:true as const,message:'Aviso incorporado al trabajo del día. Su folio e historial se conservan.',id:result.id};});}
-
 export async function acceptHkHandoverAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await acceptHkHandover(user,input.id);refresh();return {ok:true as const,message:'Continuidad aceptada. Los trabajos conservan su estado.'};});}

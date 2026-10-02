@@ -12,10 +12,10 @@ export async function saveAutomationAction(_: ActionState|null, form: FormData):
   return runAction(async () => {
     const user = await requirePermission('system.configure');
     const kind = value(form, 'kind');
-    const common = { name: value(form,'name'), departmentId: value(form,'departmentId'), kind, expiresAt: parseHotelDateInput(value(form,'expiresAt') + 'T23:59'), enabled: false };
+    const common = { id:value(form,'id')||undefined, version:value(form,'version')?Number(value(form,'version')):undefined, name: value(form,'name'), departmentId: value(form,'departmentId'), kind, expiresAt: parseHotelDateInput(value(form,'expiresAt') + 'T23:59'), enabled: false };
     const configuration = kind === 'PROCEDURE' ? {
       title: common.name, description: value(form,'description'), ownerId: value(form,'ownerId'), priority: value(form,'priority'), nextAction: value(form,'nextAction'), evidenceRequired: value(form,'evidenceRequired'), checklist: value(form,'checklist').split('\n').map(v=>v.trim()).filter(Boolean), startDate: value(form,'startDate'), localTime: value(form,'localTime'), weekdays: form.getAll('weekdays').map(Number), deadlineMinutes: Number(value(form,'deadlineHours'))*60, catchUpDays: Number(value(form,'catchUpDays')||0), maxOccurrences: 1,
-    } : { trigger: value(form,'trigger'), kind: null, priority: value(form,'priority') || null, receiptMinutes: Number(value(form,'receiptMinutes')), recipientId: value(form,'recipientId'), maxItems: 25 };
+    } : { trigger: value(form,'trigger'), kind: value(form,'workKind')||null, priority: value(form,'priority') || null, receiptMinutes: Number(value(form,'receiptMinutes')), recipientId: value(form,'recipientId'), maxItems: 25 };
     const row = await saveAutomation(user, { ...common, configuration });
     revalidatePath('/coordinacion/automatizaciones');
     return { ok: true, message: 'Guardado en pausa. Simula el resultado antes de habilitarlo.', id: row.id };

@@ -134,11 +134,14 @@ jobs:
             sleep 1
           done
           PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa1/browser.mjs
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa2/browser.mjs
 
       - name: Evidencia de recorridos sin credenciales
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}
-          path: etapa1-browser-results.json
+          path: |
+            etapa1-browser-results.json
+            etapa2-browser-results.json
           if-no-files-found: error
           retention-days: 7

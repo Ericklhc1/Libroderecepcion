@@ -3370,6 +3370,7 @@ model FrontiExecution {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   steps FrontiExecutionStep[]
+  requests FrontiExecutionRequest[]
   @@unique([userId, requestKey])
   @@index([userId, createdAt])
 }
@@ -3422,4 +3423,15 @@ model OperationalAutomationRun {
   startedAt DateTime @default(now())
   completedAt DateTime?
   @@unique([policyId, occurrence])
+}
+
+/// Every transport key is bound, including keys collapsed into a repeated message.
+model FrontiExecutionRequest {
+  id String @id @default(cuid())
+  userId String
+  requestKey String
+  executionId String
+  execution FrontiExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@unique([userId, requestKey])
 }

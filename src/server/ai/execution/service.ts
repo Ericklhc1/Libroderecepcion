@@ -28,6 +28,11 @@ export async function prepareExecution(input: unknown) {
   return prisma.$transaction(async tx => {
     // Serialize retries before reading; no long-running native service runs under this lock.
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'fronti-plan:' + user.id}))::text`;
+    const alias = await tx.frontiExecutionRequest.findUnique({where:{userId_requestKey:{userId:user.id,requestKey:plan.requestKey}},include:{execution:true}});
+    if (alias) {
+      if(alias.execution.fingerprint!==fingerprint) throw new RuleError('El reintento contiene una instrucción distinta. Prepara un procedimiento nuevo.');
+      return alias.execution;
+    }
     const existing = await tx.frontiExecution.findUnique({ where: { userId_requestKey: { userId: user.id, requestKey: plan.requestKey } } });
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw new RuleError('El reintento contiene una instrucción distinta. Prepara un procedimiento nuevo.');
@@ -35,8 +40,12 @@ export async function prepareExecution(input: unknown) {
     }
     // A retransmitted message with a new transport ID must not create the same operation twice.
     const duplicate = await tx.frontiExecution.findFirst({ where: { userId: user.id, fingerprint, createdAt: { gte: new Date(Date.now() - 5 * 60_000) }, cancelledAt: null }, orderBy: { createdAt: 'desc' } });
-    if (duplicate) return duplicate;
+    if (duplicate) {
+      await tx.frontiExecutionRequest.create({data:{userId:user.id,requestKey:plan.requestKey,executionId:duplicate.id}});
+      return duplicate;
+    }
     return tx.frontiExecution.create({ data: {
+      requests: {create:{userId:user.id,requestKey:plan.requestKey}},
       userId: user.id, sessionId: user.sessionId, requestKey: plan.requestKey, fingerprint,
       instruction: digest(plan.instruction), expiresAt: new Date(Date.now() + 15 * 60_000),
       steps: { create: steps.map((step, position) => ({ position, revision: revisions[position], action: step.action, fields: { sealed: sealSecret(JSON.stringify(step.fields), purpose(user.id)) } })) },

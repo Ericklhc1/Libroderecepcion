@@ -218,7 +218,10 @@ export async function POST(request: Request) {
     }
 
     const command = await executeFrontiCommand(rawMessage, body.requestKey);
-    if (command) return NextResponse.json({ ...command, assistant: config.displayName, config: publicConfig(config, accessEnabled) }, { headers: noStoreHeaders() });
+    if (command) {
+      await persistAssistantEvent(user, command.reply);
+      return NextResponse.json({ ...command, assistant: config.displayName, config: publicConfig(config, accessEnabled) }, { headers: noStoreHeaders() });
+    }
 
     const context = await prepareAssistantContext(user, rawMessage);
     const [sharedShiftMemory, runtimeContext] = await Promise.all([

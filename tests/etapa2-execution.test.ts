@@ -61,6 +61,27 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     await changeTaskStatus(admin,{id:t.id,status:'EN_CURSO'});await expect(changeTaskStatus(admin,{id:t.id,status:'COMPLETADA'})).rejects.toThrow('independientes');
     await changeTaskStatus(admin,{id:t.id,status:'REALIZADA',evidenceProvided:'Resultado declarado por ejecutor'});await expect(changeTaskStatus(admin,{id:t.id,status:'VALIDADA'})).rejects.toThrow('otra persona');await changeTaskStatus(other,{id:t.id,status:'VALIDADA'});
   });
+  it('registra Caja autorizada una vez y conserva el resultado del procedimiento nativo',async()=>{
+    const p=await plan([{action:'createManualCashMovementAction',fields:{direction:'ENTRADA',currency:'CLP',amount:'1500',reference:'Ingreso sintético declarado',notes:'Dinero contado y comunicado por el usuario'}}]);
+    const result=await executePlan(p.id,true);expect(result.steps[0]!.status).toBe('SUCCEEDED');
+    expect(await prisma.cashMovement.count({where:{reference:'Ingreso sintético declarado'}})).toBe(1);
+    await executePlan(p.id,true);expect(await prisma.cashMovement.count({where:{reference:'Ingreso sintético declarado'}})).toBe(1);
+  });
+  it('registra entrega y devolución de llave con la identidad del declarante',async()=>{
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'401'}});const code='E2-'+randomUUID().slice(0,8);
+    const p=await plan([{action:'createPhysicalKeyAction',fields:{code,roomId:room.id,type:'COPIA',notes:'Llave sintética'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const key=await prisma.roomKey.findUniqueOrThrow({where:{code}});
+    const delivery=await plan([{action:'assignPhysicalKeyAction',fields:{keyId:key.id,roomId:room.id,note:'Declaro que entregué esta llave'}}]);expect((await executePlan(delivery.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    expect((await prisma.roomKey.findUniqueOrThrow({where:{id:key.id}})).assignedById).toBe(admin.id);
+    const returned=await plan([{action:'returnPhysicalKeyAction',fields:{keyId:key.id,note:'Declaro que recibí físicamente la devolución'}}]);expect((await executePlan(returned.id,true)).steps[0]!.status).toBe('SUCCEEDED');expect((await prisma.roomKey.findUniqueOrThrow({where:{id:key.id}})).status).toBe('DISPONIBLE');
+  });
+  it('inicia turno mediante el control nativo sin cerrarlo ni aportar segunda aprobación',async()=>{
+    const p=await plan([{action:'openShiftAction',fields:{}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');expect(await prisma.shift.count()).toBe(1);
+    const shift=await prisma.shift.findFirstOrThrow();const close=await plan([{action:'closeShiftAction',fields:{shiftId:shift.id}}]);expect((await executePlan(close.id,true)).steps[0]!.status).toBe('INTERVENTION');expect((await prisma.shift.findUniqueOrThrow({where:{id:shift.id}})).status).not.toBe('CERRADO');
+  });
+  it('permite configurar un área con permiso real de administración',async()=>{
+    const key='E2_'+randomUUID().slice(0,8).toUpperCase();const p=await plan([{action:'saveDepartmentAction',fields:{key,name:'Área sintética',order:'99',active:'true'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');expect((await prisma.department.findUniqueOrThrow({where:{key}})).active).toBe(true);
+  });
   it('simula sin efectos; pausa, concurrencia, versiones y revocación conservan historial',async()=>{
     const now=new Date();const config={title:'Revisión preventiva',description:'Procedimiento sintético',ownerId:other.id,priority:'MEDIA',nextAction:'Registrar evidencia',evidenceRequired:'Observación',checklist:['Revisar'],startDate:hotelDateKey(now),localTime:'01:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60};
     const input={name:config.title,departmentId:area,kind:'PROCEDURE',configuration:config,expiresAt:new Date(Date.now()+86400000),enabled:false};const p=await saveAutomation(admin,input);

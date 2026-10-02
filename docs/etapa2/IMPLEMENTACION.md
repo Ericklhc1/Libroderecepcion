@@ -45,3 +45,11 @@ Faltan integración PostgreSQL, navegador escritorio/móvil, medición de latenc
 ## Desarrollo reproducible (sólo sintético)
 
 `docker compose -f compose.test.yml up -d --wait` inicia PostgreSQL 16 sin volumen persistente, ligado únicamente a localhost. Copiar `docs/entorno.example` a `.env` local y usar la base `libro_test`, usuario `libro` y contraseña ficticia `libro_test` del compose. `TEST_DATABASE_URL` apunta a esa base; `DATABASE_URL`/`DIRECT_DATABASE_URL` pueden añadir `application_name=desarrollo` para distinguirlas del valor de prueba. Generar AUTH_SECRET local de prueba, nunca copiar el de producción. Ejecutar `npm ci`, `npm run db:generate` y `npm run verify`. `docker compose -f compose.test.yml down` descarta el entorno sintético. No se ejecutó Docker en este contenedor porque no está instalado.
+
+## Continuación autorizada y PR #244
+
+El propietario autorizó el reintento con «Permitir siempre». Se abrió https://github.com/Ericklhc1/Libroderecepcion/pull/244 como borrador dependiente de #241 y se solicitó revisión Copilot mediante la API (aceptada; sin respuesta todavía). La consulta de Vercel posterior a la subida devolvió cero despliegues nuevos.
+
+Primera Compuerta `37007985785`: migraciones/lint/tipos/audit de dependencias aprobados; 1.367 pruebas aprobadas, 1 omisión previa y 1 fallo nuevo en vinculación de claves de reintento concurrentes. Corregido conservando cada clave de transporte como referencia a su ejecución. Nueva validación pendiente. Se añaden recorridos nativos de Caja, llave, inicio de turno y administración, más navegador de Fronti con presupuesto de 2 s sin proveedor.
+
+`/resumen` ofrece estado dentro del acceso del usuario, fuentes y fechas, con denominador de consulta y aviso de paginación; no sustituye el futuro resumen comparativo por turno. Las políticas pueden editarse desde «Preparar nueva versión»: el guardado compara la versión y queda en pausa sin alterar tareas iniciadas.

@@ -953,5 +953,10 @@ export async function invokeNativeAction(step: FrontiStep): Promise<ActionState>
     }
   }
   const handler = await handlers[input.action]!();
-  return handler(null, form);
+  const result = await handler(null, form);
+  // Runtime output validation; never persist credentials or unexpected fields.
+  return z.discriminatedUnion('ok', [
+    z.object({ok:z.literal(true),message:z.string().max(6000),id:z.string().max(200).optional()}),
+    z.object({ok:z.literal(false),error:z.string().max(6000)}),
+  ]).parse(result);
 }

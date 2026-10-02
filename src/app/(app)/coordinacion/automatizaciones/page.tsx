@@ -1,25 +1,68 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { saveAutomationAction, simulateAutomationAction, setAutomationStateAction } from '@/server/actions/operational-automation';
+import { procedureSchema, escalationSchema } from '@/domain/operational-automation';
 import { hotelDateKey } from '@/domain/time';
 import { formatDateTime } from '@/lib/format';
 
 export const dynamic='force-dynamic';
-export default async function AutomationsPage() {
+const css='input-base w-full';
+function field(name:string,label:string,value:string|number='',type='text') {
+  return <label>{label}<input name={name} type={type} defaultValue={value} required className={css}/></label>;
+}
+function textArea(name:string,label:string,value='') {
+  return <label>{label}<textarea name={name} defaultValue={value} required className={css}/></label>;
+}
+export default async function AutomationsPage({searchParams}:{searchParams:Promise<{editar?:string}>}) {
   const user=await requirePagePermission('system.configure');
-  const [areas,people,policies]=await Promise.all([
+  const params=await searchParams;
+  const [areas,people,policies,editing]=await Promise.all([
     prisma.department.findMany({where:{active:true},select:{id:true,name:true}}),
-    prisma.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false},select:{id:true,name:true},orderBy:{name:'asc'}}),
+    prisma.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true}},select:{id:true,name:true},orderBy:{name:'asc'}}),
     prisma.operationalAutomation.findMany({where:{ownerId:user.id},orderBy:{createdAt:'desc'},take:50,include:{runs:{orderBy:{startedAt:'desc'},take:5}}}),
+    params.editar ? prisma.operationalAutomation.findFirst({where:{id:params.editar,ownerId:user.id,revokedAt:null}}) : null,
   ]);
-  const inputClass='input-base w-full';
-  const area=<label>Área<select name="departmentId" required className={inputClass}>{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
-  return <div className="mx-auto max-w-5xl space-y-5"><header><h1 className="text-xl font-semibold">Reglas y procedimientos</h1><p>Prepara, simula y revisa. Las nuevas reglas se guardan en pausa.</p><p className="text-sm text-amber-800">{process.env.AROH_AUTOMATION_EXECUTION_ENABLED==='true'?'Ejecución habilitada para políticas activas.':'La ejecución automática está deshabilitada. Puedes simular sin generar trabajo ni avisos.'}</p></header><Link className="underline" href="/coordinacion">Volver a Coordinación</Link>
-    <details className="card p-4"><summary className="cursor-pointer font-semibold">Nuevo procedimiento o mantenimiento preventivo</summary><ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2"><input type="hidden" name="kind" value="PROCEDURE"/><label>Nombre<input name="name" required minLength={3} maxLength={160} className={inputClass}/></label>{area}<label>Responsable<select name="ownerId" required className={inputClass}>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Prioridad<select name="priority" defaultValue="MEDIA" className={inputClass}>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label><label>Instrucción<textarea name="description" required minLength={3} className={inputClass}/></label><label>Siguiente acción<input name="nextAction" required minLength={3} className={inputClass}/></label><label>Evidencia requerida<input name="evidenceRequired" required minLength={3} className={inputClass}/></label><label>Lista: un punto por línea<textarea name="checklist" required className={inputClass}/></label><label>Desde<input name="startDate" type="date" required defaultValue={hotelDateKey(new Date())} className={inputClass}/></label><label>Hora de Santiago<input name="localTime" type="time" required defaultValue="08:00" className={inputClass}/></label><fieldset><legend>Días</legend>{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map((day,i)=><label key={day} className="mr-2 inline-flex gap-1"><input type="checkbox" name="weekdays" value={i}/>{day}</label>)}</fieldset><label>Plazo en horas<input name="deadlineHours" type="number" min="1" max="720" defaultValue="24" className={inputClass}/></label><label>Recuperar como máximo días anteriores<input name="catchUpDays" type="number" min="0" max="7" defaultValue="0" className={inputClass}/></label><label>Autorización válida hasta<input name="expiresAt" type="date" required className={inputClass}/></label><p className="text-sm">Se genera como máximo una ocurrencia reciente por ejecución. No acredita asistencia ni inspección.</p><SubmitButton>Guardar en pausa</SubmitButton></ActionForm></details>
-    <details className="card p-4"><summary className="cursor-pointer font-semibold">Nueva regla de atención</summary><ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2"><input type="hidden" name="kind" value="ESCALATION"/><label>Nombre<input className={inputClass} name="name" required minLength={3}/></label>{area}<label>Condición<select className={inputClass} name="trigger"><option value="UNASSIGNED">Sin responsable</option><option value="UNRECEIVED">Asignado sin recibir</option><option value="OVERDUE">Vencido</option><option value="BLOCKED">Bloqueado</option></select></label><label>Avisar a<select className={inputClass} name="recipientId">{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Prioridad<select className={inputClass} name="priority"><option value="">Todas</option>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label><label>Plazo de recepción, minutos<input className={inputClass} name="receiptMinutes" type="number" min="1" defaultValue="30"/></label><label>Autorización válida hasta<input className={inputClass} type="date" name="expiresAt" required/></label><SubmitButton>Guardar en pausa</SubmitButton></ActionForm></details>
-    <section className="space-y-3"><h2 className="font-semibold">Tus últimas 50 políticas</h2>{policies.map(p=><article className="card space-y-2 p-4" key={p.id}><h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p><div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<ActionForm action={setAutomationStateAction} refreshOnSuccess><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm>}</div><ul className="text-sm">{p.runs.map(r=><li key={r.id}>{formatDateTime(r.startedAt)} · {r.status}</li>)}</ul></article>)}</section>
+  if(params.editar&&!editing)notFound();
+  const procedure=editing?.kind==='PROCEDURE'?procedureSchema.parse(editing.configuration):null;
+  const rule=editing?.kind==='ESCALATION'?escalationSchema.parse(editing.configuration):null;
+  const area=(selected?:string)=><label>Área<select name="departmentId" required defaultValue={selected} className={css}>{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
+  const person=(name:string,label:string,selected?:string)=><label>{label}<select name={name} required defaultValue={selected} className={css}>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+  const identity=(kind:string)=><><input type="hidden" name="kind" value={kind}/>{editing?.kind===kind&&<><input type="hidden" name="id" value={editing.id}/><input type="hidden" name="version" value={editing.version}/></>}</>;
+  const expiry=(kind:string)=>field('expiresAt','Autorización válida hasta',editing?.kind===kind?hotelDateKey(editing.expiresAt):'','date');
+  return <div className="mx-auto max-w-5xl space-y-5">
+    <header><h1 className="text-xl font-semibold">Reglas y procedimientos</h1><p>Prepara, simula y revisa. Guardar una versión la deja en pausa; no modifica trabajos iniciados.</p><p className="text-sm text-amber-800">{process.env.AROH_AUTOMATION_EXECUTION_ENABLED==='true'?'Ejecución habilitada para políticas activas.':'La ejecución automática está deshabilitada. Puedes simular sin generar trabajo ni avisos.'}</p></header>
+    <nav className="flex gap-4"><Link className="underline" href="/coordinacion">Volver a Coordinación</Link>{editing&&<Link className="underline" href="/coordinacion/automatizaciones">Salir de edición</Link>}</nav>
+    <details className="card p-4" open={!!procedure} key={'procedure-'+(procedure?editing?.version:'new')}>
+      <summary className="cursor-pointer font-semibold">{procedure?'Nueva versión del procedimiento':'Nuevo procedimiento o mantenimiento preventivo'}</summary>
+      <ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2">
+        {identity('PROCEDURE')}{field('name','Nombre',procedure?editing!.name:'')}{area(procedure?editing!.departmentId:undefined)}{person('ownerId','Responsable',procedure?.ownerId)}
+        <label>Prioridad<select name="priority" defaultValue={procedure?.priority??'MEDIA'} className={css}>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label>
+        {textArea('description','Instrucción',procedure?.description)}{field('nextAction','Siguiente acción',procedure?.nextAction)}{field('evidenceRequired','Evidencia requerida',procedure?.evidenceRequired)}{textArea('checklist','Lista: un punto por línea',procedure?.checklist.join('\n'))}
+        {field('startDate','Desde',procedure?.startDate??hotelDateKey(new Date()),'date')}{field('localTime','Hora de Santiago',procedure?.localTime??'08:00','time')}
+        <fieldset><legend>Días</legend>{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map((day,i)=><label key={day} className="mr-2 inline-flex gap-1"><input type="checkbox" name="weekdays" value={i} defaultChecked={procedure?.weekdays.includes(i)??false}/>{day}</label>)}</fieldset>
+        {field('deadlineHours','Plazo en horas',procedure?procedure.deadlineMinutes/60:24,'number')}{field('catchUpDays','Recuperar días anteriores (0 a 7)',procedure?.catchUpDays??0,'number')}{expiry('PROCEDURE')}
+        <p className="text-sm">Como máximo una ocurrencia reciente por ejecución. Requiere evidencia y validación por otra persona autorizada. No acredita asistencia ni inspección automática.</p><SubmitButton>Guardar versión en pausa</SubmitButton>
+      </ActionForm>
+    </details>
+    <details className="card p-4" open={!!rule} key={'rule-'+(rule?editing?.version:'new')}>
+      <summary className="cursor-pointer font-semibold">{rule?'Nueva versión de la regla':'Nueva regla de atención'}</summary>
+      <ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2">
+        {identity('ESCALATION')}{field('name','Nombre',rule?editing!.name:'')}{area(rule?editing!.departmentId:undefined)}
+        <label>Condición<select className={css} name="trigger" defaultValue={rule?.trigger}><option value="UNASSIGNED">Sin responsable</option><option value="UNRECEIVED">Asignado sin recibir</option><option value="OVERDUE">Vencido</option><option value="BLOCKED">Bloqueado</option></select></label>
+        {person('recipientId','Avisar a',rule?.recipientId)}
+        <label>Tipo de trabajo<select className={css} name="workKind" defaultValue={rule?.kind??''}><option value="">Todos</option><option value="entry">Novedad/incidencia</option><option value="task">Tarea</option><option value="housekeeping">Housekeeping</option><option value="followup">Seguimiento</option></select></label>
+        <label>Prioridad<select className={css} name="priority" defaultValue={rule?.priority??''}><option value="">Todas</option>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label>
+        {field('receiptMinutes','Plazo de recepción, minutos',rule?.receiptMinutes??30,'number')}{expiry('ESCALATION')}<SubmitButton>Guardar versión en pausa</SubmitButton>
+      </ActionForm>
+    </details>
+    <section className="space-y-3"><h2 className="font-semibold">Tus últimas 50 políticas</h2>{policies.map(p=><article className="card space-y-2 p-4" key={p.id}>
+      <h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p>
+      <div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><Link className="underline" href={`?editar=${p.id}`}>Preparar nueva versión</Link><ActionForm action={setAutomationStateAction} refreshOnSuccess><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>
+      <ul className="text-sm">{p.runs.map(r=><li key={r.id}>{formatDateTime(r.startedAt)} · {r.status==='SUCCEEDED'?'Completada':r.status==='INTERVENTION'?'Requiere intervención':r.status} · versión {r.policyVersion}</li>)}</ul>
+    </article>)}</section>
   </div>;
 }

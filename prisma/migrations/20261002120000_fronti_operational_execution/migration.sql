@@ -70,6 +70,17 @@ CREATE TABLE "OperationalAutomationRun" (
     CONSTRAINT "OperationalAutomationRun_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "FrontiExecutionRequest" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "requestKey" TEXT NOT NULL,
+    "executionId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "FrontiExecutionRequest_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE INDEX "FrontiExecution_userId_createdAt_idx" ON "FrontiExecution"("userId", "createdAt");
 
@@ -84,6 +95,9 @@ CREATE INDEX "OperationalAutomation_enabled_expiresAt_idx" ON "OperationalAutoma
 
 -- CreateIndex
 CREATE UNIQUE INDEX "OperationalAutomationRun_policyId_occurrence_key" ON "OperationalAutomationRun"("policyId", "occurrence");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FrontiExecutionRequest_userId_requestKey_key" ON "FrontiExecutionRequest"("userId", "requestKey");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Task_procedureOccurrenceKey_key" ON "Task"("procedureOccurrenceKey");
@@ -102,4 +116,7 @@ ALTER TABLE "OperationalAutomation" ADD CONSTRAINT "OperationalAutomation_depart
 
 -- AddForeignKey
 ALTER TABLE "OperationalAutomationRun" ADD CONSTRAINT "OperationalAutomationRun_policyId_fkey" FOREIGN KEY ("policyId") REFERENCES "OperationalAutomation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FrontiExecutionRequest" ADD CONSTRAINT "FrontiExecutionRequest_executionId_fkey" FOREIGN KEY ("executionId") REFERENCES "FrontiExecution"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

@@ -55,7 +55,7 @@ export async function revokeAutomation(user: CurrentUser, id: string) {
 }
 
 /** Every page is read through the original access-filtered board. Bound and label incomplete scans. */
-export async function automationBoard(user: CurrentUser, departmentId: string) {
+export async function automationBoard(user: CurrentUser, departmentId?: string) {
   const rows: CoordinationRow[] = [];
   let complete = false;
   for (let page = 1; page <= 10; page++) {
@@ -138,9 +138,9 @@ export async function runOperationalAutomations(now = new Date()) {
   return { enabled: true, attempted, failed, limit: 20 };
 }
 
-export async function automationSummary(user: CurrentUser, departmentId: string) {
+export async function automationSummary(user: CurrentUser, departmentId?: string) {
   const board = await automationBoard(user, departmentId);
   const since = new Date(Date.now() - 86400000);
   const runs = await prisma.frontiExecution.findMany({ where: { userId: user.id, createdAt: { gte: since } }, select: { id: true, status: true }, take: 101 });
-  return { generatedAt: new Date(), period: { from: since, to: new Date() }, scope: departmentId, complete: board.complete, denominator: board.rows.length, metrics: coordinationMetrics(board.rows), fronti: { scope: 'Sólo tus ejecuciones de las últimas 24 horas', complete: runs.length <= 100, observed: runs.slice(0,100) }, savedManualSteps: null, note: 'No se estima ahorro ni se imputan tiempos históricos faltantes. Los pendientes corresponden al estado actual, no sólo al período.' };
+  return { generatedAt: new Date(), period: { from: since, to: new Date() }, scope: departmentId ?? 'registros dentro de tu acceso', sources:board.rows.slice(0,20).map(({id,title,owner,nextAction,href,dueAt})=>({id,title,owner,nextAction,href,dueAt})), complete: board.complete, denominator: board.rows.length, metrics: coordinationMetrics(board.rows), fronti: { scope: 'Sólo tus ejecuciones de las últimas 24 horas', complete: runs.length <= 100, observed: runs.slice(0,100) }, savedManualSteps: null, note: 'No se estima ahorro ni se imputan tiempos históricos faltantes. Los pendientes corresponden al estado actual, no sólo al período.' };
 }

@@ -25,7 +25,7 @@ vi.mock('@/server/services/operational-mail', async original => ({ ...await orig
 let a: CurrentUser, b: CurrentUser, supervisor: CurrentUser;
 let entry: { id: string };
 let rows: Array<{ id: string; action: string }>;
-const markers = ['PRIVATE_A', 'PRIVATE_B', 'RESERVED_A', 'OPERATIVE_ASSIGNED', 'OPERATIVE_FOREIGN', 'DELETED_PRIVATE', 'DELETED_OPERATIVE'];
+const markers = ['PRIVATE_A', 'PRIVATE_B', 'RESERVED_A', 'OPERATIVE_ASSIGNED', 'OPERATIVE_FOREIGN', 'DELETED_PRIVATE', 'DELETED_OPERATIVE', 'DELETED_FOREIGN_PRIVATE'];
 const expected = { A: [0, 2, 3, 4], B: [1, 3], supervisor: [2, 3, 4] };
 const actors = () => ({ A: a, B: b, supervisor });
 beforeAll(seedCatalog);
@@ -43,6 +43,7 @@ beforeEach(async () => {
     { createdById: supervisor.id, ownerId: supervisor.id, visibility: 'OPERATIVO' as const },
     { createdById: a.id, ownerId: a.id, visibility: 'PRIVADO' as const, deletedAt: new Date() },
     { createdById: b.id, ownerId: b.id, visibility: 'OPERATIVO' as const, deletedAt: new Date() },
+    { createdById: supervisor.id, ownerId: a.id, visibility: 'PRIVADO' as const, deletedAt: new Date() },
   ];
   rows = [];
   for (const [index, data] of definitions.entries()) {
@@ -104,7 +105,8 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
     await expect(getBookItems(b, { includeDeleted: true })).rejects.toThrow('autorización');
     const reader = { ...a, permissions: [...a.permissions, 'entry.restore' as const] };
     const deleted = await prisma.followUp.findMany({ where: followUpReadWhere(reader, { onlyDeleted: true }) });
-    expect(deleted.map(row => row.id)).toEqual([rows[5]!.id]);
+    expect(deleted.map(row => row.id).sort()).toEqual([rows[5]!.id, rows[6]!.id].sort());
+    expect(deleted.map(row => row.id)).not.toContain(rows[7]!.id);
     expect((await getBookItems(reader, { kinds: ['followup'], includeDeleted: true })).items).toHaveLength(6);
   });
   it.each(['A', 'B', 'supervisor'] as const)('%s: direct report API produces a real PDF without foreign markers or inflated counts', async key => {
@@ -139,7 +141,7 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
   it('historical handover references are projected without deleting stored history', async () => {
     const items = rows.map(row => ({ refType: 'followup', refId: row.id, title: row.action }));
     const visible = await visibleHandoverItems(b, items);
-    expect(visible).toHaveLength(2); assertProjection(visible, expected.B); expect(items).toHaveLength(7);
+    expect(visible).toHaveLength(2); assertProjection(visible, expected.B); expect(items).toHaveLength(8);
   });
   it('push payload direct handler rejects an expired session without reading or advancing subscriptions', async () => {
     state.user = null;

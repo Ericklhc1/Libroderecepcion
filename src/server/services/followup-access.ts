@@ -31,7 +31,8 @@ export async function followUpAuditVisibility(user: FollowUpReader): Promise<Pri
     where: followUpReadWhere(user, { includeDeleted: user.permissions.includes('entry.restore') }),
     select: { id: true },
   });
-  return { OR: [{ entity: { not: 'FollowUp' } }, { entity: 'FollowUp', entityId: { in: readable.map(row => row.id) } }] };
+  const alerts = await prisma.alert.findMany({ where: { OR: [{ followUpId: null }, { followUpId: { in: readable.map(row => row.id) } }] }, select: { id: true } });
+  return { OR: [{ entity: { notIn: ['FollowUp', 'Alert'] } }, { entity: 'FollowUp', entityId: { in: readable.map(row => row.id) } }, { entity: 'Alert', entityId: { in: alerts.map(row => row.id) } }] };
 }
 
 /** Proyecciones de alertas heredan la privacidad de su seguimiento de origen. */
@@ -58,11 +59,12 @@ export async function followUpNotificationVisibility(user: FollowUpReader, clien
 
 /** Referencias congeladas se proyectan al leer, conservando el historial almacenado. */
 export async function visibleHandoverItems<T extends { refType: string | null; refId: string | null }>(user: FollowUpReader, items: T[]): Promise<T[]> {
-  const refs = items.filter(item => item.refType === 'followup').map(item => item.refId).filter((id): id is string => Boolean(id));
+  const refs = items.filter(item => item.refType === 'followup' || item.refType === 'alert').map(item => item.refId).filter((id): id is string => Boolean(id));
   if (!refs.length) return items;
   const readable = await prisma.followUp.findMany({ where: { AND: [followUpReadWhere(user)], id: { in: refs } }, select: { id: true } });
-  const ids = new Set(readable.map(row => row.id));
-  return items.filter(item => item.refType !== 'followup' || (item.refId !== null && ids.has(item.refId)));
+  const alerts = await prisma.alert.findMany({ where: { AND: [followUpAlertVisibility(user)], id: { in: refs } }, select: { id: true } });
+  const ids = new Set([...readable, ...alerts].map(row => row.id));
+  return items.filter(item => (item.refType !== 'followup' && item.refType !== 'alert') || (item.refId !== null && ids.has(item.refId)));
 }
 
 export async function followUpAlarmVisibility(user: FollowUpReader): Promise<Prisma.OperationalAlarmWhereInput> {

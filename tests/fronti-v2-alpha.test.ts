@@ -53,7 +53,9 @@ describe('FRONTI v2 alpha', () => {
     ]) {
       expect(source).toContain(service);
     }
-    expect(source).toContain('SupervisionVisibility.PRIVADO');
+    expect(source).toContain('followUpReadWhere(user)');
+    const policy = readFileSync('src/server/services/followup-access.ts', 'utf-8');
+    expect(policy).toContain("visibility: 'PRIVADO', createdById: user.id");
     expect(source).not.toContain('$queryRaw');
     expect(source).not.toContain('$executeRaw');
   });

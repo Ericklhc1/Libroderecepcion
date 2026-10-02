@@ -851,7 +851,7 @@ async function buildSupervisionSnapshot(
       orderBy: { createdAt: 'asc' },
     }),
     client.followUp.findMany({
-      where: { AND: [followUpReadWhere(user)], supervisionShiftId: shift.id, deletedAt: null },
+      where: { AND: [followUpReadWhere(user)], supervisionShiftId: shift.id, deletedAt: null, visibility: { not: 'PRIVADO' } },
       select: {
         id: true,
         action: true,

@@ -109,7 +109,12 @@ export async function cancelExecution(id: string) {
   const user = await executionActor();
   return prisma.$transaction(async tx => {
     const changed = await tx.frontiExecution.updateMany({ where: { id, userId: user.id, cancelledAt:null, steps:{some:{status:{in:['PENDING','RUNNING']}}} }, data: { cancelledAt: new Date(), status: 'CANCELLED' } });
-    if (!changed.count) throw new RuleError('No hay pasos pendientes que puedas cancelar en este procedimiento.');
+    if (!changed.count) {
+      // Concurrent retries observe the committed cancellation without another audit/effect.
+      const cancelled = await tx.frontiExecution.findFirst({ where: { id, userId: user.id, cancelledAt: { not: null } }, select: { id: true } });
+      if (cancelled) return { message: 'Autorización ya cancelada. El historial y los efectos realizados se conservan.' };
+      throw new RuleError('No hay pasos pendientes que puedas cancelar en este procedimiento.');
+    }
     await tx.frontiExecutionStep.updateMany({ where: { executionId: id, status: 'PENDING' }, data: { status: 'CANCELLED', completedAt: new Date() } });
     await tx.auditLog.create({data:{entity:'FrontiExecution',entityId:id,userId:user.id,sessionId:user.sessionId,action:'EDITAR',summary:'Fronti: cancelar pasos pendientes sin revertir efectos.'}});
     // A RUNNING step has crossed the commit boundary: cancellation is deliberately not advertised as undo.

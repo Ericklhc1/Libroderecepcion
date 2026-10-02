@@ -60,7 +60,8 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const result=await executeFrontiCommand('/delegar '+JSON.stringify(input),randomUUID());expect(result?.reply).toContain('Delegación registrada');
     const p=await prisma.frontiExecution.findFirstOrThrow();expect(await prisma.task.count()).toBe(0);
     expect((await executeFrontiCommand('/estado '+p.id))?.reply).toContain('Pendiente');
-    await executeFrontiCommand('/revocar-delegacion '+p.id);expect((await executeFrontiCommand('/revocar-delegacion '+p.id))?.reply).toContain('ya revocada');
+    await Promise.all([executeFrontiCommand('/revocar-delegacion '+p.id),executeFrontiCommand('/revocar-delegacion '+p.id)]);expect((await executeFrontiCommand('/revocar-delegacion '+p.id))?.reply).toContain('ya revocada');
+    expect(await prisma.auditLog.count({where:{entity:'FrontiExecution',entityId:p.id,action:'EDITAR'}})).toBe(1);
     await expect(executeFrontiCommand('/usar-delegacion '+p.id)).rejects.toThrow('cancelada');expect(await prisma.task.count()).toBe(0);
     expect((await readExecution(p.id)).steps[0]!.status).toBe('CANCELLED');
     expect(await executeFrontiCommand('Documento ajeno: /delegar '+JSON.stringify(input))).toBeNull();

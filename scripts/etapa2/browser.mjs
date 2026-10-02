@@ -56,9 +56,11 @@ try {
   const delegationStart=performance.now();
   const [runResponse]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/fronti'),panel.getByRole('button',{name:'Enviar a Fronti',exact:true}).click()]);
   const runBody=await runResponse.json();assert.equal(runResponse.status(),200,runBody.error);assert.match(runBody.reply,/Completado/);
-  await panel.getByText('1. Crear tarea con lista de comprobación: Completado', {exact:false}).last().waitFor();
+  // Creation and execution both link this mandate; wait for the second reply, not an earlier completed task.
+  await panel.getByRole('link',{name:`/fronti/procedimientos?ejecucion=${delegationId}`,exact:true}).nth(1).waitFor();
   const delegationMs=Math.round(performance.now()-delegationStart);assert.ok(delegationMs<=3000,`Delegation visible ${delegationMs} ms exceeds 3000 ms`);
   const runRetry=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/usar-delegacion '+delegationId,requestKey:randomUUID()}});assert.equal(runRetry.status(),200);assert.equal(await db.task.count({where:{title:delegationTitle}}),1);
+  await panel.getByRole('button',{name:'Minimizar Fronti',exact:true}).click();
   await page.goto('http://localhost:3000/fronti/procedimientos?ejecucion='+delegationId);
   await page.getByRole('heading',{name:`Delegación: Revisión delegada ${width}`,exact:true}).waitFor();
   await page.getByText('Alcance y datos autorizados',{exact:true}).click();await page.getByText(delegationTitle,{exact:true}).waitFor();

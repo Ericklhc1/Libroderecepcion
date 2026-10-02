@@ -8,8 +8,8 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 87,
-      "files": 13,
+      "passed": 90,
+      "files": 14,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
     },
@@ -83,6 +83,24 @@
         "failed": 0,
         "build": "passed",
         "browser": "POST headers 169 ms. Server end 98 ms after first write; browser streamed data but did not finish; actual DOM still stale after 10171 ms. Investigating completion/transition."
+      },
+      {
+        "id": 37014758151,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Complete Flight payload: 39725 bytes, no missing references, successful action result; server finish/close 67 ms. UI remained stale after 10137 ms."
+      },
+      {
+        "id": 37015341972,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Locked Chromium 153.0.8010.12: assignment visible in 267 ms, receipt still Guardando after 10 s. Browser aborted completed Flight streams; navigation correction requires next gate."
       }
     ]
   },
@@ -96,7 +114,7 @@
     "observedConsumption": "1 review received; credit cost and live balance inaccessible"
   },
   "coverage": {
-    "serverActionsInventoried": 210,
+    "serverActionsInventoried": 212,
     "adaptersConnected": 59,
     "generalCoverageAccredited": false,
     "httpMethodsInventoried": 59

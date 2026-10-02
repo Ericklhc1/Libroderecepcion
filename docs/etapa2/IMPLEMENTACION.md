@@ -74,4 +74,12 @@ El cron existente conserva sus trabajos aunque el ejecutor nuevo arroje un error
 
 ## Qué no se presenta como terminado
 
-59 adaptadores conectados no equivalen a 59 procedimientos acreditados ni a cobertura universal. La matriz incluye 210 Server Actions y los métodos HTTP encontrados; señala las entradas pendientes. Continúan pendientes las delegaciones generales con importe/cantidad/condiciones de interrupción, suplencias configurables, recurrencias unificadas de Housekeeping, comparación por turno, indicadores completos de cumplimiento/reincidencia y pasos manuales evitados medidos. No hay medición válida de ahorro respecto a Etapa 1 mientras falle el recorrido visible. Las políticas nuevas y sus simulaciones no se han ejecutado sobre datos reales.
+59 adaptadores conectados no equivalen a 59 procedimientos acreditados ni a cobertura universal. La matriz incluye 212 Server Actions (incluidas dos envolturas de navegación de UI) y los métodos HTTP encontrados; señala las entradas pendientes. Continúan pendientes las delegaciones generales con importe/cantidad/condiciones de interrupción, suplencias configurables, recurrencias unificadas de Housekeeping, comparación por turno, indicadores completos de cumplimiento/reincidencia y pasos manuales evitados medidos. No hay medición válida de ahorro respecto a Etapa 1 mientras falle el recorrido visible. Las políticas nuevas y sus simulaciones no se han ejecutado sobre datos reales.
+
+## Corrección en validación de actualización visible
+
+Las corridas 37014758151 y 37015341972 acreditaron que el servidor terminaba normalmente y el navegador recibía el resultado y todas las referencias de Flight, pero algunas transiciones quedaban en «Guardando…». Cambiar al Chromium fijado en el lockfile permitió una asignación en 267 ms, pero no resolvió la recepción. No se atribuye una causa interna exacta de React sin reproducción mínima independiente.
+
+Los formularios de Coordinación y cambio de estado de tarea ahora envuelven las acciones originales y redirigen sólo tras éxito a una ruta local permitida, conservando filtros. Los rechazos se devuelven al formulario. Fronti continúa invocando las acciones originales para recibir resultado estructurado. No cambia identidad, transacción, permisos ni mecanismo de notificación. Tres pruebas locales verifican rechazo sin navegación y defensa contra redirección externa; el recorrido real debe acreditar <=3 s por asignación, recepción y resolución antes de considerar corregido el bloqueo.
+
+CI reutiliza `playwright-core` ya fijado en `package-lock.json`; se elimina la instalación adicional de Playwright 1.58.2 fuera del lockfile. La versión de Chromium queda en la evidencia. Las pruebas de navegación no acreditan Safari físico.

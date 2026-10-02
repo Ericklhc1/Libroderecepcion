@@ -7,13 +7,13 @@ const browser=await chromium.launch({headless:true});
 console.log("Synthetic browser",browser.version());
 const results=[];const timings=[];let activePage;const streams=new Map();const inFlight=new Map();
 function persist(){writeFileSync('etapa1-browser-results.json',JSON.stringify({browser:browser.version(),results,timings},null,2));}
-async function measured(label,work){const start=performance.now();try{const result=await work();if(/^(assign|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
+async function measured(label,work){const start=performance.now();try{const result=await work();if(/^(assign|receive|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
 async function submit(page,button){
  const started=performance.now();
  const path=new URL(page.url()).pathname;
  const pending=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path).then(response=>{timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});console.log('POST headers',path,Math.round(performance.now()-started));persist();return response;});
  await button.click({noWaitAfter:true});
- const response=await pending;assert.ok(response.ok(),'Server action response succeeds');
+ const response=await pending;const actionRedirect=response.headers()['x-action-redirect'];assert.ok(response.ok()||(response.status()===303&&actionRedirect?.startsWith('/')),'Server action succeeds or redirects to its updated local view');
  const observation={label:'POST body completion '+path,ms:null,status:'pending'};timings.push(observation);persist();
  // Observe body completion separately. UI latency is measured from click to actual DOM state.
  void response.finished().then(error=>{observation.ms=Math.round(performance.now()-started);observation.status=error?'aborted':'completed';persist();}).catch(()=>{observation.status='unavailable';persist();});
@@ -62,8 +62,7 @@ try{
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
   await own.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-  await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));
-  await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();console.log('Receipt visible',width);
+  await measured(`receive visible ${width}`,async()=>{await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));await own.getByText(/^Recibido:/).waitFor();});console.log('Receipt visible',width);
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await measured(`navigation task ${width}`,()=>worker.page.goto(`http://localhost:3000/tareas/${t.id}`));
   await measured(`resolve visible ${width}`,async()=>{await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));await worker.page.getByText('Completada',{exact:true}).first().waitFor();});console.log('Resolution visible',width);

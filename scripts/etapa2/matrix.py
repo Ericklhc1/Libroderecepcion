@@ -25,9 +25,11 @@ for path in sorted(Path('src/server/actions').glob('*.ts')):
     for i,m in enumerate(matches):
         name=m[1]; body=text[m.end():matches[i+1].start() if i+1<len(matches) else len(text)]
         permissions=sorted(set(re.findall(r"requirePermission(?:OrOwner)?\('([^']+)'",body)))
-        a=catalog.get(name)
+        alias={'coordinateWorkFormAction':'coordinateWorkAction','changeTaskStatusFormAction':'changeTaskStatusAction'}.get(name)
+        a=catalog.get(alias or name)
         inputs=', '.join(a['fields']) if a else 'Ver esquema/formulario nativo; adaptador pendiente'
         state='Conectado; acreditación individual pendiente' if a else 'Pendiente de adaptador (no disponible por el catálogo nuevo)'
+        if alias:state=f'Transporte UI de {alias}; Fronti usa la acción original sin redirección'
         if path.stem in ['pms','reservations','room-stays','guests']:state='Fuera del alcance de producto solicitado; no ampliar'
         rows.append(f"| `{name}` | `{path}` | {', '.join(permissions) or 'Control contextual del servicio nativo'} | {inputs} | {state} | {evidence.get(name, 'Recorrido específico pendiente')} |")
 preamble='''# Matriz completa de Server Actions · Etapa 2

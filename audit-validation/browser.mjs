@@ -5,6 +5,7 @@ const fixtures = JSON.parse(readFileSync('/tmp/browser-fixtures.json', 'utf8'));
 const expected = { A: [0,2,3,4], B: [1,3], supervisor: [2,3,4], admin: [2,3,4] };
 const browser = await chromium.launch({ headless: true });
 const results = [];
+const projectionMatches = [];
 try {
   for (const [name, user] of Object.entries(fixtures.users)) {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
@@ -17,12 +18,26 @@ try {
       });
       const page = await context.newPage();
       for (const path of ['/seguimientos', '/libro', '/historial', '/buscar?q=BROWSER', `/libro/${fixtures.entryId}`, ...(name === 'admin' ? ['/admin/eliminados'] : [])]) {
+        console.log(`Checking ${name} width=${viewport.width} ${path}`);
         const response = await page.goto(`http://localhost:3000${path}`, { waitUntil: 'domcontentloaded' });
         assert.equal(response.status(), 200, `${name} ${path} status`);
         assert.ok(!page.url().includes('/login') && !page.url().includes('/aceptar-terminos'), 'Real authenticated session required');
         const html = await response.text();
         if (path === '/seguimientos') {
-          for (const i of expected[name]) await page.getByText(fixtures.rows[i].action, { exact: true }).first().waitFor({ state: 'visible' });
+          for (const i of expected[name]) {
+            const matches = page.getByText(fixtures.rows[i].action, { exact: true });
+            try { await matches.filter({ visible: true }).first().waitFor({ state: 'visible' }); }
+            catch (error) {
+              const ancestors = await matches.evaluateAll(nodes => nodes.map(node => {
+                const path = []; let current = node;
+                while (current && path.length < 10) { const style = getComputedStyle(current); const box = current.getBoundingClientRect(); path.push({ tag: current.tagName, id: current.id, hidden: current.hidden, display: style.display, visibility: style.visibility, width: box.width, height: box.height }); current = current.parentElement; }
+                return path;
+              }));
+              console.error(JSON.stringify({ actor: name, viewport: viewport.width, marker: fixtures.rows[i].action, ancestors }));
+              throw error;
+            }
+            projectionMatches.push({ actor: name, viewport: viewport.width, marker: fixtures.rows[i].action, totalMatches: await matches.count(), visibleMatches: await matches.filter({ visible: true }).count() });
+          }
         }
         const visible = await page.locator('body').innerText();
         for (const [i, row] of fixtures.rows.entries()) {
@@ -61,5 +76,5 @@ try {
   assert.ok(page.url().includes('/login'), 'Anonymous route must redirect');
   results.push({ actor: 'anonymous', path: '/seguimientos', status: 'passed' });
   await anonymous.close();
-} finally { await browser.close(); writeFileSync('browser-results.json', JSON.stringify({ checks: results.length, results }, null, 2)); }
+} finally { await browser.close(); writeFileSync('browser-results.json', JSON.stringify({ checks: results.length, results, projectionMatches }, null, 2)); }
 console.log(`Authenticated synthetic browser checks passed: ${results.length}`);

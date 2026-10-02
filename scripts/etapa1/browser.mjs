@@ -8,7 +8,7 @@ const results=[];let activePage;
 async function submit(page,button){
  const path=new URL(page.url()).pathname;
  const [response]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path),button.click()]);
- assert.ok(response.ok(),'Server action response succeeds');await response.finished();
+ assert.ok(response.ok(),'Server action response succeeds');
 }
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});
@@ -18,7 +18,7 @@ async function actor(name,width){
 }
 try{
  for(const [index,width] of [1280,390].entries()){
-  const t=f.tasks[index];const admin=await actor('admin',width);const worker=await actor('worker',width);
+  console.log('Starting synthetic viewport',width);const t=f.tasks[index];const admin=await actor('admin',width);const worker=await actor('worker',width);
   activePage=admin.page;const response=await admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`);
   assert.equal(response.status(),200);assert.equal(new URL(admin.page.url()).pathname,'/coordinacion','Synthetic session must pass real authentication');
   await admin.page.getByRole('heading',{name:'Coordinación y continuidad',exact:true}).waitFor();
@@ -41,17 +41,17 @@ try{
   await card.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
   await card.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
   await submit(admin.page,card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));
-  await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();
+  await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();console.log('Assignment visible',width);
   activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
   await own.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
   await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));
-  await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();
+  await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();console.log('Receipt visible',width);
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await worker.page.goto(`http://localhost:3000/tareas/${t.id}`);
   await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));
-  await worker.page.getByText('Completada',{exact:true}).first().waitFor();
+  await worker.page.getByText('Completada',{exact:true}).first().waitFor();console.log('Resolution visible',width);
   await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
   await worker.page.locator('article').filter({hasText:t.title}).waitFor();
   const maid=await actor('maid',width);await maid.page.goto('http://localhost:3000/coordinacion');

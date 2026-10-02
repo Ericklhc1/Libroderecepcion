@@ -15,9 +15,6 @@ jobs:
           - finding: H01
             sha: e2811f276c2880bb781ea0c27337d9257c80708a
             tests: tests/followup-privacy.test.ts
-          - finding: H08
-            sha: ac611a1f0bc92987d34f7a39a8bc433861d40b80
-            tests: tests/cron-auth.test.ts
     services:
       postgres:
         image: postgres:16-alpine

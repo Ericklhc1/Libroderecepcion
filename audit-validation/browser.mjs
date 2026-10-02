@@ -40,9 +40,12 @@ try {
       const unread = await context.request.get('http://127.0.0.1:3000/api/notifications/unread');
       assert.equal(unread.status(), 200);
       assert.equal((await unread.json()).notifications, expected[name].length);
-      const payload = await context.request.post('http://127.0.0.1:3000/api/push/payload', { headers: { Origin: 'http://127.0.0.1:3000' }, data: { endpoint: `https://synthetic.invalid/${name}/${viewport.width}` } });
-      assert.equal(payload.status(), 200);
-      const json = await payload.json();
+      const payload = await page.evaluate(async endpoint => {
+        const response = await fetch('/api/push/payload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint }) });
+        return { status: response.status, body: await response.json() };
+      }, `https://synthetic.invalid/${name}/${viewport.width}`);
+      assert.equal(payload.status, 200, `${name} native same-origin payload: ${JSON.stringify(payload.body)}`);
+      const json = payload.body;
       assert.equal(json.unread, expected[name].length);
       assert.equal(json.newCount, expected[name].length);
       for (const [i, row] of fixtures.rows.entries()) if (!expected[name].includes(i)) assert.ok(!JSON.stringify(json).includes(row.action) && !JSON.stringify(json).includes(row.id));

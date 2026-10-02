@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - finding: H01
-            sha: 149b21d1d01c755a04488a9496438e1b48d74412
+            sha: 526d242799b60cbd1a8b96ad6af18de20b495e0f
             tests: tests/followup-privacy.test.ts
     services:
       postgres:

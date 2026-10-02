@@ -1,3 +1,9 @@
+## 01/10/2026 · propuesta v1.45.2 · H08 cron autenticado
+
+- Elimina el respaldo por User-Agent. Secreto ausente/vacío o token inválido rechaza; calendarios y servicios autorizados intactos. Sin migración ni configuración de producción.
+- Pruebas de función y cuatro handlers con efectos interceptados: peticiones rechazadas invocan cero servicios; token válido conserva ejecución. Compuerta completa en PostgreSQL efímero antes de revisión; no fusionar ni desplegar sin autorización posterior.
+- CRON_SECRET production por metadatos continúa pendiente; no leer valor ni invocar cron de producción. Orden propuesto H01 1.45.1, H08 1.45.2; actualizar base de esta PR tras publicación autorizada de H01, sin mezclar código funcional de ambas.
+
 ## 01/10/2026 · v1.45.0 · Housekeeping diario por cargo y área
 
 - Sustituye la portada de avisos por trabajo del día, vistas por cargo, filtros, ejecución, inspección de otra persona, impedimentos, correcciones y continuidad. Usa HousekeepingRequest existente; avisos y pruebas históricas conservan folio/historial. Organización explícita incorpora avisos operativos antiguos al circuito nuevo.

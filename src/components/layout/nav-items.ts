@@ -235,6 +235,7 @@ const PRIMARY: NavItem[] = [
     ],
   },
   { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { href: '/custodia', label: 'Objetos olvidados', mobileLabel: 'Custodia', icon: 'key', anyOf: ['custody.view','custody.manage'] },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',

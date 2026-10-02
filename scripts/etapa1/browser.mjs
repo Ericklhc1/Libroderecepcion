@@ -45,8 +45,9 @@ try{
   await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await worker.page.goto(`http://localhost:3000/tareas/${t.id}`);
-  await worker.page.getByRole('button',{name:'Resolver',exact:true}).click();
-  await worker.page.getByRole('button',{name:'Resolver',exact:true}).waitFor({state:'hidden'});
+  const [resolved]=await Promise.all([worker.page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===`/tareas/${t.id}`),worker.page.getByRole('button',{name:'Resolver',exact:true}).click()]);
+  assert.ok(resolved.ok(),'Resolution action response succeeds');await resolved.finished();
+  await worker.page.getByText('Completada',{exact:true}).first().waitFor();
   await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
   await worker.page.locator('article').filter({hasText:t.title}).waitFor();
   const maid=await actor('maid',width);await maid.page.goto('http://localhost:3000/coordinacion');

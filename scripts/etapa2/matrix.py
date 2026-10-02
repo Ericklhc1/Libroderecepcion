@@ -2,6 +2,22 @@
 import json, re
 from pathlib import Path
 catalog = {a['name']: a for a in json.loads(Path('scripts/etapa2/catalog.json').read_text())}
+evidence = {
+ 'createTaskAction':'Dos pasos, reintentos concurrentes, revocación y cancelación; etapa2-execution.test.ts',
+ 'changeTaskStatusAction':'Cambio posterior a autorización rechazado; validación independiente probada en servicio (éxito completo por adaptador pendiente)',
+ 'createManualCashMovementAction':'Entrada CLP declarada, un solo movimiento ante reintento; etapa2-execution.test.ts',
+ 'createPhysicalKeyAction':'Crear COPIA con normalización de código; etapa2-execution.test.ts',
+ 'assignPhysicalKeyAction':'Entrega declarada conserva assignedById; etapa2-execution.test.ts',
+ 'returnPhysicalKeyAction':'Devolución declarada vuelve a DISPONIBLE; etapa2-execution.test.ts',
+ 'openShiftAction':'Inicio nativo crea un turno; etapa2-execution.test.ts',
+ 'closeShiftAction':'Rechaza cierre sin controles nativos satisfechos (éxito completo pendiente)',
+ 'saveDepartmentAction':'Creación de área con permiso nativo; etapa2-execution.test.ts',
+ 'updateUserAction':'Formulario completo conserva datos; escritura rechaza revisión obsoleta; etapa2-execution.test.ts',
+ 'updateRolePermissionsAction':'Matriz completa explícita y rechazo transaccional de revisión obsoleta; etapa2-execution.test.ts',
+ 'createHousekeepingAction':'Solicitud nativa única tras reintento; etapa2-execution.test.ts',
+ 'saveScheduleCollaboratorAction':'Usuario existente; 40 horas se conservan como 2400 minutos internos; etapa2-execution.test.ts',
+ 'createSchedulePlanAction':'Malla del área con fecha de Santiago; etapa2-execution.test.ts',
+}
 rows=[]
 for path in sorted(Path('src/server/actions').glob('*.ts')):
     text=path.read_text()
@@ -13,7 +29,7 @@ for path in sorted(Path('src/server/actions').glob('*.ts')):
         inputs=', '.join(a['fields']) if a else 'Ver esquema/formulario nativo; adaptador pendiente'
         state='Conectado; acreditación individual pendiente' if a else 'Pendiente de adaptador (no disponible por el catálogo nuevo)'
         if path.stem in ['pms','reservations','room-stays','guests']:state='Fuera del alcance de producto solicitado; no ampliar'
-        rows.append(f"| `{name}` | `{path}` | {', '.join(permissions) or 'Control contextual del servicio nativo'} | {inputs} | {state} |")
+        rows.append(f"| `{name}` | `{path}` | {', '.join(permissions) or 'Control contextual del servicio nativo'} | {inputs} | {state} | {evidence.get(name, 'Recorrido específico pendiente')} |")
 preamble='''# Matriz completa de Server Actions · Etapa 2
 
 Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones nativas detectadas y el catálogo conectado; **conexión no equivale a acreditación**. No se declara cobertura general. Consultas existentes de Fronti conservan sus lectores y permisos; el inventario de endpoints GET, exportaciones, archivos binarios y acciones de perfil requiere revisión adicional.
@@ -29,10 +45,14 @@ Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones
 - Pruebas comunes: `etapa2-domain.test.ts` (contrato/identidad/límites); `etapa2-execution.test.ts` (PostgreSQL, permisos/revocación, privacidad del plan, concurrencia, cancelación y ejecución parcial). Estos casos **no acreditan todos los procedimientos individuales**.
 - Cambios posteriores: revisión de tareas, novedades, llaves, garantías, usuarios/permisos y configuración; HK/Coordinación/Equipo retienen versiones nativas. Falta acreditar atomicidad y cobertura de revisión de todos los procedimientos antes de publicación.
 
+## Evidencia observada
+
+La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omisión existente), tipos/lint y build. Las pruebas específicas indicadas abajo son recorridos acotados; no prueban todas las variantes de cada procedimiento. Navegador de esa corrida falló por timeout y continúa pendiente. Las correcciones siguientes requieren nueva Compuerta. Resultado vigente: EVIDENCIA.json y PR #244.
+
 ## Inventario
 
-| Acción | Adaptador/servicio de entrada existente | Permiso explícito en la acción | Datos del adaptador (obligatoriedad en esquema nativo) | Cobertura |
-|---|---|---|---|---|
+| Acción | Adaptador/servicio de entrada existente | Permiso explícito en la acción | Datos del adaptador (obligatoriedad en esquema nativo) | Cobertura | Prueba específica (no acredita otras variantes) |
+|---|---|---|---|---|---|
 '''
 Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n')
 print(f'{len(rows)} acciones inventariadas; {len(catalog)} adaptadores conectados')

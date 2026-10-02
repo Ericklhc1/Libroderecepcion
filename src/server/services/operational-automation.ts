@@ -7,6 +7,7 @@ import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, RuleError } from '@/server/errors';
 import { procedureOccurrences, procedureSchema, escalationSchema, matchesAutomation } from '@/domain/operational-automation';
+import { isHkFocused } from '@/domain/housekeeping-work';
 import { canonicalJson } from '@/domain/fronti-execution';
 import { createTask } from './tasks';
 import { getCoordinationBoard, coordinationMetrics, type CoordinationRow } from './coordination';
@@ -44,7 +45,7 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
       const overlaps=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'ESCALATION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
       if(overlaps.some(p=>{const other=escalationSchema.parse(p.configuration);return other.trigger===config.trigger&&(!other.kind||!config.kind||other.kind===config.kind)&&(!other.priority||!config.priority||other.priority===config.priority)}))throw new RuleError('Ya existe una regla habilitada para esta condición, tipo y prioridad del área. Pausa o acota su alcance antes de habilitar otra.');
     }
-    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled };
+    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
     let id = input.id;
     if (id) {
       const updated = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, version: input.version, revokedAt: null }, data: { ...data, version: { increment: 1 } } });
@@ -63,18 +64,27 @@ export async function revokeAutomation(user: CurrentUser, id: string) {
 }
 
 /** Every page is read through the original access-filtered board. Bound and label incomplete scans. */
-export async function automationBoard(user: CurrentUser, departmentId?: string) {
+export async function automationBoard(user: CurrentUser, departmentId?: string, startPage = 1) {
   const rows: CoordinationRow[] = [];
-  let complete = false;
-  for (let page = 1; page <= 10; page++) {
+  let complete = false, nextPage = startPage;
+  for (let page = startPage; page < startPage + 10; page++) {
     const board = await getCoordinationBoard(user, { departmentId, page });
     rows.push(...board.rows);
-    if (!board.hasMore) { complete = true; break; }
+    nextPage = board.hasMore ? page + 1 : 1;
+    if (!board.hasMore) { complete = startPage === 1; break; }
   }
-  return { rows, complete };
+  return { rows, complete, nextPage };
 }
 async function sameAreaUser(id: string, departmentId: string) {
   return prisma.user.findFirst({ where: { id, active: true, deletedAt: null, role: { operational: true }, OR: [{ departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId, active: true } } } }] }, select: { id: true, name: true } });
+}
+
+async function procedureAssignee(id:string,departmentId:string) {
+  const member=await sameAreaUser(id,departmentId);
+  if(!member)return null;
+  const user=await prisma.user.findUnique({where:{id},include:{role:{include:{permissions:{include:{permission:true}}}}}});
+  if(!user||isHkFocused({roleKey:user.role.key,permissions:user.role.permissions.map(p=>p.permission.key as PermissionKey)}))return null;
+  return member;
 }
 
 export async function simulateAutomation(user: CurrentUser, id: string, now = new Date()) {
@@ -83,13 +93,17 @@ export async function simulateAutomation(user: CurrentUser, id: string, now = ne
   await assertPolicyArea(user, policy.departmentId);
   if (policy.kind === 'PROCEDURE') {
     const config = procedureSchema.parse(policy.configuration);
-    const eligible = await sameAreaUser(config.ownerId, policy.departmentId);
+    const eligible = await procedureAssignee(config.ownerId, policy.departmentId);
     return { mode: 'SIMULATION', version: policy.version, complete: true, effects: procedureOccurrences(config, now).map(o => ({ occurrence: o.key, dueAt: new Date(o.at.getTime() + config.deadlineMinutes * 60000), ownerId: config.ownerId, responsible: eligible?.name ?? config.ownerId, eligible: !!eligible, action: 'CREATE_TASK' })), explanation: 'Crea una tarea y su lista mediante el servicio existente. Sin ejecución física ni inspección automática. No modifica datos operativos.' };
   }
   const config = escalationSchema.parse(policy.configuration);
-  const board = await automationBoard(user, policy.departmentId);
+  const board = await automationBoard(user, policy.departmentId, policy.scanPage);
   const recipient = await sameAreaUser(config.recipientId, policy.departmentId);
-  return { mode: 'SIMULATION', version: policy.version, complete: board.complete, effects: board.rows.filter(r => matchesAutomation(r, config, now)).slice(0, config.maxItems).map(r => ({ id: r.id, kind: r.kind, revision: r.updatedAt.toISOString(), href: r.href, nextAction: r.nextAction, recipientId: config.recipientId, responsible: recipient?.name ?? config.recipientId, title: r.title, eligible: !!recipient, action: 'NOTIFY' })), explanation: 'Escala el registro original al destinatario del área sólo si conserva acceso. Sin responsable y asignado sin recibir son condiciones distintas. No genera incidencias nuevas.' };
+  const matched=board.rows.filter(r => matchesAutomation(r, config, now)).map(r=>({...r,retryKey:createHash('sha256').update(canonicalJson({kind:r.kind,id:r.id,trigger:config.trigger,recipientId:config.recipientId,ownerId:r.ownerId,assignedAt:r.assignedAt?.toISOString(),receivedAt:r.receivedAt?.toISOString(),dueAt:r.dueAt?.toISOString(),status:r.status,priority:r.priority,nextAction:r.nextAction})).digest('hex')}));
+  const attemptKey=(r: (typeof matched)[number])=>r.retryKey+':'+r.updatedAt.toISOString();
+  const seen=await prisma.operationalAutomationRun.findMany({where:{policyId:policy.id,OR:[{status:'SUCCEEDED',stateKey:{in:matched.map(r=>r.retryKey)}},{occurrence:{in:matched.map(attemptKey)}}]},select:{occurrence:true,stateKey:true,status:true}});
+  const done=new Set(seen.filter(r=>r.status==='SUCCEEDED').map(r=>r.stateKey)), attempts=new Set(seen.map(r=>r.occurrence)), pending=matched.filter(r=>!done.has(r.retryKey)&&!attempts.has(attemptKey(r)));
+  return { mode: 'SIMULATION', version: policy.version, complete: board.complete && pending.length<=config.maxItems, nextPage:pending.length>config.maxItems?policy.scanPage:board.nextPage, matchesObserved:matched.length, effects: pending.slice(0, config.maxItems).map(r => ({ id: r.id, kind: r.kind, retryKey:r.retryKey, attemptKey:attemptKey(r), revision: r.updatedAt.toISOString(), href: r.href, nextAction: r.nextAction, recipientId: config.recipientId, responsible: recipient?.name ?? config.recipientId, title: r.title, eligible: !!recipient, action: 'NOTIFY' })), explanation: 'Escala el registro original al destinatario del área sólo si conserva acceso. Sin responsable y asignado sin recibir son condiciones distintas. No genera incidencias nuevas.' };
 }
 
 /** Called only by the existing operational cron. No provider, push or Actions dependency. */
@@ -106,21 +120,22 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
         if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
         scanned++;
         if (!effect.eligible) throw new RuleError('No hay responsable o destinatario elegible en el área. La política se pausa para intervención.');
-        const occurrence = 'occurrence' in effect ? effect.occurrence : createHash('sha256').update(canonicalJson({ kind: effect.kind, id: effect.id, revision: effect.revision, trigger: escalationSchema.parse(policy.configuration).trigger })).digest('hex');
+        const occurrence = 'occurrence' in effect ? effect.occurrence : effect.attemptKey;
+        const stateKey = 'occurrence' in effect ? effect.occurrence : effect.retryKey;
         await prisma.$transaction(async tx => {
           await tx.$queryRaw`SELECT "id" FROM "OperationalAutomation" WHERE "id"=${policy.id} FOR UPDATE`;
           const live = await tx.operationalAutomation.findFirst({ where: { id: policy.id, version: policy.version, enabled: true, revokedAt: null, expiresAt: { gt: new Date() } } });
           if (!live) return;
           const executor=await automationPrincipal(policy.ownerId,policy.id);
           await assertPolicyArea(executor,policy.departmentId);
-          if (await tx.operationalAutomationRun.findUnique({ where: { policyId_occurrence: { policyId: policy.id, occurrence } } })) return;
-          const run = await tx.operationalAutomationRun.create({ data: { policyId: policy.id, occurrence, policyVersion: policy.version, snapshot: json(policy.configuration), status: 'RUNNING' } });
+          if (await tx.operationalAutomationRun.findFirst({where:{policyId:policy.id,OR:[{occurrence},{stateKey,status:'SUCCEEDED'}]}})) return;
+          const run = await tx.operationalAutomationRun.create({ data: { policyId: policy.id, occurrence, stateKey, policyVersion: policy.version, snapshot: json(policy.configuration), status: 'RUNNING' } });
           let result: unknown;
           if (policy.kind === 'PROCEDURE') {
             const config = procedureSchema.parse(policy.configuration);
             if (!executor.permissions.includes('task.create') || !executor.permissions.includes('task.assign')) throw new ForbiddenError();
             await assertReceptionOperationPermission(executor, 'task.create');
-            if (!await sameAreaUser(config.ownerId, policy.departmentId)) throw new ForbiddenError('Responsable no elegible para el área.');
+            if (!await procedureAssignee(config.ownerId, policy.departmentId)) throw new ForbiddenError('Responsable no elegible para tareas generales del área; el trabajo exclusivo de Housekeeping utiliza sus rutinas nativas.');
             const date = procedureOccurrences(config, now).find(o => o.key === occurrence)!;
             const task = await createTask(executor, { title: config.title, description: config.description, assigneeId: config.ownerId, departmentId: policy.departmentId, priority: config.priority, startsAt: date.at, dueAt: new Date(date.at.getTime() + config.deadlineMinutes * 60000), fulfillmentCriteria: config.nextAction, evidenceRequired: config.evidenceRequired, checklist: config.checklist, tags: ['procedimiento'], requiresIndependentValidation: config.requiresIndependentValidation, procedureOccurrenceKey: `${policy.id}:${occurrence}` }, tx);
             result = { taskId: task.id, href: `/tareas/${task.id}` };
@@ -153,7 +168,7 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
           attempted++;
         }, { timeout: 15000 });
       }
-      await prisma.operationalAutomation.updateMany({where:{id:policy.id,version:policy.version},data:{lastEvaluatedAt:now}});
+      await prisma.operationalAutomation.updateMany({where:{id:policy.id,version:policy.version},data:{lastEvaluatedAt:now,...(!deferred&&'nextPage' in simulation?{scanPage:simulation.nextPage}:{})}});
     } catch (error) {
       failed++;
       await prisma.$transaction(async tx => {

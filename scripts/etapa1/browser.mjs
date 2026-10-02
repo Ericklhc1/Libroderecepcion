@@ -5,14 +5,17 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
 const results=[];const timings=[];let activePage;
+function persist(){writeFileSync('etapa1-browser-results.json',JSON.stringify({results,timings},null,2));}
 async function measured(label,work){const start=performance.now();try{const result=await work();if(/^(assign|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
 async function submit(page,button){
  const started=performance.now();
  const path=new URL(page.url()).pathname;
- const pending=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path).then(response=>{timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});return response;});
+ const pending=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path).then(response=>{timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});console.log('POST headers',path,Math.round(performance.now()-started));persist();return response;});
  await button.click({noWaitAfter:true});
  const response=await pending;assert.ok(response.ok(),'Server action response succeeds');
- const stream=performance.now();await response.finished();timings.push({label:'POST stream '+path,ms:Math.round(performance.now()-stream)});
+ const observation={label:'POST body completion '+path,ms:null,status:'pending'};timings.push(observation);persist();
+ // Observe body completion separately. UI latency is measured from click to actual DOM state.
+ void response.finished().then(error=>{observation.ms=Math.round(performance.now()-started);observation.status=error?'aborted':'completed';persist();}).catch(()=>{observation.status='unavailable';persist();});
 }
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});

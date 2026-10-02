@@ -69,3 +69,7 @@ Consulta del 2 de octubre de 2026: la documentación oficial indica 40 jobs est�
 Fuentes: https://docs.github.com/en/actions/reference/limits ; https://docs.github.com/en/billing/concepts/product-billing/github-actions ; https://docs.github.com/en/billing/concepts/product-billing/github-copilot-billing . La tarifa de Copilot depende del uso y no se convierte la captura histórica de 1500 créditos en un número de revisiones disponibles.
 
 Repositorio público confirmado por la API. El endpoint de configuración de CodeQL no está permitido por el conector; la respuesta del repositorio tampoco expone `security_and_analysis`. Esto no prueba que estén desactivados. No se crea otro workflow de análisis sin saber si duplicaría el default setup.
+
+El recorrido de reglas avanza por páginas y vuelve al inicio al terminar; una pausa/versionado reinicia el cursor, conservando las ocurrencias. El máximo de candidatos no se presenta como cobertura completa. El estado relevante (condición, destinatario, responsable, recepción, vencimiento, estado y siguiente acción) identifica el aviso; cambiar sólo el título no lo repite. Cada intento conserva además la revisión del origen para recuperar una simulación obsoleta.
+
+Las plantillas nuevas generan tareas generales para usuarios que pueden operar ese módulo. Una cuenta exclusiva de Housekeeping no se considera destinatario elegible de una tarea general: utiliza sus rutinas y listas nativas. La unificación de su editor de recurrencias con esta pantalla sigue pendiente; no se genera un motor de Housekeeping paralelo.

@@ -55,6 +55,15 @@
         "failed": 0,
         "build": "passed",
         "browser": "navigation 276 ms; no completed flow; step exceeded 3 minutes. Adding bounded locator waits and separate response/visible timing, not increasing timeout."
+      },
+      {
+        "id": 37010590281,
+        "result": "browser step timeout",
+        "passed": 1379,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Navigation 356 ms, heading and navigation controls verified; first action still stalled. Body completion will be observed separately from actual DOM result; 3-second visible budget retained."
       }
     ]
   },

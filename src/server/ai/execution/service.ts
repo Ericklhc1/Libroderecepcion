@@ -68,7 +68,7 @@ export async function readExecution(id: string) {
   const row = await prisma.frontiExecution.findFirst({ where: { id, userId: user.id }, include: { steps: { orderBy: { position: 'asc' } } } });
   if (!row) throw new NotFoundError();
   return { id: row.id, status: executionStatus(row), createdAt: row.createdAt, expiresAt: row.expiresAt, cancelledAt: row.cancelledAt,
-    steps: row.steps.map(s => ({ action: s.action, status: s.status, result: s.result, startedAt: s.startedAt, completedAt: s.completedAt })),
+    steps: row.steps.map(s => ({ action: s.action, label: actionDefinition(s.action).label, status: s.status, result: s.result, startedAt: s.startedAt, completedAt: s.completedAt })),
     href: `/fronti/procedimientos?ejecucion=${row.id}` };
 }
 
@@ -126,7 +126,9 @@ export async function executePlan(id: string, authorize: boolean) {
       const result = await invokeNativeAction(command, step.revision);
       // Native actions may commit before a post-commit error. Conservatively stop on every failure.
       const status = result.ok ? 'SUCCEEDED' : 'INTERVENTION';
-      const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null } : { ok: false, message: result.error };
+      const module=actionDefinition(step.action).module;
+      const href=result.ok&&result.id&&(module==='tasks'||module==='entries')?`${module==='tasks'?'/tareas':'/libro'}/${result.id}`:undefined;
+      const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null, ...(href?{href}:{}) } : { ok: false, message: result.error };
       await prisma.$transaction(async tx => {
         await tx.frontiExecutionStep.update({ where: { id: step.id }, data: { status, result: safeResult, completedAt: new Date() } });
         await tx.auditLog.create({ data: { entity: 'FrontiExecution', entityId: id, action: 'EDITAR', userId: user.id, sessionId: user.sessionId,

@@ -3408,6 +3408,7 @@ model OperationalAutomation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   lastEvaluatedAt DateTime?
+  scanPage Int @default(1)
   runs OperationalAutomationRun[]
   @@index([enabled, expiresAt])
 }
@@ -3416,6 +3417,7 @@ model OperationalAutomationRun {
   policyId String
   policy OperationalAutomation @relation(fields: [policyId], references: [id], onDelete: Restrict)
   occurrence String
+  stateKey String?
   policyVersion Int
   snapshot Json
   status String
@@ -3423,6 +3425,7 @@ model OperationalAutomationRun {
   startedAt DateTime @default(now())
   completedAt DateTime?
   @@unique([policyId, occurrence])
+  @@index([policyId, stateKey, status])
 }
 
 /// Every transport key is bound, including keys collapsed into a repeated message.

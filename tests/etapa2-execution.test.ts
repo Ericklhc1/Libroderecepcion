@@ -122,6 +122,14 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const next=await createTask(admin,{title:'Plazo original tras pausar',assigneeId:other.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});await prisma.task.update({where:{id:next.id},data:{workAssignedAt:new Date(now.getTime()-35*60000)}});
     await saveAutomation(admin,{...input,id:policy.id,version:1,enabled:false});expect((await escalateUnreceivedWork(now)).escalated).toBe(1);
   });
+  it('la simulación limitada no presenta candidatos parciales como operación completa',async()=>{
+    for(const title of ['Pendiente uno','Pendiente dos'])await createTask(admin,{title,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await saveAutomation(admin,{name:'Vista previa de un candidato',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',kind:'task',receiptMinutes:30,recipientId:other.id,maxItems:1},expiresAt:new Date(Date.now()+86400000)});
+    const preview=await simulateAutomation(admin,p.id);expect(preview.effects).toHaveLength(1);expect(preview.complete).toBe(false);expect(await prisma.notification.count({where:{entity:'OperationalAutomation'}})).toBe(0);
+    process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const current=await prisma.operationalAutomation.findUniqueOrThrow({where:{id:p.id}});await saveAutomation(admin,{id:p.id,version:current.version,name:current.name,departmentId:area,kind:current.kind,configuration:current.configuration,expiresAt:current.expiresAt,enabled:true});
+    await runOperationalAutomations();await runOperationalAutomations();await runOperationalAutomations();expect(await prisma.notification.count({where:{entity:'OperationalAutomation'}})).toBe(2);
+    const task=await prisma.task.findFirstOrThrow();await prisma.task.update({where:{id:task.id},data:{title:'Cambio de título sin alterar condición'}});await runOperationalAutomations();expect(await prisma.notification.count({where:{entity:'OperationalAutomation'}})).toBe(2);
+  });
   it('preserva tiempo del cron y pausa con historial si se revoca al autorizador',async()=>{
     process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const policy=await saveAutomation(admin,{name:'Regla acotada',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',receiptMinutes:30,recipientId:other.id},expiresAt:new Date(Date.now()+86400000),enabled:true});
     expect((await runOperationalAutomations(new Date(),Date.now())).attempted).toBe(0);

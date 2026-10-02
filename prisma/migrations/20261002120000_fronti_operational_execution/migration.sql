@@ -51,6 +51,7 @@ CREATE TABLE "OperationalAutomation" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "lastEvaluatedAt" TIMESTAMP(3),
+    "scanPage" INTEGER NOT NULL DEFAULT 1,
 
     CONSTRAINT "OperationalAutomation_pkey" PRIMARY KEY ("id")
 );
@@ -60,6 +61,7 @@ CREATE TABLE "OperationalAutomationRun" (
     "id" TEXT NOT NULL,
     "policyId" TEXT NOT NULL,
     "occurrence" TEXT NOT NULL,
+    "stateKey" TEXT,
     "policyVersion" INTEGER NOT NULL,
     "snapshot" JSONB NOT NULL,
     "status" TEXT NOT NULL,
@@ -92,6 +94,9 @@ CREATE UNIQUE INDEX "FrontiExecutionStep_executionId_position_key" ON "FrontiExe
 
 -- CreateIndex
 CREATE INDEX "OperationalAutomation_enabled_expiresAt_idx" ON "OperationalAutomation"("enabled", "expiresAt");
+
+-- CreateIndex
+CREATE INDEX "OperationalAutomationRun_policyId_stateKey_status_idx" ON "OperationalAutomationRun"("policyId", "stateKey", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "OperationalAutomationRun_policyId_occurrence_key" ON "OperationalAutomationRun"("policyId", "occurrence");

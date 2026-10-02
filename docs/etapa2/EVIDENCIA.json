@@ -18,7 +18,7 @@
     "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
   },
   "pendingValidation": [
-    "final CI after internal result/source links",
+    "final CI including two TSX rendering regressions; functional browser journeys already passed",
     "physical Safari/iPhone",
     "all individual adapter procedure journeys",
     "production latency observation after separately authorized release"
@@ -186,6 +186,37 @@
         },
         "artifactId": 11233256546,
         "artifactExpiresAt": "2026-10-09T14:41:46Z"
+      },
+      {
+        "id": 37021985729,
+        "head": "bf80facd69be7ada553bbcd3da01720d92e951a6",
+        "result": "success",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "migrations": "passed",
+        "build": "passed",
+        "browser": {
+          "coordination": "desktop/mobile passed",
+          "frontiApiMilliseconds": {
+            "1280": 640,
+            "390": 138
+          },
+          "frontiVisibleMilliseconds": {
+            "1280": 190,
+            "390": 141
+          },
+          "policySaveVisibleMilliseconds": {
+            "1280": 210,
+            "390": 200
+          },
+          "frontiResultLink": "click opens own completed procedure at both widths",
+          "policies": "complete save/simulate/no-effects/unavailable-options/pause/revoke journeys passed",
+          "physicalSafari": false
+        },
+        "artifactId": 11233862914,
+        "artifactExpiresAt": "2026-10-09T14:50:15Z",
+        "testSelectionFinding": "Two TSX rendering tests passed locally but were excluded by CI *.test.ts glob; changed to *.test.{ts,tsx} and rerun required."
       }
     ]
   },

@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     globalSetup: ['./tests/global-setup.ts'],
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     // Las pruebas de integración comparten una única base: sin paralelismo.
     fileParallelism: false,
     sequence: { concurrent: false },

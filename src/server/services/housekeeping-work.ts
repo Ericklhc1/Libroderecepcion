@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceAllowsContinuation } from '@/domain/housekeeping-continuity';
 import { Prisma, type Priority, type Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -19,7 +20,7 @@ const worker = { role: { OR: [{ key: ADMIN }, { permissions: { some: { permissio
 const relations = {
   assignedTo: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } }, department: { select: { id: true, name: true } },
   room: { select: { id: true, number: true, floor: true } }, zone: { select: { id: true, name: true } }, inspectedBy: { select: { name: true } },
-  maintenanceEntry: { select: { id: true, humanId: true, status: true, title: true } },
+  maintenanceEntry: { select: { id: true, humanId: true, status: true, title: true, resolution: true, updatedAt: true, deletedAt: true } },
   sourceEntry: { select: { id: true, humanId: true, title: true, description: true, updatedAt: true, deletedAt: true, room: { select: { number: true } } } },
   events: { include: { actor: { select: { name: true } } }, orderBy: { createdAt: 'desc' as const }, take: 12 },
 } satisfies Prisma.HousekeepingRequestInclude;
@@ -75,7 +76,12 @@ export async function notifyHkWork(tx: Tx, request: { id: string; humanId: numbe
   const permissions = request.status === 'POR_REVISAR' ? ['housekeeping.inspect','housekeeping.plan','housekeeping.manage'] : ['housekeeping.assign','housekeeping.plan','housekeeping.manage'];
   const team = await coordinatingTeam(tx, request.departmentId, permissions);
   const ids = [...new Set([request.assignedToId, request.createdById, ...team.map(u => u.id)].filter((id): id is string => !!id && id !== actorId))];
-  const active = await tx.user.findMany({ where: { id: { in: ids }, active: true, deletedAt: null }, select: { id: true } });
+  const candidates = await tx.user.findMany({ where: { id: { in: ids }, active: true, deletedAt: null }, select: { id: true, role: {select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}} } });
+  const active:Array<{id:string}>=[];
+  for (const candidate of candidates) {
+    const reader={id:candidate.id,roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
+    if (canAccessHousekeeping(reader) && await tx.housekeepingRequest.count({where:{id:request.id,AND:[await hkWorkVisibility(reader,tx)]}})) active.push({id:candidate.id});
+  }
   await notify(active.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/admin/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
 }
 export type HkCreateInput = { requestKey: string; title: string; description: string; workKind: HkWorkKind; workDate: string; departmentId: string; roomId?: string; zoneId?: string; location?: string; priority: Priority; dueAt?: Date | null; effortMinutes: number; requiresInspection?: boolean; assignedToId?: string; sourceEntryId?: string };
@@ -132,6 +138,12 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     if (!hkAllowedActions(current.status, !!current.assignedToId, changed).includes(input.action)) throw new RuleError(changed ? 'La instrucción cambió: el supervisor debe revisarla antes de continuar.' : 'Esta acción no corresponde al estado del trabajo.');
     if (current.sourceEntry?.deletedAt && input.action !== 'CANCELAR') throw new RuleError('El origen fue archivado. Revisa el caso y cancela con motivo.');
     if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); }
+    if (current.maintenanceEntryId && ['COMENZAR','RETOMAR','TERMINAR','APROBAR'].includes(input.action)) {
+      // Lock the dependency before the optimistic request update, as the native result publisher does.
+      await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.maintenanceEntryId} FOR SHARE`;
+      const maintenance=await tx.operationalEntry.findUnique({where:{id:current.maintenanceEntryId},select:{status:true,resolution:true,deletedAt:true}});
+      if (!maintenance || !maintenanceAllowsContinuation(maintenance)) throw new RuleError('Mantenimiento debe informar un resultado vigente antes de continuar. El impedimento y la inspección se conservan.');
+    }
     let maintenanceEntryId = current.maintenanceEntryId;
     if (input.action === 'MANTENIMIENTO') {
       if (!input.severity) throw new RuleError('Indica la gravedad de la incidencia.');

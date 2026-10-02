@@ -32,12 +32,15 @@ export async function followUpAuditVisibility(user: FollowUpReader): Promise<Pri
     select: { id: true },
   });
   const alerts = await prisma.alert.findMany({ where: { OR: [{ followUpId: null }, { followUpId: { in: readable.map(row => row.id) } }] }, select: { id: true } });
-  return { OR: [{ entity: { notIn: ['FollowUp', 'Alert'] } }, { entity: 'FollowUp', entityId: { in: readable.map(row => row.id) } }, { entity: 'Alert', entityId: { in: alerts.map(row => row.id) } }] };
+  const comments = await prisma.comment.findMany({ where: followUpCommentVisibility(user, { includeDeleted: user.permissions.includes('entry.restore') }), select: { id: true } });
+  const alarms = await prisma.operationalAlarm.findMany({ where: { OR: [{ sourceEntity: null }, { sourceEntity: { notIn: ['FollowUp', 'Alert'] } }, { sourceEntity: 'FollowUp', sourceId: { in: readable.map(row => row.id) } }, { sourceEntity: 'Alert', sourceId: { in: alerts.map(row => row.id) } }] }, select: { id: true } });
+  const recipients = await prisma.operationalAlarmRecipient.findMany({ where: { alarmId: { in: alarms.map(row => row.id) } }, select: { id: true } });
+  return { OR: [{ entity: 'OperationalAlarm', entityId: { in: alarms.map(row => row.id) } }, { entity: 'OperationalAlarmRecipient', entityId: { in: recipients.map(row => row.id) } }, { entity: 'Comment', entityId: { in: comments.map(row => row.id) } }, { entity: { notIn: ['FollowUp', 'Alert', 'Comment', 'OperationalAlarm', 'OperationalAlarmRecipient'] } }, { entity: 'FollowUp', entityId: { in: readable.map(row => row.id) } }, { entity: 'Alert', entityId: { in: alerts.map(row => row.id) } }] };
 }
 
 /** Proyecciones de alertas heredan la privacidad de su seguimiento de origen. */
-export function followUpAlertVisibility(user: FollowUpReader): Prisma.AlertWhereInput {
-  return { OR: [{ followUpId: null }, { followUp: followUpReadWhere(user) }] };
+export function followUpAlertVisibility(user: FollowUpReader, options: { includeDeleted?: boolean } = {}): Prisma.AlertWhereInput {
+  return { OR: [{ followUpId: null }, { followUp: followUpReadWhere(user, options) }] };
 }
 
 /** Avisos históricos se filtran al leer; no se borran ni reescriben. */
@@ -46,7 +49,7 @@ export async function followUpNotificationVisibility(user: FollowUpReader, clien
     client.followUp.findMany({ where: followUpReadWhere(user), select: { id: true } }),
     client.alert.findMany({ where: followUpAlertVisibility(user), select: { id: true } }),
   ]);
-  const alarms = await client.operationalAlarm.findMany({ where: { OR: [{ sourceEntity: null }, { sourceEntity: { not: 'FollowUp' } }, { sourceEntity: 'FollowUp', sourceId: { in: followUps.map(row => row.id) } }] }, select: { id: true } });
+  const alarms = await client.operationalAlarm.findMany({ where: { OR: [{ sourceEntity: null }, { sourceEntity: { notIn: ['FollowUp', 'Alert'] } }, { sourceEntity: 'FollowUp', sourceId: { in: followUps.map(row => row.id) } }, { sourceEntity: 'Alert', sourceId: { in: alerts.map(row => row.id) } }] }, select: { id: true } });
   const recipients = await client.operationalAlarmRecipient.findMany({ where: { userId: user.id, alarmId: { in: alarms.map(row => row.id) } }, select: { id: true } });
   return { OR: [
     { entity: null }, { entity: { notIn: ['FollowUp', 'Alert', 'OperationalAlarm', 'OperationalAlarmRecipient'] } },
@@ -69,5 +72,13 @@ export async function visibleHandoverItems<T extends { refType: string | null; r
 
 export async function followUpAlarmVisibility(user: FollowUpReader): Promise<Prisma.OperationalAlarmWhereInput> {
   const rows = await prisma.followUp.findMany({ where: followUpReadWhere(user), select: { id: true } });
-  return { OR: [{ sourceEntity: null }, { sourceEntity: { not: 'FollowUp' } }, { sourceEntity: 'FollowUp', sourceId: { in: rows.map(row => row.id) } }] };
+  const alerts = await prisma.alert.findMany({ where: followUpAlertVisibility(user), select: { id: true } });
+  return { OR: [{ sourceEntity: null }, { sourceEntity: { notIn: ['FollowUp', 'Alert'] } }, { sourceEntity: 'FollowUp', sourceId: { in: rows.map(row => row.id) } }, { sourceEntity: 'Alert', sourceId: { in: alerts.map(row => row.id) } }] };
+}
+
+export function followUpCommentVisibility(user: FollowUpReader, options: { includeDeleted?: boolean } = {}): Prisma.CommentWhereInput {
+  return { AND: [
+    { OR: [{ followUpId: null }, { followUp: followUpReadWhere(user, options) }] },
+    { OR: [{ alertId: null }, { alert: followUpAlertVisibility(user, options) }] },
+  ] };
 }

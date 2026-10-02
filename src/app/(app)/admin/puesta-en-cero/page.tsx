@@ -68,7 +68,7 @@ const GROUPS: Array<{ title: string; keys: Array<[string, keyof Awaited<ReturnTy
 
 export default async function FactoryResetPage() {
   const user = await requirePagePermission('system.configure');
-  const preview = await getResetPreview();
+  const preview = await getResetPreview(user);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -90,7 +90,7 @@ export default async function FactoryResetPage() {
       </header>
 
       {/*
-        La advertencia va ARRIBA y con el número real de filas. Una puesta en
+        La advertencia va ARRIBA; el inventario respeta el alcance del lector. Una puesta en
         cero es lo único del sistema que borra de verdad: en todo lo demás la
         eliminación es lógica y el administrador restaura. Decirlo importa.
       */}
@@ -107,7 +107,8 @@ export default async function FactoryResetPage() {
       </div>
 
       <Card>
-        <CardHeader title="Qué se va a borrar" />
+        <CardHeader title="Inventario consultable" />
+        <p className="px-4 py-3 text-sm text-slate-600">Los conteos respetan la privacidad de los seguimientos. No representan el total que afectaría una puesta en cero, cuyo alcance continúa siendo global.</p>
         <div className="divide-y divide-slate-100">
           {GROUPS.map((group) => (
             <div key={group.title} className="px-4 py-3">

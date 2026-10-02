@@ -69,7 +69,7 @@ describe('hilos de conversación', () => {
       parentId: raiz.id,
     });
 
-    const hilos = await listCommentThreads({ entryId });
+    const hilos = await listCommentThreads(autor, { entryId });
     expect(hilos).toHaveLength(1);
     expect(hilos[0]!.replies).toHaveLength(1);
     expect(hilos[0]!.replies[0]!.body).toBe('Ya avisé a mantención.');
@@ -95,7 +95,7 @@ describe('hilos de conversación', () => {
 
     expect(anidada.parentId).toBe(raiz.id);
 
-    const hilos = await listCommentThreads({ entryId });
+    const hilos = await listCommentThreads(autor, { entryId });
     expect(hilos).toHaveLength(1);
     expect(hilos[0]!.replies).toHaveLength(2);
   });

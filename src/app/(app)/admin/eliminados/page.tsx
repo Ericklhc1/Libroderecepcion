@@ -1,4 +1,4 @@
-import { followUpReadWhere } from '@/server/services/followup-access';
+import { followUpReadWhere, followUpAlertVisibility } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
@@ -48,7 +48,7 @@ export default async function DeletedPage({
       take: 100,
     }),
     prisma.alert.findMany({
-      where: { NOT: { deletedAt: null } },
+      where: { NOT: { deletedAt: null }, AND: [followUpAlertVisibility(user, { includeDeleted: true })] },
       orderBy: { deletedAt: 'desc' },
       take: 100,
     }),

@@ -1,6 +1,6 @@
 ## Reparación H01 preparada en rama — propuesta 1.45.1 (2026-10-02)
 
-Base auditada 52f7f2295201f25b4ec818db0d9c45687f551b2e. No fusionada ni publicada. Política canónica con actor obligatorio: PRIVADO sólo creador; SUPERVISION requiere supervision.followup.manage; OPERATIVO conserva creador/asignado/gestor. Eliminados requiere entry.restore además del alcance de visibilidad. Sin migraciones, permisos nuevos ni cambios de datos históricos.
+Base auditada 52f7f2295201f25b4ec818db0d9c45687f551b2e. No fusionada ni publicada. Política canónica con actor obligatorio: PRIVADO sólo creador; SUPERVISION requiere supervision.followup.manage; OPERATIVO conserva creador/asignado/gestor. Eliminados requiere entry.restore además del alcance de visibilidad. Sin migraciones, permisos nuevos ni cambios de datos históricos. El inventario técnico de puesta en cero deja de revelar conteos privados: se etiqueta como inventario consultable, no como total a borrar; la autorización y alcance destructivo preexistentes no se amplían ni se ejecutan fuera de pruebas sintéticas.
 
 La política se aplica a Libro/Historial, PDF, fuentes asociadas, búsquedas, Fronti, agregados, auditoría y proyecciones de avisos/alertas; referencias históricas se filtran al leer. Los productores de avisos de seguimiento comprueban destinatarios antes de persistir o enviar. Pruebas cruzadas PostgreSQL añadidas; ejecución de compuerta y navegador aislado pendientes al preparar este commit. No se cierra H01 hasta validar todas las superficies y publicación posterior autorizada.
 

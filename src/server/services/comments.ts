@@ -1,5 +1,5 @@
 import 'server-only';
-import { followUpReadWhere } from './followup-access';
+import { followUpReadWhere, followUpAlertVisibility, followUpCommentVisibility, type FollowUpReader } from './followup-access';
 import { AuditAction, NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -46,7 +46,7 @@ export async function addComment(
   let parentId: string | null = null;
   if (input.parentId) {
     const parent = await prisma.comment.findFirst({
-      where: { id: input.parentId, deletedAt: null },
+      where: { id: input.parentId, deletedAt: null, AND: [followUpCommentVisibility(user)] },
       select: {
         id: true,
         parentId: true,
@@ -109,7 +109,7 @@ export async function addComment(
     link = followUp.entryId ? `/libro/${followUp.entryId}` : '/seguimientos';
   } else if (input.alertId) {
     const alert = await prisma.alert.findFirst({
-      where: { id: input.alertId, deletedAt: null },
+      where: { id: input.alertId, deletedAt: null, AND: [followUpAlertVisibility(user)] },
       select: { id: true, title: true, createdById: true },
     });
     if (!alert) throw new NotFoundError('La alerta no existe.');
@@ -206,7 +206,7 @@ export async function softDeleteComment(
   input: { id: string; reason: string },
 ) {
   const comment = await prisma.comment.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null, AND: [followUpCommentVisibility(user)] },
   });
   if (!comment) throw new NotFoundError('El comentario no existe.');
   if (comment.authorId !== user.id && !user.permissions.includes('entry.delete')) {
@@ -229,10 +229,11 @@ export async function softDeleteComment(
 }
 
 /** Comentarios de un objeto, del más antiguo al más reciente. */
-export async function listComments(target: CommentTarget) {
+export async function listComments(user: FollowUpReader, target: CommentTarget) {
   return prisma.comment.findMany({
     where: {
       deletedAt: null,
+      AND: [followUpCommentVisibility(user)],
       ...(target.entryId ? { entryId: target.entryId } : {}),
       ...(target.taskId ? { taskId: target.taskId } : {}),
       ...(target.followUpId ? { followUpId: target.followUpId } : {}),
@@ -261,8 +262,8 @@ export type CommentThread = Awaited<ReturnType<typeof listComments>>[number] & {
  * Los `@401` de un cierre de turno se resuelven una vez por comentario, no una
  * vez por lectura de la pantalla.
  */
-export async function listCommentThreads(target: CommentTarget): Promise<CommentThread[]> {
-  const todos = await listComments(target);
+export async function listCommentThreads(user: FollowUpReader, target: CommentTarget): Promise<CommentThread[]> {
+  const todos = await listComments(user, target);
 
   const raices = todos.filter((c) => !c.parentId);
   const porPadre = new Map<string, typeof todos>();

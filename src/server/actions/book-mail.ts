@@ -1,5 +1,5 @@
 'use server';
-import { followUpReadWhere, type FollowUpReader } from '@/server/services/followup-access';
+import { followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from '@/server/services/followup-access';
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
@@ -142,8 +142,8 @@ async function loadRecord(user: FollowUpReader, kind: BookKind, id: string): Pro
     };
   }
 
-  const row = await prisma.alert.findUnique({
-    where: { id },
+  const row = await prisma.alert.findFirst({
+    where: { id, deletedAt: null, AND: [followUpAlertVisibility(user)] },
     include: {
       createdBy: { select: { name: true } },
       department: { select: { name: true } },

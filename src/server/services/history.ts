@@ -1,4 +1,4 @@
-import { followUpReadWhere, type FollowUpReader } from './followup-access';
+import { followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -31,6 +31,7 @@ type HistoryTarget = {
  */
 export async function getHistory(user: FollowUpReader, target: HistoryTarget): Promise<HistoryEvent[]> {
   if (target.entity === 'FollowUp' && !(await prisma.followUp.findFirst({ where: { id: target.entityId, AND: [followUpReadWhere(user)] }, select: { id: true } }))) return [];
+  if (target.entity === 'Alert' && !(await prisma.alert.findFirst({ where: { id: target.entityId, AND: [followUpAlertVisibility(user)] }, select: { id: true } }))) return [];
   const [logs, comments, followUps] = await Promise.all([
     prisma.auditLog.findMany({
       where: { entity: target.entity, entityId: target.entityId },

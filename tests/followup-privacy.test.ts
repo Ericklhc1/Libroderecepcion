@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { createUser, prisma, resetOperationalData, seedCatalog, ROLE_KEYS } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { followUpReadWhere, followUpAuditVisibility, visibleHandoverItems } from '@/server/services/followup-access';
+import { getResetPreview } from '@/server/services/factory-reset';
 import { getBookItems } from '@/server/services/book';
 import { getHistory } from '@/server/services/history';
 import { getEntry } from '@/server/services/entries';
@@ -10,11 +11,16 @@ import { searchOperationalRecords } from '@/server/services/global-search';
 import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getWebPushPayload } from '@/server/services/web-push';
+import { listComments, addComment } from '@/server/services/comments';
+import { updateFollowUp } from '@/server/services/followups';
+import { sendBookItemMailAction } from '@/server/actions/book-mail';
 import { notify } from '@/server/notifications';
 import { GET as report } from '@/app/api/libro/reporte/route';
 import { POST as payloadRoute } from '@/app/api/push/payload/route';
 
 const state = vi.hoisted(() => ({ user: null as CurrentUser | null }));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/server/mail', () => ({ sendMail: vi.fn(async () => ({ sent: true, to: 'synthetic@example.invalid' })) }));
 vi.mock('@/server/auth/guard', () => ({ requireUser: async () => { if (!state.user) throw new Error('Actor requerido'); return state.user; } }));
 vi.mock('@/server/auth/current-user', async original => ({ ...await original<object>(), getCurrentUser: async () => state.user }));
 vi.mock('@/server/services/legal-acceptance', () => ({ hasAcceptedCurrentTerms: async () => true }));
@@ -148,6 +154,28 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
     const response = await payloadRoute(new Request('http://localhost/api/push/payload', { method: 'POST', headers: { Origin: 'http://localhost', 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: 'https://synthetic.invalid/subscription' }) }));
     expect(response.status).toBe(401);
     expect(await prisma.pushSubscription.count()).toBe(0);
+  });
+  it('direct comment reads and edits cannot reveal or mutate an assigned foreign private source', async () => {
+    await prisma.comment.create({ data: { body: 'PRIVATE_COMMENT', authorId: a.id, followUpId: rows[0]!.id } });
+    expect(await listComments(b, { followUpId: rows[0]!.id })).toEqual([]);
+    expect(await listComments(a, { followUpId: rows[0]!.id })).toHaveLength(1);
+    await expect(addComment(b, { followUpId: rows[0]!.id, body: 'Unauthorized comment' })).rejects.toThrow('no existe');
+    await expect(updateFollowUp(b, { id: rows[0]!.id, result: 'Unauthorized change' })).rejects.toThrow('no existe');
+    expect(await prisma.followUp.findUnique({ where: { id: rows[0]!.id } })).toMatchObject({ result: null });
+  });
+  it('direct mail export denies a foreign private record before invoking delivery', async () => {
+    const { sendMail } = await import('@/server/mail');
+    vi.mocked(sendMail).mockClear();
+    state.user = supervisor;
+    const form = new FormData();
+    form.set('kind', 'followup'); form.set('id', rows[0]!.id); form.set('to', 'synthetic@example.invalid');
+    const result = await sendBookItemMailAction(null, form);
+    expect(result.ok).toBe(false);
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+  it('technical inventory counts cannot reveal foreign private records', async () => {
+    const preview = await getResetPreview(b);
+    expect(preview.followUps).toBe(2);
   });
   it('actor is mandatory even when a filter is empty', () => {
     expect(() => followUpReadWhere(undefined as never)).toThrow('identidad');

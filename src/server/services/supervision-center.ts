@@ -1,4 +1,4 @@
-import { followUpReadWhere } from '@/server/services/followup-access';
+import { followUpReadWhere, followUpAlertVisibility } from '@/server/services/followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -1119,7 +1119,7 @@ type SupervisionSourceEntity =
   | 'Shift'
   | 'KeyInventoryCount';
 
-async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, sourceId: string) {
+async function resolveSupervisionSource(user: CurrentUser, sourceEntity: SupervisionSourceEntity, sourceId: string) {
   switch (sourceEntity) {
     case 'OperationalEntry': {
       const row = await prisma.operationalEntry.findFirst({
@@ -1130,8 +1130,8 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
       return { label: `#${row.humanId} · ${row.title}`, entryId: row.id, taskId: null };
     }
     case 'Alert': {
-      const row = await prisma.alert.findUnique({
-        where: { id: sourceId },
+      const row = await prisma.alert.findFirst({
+        where: { id: sourceId, AND: [followUpAlertVisibility(user)] },
         select: { id: true, title: true },
       });
       if (!row) throw new NotFoundError('La alerta de origen ya no existe.');
@@ -1208,7 +1208,7 @@ export async function followSupervisionSource(
   input: { sourceEntity: SupervisionSourceEntity; sourceId: string },
 ) {
   assertSupervisor(user);
-  const source = await resolveSupervisionSource(input.sourceEntity, input.sourceId);
+  const source = await resolveSupervisionSource(user, input.sourceEntity, input.sourceId);
   const existing = await prisma.followUp.findFirst({
     where: {
       deletedAt: null,

@@ -1,0 +1,140 @@
+name: Validación aislada H01 H08 y artefacto PDF
+on:
+  push:
+    branches: ['audit/validacion-h01-h08']
+permissions:
+  contents: read
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - finding: H01
+            sha: e24cda05dc6d83f9a7caa3248c23027752008210
+            tests: tests/followup-privacy.test.ts
+          - finding: H08
+            sha: ac611a1f0bc92987d34f7a39a8bc433861d40b80
+            tests: tests/cron-auth.test.ts
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: audit_synthetic
+          POSTGRES_DB: aroh_audit_acceptance
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U audit -d aroh_audit_acceptance"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgresql://audit:audit_synthetic@127.0.0.1:5432/aroh_audit_acceptance?schema=public
+      DATABASE_URL: postgresql://audit:audit_synthetic@127.0.0.1:5432/aroh_audit_acceptance?schema=public&application_name=isolated-audit
+      DIRECT_DATABASE_URL: postgresql://audit:audit_synthetic@127.0.0.1:5432/aroh_audit_acceptance?schema=public&application_name=isolated-audit
+      AUDIT_LOCAL_DB_CONFIRM: synthetic-only
+      AUTH_SECRET: isolated-synthetic-auth-for-browser-at-least-32-characters
+      NODE_ENV: test
+    steps:
+      - name: Mecanismo de diagnóstico
+        uses: actions/checkout@v4
+        with:
+          path: harness
+      - name: Código de la reparación fijado por SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+          path: app
+      - name: Copiar comprobaciones sin modificar la rama funcional
+        run: cp -r harness/audit-validation app/audit-validation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Verificar conexiones y servidor antes de migraciones o limpieza
+        working-directory: app
+        run: |
+          node audit-validation/guard.cjs
+          PGPASSWORD=audit_synthetic psql -h 127.0.0.1 -U audit -d aroh_audit_acceptance -Atc "SELECT current_database() = 'aroh_audit_acceptance' AND current_user = 'audit' AND inet_server_addr() IS NOT NULL" | grep -qx t
+          git rev-parse HEAD > tested-sha.txt
+      - name: Dependencias y cliente Prisma
+        working-directory: app
+        run: |
+          npm ci --ignore-scripts
+          npm run db:generate
+      - name: Aceptación específica con PostgreSQL sintético
+        working-directory: app
+        run: npx vitest run ${{ matrix.tests }} --reporter=default --reporter=json --outputFile=acceptance-results.json
+      - name: Build real de la rama sin intercepciones de código
+        working-directory: app
+        env:
+          NODE_ENV: production
+        run: npm run build
+      - name: Comprobación obligatoria de artefacto PDF después del build
+        working-directory: app
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          for (const path of ['.next/server/app/(app)/huespedes/importar/page.js.nft.json', '.next/server/app/api/supervision/auditoria-diaria/route.js.nft.json']) {
+            if (!fs.existsSync(path)) throw new Error('Falta artefacto requerido: '+path);
+          }
+          JS
+          npx vitest run tests/empaquetado-pdf.test.ts --reporter=default --reporter=json --outputFile=pdf-results.json
+          node - <<'JS'
+          const r = require('./pdf-results.json');
+          if (r.numPassedTests !== 3 || r.numFailedTests !== 0 || r.numPendingTests !== 0) throw new Error('PDF exige tres pruebas ejecutadas, sin omisiones');
+          JS
+      - name: Preparar navegador y fixtures exclusivamente sintéticos
+        if: matrix.finding == 'H01'
+        working-directory: app
+        run: |
+          node audit-validation/guard.cjs
+          npx tsx audit-validation/browser-fixture.mts
+          npm install --prefix "$RUNNER_TEMP/aroh-browser" playwright@1.58.2
+          "$RUNNER_TEMP/aroh-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Interceptar planificadores en copia de pruebas y reconstruir
+        if: matrix.finding == 'H01'
+        working-directory: app
+        env:
+          NODE_ENV: production
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          entries = [('src/server/services/dashboard.ts','export function refreshAlertsInBackground(): void {'), ('src/server/services/web-push-scheduler.ts','export function scheduleWebPushForUsers(userIds: string[]): void {'), ('src/server/ai/fronti-proactive-scheduler.ts','export function scheduleFrontiProactiveSweep(reason: string): void {')]
+          for file, signature in entries:
+              p = Path(file); s = p.read_text()
+              if s.count(signature) != 1: raise RuntimeError('Interceptor no coincide con contrato: '+file)
+              p.write_text(s.replace(signature, signature+'\n  return; // Sólo harness: planificador interceptado.'))
+          print('Tres planificadores interceptados en copia desechable; política, sesión y rutas intactas')
+          PY
+          npm run build
+      - name: Navegador autenticado escritorio y móvil en loopback
+        if: matrix.finding == 'H01'
+        working-directory: app
+        env:
+          NODE_ENV: production
+        run: |
+          node audit-validation/guard.cjs
+          NODE_OPTIONS="--require=$PWD/audit-validation/no-external.cjs" npm run start -- --hostname 127.0.0.1 > /tmp/aroh-browser-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node audit-validation/browser.mjs
+      - name: Evidencia sin credenciales ni fixtures de sesión
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.finding }}-${{ matrix.sha }}
+          path: |
+            app/tested-sha.txt
+            app/acceptance-results.json
+            app/pdf-results.json
+            app/browser-results.json
+          if-no-files-found: error

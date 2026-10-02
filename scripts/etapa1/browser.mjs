@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
-const results=[];const timings=[];let activePage;
+const results=[];const timings=[];let activePage;const streams=new Map();const inFlight=new Map();
 function persist(){writeFileSync('etapa1-browser-results.json',JSON.stringify({results,timings},null,2));}
 async function measured(label,work){const start=performance.now();try{const result=await work();if(/^(assign|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
 async function submit(page,button){
@@ -23,9 +23,11 @@ async function actor(name,width){
  await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
  const page=await context.newPage();
  const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');const posts=new Set();
- cdp.on('Network.requestWillBeSent',e=>{if(e.request.method==='POST'&&new URL(e.request.url).pathname==='/coordinacion')posts.add(e.requestId);});
- cdp.on('Network.dataReceived',e=>{if(posts.has(e.requestId))console.log('POST streamed bytes',e.dataLength);});
- cdp.on('Network.loadingFinished',e=>{if(posts.has(e.requestId))console.log('POST stream finished',e.encodedDataLength);});
+ cdp.on('Network.requestWillBeSent',e=>{inFlight.set(e.requestId,{method:e.request.method,path:new URL(e.request.url).pathname});if(e.request.method==='POST'&&new URL(e.request.url).pathname==='/coordinacion')posts.add(e.requestId);});
+ cdp.on('Network.responseReceived',async e=>{if(posts.has(e.requestId)){try{const s=await cdp.send('Network.streamResourceContent',{requestId:e.requestId});streams.set(e.requestId,[s.bufferedData]);}catch{console.log('CDP body diagnostics unavailable');}}});
+ cdp.on('Network.dataReceived',e=>{if(posts.has(e.requestId)&&e.data){const list=streams.get(e.requestId)??[];list.push(e.data);streams.set(e.requestId,list);}});
+ cdp.on('Network.loadingFinished',e=>{inFlight.delete(e.requestId);if(posts.has(e.requestId))console.log('POST stream finished',e.encodedDataLength);});
+ cdp.on('Network.loadingFailed',e=>inFlight.delete(e.requestId));
  page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);page.on('pageerror',error=>console.error('Browser page error:',error.message));return {context,page};
 }
 try{
@@ -73,4 +75,7 @@ try{
  }
  const anon=await browser.newContext();const page=await anon.newPage();await page.goto('http://localhost:3000/coordinacion');assert.ok(page.url().includes('/login'));await anon.close();
  console.log('Etapa 1 authenticated desktop/mobile journeys passed.');
-}catch(error){if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{writeFileSync('etapa1-browser-results.json',JSON.stringify({results,timings},null,2));console.log('Synthetic timings',JSON.stringify(timings));await browser.close();}
+}catch(error){
+ for(const chunks of streams.values()) {const data=Buffer.concat(chunks.map(c=>Buffer.from(c,'base64'))).toString('utf8');const rows=[...data.matchAll(/(?:^|\n)([0-9a-f]+):/g)].map(m=>m[1]);const refs=[...data.matchAll(/\$(?:L|@)?([0-9a-f]+)(?:["\n:])/g)].map(m=>m[1]);console.log('Synthetic Flight structure',JSON.stringify({bytes:Buffer.byteLength(data),rows,missingRefs:[...new Set(refs.filter(r=>!rows.includes(r)))],hasActionResult:/1:\{"ok":true/.test(data)}));}
+ console.log('Requests still in progress (paths only)',JSON.stringify([...inFlight.values()]));
+ if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{writeFileSync('etapa1-browser-results.json',JSON.stringify({results,timings},null,2));console.log('Synthetic timings',JSON.stringify(timings));await browser.close();}

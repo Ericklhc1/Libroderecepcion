@@ -23,7 +23,10 @@ for (const method of ['write', 'end']) {
   const original = responsePrototype[method];
   responsePrototype[method] = function (...args) {
     if (this.req?.method === 'POST' && this.req.url?.startsWith('/coordinacion')) {
-      this.__auditStartedAt ??= Date.now();
+      if (!this.__auditStartedAt) {
+        this.__auditStartedAt = Date.now();
+        for (const event of ['finish', 'close']) this.once(event, () => console.log('[etapa2-timing]', event, Date.now() - this.__auditStartedAt, this.writableFinished));
+      }
       const bytes = typeof args[0] === 'string' ? Buffer.byteLength(args[0]) : args[0]?.length ?? 0;
       console.log('[etapa2-timing]', method, Date.now() - this.__auditStartedAt, bytes);
     }

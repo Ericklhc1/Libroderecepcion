@@ -64,6 +64,25 @@
         "failed": 0,
         "build": "passed",
         "browser": "Navigation 356 ms, heading and navigation controls verified; first action still stalled. Body completion will be observed separately from actual DOM result; 3-second visible budget retained."
+      },
+      {
+        "id": 37011929221,
+        "result": "browser failure",
+        "passed": 1380,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "POST headers 164 ms; actual DOM still Guardando after 10165 ms. Response body pending. Visible budget 3000 ms FAILED.",
+        "artifact": 11227988153
+      },
+      {
+        "id": 37013449567,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "POST headers 169 ms. Server end 98 ms after first write; browser streamed data but did not finish; actual DOM still stale after 10171 ms. Investigating completion/transition."
       }
     ]
   },
@@ -79,6 +98,7 @@
   "coverage": {
     "serverActionsInventoried": 210,
     "adaptersConnected": 59,
-    "generalCoverageAccredited": false
+    "generalCoverageAccredited": false,
+    "httpMethodsInventoried": 59
   }
 }

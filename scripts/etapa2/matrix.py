@@ -32,7 +32,7 @@ for path in sorted(Path('src/server/actions').glob('*.ts')):
         rows.append(f"| `{name}` | `{path}` | {', '.join(permissions) or 'Control contextual del servicio nativo'} | {inputs} | {state} | {evidence.get(name, 'Recorrido específico pendiente')} |")
 preamble='''# Matriz completa de Server Actions · Etapa 2
 
-Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones nativas detectadas y el catálogo conectado; **conexión no equivale a acreditación**. No se declara cobertura general. Consultas existentes de Fronti conservan sus lectores y permisos; el inventario de endpoints GET, exportaciones, archivos binarios y acciones de perfil requiere revisión adicional.
+Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones nativas detectadas y el catálogo conectado; **conexión no equivale a acreditación**. No se declara cobertura general. Consultas existentes de Fronti conservan sus lectores y permisos; se incluye al final el inventario de métodos HTTP, sin confundir su existencia con cobertura ejecutable. Exportaciones, archivos binarios y acciones de perfil todavía requieren adaptación y acreditación individual.
 
 ## Controles comunes a los adaptadores conectados
 
@@ -54,5 +54,20 @@ La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omis
 | Acción | Adaptador/servicio de entrada existente | Permiso explícito en la acción | Datos del adaptador (obligatoriedad en esquema nativo) | Cobertura | Prueba específica (no acredita otras variantes) |
 |---|---|---|---|---|---|
 '''
-Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n')
+# API handlers are separate from Server Actions: inventory them without claiming adapters.
+api_rows=[]
+for path in sorted(Path('src/app/api').rglob('route.ts')):
+    text=path.read_text()
+    services=sorted(set(re.findall(r"from ['\"](@/server/(?:services|ai)/[^'\"]+)",text)))
+    controls=sorted(set(re.findall(r"\b(requirePermission|getCurrentUser|requireUser|assertSameOrigin|verifyCronRequest|authorizeCronRequest|isAuthorizedCronRequest)\b",text)))
+    methods=re.findall(r'export (?:async )?function (GET|POST|PUT|PATCH|DELETE)\b',text)
+    route='/'+'/'.join(path.parts[2:-1])
+    for method in methods:
+        status='Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint'
+        if '/cron/' in route:status='Infraestructura programada existente; no se expone como permiso privilegiado al modelo'
+        elif route in ['/api/fronti','/api/asistente']:status='Transporte de Fronti; misma sesión, no una acción delegable adicional'
+        elif '/auth/' in route or '/session/' in route:status='Autenticación/sesión nativa; Fronti no puede fabricar credenciales ni sesión'
+        api_rows.append(f"| `{method} {route}` | `{path}` | {', '.join(services) or 'Implementación/lector en la ruta'} | {', '.join(controls) or 'Revisar autorización contextual de la ruta'} | {status} |")
+api_section='\n## Inventario adicional de rutas HTTP\n\n'+str(len(api_rows))+' métodos detectados. Los controles de esta tabla son referencias de código, no una acreditación de seguridad. Las exportaciones, adjuntos y lecturas deben validarse con el mismo alcance de usuario antes de conectarlas. No se activa ningún cron por inventariarlo.\n\n| Entrada | Archivo | Servicios existentes | Controles detectados | Cobertura de Fronti |\n|---|---|---|---|---|\n'+'\n'.join(api_rows)+'\n'
+Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n'+api_section)
 print(f'{len(rows)} acciones inventariadas; {len(catalog)} adaptadores conectados')

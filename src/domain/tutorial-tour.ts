@@ -133,6 +133,7 @@ export function shouldNavigateTutorial(
  * módulo nuevo se habilita para la cuenta.
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
+  { id: 'coordinacion', title: 'Responsables y continuidad', description: 'Consulta los pendientes de tus áreas, confirma qué recibiste y deja la siguiente acción para quien continúa. El resultado se registra en el trabajo original.', route: '/coordinacion', target: ROUTE_TARGET },
   { id: 'equipo', module: 'equipo', title: 'Equipo y horarios', description: 'Calendario de personal por área, colaboradores, glosa, cobertura, cambios y extras. Publicar no acredita asistencia ni cambia el turno operativo.', route: '/equipo', target: ROUTE_TARGET, anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     id: 'inicio',

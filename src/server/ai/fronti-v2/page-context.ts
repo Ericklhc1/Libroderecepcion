@@ -393,6 +393,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/coordinacion') return detail('coordinacion', 'Coordinación', 'pendientes', 'Coordinación y continuidad', ['consultar_contexto_pantalla']);
+
   if (pathname === '/admin') {
     return detail('administracion', 'Administración', 'inicio', 'Inicio de Administración', [
       'consultar_contexto_pantalla',

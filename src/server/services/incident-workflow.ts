@@ -1,13 +1,16 @@
 import 'server-only';
-import { EntryType } from '@prisma/client';
+import { EntryType, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 /**
  * Una incidencia no es sólo una etiqueta: siempre nace con una tarea y un
  * seguimiento. Desde v1.4.0 no resuelve ni hereda contexto PMS.
  */
-export async function ensureIncidentWorkflow(entryId: string) {
-  const entry = await prisma.operationalEntry.findUnique({
+export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.TransactionClient, options: { leaveUnassigned?: boolean } = {}): Promise<void> {
+  if (!client) return prisma.$transaction(tx => ensureIncidentWorkflow(entryId, tx, options));
+  const tx = client;
+  await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${entryId} FOR UPDATE`;
+  const entry = await tx.operationalEntry.findUnique({
     where: { id: entryId },
     select: {
       id: true,
@@ -25,8 +28,8 @@ export async function ensureIncidentWorkflow(entryId: string) {
   });
   if (!entry || entry.type !== EntryType.INCIDENCIA) return;
 
-  const ownerId = entry.ownerId ?? entry.createdById;
-  await prisma.$transaction(async (tx) => {
+  const ownerId = entry.ownerId ?? (options.leaveUnassigned ? null : entry.createdById);
+  {
     const task = await tx.task.findFirst({
       where: { entryId: entry.id, deletedAt: null },
       select: { id: true },
@@ -56,7 +59,7 @@ export async function ensureIncidentWorkflow(entryId: string) {
           action: `Dar seguimiento a incidencia #${entry.humanId}: ${entry.title}`,
           nextAction: 'Verificar resolución y cerrar únicamente cuando no queden pendientes.',
           scheduledAt: entry.dueAt,
-          ownerId,
+          ownerId: ownerId ?? entry.createdById,
           createdById: entry.createdById,
           entryId: entry.id,
           taskId: ensuredTask.id,
@@ -68,5 +71,5 @@ export async function ensureIncidentWorkflow(entryId: string) {
       where: { id: entry.id },
       data: { requiresFollowUp: true },
     });
-  });
+  }
 }

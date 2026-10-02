@@ -23,7 +23,7 @@ import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
 import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 
 function refreshOperationalViews(entryId?: string) {
-  revalidatePath('/');
+  revalidatePath('/coordinacion');revalidatePath('/');
   revalidatePath('/libro');
   revalidatePath('/supervision');
   revalidatePath('/incidencias');

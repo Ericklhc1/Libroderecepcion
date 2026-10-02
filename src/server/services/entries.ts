@@ -102,6 +102,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         roomId: input.roomId ?? null,
         priority: input.priority,
         ownerId: input.ownerId ?? null,
+        workAssignedAt: input.ownerId ? new Date() : null,
         shiftId: shift?.id ?? null,
         occurredAt: input.occurredAt ?? new Date(),
         dueAt: input.dueAt ?? null,
@@ -307,7 +308,7 @@ export async function updateEntry(
   return prisma.$transaction(async (tx) => {
     const updated = await tx.operationalEntry.update({
       where: { id: input.id },
-      data,
+      data: { ...data, ...(changes.changed.includes('ownerId') ? { workAssignedAt: input.ownerId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null } : {}) },
       include: entryInclude,
     });
 
@@ -418,6 +419,7 @@ export async function changeEntryStatus(
       where: { id: input.id },
       data: {
         status: input.status,
+        ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now, ...(current.ownerId === user.id ? {workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id} : {}) } : {}),
         resolution: input.resolution ?? current.resolution,
         rootCause: input.rootCause ?? current.rootCause,
         closedAt: input.status === EntryStatus.CERRADO ? now : null,

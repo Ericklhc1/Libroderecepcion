@@ -4,11 +4,11 @@ import type { HousekeepingAccess } from './housekeeping';
 export const HK_WORK_KINDS = ['LIMPIEZA', 'ZONA_COMUN', 'REPOSICION', 'REVISION', 'ATENCION'] as const;
 export type HkWorkKind = (typeof HK_WORK_KINDS)[number];
 export const HK_KIND_LABELS: Record<HkWorkKind, string> = { LIMPIEZA: 'Limpieza de habitación', ZONA_COMUN: 'Limpieza de zona común', REPOSICION: 'Reposición', REVISION: 'Revisión / trabajo crítico', ATENCION: 'Atención especial' };
-export const HK_WORK_ACTIONS = ['ASIGNAR', 'COMENZAR', 'IMPEDIMENTO', 'RETOMAR', 'TERMINAR', 'APROBAR', 'CORREGIR', 'CANCELAR', 'REABRIR', 'MANTENIMIENTO', 'RECONFIRMAR'] as const;
+export const HK_WORK_ACTIONS = ['RECIBIR', 'ASIGNAR', 'COMENZAR', 'IMPEDIMENTO', 'RETOMAR', 'TERMINAR', 'APROBAR', 'CORREGIR', 'CANCELAR', 'REABRIR', 'MANTENIMIENTO', 'RECONFIRMAR'] as const;
 export type HkWorkAction = (typeof HK_WORK_ACTIONS)[number];
-export const HK_WORK_LABELS: Record<string, string> = { PENDIENTE: 'Pendiente', RECIBIDO: 'Pendiente', EN_GESTION: 'En proceso', BLOQUEADO: 'Con impedimento', POR_REVISAR: 'Por revisar', RESUELTO: 'Terminado', CANCELADO: 'Cancelado' };
-export const HK_ACTION_LABELS: Record<HkWorkAction, string> = { ASIGNAR: 'Asignar / reasignar', COMENZAR: 'Comenzar', IMPEDIMENTO: 'Informar impedimento', RETOMAR: 'Retomar', TERMINAR: 'Marcar terminado', APROBAR: 'Aprobar revisión', CORREGIR: 'Devolver para corregir', CANCELAR: 'Cancelar', REABRIR: 'Reabrir', MANTENIMIENTO: 'Solicitar Mantenimiento', RECONFIRMAR: 'Aceptar instrucción actualizada' };
-export const HK_ACTION_PERMISSION: Record<HkWorkAction, PermissionKey> = { ASIGNAR: 'housekeeping.assign', COMENZAR: 'housekeeping.work', IMPEDIMENTO: 'housekeeping.work', RETOMAR: 'housekeeping.work', TERMINAR: 'housekeeping.work', APROBAR: 'housekeeping.inspect', CORREGIR: 'housekeeping.inspect', CANCELAR: 'housekeeping.assign', REABRIR: 'housekeeping.assign', MANTENIMIENTO: 'housekeeping.assign', RECONFIRMAR: 'housekeeping.assign' };
+export const HK_WORK_LABELS: Record<string, string> = { PENDIENTE: 'Pendiente', RECIBIDO: 'Recibido', EN_GESTION: 'En proceso', BLOQUEADO: 'Con impedimento', POR_REVISAR: 'Por revisar', RESUELTO: 'Terminado', CANCELADO: 'Cancelado' };
+export const HK_ACTION_LABELS: Record<HkWorkAction, string> = { RECIBIR: 'Confirmar recepción', ASIGNAR: 'Asignar / reasignar', COMENZAR: 'Comenzar', IMPEDIMENTO: 'Informar impedimento', RETOMAR: 'Retomar', TERMINAR: 'Marcar terminado', APROBAR: 'Aprobar revisión', CORREGIR: 'Devolver para corregir', CANCELAR: 'Cancelar', REABRIR: 'Reabrir', MANTENIMIENTO: 'Solicitar Mantenimiento', RECONFIRMAR: 'Aceptar instrucción actualizada' };
+export const HK_ACTION_PERMISSION: Record<HkWorkAction, PermissionKey> = { RECIBIR: 'housekeeping.work', ASIGNAR: 'housekeeping.assign', COMENZAR: 'housekeeping.work', IMPEDIMENTO: 'housekeeping.work', RETOMAR: 'housekeeping.work', TERMINAR: 'housekeeping.work', APROBAR: 'housekeeping.inspect', CORREGIR: 'housekeeping.inspect', CANCELAR: 'housekeeping.assign', REABRIR: 'housekeeping.assign', MANTENIMIENTO: 'housekeeping.assign', RECONFIRMAR: 'housekeeping.assign' };
 export function hkHas(user: HousekeepingAccess, permission: PermissionKey): boolean {
   return user.roleKey === ROLE_KEYS.SYSTEM_ADMIN || user.permissions.includes(permission) || (permission !== 'housekeeping.view.all' && permission !== 'housekeeping.plan' && user.permissions.includes('housekeeping.manage'));
 }
@@ -19,10 +19,11 @@ export function hkAllowedActions(status: string, assigned: boolean, sourceChange
   if (status === 'POR_REVISAR') return ['APROBAR', 'CORREGIR', 'IMPEDIMENTO', 'CANCELAR'];
   if (status === 'BLOQUEADO') return ['ASIGNAR', ...(assigned ? ['RETOMAR' as const] : []), 'MANTENIMIENTO', 'CANCELAR'];
   if (status === 'EN_GESTION') return ['ASIGNAR', 'IMPEDIMENTO', 'RETOMAR', 'TERMINAR', 'CANCELAR'];
-  return ['ASIGNAR', ...(assigned ? ['COMENZAR' as const, 'IMPEDIMENTO' as const] : []), 'CANCELAR'];
+  return ['ASIGNAR', ...(assigned ? [...(status === 'PENDIENTE' ? ['RECIBIR' as const] : []), 'COMENZAR' as const, 'IMPEDIMENTO' as const] : []), 'CANCELAR'];
 }
 export function hkNextStatus(status: string, action: HkWorkAction, requiresInspection: boolean): string {
   if (!hkAllowedActions(status, true).includes(action) && action !== 'RECONFIRMAR') throw new Error('Esta acción no corresponde al estado del trabajo.');
+  if (action === 'RECIBIR') return 'RECIBIDO';
   if (action === 'ASIGNAR') return status === 'BLOQUEADO' ? 'BLOQUEADO' : 'PENDIENTE';
   if (action === 'REABRIR' || action === 'CORREGIR') return 'PENDIENTE';
   if (action === 'COMENZAR' || action === 'RETOMAR') return 'EN_GESTION';

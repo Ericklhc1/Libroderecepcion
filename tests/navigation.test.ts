@@ -39,6 +39,7 @@ describe('menú principal', () => {
     expect(primary.title).toBeNull();
     expect(primary.items.map((item) => item.href)).toEqual(['/']);
     expect(NAV_GROUPS.find((group) => group.title === 'Operación')?.items.map((item) => item.href)).toEqual([
+      '/coordinacion', // bandeja común con el alcance de cada origen
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
       '/novedades/habitacion', // contexto operativo sobre las 89 habitaciones
       '/caja', // centralización financiera
@@ -86,7 +87,7 @@ describe('visibilidad por rol', () => {
   it('Housekeeping tiene navegación de su área sin lectores generales de Recepción',()=>{
     for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER]){
       const permissions=ROLE_PERMISSIONS[role];const hrefs=visibleNavItems(permissions).map(i=>i.href);
-      expect(hrefs).toEqual(['/admin/housekeeping','/equipo']);
+      expect(hrefs).toEqual(['/coordinacion','/admin/housekeeping','/equipo']);
       expect(visibleNavItems(permissions).filter(i=>i.mobile).map(i=>i.href)).toContain('/admin/housekeeping');
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).toEqual(expect.arrayContaining(['/admin/housekeeping','/equipo']));
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).not.toContain('/libro?clase=entry');
@@ -95,7 +96,7 @@ describe('visibilidad por rol', () => {
 
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas', '/admin/housekeeping']);
+    expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas', '/admin/housekeeping']);
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).toContain('housekeeping.request');
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).not.toContain('housekeeping.assign');
   });

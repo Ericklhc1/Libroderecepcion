@@ -5,6 +5,8 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { canAccessHousekeeping, canManageHousekeeping, housekeepingActions, housekeepingNeedsNote, housekeepingTransition, isHousekeepingClosed, type HousekeepingAction, type HousekeepingStatus } from '@/domain/housekeeping';
 import { hkWorkVisibility, notifyHkWork } from './housekeeping-work';
+import { hotelDateKey } from '@/domain/time';
+import { RECEIPT_MINUTES, receiptDueAt, hkReceiptAvailableAt } from '@/domain/coordination';
 import { notify } from '@/server/notifications';
 import type { GlobalSearchResult } from './global-search';
 
@@ -197,14 +199,18 @@ async function notifyHousekeeping(tx: Prisma.TransactionClient, request: { id: s
 }
 /** Cron durable: one escalation per revision; no fake receipt or automatic closure. */
 export async function escalateHousekeepingRequests(now = new Date()) {
-  const candidates = await prisma.housekeepingRequest.findMany({ where: { isDemo: false, status: { notIn: ['RESUELTO', 'CANCELADO'] }, dueAt: { lt: now }, OR: [{ escalatedVersion: null }, { NOT: { escalatedVersion: { equals: prisma.housekeepingRequest.fields.version } } }] }, orderBy: { dueAt: 'asc' }, take: 100 });
+  const candidates = await prisma.housekeepingRequest.findMany({ where: { isDemo: false, status: { notIn: ['RESUELTO', 'CANCELADO'] }, AND: [{ OR: [{ dueAt: { lt: now } }, { workflowVersion: 1, assignedToId: { not: null }, acknowledgedAt: null, workDate: { lte: hotelDateKey(now) }, workAssignedAt: { lte: new Date(now.getTime() - RECEIPT_MINUTES * 60000) } }] }, { OR: [{ escalatedVersion: null }, { NOT: { escalatedVersion: { equals: prisma.housekeepingRequest.fields.version } } }] }] }, orderBy: { dueAt: 'asc' }, take: 100 });
   let escalated = 0;
   for (const request of candidates) {
     if (request.escalatedVersion === request.version) continue;
+    const dueExpired=Boolean(request.dueAt && request.dueAt < now);
+    const receiptDeadline=request.assignedToId && !request.acknowledgedAt ? receiptDueAt(request.workAssignedAt,hkReceiptAvailableAt(request.workDate)) : null;
+    const receiptExpired=Boolean(receiptDeadline && receiptDeadline <= now);
+    if(!dueExpired && !receiptExpired)continue;
     await prisma.$transaction(async tx => {
       const claimed = await tx.housekeepingRequest.updateMany({ where: { id: request.id, version: request.version, OR: [{ escalatedVersion: null }, { escalatedVersion: { not: request.version } }], status: { notIn: ['RESUELTO', 'CANCELADO'] } }, data: { escalatedVersion: request.version } });
       if (!claimed.count) return;
-      if(request.workflowVersion===1)await notifyHkWork(tx,request,'','Plazo vencido: requiere seguimiento');
+      if(request.workflowVersion===1)await notifyHkWork(tx,request,'',receiptExpired ? 'Trabajo asignado sin confirmar recepción' : 'Plazo vencido: requiere seguimiento');
       else await notifyHousekeeping(tx, request, '', 'Plazo vencido: requiere seguimiento', true);
       escalated++;
     });

@@ -240,6 +240,7 @@ export default async function SupervisionCenterPage({
           <Link href="/supervision/salud" className="rounded-lg bg-white px-3 py-1.5 font-medium text-petrol-700 ring-1 ring-slate-200 hover:bg-slate-50">Salud operativa</Link>
         </nav>
       </header>
+      <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
 
       <nav className="flex flex-wrap gap-2 no-print" aria-label="Atajos del Centro de Supervisión">
         <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Desde mi último turno</a>

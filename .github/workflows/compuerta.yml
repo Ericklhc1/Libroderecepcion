@@ -40,7 +40,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public
       DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
       DIRECT_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
-      AUTH_SECRET: compuerta-local-no-produccion
+      AUTH_SECRET: compuerta-local-no-produccion-solo-datos-sinteticos
       NODE_ENV: test
 
     steps:
@@ -112,3 +112,31 @@ jobs:
         env:
           NODE_ENV: production
         run: npm run build
+
+      - name: Preparar recorridos de navegador de Etapa 1
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          npm install --prefix "$RUNNER_TEMP/aroh-browser" playwright@1.58.2
+          "$RUNNER_TEMP/aroh-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Recorridos autenticados de escritorio y móvil
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" npm run start -- --hostname localhost > /tmp/etapa1-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa1/browser.mjs
+
+      - name: Evidencia de recorridos sin credenciales
+        uses: actions/upload-artifact@v4
+        with:
+          name: etapa1-browser-${{ github.sha }}
+          path: etapa1-browser-results.json
+          if-no-files-found: error

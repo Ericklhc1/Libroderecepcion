@@ -1,3 +1,22 @@
+## 02/10/2026 · Continuación de Etapa 1 / PR #241
+
+- Se mantiene autorización de implementación y preparación de PR; sin merge ni despliegue. Base main 52f7f229, último commit anterior 622ce10b con Compuerta aprobada: 1345 pruebas + navegador escritorio/ancho móvil.
+- Corregidas las seis observaciones de revisión: sin plazo al quitar responsable, exclusión defensiva de filas sin dueño en cron, recepción al iniciar una novedad propia, asignación fechada al organizar HK histórico, fecha de disponibilidad HK compartida por pantalla/cron y escalamiento a coordinadores autorizados del área destinataria.
+- Fronti cataloga Coordinación como módulo operativo y reutiliza el lector filtrado de la bandeja, incluyendo cuentas exclusivas HK. Regresiones para acceso y filtros; no añade acciones de IA ni permisos administrativos.
+- Se añaden siete regresiones PostgreSQL. Tipos/lint y Compuerta del nuevo commit deben verificarse antes de integrar. El navegador registra tiempos separados de navegación, respuesta POST y estado visible para investigar la demora de unos 30 s; todavía no se atribuye causa.
+
+## 02/10/2026 · v1.46.0 · Etapa 1 en rama, sin merge ni despliegue
+
+- Rama `feat/etapa-1-operacion-conectada` sobre main 52f7f229. Usuario autoriza implementación y PR; prohíbe merge/despliegue.
+- `/coordinacion` agrupa fuentes existentes, confirma recepción, reasigna con siguiente acción y conserva continuidad. Lectura de horarios con permisos; sin gestión PMS, asistencia o descuentos de descansos.
+- HK separa recepción/inicio y recepción/aceptación de relevo. Mantenimiento exige gravedad y crea continuidad atómica mediante servicio canónico. No se generan movimientos de Caja/llaves.
+- Migración aditiva `20261002093000_operacion_conectada`; privacidad de nuevos lectores y cron fail-closed son dependencias concretas, no cierre general de H01/H08. Reconciliar estos PR antes de publicar y confirmar secreto de cron.
+- Tipos y 111 pruebas locales de dominio/navegación/contexto aprobados. Compuerta debe ejecutar integración y recorridos autenticados en PostgreSQL sintético; no hay servidor PostgreSQL local ni pruebas sobre Neon.
+- Primera Compuerta: migración/lint/tipos aprobados, 1340 pruebas aprobadas y una omisión previa; falló únicamente cobertura del tutorial por la ruta nueva. Añadido paso de Coordinación. Segunda revisión añade horario futuro, tareas con origen cerrado, recepción HK y menú real; repetir Compuerta.
+- Segunda Compuerta: 1343 pruebas aprobadas (1 omisión previa), migración/lint/tipos/build aprobados. Navegador detectó sesión sintética rechazada: AUTH_SECRET de CI era más corto que el mínimo real. Corregida sólo la clave ficticia de CI; la autenticación de producción permanece intacta. Repetir navegador y suite con agregados por área, paginación y seguimientos independientes.
+- Tercera Compuerta: 1345 pruebas aprobadas (1 omisión previa), migración/lint/tipos/build aprobados. Navegador completó asignación y recepción y comprobó menú reducido; la espera de Resolver observaba el cambio transitorio a «Guardando…» y navegaba antes de terminar la acción. Corregida la prueba para esperar respuesta POST y estado Completada antes de consultar Resultados; sin relajar ninguna comprobación. Evidencia final en PR #241.
+- Guía: `docs/ETAPA_1_OPERACION_CONECTADA.md`. Carga por área completa y métricas temporales etiquetadas por página/muestra. Sin datos históricos inventados. Pendientes globales de auditoría conservados.
+
 ## 01/10/2026 · v1.45.0 · Housekeeping diario por cargo y área
 
 - Sustituye la portada de avisos por trabajo del día, vistas por cargo, filtros, ejecución, inspección de otra persona, impedimentos, correcciones y continuidad. Usa HousekeepingRequest existente; avisos y pruebas históricas conservan folio/historial. Organización explícita incorpora avisos operativos antiguos al circuito nuevo.

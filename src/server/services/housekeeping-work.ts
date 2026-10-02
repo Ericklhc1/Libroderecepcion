@@ -1,5 +1,5 @@
 import 'server-only';
-import { Prisma, type Priority } from '@prisma/client';
+import { Prisma, type Priority, type Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
@@ -7,6 +7,7 @@ import { canAccessHousekeeping } from '@/domain/housekeeping';
 import { hkHas, hkAllowedActions, hkNextStatus, hkInspectionRequired, HK_ACTION_PERMISSION, HK_NOTE_REQUIRED, type HkWorkAction, type HkWorkKind } from '@/domain/housekeeping-work';
 import { hotelDateKey, hotelWallDateTime, addCalendarDateDays, calendarDateKey } from '@/domain/time';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
+import { ensureIncidentWorkflow } from './incident-workflow';
 import { notify } from '@/server/notifications';
 
 const ADMIN = ROLE_KEYS.SYSTEM_ADMIN;
@@ -103,7 +104,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, ...sourceScope(user, input.departmentId, canAssign) }, select: { id: true, roomId: true } }) : null;
     if(source?.roomId&&room?.id!==source.roomId)throw new RuleError('La habitación debe coincidir con la novedad de origen.');
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
-    const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
+    const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, workAssignedAt: input.assignedToId ? new Date() : null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
     await record(tx, user, request.id, request.humanId, 'CREAR', 'Trabajo del día'); await notifyHkWork(tx, request, user.id, 'Nuevo trabajo'); return request;
   }); } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -113,7 +114,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     } throw error;
   }
 }
-export async function changeHkWork(user: CurrentUser, input: { id: string; version: number; action: HkWorkAction; note?: string; assignedToId?: string; dueAt?: Date | null }) {
+export async function changeHkWork(user: CurrentUser, input: { id: string; version: number; action: HkWorkAction; note?: string; assignedToId?: string; dueAt?: Date | null; severity?: Severity }) {
   hasAccess(user); const note = input.note?.trim() || '';
   if (HK_NOTE_REQUIRED.includes(input.action) && !note) throw new RuleError('Indica el motivo, la instrucción o el resultado.');
   return prisma.$transaction(async tx => {
@@ -133,10 +134,12 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); }
     let maintenanceEntryId = current.maintenanceEntryId;
     if (input.action === 'MANTENIMIENTO') {
+      if (!input.severity) throw new RuleError('Indica la gravedad de la incidencia.');
       if (maintenanceEntryId) throw new RuleError('Ya existe una incidencia vinculada a este trabajo.');
       const area = await tx.department.findUnique({ where: { key: 'MANTENIMIENTO', active: true } });
       if (!area) throw new RuleError('Mantenimiento no está disponible.');
-      const entry = await tx.operationalEntry.create({ data: { type: 'INCIDENCIA', title: `Housekeeping #${current.humanId}: ${current.location ?? 'Revisión'}`, description: note, departmentId: area.id, roomId: current.roomId, priority: current.priority, createdById: user.id } });
+      const entry = await tx.operationalEntry.create({ data: { type: 'INCIDENCIA', title: `Housekeeping #${current.humanId}: ${current.location ?? 'Revisión'}`, description: note, severity: input.severity, departmentId: area.id, roomId: current.roomId, priority: current.priority, createdById: user.id } });
+      await ensureIncidentWorkflow(entry.id, tx, { leaveUnassigned: true });
       maintenanceEntryId = entry.id;
       await tx.auditLog.create({ data: { entity: 'OperationalEntry', entityId: entry.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Incidencia #${entry.humanId} desde Housekeeping #${current.humanId}` } });
       const technicians = await tx.user.findMany({ where: { ...membership(area.id), role: { permissions: { some: { permission: { key: { in: ['incident.manage','incident.create','entry.create'] } } } } } }, select: { id: true } });
@@ -144,8 +147,9 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     }
     const next = input.action === 'RECONFIRMAR' && changed && current.status === 'POR_REVISAR' ? 'PENDIENTE' : hkNextStatus(current.status, input.action, current.requiresInspection); const now = new Date();
     const data: Prisma.HousekeepingRequestUncheckedUpdateManyInput = { status: next, version: { increment: 1 }, maintenanceEntryId,
-      ...(input.action === 'ASIGNAR' ? { assignedToId: input.assignedToId, acknowledgedAt: null, sourceVersion: null, finishedAt: null, inspectedAt: null, inspectedById: null, startedAt: null, blockReason: current.status === 'BLOQUEADO' ? current.blockReason : null, resolution: null, ...(input.dueAt ? { dueAt: input.dueAt } : {}) } : {}),
-      ...(['COMENZAR','RETOMAR'].includes(input.action) ? { startedAt: current.startedAt ?? now, acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null, blockReason: null } : {}),
+      ...(input.action === 'ASIGNAR' ? { assignedToId: input.assignedToId, workAssignedAt: now, acknowledgedAt: null, sourceVersion: null, finishedAt: null, inspectedAt: null, inspectedById: null, startedAt: null, blockReason: current.status === 'BLOQUEADO' ? current.blockReason : null, resolution: null, ...(input.dueAt ? { dueAt: input.dueAt } : {}) } : {}),
+      ...(input.action === 'RECIBIR' ? { acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null } : {}),
+      ...(['COMENZAR','RETOMAR'].includes(input.action) ? { startedAt: current.startedAt ?? now, acknowledgedAt: current.acknowledgedAt ?? now, sourceVersion: current.sourceEntry?.updatedAt ?? null, blockReason: null } : {}),
       ...(input.action === 'RECONFIRMAR' ? { acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null, ...(changed && current.status === 'POR_REVISAR' ? { finishedAt:null,inspectedAt:null,inspectedById:null,resolution:null } : {}) } : {}),
       ...(input.action === 'IMPEDIMENTO' ? { blockReason: note } : {}),
       ...(input.action === 'TERMINAR' ? { finishedAt: now, resolution: note, blockReason: null } : {}),
@@ -274,8 +278,23 @@ export async function organizeLegacyHkWork(user:CurrentUser,input:{id:string;ver
     if(input.roomId&&!room||input.workKind==='LIMPIEZA'&&!room)throw new RuleError('Selecciona la habitación que requiere limpieza.');
     if(!room&&!current.location?.trim())throw new RuleError('Este aviso no tiene ubicación. Registra un trabajo nuevo con la zona e indica el folio de este aviso.');
     if(input.assignedToId)await validateWorker(tx,input.departmentId,input.assignedToId,input.workDate);
-    const result=await tx.housekeepingRequest.updateMany({where:{id:current.id,version:input.version,workflowVersion:0},data:{workflowVersion:1,departmentId:input.departmentId,workDate:input.workDate,workKind:input.workKind,roomId:room?.id,location:room?.number??current.location,effortMinutes:input.effortMinutes,requiresInspection:hkInspectionRequired(input.workKind,input.requiresInspection),assignedToId:input.assignedToId||null,status:'PENDIENTE',acknowledgedAt:null,sourceVersion:null,blockReason:null,resolution:null,version:{increment:1}}});
+    const result=await tx.housekeepingRequest.updateMany({where:{id:current.id,version:input.version,workflowVersion:0},data:{workflowVersion:1,departmentId:input.departmentId,workDate:input.workDate,workKind:input.workKind,roomId:room?.id,location:room?.number??current.location,effortMinutes:input.effortMinutes,requiresInspection:hkInspectionRequired(input.workKind,input.requiresInspection),assignedToId:input.assignedToId||null,workAssignedAt:input.assignedToId?new Date():null,status:'PENDIENTE',acknowledgedAt:null,sourceVersion:null,blockReason:null,resolution:null,version:{increment:1}}});
     if(!result.count)throw new RuleError('Otra persona organizó este aviso. Actualiza.');
     await tx.housekeepingEvent.create({data:{requestId:current.id,actorId:user.id,action:'ORGANIZAR',fromStatus:current.status,toStatus:'PENDIENTE',note:input.note}});await record(tx,user,current.id,current.humanId,'ORGANIZAR',input.note);return{id:current.id};
+  });
+}
+
+/** Receipt records transfer of information; acceptance records responsibility for reviewing it. */
+export async function acceptHkHandover(user: CurrentUser, id: string) {
+  return prisma.$transaction(async tx => {
+    const row = await tx.housekeepingHandover.findUnique({ where: { id } });
+    if (!row) throw new NotFoundError();
+    await requireCapability(user, row.departmentId, 'housekeeping.assign', tx);
+    if (row.receivedById !== user.id) throw new ForbiddenError('La aceptación corresponde a quien recibió el relevo.');
+    if (row.acceptedAt) return row;
+    const changed = await tx.housekeepingHandover.updateMany({ where: { id, receivedById: user.id, acceptedAt: null }, data: { acceptedAt: new Date(), acceptedById: user.id } });
+    if (!changed.count) throw new RuleError('El relevo cambió. Actualiza.');
+    await record(tx, user, id, null, 'ACEPTAR_CONTINUIDAD', 'Pendientes y custodias revisados. Cada trabajo conserva responsable, recepción y resultado propios.');
+    return { id };
   });
 }

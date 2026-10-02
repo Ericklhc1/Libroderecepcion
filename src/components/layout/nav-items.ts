@@ -44,6 +44,7 @@ export type NavItem = {
 export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
+  { href: '/coordinacion', label: 'Coordinación', icon: 'book' },
   { href: '/', label: 'Inicio', icon: 'home', mobile: true },
   {
     href: '/libro?clase=entry',

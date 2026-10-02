@@ -228,6 +228,8 @@ export async function runFactoryReset(
         data: { stayId: null, status: 'DISPONIBLE', assignedAt: null, assignedById: null },
       });
 
+      count('Historial de objetos olvidados', await tx.lostFoundEvent.deleteMany());
+      count('Objetos olvidados', await tx.lostFoundItem.deleteMany());
       count('Coberturas Housekeeping', await tx.housekeepingDelegation.deleteMany());
       count('Relevos Housekeeping', await tx.housekeepingHandover.deleteMany());
       count('Disponibilidad Housekeeping', await tx.housekeepingDayMember.deleteMany());

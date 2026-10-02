@@ -39,6 +39,8 @@ export async function resetOperationalData() {
     prisma.scheduleCollaborator.deleteMany(),
     prisma.scheduleAreaGrant.deleteMany(),
     prisma.scheduleCoverageRule.deleteMany(),
+    prisma.lostFoundEvent.deleteMany(),
+    prisma.lostFoundItem.deleteMany(),
     prisma.housekeepingDelegation.deleteMany(),
     prisma.housekeepingHandover.deleteMany(),
     prisma.housekeepingDayMember.deleteMany(),

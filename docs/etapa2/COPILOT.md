@@ -27,3 +27,15 @@ https://github.com/Ericklhc1/Libroderecepcion/pull/244#pullrequestreview-5392864
 | Fallo global del barrido podía mantener exclusiones de detectores anteriores | Cron pasa explícitamente `usePolicyOverrides=false` al recuperar después de un fallo | Contrato cron + PostgreSQL con una política activa que normalmente excluye el registro; aprobados en CI 37019633610 |
 
 Dos revisiones recibidas realmente; sin saldo/coste en créditos consultable. No se pidió una tercera revisión redundante. CI 37019633610 acredita las regresiones nativas. El recorrido de selector/editado pasó en CI 37020877716; el bot no ha revisado este commit. No se atribuye la implementación a Copilot.
+
+
+## Tercera revisión recibida · 2 de octubre 15:37 UTC
+
+Revisión 5393737284 sobre d7ee696a, solicitada para el bloque nuevo de delegaciones finitas. Copilot no implementó cambios. Nuevos hallazgos:
+
+- 4167283449: panel Fronti abierto interceptaba casillas en la prueba de políticas. Reproducido en CI 37027400679 y corregido minimizando el panel mediante su botón normal. Sin forzar clics ni ampliar tiempos.
+- 4167283512: dos catálogos editables podían divergir. Se comprobó que coincidían y se dejó una sola fuente `src/domain/fronti-action-catalog.json`, importada y validada en ejecución y leída por el generador de matriz. El servidor rechaza discrepancias entre catálogo y handlers al cargar.
+
+Copilot reconoce resueltos versión obligatoria de política y preservación de selección no disponible. Mantiene abiertas revisión atómica, fallback y cobertura. Las pruebas actuales acreditan CAS/bloqueo para los procedimientos detallados en la matriz y recuperación del detector cuando falla el barrido; no acreditan todas las variantes. No se cierran ni descartan esas observaciones por la mera existencia de pruebas parciales. La acreditación general permanece pendiente.
+
+La revocación concurrente idempotente (un solo registro de auditoría) y la espera del resultado correcto en la medición de navegador son correcciones del agente responsable posteriores a la revisión. Nueva Compuerta necesaria. Consumo observado: tres revisiones recibidas; saldo/coste en créditos no consultable. Sin agente de programación ni sobreconsumo habilitado.

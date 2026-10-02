@@ -8,7 +8,7 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 136,
+      "passed": 137,
       "files": 16,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
@@ -18,7 +18,7 @@
     "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
   },
   "pendingValidation": [
-    "final CI including two TSX rendering regressions; functional browser journeys already passed",
+    "Final CI after finite delegation and canonical catalog changes; previous head 671632bd passed 1398 tests including TSX and desktop/mobile browser",
     "physical Safari/iPhone",
     "all individual adapter procedure journeys",
     "production latency observation after separately authorized release"
@@ -227,7 +227,12 @@
     "reviewId": 5391944473,
     "findings": 7,
     "implementationAttributed": false,
-    "observedConsumption": "1 review received; credit cost and live balance inaccessible"
+    "observedConsumption": "3 reviews received; credit cost and live balance inaccessible",
+    "reviewIds": [
+      5391944473,
+      5392864566,
+      5393737284
+    ]
   },
   "coverage": {
     "serverActionsInventoried": 212,
@@ -253,5 +258,40 @@
     "copilotCreditsConsumed": null,
     "copilotBalance": null,
     "paidOverageEnabled": false
+  },
+  "finiteDelegations": {
+    "productionTouched": false,
+    "firstGateRun": 37027400679,
+    "commit": "d7ee696a36964b1ed776c452fe080fad89d55557",
+    "testsPassed": 1407,
+    "testsSkipped": 1,
+    "migrations": "passed on disposable PostgreSQL 16",
+    "typesLintBuild": "passed",
+    "browser": "desktop delegation passed; later policy form blocked by open panel. Test corrected to minimize normally, no forced clicks or relaxed timeouts. Full repeat required.",
+    "concurrentRevocation": "Single cancellation audit; native running step may finish, pending steps cancelled. Added to following gate.",
+    "authorization": "Finite exact parameters, 1-12 actions, each once, maximum duration 31 days. Current authenticated owner only. No autonomous scheduling.",
+    "limitsPending": [
+      "dynamic record selection",
+      "reusable cumulative budgets",
+      "custom stop conditions",
+      "all procedure variants"
+    ],
+    "catalog": "Single src/domain/fronti-action-catalog.json used by runtime and matrix; handler correspondence checked at load.",
+    "verifiedGate": {
+      "run": 37028336251,
+      "head": "0012a50f300a6e89e72b6b10da27a3e0c2952d3d",
+      "status": "success",
+      "testsPassed": 1407,
+      "skipped": 1,
+      "desktopMobileBrowser": "passed including real chat, exact scope, creation without effects, retry and revocation",
+      "visibleExecutionMs": {
+        "1280": 114,
+        "390": 108
+      },
+      "budgetMs": 3000,
+      "artifact": 11235934028,
+      "physicalSafari": false
+    },
+    "catalogGate": "Final gate required after consolidation; result recorded in PR body."
   }
 }

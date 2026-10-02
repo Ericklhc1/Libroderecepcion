@@ -12,7 +12,7 @@ La CI [37020877716](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/3
 
 Los presupuestos son 2000 ms para respuesta completa de comando exacto sin IA y 3000 ms hasta resultado visible. No se amplían esperas para aprobar. Chromium con ancho móvil no acredita Safari/iPhone físico. No hay medición válida todavía de pasos manuales evitados o ahorro frente a Etapa 1.
 
-Última Compuerta completa anterior a delegaciones: [37022894691](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/37022894691), 1398 pruebas aprobadas y una omisión previa. Las delegaciones finitas de este bloque requieren su propia Compuerta; no se atribuye a esa corrida anterior su validación.
+Última Compuerta completa anterior a delegaciones: [37022894691](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/37022894691), 1398 pruebas aprobadas y una omisión previa. Las delegaciones finitas aprobaron después su propia [Compuerta 37028336251](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/37028336251): 1407 pruebas y una omisión previa, migración/build y recorridos de chat, ejecución, reintento, alcance y revocación en ambos anchos. Resultado visible 114 ms escritorio / 108 ms móvil. El ajuste posterior de catálogo único requiere Compuerta final, documentada en el PR.
 
 ## Guía de uso de Fronti
 

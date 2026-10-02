@@ -1,7 +1,7 @@
 """Inventory every exported Server Action; never infer executable coverage from a module name."""
 import json, re
 from pathlib import Path
-catalog = {a['name']: a for a in json.loads(Path('scripts/etapa2/catalog.json').read_text())}
+catalog = {a['name']: a for a in json.loads(Path('src/domain/fronti-action-catalog.json').read_text())}
 evidence = {
  'saveAutomationAction':'Crear versión en pausa mediante plan Fronti; rechaza campos parciales; etapa2-execution.test.ts (nueva Compuerta requerida)',
  'simulateAutomationAction':'Simular sin tareas/avisos y conservar resultado privado; etapa2-execution.test.ts (nueva Compuerta requerida)',

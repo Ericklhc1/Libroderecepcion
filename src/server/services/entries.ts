@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {
   AuditAction,
@@ -268,11 +269,13 @@ export async function updateEntry(
       rootCause?: string | null;
       resolution?: string | null;
     },
+  expectedRevision?: string,
 ) {
   const current = await prisma.operationalEntry.findFirst({
     where: { id: input.id, deletedAt: null },
   });
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
   if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
     throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
   }
@@ -307,7 +310,7 @@ export async function updateEntry(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.operationalEntry.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: { ...data, ...(changes.changed.includes('ownerId') ? { workAssignedAt: input.ownerId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null } : {}) },
       include: entryInclude,
     });
@@ -360,11 +363,13 @@ export async function changeEntryStatus(
     resolution?: string | null;
     rootCause?: string | null;
   },
+  expectedRevision?: string,
 ) {
   const current = await prisma.operationalEntry.findFirst({
     where: { id: input.id, deletedAt: null },
   });
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
   if (current.status === input.status) return current;
 
   const closing =
@@ -416,7 +421,7 @@ export async function changeEntryStatus(
   const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalEntry.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt:current.updatedAt },
       data: {
         status: input.status,
         ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now, ...(current.ownerId === user.id ? {workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id} : {}) } : {}),
@@ -519,15 +524,17 @@ export async function changeEntryStatus(
 export async function softDeleteEntry(
   user: CurrentUser,
   input: { id: string; reason: string },
+  expectedRevision?: string,
 ) {
   const current = await prisma.operationalEntry.findFirst({
     where: { id: input.id, deletedAt: null },
   });
   if (!current) throw new NotFoundError('El registro no existe o ya fue eliminado.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
 
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.operationalEntry.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: {
         deletedAt: new Date(),
         deletedById: user.id,
@@ -561,15 +568,17 @@ export async function softDeleteEntry(
 export async function restoreEntry(
   user: CurrentUser,
   input: { id: string; reason?: string | null },
+  expectedRevision?: string,
 ) {
   const current = await prisma.operationalEntry.findFirst({
     where: { id: input.id, NOT: { deletedAt: null } },
   });
   if (!current) throw new NotFoundError('El registro no está eliminado.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
 
   return prisma.$transaction(async (tx) => {
     const restored = await tx.operationalEntry.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
     await recordAudit(

@@ -1,0 +1,14 @@
+# Sólo datos sintéticos; sin volúmenes persistentes ni secretos de producción.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: libro
+      POSTGRES_PASSWORD: libro_test
+      POSTGRES_DB: libro_test
+    ports: ["127.0.0.1:5432:5432"]
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U libro -d libro_test"]
+      interval: 5s
+      retries: 10

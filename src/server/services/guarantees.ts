@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {
   AuditAction,
@@ -266,8 +267,11 @@ export async function updateGuarantee(
     currency?: string;
     notes?: string | null;
   },
+  expectedRevision?:string,
 ): Promise<{ id: string }> {
   const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${input.id} FOR UPDATE`;
+    if(expectedRevision)assertAuthorizedRevision(expectedRevision,await tx.guarantee.findUnique({where:{id:input.id}}));
     const guarantee = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },
       include: {
@@ -447,10 +451,13 @@ export async function changeGuaranteeState(
     removeSettledCash?: boolean;
     settlementConcept?: string | null;
   },
+  expectedRevision?:string,
 ): Promise<{ id: string }> {
   const shift = await getMyOpenShift(user.id);
 
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${input.id} FOR UPDATE`;
+    if(expectedRevision)assertAuthorizedRevision(expectedRevision,await tx.guarantee.findUnique({where:{id:input.id}}));
     const guarantee = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },
       select: {
@@ -672,10 +679,13 @@ export async function changeGuaranteeState(
 export async function softDeleteGuarantee(
   user: CurrentUser,
   input: { id: string; reason: string },
+  expectedRevision?:string,
 ): Promise<void> {
   await assertGuaranteeCanBeDeleted(input.id);
 
   const guarantee = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${input.id} FOR UPDATE`;
+    if(expectedRevision)assertAuthorizedRevision(expectedRevision,await tx.guarantee.findUnique({where:{id:input.id}}));
     const found = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },
       select: {

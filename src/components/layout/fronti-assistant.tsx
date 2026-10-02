@@ -1,4 +1,5 @@
 'use client';
+import { FrontiSourceLinks } from './fronti-source-links';
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -275,6 +276,7 @@ export function FrontiAssistant() {
     try {
       const payload = await request({
         message: content,
+        requestKey: crypto.randomUUID(),
         pageContext: {
           pathname,
           search: window.location.search,
@@ -356,7 +358,7 @@ export function FrontiAssistant() {
     <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
-          className="surface-enter pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
+          className="surface-enter pointer-events-auto absolute bottom-[calc(var(--mobile-nav-height,4rem)+4.5rem)] left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-16"
           aria-label={config.displayName}
         >
           <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
@@ -404,13 +406,13 @@ export function FrontiAssistant() {
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-5 ${
+                  className={`max-w-[88%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-5 ${
                     message.role === 'user'
                       ? 'rounded-br-md bg-petrol-800 text-white'
                       : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'
                   }`}
                 >
-                  {message.content}
+                  <FrontiSourceLinks text={message.content} />
                 </div>
               </div>
             ))}
@@ -435,7 +437,7 @@ export function FrontiAssistant() {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => setConfirmations((current) => current.filter((candidate) => candidate.token !== item.token))}
+                    onClick={() => { if (item.token.startsWith('fronti-plan:')) void request({ cancelExecutionId: item.token.slice(12) }).then(() => setConfirmations(current => current.filter(candidate => candidate.token !== item.token))).catch(error => addFronti(String(error))); else setConfirmations(current => current.filter(candidate => candidate.token !== item.token)); }}
                     className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
                   >
                     Cancelar
@@ -514,11 +516,8 @@ export function FrontiAssistant() {
       ) : (
         <button
           type="button"
-          onClick={() => {
-            setOpen(true);
-            requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
-          }}
-          className="surface-enter pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
+          onClick={() => window.dispatchEvent(new CustomEvent('fronti:open'))}
+          className="surface-enter pointer-events-auto absolute bottom-[calc(var(--mobile-nav-height,4rem)+4.5rem)] right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
           aria-label={`Abrir ${config.displayName}`}
           title={config.displayName}
         >

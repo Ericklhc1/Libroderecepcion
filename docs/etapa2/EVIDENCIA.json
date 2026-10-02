@@ -1,0 +1,342 @@
+{
+  "date": "2026-10-02",
+  "productionTouched": true,
+  "stage1": {
+    "pr": 241,
+    "state": "merged",
+    "baseCommit": "50fb561eed36586219139f61a6aaa905023ab5a2",
+    "mergeCommit": "8fcfe2a0966c352ed9eb600ff051a963b6fc35fa"
+  },
+  "localValidation": {
+    "tests": {
+      "passed": 143,
+      "files": 18,
+      "kind": "domain/context/mocked",
+      "command": "vitest run --config vitest.etapa2-domain.config.mts"
+    },
+    "types": "passed",
+    "lint": "passed with 2 pre-existing warnings",
+    "build": "Latest revision requires CI; previous complete gate 37029291952 passed normal build"
+  },
+  "pendingValidation": [
+    "Compuerta after resolving dependency onto main",
+    "Production version/SHA and authenticated cron verification after release",
+    "physical Safari/iPhone",
+    "remaining individual adapter journeys"
+  ],
+  "github": {
+    "upload": "authorized after initial rejection; completed",
+    "remoteBranch": "feat/etapa-2-fronti-automatizacion",
+    "pr": 244,
+    "url": "https://github.com/Ericklhc1/Libroderecepcion/pull/244",
+    "draft": false,
+    "actionsRuns": [
+      {
+        "id": 37007985785,
+        "result": "failure",
+        "passed": 1367,
+        "skipped": 1,
+        "failed": 1,
+        "finding": "Retry alias lost; corrected with FrontiExecutionRequest."
+      },
+      {
+        "id": 37008586461,
+        "result": "failure",
+        "passed": 1370,
+        "skipped": 1,
+        "failed": 2,
+        "finding": "Synthetic key uppercase lookup and synthetic department cleanup; corrected, rerun pending."
+      },
+      {
+        "id": 37009588380,
+        "result": "browser step timeout",
+        "passed": 1378,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "navigation 276 ms; no completed flow; step exceeded 3 minutes. Adding bounded locator waits and separate response/visible timing, not increasing timeout."
+      },
+      {
+        "id": 37010590281,
+        "result": "browser step timeout",
+        "passed": 1379,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Navigation 356 ms, heading and navigation controls verified; first action still stalled. Body completion will be observed separately from actual DOM result; 3-second visible budget retained."
+      },
+      {
+        "id": 37011929221,
+        "result": "browser failure",
+        "passed": 1380,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "POST headers 164 ms; actual DOM still Guardando after 10165 ms. Response body pending. Visible budget 3000 ms FAILED.",
+        "artifact": 11227988153
+      },
+      {
+        "id": 37013449567,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "POST headers 169 ms. Server end 98 ms after first write; browser streamed data but did not finish; actual DOM still stale after 10171 ms. Investigating completion/transition."
+      },
+      {
+        "id": 37014758151,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Complete Flight payload: 39725 bytes, no missing references, successful action result; server finish/close 67 ms. UI remained stale after 10137 ms."
+      },
+      {
+        "id": 37015341972,
+        "result": "browser failure",
+        "passed": 1381,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Locked Chromium 153.0.8010.12: assignment visible in 267 ms, receipt still Guardando after 10 s. Browser aborted completed Flight streams; navigation correction requires next gate."
+      },
+      {
+        "id": 37016248539,
+        "result": "browser failure",
+        "passed": 1384,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Next redirect also stalled with full RSC response. No latency fix accredited. Replace only UI transport with same-origin JSON/native actions and document navigation; next gate pending."
+      },
+      {
+        "id": 37017313077,
+        "result": "browser failure in Fronti launcher",
+        "passed": 1389,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": {
+          "coordination": "passed desktop 1280 and mobile width 390",
+          "visibleMilliseconds": {
+            "assign1280": 324,
+            "receive1280": 503,
+            "resolve1280": 553,
+            "assign390": 233,
+            "receive390": 942,
+            "resolve390": 260
+          },
+          "budgetMilliseconds": 3000,
+          "fronti": "Exact API and private history reached; chat launcher overlapped mobile Fronti launcher. Not a complete Fronti journey."
+        }
+      },
+      {
+        "id": 37018681008,
+        "result": "browser failure in policy selector",
+        "passed": 1391,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Coordination desktop/mobile passed again. Fronti chat command visible passed at 1280 px; policy form selector Área lacked an unambiguous accessible label. Corrected; complete policy/mobile Fronti journey still pending."
+      },
+      {
+        "id": 37019633610,
+        "result": "browser failure opening policy editor",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": {
+          "coordination": "desktop/mobile passed",
+          "frontiDesktopApiMs": 125,
+          "frontiDesktopVisibleChatMs": 142,
+          "policy": "Save paused and no-effects simulation passed; editor link did not expose current responsible field. Use explicit document navigation to reload current policy/options; rerun pending."
+        }
+      },
+      {
+        "id": 37020877716,
+        "head": "e81797e25a92e1e7c33e044b241b13cd66f1a69e",
+        "result": "success",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "migrations": "PostgreSQL 16 synthetic passed",
+        "build": "passed",
+        "browser": {
+          "coordination": "assign/receive/resolve at 1280 and 390 passed",
+          "visibleMilliseconds": [
+            313,
+            257,
+            608,
+            476,
+            234,
+            278
+          ],
+          "frontiApiMilliseconds": {
+            "1280": 148,
+            "390": 140
+          },
+          "frontiVisibleMilliseconds": {
+            "1280": 182,
+            "390": 152
+          },
+          "policies": "save paused, simulate without tasks/notifications, preserve unavailable selected area/person, pause, revoke, retain history: passed at both widths",
+          "physicalSafari": false
+        },
+        "artifactId": 11233256546,
+        "artifactExpiresAt": "2026-10-09T14:41:46Z"
+      },
+      {
+        "id": 37021985729,
+        "head": "bf80facd69be7ada553bbcd3da01720d92e951a6",
+        "result": "success",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "migrations": "passed",
+        "build": "passed",
+        "browser": {
+          "coordination": "desktop/mobile passed",
+          "frontiApiMilliseconds": {
+            "1280": 640,
+            "390": 138
+          },
+          "frontiVisibleMilliseconds": {
+            "1280": 190,
+            "390": 141
+          },
+          "policySaveVisibleMilliseconds": {
+            "1280": 210,
+            "390": 200
+          },
+          "frontiResultLink": "click opens own completed procedure at both widths",
+          "policies": "complete save/simulate/no-effects/unavailable-options/pause/revoke journeys passed",
+          "physicalSafari": false
+        },
+        "artifactId": 11233862914,
+        "artifactExpiresAt": "2026-10-09T14:50:15Z",
+        "testSelectionFinding": "Two TSX rendering tests passed locally but were excluded by CI *.test.ts glob; changed to *.test.{ts,tsx} and rerun required."
+      },
+      {
+        "id": 37037311294,
+        "head": "0e114e0e891321f7007bf35dd7e5b8e5e53189fe",
+        "result": "failure",
+        "passed": 1418,
+        "failed": 4,
+        "skipped": 1,
+        "migrations": "Applied to disposable PostgreSQL 16; DYNAMIC inserts fail old authorization CHECK",
+        "build": "skipped",
+        "browser": "skipped",
+        "finding": "Constraint correction prepared locally; next CI required"
+      },
+      {
+        "id": 37039196791,
+        "head": "e1e878758fd7d099951801b13f4a29dd1acd05bc",
+        "result": "success",
+        "passed": 1424,
+        "skipped": 1,
+        "failed": 0,
+        "files": 153,
+        "migrations": "PostgreSQL 16 disposable passed",
+        "typesLintBuild": "passed; two pre-existing lint warnings",
+        "browser": "Authenticated Chromium desktop1280/mobile390: coordination, exact chat, finite/dynamic delegation, indicators and paused policy journeys passed",
+        "artifact": 11242060533,
+        "expiresAt": "2026-10-09T17:17:56Z"
+      }
+    ]
+  },
+  "copilot": {
+    "reviewRequested": true,
+    "reviewReceived": true,
+    "balance": "not accessible; owner historical reference 1500 included / 0 consumed",
+    "reviewId": 5391944473,
+    "findings": 7,
+    "implementationAttributed": false,
+    "observedConsumption": "4 reviews received; credit cost and live balance inaccessible",
+    "reviewIds": [
+      5391944473,
+      5392864566,
+      5393737284,
+      5394563088
+    ],
+    "quotaResponse": {
+      "id": 5394647977,
+      "sha": "e1e878758fd7d099951801b13f4a29dd1acd05bc",
+      "status": "review quota exhausted; not a fifth technical review"
+    }
+  },
+  "coverage": {
+    "serverActionsInventoried": 213,
+    "adaptersConnected": 184,
+    "generalCoverageAccredited": false,
+    "httpMethodsInventoried": 60
+  },
+  "copilotFollowup": {
+    "reviewId": 5392864566,
+    "receivedAt": "2026-10-02T14:16:26Z",
+    "resolvedPriorFindings": 6,
+    "newFindings": 4,
+    "remainingPriorFinding": "individual adapter coverage",
+    "corrections": "Native authorization/CAS, required versions, preserved selections and fallback regressions passed CI 37020877716; complete adapter coverage remains pending."
+  },
+  "observedDevelopmentConsumption": {
+    "snapshot": "Before run 37020877716 completed",
+    "completedGateRuns": 13,
+    "cancelledIncluded": 1,
+    "workflowElapsedMinutes": 72.3,
+    "measurement": "Sum of run_started_at to updated_at for completed gate runs; includes workflow overhead, not billing minutes. Does not include later runs.",
+    "copilotReviewsReceived": 4,
+    "copilotCreditsConsumed": null,
+    "copilotBalance": null,
+    "paidOverageEnabled": false
+  },
+  "finiteDelegations": {
+    "productionTouched": false,
+    "firstGateRun": 37027400679,
+    "commit": "d7ee696a36964b1ed776c452fe080fad89d55557",
+    "testsPassed": 1407,
+    "testsSkipped": 1,
+    "migrations": "passed on disposable PostgreSQL 16",
+    "typesLintBuild": "passed",
+    "browser": "desktop delegation passed; later policy form blocked by open panel. Test corrected to minimize normally, no forced clicks or relaxed timeouts. Full repeat required.",
+    "concurrentRevocation": "Single cancellation audit; native running step may finish, pending steps cancelled. Added to following gate.",
+    "authorization": "Finite exact parameters, 1-12 actions, each once, maximum duration 31 days. Current authenticated owner only. No autonomous scheduling.",
+    "limitsPending": [
+      "all procedure variants",
+      "dynamic mandate integration verification"
+    ],
+    "catalog": "Single src/domain/fronti-action-catalog.json used by runtime and matrix; handler correspondence checked at load.",
+    "verifiedGate": {
+      "run": 37028336251,
+      "head": "0012a50f300a6e89e72b6b10da27a3e0c2952d3d",
+      "status": "success",
+      "testsPassed": 1407,
+      "skipped": 1,
+      "desktopMobileBrowser": "passed including real chat, exact scope, creation without effects, retry and revocation",
+      "visibleExecutionMs": {
+        "1280": 114,
+        "390": 108
+      },
+      "budgetMs": 3000,
+      "artifact": 11235934028,
+      "physicalSafari": false
+    },
+    "catalogGate": "Final gate required after consolidation; result recorded in PR body."
+  },
+  "dynamicDelegations": {
+    "status": "PostgreSQL and desktop/mobile integration passed in 37039196791",
+    "productionTouched": false
+  },
+  "productionChangeScope": "Owner authorized publication; stage 1 merged, deployment verification pending. No operational data writes or new rules enabled.",
+  "cronSecret": {
+    "status": "present",
+    "verifiedAt": "2026-10-02T17:42:00Z",
+    "method": "Vercel UI exact key metadata",
+    "type": "Secret",
+    "target": "Production",
+    "valueRead": false,
+    "runtimeVerification": "pending new deployment"
+  }
+}

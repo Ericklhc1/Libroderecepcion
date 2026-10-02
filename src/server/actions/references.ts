@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { AuditAction, RoomStayStage } from '@prisma/client';
@@ -249,7 +250,7 @@ export async function updateGuaranteeAction(
   return runAction(async () => {
     const user = await requirePermission('cash.guarantee_in');
     const input = parseOrThrow(guaranteeUpdateSchema, formDataToObject(formData));
-    await updateGuarantee(user, input);
+    await updateGuarantee(user, input, revisionFromForm(formData));
     refreshGuarantees();
     return {
       ok: true as const,
@@ -266,7 +267,7 @@ export async function changeGuaranteeStateAction(
   return runAction(async () => {
     const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeStateSchema, formDataToObject(formData));
-    await changeGuaranteeState(user, input);
+    await changeGuaranteeState(user, input, revisionFromForm(formData));
     await tryDeliverOperationalMail(`guarantee-return:${input.id}:${input.state}`);
     refreshGuarantees();
     return {
@@ -283,7 +284,7 @@ export async function deleteGuaranteeAction(
   return runAction(async () => {
     const user = await requirePermission('cash.guarantee_out');
     const input = parseOrThrow(guaranteeDeleteSchema, formDataToObject(formData));
-    await softDeleteGuarantee(user, input);
+    await softDeleteGuarantee(user, input, revisionFromForm(formData));
     refreshGuarantees();
     return { ok: true as const, message: 'Garantía eliminada. Se conserva y puede auditarse.' };
   });

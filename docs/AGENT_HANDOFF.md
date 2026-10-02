@@ -1,3 +1,26 @@
+## Actualización Etapa 2 · delegaciones finitas · 2 de octubre de 2026
+
+PR draft #244 depende de #241 abierto, base/head comprobados al retomar. Última Compuerta anterior completa: 37022894691, head 671632bd, 1398 pruebas + una omisión previa, PG/migraciones/lint/tipos/build/browser escritorio y móvil. Evidencia detallada y tiempos en el cuerpo del PR. Vercel sigue sin despliegues nuevos; no se tocó producción.
+
+Bloque nuevo: delegaciones finitas sobre FrontiExecution existente. /delegar guarda objetivo cifrado, acciones/datos exactos y vigencia explícita (máximo 31 días, 12 pasos); no ejecuta ni programa. /usar-delegacion ejecuta bajo sesión y permisos actuales, /revocar-delegacion cancela pendientes sin deshacer efectos. Misma deduplicación, historial, revisiones y servicios nativos. Migración aditiva 20261002153000_fronti_finite_delegations. No activar en producción. Pruebas nuevas: concurrencia, vigencia, revocación entre pasos, privacidad, pérdida de permiso, monto exacto Caja, cambios de registro y segunda aprobación. Browser ampliado en ambos anchos para creación desde chat sin efecto, uso, reintento, alcance y revocación. Requiere Compuerta nueva; no declarar aprobado con la evidencia anterior. Local dominio 137/16 y tipos aprobados antes del agregado final de integración.
+
+Primera Compuerta de delegaciones 37027400679: migración/tipos/lint/1407 pruebas + una omisión/build aprobados. Browser pasó comandos/delegación de escritorio y falló al continuar a políticas: el chat había quedado abierto y tapaba una casilla. Corregido el recorrido para minimizar explícitamente, sin clic forzado ni aumento de esperas. Además se espera la segunda respuesta de la delegación para medir el resultado visible correcto y se acredita revocación concurrente idempotente con una sola auditoría. Repetir Compuerta final. Tercera revisión Copilot 5393737284 recibida: panel abierto en prueba y catálogo duplicado. Corregidos; catálogo canónico ahora src/domain/fronti-action-catalog.json compartido con generador, comprobación cerrada de correspondencia con handlers. Mantiene abiertas cobertura/atomicidad/fallback; no descartar observaciones sólo por acreditación parcial, detalles en COPILOT.md.
+
+Segunda Compuerta 37028336251, head 0012a50f: verde completa, 1407 pruebas + una omisión, migración/build y recorridos a 1280/390 px. Delegación visible 114/108 ms, Fronti chat 450/116 ms, API 139/76 ms, políticas 195/183 ms. Artefacto 11235934028. Sigue únicamente el ajuste de catálogo canónico (Copilot), con local 137/16, tipos y lint aprobados; nueva Compuerta de ese commit antes de entregar. Resultado final debe quedar en cuerpo de PR para no crear commits sólo por actualizar su propia CI.
+
+No hay PostgreSQL/Docker local. Ejecutar integración en Compuerta PG16 efímero. Motores locales: PRISMA_QUERY_ENGINE_LIBRARY=/tmp/etapa2-prisma/libquery_engine.so.node, PRISMA_SCHEMA_ENGINE_BINARY=/tmp/etapa2-prisma/schema-engine. Despliegue de ramas deshabilitado en vercel.json, workflows de release sólo main. Usar API GitHub para árbol/commit/ref sin fuerza respetando el head remoto; no mezclar la distinta ascendencia local/remota.
+
+No está completa la Etapa 2. Pendientes: cobertura restante/variantes, delegaciones dinámicas y presupuestos acumulados, suplencias, indicadores/turnos completos, CRON_SECRET no consultable y Safari/iPhone físico. Mantener draft, sin merge/deploy/reglas reales. Usuario reiteró autorización para continuar; se mantienen límites concretos de producción. Copilot realizó dos revisiones reales anteriores; no atribuirle implementación ni revisión de cambios posteriores sin resultado.
+
+## 02/10/2026 · v1.47.0 · Etapa 2 local, pendiente de integración y subida
+
+- Rama local `feat/etapa-2-fronti-automatizacion` sobre árbol exacto de PR #241 (`50fb561e`, sigue abierto). No merge, deploy, migración/operación en producción ni nuevas reglas activadas.
+- 59 adaptadores a Server Actions originales, planes privados cifrados, permiso/sesión fresca por paso, reclamación atómica y cancelación de pendientes. Comandos exactos en ambos accesos a Fronti privado; propuestas IA requieren autorización. No se declara cobertura general: matriz de 210 exports y pendientes en `docs/etapa2/MATRIZ_ACCIONES.md`.
+- Reglas/plantillas pausadas, ocurrencias acotadas Santiago y tareas creadas con el servicio original; ejecución conectada al cron existente, apagada por variable ausente. Nuevos procedimientos requieren validación independiente. Migración aditiva preparada, no aplicada.
+- 86 pruebas en 13 archivos sin PostgreSQL, tipos y lint aprobados. Build de código aprobado usando la fuente Inter local sólo como fixture, porque Google Fonts está bloqueado por la red. No equivale a build normal ni integración.
+- Subida GitHub rechazada: «user rejected MCP tool call». NO rama remota/PR, NO revisión Copilot. Reintentar sólo con autorización posterior. Borrador concreto: `docs/etapa2/PR_BORRADOR.md`.
+- Pendientes: PostgreSQL/CI/browser, latencia ~30 s de etapa 1 sin causa acreditada, CRON_SECRET no consultable, Safari físico, acciones/lecturas restantes, delegaciones generales, suplencias y resúmenes/indicadores completos. No publicar.
+
 ## 02/10/2026 · Continuación de Etapa 1 / PR #241
 
 - Se mantiene autorización de implementación y preparación de PR; sin merge ni despliegue. Base main 52f7f229, último commit anterior 622ce10b con Compuerta aprobada: 1345 pruebas + navegador escritorio/ancho móvil.
@@ -865,3 +888,26 @@ Production.
 - Las alertas de validación de los cierres del 26–27/09 quedan resueltas bajo autorización de Supervisión y las tareas vinculadas pasan a VALIDADA.
 - En adelante, resolver una alerta `shift-validation:*` valida también su tarea vinculada para evitar el estado contradictorio «alerta resuelta + tarea pendiente».
 - Migración: `20260927214500_regularizar_turnos_26_27_sept`.
+
+## Etapa 2 · ampliación en verificación (2 octubre 2026)
+
+Continuar hasta resolver la etapa solicitada; no cerrar sólo por completar un bloque.
+Base remota antes de esta ampliación: PR #244, SHA 818108d7, Compuerta 37029291952 verde. PR #241 sigue abierto; #244 depende de su rama. Sin merge, despliegue, migración en Neon, datos operativos ni comunicaciones reales.
+
+Cambios nuevos: catálogo 184 adaptadores; formularios privados de secretos/archivos y entrega única de credenciales; delegaciones dinámicas en FrontiExecution (migración aditiva 20261002170000), usos/acciones/presupuesto acumulados y revocación de pendientes; suplencia PROPOSE/APPLY en OperationalAutomation con servicios nativos de Coordinación/HK; indicadores por período y turno propio con muestras, privacidad, eventos y estimaciones explícitas. La simulación sigue inerte y el interruptor global no se activa.
+
+La lectura Vercel get_project funciona pasando idOrName además de projectId; no expone variables y CRON_SECRET sigue sin verificarse. No hay iPhone/Safari físico. Estas limitaciones no bloquean seguir desarrollando.
+
+Verificación de esta revisión: dominio local anterior 143/143; nuevas pruebas PostgreSQL y navegador añadidas, resultado CI aún pendiente. No dar cobertura general por registrar adaptadores: revisar matriz y acreditar contratos/recorridos restantes, especialmente atomicidad de revisión de todas las variantes y rutas HTTP/exportaciones. No publicar secretos ni datos reales. Próximos pasos: completar comprobaciones nuevas, corregir CI, revisar Copilot y actualizar evidencia por SHA.
+
+## Corrección de compuerta y cuarta revisión Copilot
+
+CI 37037311294 sobre 0e114e0e: 1418 aprobadas, 4 fallidas, 1 omitida; fallo PostgreSQL 23514 por CHECK de autorización que no admite DYNAMIC. Build/navegador omitidos. Se amplía el CHECK conservando ventanas, parentesco y límites, con regresiones negativas. Revisión Copilot 5394563088 recibida: también se corrigen fin de día inclusivo, enlace a indicadores y recuentos obsoletos. Revisión autorizada propagada a edición/asignación/archivo/restauración de tareas, novedades, seguimientos y garantías: comparación dentro del servicio y CAS/lock en la escritura. No basta la comprobación previa del chat. Dominio local 143/143, lint con dos avisos previos; nuevo CI requerido. Producción intacta.
+
+## Entrega autorizada · 2 octubre, 14:42 Santiago
+
+El usuario autorizó explícitamente integrar/desplegar después de compuerta; la prohibición anterior de publicar quedó sustituida. PR #241 fusionado en main: 8fcfe2a0966c352ed9eb600ff051a963b6fc35fa, mismo árbol que su head aprobado 50fb561e. PR #244 retargeteado a main, sin cambios funcionales nuevos. Su bloque SQL/CAS tiene CI 37039196791 verde: 1424 pruebas + 1 omitida, 153 archivos, migraciones PostgreSQL 16, lint/tipos/build y navegador 1280/390. Artefacto 11242060533.
+
+CRON_SECRET confirmado como Secret de Production en la interfaz Vercel, agregado por el usuario, sin leer valor. Su redeploy 1.45.0 dpl_GbRr5NpDAcpVzTBjzjWrxfgTCLKf está READY. Despliegue 1.46.0 dpl_9cE2YRUeALVcrK5WGULzz1bbopUD en curso. Verificar salud SHA/versión y registros cron bajo autenticación estricta; esperar Release antes de la siguiente versión. No activar políticas nuevas ni realizar pruebas operativas reales.
+
+Copilot: cuatro revisiones reales; respuesta 5394647977 indica cuota agotada y no constituye quinta revisión. No habilitar sobrecoste. Safari físico sigue pendiente. Siguiente acción: compuerta de #244 reconciliado con main, integrar una vez verde, verificar 1.47.0, después continuar cobertura restante por grupos.

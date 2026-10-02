@@ -1,6 +1,8 @@
 'use client';
 
 import { useFormStatus } from 'react-dom';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { changeTaskStatusFormAction } from './navigation-action';
 
 import { TaskStatus } from '@prisma/client';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
@@ -9,12 +11,17 @@ import { Dialog } from '@/components/ui/dialog';
 import { TASK_STATUS_LABEL } from '@/domain/labels';
 import {
   assignTaskAction,
-  changeTaskStatusAction,
   deleteTaskAction,
   restoreTaskAction,
   toggleChecklistAction,
   updateTaskAction,
 } from '@/server/actions/tasks';
+
+function ReturnToCurrentPage() {
+  const pathname = usePathname();
+  const query = useSearchParams().toString();
+  return <input type="hidden" name="returnTo" value={pathname + (query ? '?' + query : '')} />;
+}
 
 const STATUS_OPTIONS = Object.values(TaskStatus).map((status) => ({
   value: status,
@@ -34,7 +41,8 @@ export function QuickStatusForm({
   variant?: 'primary' | 'secondary' | 'gold';
 }) {
   return (
-    <ActionForm action={changeTaskStatusAction} hideSuccess className="space-y-0">
+    <ActionForm action={changeTaskStatusFormAction} hideSuccess className="space-y-0">
+      <ReturnToCurrentPage />
       <input type="hidden" name="id" value={taskId} />
       <input type="hidden" name="status" value={status} />
       <SubmitButton variant={variant} size="sm" pendingLabel="Guardando…">
@@ -53,13 +61,15 @@ export function TaskStatusDialog({
 }) {
   return (
     <Dialog
+      key={currentStatus}
       title="Más opciones de la tarea"
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
       trigger="Más opciones"
     >
-      <ActionForm action={changeTaskStatusAction} closeOnSuccess>
+      <ActionForm action={changeTaskStatusFormAction}>
+        <ReturnToCurrentPage />
         <input type="hidden" name="id" value={taskId} />
         <Field label="Estado" name="status" required>
           <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} />

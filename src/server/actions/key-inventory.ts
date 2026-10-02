@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
@@ -220,7 +221,7 @@ export async function assignPhysicalKeyAction(
       keyId: requiredString(formData, 'keyId', 'La llave'),
       roomId: requiredString(formData, 'roomId', 'La habitación'),
       note: optionalString(formData, 'note'),
-    });
+    }, revisionFromForm(formData));
     refreshKeys();
     return { ok: true as const, message: `Llave ${key.code} entregada/asignada.` };
   });
@@ -235,7 +236,7 @@ export async function returnPhysicalKeyAction(
     const key = await returnPhysicalKey(user, {
       keyId: requiredString(formData, 'keyId', 'La llave'),
       note: optionalString(formData, 'note'),
-    });
+    }, revisionFromForm(formData));
     refreshKeys();
     return { ok: true as const, message: `Llave ${key.code} devuelta al inventario.` };
   });
@@ -255,7 +256,7 @@ export async function markPhysicalKeyIncidentAction(
       keyId: requiredString(formData, 'keyId', 'La llave'),
       status,
       reason: requiredString(formData, 'reason', 'El motivo'),
-    });
+    }, revisionFromForm(formData));
     refreshKeys();
     return {
       ok: true as const,
@@ -273,7 +274,7 @@ export async function recoverPhysicalKeyAction(
     const key = await recoverPhysicalKey(user, {
       keyId: requiredString(formData, 'keyId', 'La llave'),
       note: optionalString(formData, 'note'),
-    });
+    }, revisionFromForm(formData));
     refreshKeys();
     return { ok: true as const, message: `Llave ${key.code} recuperada y disponible.` };
   });
@@ -288,7 +289,7 @@ export async function retirePhysicalKeyAction(
     const key = await retirePhysicalKey(user, {
       keyId: requiredString(formData, 'keyId', 'La llave'),
       reason: requiredString(formData, 'reason', 'El motivo'),
-    });
+    }, revisionFromForm(formData));
     refreshKeys();
     return { ok: true as const, message: `Llave ${key.code} dada de baja.` };
   });

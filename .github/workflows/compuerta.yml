@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/etapa-1-operacion-conectada
 
 concurrency:
   group: compuerta-${{ github.ref }}
@@ -117,8 +118,7 @@ jobs:
         run: |
           node scripts/etapa1/guard.cjs
           npx tsx scripts/etapa1/fixture.mts
-          npm install --prefix "$RUNNER_TEMP/aroh-browser" playwright@1.58.2
-          "$RUNNER_TEMP/aroh-browser/node_modules/.bin/playwright" install --with-deps chromium
+          node node_modules/playwright-core/cli.js install --with-deps chromium
 
       - name: Recorridos autenticados de escritorio y móvil
         timeout-minutes: 3
@@ -132,11 +132,23 @@ jobs:
             if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
-          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa1/browser.mjs
+          journey_status=0
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa1/browser.mjs; then
+            grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa2/browser.mjs; then
+            journey_status=1
+          fi
+          exit "$journey_status"
 
       - name: Evidencia de recorridos sin credenciales
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}
-          path: etapa1-browser-results.json
-          if-no-files-found: error
+          path: |
+            etapa1-browser-results.json
+            etapa2-browser-results.json
+          if-no-files-found: warn
+          retention-days: 7

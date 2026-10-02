@@ -39,6 +39,8 @@ export function canFrontiUseTool(
   name: string,
 ): boolean {
   switch (name) {
+    case 'consultar_procedimientos':
+    case 'preparar_procedimiento':
     case 'consultar_contexto_pantalla':
     case 'consultar_estado_operativo':
     case 'reportar_hallazgo':
@@ -141,6 +143,9 @@ export function filterFrontiToolDefinitionsForUser(
 }
 
 export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
+  { type: 'function', name: 'consultar_procedimientos', description: 'Consulta el catálogo real de procedimientos disponibles mediante Fronti, con campos del formulario y controles. Consulta antes de preparar pasos. No concede permisos.', strict: true, mode: 'read', area: 'operacion', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { type: 'function', name: 'preparar_procedimiento', description: 'Prepara hasta 12 pasos con las acciones del catálogo. Nunca ejecuta ni autoriza. Cada paso contiene action y fields (valores de formulario string o string[]). No inventes IDs, hechos físicos ni aprobaciones. No pongas identidades de ejecución. Los permisos se resuelven desde sesión. Usa planJson con el arreglo JSON de pasos.', strict: true, mode: 'propose', area: 'operacion', parameters: { type: 'object', properties: { planJson: { type: 'string', maxLength: 20000 } }, required: ['planJson'], additionalProperties: false } },
+
   {
     type: 'function', name: 'consultar_horarios', mode: 'read', area: 'equipo', strict: true,
     description: 'Consulta Equipo y horarios: personas, códigos y horas uniformes, programación, falta de personal y errores de archivos. Respeta área y permisos. No confirma asistencia ni modifica horarios. Usa una fecha concreta para listas largas.',
@@ -635,7 +640,7 @@ export const FRONTI_TOOL_REGISTRY: readonly FrontiToolRegistryEntry[] = [
   },
 ] as const;
 
-const ALWAYS_AVAILABLE = new Set([
+const ALWAYS_AVAILABLE = new Set(['consultar_procedimientos', 'preparar_procedimiento',
   'consultar_horarios',
   'consultar_contexto_pantalla',
   'consultar_estado_operativo',
@@ -768,6 +773,7 @@ export function selectFrontiToolDefinitions(
   // Conversación, memoria o preguntas de identidad pueden resolverse sin
   // herramientas. Enviar un catálogo vacío reduce costo y TPM sin perder
   // ninguna capacidad necesaria para ese turno.
+  if (/procedimiento|crea|registra|asigna|reasigna|recibe|inicia|resuelve|cierra|guarda|actualiza|publica|devuelve|entrega|ejecuta/.test(text)) addMany(wanted, ['consultar_procedimientos', 'preparar_procedimiento']);
   if (wanted.size === 0) return [];
 
   return enabled.filter((definition) => wanted.has(definition.name));

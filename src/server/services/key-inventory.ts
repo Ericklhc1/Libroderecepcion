@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 
 import {
@@ -438,12 +439,14 @@ export async function createPhysicalKey(
 export async function assignPhysicalKey(
   user: CurrentUser,
   input: { keyId: string; roomId: string; note?: string | null },
+  expectedRevision?:string,
 ) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
     if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
+    assertAuthorizedRevision(expectedRevision,key);
     if (key.status !== KeyStatus.DISPONIBLE) throw new RuleError('La llave no está disponible.');
     if (key.areaId) throw new RuleError('Entrega las llaves de áreas desde Entregas a personal.');
 
@@ -480,12 +483,14 @@ export async function assignPhysicalKey(
 export async function returnPhysicalKey(
   user: CurrentUser,
   input: { keyId: string; note?: string | null },
+  expectedRevision?:string,
 ) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
     if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
+    assertAuthorizedRevision(expectedRevision,key);
     if (!([KeyStatus.ASIGNADA, KeyStatus.COPIA_ADICIONAL, KeyStatus.PENDIENTE_DEVOLUCION] as KeyStatus[]).includes(key.status)) {
       throw new RuleError('La llave no está entregada ni pendiente de devolución.');
     }
@@ -517,6 +522,7 @@ export async function returnPhysicalKey(
 export async function markPhysicalKeyIncident(
   user: CurrentUser,
   input: { keyId: string; status: 'EXTRAVIADA' | 'FUERA_DE_SERVICIO'; reason: string },
+  expectedRevision?:string,
 ) {
   const target = input.status === 'EXTRAVIADA' ? KeyStatus.EXTRAVIADA : KeyStatus.FUERA_DE_SERVICIO;
   return prisma.$transaction(async (tx) => {
@@ -524,6 +530,7 @@ export async function markPhysicalKeyIncident(
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
     if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
+    assertAuthorizedRevision(expectedRevision,key);
 
     const updated = await tx.roomKey.update({
       where: { id: key.id },
@@ -550,14 +557,18 @@ export async function markPhysicalKeyIncident(
 export async function recoverPhysicalKey(
   user: CurrentUser,
   input: { keyId: string; note?: string | null },
+  expectedRevision?:string,
 ) {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoomKey" WHERE "id" = ${input.keyId} FOR UPDATE`;
     const key = await tx.roomKey.findUnique({
       where: { id: input.keyId },
       include: { movements: { take: 1, orderBy: { at: 'desc' }, select: { action: true } } },
     });
     if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
+    const {movements: _movements, ...snapshot}=key;
+    assertAuthorizedRevision(expectedRevision,snapshot);
     if (key.movements[0]?.action === KeyAction.BAJA) {
       throw new RuleError('Una llave dada de baja no se recupera: registra una nueva llave física.');
     }
@@ -584,6 +595,7 @@ export async function recoverPhysicalKey(
 export async function retirePhysicalKey(
   user: CurrentUser,
   input: { keyId: string; reason: string },
+  expectedRevision?:string,
 ) {
   const reason = input.reason.trim();
   if (reason.length < 5) throw new RuleError('Explica el motivo de la baja.');
@@ -593,6 +605,7 @@ export async function retirePhysicalKey(
     const key = await tx.roomKey.findUnique({ where: { id: input.keyId } });
     if (key?.status === KeyStatus.ENTREGADA_PERSONAL) throw new RuleError('Recibe la llave desde Entregas a personal antes de cambiar su estado.');
     if (!key) throw new NotFoundError('La llave no existe.');
+    assertAuthorizedRevision(expectedRevision,key);
     const result = await tx.roomKey.update({
       where: { id: key.id },
       data: {

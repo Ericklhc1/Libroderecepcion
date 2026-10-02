@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { NotificationType } from '@prisma/client';
 import { z } from 'zod';
-import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
+import { formDataToObject, parseOrThrow, runAction, zCheckbox, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { saveMailConfig, sendMailTest } from '@/server/services/mail-settings';
 import {
@@ -50,8 +50,8 @@ const mailConfigSchema = z.object({
   inboundPort: optionalPort,
   inboundUser: optionalText,
   inboundPassword: z.string().max(200).optional(),
-  clearSmtpPassword: z.coerce.boolean().optional(),
-  clearInboundPassword: z.coerce.boolean().optional(),
+  clearSmtpPassword: zCheckbox,
+  clearInboundPassword: zCheckbox,
 });
 
 export async function saveMailConfigAction(

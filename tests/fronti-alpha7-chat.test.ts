@@ -58,7 +58,7 @@ describe('FRONTI alpha.7 · chat integrado e individual', () => {
 
     expect(source).toContain('/(^|\\s)@fronti\\b/i');
     expect(source).toContain('canUseFronti(user, config.enabled)');
-    expect(source).toContain('runReceptionAssistant(user, modelMessages, runtimeContext)');
+    expect(source).toContain('runReceptionAssistant(user, modelMessages, privateFronti ? runtimeContext : null, { shared: !privateFronti })');
     expect(route).toContain('maybeInvokeFrontiInChat');
   });
 

@@ -698,12 +698,21 @@ export async function executeFrontiPageContextTool(
 
   if (isHkFocused(user)) {
     if(page.moduleKey === 'inicio') return { ...base, snapshot: await adminSnapshot(user,{...page,sectionKey:'housekeeping'}) };
-    if(page.sectionKey !== 'housekeeping' && !['coordinacion','equipo','notificaciones','perfil'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
+    if(page.sectionKey !== 'housekeeping' && !['coordinacion','equipo','notificaciones','perfil','fronti-procedimientos'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
   }
   const detail = await detailSnapshot(user, page);
   if (detail) return { ...base, snapshot: detail };
 
   switch (page.moduleKey) {
+    case 'fronti-procedimientos': {
+      const rows = await prisma.frontiExecution.findMany({ where: { userId: user.id }, select: { id:true,status:true,createdAt:true,expiresAt:true,steps:{select:{action:true,status:true}} }, orderBy:{createdAt:'desc'},take:26 });
+      return {...base,snapshot:{scope:'Sólo tus procedimientos',complete:rows.length<=25,rows:rows.slice(0,25),note:'El historial no autoriza nuevas acciones.'}};
+    }
+    case 'automatizaciones': {
+      if (!user.permissions.includes('system.configure')) throw new Error('No tienes permiso para consultar políticas.');
+      const rows=await prisma.operationalAutomation.findMany({where:{ownerId:user.id},select:{id:true,name:true,kind:true,enabled:true,version:true,expiresAt:true,revokedAt:true},orderBy:{createdAt:'desc'},take:51});
+      return {...base,snapshot:{scope:'Políticas propias',complete:rows.length<=50,rows:rows.slice(0,50),note:'Simula antes de habilitar. Los horarios no acreditan presencia.'}};
+    }
     case 'coordinacion': {
       const board=await getCoordinationBoard(user,{departmentId:page.filters.area,mine:page.filters.mios==='1',history:page.filters.historial==='1',page:Number(page.filters.pagina)||1});
       return {...base,snapshot:{...board,metrics:coordinationMetrics(board.rows),metricsScope:'página visible',note:'Lectura del mismo alcance que Coordinación. Recibir no resuelve ni acredita asistencia.'}};

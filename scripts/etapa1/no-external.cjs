@@ -16,3 +16,20 @@ for (const name of ['node:http', 'node:https']) {
     };
   }
 }
+
+// Synthetic harness only: log transport timings, never headers, bodies or identities.
+const responsePrototype = require('node:http').ServerResponse.prototype;
+for (const method of ['write', 'end']) {
+  const original = responsePrototype[method];
+  responsePrototype[method] = function (...args) {
+    if (this.req?.method === 'POST' && this.req.url?.startsWith('/coordinacion')) {
+      if (!this.__auditStartedAt) {
+        this.__auditStartedAt = Date.now();
+        for (const event of ['finish', 'close']) this.once(event, () => console.log('[etapa2-timing]', event, Date.now() - this.__auditStartedAt, this.writableFinished));
+      }
+      const bytes = typeof args[0] === 'string' ? Buffer.byteLength(args[0]) : args[0]?.length ?? 0;
+      console.log('[etapa2-timing]', method, Date.now() - this.__auditStartedAt, bytes);
+    }
+    return original.apply(this, args);
+  };
+}

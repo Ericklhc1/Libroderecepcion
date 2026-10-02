@@ -4,7 +4,8 @@ import { GET as memory } from '@/app/api/cron/ai-memory/route';
 import { GET as proactive } from '@/app/api/cron/fronti-proactive/route';
 import { GET as mail } from '@/app/api/cron/operational-mail/route';
 import { GET as push } from '@/app/api/cron/web-push/route';
-const effects = vi.hoisted(() => ({ coordination: vi.fn(), retention: vi.fn(), alerts: vi.fn(), fronti: vi.fn(), mail: vi.fn(), hk: vi.fn(), alarms: vi.fn(), push: vi.fn() }));
+const effects = vi.hoisted(() => ({ automations: vi.fn(), coordination: vi.fn(), retention: vi.fn(), alerts: vi.fn(), fronti: vi.fn(), mail: vi.fn(), hk: vi.fn(), alarms: vi.fn(), push: vi.fn() }));
+vi.mock('@/server/services/operational-automation', () => ({ runOperationalAutomations: effects.automations }));
 vi.mock('@/server/services/coordination', () => ({ escalateUnreceivedWork: effects.coordination }));
 vi.mock('@/server/ai/retention-policy', () => ({ enforceFrontiRetentionPolicy: effects.retention }));
 vi.mock('@/server/services/alert-engine', () => ({ runAlertEngine: effects.alerts }));
@@ -27,6 +28,13 @@ beforeEach(() => { for (const effect of Object.values(effects)) effect.mockReset
 afterEach(() => vi.unstubAllEnvs());
 describe('cron requiere secreto y token válidos', () => {
  it.each(cases)('$name: función rechaza', c => { vi.stubEnv('CRON_SECRET', c.secret); expect(isAuthorizedCronRequest(request(c.headers))).toBe(false); });
+ it('un fallo del barrido nuevo no omite los detectores, alarmas ni push existentes', async()=>{
+   vi.stubEnv('CRON_SECRET',secret);effects.automations.mockRejectedValueOnce(new Error('Fallo sintético'));
+   const response=await push(request({authorization:`Bearer ${secret}`}));expect(response.status).toBe(200);
+   expect((await response.json()).automations.error).toContain('no confirmado');
+   expect(effects.coordination).toHaveBeenCalledWith(expect.any(Date),false);expect(effects.hk).toHaveBeenCalledWith(expect.any(Date),false);
+   for(const effect of [effects.coordination,effects.hk,effects.alarms,effects.push])expect(effect).toHaveBeenCalledTimes(1);
+ });
  it('función acepta el token correcto', () => { vi.stubEnv('CRON_SECRET', secret); expect(isAuthorizedCronRequest(request({ authorization: `Bearer ${secret}` }))).toBe(true); });
  for (const [name, handler] of Object.entries({ memory, proactive, mail, push })) {
   describe(name, () => {
@@ -38,7 +46,7 @@ describe('cron requiere secreto y token válidos', () => {
    it('token correcto conserva ejecución autorizada', async () => {
     vi.stubEnv('CRON_SECRET', secret); const response = await handler(request({ authorization: `Bearer ${secret}` }));
     expect(response.status).toBe(200);
-    const expected = name === 'memory' ? ['retention'] : name === 'proactive' ? ['alerts','fronti'] : name === 'mail' ? ['mail'] : ['coordination','hk','alarms','push'];
+    const expected = name === 'memory' ? ['retention'] : name === 'proactive' ? ['alerts','fronti'] : name === 'mail' ? ['mail'] : ['automations','coordination','hk','alarms','push'];
     for (const [key, effect] of Object.entries(effects)) expect(effect).toHaveBeenCalledTimes(expected.includes(key) ? 1 : 0);
     if (name === 'mail') expect(effects.mail).toHaveBeenCalledWith(40);
     if (name === 'proactive') expect(effects.fronti).toHaveBeenCalledWith({ trigger: 'vercel-cron', deadlineAt: expect.any(Number) });

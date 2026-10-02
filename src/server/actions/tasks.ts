@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -55,7 +56,7 @@ export async function updateTaskAction(
   return runAction(async () => {
     const user = await requirePermission('task.edit');
     const input = parseOrThrow(taskUpdateSchema, formDataToObject(formData));
-    const task = await updateTask(user, input);
+    const task = await updateTask(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Tarea actualizada.', id: task.id };
   });
@@ -68,7 +69,7 @@ export async function assignTaskAction(
   return runAction(async () => {
     const user = await requirePermission('task.assign');
     const input = parseOrThrow(taskAssignSchema, formDataToObject(formData));
-    const task = await assignTask(user, input);
+    const task = await assignTask(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Responsable actualizado.', id: task.id };
   });
@@ -93,7 +94,7 @@ export async function changeTaskStatusAction(
       });
       return [task?.assigneeId, task?.createdById];
     });
-    const task = await changeTaskStatus(user, input);
+    const task = await changeTaskStatus(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id };
   });
@@ -131,7 +132,7 @@ export async function deleteTaskAction(
   return runAction(async () => {
     const user = await requirePermission('entry.delete');
     const input = parseOrThrow(softDeleteSchema, formDataToObject(formData));
-    await softDeleteTask(user, input);
+    await softDeleteTask(user, input, revisionFromForm(formData));
     refresh(input.id);
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Tarea eliminada. Queda recuperable.' };
@@ -145,7 +146,7 @@ export async function restoreTaskAction(
   return runAction(async () => {
     const user = await requirePermission('entry.restore');
     const input = parseOrThrow(restoreSchema, formDataToObject(formData));
-    await restoreTask(user, input);
+    await restoreTask(user, input, revisionFromForm(formData));
     refresh(input.id);
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Tarea restaurada.' };

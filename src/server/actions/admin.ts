@@ -1,4 +1,5 @@
 'use server';
+import { assertAuthorizedRevision, revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -25,6 +26,7 @@ import {
 } from '@/lib/permissions';
 import { DEFAULT_SETTINGS, getSettingString, type SettingKey } from '@/server/services/settings';
 import { allocateUsername, deliverCredentials, generatePassword } from '@/server/services/credentials';
+import { adminRevision, adminUserRevision } from '@/server/services/admin-revision';
 import { runAlertEngine } from '@/server/services/alert-engine';
 
 /** Impide quedarse sin administradores activos. */
@@ -163,6 +165,8 @@ export async function updateUserAction(
       include: { role: true },
     });
     if (!current) throw new NotFoundError('El usuario no existe.');
+    const expectedRevision=formData.get('__frontiRevision');
+    if(expectedRevision&&expectedRevision!==adminUserRevision(current))throw new RuleError('El usuario cambió después de autorizar. Prepara una nueva propuesta.');
 
     const roleChanged = current.roleId !== input.roleId;
     if (roleChanged) {
@@ -175,7 +179,7 @@ export async function updateUserAction(
     if (losesAdmin) await assertAdminRemains(current.id);
 
     const updated = await prisma.user.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: {
         name: input.name,
         email: input.email ?? null,
@@ -394,6 +398,10 @@ export async function updateRolePermissionsAction(
     const afterApproval = [...approvalRequired].sort();
 
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Role" WHERE id=${role.id} FOR UPDATE`;
+      const expectedRevision=formData.get('__frontiRevision');
+      const live=await tx.rolePermission.findMany({where:{roleId:role.id},orderBy:{permissionId:'asc'}});
+      if(expectedRevision&&expectedRevision!==adminRevision(live))throw new RuleError('Los permisos cambiaron después de autorizar. Prepara una nueva propuesta.');
       await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
       if (permissions.length > 0) {
         await tx.rolePermission.createMany({
@@ -484,27 +492,13 @@ export async function saveSettingAction(
       throw new RuleError('El valor no puede quedar vacío.');
     }
 
-    const previous = await prisma.systemSetting.findUnique({ where: { key } });
-    const setting = await prisma.systemSetting.upsert({
-      where: { key },
-      update: { value: value as never, updatedById: actor.id },
-      create: {
-        key,
-        value: value as never,
-        category: DEFAULT_SETTINGS[key].category,
-        description: DEFAULT_SETTINGS[key].description,
-        updatedById: actor.id,
-      },
-    });
-
-    await recordAudit({
-      entity: 'SystemSetting',
-      entityId: setting.id,
-      action: AuditAction.CONFIGURAR,
-      summary: `Parámetro ${key} actualizado`,
-      user: actor,
-      before: { value: previous?.value ?? defaultValue },
-      after: { value },
+    await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'setting:'+key}))::text`;
+      const previous=await tx.systemSetting.findUnique({where:{key}});
+      assertAuthorizedRevision(revisionFromForm(formData),previous);
+      const data={value:value as never,updatedById:actor.id};
+      const setting=previous?await tx.systemSetting.update({where:{key,updatedAt:previous.updatedAt},data}):await tx.systemSetting.create({data:{key,...data,category:DEFAULT_SETTINGS[key].category,description:DEFAULT_SETTINGS[key].description}});
+      await recordAudit({entity:'SystemSetting',entityId:setting.id,action:AuditAction.CONFIGURAR,summary:`Parámetro ${key} actualizado`,user:actor,before:{value:previous?.value??defaultValue},after:{value}},tx);
     });
 
     revalidatePath('/admin/parametros');

@@ -4,6 +4,7 @@ import {
   createContext,
   useActionState,
   useContext,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -230,9 +231,16 @@ export function ActionForm({
   /** Callback cliente para reaccionar a un error sin ocultar el mensaje del formulario. */
   onError?: (state: Extract<ActionState, { ok: false }>) => void;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const router = useRouter();
   const close = useDialogClose();
+  const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
+    const result = await action(previous, formData);
+    // Server Actions may persist before React commits useActionState's returned state.
+    // Close only after an explicit successful result; validation/errors remain visible.
+    if (result.ok && !result.credentials && closeOnSuccess && close) close();
+    return result;
+  }, [action, close, closeOnSuccess]);
+  const [state, formAction] = useActionState(actionWithImmediateDialogClose, null);
   const formId = useId();
   const submitted = useRef<Map<string, ControlValue> | null>(null);
   const handledSuccess = useRef<ActionState | null>(null);

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { createUser, prisma, resetOperationalData, seedCatalog, ROLE_KEYS } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { followUpReadWhere, followUpAuditVisibility, visibleHandoverItems } from '@/server/services/followup-access';
+import { followSupervisionSource } from '@/server/services/supervision-center';
 import { getResetPreview } from '@/server/services/factory-reset';
 import { getBookItems } from '@/server/services/book';
 import { getHistory } from '@/server/services/history';
@@ -246,6 +247,17 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
     expect(context.memoryContext).toContain('OPERATIVE_ASSIGNED');
     assertProjection(context.memoryContext, [1, 3]);
     expect(await prisma.ai_memory.count()).toBe(8);
+  });
+
+  it('Seguir cannot return another creator private tracking assigned to the actor; legitimate deduplication remains', async () => {
+    const privateTracking = await prisma.followUp.create({ data: { action: 'PRIVATE_TRACKING_FOREIGN', visibility: 'PRIVADO', ownerId: a.id, createdById: supervisor.id, sourceEntity: 'OperationalEntry', sourceId: entry.id } });
+    const first = await followSupervisionSource(a, { sourceEntity: 'OperationalEntry', sourceId: entry.id });
+    expect(first.id).not.toBe(privateTracking.id);
+    expect(first.visibility).toBe('SUPERVISION');
+    expect(JSON.stringify(first)).not.toContain('PRIVATE_TRACKING_FOREIGN');
+    const second = await followSupervisionSource(a, { sourceEntity: 'OperationalEntry', sourceId: entry.id });
+    expect(second.id).toBe(first.id);
+    expect(await prisma.followUp.count({ where: { id: privateTracking.id } })).toBe(1);
   });
 
 });

@@ -1211,6 +1211,7 @@ export async function followSupervisionSource(
   const source = await resolveSupervisionSource(user, input.sourceEntity, input.sourceId);
   const existing = await prisma.followUp.findFirst({
     where: {
+      AND: [followUpReadWhere(user)],
       deletedAt: null,
       ownerId: user.id,
       sourceEntity: input.sourceEntity,

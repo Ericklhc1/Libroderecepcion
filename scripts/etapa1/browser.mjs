@@ -5,11 +5,16 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
 const results=[];let activePage;
+async function submit(page,button){
+ const path=new URL(page.url()).pathname;
+ const [response]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path),button.click()]);
+ assert.ok(response.ok(),'Server action response succeeds');await response.finished();
+}
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});
  await context.addCookies([{name:'lor_session',value:f.users[name].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
  await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
- const page=await context.newPage();return {context,page};
+ const page=await context.newPage();page.on('pageerror',error=>console.error('Browser page error:',error.message));return {context,page};
 }
 try{
  for(const [index,width] of [1280,390].entries()){
@@ -35,18 +40,17 @@ try{
   await card.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
   await card.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
   await card.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
-  await card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
-  await card.getByText('Etapa1 worker',{exact:true}).waitFor();
+  await submit(admin.page,card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));
+  await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();
   activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
   await own.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-  await own.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
+  await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));
   await own.getByRole('button',{name:'Guardar siguiente acción',exact:true}).waitFor();
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await worker.page.goto(`http://localhost:3000/tareas/${t.id}`);
-  const [resolved]=await Promise.all([worker.page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===`/tareas/${t.id}`),worker.page.getByRole('button',{name:'Resolver',exact:true}).click()]);
-  assert.ok(resolved.ok(),'Resolution action response succeeds');await resolved.finished();
+  await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));
   await worker.page.getByText('Completada',{exact:true}).first().waitFor();
   await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
   await worker.page.locator('article').filter({hasText:t.title}).waitFor();

@@ -1,0 +1,48 @@
+name: Reproducciones aisladas AROH
+on:
+  push:
+    branches: [audit/reproducciones-v1.45.0]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: audit_synthetic
+          POSTGRES_DB: aroh_audit_repro
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U audit -d aroh_audit_repro"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgresql://audit:audit_synthetic@127.0.0.1:5432/aroh_audit_repro?schema=public
+      AUDIT_LOCAL_DB_CONFIRM: synthetic-only
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Dependencias sin scripts
+        run: npm ci --ignore-scripts
+      - name: Cliente Prisma
+        run: npm run db:generate
+      - name: Verificar servidor sintético y ejecutar reproducciones
+        run: |
+          PGPASSWORD=audit_synthetic psql -h 127.0.0.1 -U audit -d aroh_audit_repro -Atc "SELECT current_database() = 'aroh_audit_repro' AND current_user = 'audit' AND inet_server_addr() IS NOT NULL" | grep -qx t
+          npx vitest run --config audit-reproduction/database.config.mts --reporter=default --reporter=json --outputFile=audit-results.json
+      - name: Evidencia sintética
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reproducciones-${{ github.sha }}
+          path: audit-results.json
+          if-no-files-found: warn

@@ -10,7 +10,7 @@ const fields = z.record(z.union([z.string().max(6000), z.array(z.string().max(1)
 const allowed = {
   coordination: ['kind','id','updatedAt','requestKey','action','ownerId','nextAction','returnTo'],
   'task-status': ['id','status','blockedReason','reason','evidenceProvided','returnTo'],
-  'automation-save': ['id','version','kind','name','departmentId','expiresAt','description','ownerId','priority','nextAction','evidenceRequired','checklist','startDate','localTime','weekdays','deadlineHours','catchUpDays','trigger','workKind','receiptMinutes','recipientId'],
+  'automation-save': ['id','version','kind','name','departmentId','expiresAt','description','ownerId','priority','nextAction','evidenceRequired','checklist','startDate','localTime','weekdays','deadlineHours','catchUpDays','trigger','workKind','receiptMinutes','recipientId','mode','candidateIds','requirePublishedSchedule'],
   'automation-simulate': ['id'],
   'automation-state': ['id','version','state'],
 } as const;

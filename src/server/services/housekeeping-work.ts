@@ -79,7 +79,7 @@ export async function notifyHkWork(tx: Tx, request: { id: string; humanId: numbe
   await notify(active.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/admin/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
 }
 export type HkCreateInput = { requestKey: string; title: string; description: string; workKind: HkWorkKind; workDate: string; departmentId: string; roomId?: string; zoneId?: string; location?: string; priority: Priority; dueAt?: Date | null; effortMinutes: number; requiresInspection?: boolean; assignedToId?: string; sourceEntryId?: string };
-async function validateWorker(tx: Tx, departmentId: string, id: string, workDate?: string) {
+export async function validateWorker(tx: Tx, departmentId: string, id: string, workDate?: string) {
   if (!await tx.user.findFirst({ where: { id, ...membership(departmentId), ...worker }, select: { id: true } })) throw new RuleError('Selecciona un usuario activo del área con permiso para ejecutar trabajo.');
   if (workDate && (await tx.housekeepingDayMember.findUnique({ where: { departmentId_workDate_userId: { departmentId, workDate, userId: id } } }))?.available === false) throw new RuleError('Esta persona figura como no disponible para ese día.');
 }
@@ -114,10 +114,10 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     } throw error;
   }
 }
-export async function changeHkWork(user: CurrentUser, input: { id: string; version: number; action: HkWorkAction; note?: string; assignedToId?: string; dueAt?: Date | null; severity?: Severity }) {
+export async function changeHkWork(user: CurrentUser, input: { id: string; version: number; action: HkWorkAction; note?: string; assignedToId?: string; dueAt?: Date | null; severity?: Severity }, transaction?: Tx) {
   hasAccess(user); const note = input.note?.trim() || '';
   if (HK_NOTE_REQUIRED.includes(input.action) && !note) throw new RuleError('Indica el motivo, la instrucción o el resultado.');
-  return prisma.$transaction(async tx => {
+  const perform=async (tx:Tx) => {
     const current = await tx.housekeepingRequest.findFirst({ where: { id: input.id, workflowVersion: 1, AND: [await hkWorkVisibility(user, tx)] }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true } } } });
     if (!current || !current.departmentId) throw new NotFoundError();
     if (current.version !== input.version) throw new RuleError('El trabajo cambió. Actualiza antes de continuar.');
@@ -163,7 +163,8 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     await record(tx, user, current.id, current.humanId, input.action, note);
     const updated = await tx.housekeepingRequest.findUniqueOrThrow({ where: { id: current.id } });
     await notifyHkWork(tx, updated, user.id, next === 'POR_REVISAR' ? 'Trabajo terminado: requiere inspección' : next === 'RESUELTO' ? 'Resultado disponible' : input.action === 'CORREGIR' ? `Corregir: ${note.slice(0,100)}` : 'Trabajo actualizado'); return updated;
-  });
+  };
+  return transaction ? perform(transaction) : prisma.$transaction(perform);
 }
 export async function getHkWorkday(user: CurrentUser, input: { date?: string; departmentId?: string; view?: string; floor?: string; responsible?: string; page?: number; focusId?: number } = {}) {
   hasAccess(user); const visibility = await hkWorkVisibility(user);

@@ -80,10 +80,10 @@ export async function getCoordinationTeam(user: CurrentUser, departmentId: strin
 }
 
 type Mutation = { kind:'entry'|'task'; id:string; updatedAt:Date; requestKey:string; action:'RECIBIR'|'ASIGNAR'|'SIGUIENTE'; ownerId?:string; nextAction:string };
-export async function coordinateWork(user: CurrentUser, input: Mutation) {
+export async function coordinateWork(user: CurrentUser, input: Mutation, transaction?: Prisma.TransactionClient) {
   await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit');
   if (!input.nextAction.trim()) throw new RuleError('Indica la siguiente acción para quien continúa.');
-  return prisma.$transaction(async tx=>{
+  const perform = async (tx:Prisma.TransactionClient)=>{
     // Lock before checking revision and permissions: no stale assignment or receipt can win.
     if(input.kind==='entry') await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.id} FOR UPDATE`;
     else await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id"=${input.id} FOR UPDATE`;
@@ -125,7 +125,8 @@ export async function coordinateWork(user: CurrentUser, input: Mutation) {
     await tx.auditLog.create({data:{entity:entry?'OperationalEntry':'Task',entityId:input.id,action:input.action==='ASIGNAR'?'CAMBIO_RESPONSABLE':'EDITAR',userId:user.id,sessionId:user.sessionId,summary:`Coordinación #${current.humanId}: ${input.action}`,reason:input.nextAction,before:{ownerId},after:{ownerId:nextOwner,received:input.action==='RECIBIR'}}});
     if(input.action==='ASIGNAR'&&nextOwner!==user.id)await notify([{userId:nextOwner,type:'ACCION_REQUERIDA',title:`Trabajo #${current.humanId} por recibir`,link:'/coordinacion?mios=1',entity:entry?'OperationalEntry':'Task',entityId:input.id}],tx);
     return {id:input.id};
-  });
+  };
+  return transaction ? perform(transaction) : prisma.$transaction(perform);
 }
 
 /** Explicitly assigned work only; historic rows are not given invented response deadlines. */

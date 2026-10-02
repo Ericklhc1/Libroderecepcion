@@ -888,3 +888,14 @@ Production.
 - Las alertas de validación de los cierres del 26–27/09 quedan resueltas bajo autorización de Supervisión y las tareas vinculadas pasan a VALIDADA.
 - En adelante, resolver una alerta `shift-validation:*` valida también su tarea vinculada para evitar el estado contradictorio «alerta resuelta + tarea pendiente».
 - Migración: `20260927214500_regularizar_turnos_26_27_sept`.
+
+## Etapa 2 · ampliación en verificación (2 octubre 2026)
+
+Continuar hasta resolver la etapa solicitada; no cerrar sólo por completar un bloque.
+Base remota antes de esta ampliación: PR #244, SHA 818108d7, Compuerta 37029291952 verde. PR #241 sigue abierto; #244 depende de su rama. Sin merge, despliegue, migración en Neon, datos operativos ni comunicaciones reales.
+
+Cambios nuevos: catálogo 184 adaptadores; formularios privados de secretos/archivos y entrega única de credenciales; delegaciones dinámicas en FrontiExecution (migración aditiva 20261002170000), usos/acciones/presupuesto acumulados y revocación de pendientes; suplencia PROPOSE/APPLY en OperationalAutomation con servicios nativos de Coordinación/HK; indicadores por período y turno propio con muestras, privacidad, eventos y estimaciones explícitas. La simulación sigue inerte y el interruptor global no se activa.
+
+La lectura Vercel get_project funciona pasando idOrName además de projectId; no expone variables y CRON_SECRET sigue sin verificarse. No hay iPhone/Safari físico. Estas limitaciones no bloquean seguir desarrollando.
+
+Verificación de esta revisión: dominio local anterior 143/143; nuevas pruebas PostgreSQL y navegador añadidas, resultado CI aún pendiente. No dar cobertura general por registrar adaptadores: revisar matriz y acreditar contratos/recorridos restantes, especialmente atomicidad de revisión de todas las variantes y rutas HTTP/exportaciones. No publicar secretos ni datos reales. Próximos pasos: completar comprobaciones nuevas, corregir CI, revisar Copilot y actualizar evidencia por SHA.

@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma, seedCatalog, resetOperationalData, createUser } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { prepareExecution, createDelegation, executePlan, cancelExecution, readExecution } from '@/server/ai/execution/service';
+import { createDynamicDelegation, executeDelegatedPlan, prepareExecution, createDelegation, executePlan, cancelExecution, readExecution } from '@/server/ai/execution/service';
 import { executeFrontiCommand } from '@/server/ai/execution/commands';
 import * as taskServices from '@/server/services/tasks';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
@@ -12,6 +12,8 @@ import type { FrontiStep } from '@/domain/fronti-execution';
 import { escalateUnreceivedWork } from '@/server/services/coordination';
 import { invokeNativeAction } from '@/server/ai/execution/catalog';
 import { revisionForStep } from '@/server/ai/execution/revision';
+import { completeProtectedFrontiStep } from '@/server/actions/fronti-protected';
+import { operationalIndicators } from '@/server/services/operational-indicators';
 import { hotelDateKey } from '@/domain/time';
 let actor:CurrentUser;
 vi.mock('@/server/auth/current-user',async original=>({...await original<object>(),getCurrentUserFresh:async()=> {
@@ -20,6 +22,7 @@ vi.mock('@/server/auth/current-user',async original=>({...await original<object>
   return {...actor,permissions:row.role.permissions.map(p=>p.permission.key),roleId:row.roleId};
 }}));
 vi.mock('@/server/services/legal-acceptance',()=>({hasAcceptedCurrentTerms:async()=>true}));
+vi.mock('@/server/services/credentials',async original=>({...await original<object>(),deliverCredentials:vi.fn(async()=>({sent:false,recipient:'synthetic@example.invalid',reason:'Prueba sintética sin envío'}))}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
@@ -268,4 +271,67 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     await saveAutomation(admin,{...input,id:p.id,version:1,enabled:true});await Promise.all([runOperationalAutomations(future),runOperationalAutomations(future)]);expect(await prisma.task.count()).toBe(1);
     expect(await prisma.operationalAutomationRun.count({where:{status:'SUCCEEDED'}})).toBe(1);await expect(revokeAutomation(admin,p.id,1)).rejects.toThrow();await revokeAutomation(admin,p.id,2);await runOperationalAutomations(future);expect(await prisma.task.count()).toBe(1);
   });
+  const dynamicTask=(maxExecutions=2)=>({requestKey:randomUUID(),instruction:'Delego tareas sintéticas con límite explícito',objective:'Preparar revisiones',availableAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString(),maxExecutions,maxActions:3,rules:[{action:'createTaskAction',fixedFields:{description:'Revisión autorizada',priority:'MEDIA',targetType:'PROPIO'},variableFields:{title:{type:'text',maxLength:100}}}]});
+  const dynamicUse=(id:string,title:string)=>executeDelegatedPlan(id,{requestKey:randomUUID(),instruction:'Registrar tarea '+title,steps:[{action:'createTaskAction',fields:{title,description:'Revisión autorizada',priority:'MEDIA',targetType:'PROPIO'}}]});
+  it('delegación dinámica: reserva concurrente y límite acumulado no crean efectos extra',async()=>{
+    const p=await createDynamicDelegation(dynamicTask(1));
+    const results=await Promise.allSettled([dynamicUse(p.id,'Una revisión'),dynamicUse(p.id,'Otra revisión')]);
+    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(await prisma.task.count()).toBe(1);
+    expect((await readExecution(p.id)).delegationPolicy?.maxExecutions).toBe(1);
+    await expect(dynamicUse(p.id,'Tercera revisión')).rejects.toThrow('límite');
+  });
+  it('delegación dinámica: mensaje duplicado, revocación, privacidad y permisos vigentes',async()=>{
+    const input=dynamicTask();const a=await createDynamicDelegation(input),b=await createDynamicDelegation({...input,requestKey:randomUUID()});expect(a.id).toBe(b.id);
+    actor=other;await expect(readExecution(a.id)).rejects.toThrow();await expect(dynamicUse(a.id,'Intrusión')).rejects.toThrow();actor=admin;
+    await cancelExecution(a.id);await expect(dynamicUse(a.id,'Revocada')).rejects.toThrow('revocada');expect(await prisma.task.count()).toBe(0);
+    const c=await createDynamicDelegation({...dynamicTask(),objective:'Otra autorización'});const role=await prisma.role.findUniqueOrThrow({where:{key:ROLE_KEYS.HK_ATTENDANT}});await prisma.user.update({where:{id:admin.id},data:{roleId:role.id}});
+    expect((await dynamicUse(c.id,'Permiso revocado')).steps[0]!.status).toBe('INTERVENTION');expect(await prisma.task.count()).toBe(0);
+  });
+  it('delegación monetaria dinámica suma importes y no permite cambiar destino o moneda',async()=>{
+    const policy={...dynamicTask(5),maxActions:5,budget:{currency:'CLP',maxMinorUnits:2500},rules:[{action:'createManualCashMovementAction',fixedFields:{direction:'ENTRADA',currency:'CLP',reference:'Caja dinámica sintética'},variableFields:{amount:{type:'integer',min:1,max:2000},notes:{type:'text',maxLength:100}},cost:{field:'amount',currency:'CLP'}}]};
+    const p=await createDynamicDelegation(policy);const use=(amount:string,notes:string)=>executeDelegatedPlan(p.id,{requestKey:randomUUID(),instruction:'Registrar dinero declarado '+notes,steps:[{action:'createManualCashMovementAction',fields:{direction:'ENTRADA',currency:'CLP',reference:'Caja dinámica sintética',amount,notes}}]});
+    expect((await use('1500','primer conteo declarado')).steps[0]!.status).toBe('SUCCEEDED');await expect(use('1500','segundo conteo declarado')).rejects.toThrow('presupuesto');expect((await use('1000','último importe declarado')).steps[0]!.status).toBe('SUCCEEDED');
+    expect(await prisma.cashMovement.count({where:{reference:'Caja dinámica sintética'}})).toBe(2);
+  });
+  it('selección dinámica conserva área y estado y se revalida al usarla',async()=>{
+    const task=await createTask(admin,{title:'Registro del ámbito',departmentId:area,assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await createDynamicDelegation({...dynamicTask(),rules:[{action:'changeTaskStatusAction',fixedFields:{status:'EN_CURSO'},variableFields:{id:{type:'record',kind:'task',departmentId:area,statuses:['PENDIENTE']}}}]});
+    const outside=await createTask(admin,{title:'Fuera del área autorizada',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[]});
+    const use=(id:string)=>executeDelegatedPlan(p.id,{requestKey:randomUUID(),instruction:'Iniciar registro explícito '+id,steps:[{action:'changeTaskStatusAction',fields:{id,status:'EN_CURSO'}}]});
+    await expect(use(outside.id)).rejects.toThrow('área');expect((await use(task.id)).steps[0]!.status).toBe('SUCCEEDED');
+  });
+  it('formulario protegido conserva secretos fuera del chat, plan, resultado y auditoría',async()=>{
+    const p=await plan([{action:'resetUserPasswordAction',fields:{id:other.id}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('PENDING');
+    const form=new FormData();form.set('executionId',p.id);form.set('position','0');form.set('authorization','AUTHORIZE_DISPLAYED_STEP');form.set('password','ClaveSinteticaNueva123!');
+    expect((await completeProtectedFrontiStep(null,form)).ok).toBe(true);expect((await readExecution(p.id)).steps[0]!.status).toBe('SUCCEEDED');
+    const stored=JSON.stringify(await prisma.frontiExecution.findUnique({where:{id:p.id},include:{steps:true}}));expect(stored).not.toContain('ClaveSinteticaNueva123!');expect(JSON.stringify(await prisma.auditLog.findMany())).not.toContain('ClaveSinteticaNueva123!');
+    expect((await completeProtectedFrontiStep(null,form)).ok).toBe(false);
+  });
+  it('no crea usuario sin un canal para entregar la credencial y no la conserva en el plan',async()=>{
+    const role=await prisma.role.findUniqueOrThrow({where:{key:ROLE_KEYS.RECEPTIONIST}});
+    const p=await plan([{action:'createUserAction',fields:{name:'Persona Sintética Nueva',username:'sintetico-'+randomUUID().slice(0,8),roleId:role.id,departmentId:area,email:'',phone:'',emailNotificationsEnabled:'false',hiddenFromSelectors:'false'}}]);
+    expect((await executePlan(p.id,true)).steps[0]!.status).toBe('PENDING');
+    const form=new FormData();form.set('executionId',p.id);form.set('position','0');form.set('authorization','AUTHORIZE_DISPLAYED_STEP');
+    const result=await completeProtectedFrontiStep(null,form);expect(result.ok).toBe(true);if(!result.ok)throw new Error(result.error);expect(result.credentials?.password).toBeTruthy();
+    expect(JSON.stringify(await readExecution(p.id))).not.toContain(result.credentials!.password);expect(JSON.stringify(await prisma.auditLog.findMany())).not.toContain(result.credentials!.password);
+  });
+  it('suplencias: simulación no cambia responsable; aplicar reutiliza coordinación y no repite',async()=>{
+    const task=await createTask(admin,{title:'Trabajo para suplencia',departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    const input={name:'Suplencia explícita',departmentId:area,kind:'SUBSTITUTION',configuration:{trigger:'UNASSIGNED',kind:'task',priority:null,receiptMinutes:30,mode:'APPLY',candidateIds:[other.id],requirePublishedSchedule:false,nextAction:'Recibir y atender el registro original'},expiresAt:new Date(Date.now()+86400000),enabled:false};
+    const p=await saveAutomation(admin,input);const simulation=await simulateAutomation(admin,p.id);expect(simulation.effects).toHaveLength(1);expect(simulation.effects[0]).toMatchObject({substituteId:other.id,eligible:true});expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId).toBeNull();
+    await saveAutomation(admin,{...input,id:p.id,version:1,enabled:true});process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';await Promise.all([runOperationalAutomations(),runOperationalAutomations()]);
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}}))).toMatchObject({assigneeId:other.id,workAcknowledgedAt:null});expect(await prisma.operationalAutomationRun.count({where:{policyId:p.id,status:'SUCCEEDED'}})).toBe(1);expect(await prisma.task.count()).toBe(1);
+  });
+  it('suplencia sin candidato o sin horario publicado se pausa para intervención',async()=>{
+    await createTask(admin,{title:'Sin cobertura elegible',departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await saveAutomation(admin,{name:'Cobertura publicada requerida',departmentId:area,kind:'SUBSTITUTION',configuration:{trigger:'UNASSIGNED',kind:'task',receiptMinutes:30,mode:'APPLY',candidateIds:[other.id],requirePublishedSchedule:true,nextAction:'Confirmar disponibilidad real'},expiresAt:new Date(Date.now()+86400000),enabled:true});
+    expect((await simulateAutomation(admin,p.id)).effects[0]).toMatchObject({eligible:false,substituteId:null});process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';expect((await runOperationalAutomations()).failed).toBe(1);expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:p.id}})).enabled).toBe(false);
+  });
+  it('indicadores cuentan sólo fuentes accesibles y no inventan línea base ni tiempos',async()=>{
+    await createTask(admin,{title:'Pendiente sin tiempos históricos',departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await plan();await executePlan(p.id,true);const data=await operationalIndicators(admin,{from:new Date(Date.now()-86400000),to:new Date()});
+    expect(data.fronti.successful).toBe(1);expect(data.fronti.baselineStage1).toBeNull();expect(data.fronti.observedHumanTimeSaved).toBeNull();expect(data.durations.resolution.minutes).toBeNull();expect(data.procedures.denominator).toBe(0);
+    const isolated=await operationalIndicators(other,{from:new Date(Date.now()-86400000),to:new Date()});expect(isolated.fronti.denominator).toBe(0);
+  });
+
 });

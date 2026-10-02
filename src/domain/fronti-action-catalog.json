@@ -881,7 +881,10 @@
       "trigger",
       "workKind",
       "receiptMinutes",
-      "recipientId"
+      "recipientId",
+      "mode",
+      "candidateIds",
+      "requirePublishedSchedule"
     ],
     "permission": "system.configure",
     "risk": "high",
@@ -910,5 +913,1823 @@
     "permission": "system.configure",
     "risk": "high",
     "physical": false
+  },
+  {
+    "module": "entries",
+    "name": "updateEntryAction",
+    "label": "Modificar registro existente",
+    "fields": [
+      "category",
+      "departmentId",
+      "description",
+      "dueAt",
+      "guestId",
+      "id",
+      "immediateAction",
+      "impact",
+      "occurredAt",
+      "ownerId",
+      "priority",
+      "requiresFollowUp",
+      "reservationId",
+      "resolution",
+      "roomId",
+      "rootCause",
+      "severity",
+      "status",
+      "stayId",
+      "tags",
+      "title",
+      "type"
+    ],
+    "permission": "entry.edit",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "category",
+      "departmentId",
+      "description",
+      "dueAt",
+      "guestId",
+      "id",
+      "immediateAction",
+      "impact",
+      "occurredAt",
+      "ownerId",
+      "priority",
+      "requiresFollowUp",
+      "reservationId",
+      "resolution",
+      "roomId",
+      "rootCause",
+      "severity",
+      "status",
+      "stayId",
+      "tags",
+      "title",
+      "type"
+    ]
+  },
+  {
+    "module": "entries",
+    "name": "deleteEntryAction",
+    "label": "Retirar registro con motivo",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.delete",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "entries",
+    "name": "restoreEntryAction",
+    "label": "Restaurar registro",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "tasks",
+    "name": "updateTaskAction",
+    "label": "Modificar tarea existente",
+    "fields": [
+      "alertId",
+      "assigneeId",
+      "blockedReason",
+      "checklist",
+      "collaboratorIds",
+      "departmentId",
+      "description",
+      "dueAt",
+      "entryId",
+      "evidenceProvided",
+      "evidenceRequired",
+      "followUpId",
+      "fulfillmentCriteria",
+      "guestId",
+      "handoverId",
+      "id",
+      "priority",
+      "reservationId",
+      "roomId",
+      "startsAt",
+      "status",
+      "stayId",
+      "tags",
+      "targetShiftId",
+      "targetType",
+      "title"
+    ],
+    "permission": "task.edit",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "alertId",
+      "assigneeId",
+      "blockedReason",
+      "checklist",
+      "collaboratorIds",
+      "departmentId",
+      "description",
+      "dueAt",
+      "entryId",
+      "evidenceProvided",
+      "evidenceRequired",
+      "followUpId",
+      "fulfillmentCriteria",
+      "guestId",
+      "handoverId",
+      "id",
+      "priority",
+      "reservationId",
+      "roomId",
+      "startsAt",
+      "status",
+      "stayId",
+      "tags",
+      "targetShiftId",
+      "targetType",
+      "title"
+    ]
+  },
+  {
+    "module": "tasks",
+    "name": "assignTaskAction",
+    "label": "Cambiar responsable de tarea",
+    "fields": [
+      "assigneeId",
+      "id",
+      "reason"
+    ],
+    "permission": "task.assign",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "tasks",
+    "name": "deleteTaskAction",
+    "label": "Retirar tarea con motivo",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.delete",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "tasks",
+    "name": "restoreTaskAction",
+    "label": "Restaurar tarea",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "housekeeping-work",
+    "name": "organizeLegacyHkWorkAction",
+    "label": "Incorporar aviso al trabajo de Housekeeping",
+    "fields": [
+      "assignedToId",
+      "departmentId",
+      "effortMinutes",
+      "id",
+      "note",
+      "requiresInspection",
+      "roomId",
+      "version",
+      "workDate",
+      "workKind"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "changeShiftTypeAction",
+    "label": "Cambiar tipo de turno",
+    "fields": [
+      "shiftId",
+      "type"
+    ],
+    "permission": "shift.reassign",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "addHandoverNoteAction",
+    "label": "Nota agregada a la entrega",
+    "fields": [
+      "detail",
+      "handoverId",
+      "level",
+      "title"
+    ],
+    "permission": "shift.handover",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "removeHandoverNoteAction",
+    "label": "Nota eliminada",
+    "fields": [
+      "itemId"
+    ],
+    "permission": "shift.handover",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "scheduleShiftAction",
+    "label": "Programar turno",
+    "fields": [
+      "date",
+      "durationHours",
+      "notes",
+      "startTime",
+      "type",
+      "userIds"
+    ],
+    "permission": "shift.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "cancelShiftAction",
+    "label": "Turno anulado",
+    "fields": [
+      "reason",
+      "shiftId"
+    ],
+    "permission": "shift.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "archiveShiftAction",
+    "label": "Turno archivado. Sigue en el historial",
+    "fields": [
+      "reason",
+      "shiftId"
+    ],
+    "permission": "shift.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "shifts",
+    "name": "unarchiveShiftAction",
+    "label": "Turno devuelto a las listas",
+    "fields": [
+      "shiftId"
+    ],
+    "permission": "shift.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "createGymPassAction",
+    "label": "Registrar pase de gimnasio",
+    "fields": [
+      "guestName",
+      "roomNumber",
+      "serviceDate"
+    ],
+    "permission": "cash.view",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "createParkingPassAction",
+    "label": "Registrar pase de estacionamiento",
+    "fields": [
+      "guestName",
+      "reservationCode",
+      "roomNumber",
+      "serviceDate"
+    ],
+    "permission": "cash.view",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "voidGymPassAction",
+    "label": "Folio anulado. La trazabilidad se conserva",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "cash.view",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "createCashDifferenceRegularizationAction",
+    "label": "Registrar regularización de Caja",
+    "fields": [
+      "amount",
+      "currency",
+      "direction",
+      "effectiveAt",
+      "effectiveDateConfirmed",
+      "notes",
+      "reference"
+    ],
+    "permission": "cash.approve",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "markCashMovementAsRegularizationAction",
+    "label": "Clasificar regularización de Caja",
+    "fields": [
+      "movementId",
+      "reason"
+    ],
+    "permission": "cash.approve",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "live-cash",
+    "name": "saveLiveCashAuditAction",
+    "label": "Registrar revisión de Caja",
+    "fields": [
+      "currency",
+      "notes"
+    ],
+    "permission": "cash.audit",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "key-staff",
+    "name": "saveSupervisorKeyAction",
+    "label": "Gestionar stock privado de llaves",
+    "fields": [
+      "id",
+      "version",
+      "code",
+      "destination",
+      "notes",
+      "status",
+      "retired"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "key-staff",
+    "name": "lendStaffKeysAction",
+    "label": "Registrar entrega de llaves al personal",
+    "fields": [
+      "requestKey",
+      "departmentId",
+      "collaboratorId",
+      "authorizedById",
+      "notes",
+      "itemsJson"
+    ],
+    "permission": "key.assign",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "schedule",
+    "name": "changeScheduleExtraAction",
+    "label": "Aprobar o validar horas extraordinarias",
+    "fields": [
+      "planId",
+      "version",
+      "requestKey",
+      "reason",
+      "slotId",
+      "action",
+      "reportedMinutes"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "schedule",
+    "name": "saveScheduleTemplateAction",
+    "label": "Versionar plantilla de horario",
+    "fields": [
+      "departmentId",
+      "code",
+      "label",
+      "startTime",
+      "endTime",
+      "crossesMidnight"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "schedule",
+    "name": "saveScheduleCoverageAction",
+    "label": "Configurar cobertura horaria",
+    "fields": [
+      "id",
+      "departmentId",
+      "name",
+      "functionName",
+      "weekdays",
+      "startTime",
+      "endTime",
+      "crossesMidnight",
+      "minimum",
+      "active"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "schedule",
+    "name": "saveScheduleGrantAction",
+    "label": "Gestionar permisos de área en Equipo",
+    "fields": [
+      "userId",
+      "departmentId",
+      "enabled"
+    ],
+    "permission": "",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "schedule",
+    "name": "saveScheduleHolidayAction",
+    "label": "Registrar feriado con fuente",
+    "fields": [
+      "date",
+      "name",
+      "source",
+      "active"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "schedule",
+    "name": "reviewScheduleImportAction",
+    "label": "Revisar archivo de horarios",
+    "fields": [
+      "planId"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false,
+    "protectedInputs": [
+      "file"
+    ]
+  },
+  {
+    "module": "admin",
+    "name": "createUserAction",
+    "label": "Crear usuario",
+    "fields": [
+      "departmentId",
+      "email",
+      "emailNotificationsEnabled",
+      "hiddenFromSelectors",
+      "name",
+      "phone",
+      "roleId",
+      "username"
+    ],
+    "permission": "user.manage",
+    "risk": "high",
+    "physical": false,
+    "protectedOutput": true
+  },
+  {
+    "module": "admin",
+    "name": "resetUserPasswordAction",
+    "label": "Restablecer contraseña de usuario",
+    "fields": [
+      "id"
+    ],
+    "permission": "user.manage",
+    "risk": "high",
+    "physical": false,
+    "protectedInputs": [
+      "password"
+    ]
+  },
+  {
+    "module": "admin",
+    "name": "deleteUserAction",
+    "label": "Desactivar usuario con motivo",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "user.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "admin",
+    "name": "restoreUserAction",
+    "label": "Restaurar usuario",
+    "fields": [
+      "id"
+    ],
+    "permission": "user.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "admin",
+    "name": "runMaintenanceAction",
+    "label": "Ejecutar mantenimiento técnico",
+    "fields": [],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "cash",
+    "name": "recordCashTransferAction",
+    "label": "Sin transferencia a Tesorería: monto 0",
+    "fields": [
+      "amount",
+      "currency",
+      "handoverId",
+      "notes",
+      "reference"
+    ],
+    "permission": "cash.treasury_transfer",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "cash",
+    "name": "saveHandoverUsdRateAction",
+    "label": "No se declaró un nuevo valor de dólar",
+    "fields": [
+      "handoverId",
+      "usdRateCLP"
+    ],
+    "permission": "cash.usd_rate",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "cash",
+    "name": "declareElementsAction",
+    "label": "Declarar elementos de entrega",
+    "fields": [
+      "handoverId",
+      "noneJustification",
+      "elementMarksJson"
+    ],
+    "permission": "shift.handover",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "cash",
+    "name": "confirmElementsAction",
+    "label": "Elementos confirmados",
+    "fields": [
+      "handoverId",
+      "elementMarksJson"
+    ],
+    "permission": "shift.receive",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "admin-shifts",
+    "name": "removeShiftFromOperationAction",
+    "label": "Retirar turno de la operación",
+    "fields": [
+      "reason",
+      "shiftId"
+    ],
+    "permission": "shift.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "createAlertAction",
+    "label": "Alerta creada",
+    "fields": [
+      "departmentId",
+      "dueAt",
+      "entryId",
+      "guestId",
+      "level",
+      "message",
+      "reservationId",
+      "taskId",
+      "title",
+      "type"
+    ],
+    "permission": "alert.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "acknowledgeAlertAction",
+    "label": "Alerta marcada como vista",
+    "fields": [
+      "id",
+      "note",
+      "snoozeMinutes"
+    ],
+    "permission": "alert.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "snoozeAlertAction",
+    "label": "Alerta pospuesta",
+    "fields": [
+      "id",
+      "note",
+      "snoozeMinutes"
+    ],
+    "permission": "alert.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "resolveAlertAction",
+    "label": "Alerta resuelta",
+    "fields": [
+      "id",
+      "note",
+      "snoozeMinutes"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "deleteAlertAction",
+    "label": "Alerta eliminada. Queda recuperable",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.delete",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "restoreAlertAction",
+    "label": "Alerta restaurada",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "alerts",
+    "name": "runAlertEngineAction",
+    "label": "Ejecutar detector de alertas",
+    "fields": [],
+    "permission": "alert.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "announcements",
+    "name": "createAnnouncementAction",
+    "label": "Emitir comunicado obligatorio",
+    "fields": [
+      "body",
+      "expiresAt",
+      "scope",
+      "targetUserId",
+      "title"
+    ],
+    "permission": "announcement.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "announcements",
+    "name": "confirmAnnouncementAction",
+    "label": "Lectura confirmada",
+    "fields": [
+      "announcementId",
+      "text"
+    ],
+    "permission": "",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "announcements",
+    "name": "closeAnnouncementAction",
+    "label": "Comunicado retirado. Deja de bloquear y se conserva quién lo confirmó",
+    "fields": [
+      "announcementId",
+      "reason"
+    ],
+    "permission": "announcement.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "book-mail",
+    "name": "sendBookItemMailAction",
+    "label": "Enviar registro por correo",
+    "fields": [
+      "id",
+      "kind",
+      "note",
+      "to"
+    ],
+    "permission": "",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "cash-config",
+    "name": "saveCashConfigurationAction",
+    "label": "Configuración de Caja guardada",
+    "fields": [
+      "clpMinimum",
+      "usdMinimum",
+      "treasuryTransfersEnabled",
+      "transferReceiptRequired",
+      "usdRateEnabled",
+      "requireDifferenceNote"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false,
+    "requiredFields": [
+      "clpMinimum",
+      "usdMinimum",
+      "treasuryTransfersEnabled",
+      "transferReceiptRequired",
+      "usdRateEnabled",
+      "requireDifferenceNote"
+    ]
+  },
+  {
+    "module": "checklists",
+    "name": "saveChecklistTemplateAction",
+    "label": "Guardar plantilla de comprobación",
+    "fields": [
+      "active",
+      "cadence",
+      "category",
+      "description",
+      "id",
+      "items",
+      "name"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "checklists",
+    "name": "deleteChecklistTemplateAction",
+    "label": "Retirar plantilla de comprobación",
+    "fields": [
+      "reason",
+      "templateId"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "checklists",
+    "name": "startChecklistRunAction",
+    "label": "Iniciar ronda o auditoría",
+    "fields": [
+      "mode",
+      "participantIds",
+      "reviewedDepartmentIds",
+      "reviewedShiftIds",
+      "sample",
+      "scope",
+      "templateId"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "checklists",
+    "name": "markChecklistItemAction",
+    "label": "Registrar resultado de comprobación",
+    "fields": [
+      "evidence",
+      "itemId",
+      "observation",
+      "result"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "checklists",
+    "name": "finishChecklistRunAction",
+    "label": "Cerrar ronda o auditoría",
+    "fields": [
+      "disclosure",
+      "notes",
+      "recipientId",
+      "resultSummary",
+      "runId"
+    ],
+    "permission": "supervision.audit.close",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "comments",
+    "name": "addCommentAction",
+    "label": "Comentario publicado",
+    "fields": [
+      "alertId",
+      "body",
+      "entryId",
+      "followUpId",
+      "handoverId",
+      "parentId",
+      "taskId"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "comments",
+    "name": "deleteCommentAction",
+    "label": "Comentario eliminado",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "conflicts",
+    "name": "resolveAllConflictsAction",
+    "label": "Resolver conflictos de sincronización",
+    "fields": [],
+    "permission": "conflict.resolve_all",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "diagnostics",
+    "name": "repairDiagnosticsAction",
+    "label": "Ejecutar reparación de diagnóstico",
+    "fields": [],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "factory-reset",
+    "name": "factoryResetAction",
+    "label": "Restablecimiento destructivo del sistema",
+    "fields": [
+      "includeStays",
+      "includeUsers"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false,
+    "requiredFields": [
+      "includeStays",
+      "includeUsers"
+    ],
+    "protectedInputs": [
+      "phrase"
+    ]
+  },
+  {
+    "module": "fines",
+    "name": "createFineAction",
+    "label": "Multa registrada. Queda en la habitación y en Supervisión",
+    "fields": [
+      "amount",
+      "guestName",
+      "guestStatement",
+      "itemDetail",
+      "kind",
+      "linenKind",
+      "quantity",
+      "reason",
+      "reservationCode",
+      "reservationReferenceId",
+      "roomNumber",
+      "stainType",
+      "stayId"
+    ],
+    "permission": "incident.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "fines",
+    "name": "changeFineStatusAction",
+    "label": "Estado de la multa actualizado",
+    "fields": [
+      "fineId",
+      "note",
+      "roomNumber",
+      "status"
+    ],
+    "permission": "incident.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "fines",
+    "name": "deleteFineAction",
+    "label": "Multa eliminada. Queda en el registro",
+    "fields": [
+      "fineId",
+      "reason",
+      "roomNumber"
+    ],
+    "permission": "incident.manage",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "followups",
+    "name": "createFollowUpAction",
+    "label": "Crear seguimiento vinculado",
+    "fields": [
+      "action",
+      "description",
+      "entryId",
+      "nextAction",
+      "notes",
+      "origin",
+      "ownerId",
+      "priority",
+      "result",
+      "scheduledAt",
+      "taskId",
+      "visibility"
+    ],
+    "permission": "followup.create",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "followups",
+    "name": "updateFollowUpAction",
+    "label": "Atender y resolver seguimiento",
+    "fields": [
+      "description",
+      "id",
+      "nextAction",
+      "notes",
+      "ownerId",
+      "priority",
+      "resolution",
+      "result",
+      "scheduledAt",
+      "status",
+      "visibility"
+    ],
+    "permission": "followup.create",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "description",
+      "id",
+      "nextAction",
+      "notes",
+      "ownerId",
+      "priority",
+      "resolution",
+      "result",
+      "scheduledAt",
+      "status",
+      "visibility"
+    ]
+  },
+  {
+    "module": "followups",
+    "name": "deleteFollowUpAction",
+    "label": "Retirar seguimiento con motivo",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.delete",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "followups",
+    "name": "restoreFollowUpAction",
+    "label": "Restaurar seguimiento",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "saveFrontiSettingAction",
+    "label": "Configuración de Fronti guardada",
+    "fields": [
+      "key",
+      "value"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "setFrontiUserAccessAction",
+    "label": "Fronti ya está siempre activo para el Administrador de sistema",
+    "fields": [
+      "enabled",
+      "userId"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "resetFrontiSettingsAction",
+    "label": "Fronti volvió a sus valores por defecto",
+    "fields": [],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "cleanupFrontiMemoryAction",
+    "label": "Limpiar memoria vencida de Fronti",
+    "fields": [],
+    "permission": "system.configure",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "saveFrontiProviderCredentialAction",
+    "label": "Configurar credencial de IA",
+    "fields": [
+      "provider"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false,
+    "protectedInputs": [
+      "apiKey"
+    ]
+  },
+  {
+    "module": "fronti",
+    "name": "clearFrontiProviderCredentialAction",
+    "label": "Retirar credencial del proveedor IA",
+    "fields": [
+      "provider"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "fronti",
+    "name": "testFrontiProviderAction",
+    "label": "Comprobar proveedor IA",
+    "fields": [
+      "provider"
+    ],
+    "permission": "system.configure",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "handover-element-config",
+    "name": "saveHandoverElementConfigurationAction",
+    "label": "Elementos de entrega actualizados",
+    "fields": [
+      "elementsJson",
+      "newName",
+      "newDetail",
+      "newOrder",
+      "newRequired"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "handover-note",
+    "name": "saveSingleHandoverNoteAction",
+    "label": "Nota para el turno siguiente guardada",
+    "fields": [
+      "handoverId",
+      "nextAction",
+      "observation"
+    ],
+    "permission": "shift.handover",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "legal",
+    "name": "acceptTermsAction",
+    "label": "Términos aceptados",
+    "fields": [
+      "accept"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "mail",
+    "name": "saveMailConfigAction",
+    "label": "Configurar correo",
+    "fields": [
+      "clearInboundPassword",
+      "clearSmtpPassword",
+      "credentialsMailTo",
+      "inboundHost",
+      "inboundPort",
+      "inboundProtocol",
+      "inboundUser",
+      "mailFrom",
+      "smtpHost",
+      "smtpPort",
+      "smtpUser"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false,
+    "protectedInputs": [
+      "smtpPassword",
+      "inboundPassword"
+    ],
+    "requiredFields": [
+      "clearInboundPassword",
+      "clearSmtpPassword",
+      "credentialsMailTo",
+      "inboundHost",
+      "inboundPort",
+      "inboundProtocol",
+      "inboundUser",
+      "mailFrom",
+      "smtpHost",
+      "smtpPort",
+      "smtpUser"
+    ]
+  },
+  {
+    "module": "mail",
+    "name": "sendMailTestAction",
+    "label": "Enviar correo de prueba",
+    "fields": [
+      "to"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "mail",
+    "name": "saveNotificationEmailPolicyAction",
+    "label": "Política de correo actualizada. Los avisos obligatorios ya no dependen de la preferencia individual",
+    "fields": [
+      "policiesJson"
+    ],
+    "permission": "system.configure",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "policiesJson"
+    ]
+  },
+  {
+    "module": "notifications",
+    "name": "markNotificationsReadAction",
+    "label": "Marcar notificaciones propias como leídas",
+    "fields": [
+      "id"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "operational-alarms",
+    "name": "createOperationalAlarmAction",
+    "label": "Crear alarma o recordatorio",
+    "fields": [
+      "dueAtLocal",
+      "kind",
+      "note",
+      "recipientIds",
+      "repeatMinutes",
+      "roomNumber",
+      "scope",
+      "sourceEntity",
+      "sourceId",
+      "sourceLink",
+      "timerMinutes",
+      "title"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "operational-alarms",
+    "name": "updateOperationalAlarmAction",
+    "label": "Alerta actualizada",
+    "fields": [
+      "alarmId",
+      "dueAtLocal",
+      "note",
+      "repeatMinutes",
+      "title"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "alarmId",
+      "dueAtLocal",
+      "note",
+      "repeatMinutes",
+      "title"
+    ]
+  },
+  {
+    "module": "operational-alarms",
+    "name": "cancelOperationalAlarmAction",
+    "label": "Alerta eliminada de la operación activa",
+    "fields": [
+      "alarmId"
+    ],
+    "permission": "",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "profile",
+    "name": "updateMyEmailPreferencesAction",
+    "label": "Actualizar preferencias de correo propias",
+    "fields": [
+      "email",
+      "emailNotificationsEnabled"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "email",
+      "emailNotificationsEnabled"
+    ]
+  },
+  {
+    "module": "references",
+    "name": "createGuaranteeAction",
+    "label": "Registrar garantía",
+    "fields": [
+      "amount",
+      "currency",
+      "dueAt",
+      "guestName",
+      "kind",
+      "notes",
+      "reference",
+      "reservationReferenceId",
+      "roomId",
+      "roomNumber",
+      "state",
+      "stayId"
+    ],
+    "permission": "cash.guarantee_in",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "references",
+    "name": "updateGuaranteeAction",
+    "label": "Modificar garantía",
+    "fields": [
+      "amount",
+      "currency",
+      "dueAt",
+      "guestName",
+      "id",
+      "kind",
+      "notes",
+      "reference",
+      "roomNumber"
+    ],
+    "permission": "cash.guarantee_in",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "amount",
+      "currency",
+      "dueAt",
+      "guestName",
+      "id",
+      "kind",
+      "notes",
+      "reference",
+      "roomNumber"
+    ]
+  },
+  {
+    "module": "references",
+    "name": "changeGuaranteeStateAction",
+    "label": "Cambiar estado de garantía",
+    "fields": [
+      "applicationReason",
+      "appliedAmount",
+      "id",
+      "notes",
+      "penaltyAmount",
+      "state"
+    ],
+    "permission": "cash.guarantee_out",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "references",
+    "name": "deleteGuaranteeAction",
+    "label": "Retirar garantía con motivo",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "cash.guarantee_out",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "rooms",
+    "name": "returnKeyAction",
+    "label": "Registrar devolución de llave",
+    "fields": [
+      "keyId",
+      "note"
+    ],
+    "permission": "key.assign",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "handMainKeyAction",
+    "label": "Registrar entrega de llave principal",
+    "fields": [
+      "keyId",
+      "note",
+      "roomId"
+    ],
+    "permission": "key.assign",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "giveExtraCopyAction",
+    "label": "Registrar entrega de copia",
+    "fields": [
+      "keyId",
+      "note",
+      "roomId"
+    ],
+    "permission": "key.stock",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "setKeyIncidentStatusAction",
+    "label": "Registrar incidencia de llave",
+    "fields": [
+      "keyId",
+      "reason",
+      "status"
+    ],
+    "permission": "key.stock",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "reinstateKeyAction",
+    "label": "Reincorporar llave",
+    "fields": [
+      "keyId",
+      "note"
+    ],
+    "permission": "key.stock",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "createKeyAction",
+    "label": "Registrar llave",
+    "fields": [
+      "code",
+      "notes",
+      "roomNumber",
+      "type"
+    ],
+    "permission": "key.stock",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "rooms",
+    "name": "reconcileKeysAction",
+    "label": "Conciliar inventario de llaves",
+    "fields": [],
+    "permission": "key.stock",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "supervision-center",
+    "name": "startSupervisionShiftAction",
+    "label": "Apertura de Supervisión iniciada. Completa la recepción operacional para activar tu turno",
+    "fields": [],
+    "permission": "supervision.shift.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "completeSupervisionOpeningAction",
+    "label": "Confirma que revisaste el estado operativo recibido",
+    "fields": [
+      "reportContingencyReason",
+      "reviewedGuarantees",
+      "reviewedKeys",
+      "reviewedPending",
+      "shiftId"
+    ],
+    "permission": "supervision.shift.manage",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "supervision-center",
+    "name": "deliverSupervisionShiftAction",
+    "label": "Entrega inalterable generada",
+    "fields": [
+      "note",
+      "shiftId"
+    ],
+    "permission": "supervision.shift.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "finishSupervisionShiftAction",
+    "label": "Confirma que revisaste las señales críticas",
+    "fields": [
+      "reviewedAudit",
+      "reviewedContinuity",
+      "reviewedCritical",
+      "shiftId"
+    ],
+    "permission": "supervision.shift.manage",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "supervision-center",
+    "name": "receiveSupervisionHandoverAction",
+    "label": "Entrega de Supervisión recibida",
+    "fields": [
+      "handoverId"
+    ],
+    "permission": "supervision.shift.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "followSupervisionSourceAction",
+    "label": "Añadido a Mi continuidad",
+    "fields": [
+      "sourceEntity",
+      "sourceId"
+    ],
+    "permission": "supervision.followup.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "reviewSupervisionAuditItemAction",
+    "label": "Registrar revisión de auditoría",
+    "fields": [
+      "auditImportId",
+      "key",
+      "note",
+      "status",
+      "target"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "updateSupervisionAuditDeparturesPendingAction",
+    "label": "Actualizar dato declarado de auditoría",
+    "fields": [
+      "auditImportId",
+      "note",
+      "reset",
+      "value"
+    ],
+    "permission": "supervision.audit.create",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "auditImportId",
+      "note",
+      "reset",
+      "value"
+    ]
+  },
+  {
+    "module": "supervision-center",
+    "name": "createSupervisionNoteAction",
+    "label": "Nota guardada",
+    "fields": [
+      "body",
+      "sourceEntity",
+      "sourceId",
+      "title",
+      "visibility"
+    ],
+    "permission": "supervision.note.private",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "deleteSupervisionNoteAction",
+    "label": "Nota eliminada. Puede recuperarse",
+    "fields": [
+      "id",
+      "reason"
+    ],
+    "permission": "supervision.note.private",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "restoreSupervisionNoteAction",
+    "label": "Nota de Supervisión restaurada",
+    "fields": [
+      "id"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "restoreCorrectiveMeasureAction",
+    "label": "Medida correctiva restaurada",
+    "fields": [
+      "id"
+    ],
+    "permission": "entry.restore",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "createCorrectiveMeasureAction",
+    "label": "Medida correctiva y tarea creadas",
+    "fields": [
+      "action",
+      "assigneeId",
+      "dueAt",
+      "evidenceRequired",
+      "findingId",
+      "title"
+    ],
+    "permission": "supervision.corrective.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "changeCorrectiveMeasureStatusAction",
+    "label": "Medida correctiva actualizada",
+    "fields": [
+      "evidence",
+      "id",
+      "reason",
+      "status"
+    ],
+    "permission": "supervision.corrective.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervision-center",
+    "name": "addPerformanceObservationAction",
+    "label": "Observación registrada",
+    "fields": [
+      "content",
+      "kind",
+      "periodEnd",
+      "periodStart",
+      "sourceEntity",
+      "sourceId",
+      "subjectId"
+    ],
+    "permission": "supervision.performance.comment",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "supervisor-reports",
+    "name": "sendSupervisorReportAction",
+    "label": "Enviar informe de supervisión",
+    "fields": [
+      "type",
+      "from",
+      "toDate",
+      "recipients"
+    ],
+    "permission": "supervision.view",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "support",
+    "name": "updateSupportRequestAction",
+    "label": "Bandeja actualizada",
+    "fields": [
+      "resolution",
+      "status",
+      "supportRequestId"
+    ],
+    "permission": "support.manage",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "resolution",
+      "status",
+      "supportRequestId"
+    ]
+  },
+  {
+    "module": "help",
+    "name": "runHelpActionAction",
+    "label": "Regenerar resumen de entrega",
+    "fields": [
+      "action"
+    ],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "tutorial",
+    "name": "finishTutorialAction",
+    "label": "Finalizar u omitir recorrido general",
+    "fields": [
+      "tutorialOutcome"
+    ],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "tutorial",
+    "name": "finishModuleTutorialAction",
+    "label": "Finalizar u omitir recorrido de módulo",
+    "fields": [
+      "tutorialModules",
+      "tutorialOutcome"
+    ],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": true
+  },
+  {
+    "module": "tutorial",
+    "name": "restartTutorialAction",
+    "label": "Reiniciar recorrido general",
+    "fields": [],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "tutorial",
+    "name": "restartModuleTutorialAction",
+    "label": "Reiniciar recorrido de módulo",
+    "fields": [
+      "tutorialModules"
+    ],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "notifications",
+    "name": "getUnreadCounts",
+    "label": "Consultar mis avisos sin leer",
+    "fields": [],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "auth",
+    "name": "changePasswordAction",
+    "label": "Cambiar mi contraseña",
+    "fields": [],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false,
+    "protectedInputs": [
+      "currentPassword",
+      "newPassword",
+      "confirmPassword"
+    ]
+  },
+  {
+    "module": "auth",
+    "name": "logoutAction",
+    "label": "Cerrar mi sesión",
+    "fields": [],
+    "permission": "Sesión propia y controles nativos",
+    "risk": "normal",
+    "physical": false,
+    "protectedInputs": [
+      "logoutAcknowledged"
+    ]
   }
 ]

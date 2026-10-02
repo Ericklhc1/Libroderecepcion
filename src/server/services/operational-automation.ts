@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, RuleError } from '@/server/errors';
-import { procedureOccurrences, procedureSchema, escalationSchema, matchesAutomation } from '@/domain/operational-automation';
+import { procedureOccurrences, procedureSchema, escalationSchema, substitutionSchema, matchesAutomation } from '@/domain/operational-automation';
 import { isHkFocused } from '@/domain/housekeeping-work';
 import { canonicalJson } from '@/domain/fronti-execution';
 import { createTask } from './tasks';
@@ -15,6 +15,7 @@ import { coordinationEntries, coordinationTasks, coordinationFollowUps } from '.
 import { hkWorkVisibility, hkCapability } from './housekeeping-work';
 import { hasAcceptedCurrentTerms } from './legal-acceptance';
 import { assertReceptionOperationPermission } from './reception-operation-gate';
+import { chooseSubstitute, applySubstitution } from './automation-substitutions';
 import { notify } from '@/server/notifications';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
@@ -30,20 +31,26 @@ async function assertPolicyArea(user: CurrentUser, departmentId: string) {
 export const automationInput = z.object({
   id: z.string().optional(), version: z.number().int().positive().optional(),
   name: z.string().trim().min(3).max(160), departmentId: z.string().min(1),
-  kind: z.enum(['PROCEDURE','ESCALATION']), configuration: z.unknown(),
+  kind: z.enum(['PROCEDURE','ESCALATION','SUBSTITUTION']), configuration: z.unknown(),
   expiresAt: z.coerce.date(), enabled: z.boolean().default(false),
 }).strict().refine(input=>!input.id||input.version!==undefined,{message:'La versión vigente es obligatoria al modificar una política.'});
 export async function saveAutomation(user: CurrentUser, raw: unknown) {
   const input = automationInput.parse(raw);
   await assertPolicyArea(user, input.departmentId);
   if (input.expiresAt <= new Date() || input.expiresAt.getTime() > Date.now() + 366 * 86400000) throw new RuleError('Define una vigencia futura de hasta un año.');
-  const configuration = input.kind === 'PROCEDURE' ? procedureSchema.parse(input.configuration) : escalationSchema.parse(input.configuration);
+  const configuration = input.kind === 'PROCEDURE' ? procedureSchema.parse(input.configuration) : input.kind==='SUBSTITUTION'?substitutionSchema.parse(input.configuration):escalationSchema.parse(input.configuration);
   return prisma.$transaction(async tx => {
     if(input.kind==='ESCALATION'&&input.enabled){
       const config=escalationSchema.parse(configuration);
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.departmentId+':'+config.trigger}))::text`;
       const overlaps=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'ESCALATION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
       if(overlaps.some(p=>{const other=escalationSchema.parse(p.configuration);return other.trigger===config.trigger&&(!other.kind||!config.kind||other.kind===config.kind)&&(!other.priority||!config.priority||other.priority===config.priority)}))throw new RuleError('Ya existe una regla habilitada para esta condición, tipo y prioridad del área. Pausa o acota su alcance antes de habilitar otra.');
+    }
+    if(input.kind==='SUBSTITUTION'&&input.enabled){
+      const config=substitutionSchema.parse(configuration);
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.departmentId+':substitution'}))::text`;
+      const existing=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'SUBSTITUTION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
+      if(existing.some(row=>{const other=substitutionSchema.parse(row.configuration);return other.kind===config.kind&&(!other.priority||!config.priority||other.priority===config.priority);}))throw new RuleError('Ya existe una suplencia habilitada para este tipo y prioridad del área. Pausa o delimita la anterior.');
     }
     const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
     let id = input.id;
@@ -97,6 +104,20 @@ export async function simulateAutomation(user: CurrentUser, id: string, now = ne
     const eligible = await procedureAssignee(config.ownerId, policy.departmentId);
     return { mode: 'SIMULATION', version: policy.version, complete: true, effects: procedureOccurrences(config, now).map(o => ({ occurrence: o.key, dueAt: new Date(o.at.getTime() + config.deadlineMinutes * 60000), ownerId: config.ownerId, responsible: eligible?.name ?? config.ownerId, eligible: !!eligible, action: 'CREATE_TASK' })), explanation: 'Crea una tarea y su lista mediante el servicio existente. Sin ejecución física ni inspección automática. No modifica datos operativos.' };
   }
+  if(policy.kind==='SUBSTITUTION'){
+    const config=substitutionSchema.parse(policy.configuration);
+    const board=await automationBoard(user,policy.departmentId,policy.scanPage,deadlineAt);
+    const matched=board.rows.filter(row=>matchesAutomation(row,{trigger:config.trigger,kind:config.kind,priority:config.priority,receiptMinutes:config.receiptMinutes,recipientId:policy.ownerId,maxItems:config.maxItems},now));
+    const done=await prisma.operationalAutomationRun.findMany({where:{policyId:policy.id,status:'SUCCEEDED',stateKey:{in:matched.map(row=>'substitution:'+row.kind+':'+row.id)}},select:{stateKey:true}});
+    const pending=matched.filter(row=>!done.some(run=>run.stateKey==='substitution:'+row.kind+':'+row.id));
+    const effects=[];
+    for(const row of pending.slice(0,config.maxItems)){
+      const selected=await chooseSubstitute(user,policy.departmentId,config,row,now);
+      const retryKey='substitution:'+row.kind+':'+row.id;
+      effects.push({id:row.id,kind:row.kind,retryKey,attemptKey:retryKey+':'+policy.version+':'+row.updatedAt.toISOString(),revision:row.updatedAt.toISOString(),href:row.href,nextAction:config.nextAction,ownerId:row.ownerId,substituteId:selected?.id??null,recipientId:policy.ownerId,responsible:selected?.name??'Sin suplente elegible',title:row.title,eligible:!!selected,action:config.mode});
+    }
+    return {mode:'SIMULATION',version:policy.version,complete:board.complete&&pending.length<=config.maxItems,nextPage:pending.length>config.maxItems?policy.scanPage:board.nextPage,effects,explanation:`${config.mode==='APPLY'?'Reasigna':'Propone reasignar'} sólo a candidatos explícitos elegibles del área. Horario publicado es planificación, no presencia. Una suplencia confirmada por registro y política evita bucles; pausar o revocar impide efectos nuevos.`};
+  }
   const config = escalationSchema.parse(policy.configuration);
   const board = await automationBoard(user, policy.departmentId, policy.scanPage, deadlineAt);
   const recipient = await sameAreaUser(config.recipientId, policy.departmentId);
@@ -140,6 +161,8 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
             const date = procedureOccurrences(config, now).find(o => o.key === occurrence)!;
             const task = await createTask(executor, { title: config.title, description: config.description, assigneeId: config.ownerId, departmentId: policy.departmentId, priority: config.priority, startsAt: date.at, dueAt: new Date(date.at.getTime() + config.deadlineMinutes * 60000), fulfillmentCriteria: config.nextAction, evidenceRequired: config.evidenceRequired, checklist: config.checklist, tags: ['procedimiento'], requiresIndependentValidation: config.requiresIndependentValidation, procedureOccurrenceKey: `${policy.id}:${occurrence}` }, tx);
             result = { taskId: task.id, href: `/tareas/${task.id}` };
+          } else if(policy.kind==='SUBSTITUTION' && 'substituteId' in effect){
+            result=await applySubstitution(executor,policy.departmentId,policy.configuration,effect,run.id,now,tx);
           } else if ('id' in effect) {
             const config = escalationSchema.parse(policy.configuration);
             const recipient = await automationPrincipal(config.recipientId, policy.id);

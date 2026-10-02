@@ -22,6 +22,12 @@ export const escalationSchema = z.object({
   maxItems: z.number().int().min(1).max(50).default(25),
 }).strict();
 
+export const substitutionSchema = escalationSchema.omit({recipientId:true}).extend({
+  kind:z.enum(['entry','task','housekeeping']), mode:z.enum(['PROPOSE','APPLY']),
+  candidateIds:z.array(z.string().min(1)).min(1).max(20).refine(ids=>new Set(ids).size===ids.length,'No repitas suplentes.'),
+  requirePublishedSchedule:z.boolean(), nextAction:z.string().min(3).max(1000),
+}).strict();
+
 /** Each occurrence is a Santiago wall-clock date, never an assumed 24-hour interval. */
 export function procedureOccurrences(raw: unknown, now: Date) {
   const config = procedureSchema.parse(raw);

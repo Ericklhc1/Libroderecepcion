@@ -49,11 +49,11 @@ export function parseExactFrontiCommand(message: string): FrontiStep[] | null {
   return z.array(frontiStepSchema).min(1).max(12).parse(JSON.parse(message.slice(10)));
 }
 
-export function executionSummary(steps: Array<{ action: string; label?:string; status: string; result: unknown }>): string {
+export function executionSummary(steps: Array<{ action: string; label?:string; status: string; result: unknown; requiresProtectedInput?:boolean }>): string {
   const labels:Record<string,string>={SUCCEEDED:'Completado',PENDING:'Pendiente',RUNNING:'En curso',INTERVENTION:'Requiere revisión',CHANGED:'El registro cambió; requiere nueva autorización',CANCELLED:'Cancelado'};
   return steps.map((s,i)=>{
     const result=s.result&&typeof s.result==='object'?s.result as Record<string,unknown>:{};
-    return `${i+1}. ${s.label??'Procedimiento'}: ${labels[s.status]??s.status}${typeof result.message==='string'?' · '+result.message:''}${typeof result.href==='string'?' · '+result.href:''}`;
+    return `${i+1}. ${s.label??'Procedimiento'}: ${labels[s.status]??s.status}${s.status==='PENDING'&&s.requiresProtectedInput?' · Completa el formulario privado del procedimiento':''}${typeof result.message==='string'?' · '+result.message:''}${typeof result.href==='string'?' · '+result.href:''}`;
   }).join('\n');
 }
 

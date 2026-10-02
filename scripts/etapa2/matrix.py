@@ -30,10 +30,13 @@ for path in sorted(Path('src/server/actions').glob('*.ts')):
         permissions=sorted(set(re.findall(r"requirePermission(?:OrOwner)?\('([^']+)'",body)))
         alias={'coordinateWorkFormAction':'coordinateWorkAction','changeTaskStatusFormAction':'changeTaskStatusAction'}.get(name)
         a=catalog.get(alias or name)
-        inputs=', '.join(a['fields']) if a else 'Ver esquema/formulario nativo; adaptador pendiente'
+        inputs=(', '.join(a['fields']) + ('; formulario privado: '+', '.join(a.get('protectedInputs',[])) if a.get('protectedInputs') else '') + ('; salida de credenciales privada de una sola lectura' if a.get('protectedOutput') else '')) if a else 'Control nativo indicado abajo'
         state='Conectado; acreditación individual pendiente' if a else 'Pendiente de adaptador (no disponible por el catálogo nuevo)'
         if alias:state=f'Transporte UI de {alias}; Fronti usa la acción original sin redirección'
-        if path.stem in ['pms','reservations','room-stays','guests']:state='Fuera del alcance de producto solicitado; no ampliar'
+        if path.stem in ['guest-reservation-imports','reservation-pdf','pms-reservations','stay-lifecycle','room-occupancy'] or name in ['saveGuestAction','saveReservationAction','confirmCheckOutAction','confirmCheckInAction','prepareImportAction','applyImportAction','discardImportAction','deleteStayAction','resetRoomAction']:state='Excluido expresamente: PMS/reservas/estadías; no ampliar el producto'
+        elif name in ['recordTutorialClientEventAction','reportRuntimeErrorAction','startKeyInventoryMetricAction']:state='Telemetría de cliente; Fronti no inventa eventos ni tiempos de uso físico'
+        elif name in ['installAction','checkInstallState','loginAction']:state='Precondición de instalación/autenticación; Fronti no crea una sesión ni elude el acceso nativo'
+        elif name=='completeProtectedFrontiStep':state='Transporte privado de pasos existentes; contraseñas/archivos fuera del chat y del historial'
         rows.append(f"| `{name}` | `{path}` | {', '.join(permissions) or 'Control contextual del servicio nativo'} | {inputs} | {state} | {evidence.get(name, 'Recorrido específico pendiente')} |")
 preamble='''# Matriz completa de Server Actions · Etapa 2
 
@@ -52,7 +55,7 @@ Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones
 
 ## Evidencia observada
 
-La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omisión existente), tipos/lint y build. Las pruebas específicas indicadas abajo son recorridos acotados; no prueban todas las variantes de cada procedimiento. Navegador de esa corrida falló por timeout y continúa pendiente. Las correcciones siguientes requieren nueva Compuerta. Resultado vigente: EVIDENCIA.json y PR #244.
+Última base acreditada antes de esta ampliación: Compuerta 37029291952, 1407 pruebas aprobadas y 1 omisión existente, PostgreSQL 16 y Chromium escritorio/móvil. Esta ampliación requiere nueva Compuerta; consultar el SHA y los resultados exactos en PR #244. Registro de adaptadores y pruebas de dominio no equivalen a acreditación de todos los recorridos individuales.
 
 ## Inventario
 
@@ -85,7 +88,7 @@ delegations='''
 | `/revocar-delegacion ID` | `cancelExecution` existente | Sólo propietario | Idempotente; cancela pendientes, conserva efectos y RUNNING puede terminar | Revocación entre pasos y navegador escritorio/móvil |
 | `/estado ID`, `/delegaciones` | `readExecution`, página propia | Sólo propietario autenticado | Campos sólo privados; fechas, resultados, alcance y lista limitada a 25 | Privacidad PostgreSQL; navegador revisa alcance e historial |
 
-Delegaciones finitas con parámetros exactos, sin comodines ni presupuestos reutilizables. No acredita delegación dinámica/autónoma. Mismo ejecutor y tablas, no adaptadores nuevos ni otro motor. Resultado final de la Compuerta nueva en el PR #244.
+Delegación dinámica adicional: `/delegar-dinamica JSON` crea reglas explícitas de campos fijos/variables, ID enumerado o ámbito nativo de tarea/novedad por área/estado, máximos acumulados de usos/acciones y presupuesto CLP/USD. `/usar-delegacion-dinamica {id,steps}` usa el mismo ejecutor con sesión y controles vigentes. Revocar cancela hijos pendientes; las reservas no se devuelven tras resultados inciertos. No ejecuta de forma autónoma ni simula una sesión para cron. Evidencia nueva: etapa2-delegation-domain y etapa2-execution; CI pendiente de esta revisión. Mismo ejecutor y tablas, no adaptadores nuevos ni otro motor. Resultado final de la Compuerta nueva en el PR #244.
 '''
 Path('docs/etapa2/MATRIZ_ACCIONES.md').write_text(preamble+'\n'.join(rows)+'\n'+api_section+delegations)
 print(f'{len(rows)} acciones inventariadas; {len(catalog)} adaptadores conectados')

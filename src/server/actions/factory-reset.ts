@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
+import { formDataToObject, parseOrThrow, runAction, zCheckbox, type ActionState } from '@/server/action';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { runFactoryReset } from '@/server/services/factory-reset';
@@ -17,8 +17,8 @@ import { runFactoryReset } from '@/server/services/factory-reset';
  */
 const resetSchema = z.object({
   phrase: z.string().min(1, 'Escribe la frase de confirmación.'),
-  includeStays: z.coerce.boolean().optional().default(false),
-  includeUsers: z.coerce.boolean().optional().default(false),
+  includeStays: zCheckbox,
+  includeUsers: zCheckbox,
 });
 
 export async function factoryResetAction(

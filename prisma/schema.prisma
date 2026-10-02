@@ -3364,6 +3364,11 @@ model FrontiExecution {
   fingerprint String
   instruction String
   authorizationKind String @default("ONE_SHOT")
+  delegationPolicy String?
+  parentDelegationId String?
+  parentDelegation FrontiExecution? @relation("DelegatedUses", fields: [parentDelegationId], references: [id], onDelete: Restrict)
+  delegatedUses FrontiExecution[] @relation("DelegatedUses")
+  reservedMinorUnits Int @default(0)
   availableAt DateTime?
   objective String?
   status String @default("PREPARED")
@@ -3376,6 +3381,7 @@ model FrontiExecution {
   requests FrontiExecutionRequest[]
   @@unique([userId, requestKey])
   @@index([userId, createdAt])
+  @@index([parentDelegationId])
 }
 
 model FrontiExecutionStep {

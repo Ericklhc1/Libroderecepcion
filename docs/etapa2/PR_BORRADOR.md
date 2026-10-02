@@ -1,9 +1,11 @@
-# PR #244 · bloque preparado para publicación autorizada
+# PR #244 · bloque publicado en 1.47.0
 
 https://github.com/Ericklhc1/Libroderecepcion/pull/244
 
-Dependencia #241 fusionada en main: 8fcfe2a0966c352ed9eb600ff051a963b6fc35fa. #244 retargeteado a main; publicar sólo con compuerta del resultado y verificar Production. Usuario autorizó integración/despliegue el 2 de octubre. No activar reglas nuevas reales.
+Dependencia #241 integrada en 8fcfe2a0. #244 reconciliado y aprobado en Compuerta 37042811814; merge 26331193bfe1b07f1ff87da4942bb8d9fb6d74c7. Vercel dpl_7rn6caSVB4pbuMNZcDwBzF89JqrB READY, salud versión/SHA verificada, migraciones aplicadas, Compuerta main 37043659344 y Release 37044358938 verdes, tag v1.47.0.
 
-Bloque SQL/CAS: e1e878758fd7d099951801b13f4a29dd1acd05bc, CI 37039196791 verde: 1424 pruebas, 1 omitida, 153 archivos, PostgreSQL 16 desechable, migraciones, lint/tipos/build y navegador 1280/390. CRON_SECRET ya confirmado como Secret/Production, sin leer valor. Verificación de runtime tras publicación pendiente. Safari físico pendiente.
+1424 pruebas, una omitida, 153 archivos; PostgreSQL 16 desechable, lint/tipos/build y Chromium 1280/390. CRON_SECRET: metadata Secret/Production, cron programado 200 y petición sin secreto 401, sin leer su valor. Nuevas automatizaciones globalmente desactivadas. Safari físico pendiente.
 
-213 Server Actions inventariadas / 184 adaptadores conectados. La matriz identifica pruebas y variantes pendientes; no se declara toda la etapa terminada. Cuatro revisiones Copilot recibidas, solicitud siguiente bloqueada por cuota, sin sobrecostes. Reversión conservando tablas, planes, auditoría y trabajo generado.
+213 Server Actions inventariadas / 184 adaptadores conectados. No se declara la etapa completa; matriz e IMPLEMENTACION.md enumeran cobertura y pendientes. Cuatro revisiones reales de Copilot; siguiente solicitud rechazada por cuota, sin sobrecoste. Reversión conserva tablas, planes, auditoría y trabajo generado.
+
+Bloque siguiente #247: continuidad de registros, versión propuesta 1.47.1. Primer fallo de integración y corrección e24386c9 documentados; no atribuir a producción hasta su compuerta y publicación verificadas.

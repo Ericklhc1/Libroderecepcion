@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - finding: H01
-            sha: e24cda05dc6d83f9a7caa3248c23027752008210
+            sha: 97265e5688c26f94fca5d3027edafbbca2acee10
             tests: tests/followup-privacy.test.ts
           - finding: H08
             sha: ac611a1f0bc92987d34f7a39a8bc433861d40b80
@@ -126,7 +126,15 @@ jobs:
             if curl -fsS http://127.0.0.1:3000/login > /dev/null; then break; fi
             sleep 1
           done
-          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node audit-validation/browser.mjs
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node audit-validation/browser.mjs || {
+            python - <<'PYLOG'
+          from pathlib import Path
+          import re
+          text = Path('/tmp/aroh-browser-server.log').read_text()
+          print(re.sub(r'eyJ[A-Za-z0-9_.-]+', '[synthetic-token-redacted]', text[-12000:]))
+          PYLOG
+            exit 1
+          }
       - name: Evidencia sin credenciales ni fixtures de sesión
         if: always()
         uses: actions/upload-artifact@v4

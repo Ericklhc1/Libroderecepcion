@@ -31,7 +31,7 @@ try {
         results.push({ actor: name, viewport: viewport.width, path, status: 'passed' });
       }
       const report = await context.request.get('http://127.0.0.1:3000/api/libro/reporte?clase=followup');
-      assert.equal(report.status(), 200);
+      assert.equal(report.status(), 200, `${name} report status: ${await report.text()}`);
       const pdf = (await report.body()).toString('latin1');
       for (const [i, row] of fixtures.rows.entries()) assert.equal(pdf.includes(row.action), expected[name].includes(i), `${name} PDF policy`);
       const deleted = await context.request.get('http://127.0.0.1:3000/api/libro/reporte?clase=followup&eliminados=1');

@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {
   AuditAction,
@@ -360,11 +361,13 @@ export async function changeEntryStatus(
     resolution?: string | null;
     rootCause?: string | null;
   },
+  expectedRevision?: string,
 ) {
   const current = await prisma.operationalEntry.findFirst({
     where: { id: input.id, deletedAt: null },
   });
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
   if (current.status === input.status) return current;
 
   const closing =
@@ -416,7 +419,7 @@ export async function changeEntryStatus(
   const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalEntry.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt:current.updatedAt },
       data: {
         status: input.status,
         ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now, ...(current.ownerId === user.id ? {workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id} : {}) } : {}),

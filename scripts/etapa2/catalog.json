@@ -855,5 +855,60 @@
     "permission": "",
     "risk": "high",
     "physical": true
+  },
+  {
+    "module": "operational-automation",
+    "name": "saveAutomationAction",
+    "label": "Guardar versión de regla o procedimiento en pausa",
+    "fields": [
+      "id",
+      "version",
+      "kind",
+      "name",
+      "departmentId",
+      "expiresAt",
+      "description",
+      "ownerId",
+      "priority",
+      "nextAction",
+      "evidenceRequired",
+      "checklist",
+      "startDate",
+      "localTime",
+      "weekdays",
+      "deadlineHours",
+      "catchUpDays",
+      "trigger",
+      "workKind",
+      "receiptMinutes",
+      "recipientId"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "operational-automation",
+    "name": "simulateAutomationAction",
+    "label": "Simular una política propia sin efectos",
+    "fields": [
+      "id"
+    ],
+    "permission": "system.configure",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "operational-automation",
+    "name": "setAutomationStateAction",
+    "label": "Pausar, habilitar o revocar una política propia",
+    "fields": [
+      "id",
+      "version",
+      "state"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
   }
 ]

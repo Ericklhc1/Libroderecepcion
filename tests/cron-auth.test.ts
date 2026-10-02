@@ -32,6 +32,7 @@ describe('cron requiere secreto y token válidos', () => {
    vi.stubEnv('CRON_SECRET',secret);effects.automations.mockRejectedValueOnce(new Error('Fallo sintético'));
    const response=await push(request({authorization:`Bearer ${secret}`}));expect(response.status).toBe(200);
    expect((await response.json()).automations.error).toContain('no confirmado');
+   expect(effects.coordination).toHaveBeenCalledWith(expect.any(Date),false);expect(effects.hk).toHaveBeenCalledWith(expect.any(Date),false);
    for(const effect of [effects.coordination,effects.hk,effects.alarms,effects.push])expect(effect).toHaveBeenCalledTimes(1);
  });
  it('función acepta el token correcto', () => { vi.stubEnv('CRON_SECRET', secret); expect(isAuthorizedCronRequest(request({ authorization: `Bearer ${secret}` }))).toBe(true); });

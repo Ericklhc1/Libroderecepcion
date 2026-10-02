@@ -31,6 +31,11 @@ describe('Etapa 2: contrato de autorización y recurrencias', () => {
     expect(()=>validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create']}})).toThrow();
     expect(validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create'],approvalRequired:[],permissionsBefore:[],approvalRequiredBefore:[],replacementAcknowledged:'REEMPLAZAR_MATRIZ_COMPLETA'}}).action).toBe('updateRolePermissionsAction');
   });
+  it('políticas exigen configuración completa y estados/versiones explícitos',()=>{
+    expect(()=>validateStep({action:'saveAutomationAction',fields:{id:'p',version:'1',kind:'PROCEDURE',name:'Sólo cambiar nombre'}})).toThrow('campos completos');
+    for(const fields of ([{id:'p',state:'revoke'},{id:'p',version:'0',state:'revoke'},{id:'p',version:'1',state:'cualquier-cosa'}] as Array<Record<string,string>>))expect(()=>validateStep({action:'setAutomationStateAction',fields})).toThrow();
+    expect(validateStep({action:'setAutomationStateAction',fields:{id:'p',version:'1',state:'pause'}}).fields.state).toBe('pause');
+  });
   it('deriva progreso de los pasos y no de un estado agregado obsoleto', () => {
     expect(executionStatus({cancelledAt:null,authorizedAt:new Date(),steps:[{status:'SUCCEEDED'},{status:'RUNNING'}]})).toBe('RUNNING');
     expect(executionStatus({cancelledAt:null,authorizedAt:new Date(),steps:[{status:'SUCCEEDED'},{status:'CHANGED'}]})).toBe('INTERVENTION');

@@ -129,11 +129,11 @@ export async function coordinateWork(user: CurrentUser, input: Mutation) {
 }
 
 /** Explicitly assigned work only; historic rows are not given invented response deadlines. */
-export async function escalateUnreceivedWork(now = new Date()) {
+export async function escalateUnreceivedWork(now = new Date(), usePolicyOverrides = true) {
   const cutoff=new Date(now.getTime()-RECEIPT_MINUTES*60000);
   let escalated=0;
   for(const kind of ['entry','task'] as const){
-    const overrides=await activeRuleOverrides(kind,'UNRECEIVED',now);
+    const overrides=usePolicyOverrides?await activeRuleOverrides(kind,'UNRECEIVED',now):[];
     const where={...(overrides.length?{NOT:{OR:overrides}}:{}),workAssignedAt:{lte:cutoff},workAcknowledgedAt:null,workEscalatedAt:null,deletedAt:null,isDemo:false};
     const rows=kind==='entry'?await prisma.operationalEntry.findMany({where:{...where,ownerId:{not:null},status:{notIn:['RESUELTO','CERRADO']}},take:100,orderBy:{workAssignedAt:'asc'}}):await prisma.task.findMany({where:{...where,assigneeId:{not:null},status:{notIn:[...taskClosed]},OR:[{startsAt:null},{startsAt:{lte:cutoff}}]},take:100,orderBy:{workAssignedAt:'asc'}});
     for(const row of rows)await prisma.$transaction(async tx=>{

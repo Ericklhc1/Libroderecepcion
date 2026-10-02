@@ -90,3 +90,10 @@ La Compuerta 37016248539 aprobó 1384 pruebas (una omisión previa) y build, per
 ### Evidencia de continuidad UI (CI 37017313077)
 
 La navegación de documento después de la respuesta JSON nativa corrigió el bloqueo observado en Coordinación. Recorrido real con PostgreSQL desechable: asignar, recibir y resolver a 1280/390 px tardaron 233–942 ms hasta el estado visible, bajo 3000 ms. No son tiempos de producción ni una medición de ahorro frente a Etapa 1. El recorrido Fronti aún falló por superposición del lanzador móvil con Chat. La corrección y el ciclo de políticas guardar/simular/pausar/revocar requieren la siguiente Compuerta; no se acreditan anticipadamente. El nuevo transporte conserva origen estricto, 32 KiB, lista explícita de procedimientos/campos y permisos nativos; no admite identidad proporcionada por el navegador ni ejecución arbitraria.
+
+
+### Políticas desde Fronti y recuperación
+
+El catálogo incorpora `saveAutomationAction`, `simulateAutomationAction` y `setAutomationStateAction`: mismos permisos `system.configure`, propiedad de la política y servicios de la pantalla. Guardar requiere todos los campos del tipo; siempre deja la versión pausada. Una edición y cualquier cambio de estado requieren versión vigente. `state` admite únicamente `pause`, `enable` o `revoke`; habilitar una política no sustituye el interruptor global ni constituye autorización de publicación. La simulación presenta efectos sin generar trabajo o avisos. No se activó ninguna política real. Las pruebas nuevas deben pasar CI antes de acreditar estos recorridos.
+
+Si el barrido de automatizaciones falla globalmente, el cron llama a los detectores anteriores sin las exclusiones de políticas. Se conserva el control de avisos ya emitidos del registro original, evitando silenciar pendientes por un fallo en el mecanismo nuevo.

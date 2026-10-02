@@ -22,6 +22,7 @@ try {
   const response=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message,requestKey:key}});
   const body=await response.json();const elapsed=Math.round(performance.now()-started);
   assert.equal(response.status(),200,body.error);assert.match(body.reply,/Completado/);
+  console.log('Fronti exact API',width,elapsed);
   assert.ok(elapsed<=2000,`Fronti exact command took ${elapsed} ms; budget 2000 ms`);
   const href=/\/fronti\/procedimientos\?ejecucion=[a-z0-9]+/.exec(body.reply)?.[0];assert.ok(href);
   const retry=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message,requestKey:key}});assert.equal(retry.status(),200);assert.ok((await retry.json()).reply.includes(href));
@@ -37,6 +38,7 @@ try {
   const uiId=/ejecucion=([a-z0-9]+)/.exec(uiBody.reply)?.[1];assert.ok(uiId);
   await panel.getByText(new RegExp(uiId)).waitFor();
   const visibleMs=Math.round(performance.now()-visibleStart);assert.ok(visibleMs<=3000,`Fronti visible result took ${visibleMs} ms; budget 3000 ms`);
+  console.log('Fronti visible chat',width,visibleMs);
   results.push({width,scenario:'actual-chat-input-to-visible-result',ms:visibleMs,budgetMs:3000,status:'passed',provider:'not-used'});
   await panel.getByRole('button',{name:'Minimizar Fronti',exact:true}).click();
   const summary=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/resumen',requestKey:randomUUID()}});assert.equal(summary.status(),200);assert.match((await summary.json()).reply,/Coordinación: \/coordinacion/);
@@ -65,6 +67,19 @@ try {
   await policy.getByRole('button',{name:'Simular',exact:true}).click();
   await policy.getByText(/Simulación: 1 efectos propuestos/).waitFor();
   assert.deepEqual({tasks:await db.task.count(),runs:await db.operationalAutomationRun.count(),notifications:await db.notification.count()},before,'Simulation must not create tasks, attempts or notifications');
+  await db.user.update({where:{id:f.users.worker.id},data:{hiddenFromSelectors:true}});
+  await db.department.update({where:{id:f.areaId},data:{active:false}});
+  try {
+    await policy.getByRole('link',{name:'Preparar nueva versión',exact:true}).click();
+    const editing=page.locator('details[open]').filter({has:page.getByText('Nueva versión del procedimiento',{exact:true})});
+    assert.equal(await editing.getByLabel('Responsable',{exact:true}).inputValue(),f.users.worker.id);
+    assert.equal(await editing.getByLabel('Área',{exact:true}).inputValue(),f.areaId);
+    assert.match(await editing.getByLabel('Responsable',{exact:true}).innerText(),/actual no disponible/);
+  } finally {
+    await db.user.update({where:{id:f.users.worker.id},data:{hiddenFromSelectors:false}});
+    await db.department.update({where:{id:f.areaId},data:{active:true}});
+  }
+  await page.goto('http://localhost:3000/coordinacion/automatizaciones');
   await policy.locator('select[name=state]').selectOption('pause');
   await policy.getByRole('button',{name:'Guardar estado',exact:true}).click();
   policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});

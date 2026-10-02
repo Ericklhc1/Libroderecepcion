@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import {
   AlertLevel,
@@ -509,7 +510,7 @@ export async function returnCashGuaranteeAction(
     await changeGuaranteeState(user, {
       id: input.guaranteeId,
       state: GuaranteeState.DEVUELTA,
-    });
+    }, revisionFromForm(formData));
     await tryDeliverOperationalMail(`guarantee-return:${input.guaranteeId}:DEVUELTA`);
 
     revalidatePath('/caja');
@@ -584,7 +585,7 @@ export async function chargeCashGuaranteeAction(
       settlementConcept: input.concept,
       notes: input.notes,
       removeSettledCash: true,
-    });
+    }, revisionFromForm(formData));
     await tryDeliverOperationalMail(`guarantee-charge:${guarantee.id}:MULTA`);
 
     revalidatePath('/caja');

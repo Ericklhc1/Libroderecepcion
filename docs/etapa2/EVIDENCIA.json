@@ -8,8 +8,8 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 97,
-      "files": 14,
+      "passed": 134,
+      "files": 15,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
     },
@@ -130,6 +130,15 @@
           "budgetMilliseconds": 3000,
           "fronti": "Exact API and private history reached; chat launcher overlapped mobile Fronti launcher. Not a complete Fronti journey."
         }
+      },
+      {
+        "id": 37018681008,
+        "result": "browser failure in policy selector",
+        "passed": 1391,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Coordination desktop/mobile passed again. Fronti chat command visible passed at 1280 px; policy form selector Área lacked an unambiguous accessible label. Corrected; complete policy/mobile Fronti journey still pending."
       }
     ]
   },
@@ -144,8 +153,16 @@
   },
   "coverage": {
     "serverActionsInventoried": 212,
-    "adaptersConnected": 59,
+    "adaptersConnected": 62,
     "generalCoverageAccredited": false,
     "httpMethodsInventoried": 60
+  },
+  "copilotFollowup": {
+    "reviewId": 5392864566,
+    "receivedAt": "2026-10-02T14:16:26Z",
+    "resolvedPriorFindings": 6,
+    "newFindings": 4,
+    "remainingPriorFinding": "individual adapter coverage",
+    "corrections": "Bound authorized revision inside native mutations; policy version required; preserve unavailable selections; legacy fallback ignores overrides on sweep failure. New CI required."
   }
 }

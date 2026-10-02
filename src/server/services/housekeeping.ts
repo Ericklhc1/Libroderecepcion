@@ -199,8 +199,8 @@ async function notifyHousekeeping(tx: Prisma.TransactionClient, request: { id: s
   await notify(users.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${title}`, link: `/admin/housekeeping?aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
 }
 /** Cron durable: one escalation per revision; no fake receipt or automatic closure. */
-export async function escalateHousekeepingRequests(now = new Date()) {
-  const [dueOverrides,receiptOverrides]=await Promise.all([activeRuleOverrides('housekeeping','OVERDUE',now),activeRuleOverrides('housekeeping','UNRECEIVED',now)]);
+export async function escalateHousekeepingRequests(now = new Date(), usePolicyOverrides = true) {
+  const [dueOverrides,receiptOverrides]=usePolicyOverrides?await Promise.all([activeRuleOverrides('housekeeping','OVERDUE',now),activeRuleOverrides('housekeeping','UNRECEIVED',now)]):[[],[]];
   const candidates = await prisma.housekeepingRequest.findMany({ where: { isDemo: false, status: { notIn: ['RESUELTO', 'CANCELADO'] }, AND: [{ OR: [{ dueAt: { lt: now }, ...(dueOverrides.length?{NOT:{OR:dueOverrides}}:{}) }, { ...(receiptOverrides.length?{NOT:{OR:receiptOverrides}}:{}), workflowVersion: 1, assignedToId: { not: null }, acknowledgedAt: null, workDate: { lte: hotelDateKey(now) }, workAssignedAt: { lte: new Date(now.getTime() - RECEIPT_MINUTES * 60000) } }] }, { OR: [{ escalatedVersion: null }, { NOT: { escalatedVersion: { equals: prisma.housekeepingRequest.fields.version } } }] }] }, orderBy: { dueAt: 'asc' }, take: 100 });
   let escalated = 0;
   for (const request of candidates) {

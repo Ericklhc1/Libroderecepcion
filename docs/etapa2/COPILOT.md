@@ -12,4 +12,18 @@ Revisión recibida: https://github.com/Ericklhc1/Libroderecepcion/pull/244#pullr
 | Revocación y auditoría en commits separados | Ambas escrituras dentro de una transacción | Revocación conserva historial y detiene ejecuciones posteriores; sin modificaciones de datos reales |
 | Evidencia afirmaba que no existía PR/revisión | PR #244 y revisión real registrados; corridas fallidas y correcciones conservadas | EVIDENCIA.json es histórico; estado más reciente y enlaces a CI en el cuerpo del PR |
 
-Una revisión recibida. Segunda revisión solicitada sobre el commit 679006890a1818addbb8c6f7efbced651c80716e; pendiente de respuesta, no se contabiliza como realizada. El coste en créditos, saldo actual y consumo de otros trabajos no se pueden consultar con esta conexión. La referencia de 1500 créditos/0 consumidos es la captura histórica aportada por el propietario; no se transforma en un número de mensajes o revisiones. No se habilitaron sobrecostes. El agente de programación de Copilot no está expuesto por las herramientas disponibles; no se simula una delegación ni se afirma que se realizó.
+Una revisión recibida. Segunda revisión posteriormente recibida sobre 679006890a1818addbb8c6f7efbced651c80716e; detalles al final. El coste en créditos, saldo actual y consumo de otros trabajos no se pueden consultar con esta conexión. La referencia de 1500 créditos/0 consumidos es la captura histórica aportada por el propietario; no se transforma en un número de mensajes o revisiones. No se habilitaron sobrecostes. El agente de programación de Copilot no está expuesto por las herramientas disponibles; no se simula una delegación ni se afirma que se realizó.
+
+
+## Segunda revisión recibida
+
+https://github.com/Ericklhc1/Libroderecepcion/pull/244#pullrequestreview-5392864566 · 02/10/2026 14:16 UTC. Copilot reconoce seis hallazgos anteriores resueltos. Mantiene pendiente la cobertura individual y añade cuatro observaciones:
+
+| Hallazgo | Cambio preparado | Prueba / estado |
+|---|---|---|
+| Revisión separada de la escritura | La revisión autorizada entra en acciones nativas. Tareas/novedades comparan el snapshot y escriben con `updatedAt`; llaves/garantías verifican bajo bloqueo de fila; configuración usa transacción y versión | Casos PostgreSQL invocan directamente cada mutación después de modificar su origen; requieren siguiente Compuerta |
+| Edición de política sin versión | Esquema rechaza `id` sin `version`; revocación también compara versión | Dominio y PostgreSQL |
+| Selector reemplazaba responsable/área ausente | Conserva opción actual no disponible y exige selección deliberada para cambiarla | Navegador oculta persona/desactiva área sintéticas y comprueba selección preservada |
+| Fallo global del barrido podía mantener exclusiones de detectores anteriores | Cron pasa explícitamente `usePolicyOverrides=false` al recuperar después de un fallo | Contrato cron + PostgreSQL con una política activa que normalmente excluye el registro |
+
+Dos revisiones recibidas realmente; sin saldo/coste en créditos consultable. No se pidió una tercera revisión redundante. La acreditación de estas correcciones depende de la CI siguiente; el bot todavía no ha revisado este commit. No se atribuye la implementación a Copilot.

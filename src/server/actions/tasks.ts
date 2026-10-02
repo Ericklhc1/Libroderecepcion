@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -93,7 +94,7 @@ export async function changeTaskStatusAction(
       });
       return [task?.assigneeId, task?.createdById];
     });
-    const task = await changeTaskStatus(user, input);
+    const task = await changeTaskStatus(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id };
   });

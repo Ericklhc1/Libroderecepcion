@@ -861,11 +861,70 @@ export const FRONTI_ACTIONS = [
     "permission": "",
     "risk": "high",
     "physical": true
+  },
+  {
+    "module": "operational-automation",
+    "name": "saveAutomationAction",
+    "label": "Guardar versión de regla o procedimiento en pausa",
+    "fields": [
+      "id",
+      "version",
+      "kind",
+      "name",
+      "departmentId",
+      "expiresAt",
+      "description",
+      "ownerId",
+      "priority",
+      "nextAction",
+      "evidenceRequired",
+      "checklist",
+      "startDate",
+      "localTime",
+      "weekdays",
+      "deadlineHours",
+      "catchUpDays",
+      "trigger",
+      "workKind",
+      "receiptMinutes",
+      "recipientId"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
+  },
+  {
+    "module": "operational-automation",
+    "name": "simulateAutomationAction",
+    "label": "Simular una política propia sin efectos",
+    "fields": [
+      "id"
+    ],
+    "permission": "system.configure",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "operational-automation",
+    "name": "setAutomationStateAction",
+    "label": "Pausar, habilitar o revocar una política propia",
+    "fields": [
+      "id",
+      "version",
+      "state"
+    ],
+    "permission": "system.configure",
+    "risk": "high",
+    "physical": false
   }
 ] as const;
 
 type Handler = (state: ActionState | null, form: FormData) => Promise<ActionState>;
 const handlers: Record<string, () => Promise<Handler>> = {
+  saveAutomationAction: async () => (await import('@/server/actions/operational-automation')).saveAutomationAction,
+  simulateAutomationAction: async () => (await import('@/server/actions/operational-automation')).simulateAutomationAction,
+  setAutomationStateAction: async () => (await import('@/server/actions/operational-automation')).setAutomationStateAction,
+
   createEntryAction: async () => (await import('@/server/actions/entries')).createEntryAction,
   createTaskAction: async () => (await import('@/server/actions/tasks')).createTaskAction,
   coordinateWorkAction: async () => (await import('@/server/actions/coordination')).coordinateWorkAction,
@@ -947,6 +1006,17 @@ export function validateStep(step: FrontiStep): FrontiStep {
     for (const field of ['permissions','approvalRequired','permissionsBefore','approvalRequiredBefore']) z.array(z.string().min(1)).parse(parsed[field]);
     z.string().min(1).parse(parsed.roleId);
   }
+  if (step.action === 'saveAutomationAction') {
+    const kind=z.enum(['PROCEDURE','ESCALATION']).parse(parsed.kind);
+    const required=['name','departmentId','expiresAt',...(kind==='PROCEDURE'?['description','ownerId','priority','nextAction','evidenceRequired','checklist','startDate','localTime','deadlineHours','catchUpDays']:['trigger','workKind','priority','receiptMinutes','recipientId'])];
+    if(parsed.id)required.push('id','version');
+    for(const field of required)if(typeof parsed[field]!=='string')throw new RuleError('La política requiere campos completos: falta '+field+'.');
+    if(kind==='PROCEDURE')z.array(z.string().regex(/^[0-6]$/)).min(1).max(7).parse(parsed.weekdays);
+  }
+  if(step.action==='setAutomationStateAction') {
+    z.string().min(1).parse(parsed.id);z.string().regex(/^[1-9][0-9]*$/).parse(parsed.version);z.enum(['pause','enable','revoke']).parse(parsed.state);
+  }
+  if(step.action==='simulateAutomationAction')z.string().min(1).parse(parsed.id);
   // Credentials and identity of execution are never model-controlled fields.
   if (step.action === 'saveSettingAction' && /secret|password|token|key|credential/i.test(String(parsed.key))) throw new RuleError('Usa el formulario protegido para credenciales.');
   return { action: step.action, fields: Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)) };
@@ -954,7 +1024,7 @@ export function validateStep(step: FrontiStep): FrontiStep {
 export async function invokeNativeAction(step: FrontiStep, expectedRevision?: string | null): Promise<ActionState> {
   const input = validateStep(step);
   const form = new FormData();
-  if(expectedRevision&&['updateUserAction','updateRolePermissionsAction'].includes(input.action)) form.append('__frontiRevision',expectedRevision);
+  if(expectedRevision) form.append('__frontiRevision',expectedRevision);
   for (const [key, value] of Object.entries(input.fields)) for (const item of Array.isArray(value) ? value : [value]) form.append(key, item);
   if (['declareCashCountAction','confirmCashCountAction'].includes(input.action)) {
     const counts = z.array(z.object({ id: z.string().min(1).max(100), quantity: z.number().int().min(0).max(100000) }).strict()).max(100).parse(JSON.parse(String(input.fields.quantitiesJson ?? '[]')));

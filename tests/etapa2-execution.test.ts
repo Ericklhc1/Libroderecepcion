@@ -109,6 +109,60 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const day=hotelDateKey(new Date());const schedule=await plan([{action:'saveScheduleCollaboratorAction',fields:{userId:other.id,departmentIds:[area],weeklyHours:'40',functionName:'Supervisor'}},{action:'createSchedulePlanAction',fields:{departmentId:area,startDate:day,endDate:day}}]);
     expect((await executePlan(schedule.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);expect((await prisma.scheduleCollaborator.findUniqueOrThrow({where:{userId:other.id}})).weeklyMinutes).toBe(2400);expect(await prisma.schedulePlan.count()).toBe(1);
   });
+  it('Fronti guarda en pausa, simula, pausa y revoca políticas propias sin generar trabajo',async()=>{
+    const fields={kind:'PROCEDURE',name:'Plantilla Fronti sintética',departmentId:area,expiresAt:hotelDateKey(new Date(Date.now()+86400000)),description:'Revisar filtro comunicado',ownerId:other.id,priority:'MEDIA',nextAction:'Registrar resultado',evidenceRequired:'Observación declarada',checklist:'Revisar filtro',startDate:hotelDateKey(new Date()),localTime:'00:00',weekdays:['0','1','2','3','4','5','6'],deadlineHours:'24',catchUpDays:'0'};
+    const create=await plan([{action:'saveAutomationAction',fields}]);
+    expect((await executePlan(create.id,true)).steps[0]!.status).toBe('SUCCEEDED');await executePlan(create.id,true);
+    expect(await prisma.operationalAutomation.count()).toBe(1);
+    const policy=await prisma.operationalAutomation.findFirstOrThrow();expect(policy.enabled).toBe(false);expect(policy.ownerId).toBe(admin.id);
+    const simulation=await plan([{action:'simulateAutomationAction',fields:{id:policy.id}},{action:'setAutomationStateAction',fields:{id:policy.id,version:'1',state:'pause'}}]);
+    const result=await executePlan(simulation.id,true);expect(result.steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);
+    expect(JSON.stringify(result.steps[0]!.result)).toContain('Simulación:');expect(await prisma.task.count()).toBe(0);expect(await prisma.notification.count()).toBe(0);
+    const stale=await plan([{action:'setAutomationStateAction',fields:{id:policy.id,version:'2',state:'revoke'}}]);
+    await saveAutomation(admin,{configuration:policy.configuration,id:policy.id,version:2,name:policy.name,departmentId:area,kind:policy.kind,expiresAt:policy.expiresAt,enabled:false});
+    expect((await executePlan(stale.id,true)).steps[0]!.status).toBe('CHANGED');
+    const revoke=await plan([{action:'setAutomationStateAction',fields:{id:policy.id,version:'3',state:'revoke'}}]);expect((await executePlan(revoke.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:policy.id}})).revokedAt).not.toBeNull();expect(await prisma.operationalAutomationRun.count()).toBe(0);
+  });
+  it('Fronti no puede simular o cambiar una política de otro usuario',async()=>{
+    const saved=await saveAutomation(admin,{name:'Privada del autorizador',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',receiptMinutes:30,recipientId:other.id},expiresAt:new Date(Date.now()+86400000)});
+    actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    for(const step of ([{action:'simulateAutomationAction',fields:{id:saved.id}},{action:'setAutomationStateAction',fields:{id:saved.id,version:'1',state:'revoke'}}] as FrontiStep[])) {
+      const request=await plan([step]);expect((await executePlan(request.id,true)).steps[0]!.status).toBe('INTERVENTION');
+    }
+    expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:saved.id}})).revokedAt).toBeNull();
+  });
+  it('rechaza revisiones obsoletas dentro de las mutaciones nativas, después del chequeo del plan',async()=>{
+    const task=await createTask(admin,{title:'Cambio concurrente de tarea',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[]});
+    const taskAction={action:'changeTaskStatusAction',fields:{id:task.id,status:'EN_CURSO'}};const taskRevision=await revisionForStep(taskAction);
+    await prisma.task.update({where:{id:task.id},data:{title:'Otro alcance'}});
+    expect(await invokeNativeAction(taskAction,taskRevision)).toMatchObject({ok:false,error:expect.stringContaining('cambió')});expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('PENDIENTE');
+    const created=await plan([{action:'createEntryAction',fields:{type:'NOVEDAD',title:'Registro concurrente',description:'Dato sintético',priority:'MEDIA'}}]);expect((await executePlan(created.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const entry=await prisma.operationalEntry.findFirstOrThrow();const entryAction={action:'changeEntryStatusAction',fields:{id:entry.id,status:'EN_CURSO'}};const entryRevision=await revisionForStep(entryAction);
+    await prisma.operationalEntry.update({where:{id:entry.id},data:{title:'Cambio material'}});expect(await invokeNativeAction(entryAction,entryRevision)).toMatchObject({ok:false,error:expect.stringContaining('cambió')});
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'401'}});const key=await prisma.roomKey.create({data:{code:'CAS-'+randomUUID().slice(0,8).toUpperCase(),type:'COPIA',roomId:room.id}});
+    const keyAction={action:'assignPhysicalKeyAction',fields:{keyId:key.id,roomId:room.id}};const keyRevision=await revisionForStep(keyAction);await prisma.roomKey.update({where:{id:key.id},data:{notes:'Nuevo contexto declarado'}});
+    expect(await invokeNativeAction(keyAction,keyRevision)).toMatchObject({ok:false,error:expect.stringContaining('cambió')});expect((await prisma.roomKey.findUniqueOrThrow({where:{id:key.id}})).status).toBe('DISPONIBLE');
+    const guarantee=await prisma.guarantee.create({data:{kind:'EFECTIVO',state:'VIGENTE',amount:1500,currency:'CLP',createdById:admin.id}});
+    const guaranteeAction={action:'returnCashGuaranteeAction',fields:{guaranteeId:guarantee.id,confirmed:'true'}};const guaranteeRevision=await revisionForStep(guaranteeAction);await prisma.guarantee.update({where:{id:guarantee.id},data:{amount:2000}});
+    expect(await invokeNativeAction(guaranteeAction,guaranteeRevision)).toMatchObject({ok:false,error:expect.stringContaining('cambió')});expect((await prisma.guarantee.findUniqueOrThrow({where:{id:guarantee.id}})).state).toBe('VIGENTE');expect(await prisma.cashMovement.count()).toBe(0);
+    const settingAction={action:'saveSettingAction',fields:{key:'hotel.name',value:'Valor autorizado sintético'}};const settingRevision=await revisionForStep(settingAction);
+    const previous=await prisma.systemSetting.findUnique({where:{key:'hotel.name'}});
+    try {
+      await prisma.systemSetting.upsert({where:{key:'hotel.name'},create:{key:'hotel.name',value:'Cambio concurrente'},update:{value:'Cambio concurrente'}});
+      expect(await invokeNativeAction(settingAction,settingRevision)).toMatchObject({ok:false,error:expect.stringContaining('cambió')});expect((await prisma.systemSetting.findUniqueOrThrow({where:{key:'hotel.name'}})).value).toBe('Cambio concurrente');
+      expect((await invokeNativeAction(settingAction,await revisionForStep(settingAction))).ok).toBe(true);
+    } finally {if(previous)await prisma.systemSetting.update({where:{key:'hotel.name'},data:{value:previous.value!}});else await prisma.systemSetting.delete({where:{key:'hotel.name'}});}
+  });
+  it('el detector anterior recupera registros cuando el barrido nuevo falla, aunque exista política activa',async()=>{
+    process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const now=new Date();
+    const task=await createTask(admin,{title:'Continuidad tras fallo global',assigneeId:other.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    await prisma.task.update({where:{id:task.id},data:{workAssignedAt:new Date(now.getTime()-60*60000)}});
+    await saveAutomation(admin,{name:'Plazo autorizado mayor',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNRECEIVED',kind:'task',receiptMinutes:120,recipientId:other.id},expiresAt:new Date(Date.now()+86400000),enabled:true});
+    expect((await escalateUnreceivedWork(now)).escalated).toBe(0);
+    expect((await escalateUnreceivedWork(now,false)).escalated).toBe(1);expect((await escalateUnreceivedWork(now,false)).escalated).toBe(0);
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).workEscalatedAt).not.toBeNull();
+  });
   it('reglas configuradas sustituyen el plazo original sin avisos duplicados y vuelven al pausar',async()=>{
     process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const now=new Date();
     const task=await createTask(admin,{title:'Recepción con plazo configurable',assigneeId:other.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
@@ -144,6 +198,7 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
   it('simula sin efectos; pausa, concurrencia, versiones y revocación conservan historial',async()=>{
     const now=new Date();const config={title:'Revisión preventiva',description:'Procedimiento sintético',ownerId:other.id,priority:'MEDIA',nextAction:'Registrar evidencia',evidenceRequired:'Observación',checklist:['Revisar'],startDate:hotelDateKey(now),localTime:'01:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60};
     const input={name:config.title,departmentId:area,kind:'PROCEDURE',configuration:config,expiresAt:new Date(Date.now()+86400000),enabled:false};const p=await saveAutomation(admin,input);
+    await expect(saveAutomation(admin,{...input,id:p.id})).rejects.toThrow('versión vigente');
     const future=new Date(now);future.setUTCHours(23,0,0,0);
     expect((await simulateAutomation(admin,p.id,future)).effects.length).toBeGreaterThan(0);expect(await prisma.task.count()).toBe(0);
     process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';await runOperationalAutomations(future);expect(await prisma.task.count()).toBe(0);

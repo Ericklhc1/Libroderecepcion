@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {
   AuditAction,
@@ -442,9 +443,11 @@ export async function changeTaskStatus(
     reason?: string | null;
     evidenceProvided?: string | null;
   },
+  expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   if (current.status === input.status) return current;
 
   const startsInFuture = Boolean(current.startsAt && current.startsAt > new Date());

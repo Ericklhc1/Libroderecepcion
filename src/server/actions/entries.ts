@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { EntryType } from '@prisma/client';
@@ -86,7 +87,7 @@ export async function changeEntryStatusAction(
       });
       return [found?.ownerId, found?.createdById];
     });
-    const entry = await changeEntryStatus(user, input);
+    const entry = await changeEntryStatus(user, input, revisionFromForm(formData));
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Estado actualizado.', id: entry.id };
   });

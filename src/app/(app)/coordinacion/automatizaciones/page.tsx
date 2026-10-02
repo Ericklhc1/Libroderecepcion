@@ -29,8 +29,8 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
   if(params.editar&&!editing)notFound();
   const procedure=editing?.kind==='PROCEDURE'?procedureSchema.parse(editing.configuration):null;
   const rule=editing?.kind==='ESCALATION'?escalationSchema.parse(editing.configuration):null;
-  const area=(selected?:string)=><label>Área<select name="departmentId" required defaultValue={selected} className={css}>{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
-  const person=(name:string,label:string,selected?:string)=><label>{label}<select name={name} required defaultValue={selected} className={css}>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+  const area=(selected?:string)=><label>Área<select aria-label="Área" name="departmentId" required defaultValue={selected} className={css}>{selected&&!areas.some(a=>a.id===selected)&&<option value={selected}>Área actual no disponible — selecciona un reemplazo para cambiarla</option>}{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
+  const person=(name:string,label:string,selected?:string)=><label>{label}<select aria-label={label} name={name} required defaultValue={selected} className={css}>{selected&&!people.some(p=>p.id===selected)&&<option value={selected}>Responsable actual no disponible — selecciona un reemplazo para cambiarlo</option>}{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
   const identity=(kind:string)=><><input type="hidden" name="kind" value={kind}/>{editing?.kind===kind&&<><input type="hidden" name="id" value={editing.id}/><input type="hidden" name="version" value={editing.version}/></>}</>;
   const explain=(policy: (typeof policies)[number])=>{
     const department=areas.find(a=>a.id===policy.departmentId)?.name??'Área no disponible';

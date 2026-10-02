@@ -1,3 +1,4 @@
+import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {
   AuditAction,
@@ -447,10 +448,13 @@ export async function changeGuaranteeState(
     removeSettledCash?: boolean;
     settlementConcept?: string | null;
   },
+  expectedRevision?:string,
 ): Promise<{ id: string }> {
   const shift = await getMyOpenShift(user.id);
 
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${input.id} FOR UPDATE`;
+    if(expectedRevision)assertAuthorizedRevision(expectedRevision,await tx.guarantee.findUnique({where:{id:input.id}}));
     const guarantee = await tx.guarantee.findFirst({
       where: { id: input.id, deletedAt: null },
       select: {

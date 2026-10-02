@@ -3,6 +3,9 @@ import json, re
 from pathlib import Path
 catalog = {a['name']: a for a in json.loads(Path('scripts/etapa2/catalog.json').read_text())}
 evidence = {
+ 'saveAutomationAction':'Crear versión en pausa mediante plan Fronti; rechaza campos parciales; etapa2-execution.test.ts (nueva Compuerta requerida)',
+ 'simulateAutomationAction':'Simular sin tareas/avisos y conservar resultado privado; etapa2-execution.test.ts (nueva Compuerta requerida)',
+ 'setAutomationStateAction':'Pausa/revocación nativas con versión y rechazo de autorización obsoleta; etapa2-execution.test.ts (habilitación por Fronti pendiente)',
  'createTaskAction':'Dos pasos, reintentos concurrentes, revocación y cancelación; etapa2-execution.test.ts',
  'changeTaskStatusAction':'Cambio posterior a autorización rechazado; validación independiente probada en servicio (éxito completo por adaptador pendiente)',
  'createManualCashMovementAction':'Entrada CLP declarada, un solo movimiento ante reintento; etapa2-execution.test.ts',
@@ -67,7 +70,7 @@ for path in sorted(Path('src/app/api').rglob('route.ts')):
     for method in methods:
         status='Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint'
         if '/cron/' in route:status='Infraestructura programada existente; no se expone como permiso privilegiado al modelo'
-        elif '/api/operational-actions/' in route:status='Transporte JSON de dos acciones originales de UI; Fronti conserva su adaptador nativo'
+        elif '/api/operational-actions/' in route:status='Transporte JSON de Coordinación, estado de tarea y tres acciones de políticas originales de UI; Fronti conserva su adaptador nativo'
         elif route in ['/api/fronti','/api/asistente']:status='Transporte de Fronti; misma sesión, no una acción delegable adicional'
         elif '/auth/' in route or '/session/' in route:status='Autenticación/sesión nativa; Fronti no puede fabricar credenciales ni sesión'
         api_rows.append(f"| `{method} {route}` | `{path}` | {', '.join(services) or 'Implementación/lector en la ruta'} | {', '.join(controls) or 'Revisar autorización contextual de la ruta'} | {status} |")

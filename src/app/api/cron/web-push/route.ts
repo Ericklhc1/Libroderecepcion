@@ -23,8 +23,9 @@ export async function GET(request: Request) {
     console.error('[automatizaciones] barrido no confirmado', { type:error instanceof Error?error.name:'Unknown' });
     automations = { error:'Barrido no confirmado; se conservan los registros y se requiere revisión.' };
   }
-  const coordination = await escalateUnreceivedWork(now);
-  const housekeeping = await escalateHousekeepingRequests(now);
+  const usePolicyOverrides = !('error' in automations);
+  const coordination = await escalateUnreceivedWork(now, usePolicyOverrides);
+  const housekeeping = await escalateHousekeepingRequests(now, usePolicyOverrides);
   const alarms = await dispatchDueAlarmsForAllUsers(now);
   const push = await flushWebPushSubscriptions();
 

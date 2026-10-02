@@ -1,4 +1,5 @@
 'use server';
+import { assertAuthorizedRevision, revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -491,27 +492,13 @@ export async function saveSettingAction(
       throw new RuleError('El valor no puede quedar vacío.');
     }
 
-    const previous = await prisma.systemSetting.findUnique({ where: { key } });
-    const setting = await prisma.systemSetting.upsert({
-      where: { key },
-      update: { value: value as never, updatedById: actor.id },
-      create: {
-        key,
-        value: value as never,
-        category: DEFAULT_SETTINGS[key].category,
-        description: DEFAULT_SETTINGS[key].description,
-        updatedById: actor.id,
-      },
-    });
-
-    await recordAudit({
-      entity: 'SystemSetting',
-      entityId: setting.id,
-      action: AuditAction.CONFIGURAR,
-      summary: `Parámetro ${key} actualizado`,
-      user: actor,
-      before: { value: previous?.value ?? defaultValue },
-      after: { value },
+    await prisma.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'setting:'+key}))::text`;
+      const previous=await tx.systemSetting.findUnique({where:{key}});
+      assertAuthorizedRevision(revisionFromForm(formData),previous);
+      const data={value:value as never,updatedById:actor.id};
+      const setting=previous?await tx.systemSetting.update({where:{key,updatedAt:previous.updatedAt},data}):await tx.systemSetting.create({data:{key,...data,category:DEFAULT_SETTINGS[key].category,description:DEFAULT_SETTINGS[key].description}});
+      await recordAudit({entity:'SystemSetting',entityId:setting.id,action:AuditAction.CONFIGURAR,summary:`Parámetro ${key} actualizado`,user:actor,before:{value:previous?.value??defaultValue},after:{value}},tx);
     });
 
     revalidatePath('/admin/parametros');

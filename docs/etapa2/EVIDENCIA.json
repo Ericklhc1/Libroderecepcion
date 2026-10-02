@@ -8,8 +8,8 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 134,
-      "files": 15,
+      "passed": 136,
+      "files": 16,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
     },
@@ -18,7 +18,7 @@
     "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
   },
   "pendingValidation": [
-    "final CI green with Fronti and policy browser journeys",
+    "final CI after internal result/source links",
     "physical Safari/iPhone",
     "all individual adapter procedure journeys",
     "production latency observation after separately authorized release"
@@ -153,6 +153,39 @@
           "frontiDesktopVisibleChatMs": 142,
           "policy": "Save paused and no-effects simulation passed; editor link did not expose current responsible field. Use explicit document navigation to reload current policy/options; rerun pending."
         }
+      },
+      {
+        "id": 37020877716,
+        "head": "e81797e25a92e1e7c33e044b241b13cd66f1a69e",
+        "result": "success",
+        "passed": 1396,
+        "skipped": 1,
+        "failed": 0,
+        "migrations": "PostgreSQL 16 synthetic passed",
+        "build": "passed",
+        "browser": {
+          "coordination": "assign/receive/resolve at 1280 and 390 passed",
+          "visibleMilliseconds": [
+            313,
+            257,
+            608,
+            476,
+            234,
+            278
+          ],
+          "frontiApiMilliseconds": {
+            "1280": 148,
+            "390": 140
+          },
+          "frontiVisibleMilliseconds": {
+            "1280": 182,
+            "390": 152
+          },
+          "policies": "save paused, simulate without tasks/notifications, preserve unavailable selected area/person, pause, revoke, retain history: passed at both widths",
+          "physicalSafari": false
+        },
+        "artifactId": 11233256546,
+        "artifactExpiresAt": "2026-10-09T14:41:46Z"
       }
     ]
   },
@@ -177,6 +210,17 @@
     "resolvedPriorFindings": 6,
     "newFindings": 4,
     "remainingPriorFinding": "individual adapter coverage",
-    "corrections": "Bound authorized revision inside native mutations; policy version required; preserve unavailable selections; legacy fallback ignores overrides on sweep failure. New CI required."
+    "corrections": "Native authorization/CAS, required versions, preserved selections and fallback regressions passed CI 37020877716; complete adapter coverage remains pending."
+  },
+  "observedDevelopmentConsumption": {
+    "snapshot": "Before run 37020877716 completed",
+    "completedGateRuns": 13,
+    "cancelledIncluded": 1,
+    "workflowElapsedMinutes": 72.3,
+    "measurement": "Sum of run_started_at to updated_at for completed gate runs; includes workflow overhead, not billing minutes. Does not include later runs.",
+    "copilotReviewsReceived": 2,
+    "copilotCreditsConsumed": null,
+    "copilotBalance": null,
+    "paidOverageEnabled": false
   }
 }

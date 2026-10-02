@@ -23,7 +23,7 @@ https://github.com/Ericklhc1/Libroderecepcion/pull/244#pullrequestreview-5392864
 |---|---|---|
 | Revisión separada de la escritura | La revisión autorizada entra en acciones nativas. Tareas/novedades comparan el snapshot y escriben con `updatedAt`; llaves/garantías verifican bajo bloqueo de fila; configuración usa transacción y versión | Casos PostgreSQL invocan directamente cada mutación después de modificar su origen; aprobados en CI 37019633610 |
 | Edición de política sin versión | Esquema rechaza `id` sin `version`; revocación también compara versión | Dominio y PostgreSQL |
-| Selector reemplazaba responsable/área ausente | Conserva opción actual no disponible y exige selección deliberada para cambiarla | Navegador oculta persona/desactiva área sintéticas y comprueba selección preservada |
+| Selector reemplazaba responsable/área ausente | Conserva opción actual no disponible y exige selección deliberada para cambiarla | Navegador oculta persona/desactiva área sintéticas y comprueba selección preservada; aprobado en CI 37020877716 |
 | Fallo global del barrido podía mantener exclusiones de detectores anteriores | Cron pasa explícitamente `usePolicyOverrides=false` al recuperar después de un fallo | Contrato cron + PostgreSQL con una política activa que normalmente excluye el registro; aprobados en CI 37019633610 |
 
-Dos revisiones recibidas realmente; sin saldo/coste en créditos consultable. No se pidió una tercera revisión redundante. CI 37019633610 acredita las regresiones nativas. El recorrido de selector/editado aún requiere la CI siguiente; el bot no ha revisado este commit. No se atribuye la implementación a Copilot.
+Dos revisiones recibidas realmente; sin saldo/coste en créditos consultable. No se pidió una tercera revisión redundante. CI 37019633610 acredita las regresiones nativas. El recorrido de selector/editado pasó en CI 37020877716; el bot no ha revisado este commit. No se atribuye la implementación a Copilot.

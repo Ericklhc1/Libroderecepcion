@@ -40,6 +40,8 @@ try {
   const visibleMs=Math.round(performance.now()-visibleStart);assert.ok(visibleMs<=3000,`Fronti visible result took ${visibleMs} ms; budget 3000 ms`);
   console.log('Fronti visible chat',width,visibleMs);
   results.push({width,scenario:'actual-chat-input-to-visible-result',ms:visibleMs,budgetMs:3000,status:'passed',provider:'not-used'});
+  await panel.getByRole('link',{name:`/fronti/procedimientos?ejecucion=${uiId}`,exact:true}).click();
+  await page.getByRole('heading',{name:'Resultado: Completado',exact:true}).waitFor();
   await panel.getByRole('button',{name:'Minimizar Fronti',exact:true}).click();
   const summary=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/resumen',requestKey:randomUUID()}});assert.equal(summary.status(),200);assert.match((await summary.json()).reply,/Coordinación: \/coordinacion/);
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('deshabilitada'));
@@ -94,4 +96,5 @@ try {
   results.push({width,scenario:'authenticated-exact-command-retry-private-history-summary-paused-rules',ms:elapsed,budgetMs:2000,status:'passed',provider:'not-used'});await context.close();
  }
  console.log('Etapa 2 authenticated Fronti desktop/mobile journeys passed.');
+ console.log('Synthetic Fronti and policies timings',JSON.stringify(results));
 } finally {writeFileSync('etapa2-browser-results.json',JSON.stringify({browser:browser.version(),results,physicalSafari:false},null,2));await browser.close();await db.$disconnect();}

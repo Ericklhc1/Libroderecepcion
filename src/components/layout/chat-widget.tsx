@@ -1,4 +1,5 @@
 'use client';
+import { FrontiSourceLinks } from './fronti-source-links';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -167,7 +168,7 @@ function renderFrontiInline(text: string) {
     if (/^@[A-Za-z0-9._-]{2,40}$/.test(part)) {
       return <span key={`fronti-mention-${index}`} className="rounded bg-gold-100 px-0.5 font-semibold">{part}</span>;
     }
-    return <span key={`fronti-text-${index}`}>{part}</span>;
+    return <span key={`fronti-text-${index}`}><FrontiSourceLinks text={part} /></span>;
   });
 }
 

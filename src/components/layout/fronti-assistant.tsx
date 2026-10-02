@@ -1,4 +1,5 @@
 'use client';
+import { FrontiSourceLinks } from './fronti-source-links';
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -405,13 +406,13 @@ export function FrontiAssistant() {
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-5 ${
+                  className={`max-w-[88%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-5 ${
                     message.role === 'user'
                       ? 'rounded-br-md bg-petrol-800 text-white'
                       : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'
                   }`}
                 >
-                  {message.content}
+                  <FrontiSourceLinks text={message.content} />
                 </div>
               </div>
             ))}

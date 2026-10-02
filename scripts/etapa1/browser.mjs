@@ -16,6 +16,20 @@ try{
   const t=f.tasks[index];const admin=await actor('admin',width);const worker=await actor('worker',width);
   const response=await admin.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}`);
   assert.equal(response.status(),200);
+  if(width===1280){
+    await admin.page.getByRole('button',{name:'Reducir barra lateral a iconos',exact:true}).click();
+    assert.equal(await admin.page.locator('aside nav a').count(),1,'Compact sidebar shows group controls, not every module');
+    await admin.page.locator('aside').getByRole('button',{name:'Operación',exact:true}).click();
+    await admin.page.locator('[aria-label="Opciones de Operación"]').waitFor();
+    await admin.page.keyboard.press('Escape');
+    await admin.page.locator('[aria-label="Opciones de Operación"]').waitFor({state:'hidden'});
+    await admin.page.getByRole('button',{name:'Ampliar barra lateral',exact:true}).click();
+  }else{
+    await admin.page.getByRole('button',{name:'Más',exact:true}).click();
+    const menu=admin.page.getByRole('dialog',{name:'Todo el menú'});await menu.waitFor();
+    const box=await menu.boundingBox();assert.ok(box&&box.y>=0&&box.y+box.height<900,'Mobile menu remains above bottom navigation');
+    await menu.getByRole('button',{name:'Cerrar',exact:true}).click();await menu.waitFor({state:'hidden'});
+  }
   const card=admin.page.locator('article').filter({hasText:t.title});
   await card.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
   await card.locator('select[name="ownerId"]').selectOption(f.users.worker.id);

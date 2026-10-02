@@ -3,6 +3,7 @@ import {writeFileSync} from 'node:fs';
 import {PrismaClient} from '@prisma/client';
 import {SignJWT} from 'jose';
 import {resetOperationalData,prisma as testDb} from '../../tests/helpers';
+import {TUTORIAL_MODULE_KEYS} from '../../src/domain/tutorial-tour';
 import {TERMS_DOCUMENT,TERMS_VERSION} from '../../src/domain/legal';
 const db=new PrismaClient();
 await resetOperationalData();
@@ -11,7 +12,7 @@ const area=await db.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
 const users:Record<string,{id:string;token:string}>={};
 for(const [key,roleKey] of Object.entries({admin:'ADMINISTRADOR_SISTEMA',worker:'SUPERVISOR',maid:'MUCAMA'})){
  const role=await db.role.findUniqueOrThrow({where:{key:roleKey}});
- const user=await db.user.create({data:{name:`Etapa1 ${key}`,username:`etapa1_${key}`,passwordHash:'synthetic-no-login',roleId:role.id,departmentId:area.id,mustChangePassword:false}});
+ const user=await db.user.create({data:{name:`Etapa1 ${key}`,username:`etapa1_${key}`,passwordHash:'synthetic-no-login',roleId:role.id,departmentId:area.id,mustChangePassword:false,tutorialDoneAt:new Date(),tutorialKnownModules:[...TUTORIAL_MODULE_KEYS]}});
  await db.legalAcceptance.create({data:{userId:user.id,document:TERMS_DOCUMENT,version:TERMS_VERSION}});
  const expiresAt=new Date(Date.now()+3600000);const session=await db.session.create({data:{userId:user.id,expiresAt}});
  const token=await new SignJWT({sub:user.id,sid:session.id}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime(Math.floor(expiresAt.getTime()/1000)).sign(new TextEncoder().encode(process.env.AUTH_SECRET));users[key]={id:user.id,token};

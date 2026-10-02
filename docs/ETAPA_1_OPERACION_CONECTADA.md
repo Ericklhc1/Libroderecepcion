@@ -16,7 +16,7 @@ Los nuevos campos en Task y OperationalEntry guardan asignación, recepción, pr
 
 La bandeja muestra totales filtrados y estadísticas **de la página visible** con denominador: confirmación, espera hasta inicio y resolución. Los tiempos sin datos aparecen como «—»; no se presentan como cero. La paginación trae hasta 25 asuntos por origen, con sus vínculos limitados a 20; el detalle original permite consultar el resto.
 
-Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la disponibilidad programada se escalan una vez al creador/coordinador mediante el cron existente. Reasignar reinicia el ciclo. La bandeja permanece consultable aunque falle push o no corra el cron. Los registros anteriores sin marca de asignación no reciben un plazo histórico inventado. Este umbral está centralizado en `RECEIPT_MINUTES`.
+Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la disponibilidad programada se escalan una vez al creador/coordinador mediante el cron existente. En Housekeeping se avisa al equipo coordinador; no se anticipan avisos de recepción para trabajos de días futuros. Reasignar reinicia el ciclo. La bandeja permanece consultable aunque falle push o no corra el cron. Los registros anteriores sin marca de asignación no reciben un plazo histórico inventado. Este umbral está centralizado en `RECEIPT_MINUTES`.
 
 ## Arquitectura y controles
 
@@ -30,7 +30,7 @@ Las nuevas asignaciones pendientes de recepción durante 30 minutos desde la dis
 
 Pruebas de integración en `tests/coordination.test.ts`: recorrido de recepción a resolución, acceso rechazado, privacidad derivada, reasignación, reintento concurrente, conflicto entre revisiones, continuidad entre turnos, escalamiento, HK y aceptación de relevo, contrato de Mantenimiento y horario limitado por permiso.
 
-Compuerta ejecuta PostgreSQL 16 desechable, migraciones, lint, tipos, suite completa y build. Después prepara sesiones sintéticas con aceptación legal y reproduce asignar → recibir → resolver desde el registro original en Chromium de escritorio y viewport móvil. Comprueba acceso restringido y ausencia de desbordamiento horizontal. Las conexiones se restringen a la base sintética de CI y HTTP a loopback; las sesiones no se publican como artefactos. El artefacto conserva sólo resultados.
+Compuerta ejecuta PostgreSQL 16 desechable, migraciones, lint, tipos, suite completa y build. Después prepara sesiones sintéticas con aceptación legal y reproduce asignar → recibir → resolver desde el registro original en Chromium de escritorio y viewport móvil. Comprueba acceso restringido, ausencia de desbordamiento horizontal, menú móvil sobre la barra inferior y apertura/cierre de grupos en la barra reducida. Las conexiones se restringen a la base sintética de CI y HTTP a loopback; las sesiones no se publican como artefactos. El artefacto conserva sólo resultados.
 
 La barra reducida y las transiciones ya existían en v1.45.0: se conservan y se comprueban con las regresiones de navegación, grupos, foco y movimiento reducido. No se duplica su implementación.
 

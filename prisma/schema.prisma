@@ -1207,6 +1207,7 @@ model OperationalEntry {
 
 // Operational coordination. Legacy administrative trials retain isDemo=true.
 model HousekeepingRequest {
+  workAssignedAt DateTime?
   workflowVersion Int @default(0)
   workKind String @default("AVISO")
   workDate String?

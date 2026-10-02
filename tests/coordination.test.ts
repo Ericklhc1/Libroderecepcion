@@ -6,6 +6,7 @@ import { coordinateWork,getCoordinationBoard,escalateUnreceivedWork,getCoordinat
 import { createTask,assignTask,changeTaskStatus } from '@/server/services/tasks';
 import { createEntry,changeEntryStatus } from '@/server/services/entries';
 import { createHkWork,changeHkWork,saveHkHandover,receiveHkHandover,acceptHkHandover } from '@/server/services/housekeeping-work';
+import { escalateHousekeepingRequests } from '@/server/services/housekeeping';
 import { hotelDateKey } from '@/domain/time';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
@@ -46,6 +47,7 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     await Promise.all([coordinateWork(admin,input),coordinateWork(admin,input)]);
     expect(await prisma.auditLog.count({where:{entityId:e.id,summary:{contains:'Coordinación'}}})).toBe(1);
     expect(await prisma.notification.count({where:{entityId:e.id,title:{contains:'por recibir'}}})).toBe(1);
+    await expect(coordinateWork(admin,{...input,nextAction:'Cambiar el contenido con la misma clave'})).rejects.toThrow('reintento');
   });
   it('dos reasignaciones con la misma versión no se sobrescriben',async()=>{
     const e=await entry();const input={kind:'entry' as const,id:e.id,updatedAt:e.updatedAt,action:'ASIGNAR' as const,nextAction:'Continuar atención'};
@@ -74,6 +76,8 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
   });
   it('recibir un trabajo HK no lo comienza; reasignar obliga una nueva recepción',async()=>{
     const r=await createHkWork(admin,{requestKey:randomUUID(),title:'Reponer toallas',description:'Atención sintética',departmentId:hkArea,workDate:hotelDateKey(new Date()),workKind:'REPOSICION',location:'Zona sintética',priority:'MEDIA',effortMinutes:10,assignedToId:maid.id});
+    await prisma.housekeepingRequest.update({where:{id:r.id},data:{workAssignedAt:new Date(Date.now()-3600000)}});
+    expect((await escalateHousekeepingRequests()).escalated).toBe(1);expect((await escalateHousekeepingRequests()).escalated).toBe(0);
     const received=await changeHkWork(maid,{id:r.id,version:r.version,action:'RECIBIR'});expect(received.status).toBe('RECIBIDO');expect(received.startedAt).toBeNull();
     const started=await changeHkWork(maid,{id:r.id,version:received.version,action:'COMENZAR'});expect(started.acknowledgedAt).toEqual(received.acknowledgedAt);expect(started.startedAt).not.toBeNull();
   });
@@ -92,6 +96,15 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     expect(await prisma.task.count({where:{entryId:updated.maintenanceEntryId}})).toBe(1);expect(await prisma.followUp.count({where:{entryId:updated.maintenanceEntryId}})).toBe(1);
     expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:updated.maintenanceEntryId!}})).severity).toBe('ALTA');
     await expect(changeHkWork(admin,{id:r.id,version:blocked.version,action:'MANTENIMIENTO',note:'Reintento',severity:'ALTA'})).rejects.toThrow();expect(await prisma.operationalEntry.count()).toBe(1);
+  });
+  it('una tarea de otro responsable o de un origen cerrado sigue visible en mis pendientes',async()=>{
+    const e=await entry();await prisma.operationalEntry.update({where:{id:e.id},data:{status:'CERRADO'}});
+    const t=await createTask(admin,{title:'Continuidad aún abierta',entryId:e.id,assigneeId:b.id,priority:'MEDIA',tags:[],checklist:[]});
+    expect((await getCoordinationBoard(b,{mine:true})).rows.some(r=>r.id===t.id)).toBe(true);
+  });
+  it('la programación futura no genera escalamiento prematuro',async()=>{
+    const t=await task();await prisma.task.update({where:{id:t.id},data:{workAssignedAt:new Date(Date.now()-3600000),startsAt:new Date(Date.now()+3600000)}});
+    expect((await escalateUnreceivedWork()).escalated).toBe(0);await expect(mutate(a,t.id,'task','RECIBIR')).rejects.toThrow('programación');
   });
   it('equipo conserva usuarios existentes y no expone horario sin permiso',async()=>{
     const team=await getCoordinationTeam(a,area);expect(team.some(u=>u.id===b.id)).toBe(true);

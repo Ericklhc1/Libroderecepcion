@@ -23,7 +23,7 @@ import { POST as payloadRoute } from '@/app/api/push/payload/route';
 
 const state = vi.hoisted(() => ({ user: null as CurrentUser | null }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
-vi.mock('@/server/mail', () => ({ sendMail: vi.fn(async () => ({ sent: true, to: 'synthetic@example.invalid' })) }));
+vi.mock('@/server/mail', async original => ({ ...await original<object>(), sendMail: vi.fn(async () => ({ sent: true, to: 'synthetic@example.invalid' })) }));
 vi.mock('@/server/auth/guard', () => ({ requireUser: async () => { if (!state.user) throw new Error('Actor requerido'); return state.user; } }));
 vi.mock('@/server/auth/current-user', async original => ({ ...await original<object>(), getCurrentUser: async () => state.user }));
 vi.mock('@/server/services/legal-acceptance', () => ({ hasAcceptedCurrentTerms: async () => true }));

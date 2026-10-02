@@ -61,3 +61,11 @@ El cron `/api/cron/web-push` ejecuta reglas deterministas con un presupuesto aco
 ## Administración mediante Fronti
 
 `updateUserAction` exige todos los campos del formulario, incluidos los booleanos explícitos; una edición parcial se rechaza antes de preparar. `updateRolePermissionsAction` exige `permissionsBefore`, `approvalRequiredBefore`, el resultado completo `permissions`/`approvalRequired` y `replacementAcknowledged=REEMPLAZAR_MATRIZ_COMPLETA`. Se verifica el estado previo, se muestra en la tarjeta privada y la escritura nativa comprueba de nuevo la revisión autorizada. Esto conserva la intención y evita borrar valores omitidos. Los cambios de identidad ejecutora continúan prohibidos.
+
+## Límites consultados de GitHub
+
+Consulta del 2 de octubre de 2026: la documentación oficial indica 40 jobs estándar concurrentes para Pro (5 macOS), máximo 6 horas por job, 1 GB de artefactos y 10 GB de caché por repositorio. Esta Compuerta usa un único job Linux con timeout propio de 30 minutos y artefactos sintéticos pequeños retenidos 7 días. Los minutos estándar de repositorios públicos son gratuitos; no se activaron ejecutores grandes, presupuestos ni sobreconsumo. El espacio/consumo actual de la cuenta no es consultable mediante esta conexión.
+
+Fuentes: https://docs.github.com/en/actions/reference/limits ; https://docs.github.com/en/billing/concepts/product-billing/github-actions ; https://docs.github.com/en/billing/concepts/product-billing/github-copilot-billing . La tarifa de Copilot depende del uso y no se convierte la captura histórica de 1500 créditos en un número de revisiones disponibles.
+
+Repositorio público confirmado por la API. El endpoint de configuración de CodeQL no está permitido por el conector; la respuesta del repositorio tampoco expone `security_and_analysis`. Esto no prueba que estén desactivados. No se crea otro workflow de análisis sin saber si duplicaría el default setup.

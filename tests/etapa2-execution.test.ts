@@ -4,6 +4,7 @@ import { prisma, seedCatalog, resetOperationalData, createUser } from './helpers
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prepareExecution, executePlan, cancelExecution, readExecution } from '@/server/ai/execution/service';
+import * as taskServices from '@/server/services/tasks';
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { saveAutomation, simulateAutomation, runOperationalAutomations, revokeAutomation } from '@/server/services/operational-automation';
 import type { FrontiStep } from '@/domain/fronti-execution';
@@ -125,6 +126,12 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const policy=await saveAutomation(admin,{name:'Regla acotada',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',receiptMinutes:30,recipientId:other.id},expiresAt:new Date(Date.now()+86400000),enabled:true});
     expect((await runOperationalAutomations(new Date(),Date.now())).attempted).toBe(0);
     await prisma.user.update({where:{id:admin.id},data:{active:false}});expect((await runOperationalAutomations()).failed).toBe(1);expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:policy.id}})).enabled).toBe(false);expect(await prisma.operationalAutomationRun.count({where:{policyId:policy.id,status:'INTERVENTION'}})).toBe(1);
+  });
+  it('interrumpe recurrencias restantes si el autorizador se desactiva durante el primer efecto',async()=>{
+    process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const now=new Date();
+    const policy=await saveAutomation(admin,{name:'Revocación durante barrido',departmentId:area,kind:'PROCEDURE',configuration:{title:'Revisar filtro sintético',description:'Declaración pendiente',ownerId:other.id,priority:'MEDIA',nextAction:'Informar evidencia',evidenceRequired:'Resultado comunicado',checklist:['Inspeccionar'],startDate:hotelDateKey(new Date(now.getTime()-3*86400000)),localTime:'01:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60,catchUpDays:2,maxOccurrences:3},expiresAt:new Date(now.getTime()+86400000),enabled:true});
+    const original=taskServices.createTask;let effects=0;const spy=vi.spyOn(taskServices,'createTask').mockImplementation(async(...args)=>{const task=await original(...args);if(++effects===1)await prisma.user.update({where:{id:admin.id},data:{active:false}});return task;});
+    try {const result=await runOperationalAutomations(now);expect(result.attempted).toBe(1);expect(result.failed).toBe(1);expect(await prisma.task.count()).toBe(1);expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:policy.id}})).enabled).toBe(false);} finally {spy.mockRestore();}
   });
   it('simula sin efectos; pausa, concurrencia, versiones y revocación conservan historial',async()=>{
     const now=new Date();const config={title:'Revisión preventiva',description:'Procedimiento sintético',ownerId:other.id,priority:'MEDIA',nextAction:'Registrar evidencia',evidenceRequired:'Observación',checklist:['Revisar'],startDate:hotelDateKey(now),localTime:'01:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60};

@@ -935,6 +935,9 @@ export function validateStep(step: FrontiStep): FrontiStep {
   const action = actionDefinition(step.action);
   const shape = Object.fromEntries(action.fields.map(field => [field, z.union([z.string().max(6000), z.array(z.string().max(1000)).max(100)]).optional()]));
   const parsed = z.object(shape).strict().parse(step.fields);
+  if (['saveDepartmentAction','saveKeyAreaAction','saveHkRoutineAction','saveScheduleCollaboratorAction'].includes(step.action) && parsed.id) {
+    for (const field of action.fields) if (parsed[field] === undefined) throw new RuleError('La edición requiere el estado completo: falta ' + field + '. No se reemplazan campos omitidos.');
+  }
   if (step.action === 'updateUserAction') {
     for (const field of action.fields) if (typeof parsed[field] !== 'string') throw new RuleError('La edición de usuario requiere su estado completo: falta ' + field + '. No se aplican cambios parciales implícitos.');
     for (const field of ['active','emailNotificationsEnabled','hiddenFromSelectors']) z.enum(['true','false']).parse(parsed[field]);

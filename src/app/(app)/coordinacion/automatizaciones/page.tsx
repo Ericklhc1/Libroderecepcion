@@ -32,6 +32,22 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
   const area=(selected?:string)=><label>Área<select name="departmentId" required defaultValue={selected} className={css}>{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
   const person=(name:string,label:string,selected?:string)=><label>{label}<select name={name} required defaultValue={selected} className={css}>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
   const identity=(kind:string)=><><input type="hidden" name="kind" value={kind}/>{editing?.kind===kind&&<><input type="hidden" name="id" value={editing.id}/><input type="hidden" name="version" value={editing.version}/></>}</>;
+  const explain=(policy: (typeof policies)[number])=>{
+    const department=areas.find(a=>a.id===policy.departmentId)?.name??'Área no disponible';
+    if(policy.kind==='PROCEDURE') {
+      const config=procedureSchema.parse(policy.configuration), responsible=people.find(p=>p.id===config.ownerId)?.name??'Responsable no elegible';
+      return `${department}: crear una tarea para ${responsible} a las ${config.localTime} de Santiago, días ${config.weekdays.map(d=>['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d]).join(', ')} desde ${config.startDate}. Prioridad ${config.priority}, plazo ${config.deadlineMinutes} minutos. Evidencia: ${config.evidenceRequired}. Siguiente acción: ${config.nextAction}. Validación independiente: ${config.requiresIndependentValidation?'sí':'no'}.`;
+    }
+    const config=escalationSchema.parse(policy.configuration), recipient=people.find(p=>p.id===config.recipientId)?.name??'Destinatario no elegible';
+    const trigger={UNASSIGNED:'sin responsable',UNRECEIVED:`sin recibir después de ${config.receiptMinutes} minutos desde que está disponible`,OVERDUE:'con su plazo vencido',BLOCKED:'bloqueado'}[config.trigger];
+    return `${department}: cuando un trabajo ${config.kind??'de cualquier tipo'}, prioridad ${config.priority??'cualquiera'}, esté ${trigger}, avisar a ${recipient} si conserva autoridad y acceso. Máximo ${config.maxItems} candidatos por evaluación. No crea otra incidencia ni confirma asistencia.`;
+  };
+  const outcome=(result:unknown)=>{
+    if(!result||typeof result!=='object')return null;
+    const data=result as Record<string,unknown>;
+    const message=typeof data.error==='string'?data.error:typeof data.reason==='string'?data.reason:typeof data.taskId==='string'?'Tarea creada.':typeof data.sourceId==='string'?'Aviso interno conservado para el registro original.':null;
+    return message?<p className="text-xs text-slate-600">{message}{typeof data.retry==='string'?` ${data.retry}`:''}{typeof data.taskId==='string'&&<Link className="ml-2 underline" href={`/tareas/${data.taskId}`}>Abrir tarea</Link>}</p>:null;
+  };
   const expiry=(kind:string)=>field('expiresAt','Autorización válida hasta',editing?.kind===kind?hotelDateKey(editing.expiresAt):'','date');
   return <div className="mx-auto max-w-5xl space-y-5">
     <header><h1 className="text-xl font-semibold">Reglas y procedimientos</h1><p>Prepara, simula y revisa. Guardar una versión la deja en pausa; no modifica trabajos iniciados.</p><p className="text-sm text-amber-800">{process.env.AROH_AUTOMATION_EXECUTION_ENABLED==='true'?'Ejecución habilitada para políticas activas.':'La ejecución automática está deshabilitada. Puedes simular sin generar trabajo ni avisos.'}</p></header>
@@ -60,9 +76,9 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
       </ActionForm>
     </details>
     <section className="space-y-3"><h2 className="font-semibold">Tus últimas 50 políticas</h2>{policies.map(p=><article className="card space-y-2 p-4" key={p.id}>
-      <h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p>
-      <div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><Link className="underline" href={`?editar=${p.id}`}>Preparar nueva versión</Link><ActionForm action={setAutomationStateAction} refreshOnSuccess><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>
-      <ul className="text-sm">{p.runs.map(r=><li key={r.id}>{formatDateTime(r.startedAt)} · {r.status==='SUCCEEDED'?'Completada':r.status==='INTERVENTION'?'Requiere intervención':r.status} · versión {r.policyVersion}</li>)}</ul>
+      <h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.expiresAt<=new Date()?'Caducada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p>
+      <p className="text-sm">{explain(p)}</p><p className="text-xs text-slate-600">Pausar o revocar detiene efectos nuevos y conserva el trabajo generado. Un error de autorización, destino o ejecución pausa la política para revisión.</p><div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><Link className="underline" href={`?editar=${p.id}`}>Preparar nueva versión</Link><ActionForm action={setAutomationStateAction} refreshOnSuccess><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>
+      <p className="text-xs text-slate-600">Últimas {p.runs.length} ejecuciones (máximo 5; no representa el historial completo).</p><ul className="text-sm">{p.runs.map(r=><li key={r.id}>{formatDateTime(r.startedAt)} · {r.status==='SUCCEEDED'?'Completada':r.status==='INTERVENTION'?'Requiere intervención':r.status} · versión {r.policyVersion}{outcome(r.result)}</li>)}</ul>
     </article>)}</section>
   </div>;
 }

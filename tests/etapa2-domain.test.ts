@@ -26,6 +26,7 @@ describe('Etapa 2: contrato de autorización y recurrencias', () => {
     }
   });
   it('rechaza edición parcial de usuarios y sustitución implícita de permisos', () => {
+    expect(()=>validateStep({action:'saveDepartmentAction',fields:{id:'area',name:'Nombre'}})).toThrow('estado completo');
     expect(()=>validateStep({action:'updateUserAction',fields:{id:'u',name:'Nuevo nombre'}})).toThrow('estado completo');
     expect(()=>validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create']}})).toThrow();
     expect(validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create'],approvalRequired:[],permissionsBefore:[],approvalRequiredBefore:[],replacementAcknowledged:'REEMPLAZAR_MATRIZ_COMPLETA'}}).action).toBe('updateRolePermissionsAction');

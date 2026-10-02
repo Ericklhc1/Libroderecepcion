@@ -67,7 +67,7 @@ export async function updateEntryAction(
   return runAction(async () => {
     const user = await requirePermission('entry.edit');
     const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
-    const entry = await updateEntry(user, input);
+    const entry = await updateEntry(user, input, revisionFromForm(formData));
     if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Registro actualizado.', id: entry.id };
@@ -100,7 +100,7 @@ export async function deleteEntryAction(
   return runAction(async () => {
     const user = await requirePermission('entry.delete');
     const input = parseOrThrow(softDeleteSchema, formDataToObject(formData));
-    await softDeleteEntry(user, input);
+    await softDeleteEntry(user, input, revisionFromForm(formData));
     refreshOperationalViews(input.id);
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Registro eliminado. Queda recuperable desde Administración.' };
@@ -114,7 +114,7 @@ export async function restoreEntryAction(
   return runAction(async () => {
     const user = await requirePermission('entry.restore');
     const input = parseOrThrow(restoreSchema, formDataToObject(formData));
-    await restoreEntry(user, input);
+    await restoreEntry(user, input, revisionFromForm(formData));
     refreshOperationalViews(input.id);
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Registro restaurado.' };

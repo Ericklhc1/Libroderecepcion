@@ -8,19 +8,20 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 137,
-      "files": 16,
+      "passed": 143,
+      "files": 18,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
     },
     "types": "passed",
     "lint": "passed with 2 pre-existing warnings",
-    "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
+    "build": "Latest revision requires CI; previous complete gate 37029291952 passed normal build"
   },
   "pendingValidation": [
-    "Final CI after finite delegation and canonical catalog changes; previous head 671632bd passed 1398 tests including TSX and desktop/mobile browser",
+    "Current CI after dynamic authorization constraint and native revision corrections",
     "physical Safari/iPhone",
     "all individual adapter procedure journeys",
+    "CRON_SECRET metadata unavailable through current connector",
     "production latency observation after separately authorized release"
   ],
   "github": {
@@ -217,6 +218,18 @@
         "artifactId": 11233862914,
         "artifactExpiresAt": "2026-10-09T14:50:15Z",
         "testSelectionFinding": "Two TSX rendering tests passed locally but were excluded by CI *.test.ts glob; changed to *.test.{ts,tsx} and rerun required."
+      },
+      {
+        "id": 37037311294,
+        "head": "0e114e0e891321f7007bf35dd7e5b8e5e53189fe",
+        "result": "failure",
+        "passed": 1418,
+        "failed": 4,
+        "skipped": 1,
+        "migrations": "Applied to disposable PostgreSQL 16; DYNAMIC inserts fail old authorization CHECK",
+        "build": "skipped",
+        "browser": "skipped",
+        "finding": "Constraint correction prepared locally; next CI required"
       }
     ]
   },
@@ -227,16 +240,17 @@
     "reviewId": 5391944473,
     "findings": 7,
     "implementationAttributed": false,
-    "observedConsumption": "3 reviews received; credit cost and live balance inaccessible",
+    "observedConsumption": "4 reviews received; credit cost and live balance inaccessible",
     "reviewIds": [
       5391944473,
       5392864566,
-      5393737284
+      5393737284,
+      5394563088
     ]
   },
   "coverage": {
-    "serverActionsInventoried": 212,
-    "adaptersConnected": 62,
+    "serverActionsInventoried": 213,
+    "adaptersConnected": 184,
     "generalCoverageAccredited": false,
     "httpMethodsInventoried": 60
   },
@@ -254,7 +268,7 @@
     "cancelledIncluded": 1,
     "workflowElapsedMinutes": 72.3,
     "measurement": "Sum of run_started_at to updated_at for completed gate runs; includes workflow overhead, not billing minutes. Does not include later runs.",
-    "copilotReviewsReceived": 2,
+    "copilotReviewsReceived": 4,
     "copilotCreditsConsumed": null,
     "copilotBalance": null,
     "paidOverageEnabled": false
@@ -271,10 +285,8 @@
     "concurrentRevocation": "Single cancellation audit; native running step may finish, pending steps cancelled. Added to following gate.",
     "authorization": "Finite exact parameters, 1-12 actions, each once, maximum duration 31 days. Current authenticated owner only. No autonomous scheduling.",
     "limitsPending": [
-      "dynamic record selection",
-      "reusable cumulative budgets",
-      "custom stop conditions",
-      "all procedure variants"
+      "all procedure variants",
+      "dynamic mandate integration verification"
     ],
     "catalog": "Single src/domain/fronti-action-catalog.json used by runtime and matrix; handler correspondence checked at load.",
     "verifiedGate": {
@@ -293,5 +305,9 @@
       "physicalSafari": false
     },
     "catalogGate": "Final gate required after consolidation; result recorded in PR body."
+  },
+  "dynamicDelegations": {
+    "status": "implemented, PostgreSQL gate failed; constraint correction awaiting rerun",
+    "productionTouched": false
   }
 }

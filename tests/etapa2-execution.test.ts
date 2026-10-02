@@ -10,7 +10,7 @@ import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { saveAutomation, simulateAutomation, runOperationalAutomations, revokeAutomation } from '@/server/services/operational-automation';
 import type { FrontiStep } from '@/domain/fronti-execution';
 import { escalateUnreceivedWork } from '@/server/services/coordination';
-import { invokeNativeAction } from '@/server/ai/execution/catalog';
+import { actionDefinition, invokeNativeAction } from '@/server/ai/execution/catalog';
 import { revisionForStep } from '@/server/ai/execution/revision';
 import { completeProtectedFrontiStep } from '@/server/actions/fronti-protected';
 import { operationalIndicators } from '@/server/services/operational-indicators';
@@ -332,6 +332,21 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const p=await plan();await executePlan(p.id,true);const data=await operationalIndicators(admin,{from:new Date(Date.now()-86400000),to:new Date()});
     expect(data.fronti.successful).toBe(1);expect(data.fronti.baselineStage1).toBeNull();expect(data.fronti.observedHumanTimeSaved).toBeNull();expect(data.durations.resolution.minutes).toBeNull();expect(data.procedures.denominator).toBe(0);
     const isolated=await operationalIndicators(other,{from:new Date(Date.now()-86400000),to:new Date()});expect(isolated.fronti.denominator).toBe(0);
+  });
+
+  it('revisión autorizada se vuelve a validar dentro de ediciones, asignaciones y archivos nativos',async()=>{
+    const task=await createTask(admin,{title:'Registro con revisión',assigneeId:admin.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    for(const action of ['assignTaskAction','deleteTaskAction']){
+      const step={action,fields:{id:task.id,...(action==='assignTaskAction'?{assigneeId:other.id}:{}),reason:'Motivo sintético explícito'}};
+      const revision=await revisionForStep(step);expect(revision).not.toBeNull();await prisma.task.update({where:{id:task.id},data:{title:'Cambio concurrente '+action}});
+      const result=await invokeNativeAction(step,revision);expect(result.ok).toBe(false);if(!result.ok)expect(result.error).toContain('cambió');
+    }
+    const fields:Record<string,string|string[]>=Object.fromEntries(actionDefinition('updateTaskAction').fields.map(key=>[key,'']));Object.assign(fields,{id:task.id,title:'Edición autorizada',priority:'MEDIA',status:'PENDIENTE',targetType:'PERSONA',tags:[],collaboratorIds:[],checklist:[]});
+    const step={action:'updateTaskAction',fields};const revision=await revisionForStep(step);await prisma.task.update({where:{id:task.id},data:{title:'Cambio antes de servicio'}});
+    const result=await invokeNativeAction(step,revision);expect(result.ok).toBe(false);if(!result.ok)expect(result.error).toContain('cambió');expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).deletedAt).toBeNull();
+  });
+  it('la base rechaza tipos de autorización desconocidos y mandatos dinámicos sin ventana',async()=>{
+    const p=await createDynamicDelegation(dynamicTask());await expect(prisma.frontiExecution.update({where:{id:p.id},data:{authorizationKind:'UNRESTRICTED'}})).rejects.toThrow();await expect(prisma.frontiExecution.update({where:{id:p.id},data:{availableAt:null}})).rejects.toThrow();await expect(prisma.frontiExecution.update({where:{id:p.id},data:{reservedMinorUnits:-1}})).rejects.toThrow();
   });
 
 });

@@ -899,3 +899,7 @@ Cambios nuevos: catálogo 184 adaptadores; formularios privados de secretos/arch
 La lectura Vercel get_project funciona pasando idOrName además de projectId; no expone variables y CRON_SECRET sigue sin verificarse. No hay iPhone/Safari físico. Estas limitaciones no bloquean seguir desarrollando.
 
 Verificación de esta revisión: dominio local anterior 143/143; nuevas pruebas PostgreSQL y navegador añadidas, resultado CI aún pendiente. No dar cobertura general por registrar adaptadores: revisar matriz y acreditar contratos/recorridos restantes, especialmente atomicidad de revisión de todas las variantes y rutas HTTP/exportaciones. No publicar secretos ni datos reales. Próximos pasos: completar comprobaciones nuevas, corregir CI, revisar Copilot y actualizar evidencia por SHA.
+
+## Corrección de compuerta y cuarta revisión Copilot
+
+CI 37037311294 sobre 0e114e0e: 1418 aprobadas, 4 fallidas, 1 omitida; fallo PostgreSQL 23514 por CHECK de autorización que no admite DYNAMIC. Build/navegador omitidos. Se amplía el CHECK conservando ventanas, parentesco y límites, con regresiones negativas. Revisión Copilot 5394563088 recibida: también se corrigen fin de día inclusivo, enlace a indicadores y recuentos obsoletos. Revisión autorizada propagada a edición/asignación/archivo/restauración de tareas, novedades, seguimientos y garantías: comparación dentro del servicio y CAS/lock en la escritura. No basta la comprobación previa del chat. Dominio local 143/143, lint con dos avisos previos; nuevo CI requerido. Producción intacta.

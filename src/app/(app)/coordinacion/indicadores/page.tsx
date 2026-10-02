@@ -6,7 +6,7 @@ import { hotelDateKey, parseHotelDateInput } from '@/domain/time';
 export const dynamic='force-dynamic';
 export default async function IndicatorsPage({searchParams}:{searchParams:Promise<{desde?:string;hasta?:string;area?:string}>}){
   const user=await requirePageUser({allowAreaOperation:true});const p=await searchParams;
-  const now=new Date();const from=p.desde?parseHotelDateInput(p.desde+'T00:00'):new Date(now.getTime()-86400000);const to=p.hasta?parseHotelDateInput(p.hasta+'T23:59'):now;
+  const now=new Date();const from=p.desde?parseHotelDateInput(p.desde+'T00:00'):new Date(now.getTime()-86400000);const to=p.hasta?parseHotelDateInput(p.hasta+'T23:59:59.999'):now;
   if(!from||!to||to<from||to.getTime()-from.getTime()>31*86400000)return <p>Selecciona un período válido de hasta 31 días. <Link href="/coordinacion/indicadores">Restablecer</Link></p>;
   const data=await operationalIndicators(user,{from,to,departmentId:p.area});
   const ratio=(n:number,d:number)=>d?`${n}/${d} (${Math.round(n/d*100)} %)`: 'Sin muestras (denominador 0)';

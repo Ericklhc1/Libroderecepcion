@@ -1,4 +1,5 @@
 'use server';
+import { revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
@@ -44,7 +45,7 @@ export async function updateFollowUpAction(
   return runAction(async () => {
     const user = await requirePermission('followup.create');
     const input = parseOrThrow(followUpUpdateSchema, formDataToObject(formData));
-    const followUp = await updateFollowUp(user, input);
+    const followUp = await updateFollowUp(user, input, revisionFromForm(formData));
     refresh(followUp.entryId);
     return { ok: true as const, message: 'Seguimiento actualizado.', id: followUp.id };
   });
@@ -57,7 +58,7 @@ export async function deleteFollowUpAction(
   return runAction(async () => {
     const user = await requirePermission('entry.delete');
     const input = parseOrThrow(softDeleteSchema, formDataToObject(formData));
-    await softDeleteFollowUp(user, input);
+    await softDeleteFollowUp(user, input, revisionFromForm(formData));
     refresh();
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Seguimiento eliminado. Queda recuperable.' };
@@ -71,7 +72,7 @@ export async function restoreFollowUpAction(
   return runAction(async () => {
     const user = await requirePermission('entry.restore');
     const input = parseOrThrow(restoreSchema, formDataToObject(formData));
-    await restoreFollowUp(user, input);
+    await restoreFollowUp(user, input, revisionFromForm(formData));
     refresh();
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Seguimiento restaurado.' };

@@ -4,7 +4,7 @@ PR draft [#244](https://github.com/Ericklhc1/Libroderecepcion/pull/244), base `f
 
 ## Resultado y evidencia
 
-Fronti incorpora planes privados con 62 adaptadores a acciones originales; políticas y plantillas se guardan en pausa. No se sustituye la aplicación ni se añade un motor paralelo de Housekeeping. La matriz inventaría 212 exports y 60 métodos HTTP, con evidencia y pendientes por acción. Estar conectado no equivale a estar acreditado.
+Fronti incorpora planes privados con 184 adaptadores a acciones originales; políticas y plantillas se guardan en pausa. No se sustituye la aplicación ni se añade un motor paralelo de Housekeeping. La matriz inventaría 213 exports y 60 métodos HTTP, con evidencia y pendientes por acción. Estar conectado no equivale a estar acreditado.
 
 Coordinación ya superó el bloqueo visible en dos recorridos CI consecutivos. En 37017313077, asignar/recibir/resolver a 1280/390 px tardaron 233–942 ms hasta el estado visible; presupuesto 3000 ms. Se reutilizan las mismas acciones nativas por un transporte JSON limitado y navegación de documento después del éxito. Las alternativas anteriores que fallaron se conservan en EVIDENCIA.json. No se atribuye una causa interna exacta de React ni se presentan estos tiempos sintéticos como tiempos de producción.
 
@@ -38,7 +38,7 @@ Límites: 1–12 pasos, una ejecución por paso, duración máxima 31 días e in
 
 Se detiene por revocación/caducidad, sesión/permisos insuficientes, cambio del registro autorizado, incumplimiento del control nativo o resultado incierto/error. Los pasos completados no se repiten, y un paso ya iniciado puede terminar al revocar. No existe compensación genérica. Cambiar un plan existente no está permitido: revocar pendientes y autorizar otro procedimiento. Se usan FrontiExecution/Step/Request y el mismo ejecutor; la migración sólo añade tipo de autorización, inicio de vigencia y objetivo cifrado, sin tablas/motores paralelos.
 
-Este bloque acredita delegaciones **finitas con parámetros exactos**. Permanecen pendientes las delegaciones dinámicas con selección de futuros registros, límites acumulados reutilizables y condiciones personalizadas, así como su activación automática sin sesión. Las recurrencias y reglas operativas siguen en su motor nativo y pausadas durante esta fase.
+Este bloque acredita delegaciones **finitas con parámetros exactos**. Las delegaciones dinámicas reutilizables se describen más abajo; su integración está en verificación. La activación automática sin sesión no está implementada. Las recurrencias y reglas operativas siguen en su motor nativo y pausadas durante esta fase.
 
 ## Políticas, simulación, pausa y revocación
 
@@ -46,7 +46,7 @@ En `/coordinacion/automatizaciones`, con `system.configure`, definir área, resp
 
 Simular muestra propuestas sin generar tareas o avisos. Pausar detiene efectos nuevos; revocar conserva historial y trabajo iniciado. Las mismas acciones están conectadas a Fronti: `saveAutomationAction`, `simulateAutomationAction`, `setAutomationStateAction`. La última exige `id`, `version` y `state=pause|enable|revoke`, además de propiedad y permiso reales. El catálogo exige configuración completa para guardar una política.
 
-Las políticas incluyen propietario trazable, área, acciones/límites, caducidad, versión e interrupción por error o pérdida de autoridad. Son autorizaciones limitadas a estas reglas. Las delegaciones finitas de Fronti se describen arriba; las dinámicas con presupuestos acumulados y condiciones personalizadas siguen pendientes. Housekeeping conserva sus delegaciones y jerarquías existentes. Un horario publicado es planificación y nunca prueba presencia física.
+Las políticas incluyen propietario trazable, área, acciones/límites, caducidad, versión e interrupción por error o pérdida de autoridad. Son autorizaciones limitadas a estas reglas. Las delegaciones finitas de Fronti se describen arriba; las dinámicas con presupuestos acumulados y condiciones acotadas están implementadas y pendientes de la compuerta actual. Housekeeping conserva sus delegaciones y jerarquías existentes. Un horario publicado es planificación y nunca prueba presencia física.
 
 Recurrencias: fecha/hora local America/Santiago, rechazo de horas inexistentes en cambio de verano, clave de ocurrencia única, snapshot del trabajo iniciado y recuperación de ocurrencias recientes. Máximos: 20 políticas/25 efectos por barrido, 30 segundos con reserva de 15 para transacciones, 7 días retrospectivos y 5 ocurrencias por política (la pantalla configura una). El cursor avanza por páginas; la simulación advierte alcance parcial. Un fallo pausa la política y registra intervención; corregir/habilitar crea versión nueva sin repetir ocurrencias confirmadas.
 

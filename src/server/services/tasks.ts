@@ -269,9 +269,11 @@ const TASK_EDITABLE = [
 export async function updateTask(
   user: CurrentUser,
   input: { id: string } & Partial<TaskCreateInput> & { blockedReason?: string | null },
+  expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
 
   const nextStartsAt = 'startsAt' in input ? input.startsAt ?? null : current.startsAt;
   const nextDueAt = 'dueAt' in input ? input.dueAt ?? null : current.dueAt;
@@ -343,12 +345,14 @@ export async function updateTask(
 export async function assignTask(
   user: CurrentUser,
   input: { id: string; assigneeId?: string | null; reason?: string | null },
+  expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
     where: { id: input.id, deletedAt: null },
     include: { assignee: { select: { name: true } } },
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   if (input.assigneeId) await assertAssignable(input.assigneeId);
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
@@ -615,12 +619,14 @@ export async function toggleChecklistItem(
 export async function softDeleteTask(
   user: CurrentUser,
   input: { id: string; reason: string },
+  expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o ya fue eliminada.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.task.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
     });
     await recordAudit(
@@ -649,14 +655,16 @@ export async function softDeleteTask(
 export async function restoreTask(
   user: CurrentUser,
   input: { id: string; reason?: string | null },
+  expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
     where: { id: input.id, NOT: { deletedAt: null } },
   });
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
+  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const restored = await tx.task.update({
-      where: { id: input.id },
+      where: { id: input.id, updatedAt: current.updatedAt },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
     await recordAudit(

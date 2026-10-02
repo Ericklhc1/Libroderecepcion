@@ -28,6 +28,12 @@ beforeEach(() => { for (const effect of Object.values(effects)) effect.mockReset
 afterEach(() => vi.unstubAllEnvs());
 describe('cron requiere secreto y token válidos', () => {
  it.each(cases)('$name: función rechaza', c => { vi.stubEnv('CRON_SECRET', c.secret); expect(isAuthorizedCronRequest(request(c.headers))).toBe(false); });
+ it('un fallo del barrido nuevo no omite los detectores, alarmas ni push existentes', async()=>{
+   vi.stubEnv('CRON_SECRET',secret);effects.automations.mockRejectedValueOnce(new Error('Fallo sintético'));
+   const response=await push(request({authorization:`Bearer ${secret}`}));expect(response.status).toBe(200);
+   expect((await response.json()).automations.error).toContain('no confirmado');
+   for(const effect of [effects.coordination,effects.hk,effects.alarms,effects.push])expect(effect).toHaveBeenCalledTimes(1);
+ });
  it('función acepta el token correcto', () => { vi.stubEnv('CRON_SECRET', secret); expect(isAuthorizedCronRequest(request({ authorization: `Bearer ${secret}` }))).toBe(true); });
  for (const [name, handler] of Object.entries({ memory, proactive, mail, push })) {
   describe(name, () => {

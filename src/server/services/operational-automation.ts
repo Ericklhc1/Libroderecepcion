@@ -64,10 +64,11 @@ export async function revokeAutomation(user: CurrentUser, id: string) {
 }
 
 /** Every page is read through the original access-filtered board. Bound and label incomplete scans. */
-export async function automationBoard(user: CurrentUser, departmentId?: string, startPage = 1) {
+export async function automationBoard(user: CurrentUser, departmentId?: string, startPage = 1, deadlineAt = Infinity) {
   const rows: CoordinationRow[] = [];
   let complete = false, nextPage = startPage;
   for (let page = startPage; page < startPage + 10; page++) {
+    if(Date.now()>=deadlineAt)break;
     const board = await getCoordinationBoard(user, { departmentId, page });
     rows.push(...board.rows);
     nextPage = board.hasMore ? page + 1 : 1;
@@ -87,7 +88,7 @@ async function procedureAssignee(id:string,departmentId:string) {
   return member;
 }
 
-export async function simulateAutomation(user: CurrentUser, id: string, now = new Date()) {
+export async function simulateAutomation(user: CurrentUser, id: string, now = new Date(), deadlineAt = Infinity) {
   const policy = await prisma.operationalAutomation.findFirst({ where: { id, ownerId: user.id } });
   if (!policy) throw new ForbiddenError();
   await assertPolicyArea(user, policy.departmentId);
@@ -97,7 +98,7 @@ export async function simulateAutomation(user: CurrentUser, id: string, now = ne
     return { mode: 'SIMULATION', version: policy.version, complete: true, effects: procedureOccurrences(config, now).map(o => ({ occurrence: o.key, dueAt: new Date(o.at.getTime() + config.deadlineMinutes * 60000), ownerId: config.ownerId, responsible: eligible?.name ?? config.ownerId, eligible: !!eligible, action: 'CREATE_TASK' })), explanation: 'Crea una tarea y su lista mediante el servicio existente. Sin ejecución física ni inspección automática. No modifica datos operativos.' };
   }
   const config = escalationSchema.parse(policy.configuration);
-  const board = await automationBoard(user, policy.departmentId, policy.scanPage);
+  const board = await automationBoard(user, policy.departmentId, policy.scanPage, deadlineAt);
   const recipient = await sameAreaUser(config.recipientId, policy.departmentId);
   const matched=board.rows.filter(r => matchesAutomation(r, config, now)).map(r=>({...r,retryKey:createHash('sha256').update(canonicalJson({kind:r.kind,id:r.id,trigger:config.trigger,recipientId:config.recipientId,ownerId:r.ownerId,assignedAt:r.assignedAt?.toISOString(),receivedAt:r.receivedAt?.toISOString(),dueAt:r.dueAt?.toISOString(),status:r.status,priority:r.priority,nextAction:r.nextAction})).digest('hex')}));
   const attemptKey=(r: (typeof matched)[number])=>r.retryKey+':'+r.updatedAt.toISOString();
@@ -115,7 +116,7 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
     if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
     try {
       const actor = await automationPrincipal(policy.ownerId, policy.id);
-      const simulation = await simulateAutomation(actor, policy.id, now);
+      const simulation = await simulateAutomation(actor, policy.id, now, deadlineAt - 15_000);
       for (const effect of simulation.effects) {
         if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
         scanned++;

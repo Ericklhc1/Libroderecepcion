@@ -133,7 +133,10 @@ jobs:
             if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
-          PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa1/browser.mjs
+          if ! PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa1/browser.mjs; then
+            grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true
+            exit 1
+          fi
           PLAYWRIGHT_MODULE="$RUNNER_TEMP/aroh-browser/node_modules/playwright/index.mjs" node scripts/etapa2/browser.mjs
 
       - name: Evidencia de recorridos sin credenciales

@@ -17,7 +17,12 @@ export async function GET(request: Request) {
 
   const deadlineAt = Date.now() + 105_000;
   const now = new Date();
-  const automations = await runOperationalAutomations(now, Math.min(deadlineAt, Date.now() + 30_000));
+  let automations: Awaited<ReturnType<typeof runOperationalAutomations>> | { error:string };
+  try { automations = await runOperationalAutomations(now, Math.min(deadlineAt, Date.now() + 30_000)); }
+  catch (error) {
+    console.error('[automatizaciones] barrido no confirmado', { type:error instanceof Error?error.name:'Unknown' });
+    automations = { error:'Barrido no confirmado; se conservan los registros y se requiere revisión.' };
+  }
   const coordination = await escalateUnreceivedWork(now);
   const housekeeping = await escalateHousekeepingRequests(now);
   const alarms = await dispatchDueAlarmsForAllUsers(now);

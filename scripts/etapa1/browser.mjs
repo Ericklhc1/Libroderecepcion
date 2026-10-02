@@ -21,7 +21,12 @@ async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});
  await context.addCookies([{name:'lor_session',value:f.users[name].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
  await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
- const page=await context.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);page.on('pageerror',error=>console.error('Browser page error:',error.message));return {context,page};
+ const page=await context.newPage();
+ const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');const posts=new Set();
+ cdp.on('Network.requestWillBeSent',e=>{if(e.request.method==='POST'&&new URL(e.request.url).pathname==='/coordinacion')posts.add(e.requestId);});
+ cdp.on('Network.dataReceived',e=>{if(posts.has(e.requestId))console.log('POST streamed bytes',e.dataLength);});
+ cdp.on('Network.loadingFinished',e=>{if(posts.has(e.requestId))console.log('POST stream finished',e.encodedDataLength);});
+ page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);page.on('pageerror',error=>console.error('Browser page error:',error.message));return {context,page};
 }
 try{
  for(const [index,width] of [1280,390].entries()){

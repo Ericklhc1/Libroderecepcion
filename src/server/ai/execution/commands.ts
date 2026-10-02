@@ -24,7 +24,7 @@ export async function executeFrontiCommand(message: string, requestKey?: string)
   if (!steps && simple && !/[?¿\n]/.test(message)) {
     const title = simple[2]!.trim();
     steps = [simple[1]!.toLowerCase() === 'tarea'
-      ? { action: 'createTaskAction', fields: { title, description: title, priority: 'MEDIA', targetType: 'PROPIO' } }
+      ? { action: 'createTaskAction', fields: { title, description: title, priority: 'MEDIA' } }
       : { action: 'createEntryAction', fields: { type: 'NOVEDAD', title, description: title, priority: 'MEDIA' } }];
   }
   if (!steps) return null;

@@ -156,8 +156,9 @@ describe('H01 canonical privacy with real PostgreSQL and crossed negative cases'
     expect(await prisma.pushSubscription.count()).toBe(0);
   });
   it('direct comment reads and edits cannot reveal or mutate an assigned foreign private source', async () => {
-    await prisma.comment.create({ data: { body: 'PRIVATE_COMMENT', authorId: a.id, followUpId: rows[0]!.id } });
+    await prisma.comment.create({ data: { body: 'PRIVATE_COMMENT', authorId: a.id, followUpId: rows[0]!.id, entryId: entry.id } });
     expect(await listComments(b, { followUpId: rows[0]!.id })).toEqual([]);
+    expect(JSON.stringify(await getHistory(b, { entity: 'OperationalEntry', entityId: entry.id }))).not.toContain('PRIVATE_COMMENT');
     expect(await listComments(a, { followUpId: rows[0]!.id })).toHaveLength(1);
     await expect(addComment(b, { followUpId: rows[0]!.id, body: 'Unauthorized comment' })).rejects.toThrow('no existe');
     await expect(updateFollowUp(b, { id: rows[0]!.id, result: 'Unauthorized change' })).rejects.toThrow('no existe');

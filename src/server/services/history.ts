@@ -1,4 +1,4 @@
-import { followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
+import { followUpCommentVisibility, followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -42,6 +42,7 @@ export async function getHistory(user: FollowUpReader, target: HistoryTarget): P
     prisma.comment.findMany({
       where: {
         deletedAt: null,
+        AND: [followUpCommentVisibility(user)],
         ...(target.entity === 'OperationalEntry' ? { entryId: target.entityId } : {}),
         ...(target.entity === 'Task' ? { taskId: target.entityId } : {}),
         ...(target.entity === 'FollowUp' ? { followUpId: target.entityId } : {}),

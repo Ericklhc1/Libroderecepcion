@@ -5,6 +5,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
+console.log("Synthetic browser",browser.version());
 const results=[];
 try {
  for (const width of [1280,390]) {
@@ -40,4 +41,4 @@ try {
   results.push({width,scenario:'authenticated-exact-command-retry-private-history-summary-paused-rules',ms:elapsed,budgetMs:2000,status:'passed',provider:'not-used'});await context.close();
  }
  console.log('Etapa 2 authenticated Fronti desktop/mobile journeys passed.');
-} finally {writeFileSync('etapa2-browser-results.json',JSON.stringify({results,physicalSafari:false},null,2));await browser.close();}
+} finally {writeFileSync('etapa2-browser-results.json',JSON.stringify({browser:browser.version(),results,physicalSafari:false},null,2));await browser.close();}

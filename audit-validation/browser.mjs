@@ -16,11 +16,14 @@ try {
         return route.continue();
       });
       const page = await context.newPage();
-      for (const path of ['/seguimientos', '/libro', '/historial', `/libro/${fixtures.entryId}`]) {
+      for (const path of ['/seguimientos', '/libro', '/historial', '/buscar?q=BROWSER', `/libro/${fixtures.entryId}`, ...(name === 'admin' ? ['/admin/eliminados'] : [])]) {
         const response = await page.goto(`http://127.0.0.1:3000${path}`, { waitUntil: 'domcontentloaded' });
         assert.equal(response.status(), 200, `${name} ${path} status`);
         assert.ok(!page.url().includes('/login') && !page.url().includes('/aceptar-terminos'), 'Real authenticated session required');
         const html = await response.text();
+        if (path === '/seguimientos') {
+          for (const i of expected[name]) await page.getByText(fixtures.rows[i].action, { exact: true }).first().waitFor({ state: 'visible' });
+        }
         const visible = await page.locator('body').innerText();
         for (const [i, row] of fixtures.rows.entries()) {
           if (!expected[name].includes(i)) {
@@ -34,6 +37,15 @@ try {
       assert.equal(report.status(), 200, `${name} report status: ${await report.text()}`);
       const pdf = (await report.body()).toString('latin1');
       for (const [i, row] of fixtures.rows.entries()) assert.equal(pdf.includes(row.action), expected[name].includes(i), `${name} PDF policy`);
+      const unread = await context.request.get('http://127.0.0.1:3000/api/notifications/unread');
+      assert.equal(unread.status(), 200);
+      assert.equal((await unread.json()).notifications, expected[name].length);
+      const payload = await context.request.post('http://127.0.0.1:3000/api/push/payload', { headers: { Origin: 'http://127.0.0.1:3000' }, data: { endpoint: `https://synthetic.invalid/${name}/${viewport.width}` } });
+      assert.equal(payload.status(), 200);
+      const json = await payload.json();
+      assert.equal(json.unread, expected[name].length);
+      assert.equal(json.newCount, expected[name].length);
+      for (const [i, row] of fixtures.rows.entries()) if (!expected[name].includes(i)) assert.ok(!JSON.stringify(json).includes(row.action) && !JSON.stringify(json).includes(row.id));
       const deleted = await context.request.get('http://127.0.0.1:3000/api/libro/reporte?clase=followup&eliminados=1');
       assert.equal(deleted.status(), name === 'admin' ? 200 : 403, `${name} deleted authorization`);
       results.push({ actor: name, viewport: viewport.width, path: 'report API, real PDF and deleted denial', status: 'passed' });

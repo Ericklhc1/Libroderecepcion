@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - finding: H01
-            sha: 97265e5688c26f94fca5d3027edafbbca2acee10
+            sha: e2811f276c2880bb781ea0c27337d9257c80708a
             tests: tests/followup-privacy.test.ts
           - finding: H08
             sha: ac611a1f0bc92987d34f7a39a8bc433861d40b80
@@ -81,6 +81,9 @@ jobs:
           const fs = require('node:fs');
           for (const path of ['.next/server/app/(app)/huespedes/importar/page.js.nft.json', '.next/server/app/api/supervision/auditoria-diaria/route.js.nft.json']) {
             if (!fs.existsSync(path)) throw new Error('Falta artefacto requerido: '+path);
+            const trace = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const workers = trace.files.filter(file => file.endsWith('legacy/build/pdf.worker.mjs'));
+            if (!workers.length || workers.some(file => !fs.existsSync(require('node:path').resolve(require('node:path').dirname(path), file)))) throw new Error('Worker ausente físicamente en artefacto: '+path);
           }
           JS
           npx vitest run tests/empaquetado-pdf.test.ts --reporter=default --reporter=json --outputFile=pdf-results.json

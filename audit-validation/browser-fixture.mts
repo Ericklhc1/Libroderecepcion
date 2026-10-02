@@ -28,6 +28,10 @@ const definitions = [
 ];
 const rows = [];
 for (const definition of definitions) rows.push(await db.followUp.create({ data: { ...definition, entryId: entry.id, nextAction: `SUMMARY_${definition.action}` } }));
+for (const [name, user] of Object.entries(users)) {
+  for (const row of rows) await db.notification.create({ data: { userId: user.id, type: 'MENCION', entity: 'FollowUp', entityId: row.id, title: row.action, body: `SUMMARY_${row.action}` } });
+  for (const width of [1280, 390]) await db.pushSubscription.create({ data: { userId: user.id, endpoint: `https://synthetic.invalid/${name}/${width}`, createdAt: new Date(0) } });
+}
 writeFileSync('/tmp/browser-fixtures.json', JSON.stringify({ users, rows: rows.map(row => ({ id: row.id, action: row.action })), entryId: entry.id }));
 await db.$disconnect();
 console.log('Synthetic browser fixtures and short-lived sessions prepared; no credentials printed');

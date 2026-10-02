@@ -132,11 +132,15 @@ jobs:
             if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
+          journey_status=0
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa1/browser.mjs; then
             grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true
-            exit 1
+            journey_status=1
           fi
-          PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa2/browser.mjs
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa2/browser.mjs; then
+            journey_status=1
+          fi
+          exit "$journey_status"
 
       - name: Evidencia de recorridos sin credenciales
         if: always()

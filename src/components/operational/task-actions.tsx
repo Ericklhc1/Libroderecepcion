@@ -2,7 +2,7 @@
 
 import { useFormStatus } from 'react-dom';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { changeTaskStatusFormAction } from '@/server/actions/operational-navigation';
+import { changeTaskStatusFormAction } from './navigation-action';
 
 import { TaskStatus } from '@prisma/client';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';

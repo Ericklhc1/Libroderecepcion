@@ -8,7 +8,7 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 90,
+      "passed": 95,
       "files": 14,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
@@ -101,6 +101,15 @@
         "failed": 0,
         "build": "passed",
         "browser": "Locked Chromium 153.0.8010.12: assignment visible in 267 ms, receipt still Guardando after 10 s. Browser aborted completed Flight streams; navigation correction requires next gate."
+      },
+      {
+        "id": 37016248539,
+        "result": "browser failure",
+        "passed": 1384,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": "Next redirect also stalled with full RSC response. No latency fix accredited. Replace only UI transport with same-origin JSON/native actions and document navigation; next gate pending."
       }
     ]
   },
@@ -117,6 +126,6 @@
     "serverActionsInventoried": 212,
     "adaptersConnected": 59,
     "generalCoverageAccredited": false,
-    "httpMethodsInventoried": 59
+    "httpMethodsInventoried": 60
   }
 }

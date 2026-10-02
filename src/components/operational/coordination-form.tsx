@@ -1,7 +1,7 @@
 'use client';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
-import { coordinateWorkFormAction } from '@/server/actions/operational-navigation';
+import { coordinateWorkFormAction } from './navigation-action';
 type Props={returnTo:string;id:string;kind:'entry'|'task';updatedAt:string;requestKey:string;action:'RECIBIR'|'ASIGNAR'|'SIGUIENTE';ownerId:string|null;nextAction:string;team:{id:string;name:string;scheduled:boolean;scheduleVisible:boolean}[]};
 export function CoordinationForm(p:Props){return <ActionForm action={coordinateWorkFormAction} className="space-y-2">
   <input type="hidden" name="returnTo" value={p.returnTo}/>

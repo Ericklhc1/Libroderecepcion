@@ -11,7 +11,7 @@ async function measured(label,work){const start=performance.now();try{const resu
 async function submit(page,button){
  const started=performance.now();
  const path=new URL(page.url()).pathname;
- const pending=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path).then(response=>{timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});console.log('POST headers',path,Math.round(performance.now()-started));persist();return response;});
+ const pending=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/operational-actions/')).then(response=>{timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});console.log('POST headers',path,Math.round(performance.now()-started));persist();return response;});
  await button.click({noWaitAfter:true});
  const response=await pending;const actionRedirect=response.headers()['x-action-redirect'];assert.ok(response.ok()||(response.status()===303&&actionRedirect?.startsWith('/')),'Server action succeeds or redirects to its updated local view');
  const observation={label:'POST body completion '+path,ms:null,status:'pending'};timings.push(observation);persist();

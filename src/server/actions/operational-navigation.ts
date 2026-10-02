@@ -1,6 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import type { ActionState } from '@/server/action';
 import { coordinateWorkAction } from './coordination';
 import { changeTaskStatusAction } from './tasks';
@@ -14,14 +13,14 @@ function destination(form: FormData, fallback: string, roots: string[]) {
   return url.pathname + url.search;
 }
 
-export async function coordinateWorkFormAction(state: ActionState | null, form: FormData): Promise<ActionState> {
+export async function coordinateWorkFormAction(state: ActionState | null, form: FormData): Promise<ActionState & { navigateTo?: string }> {
   const result = await coordinateWorkAction(state, form);
-  if (result.ok) redirect(destination(form, '/coordinacion', ['/coordinacion']));
+  if (result.ok) return {...result,navigateTo:destination(form, '/coordinacion', ['/coordinacion'])};
   return result;
 }
 
-export async function changeTaskStatusFormAction(state: ActionState | null, form: FormData): Promise<ActionState> {
+export async function changeTaskStatusFormAction(state: ActionState | null, form: FormData): Promise<ActionState & { navigateTo?: string }> {
   const result = await changeTaskStatusAction(state, form);
-  if (result.ok) redirect(destination(form, '/tareas', ['/tareas', '/libro', '/supervision']));
+  if (result.ok) return {...result,navigateTo:destination(form, '/tareas', ['/tareas', '/libro', '/supervision'])};
   return result;
 }

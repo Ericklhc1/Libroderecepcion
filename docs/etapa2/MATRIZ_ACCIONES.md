@@ -236,7 +236,7 @@ La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omis
 
 ## Inventario adicional de rutas HTTP
 
-59 métodos detectados. Los controles de esta tabla son referencias de código, no una acreditación de seguridad. Las exportaciones, adjuntos y lecturas deben validarse con el mismo alcance de usuario antes de conectarlas. No se activa ningún cron por inventariarlo.
+60 métodos detectados. Los controles de esta tabla son referencias de código, no una acreditación de seguridad. Las exportaciones, adjuntos y lecturas deben validarse con el mismo alcance de usuario antes de conectarlas. No se activa ningún cron por inventariarlo.
 
 | Entrada | Archivo | Servicios existentes | Controles detectados | Cobertura de Fronti |
 |---|---|---|---|---|
@@ -288,6 +288,7 @@ La Compuerta 37009588380 aprobó migraciones PostgreSQL 16, 1378 pruebas (1 omis
 | `POST /api/notifications/read` | `src/app/api/notifications/read/route.ts` | @/server/services/legal-acceptance, @/server/services/notification-feed | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `GET /api/notifications/stream` | `src/app/api/notifications/stream/route.ts` | @/server/services/legal-acceptance, @/server/services/notification-feed, @/server/services/operational-alarms | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `GET /api/notifications/unread` | `src/app/api/notifications/unread/route.ts` | @/server/services/legal-acceptance, @/server/services/notification-poll | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
+| `POST /api/operational-actions/[procedure]` | `src/app/api/operational-actions/[procedure]/route.ts` | Implementación/lector en la ruta | Revisar autorización contextual de la ruta | Transporte JSON de dos acciones originales de UI; Fronti conserva su adaptador nativo |
 | `POST /api/push/payload` | `src/app/api/push/payload/route.ts` | @/server/services/legal-acceptance, @/server/services/web-push | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `GET /api/push/public-key` | `src/app/api/push/public-key/route.ts` | @/server/services/legal-acceptance, @/server/services/web-push | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |
 | `POST /api/push/subscriptions` | `src/app/api/push/subscriptions/route.ts` | @/server/services/legal-acceptance, @/server/services/web-push | getCurrentUser | Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint |

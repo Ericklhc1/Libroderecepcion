@@ -67,6 +67,7 @@ for path in sorted(Path('src/app/api').rglob('route.ts')):
     for method in methods:
         status='Pendiente de herramienta/recorrido específico; no atribuir cobertura por existir el endpoint'
         if '/cron/' in route:status='Infraestructura programada existente; no se expone como permiso privilegiado al modelo'
+        elif '/api/operational-actions/' in route:status='Transporte JSON de dos acciones originales de UI; Fronti conserva su adaptador nativo'
         elif route in ['/api/fronti','/api/asistente']:status='Transporte de Fronti; misma sesión, no una acción delegable adicional'
         elif '/auth/' in route or '/session/' in route:status='Autenticación/sesión nativa; Fronti no puede fabricar credenciales ni sesión'
         api_rows.append(f"| `{method} {route}` | `{path}` | {', '.join(services) or 'Implementación/lector en la ruta'} | {', '.join(controls) or 'Revisar autorización contextual de la ruta'} | {status} |")

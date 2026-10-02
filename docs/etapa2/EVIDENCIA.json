@@ -8,7 +8,7 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 95,
+      "passed": 97,
       "files": 14,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
@@ -18,11 +18,10 @@
     "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
   },
   "pendingValidation": [
-    "new integration regressions and final CI green",
-    "authenticated browser desktop/mobile",
+    "final CI green with Fronti and policy browser journeys",
     "physical Safari/iPhone",
     "all individual adapter procedure journeys",
-    "latency budgets"
+    "production latency observation after separately authorized release"
   ],
   "github": {
     "upload": "authorized after initial rejection; completed",
@@ -110,6 +109,27 @@
         "failed": 0,
         "build": "passed",
         "browser": "Next redirect also stalled with full RSC response. No latency fix accredited. Replace only UI transport with same-origin JSON/native actions and document navigation; next gate pending."
+      },
+      {
+        "id": 37017313077,
+        "result": "browser failure in Fronti launcher",
+        "passed": 1389,
+        "skipped": 1,
+        "failed": 0,
+        "build": "passed",
+        "browser": {
+          "coordination": "passed desktop 1280 and mobile width 390",
+          "visibleMilliseconds": {
+            "assign1280": 324,
+            "receive1280": 503,
+            "resolve1280": 553,
+            "assign390": 233,
+            "receive390": 942,
+            "resolve390": 260
+          },
+          "budgetMilliseconds": 3000,
+          "fronti": "Exact API and private history reached; chat launcher overlapped mobile Fronti launcher. Not a complete Fronti journey."
+        }
       }
     ]
   },

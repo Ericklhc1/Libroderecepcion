@@ -148,6 +148,6 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     expect((await simulateAutomation(admin,p.id,future)).effects.length).toBeGreaterThan(0);expect(await prisma.task.count()).toBe(0);
     process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';await runOperationalAutomations(future);expect(await prisma.task.count()).toBe(0);
     await saveAutomation(admin,{...input,id:p.id,version:1,enabled:true});await Promise.all([runOperationalAutomations(future),runOperationalAutomations(future)]);expect(await prisma.task.count()).toBe(1);
-    expect(await prisma.operationalAutomationRun.count({where:{status:'SUCCEEDED'}})).toBe(1);await revokeAutomation(admin,p.id);await runOperationalAutomations(future);expect(await prisma.task.count()).toBe(1);
+    expect(await prisma.operationalAutomationRun.count({where:{status:'SUCCEEDED'}})).toBe(1);await expect(revokeAutomation(admin,p.id,1)).rejects.toThrow();await revokeAutomation(admin,p.id,2);await runOperationalAutomations(future);expect(await prisma.task.count()).toBe(1);
   });
 });

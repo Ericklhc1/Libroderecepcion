@@ -4,7 +4,7 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { ActionForm } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
-import { saveAutomationAction, simulateAutomationAction, setAutomationStateAction } from '@/server/actions/operational-automation';
+import { saveAutomationAction, simulateAutomationAction, setAutomationStateAction } from '@/components/operational/navigation-action';
 import { procedureSchema, escalationSchema } from '@/domain/operational-automation';
 import { hotelDateKey } from '@/domain/time';
 import { formatDateTime } from '@/lib/format';
@@ -54,7 +54,7 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
     <nav className="flex gap-4"><Link className="underline" href="/coordinacion">Volver a Coordinación</Link>{editing&&<Link className="underline" href="/coordinacion/automatizaciones">Salir de edición</Link>}</nav>
     <details className="card p-4" open={!!procedure} key={'procedure-'+(procedure?editing?.version:'new')}>
       <summary className="cursor-pointer font-semibold">{procedure?'Nueva versión del procedimiento':'Nuevo procedimiento o mantenimiento preventivo'}</summary>
-      <ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2">
+      <ActionForm action={saveAutomationAction} className="mt-4 grid gap-3 sm:grid-cols-2">
         {identity('PROCEDURE')}{field('name','Nombre',procedure?editing!.name:'')}{area(procedure?editing!.departmentId:undefined)}{person('ownerId','Responsable',procedure?.ownerId)}
         <label>Prioridad<select name="priority" defaultValue={procedure?.priority??'MEDIA'} className={css}>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label>
         {textArea('description','Instrucción',procedure?.description)}{field('nextAction','Siguiente acción',procedure?.nextAction)}{field('evidenceRequired','Evidencia requerida',procedure?.evidenceRequired)}{textArea('checklist','Lista: un punto por línea',procedure?.checklist.join('\n'))}
@@ -66,7 +66,7 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
     </details>
     <details className="card p-4" open={!!rule} key={'rule-'+(rule?editing?.version:'new')}>
       <summary className="cursor-pointer font-semibold">{rule?'Nueva versión de la regla':'Nueva regla de atención'}</summary>
-      <ActionForm action={saveAutomationAction} refreshOnSuccess className="mt-4 grid gap-3 sm:grid-cols-2">
+      <ActionForm action={saveAutomationAction} className="mt-4 grid gap-3 sm:grid-cols-2">
         {identity('ESCALATION')}{field('name','Nombre',rule?editing!.name:'')}{area(rule?editing!.departmentId:undefined)}
         <label>Condición<select className={css} name="trigger" defaultValue={rule?.trigger}><option value="UNASSIGNED">Sin responsable</option><option value="UNRECEIVED">Asignado sin recibir</option><option value="OVERDUE">Vencido</option><option value="BLOCKED">Bloqueado</option></select></label>
         {person('recipientId','Avisar a',rule?.recipientId)}
@@ -77,7 +77,7 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
     </details>
     <section className="space-y-3"><h2 className="font-semibold">Tus últimas 50 políticas</h2>{policies.map(p=><article className="card space-y-2 p-4" key={p.id}>
       <h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.expiresAt<=new Date()?'Caducada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p>
-      <p className="text-sm">{explain(p)}</p><p className="text-xs text-slate-600">Pausar o revocar detiene efectos nuevos y conserva el trabajo generado. Un error de autorización, destino o ejecución pausa la política para revisión.</p><div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><Link className="underline" href={`?editar=${p.id}`}>Preparar nueva versión</Link><ActionForm action={setAutomationStateAction} refreshOnSuccess><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>
+      <p className="text-sm">{explain(p)}</p><p className="text-xs text-slate-600">Pausar o revocar detiene efectos nuevos y conserva el trabajo generado. Un error de autorización, destino o ejecución pausa la política para revisión.</p><div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><Link className="underline" href={`?editar=${p.id}`}>Preparar nueva versión</Link><ActionForm action={setAutomationStateAction}><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>
       <p className="text-xs text-slate-600">Últimas {p.runs.length} ejecuciones (máximo 5; no representa el historial completo).</p><ul className="text-sm">{p.runs.map(r=><li key={r.id}>{formatDateTime(r.startedAt)} · {r.status==='SUCCEEDED'?'Completada':r.status==='INTERVENTION'?'Requiere intervención':r.status} · versión {r.policyVersion}{outcome(r.result)}</li>)}</ul>
     </article>)}</section>
   </div>;

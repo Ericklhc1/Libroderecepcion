@@ -32,7 +32,7 @@ export const automationInput = z.object({
   name: z.string().trim().min(3).max(160), departmentId: z.string().min(1),
   kind: z.enum(['PROCEDURE','ESCALATION']), configuration: z.unknown(),
   expiresAt: z.coerce.date(), enabled: z.boolean().default(false),
-}).strict();
+}).strict().refine(input=>!input.id||input.version!==undefined,{message:'La versión vigente es obligatoria al modificar una política.'});
 export async function saveAutomation(user: CurrentUser, raw: unknown) {
   const input = automationInput.parse(raw);
   await assertPolicyArea(user, input.departmentId);
@@ -55,9 +55,9 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
     return { id };
   });
 }
-export async function revokeAutomation(user: CurrentUser, id: string) {
+export async function revokeAutomation(user: CurrentUser, id: string, version: number) {
   return prisma.$transaction(async tx => {
-  const changed = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, revokedAt: null }, data: { revokedAt: new Date(), enabled: false, version: { increment: 1 } } });
+  const changed = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, version, revokedAt: null }, data: { revokedAt: new Date(), enabled: false, version: { increment: 1 } } });
   if (!changed.count) throw new RuleError('No puedes revocar esta política.');
   await tx.auditLog.create({ data: { entity: 'OperationalAutomation', entityId: id, userId: user.id, sessionId: user.sessionId, action: 'CONFIGURAR', summary: 'Política revocada. Se conserva el historial.' } });
   });

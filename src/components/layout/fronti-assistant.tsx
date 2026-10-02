@@ -357,7 +357,7 @@ export function FrontiAssistant() {
     <div className="pointer-events-none fixed inset-0 z-50 no-print">
       {open ? (
         <section
-          className="surface-enter pointer-events-auto absolute bottom-20 left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-4"
+          className="surface-enter pointer-events-auto absolute bottom-[calc(var(--mobile-nav-height,4rem)+4.5rem)] left-3 right-3 flex h-[min(70vh,590px)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.48)] sm:left-auto sm:right-4 sm:w-[400px] lg:bottom-16"
           aria-label={config.displayName}
         >
           <header className="flex items-center gap-2 border-b border-petrol-800 bg-petrol-900 px-3 py-2.5 text-white">
@@ -515,11 +515,8 @@ export function FrontiAssistant() {
       ) : (
         <button
           type="button"
-          onClick={() => {
-            setOpen(true);
-            requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
-          }}
-          className="surface-enter pointer-events-auto absolute bottom-20 right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
+          onClick={() => window.dispatchEvent(new CustomEvent('fronti:open'))}
+          className="surface-enter pointer-events-auto absolute bottom-[calc(var(--mobile-nav-height,4rem)+4.5rem)] right-3 flex h-12 items-center gap-2 rounded-full bg-petrol-900 px-3.5 text-white shadow-xl ring-1 ring-petrol-800 transition-transform hover:scale-105 hover:bg-petrol-800 lg:hidden"
           aria-label={`Abrir ${config.displayName}`}
           title={config.displayName}
         >

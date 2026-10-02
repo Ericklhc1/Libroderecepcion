@@ -1,4 +1,5 @@
 'use server';
+import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/server/auth/guard';
 import { runAction, type ActionState } from '@/server/action';
@@ -31,10 +32,12 @@ export async function setAutomationStateAction(_: ActionState|null, form: FormDa
   return runAction(async () => {
     const user = await requirePermission('system.configure');
     const id = value(form,'id');
-    if (value(form,'state') === 'revoke') await revokeAutomation(user,id);
+    const state=z.enum(['pause','enable','revoke']).parse(value(form,'state'));
+    const version=z.coerce.number().int().positive().parse(value(form,'version'));
+    if (state === 'revoke') await revokeAutomation(user,id,version);
     else {
       const row = await prisma.operationalAutomation.findFirstOrThrow({ where: { id, ownerId: user.id } });
-      await saveAutomation(user,{ id, version: Number(value(form,'version')), name: row.name, departmentId: row.departmentId, kind: row.kind, configuration: row.configuration, expiresAt: row.expiresAt, enabled: value(form,'state') === 'enable' });
+      await saveAutomation(user,{ id, version, name: row.name, departmentId: row.departmentId, kind: row.kind, configuration: row.configuration, expiresAt: row.expiresAt, enabled: state === 'enable' });
     }
     revalidatePath('/coordinacion/automatizaciones');
     return { ok: true, message: 'Estado guardado. Se conserva el historial y las tareas existentes.' };

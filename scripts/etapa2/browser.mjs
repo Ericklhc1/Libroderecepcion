@@ -1,5 +1,6 @@
 import '../etapa1/guard.cjs';
 import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
@@ -7,6 +8,7 @@ const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
 console.log("Synthetic browser",browser.version());
 const results=[];
+const db=new PrismaClient();
 try {
  for (const width of [1280,390]) {
   const context=await browser.newContext({viewport:{width,height:900}});
@@ -25,6 +27,7 @@ try {
   const retry=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message,requestKey:key}});assert.equal(retry.status(),200);assert.ok((await retry.json()).reply.includes(href));
   await page.goto('http://localhost:3000'+href);await page.getByRole('heading',{name:'Resultado: Completado',exact:true}).waitFor();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
+  console.log("Fronti UI width",width);
   await page.getByRole('button',{name:'Abrir Fronti',exact:true}).first().click();
   const panel=page.getByRole('region',{name:'Fronti',exact:true});
   await panel.getByRole('textbox',{name:'Mensaje para Fronti',exact:true}).fill(`Crea una tarea: ETAPA2_CHAT_${width}`);
@@ -38,7 +41,41 @@ try {
   await panel.getByRole('button',{name:'Minimizar Fronti',exact:true}).click();
   const summary=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/resumen',requestKey:randomUUID()}});assert.equal(summary.status(),200);assert.match((await summary.json()).reply,/Coordinación: \/coordinacion/);
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('deshabilitada'));
+  // The same public form saves a paused version, simulates without effects, then pauses/revokes.
+  const policyName=`ETAPA2_POLICY_${width}`;
+  const details=page.locator('details').filter({has:page.getByText('Nuevo procedimiento o mantenimiento preventivo',{exact:true})});
+  await details.locator('summary').click();
+  await details.getByLabel('Nombre',{exact:true}).fill(policyName);
+  await details.getByLabel('Área',{exact:true}).selectOption(f.areaId);
+  await details.getByLabel('Responsable',{exact:true}).selectOption(f.users.worker.id);
+  await details.getByLabel('Instrucción',{exact:true}).fill('Inspección sintética declarada por persona autorizada');
+  await details.getByLabel('Siguiente acción',{exact:true}).fill('Registrar resultado de inspección');
+  await details.getByLabel('Evidencia requerida',{exact:true}).fill('Resultado informado');
+  await details.getByLabel('Lista: un punto por línea',{exact:true}).fill('Revisar filtro\nInformar resultado');
+  await details.getByLabel('Hora de Santiago',{exact:true}).fill('00:00');
+  for(const checkbox of await details.locator('input[name=weekdays]').all())await checkbox.check();
+  const expiry=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  await details.getByLabel('Autorización válida hasta',{exact:true}).fill(expiry);
+  let operationStart=performance.now();
+  await details.getByRole('button',{name:'Guardar versión en pausa',exact:true}).click();
+  let policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
+  await policy.getByText(/^En pausa/).waitFor();
+  const saveMs=Math.round(performance.now()-operationStart);assert.ok(saveMs<=3000,`Policy save visible ${saveMs} ms exceeds 3000 ms`);
+  const before={tasks:await db.task.count(),runs:await db.operationalAutomationRun.count(),notifications:await db.notification.count()};
+  await policy.getByRole('button',{name:'Simular',exact:true}).click();
+  await policy.getByText(/Simulación: 1 efectos propuestos/).waitFor();
+  assert.deepEqual({tasks:await db.task.count(),runs:await db.operationalAutomationRun.count(),notifications:await db.notification.count()},before,'Simulation must not create tasks, attempts or notifications');
+  await policy.locator('select[name=state]').selectOption('pause');
+  await policy.getByRole('button',{name:'Guardar estado',exact:true}).click();
+  policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});
+  await policy.getByText(/^En pausa/).waitFor();
+  await policy.locator('select[name=state]').selectOption('revoke');
+  await policy.getByRole('button',{name:'Guardar estado',exact:true}).click();
+  policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 3',exact:true})});
+  await policy.getByText(/^Revocada/).waitFor();
+  assert.equal(await policy.getByRole('button',{name:'Guardar estado',exact:true}).count(),0);
+  results.push({width,scenario:'policy-save-simulate-no-effects-pause-revoke-history',ms:saveMs,budgetMs:3000,status:'passed',automaticExecution:false});
   results.push({width,scenario:'authenticated-exact-command-retry-private-history-summary-paused-rules',ms:elapsed,budgetMs:2000,status:'passed',provider:'not-used'});await context.close();
  }
  console.log('Etapa 2 authenticated Fronti desktop/mobile journeys passed.');
-} finally {writeFileSync('etapa2-browser-results.json',JSON.stringify({browser:browser.version(),results,physicalSafari:false},null,2));await browser.close();}
+} finally {writeFileSync('etapa2-browser-results.json',JSON.stringify({browser:browser.version(),results,physicalSafari:false},null,2));await browser.close();await db.$disconnect();}

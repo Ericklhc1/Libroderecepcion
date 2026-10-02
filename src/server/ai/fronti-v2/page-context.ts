@@ -123,6 +123,12 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_novedades',
     ]);
   }
+  if (pathname === '/custodia') {
+    return detail('custodia', 'Novedades', 'objetos-olvidados', 'Objetos olvidados y custodia', [
+      'consultar_contexto_pantalla',
+    ]);
+  }
+
   if (pathname === '/incidencias') {
     return detail('novedades', 'Novedades', 'incidencias-especializadas', 'Incidencias', [
       'consultar_contexto_pantalla',

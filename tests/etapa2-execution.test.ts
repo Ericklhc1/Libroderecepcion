@@ -372,9 +372,20 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const entry=await prisma.operationalEntry.findFirstOrThrow({where:{title:'Novedad de ciclo completo'}});
     const fields:Record<string,string|string[]>=Object.fromEntries(actionDefinition('updateEntryAction').requiredFields.map(key=>[key,'']));Object.assign(fields,{id:entry.id,type:'NOVEDAD',title:'Novedad editada',description:'Instrucción sintética actualizada',priority:'MEDIA',status:'ABIERTO',tags:[]});
     const p=await plan([{action:'updateEntryAction',fields},{action:'changeEntryStatusAction',fields:{id:entry.id,status:'EN_CURSO'}},{action:'changeEntryStatusAction',fields:{id:entry.id,status:'RESUELTO',resolution:'Resultado declarado por el usuario'}}]);
-    expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED','SUCCEEDED']);let saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.severity).toBeNull();expect(saved.impact).toBeNull();expect(saved.status).toBe('RESUELTO');
+    expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED','SUCCEEDED']);let saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.severity).toBeNull();expect(saved.impact).toBeNull();expect(saved.status).toBe('RESUELTO');expect(saved.occurredAt).toEqual(entry.occurredAt);
     for(const action of ['deleteEntryAction','restoreEntryAction']){const p=await plan([{action,fields:{id:entry.id,reason:'Efecto explícito para registro sintético'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');await executePlan(p.id,true);}
     saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.deletedAt).toBeNull();expect(saved.title).toBe('Novedad editada');expect(await prisma.operationalEntry.count()).toBe(1);
+  });
+  it('incidencia: conserva la revisión final de su flujo y permite vaciar impacto explícitamente',async()=>{
+    const create=await plan([{action:'createEntryAction',fields:{type:'INCIDENCIA',title:'Incidencia sintética encadenada',description:'Hecho comunicado por el usuario',priority:'MEDIA',severity:'ALTA',impact:'OPERACION'}}]);
+    expect((await executePlan(create.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const entry=await prisma.operationalEntry.findFirstOrThrow({where:{title:'Incidencia sintética encadenada'}});
+    const fields:Record<string,string|string[]>=Object.fromEntries(actionDefinition('updateEntryAction').requiredFields.map(key=>[key,'']));Object.assign(fields,{id:entry.id,type:'INCIDENCIA',title:'Incidencia corregida',description:'Corrección indicada por el usuario',priority:'MEDIA',status:'ABIERTO',severity:'ALTA',impact:'',tags:[]});
+    const p=await plan([{action:'updateEntryAction',fields},{action:'changeEntryStatusAction',fields:{id:entry.id,status:'EN_CURSO'}}]);
+    expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);
+    await executePlan(p.id,true);
+    const saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.impact).toBeNull();expect(saved.severity).toBe('ALTA');expect(saved.requiresFollowUp).toBe(true);expect(saved.occurredAt).toEqual(entry.occurredAt);
+    expect(await prisma.task.count({where:{entryId:entry.id}})).toBe(1);expect(await prisma.followUp.count({where:{entryId:entry.id}})).toBe(1);
   });
   it('seguimiento: edición y resolución consecutivas, archivo y recuperación conservan el origen',async()=>{
     const task=await createTask(admin,{title:'Origen sintético del seguimiento',assigneeId:other.id,priority:'MEDIA',tags:[],checklist:[]});

@@ -68,7 +68,6 @@ export async function updateEntryAction(
     const user = await requirePermission('entry.edit');
     const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
     const entry = await updateEntry(user, input, revisionFromForm(formData));
-    if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Registro actualizado.', id: entry.id, committedRevision: operationalRecordRevision('entries', entry) };
   });

@@ -39,3 +39,12 @@ Revisión 5393737284 sobre d7ee696a, solicitada para el bloque nuevo de delegaci
 Copilot reconoce resueltos versión obligatoria de política y preservación de selección no disponible. Mantiene abiertas revisión atómica, fallback y cobertura. Las pruebas actuales acreditan CAS/bloqueo para los procedimientos detallados en la matriz y recuperación del detector cuando falla el barrido; no acreditan todas las variantes. No se cierran ni descartan esas observaciones por la mera existencia de pruebas parciales. La acreditación general permanece pendiente.
 
 La revocación concurrente idempotente (un solo registro de auditoría) y la espera del resultado correcto en la medición de navegador son correcciones del agente responsable posteriores a la revisión. Nueva Compuerta necesaria. Consumo observado: tres revisiones recibidas; saldo/coste en créditos no consultable. Sin agente de programación ni sobreconsumo habilitado.
+
+
+## Cuarta revisión y cuota observada
+
+Revisión 5394563088 sobre 0e114e0e: CHECK SQL no admitía autorización DYNAMIC, fin de día inclusivo en dos entradas, enlace de indicadores, revisión atómica y tres recuentos obsoletos. Corregidos en e1e8787; Compuerta 37039196791 aprobó 1424 pruebas y una omisión, migraciones/build/navegador. Publicación 1.47.0 confirmada.
+
+Solicitud 5394647977: Copilot indicó que el solicitante alcanzó su cuota de revisión. No produjo revisión técnica. Cuatro revisiones reales, ningún trabajo atribuido al agente de programación, sin sobrecoste habilitado; saldo/coste en créditos no disponible.
+
+PR #247 recibió revisión automática de **Codex**, 5395154247, distinta de Copilot. Sus dos hallazgos (hash anterior al flujo de incidencia y vaciado de impacto perdido) se corrigieron en e24386c9; se solicitó seguimiento por el cambio material. La compuerta del bloque nuevo sigue siendo obligatoria.

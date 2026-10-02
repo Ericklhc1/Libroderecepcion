@@ -1,8 +1,8 @@
-# Etapa 2 · implementación dependiente en desarrollo
+# Etapa 2 · estado publicado y alcance pendiente
 
-PR draft [#244](https://github.com/Ericklhc1/Libroderecepcion/pull/244), base `feat/etapa-1-operacion-conectada` del PR #241, todavía abierto. Versión propuesta 1.47.0. **No publicada ni completa**. No hubo merge, despliegue, migración o modificación operativa en producción ni automatizaciones reales activadas.
+PR #241 y #244 integrados con autorización del propietario. **Bloque 1.47.0 publicado y verificado**, commit `26331193bfe1b07f1ff87da4942bb8d9fb6d74c7`, Vercel `dpl_7rn6caSVB4pbuMNZcDwBzF89JqrB`. Compuerta main [37043659344](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/37043659344) y Release [37044358938](https://github.com/Ericklhc1/Libroderecepcion/actions/runs/37044358938) verdes; tag v1.47.0. La Etapa 2 completa continúa pendiente. PR #247 prepara continuidad entre pasos de tareas, novedades, incidencias y seguimientos; su compuerta propia debe pasar antes de publicar 1.47.1.
 
-## Resultado y evidencia
+## Resultado y evidencia histórica (corridas anteriores conservadas)
 
 Fronti incorpora planes privados con 184 adaptadores a acciones originales; políticas y plantillas se guardan en pausa. No se sustituye la aplicación ni se añade un motor paralelo de Housekeeping. La matriz inventaría 213 exports y 60 métodos HTTP, con evidencia y pendientes por acción. Estar conectado no equivale a estar acreditado.
 
@@ -38,7 +38,7 @@ Límites: 1–12 pasos, una ejecución por paso, duración máxima 31 días e in
 
 Se detiene por revocación/caducidad, sesión/permisos insuficientes, cambio del registro autorizado, incumplimiento del control nativo o resultado incierto/error. Los pasos completados no se repiten, y un paso ya iniciado puede terminar al revocar. No existe compensación genérica. Cambiar un plan existente no está permitido: revocar pendientes y autorizar otro procedimiento. Se usan FrontiExecution/Step/Request y el mismo ejecutor; la migración sólo añade tipo de autorización, inicio de vigencia y objetivo cifrado, sin tablas/motores paralelos.
 
-Este bloque acredita delegaciones **finitas con parámetros exactos**. Las delegaciones dinámicas reutilizables se describen más abajo; su integración está en verificación. La activación automática sin sesión no está implementada. Las recurrencias y reglas operativas siguen en su motor nativo y pausadas durante esta fase.
+Este bloque acredita delegaciones **finitas con parámetros exactos**. Las delegaciones dinámicas reutilizables se describen más abajo; su integración pasó en la versión publicada 1.47.0. La activación automática sin sesión no está implementada. Las recurrencias y reglas operativas siguen en su motor nativo y pausadas durante esta fase.
 
 ## Políticas, simulación, pausa y revocación
 
@@ -46,7 +46,7 @@ En `/coordinacion/automatizaciones`, con `system.configure`, definir área, resp
 
 Simular muestra propuestas sin generar tareas o avisos. Pausar detiene efectos nuevos; revocar conserva historial y trabajo iniciado. Las mismas acciones están conectadas a Fronti: `saveAutomationAction`, `simulateAutomationAction`, `setAutomationStateAction`. La última exige `id`, `version` y `state=pause|enable|revoke`, además de propiedad y permiso reales. El catálogo exige configuración completa para guardar una política.
 
-Las políticas incluyen propietario trazable, área, acciones/límites, caducidad, versión e interrupción por error o pérdida de autoridad. Son autorizaciones limitadas a estas reglas. Las delegaciones finitas de Fronti se describen arriba; las dinámicas con presupuestos acumulados y condiciones acotadas están implementadas y pendientes de la compuerta actual. Housekeeping conserva sus delegaciones y jerarquías existentes. Un horario publicado es planificación y nunca prueba presencia física.
+Las políticas incluyen propietario trazable, área, acciones/límites, caducidad, versión e interrupción por error o pérdida de autoridad. Son autorizaciones limitadas a estas reglas. Las delegaciones finitas de Fronti se describen arriba; las dinámicas con presupuestos acumulados y condiciones acotadas están implementadas y verificadas en la compuerta de 1.47.0. Housekeeping conserva sus delegaciones y jerarquías existentes. Un horario publicado es planificación y nunca prueba presencia física.
 
 Recurrencias: fecha/hora local America/Santiago, rechazo de horas inexistentes en cambio de verano, clave de ocurrencia única, snapshot del trabajo iniciado y recuperación de ocurrencias recientes. Máximos: 20 políticas/25 efectos por barrido, 30 segundos con reserva de 15 para transacciones, 7 días retrospectivos y 5 ocurrencias por política (la pantalla configura una). El cursor avanza por páginas; la simulación advierte alcance parcial. Un fallo pausa la política y registra intervención; corregir/habilitar crea versión nueva sin repetir ocurrencias confirmadas.
 
@@ -54,13 +54,13 @@ Las reglas activas sustituyen sólo su condición/área/tipo/prioridad y rechaza
 
 ## Activación futura y secuencia de integración
 
-1. Revisión e integración humana de #241; no la realiza este agente.
-2. Reconciliar esta rama sobre la Etapa 1 integrada y repetir Compuerta.
-3. Completar pendientes de aceptación y revisar SQL aditivo, configuración cron y dispositivos físicos.
+1. #241 integrado por autorización explícita posterior: 8fcfe2a0.
+2. #244 reconciliado con main, Compuerta 37042811814 verde, integrado en 26331193 y publicado 1.47.0.
+3. Para cada bloque siguiente, completar su aceptación y compuerta antes de integrar/publicar; Safari físico sigue pendiente.
 4. La autorización de publicación fue concedida el 2 de octubre: publicar/migrar por el flujo existente después de compuerta, comprobar versión y SHA.
 5. Simular cada política y revisar destinatarios, alcance y efectos. Habilitar requiere además `AROH_AUTOMATION_EXECUTION_ENABLED=true`. **No establecer esa variable ni habilitar reglas reales en esta implementación.** El calendario operativo permanece en el cron de la aplicación; GitHub Actions sólo prueba código.
 
-CRON_SECRET fue confirmado en la interfaz Vercel como Secret de Production el 2 de octubre a las 14:42 de Santiago; lo agregó el propietario. No se leyó su valor. Verificar autenticación de cron después del despliegue. Ramas sin despliegue automático: `vercel.json` conserva `git.deploymentEnabled={"**":false,"main":true}`; los workflows no despliegan esta rama. Vercel listó cero despliegues nuevos desde las subidas.
+CRON_SECRET fue confirmado en la interfaz Vercel como Secret de Production el 2 de octubre a las 14:42 de Santiago; lo agregó el propietario. No se leyó su valor. Autenticación verificada en 1.47.0: invocaciones programadas de web-push 200 y solicitud sin secreto 401. Ramas sin despliegue automático: `vercel.json` conserva `git.deploymentEnabled={"**":false,"main":true}`; los workflows no despliegan esta rama. Las ramas de PR no desplegaron; los merges autorizados en main sí publicaron.
 
 ## GitHub y Copilot utilizados realmente
 
@@ -68,9 +68,9 @@ Repositorio público, titularidad, infraestructura y protecciones conservados. P
 
 Hay PR de Dependabot; no se mezclaron actualizaciones masivas. CodeQL/secret scanning/push protection no se pudieron acreditar por API: no se infiere ausencia ni se duplica configuración. No se requirieron Codespaces, servicios nuevos o runners de pago.
 
-Dos revisiones reales de Copilot: 5391944473 y 5392864566. La segunda reconoce seis correcciones previas y señala cuatro riesgos nuevos (revisión/escritura, versión omitida, selección no disponible y fallback), atendidos con código y pruebas. Mantiene pendiente cobertura individual. Detalles y evidencia en COPILOT.md. Las correcciones las implementó el agente responsable, no Copilot. No hay capacidad expuesta de agente de programación; no se afirma delegación realizada.
+Cuatro revisiones reales de Copilot: 5391944473, 5392864566, 5393737284 y 5394563088. La solicitud siguiente (5394647977) fue rechazada por cuota de revisión; no es una quinta revisión. La segunda reconoce seis correcciones previas y señala cuatro riesgos nuevos (revisión/escritura, versión omitida, selección no disponible y fallback), atendidos con código y pruebas. Mantiene pendiente cobertura individual. Detalles y evidencia en COPILOT.md. Las correcciones las implementó el agente responsable, no Copilot. No hay capacidad expuesta de agente de programación; no se afirma delegación realizada.
 
-Consumo observado: dos revisiones recibidas; antes de concluir la corrida 37020877716 se observaron 13 corridas Compuerta terminadas (una cancelada), con 72,3 minutos transcurridos acumulados entre inicio y actualización final. Incluye sobrecarga de workflow y no son minutos facturados; no incluye corridas posteriores. saldo/coste en créditos no consultables. 1500 créditos/0 consumidos es la referencia histórica del propietario del 2 de octubre, no un saldo leído ahora ni un número de mensajes. Sin sobrecostes habilitados. La suscripción Copilot no es una API de producción de Fronti.
+Consumo observado: cuatro revisiones recibidas; antes de concluir la corrida 37020877716 se observaron 13 corridas Compuerta terminadas (una cancelada), con 72,3 minutos transcurridos acumulados entre inicio y actualización final. Incluye sobrecarga de workflow y no son minutos facturados; no incluye corridas posteriores. saldo/coste en créditos no consultables. 1500 créditos/0 consumidos es la referencia histórica del propietario del 2 de octubre, no un saldo leído ahora ni un número de mensajes. Sin sobrecostes habilitados. La suscripción Copilot no es una API de producción de Fronti.
 
 Límites documentados consultados: Pro permite 40 jobs estándar concurrentes (5 macOS), 6 horas por job, 1 GB de artefactos y 10 GB de caché/repositorio; esta Compuerta usa un job Linux y timeout 30 minutos. Minutos de runners estándar de repositorio público gratuitos. Consumo/espacio vigente de cuenta no consultable. Fuentes oficiales: https://docs.github.com/en/actions/reference/limits ; https://docs.github.com/en/billing/concepts/product-billing/github-actions ; https://docs.github.com/en/billing/concepts/product-billing/github-copilot-billing .
 
@@ -82,9 +82,9 @@ Reversión futura autorizada: apagar ejecución y pausar/revocar políticas; can
 
 ## Pendientes que impiden declarar la Etapa 2 completa
 
-Cobertura de todas las acciones/variantes y entrada natural directa; delegaciones dinámicas con límites acumulados y condiciones personalizadas; suplencias configurables con horarios; editor unificado de recurrencias HK; comparación entre turnos; indicadores completos de recepción/atención/resolución/reincidencia/cumplimiento; medición real de pasos evitados; recuperación supervisada de resultados inciertos; acreditación de controles de todos los procedimientos de Caja/llaves/turnos/admin; CRON_SECRET y Safari/iPhone físico. No publicar ni declarar cobertura general basándose en pantallas, adaptadores o pruebas aisladas.
+Cobertura de todas las acciones/variantes y entrada natural directa; editor unificado de recurrencias HK; comparación completa entre turnos; ampliación/acreditación de indicadores por cada procedimiento; medición real de pasos evitados; recuperación supervisada de resultados inciertos; acreditación de todos los procedimientos de Caja/llaves/turnos/admin y rutas HTTP; Safari/iPhone físico. Delegaciones dinámicas con límites, suplencias PROPOSE/APPLY e indicadores acotados ya están implementados y verificados en 1.47.0; esto no acredita todas sus variantes. CRON_SECRET quedó verificado. No declarar cobertura general basándose en pantallas, adaptadores o pruebas aisladas.
 
-### Ampliación en verificación: mandatos dinámicos, suplencias e indicadores
+### Ampliación publicada en 1.47.0: mandatos dinámicos, suplencias e indicadores
 
 - `/delegar-dinamica JSON`: objetivo, availableAt/expiresAt (zona incluida, hasta 31 días), maxExecutions, maxActions, reglas con action/fixedFields/variableFields y presupuesto opcional `{currency,maxMinorUnits}`. Los importes variables requieren regla cost y presupuesto de esa moneda. Los ID variables requieren enumeración o ámbito nativo de tarea/novedad por área y estados; no admiten texto arbitrario. La instrucción de autorización sólo procede del mensaje propio.
 - `/usar-delegacion-dinamica {"id":"…","steps":[…]}` reserva límites atómicamente y ejecuta los pasos exactos bajo la sesión presente. No habilita ejecución autónoma. `/revocar-delegacion ID` cancela usos pendientes. Un error o cambio material detiene la continuidad; no se devuelve presupuesto automáticamente porque puede haber efectos confirmados o inciertos.

@@ -144,6 +144,19 @@ describe('registros del libro operativo', () => {
     expect(plain.impact).toBeNull();
   });
 
+  it('al editar conserva fecha e impacto omitidos, acepta una fecha declarada y rechaza quitar gravedad de una incidencia', async () => {
+    const incident = await createEntry(receptionist, { ...novedad, type: EntryType.INCIDENCIA, severity: Severity.ALTA, impact: 'HUESPED' });
+    const preserved = await updateEntry(receptionist, { id: incident.id, title: 'Incidencia corregida', occurredAt: null });
+    expect(preserved.occurredAt).toEqual(incident.occurredAt);
+    expect(preserved.impact).toBe('HUESPED');
+    const date = new Date('2026-10-02T12:00:00.000Z');
+    const corrected = await updateEntry(receptionist, { id: incident.id, occurredAt: date, impact: null });
+    expect(corrected.occurredAt).toEqual(date);
+    expect(corrected.impact).toBeNull();
+    await expect(updateEntry(receptionist, { id: incident.id, severity: null })).rejects.toThrow('gravedad');
+    expect((await getEntry(incident.id)).severity).toBe(Severity.ALTA);
+  });
+
   it('avisa a supervisión cuando la incidencia es crítica', async () => {
     await createEntry(receptionist, {
       ...novedad,

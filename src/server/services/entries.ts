@@ -16,6 +16,7 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { ENTRY_OPEN_STATUSES, ENTRY_STATUS_LABEL, ENTRY_TYPE_LABEL } from '@/domain/labels';
 import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
+import { ensureIncidentWorkflow } from './incident-workflow';
 import { assertAssignable, listSupervisorIds } from './users';
 import { finishSupervisionTrackingForSource } from './followups';
 import {
@@ -62,7 +63,7 @@ type EntryCreateInput = {
   guestId?: string | null;
   reservationId?: string | null;
   stayId?: string | null;
-  severity?: Severity | undefined;
+  severity?: Severity | null;
   impact?: Prisma.OperationalEntryCreateInput['impact'];
   immediateAction?: string | null;
 };
@@ -271,44 +272,53 @@ export async function updateEntry(
     },
   expectedRevision?: string,
 ) {
-  const current = await prisma.operationalEntry.findFirst({
-    where: { id: input.id, deletedAt: null },
-  });
-  if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
-  assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
-  if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
-    throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
-  }
-  if (input.ownerId) await assertAssignable(input.ownerId);
-  if (input.roomId) {
-    const room = await prisma.room.findFirst({
-      where: { id: input.roomId, active: true },
-      select: { id: true },
-    });
-    if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
-  }
-
-  const data: Prisma.OperationalEntryUpdateInput = {};
-  const after: Record<string, unknown> = {};
-  for (const field of EDITABLE_FIELDS) {
-    if (!(field in input)) continue;
-    const raw = (input as Record<string, unknown>)[field];
-    if (raw === undefined) continue;
-    const value = field === 'tags' ? normalizeTags(raw as string[]) : raw;
-    (data as Record<string, unknown>)[field] = value;
-    after[field] = value;
-  }
-
-  if (Object.keys(data).length === 0) return current;
-
-  const changes = diffFields(
-    current as unknown as Record<string, unknown>,
-    after,
-    Object.keys(after),
-  );
-  if (changes.changed.length === 0) return current;
-
   return prisma.$transaction(async (tx) => {
+    // The snapshot and the incident workflow belong to the same locked mutation.
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
+    const current = await tx.operationalEntry.findFirst({
+      where: { id: input.id, deletedAt: null },
+    });
+    if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
+    assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
+    if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
+      throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
+    }
+    if (current.type === EntryType.INCIDENCIA && input.severity === null) {
+      throw new RuleError('La incidencia requiere indicar su gravedad.');
+    }
+    if (input.ownerId) await assertAssignable(input.ownerId);
+    if (input.roomId) {
+      const room = await prisma.room.findFirst({
+        where: { id: input.roomId, active: true },
+        select: { id: true },
+      });
+      if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
+    }
+
+    const data: Prisma.OperationalEntryUncheckedUpdateInput = {};
+    const after: Record<string, unknown> = {};
+    for (const field of EDITABLE_FIELDS) {
+      if (!(field in input)) continue;
+      const raw = (input as Record<string, unknown>)[field];
+      if (raw === undefined) continue;
+      // An empty date means no correction, never erase/invent the recorded event time.
+      if (field === 'occurredAt' && raw === null) continue;
+      const value = field === 'tags' ? normalizeTags(raw as string[]) : raw;
+      (data as Record<string, unknown>)[field] = value;
+      after[field] = value;
+    }
+
+    const changes = diffFields(
+      current as unknown as Record<string, unknown>,
+      after,
+      Object.keys(after),
+    );
+    if (changes.changed.length === 0) {
+      if (current.type !== EntryType.INCIDENCIA) return current;
+      await ensureIncidentWorkflow(current.id, tx);
+      return tx.operationalEntry.findUniqueOrThrow({ where: { id: current.id }, include: entryInclude });
+    }
+
     const updated = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
       data: { ...data, ...(changes.changed.includes('ownerId') ? { workAssignedAt: input.ownerId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null } : {}) },
@@ -350,6 +360,10 @@ export async function updateEntry(
       );
     }
 
+    if (updated.type === EntryType.INCIDENCIA) {
+      await ensureIncidentWorkflow(updated.id, tx);
+      return tx.operationalEntry.findUniqueOrThrow({ where: { id: updated.id }, include: entryInclude });
+    }
     return updated;
   });
 }

@@ -1,5 +1,5 @@
 'use server';
-import { revisionFromForm } from '@/server/security/authorized-revision';
+import { revisionFromForm, operationalRecordRevision } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -58,7 +58,7 @@ export async function updateTaskAction(
     const input = parseOrThrow(taskUpdateSchema, formDataToObject(formData));
     const task = await updateTask(user, input, revisionFromForm(formData));
     refresh(task.id);
-    return { ok: true as const, message: 'Tarea actualizada.', id: task.id };
+    return { ok: true as const, message: 'Tarea actualizada.', id: task.id, committedRevision: operationalRecordRevision('tasks', task) };
   });
 }
 
@@ -71,7 +71,7 @@ export async function assignTaskAction(
     const input = parseOrThrow(taskAssignSchema, formDataToObject(formData));
     const task = await assignTask(user, input, revisionFromForm(formData));
     refresh(task.id);
-    return { ok: true as const, message: 'Responsable actualizado.', id: task.id };
+    return { ok: true as const, message: 'Responsable actualizado.', id: task.id, committedRevision: operationalRecordRevision('tasks', task) };
   });
 }
 
@@ -96,7 +96,7 @@ export async function changeTaskStatusAction(
     });
     const task = await changeTaskStatus(user, input, revisionFromForm(formData));
     refresh(task.id);
-    return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id };
+    return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id, committedRevision: operationalRecordRevision('tasks', task) };
   });
 }
 

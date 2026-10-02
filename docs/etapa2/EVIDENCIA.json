@@ -19,10 +19,11 @@
     "build": "Latest revision requires CI; previous complete gate 37029291952 passed normal build"
   },
   "pendingValidation": [
-    "Compuerta after resolving dependency onto main",
-    "Production version/SHA and authenticated cron verification after release",
+    "PR 247 integration/build/browser after e24386c9",
     "physical Safari/iPhone",
-    "remaining individual adapter journeys"
+    "remaining individual adapter and HTTP journeys",
+    "complete natural language execution and supervised uncertain-result recovery",
+    "full shift comparison, procedure indicators and measured manual steps saved"
   ],
   "github": {
     "upload": "authorized after initial rejection; completed",
@@ -244,6 +245,25 @@
         "browser": "Authenticated Chromium desktop1280/mobile390: coordination, exact chat, finite/dynamic delegation, indicators and paused policy journeys passed",
         "artifact": 11242060533,
         "expiresAt": "2026-10-09T17:17:56Z"
+      },
+      {
+        "id": 37042811814,
+        "head": "626fd20648aad98f1b534e4d7ecc4d1c05828dc6",
+        "result": "success",
+        "passed": 1424,
+        "skipped": 1,
+        "build": "passed",
+        "browser": "Chromium 1280/390 passed",
+        "artifactId": 11243081631
+      },
+      {
+        "id": 37044898523,
+        "head": "2cc2f36bd2892bb935472140438c01369ef89ed4",
+        "result": "failure",
+        "passed": 1428,
+        "failed": 1,
+        "skipped": 1,
+        "finding": "Entry update supplied null to required occurredAt; corrected e24386c9. Build/browser not run."
       }
     ]
   },
@@ -327,9 +347,9 @@
   },
   "dynamicDelegations": {
     "status": "PostgreSQL and desktop/mobile integration passed in 37039196791",
-    "productionTouched": false
+    "productionTouched": true
   },
-  "productionChangeScope": "Owner authorized publication; stage 1 merged, deployment verification pending. No operational data writes or new rules enabled.",
+  "productionChangeScope": "Owner-authorized 1.47.0 release verified. Additive migrations applied by release; no synthetic operational writes or new policies enabled in production.",
   "cronSecret": {
     "status": "present",
     "verifiedAt": "2026-10-02T17:42:00Z",
@@ -337,6 +357,22 @@
     "type": "Secret",
     "target": "Production",
     "valueRead": false,
-    "runtimeVerification": "pending new deployment"
+    "runtimeVerification": {
+      "release": "1.47.0",
+      "scheduledWebPushStatus": 200,
+      "requestWithoutSecretStatus": 401,
+      "valueRead": false
+    }
+  },
+  "production": {
+    "version": "1.47.0",
+    "sha": "26331193bfe1b07f1ff87da4942bb8d9fb6d74c7",
+    "deployment": "dpl_7rn6caSVB4pbuMNZcDwBzF89JqrB",
+    "status": "READY",
+    "healthVersionAndSha": "verified",
+    "mainGate": 37043659344,
+    "releaseGate": 37044358938,
+    "tag": "v1.47.0",
+    "newAutomationExecutionEnabled": false
   }
 }

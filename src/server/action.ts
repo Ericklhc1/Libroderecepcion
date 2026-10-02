@@ -37,6 +37,8 @@ export type ActionState =
       ok: true;
       message: string;
       id?: string;
+      /** Native committed snapshot for continuing an already authorized procedure. */
+      committedRevision?: string;
       /**
        * Su presencia obliga a la interfaz a mantener el formulario abierto:
        * quien lo ve tiene que poder copiarlas antes de cerrar.

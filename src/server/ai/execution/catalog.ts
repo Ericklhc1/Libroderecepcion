@@ -296,7 +296,7 @@ export async function invokeNativeAction(step: FrontiStep, expectedRevision?: st
   }
   // Runtime output validation; never persist credentials or unexpected fields.
   return z.discriminatedUnion('ok', [
-    z.object({ok:z.literal(true),message:z.string().max(6000),id:z.string().max(200).optional()}),
+    z.object({ok:z.literal(true),message:z.string().max(6000),id:z.string().max(200).optional(),committedRevision:z.string().regex(/^[a-f0-9]{64}$/).optional()}),
     z.object({ok:z.literal(false),error:z.string().max(6000)}),
   ]).parse(result);
 }

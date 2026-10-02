@@ -62,6 +62,8 @@ export const entryCreateWithContextSchema = entryCreateSchema;
 export const entryUpdateSchema = entryCreateSchema.partial().extend({
   id: z.string().min(1),
   status: z.nativeEnum(EntryStatus).optional(),
+  severity: z.preprocess(value => value === '' ? null : value, z.nativeEnum(Severity).nullable().optional()),
+  impact: z.preprocess(value => value === '' ? null : value, z.nativeEnum(Impact).nullable().optional()),
   rootCause: zOptionalString,
   resolution: zOptionalString,
 });

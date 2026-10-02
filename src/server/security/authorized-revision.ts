@@ -16,3 +16,12 @@ export function revisionFromForm(form:FormData):string|undefined {
   if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))throw new RuleError('La revisión autorizada no es válida.');
   return value;
 }
+
+/** Hash only the row returned by the native mutation, never a later re-read. */
+export function operationalRecordRevision(kind:'tasks'|'entries'|'followups', row:{updatedAt:Date;status:string;assigneeId?:string|null;ownerId?:string|null;dueAt?:Date|null;scheduledAt?:Date|null}) {
+  return authorizedRevision(kind==='tasks'
+    ? {updatedAt:row.updatedAt,status:row.status,assigneeId:row.assigneeId,dueAt:row.dueAt}
+    : kind==='entries'
+      ? {updatedAt:row.updatedAt,status:row.status,ownerId:row.ownerId,dueAt:row.dueAt}
+      : {updatedAt:row.updatedAt,status:row.status,ownerId:row.ownerId,scheduledAt:row.scheduledAt});
+}

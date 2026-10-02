@@ -17,7 +17,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Preparar objetos Git sin mover ramas ni desplegar
+      - name: Preparar blobs sin mover ramas ni modificar workflows con el token de CI
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -26,18 +26,17 @@ jobs:
           from pathlib import Path
           p=Path('.github/etapa3_prepare.py')
           s=p.read_text()
+          patches=[
+            ('src/server/ai/execution/natural-housekeeping.ts','executePlan(previous.executionId,true)','executePlan(previous.executionId,false)'),
+            ('src/server/services/entries.ts',"data: { ...data, ...(changes.changed.includes('ownerId')","data: { ...data, updatedAt:new Date(Math.max(Date.now(),current.updatedAt.getTime()+1)), ...(changes.changed.includes('ownerId')"),
+            ('src/server/services/entries.ts','        status: input.status,','        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime()+1)),\n        status: input.status,'),
+          ]
           anchor="for path in ['package.json','package-lock.json']:"
-          extra='''replace('src/server/ai/execution/natural-housekeeping.ts', 'executePlan(previous.executionId,true)', 'executePlan(previous.executionId,false)')
-          replace('src/server/services/entries.ts', 'data: { ...data, ...(changes.changed.includes(\'ownerId\')', 'data: { ...data, updatedAt:new Date(Math.max(Date.now(),current.updatedAt.getTime()+1)), ...(changes.changed.includes(\'ownerId\')')
-          replace('src/server/services/entries.ts', '        status: input.status,', '        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime()+1)),\\n        status: input.status,')
-          '''
-          # Preserve quoting in the exact TypeScript anchors.
-          extra=extra.replace("'data: { ...data, ...(changes.changed.includes('ownerId')'",'"data: { ...data, ...(changes.changed.includes(\'ownerId\')"').replace("'data: { ...data, updatedAt:new Date(Math.max(Date.now(),current.updatedAt.getTime()+1)), ...(changes.changed.includes('ownerId')'",'"data: { ...data, updatedAt:new Date(Math.max(Date.now(),current.updatedAt.getTime()+1)), ...(changes.changed.includes(\'ownerId\')"')
           assert s.count(anchor)==1
-          s=s.replace(anchor,extra+'\n'+anchor)
-          s=s.replace('import json, os, subprocess, urllib.request','import json, os, subprocess, urllib.request, urllib.error')
-          s=s.replace('    with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)',"    try:\n        with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)\n    except urllib.error.HTTPError as error:\n        print('GitHub API failure',path,error.code,error.read().decode()[:2000])\n        raise")
-          s=s.replace("        blob=api('git/blobs'", "        print('Preparing path',p,flush=True)\n        blob=api('git/blobs'")
+          s=s.replace(anchor,''.join('replace('+','.join(repr(v) for v in patch)+')\n' for patch in patches)+'\n'+anchor)
+          anchor="tree=api('git/trees',{'base_tree':base,'tree':entries})['sha']"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,"print('PREPARED_TREE_ENTRIES='+json.dumps(entries))\nprint('PREPARED_BASE_TREE='+base)\nprint('PREPARED_PARENT='+head)\nraise SystemExit(0)\n"+anchor)
           p.write_text(s)
           compile(s,str(p),'exec')
           PY

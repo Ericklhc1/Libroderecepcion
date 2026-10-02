@@ -195,6 +195,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
           Fotografía generada {formatDateTime(cockpit.generatedAt)} · comparación contra los {periodLabel} inmediatamente anteriores
         </p>
       </header>
+      <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
 
       <section aria-labelledby="management-decisions">
         <div className="mb-2 flex items-end justify-between gap-3">

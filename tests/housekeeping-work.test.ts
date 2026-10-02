@@ -32,7 +32,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     await prisma.role.delete({where:{id:customRoleId}});
   });
   const input=()=>({requestKey:randomUUID(),title:'Limpiar habitación 512',description:'Revisar limpieza y reposición.',departmentId:area,workDate:date(),workKind:'LIMPIEZA' as const,roomId,priority:'MEDIA' as const,effortMinutes:35});
-  async function change(user:CurrentUser,id:string,action:Parameters<typeof changeHkWork>[1]['action'],note='Verificado',assignedToId?:string){const r=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id}});return changeHkWork(user,{id,version:r.version,action,note,assignedToId});}
+  async function change(user:CurrentUser,id:string,action:Parameters<typeof changeHkWork>[1]['action'],note='Verificado',assignedToId?:string){const r=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id}});return changeHkWork(user,{id,version:r.version,action,note,assignedToId,...(action==='MANTENIMIENTO'?{severity:'ALTA' as const}:{})});}
   it('ejecuta el circuito completo, devuelve correcciones y comunica el resultado sin alterar el PMS',async()=>{
     const r=await createHkWork(reception,input());expect(r.requiresInspection).toBe(true);
     await change(supervisor,r.id,'ASIGNAR','Limpiar y revisar amenities',maid.id);

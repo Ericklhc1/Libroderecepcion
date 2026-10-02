@@ -24,7 +24,7 @@ import {
 } from '@/server/services/tasks';
 
 function refresh(taskId?: string) {
-  revalidatePath('/');
+  revalidatePath('/coordinacion');revalidatePath('/');
   revalidatePath('/tareas');
   revalidatePath('/libro');
   revalidatePath('/supervision');

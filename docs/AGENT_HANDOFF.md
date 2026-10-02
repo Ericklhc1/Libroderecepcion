@@ -1,3 +1,12 @@
+## 02/10/2026 · v1.46.0 · Etapa 1 en rama, sin merge ni despliegue
+
+- Rama `feat/etapa-1-operacion-conectada` sobre main 52f7f229. Usuario autoriza implementación y PR; prohíbe merge/despliegue.
+- `/coordinacion` agrupa fuentes existentes, confirma recepción, reasigna con siguiente acción y conserva continuidad. Lectura de horarios con permisos; sin gestión PMS, asistencia o descuentos de descansos.
+- HK separa recepción/inicio y recepción/aceptación de relevo. Mantenimiento exige gravedad y crea continuidad atómica mediante servicio canónico. No se generan movimientos de Caja/llaves.
+- Migración aditiva `20261002093000_operacion_conectada`; privacidad de nuevos lectores y cron fail-closed son dependencias concretas, no cierre general de H01/H08. Reconciliar estos PR antes de publicar y confirmar secreto de cron.
+- Tipos y 63 pruebas locales de dominio/navegación/contexto aprobados. Compuerta debe ejecutar integración y recorridos autenticados en PostgreSQL sintético; no hay servidor PostgreSQL local ni pruebas sobre Neon.
+- Guía: `docs/ETAPA_1_OPERACION_CONECTADA.md`. Métricas etiquetadas por página/muestra. Sin datos históricos inventados. Pendientes globales de auditoría conservados.
+
 ## 01/10/2026 · v1.45.0 · Housekeeping diario por cargo y área
 
 - Sustituye la portada de avisos por trabajo del día, vistas por cargo, filtros, ejecución, inspección de otra persona, impedimentos, correcciones y continuidad. Usa HousekeepingRequest existente; avisos y pruebas históricas conservan folio/historial. Organización explícita incorpora avisos operativos antiguos al circuito nuevo.

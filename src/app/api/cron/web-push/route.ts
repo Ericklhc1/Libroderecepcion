@@ -1,3 +1,4 @@
+import { escalateUnreceivedWork } from '@/server/services/coordination';
 import { escalateHousekeepingRequests } from '@/server/services/housekeeping';
 import { NextResponse } from 'next/server';
 import { isAuthorizedCronRequest } from '@/server/cron-auth';
@@ -14,12 +15,13 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
+  const coordination = await escalateUnreceivedWork(now);
   const housekeeping = await escalateHousekeepingRequests(now);
   const alarms = await dispatchDueAlarmsForAllUsers(now);
   const push = await flushWebPushSubscriptions();
 
   return NextResponse.json(
-    { ok: true, housekeeping, alarms, push },
+    { ok: true, coordination, housekeeping, alarms, push },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

@@ -138,6 +138,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
         title: input.title,
         description: input.description ?? null,
         assigneeId,
+        workAssignedAt: assigneeId ? new Date() : null,
         priority: input.priority,
         startsAt: input.startsAt ?? null,
         dueAt: input.dueAt ?? null,
@@ -341,7 +342,7 @@ export async function assignTask(
   return prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
       where: { id: input.id },
-      data: { assigneeId: input.assigneeId ?? null },
+      data: { assigneeId: input.assigneeId ?? null, workAssignedAt: new Date(), workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
       include: taskInclude,
     });
     await recordAudit(
@@ -410,7 +411,7 @@ export async function assignTask(
 
 const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   PENDIENTE: [TaskStatus.ACEPTADA, TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA],
-  ACEPTADA: [TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
+  ACEPTADA: [TaskStatus.COMPLETADA, TaskStatus.EN_CURSO, TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.CANCELADA],
   EN_CURSO: [TaskStatus.BLOQUEADA, TaskStatus.REALIZADA, TaskStatus.COMPLETADA, TaskStatus.CANCELADA, TaskStatus.PENDIENTE],
   BLOQUEADA: [TaskStatus.EN_CURSO, TaskStatus.PENDIENTE, TaskStatus.CANCELADA, TaskStatus.REALIZADA],
   REALIZADA: [TaskStatus.VALIDADA, TaskStatus.DEVUELTA, TaskStatus.EN_CURSO],
@@ -483,6 +484,8 @@ export async function changeTaskStatus(
       where: { id: input.id },
       data: {
         status: input.status,
+        ...(['ACEPTADA','EN_CURSO'].includes(input.status) && current.assigneeId === user.id ? { workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id } : {}),
+        ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now } : {}),
         blockedReason:
           input.status === TaskStatus.BLOQUEADA ? (input.blockedReason ?? null) : null,
         returnReason: input.status === TaskStatus.DEVUELTA ? input.reason ?? null : null,

@@ -5,17 +5,17 @@ import { requireUser } from '@/server/auth/guard';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { runAction, parseOrThrow, formDataToObject, zOptionalDate, type ActionState } from '@/server/action';
 import { HK_WORK_KINDS, HK_WORK_ACTIONS } from '@/domain/housekeeping-work';
-import { createHkWork, changeHkWork, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
+import { acceptHkHandover, createHkWork, changeHkWork, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
 const text = (n:number) => z.string().trim().max(n);
 const optional = (n:number) => text(n).optional().transform(v=>v||undefined);
 const day = text(10).regex(/^\d{4}-\d{2}-\d{2}$/);
 const bool = z.preprocess(v=>v==='on'||v==='true'||v===true,z.boolean());
 const area = { departmentId:text(100).min(1) };
 const create = z.object({ ...area, requestKey:z.string().uuid(),title:text(160).min(1),description:text(3000).min(1),workKind:z.enum(HK_WORK_KINDS),workDate:day,roomId:optional(100),zoneId:optional(100),location:optional(160),priority:z.enum(['BAJA','MEDIA','ALTA','CRITICA']).default('MEDIA'),dueAt:zOptionalDate,effortMinutes:z.coerce.number().int().min(1).max(480),requiresInspection:bool,assignedToId:optional(100),sourceEntryId:optional(100) });
-const change = z.object({id:text(100).min(1),version:z.coerce.number().int().min(1),action:z.enum(HK_WORK_ACTIONS),note:optional(3000),assignedToId:optional(100),dueAt:zOptionalDate});
+const change = z.object({id:text(100).min(1),version:z.coerce.number().int().min(1),action:z.enum(HK_WORK_ACTIONS),severity:z.enum(['BAJA','MEDIA','ALTA','CRITICA']).optional(),note:optional(3000),assignedToId:optional(100),dueAt:zOptionalDate});
 const routine = z.object({...area,id:optional(100),version:z.coerce.number().int().min(1).optional(),title:text(160).min(1),description:text(3000).min(1),location:text(160).min(1),effortMinutes:z.coerce.number().int().min(1).max(480),requiresInspection:bool,active:bool});
 async function actor(){const user=await requireUser();await assertReceptionOperationPermission(user,'housekeeping.manage');return user;}
-function refresh(){revalidatePath('/admin/housekeeping');revalidatePath('/libro');revalidatePath('/libro/[id]','page');}
+function refresh(){revalidatePath('/coordinacion');revalidatePath('/admin/housekeeping');revalidatePath('/libro');revalidatePath('/libro/[id]','page');}
 export async function createHkWorkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const result=await createHkWork(user,parseOrThrow(create,formDataToObject(form)));refresh();return{ok:true as const,message:`Trabajo #${result.humanId} guardado.`,id:result.id};});}
 export async function changeHkWorkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const result=await changeHkWork(user,parseOrThrow(change,formDataToObject(form)));refresh();return{ok:true as const,message:`Trabajo #${result.humanId} actualizado.`,id:result.id};});}
 export async function saveHkRoutineAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const result=await saveHkRoutine(user,parseOrThrow(routine,formDataToObject(form)));refresh();return{ok:true as const,message:'Rutina guardada. Los trabajos ya creados conservan su instrucción.',id:result.id};});}
@@ -27,3 +27,5 @@ export async function delegateHkAction(_state:ActionState|null,form:FormData):Pr
 export async function revokeHkDelegationAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await revokeHkDelegation(user,input.id);refresh();return{ok:true as const,message:'Cobertura revocada.'};});}
 
 export async function organizeLegacyHkWorkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({...area,id:text(100).min(1),version:z.coerce.number().int().min(1),workDate:day,workKind:z.enum(HK_WORK_KINDS),roomId:optional(100),effortMinutes:z.coerce.number().int().min(1).max(480),requiresInspection:bool,assignedToId:optional(100),note:text(3000).min(1)}),formDataToObject(form));const result=await organizeLegacyHkWork(user,input);refresh();return{ok:true as const,message:'Aviso incorporado al trabajo del día. Su folio e historial se conservan.',id:result.id};});}
+
+export async function acceptHkHandoverAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await acceptHkHandover(user,input.id);refresh();return {ok:true as const,message:'Continuidad aceptada. Los trabajos conservan su estado.'};});}

@@ -1119,6 +1119,14 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  workAssignedAt DateTime?
+  workAcknowledgedAt DateTime?
+  workAcknowledgedById String?
+  workStartedAt DateTime?
+  workNextAction String?
+  workEscalatedAt DateTime?
+  workRequestKey String?
+
   hkMaintenanceWork HousekeepingRequest? @relation("hkMaintenance")
   housekeepingRequest HousekeepingRequest?
   id               String      @id @default(cuid())
@@ -1268,6 +1276,14 @@ model HousekeepingEvent {
 }
 
 model Task {
+  workAssignedAt DateTime?
+  workAcknowledgedAt DateTime?
+  workAcknowledgedById String?
+  workStartedAt DateTime?
+  workNextAction String?
+  workEscalatedAt DateTime?
+  workRequestKey String?
+
   id                  String         @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   seq                 Int            @unique @default(autoincrement())
@@ -3295,6 +3311,8 @@ model HousekeepingDayMember {
 }
 
 model HousekeepingHandover {
+  acceptedAt DateTime?
+  acceptedById String?
   id String @id @default(cuid())
   requestKey String @unique
   departmentId String

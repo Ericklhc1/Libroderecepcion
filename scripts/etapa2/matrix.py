@@ -7,7 +7,15 @@ evidence = {
  'simulateAutomationAction':'Simular sin tareas/avisos y conservar resultado privado; etapa2-execution.test.ts (nueva Compuerta requerida)',
  'setAutomationStateAction':'Pausa/revocación nativas con versión y rechazo de autorización obsoleta; etapa2-execution.test.ts (habilitación por Fronti pendiente)',
  'createTaskAction':'Dos pasos, reintentos concurrentes, revocación y cancelación; etapa2-execution.test.ts',
- 'changeTaskStatusAction':'Cambio posterior a autorización rechazado; validación independiente probada en servicio (éxito completo por adaptador pendiente)',
+ 'changeTaskStatusAction':'Transiciones consecutivas EN_CURSO→REALIZADA, reintento, cambio externo y rechazo de autovalidación; etapa2-execution.test.ts (CI del bloque 1.47.1 pendiente)',
+ 'updateEntryAction':'Novedad sin gravedad/impacto: edición y continuación a atención/resolución; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'changeEntryStatusAction':'Novedad ABIERTO→EN_CURSO→RESUELTO con resultado declarado; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'deleteEntryAction':'Archivo con motivo y reintento sin duplicado; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'restoreEntryAction':'Restauración conserva folio/contenido; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'createFollowUpAction':'Seguimiento vinculado a tarea existente; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'updateFollowUpAction':'Atención y resolución consecutivas con resultado; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'deleteFollowUpAction':'Archivo con motivo conserva el origen; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
+ 'restoreFollowUpAction':'Recuperación conserva estado, origen e historial; etapa2-execution.test.ts (CI 1.47.1 pendiente)',
  'createManualCashMovementAction':'Entrada CLP declarada, un solo movimiento ante reintento; etapa2-execution.test.ts',
  'createPhysicalKeyAction':'Crear COPIA con normalización de código; etapa2-execution.test.ts',
  'assignPhysicalKeyAction':'Entrega declarada conserva assignedById; etapa2-execution.test.ts',
@@ -55,7 +63,7 @@ Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones
 
 ## Evidencia observada
 
-Última base acreditada antes de esta ampliación: Compuerta 37029291952, 1407 pruebas aprobadas y 1 omisión existente, PostgreSQL 16 y Chromium escritorio/móvil. Esta ampliación requiere nueva Compuerta; consultar el SHA y los resultados exactos en PR #244. Registro de adaptadores y pruebas de dominio no equivalen a acreditación de todos los recorridos individuales.
+Base publicada 1.47.0: PR #244, commit 26331193, compuerta main 37043659344 y Release 37044358938 aprobados. 1424 pruebas y una omisión existente, PostgreSQL 16 y Chromium escritorio/móvil. El bloque 1.47.1 requiere su propia compuerta; sus casos nuevos se identifican como pendientes de CI. Registro de adaptadores y pruebas de dominio no equivalen a acreditación de todos los recorridos individuales.
 
 ## Inventario
 

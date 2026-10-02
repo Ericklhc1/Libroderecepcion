@@ -189,6 +189,17 @@ export async function executePlan(id: string, authorize: boolean, protectedStep?
       const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null, ...(href?{href}:{}) } : { ok: false, message: result.error };
       await prisma.$transaction(async tx => {
         await tx.frontiExecutionStep.update({ where: { id: step.id }, data: { status, result: safeResult, completedAt: new Date() } });
+        // Only advance snapshots for the same record using the native committed row.
+        // An external edit after that commit still fails the next preflight/CAS.
+        if(result.ok && result.committedRevision && step.revision && result.id===command.fields.id && ['tasks','entries','followups'].includes(actionModule)){
+          for(const pending of row.steps.filter(candidate=>candidate.position>step.position&&candidate.status==='PENDING'&&candidate.revision===step.revision)){
+            if(actionDefinition(pending.action).module!==actionModule)continue;
+            const fields=JSON.parse(openSecret((pending.fields as {sealed:string}).sealed,purpose(user.id))??'{}');
+            if(fields.id!==result.id)continue;
+            const advanced=await tx.frontiExecutionStep.updateMany({where:{id:pending.id,status:'PENDING',revision:step.revision},data:{revision:result.committedRevision}});
+            if(advanced.count)pending.revision=result.committedRevision;
+          }
+        }
         await tx.auditLog.create({ data: { entity: 'FrontiExecution', entityId: id, action: 'EDITAR', userId: user.id, sessionId: user.sessionId,
           summary: `Fronti: ${step.action} · ${status}`, after: { position: step.position, requestKey: row.requestKey, authorization: row.instruction, authorizationKind: row.authorizationKind, result: safeResult },
         } });

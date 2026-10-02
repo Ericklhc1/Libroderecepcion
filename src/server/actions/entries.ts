@@ -1,5 +1,5 @@
 'use server';
-import { revisionFromForm } from '@/server/security/authorized-revision';
+import { revisionFromForm, operationalRecordRevision } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { EntryType } from '@prisma/client';
@@ -70,7 +70,7 @@ export async function updateEntryAction(
     const entry = await updateEntry(user, input, revisionFromForm(formData));
     if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
     refreshOperationalViews(entry.id);
-    return { ok: true as const, message: 'Registro actualizado.', id: entry.id };
+    return { ok: true as const, message: 'Registro actualizado.', id: entry.id, committedRevision: operationalRecordRevision('entries', entry) };
   });
 }
 
@@ -89,7 +89,7 @@ export async function changeEntryStatusAction(
     });
     const entry = await changeEntryStatus(user, input, revisionFromForm(formData));
     refreshOperationalViews(entry.id);
-    return { ok: true as const, message: 'Estado actualizado.', id: entry.id };
+    return { ok: true as const, message: 'Estado actualizado.', id: entry.id, committedRevision: operationalRecordRevision('entries', entry) };
   });
 }
 

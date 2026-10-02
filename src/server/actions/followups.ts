@@ -1,5 +1,5 @@
 'use server';
-import { revisionFromForm } from '@/server/security/authorized-revision';
+import { revisionFromForm, operationalRecordRevision } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
@@ -47,7 +47,7 @@ export async function updateFollowUpAction(
     const input = parseOrThrow(followUpUpdateSchema, formDataToObject(formData));
     const followUp = await updateFollowUp(user, input, revisionFromForm(formData));
     refresh(followUp.entryId);
-    return { ok: true as const, message: 'Seguimiento actualizado.', id: followUp.id };
+    return { ok: true as const, message: 'Seguimiento actualizado.', id: followUp.id, committedRevision: operationalRecordRevision('followups', followUp) };
   });
 }
 

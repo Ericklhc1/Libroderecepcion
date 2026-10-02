@@ -349,4 +349,40 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const p=await createDynamicDelegation(dynamicTask());await expect(prisma.frontiExecution.update({where:{id:p.id},data:{authorizationKind:'UNRESTRICTED'}})).rejects.toThrow();await expect(prisma.frontiExecution.update({where:{id:p.id},data:{availableAt:null}})).rejects.toThrow();await expect(prisma.frontiExecution.update({where:{id:p.id},data:{reservedMinorUnits:-1}})).rejects.toThrow();
   });
 
+  it('completa varias transiciones autorizadas de una tarea sin confundir cambios propios con externos',async()=>{
+    const task=await createTask(admin,{title:'Procedimiento consecutivo',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[],requiresIndependentValidation:true,evidenceRequired:'Informe del ejecutor'});
+    const p=await plan([{action:'changeTaskStatusAction',fields:{id:task.id,status:'EN_CURSO'}},{action:'changeTaskStatusAction',fields:{id:task.id,status:'REALIZADA',evidenceProvided:'Resultado comunicado por el usuario'}}]);
+    expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);
+    await executePlan(p.id,true);const saved=await prisma.task.findUniqueOrThrow({where:{id:task.id}});expect(saved.status).toBe('REALIZADA');expect(saved.completedById).toBe(admin.id);expect(saved.validatedById).toBeNull();
+    expect(await prisma.auditLog.count({where:{entity:'FrontiExecution',entityId:p.id}})).toBe(2);
+  });
+  it('un cambio externo entre pasos sigue deteniendo la ejecución y no se refresca silenciosamente',async()=>{
+    const task=await createTask(admin,{title:'Procedimiento concurrente',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[]});
+    const p=await plan([{action:'changeTaskStatusAction',fields:{id:task.id,status:'EN_CURSO'}},{action:'changeTaskStatusAction',fields:{id:task.id,status:'REALIZADA',evidenceProvided:'Resultado comunicado'}}]);
+    const original=taskServices.changeTaskStatus;const spy=vi.spyOn(taskServices,'changeTaskStatus').mockImplementationOnce(async(...args)=>{const result=await original(...args);await prisma.task.update({where:{id:task.id},data:{title:'Cambio externo material'}});return result;});
+    try{expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','CHANGED']);expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('EN_CURSO');}finally{spy.mockRestore();}
+  });
+  it('la continuidad entre pasos no aporta una segunda identidad para validar',async()=>{
+    const task=await createTask(admin,{title:'Validación en el mismo plan',assigneeId:admin.id,priority:'MEDIA',tags:[],checklist:[],requiresIndependentValidation:true});
+    const p=await plan([{action:'changeTaskStatusAction',fields:{id:task.id,status:'EN_CURSO'}},{action:'changeTaskStatusAction',fields:{id:task.id,status:'REALIZADA',evidenceProvided:'Evidencia del ejecutor'}},{action:'changeTaskStatusAction',fields:{id:task.id,status:'VALIDADA'}}]);
+    const result=await executePlan(p.id,true);expect(result.steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED','INTERVENTION']);expect(result.steps[2]!.result).toMatchObject({message:expect.stringContaining('otra persona')});
+  });
+  it('novedad: edición sin inventar gravedad, atención, resolución, archivo y restauración por Fronti',async()=>{
+    const create=await plan([{action:'createEntryAction',fields:{type:'NOVEDAD',title:'Novedad de ciclo completo',description:'Instrucción sintética del usuario',priority:'MEDIA'}}]);expect((await executePlan(create.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const entry=await prisma.operationalEntry.findFirstOrThrow({where:{title:'Novedad de ciclo completo'}});
+    const fields:Record<string,string|string[]>=Object.fromEntries(actionDefinition('updateEntryAction').requiredFields.map(key=>[key,'']));Object.assign(fields,{id:entry.id,type:'NOVEDAD',title:'Novedad editada',description:'Instrucción sintética actualizada',priority:'MEDIA',status:'ABIERTO',tags:[]});
+    const p=await plan([{action:'updateEntryAction',fields},{action:'changeEntryStatusAction',fields:{id:entry.id,status:'EN_CURSO'}},{action:'changeEntryStatusAction',fields:{id:entry.id,status:'RESUELTO',resolution:'Resultado declarado por el usuario'}}]);
+    expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED','SUCCEEDED']);let saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.severity).toBeNull();expect(saved.impact).toBeNull();expect(saved.status).toBe('RESUELTO');
+    for(const action of ['deleteEntryAction','restoreEntryAction']){const p=await plan([{action,fields:{id:entry.id,reason:'Efecto explícito para registro sintético'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');await executePlan(p.id,true);}
+    saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(saved.deletedAt).toBeNull();expect(saved.title).toBe('Novedad editada');expect(await prisma.operationalEntry.count()).toBe(1);
+  });
+  it('seguimiento: edición y resolución consecutivas, archivo y recuperación conservan el origen',async()=>{
+    const task=await createTask(admin,{title:'Origen sintético del seguimiento',assigneeId:other.id,priority:'MEDIA',tags:[],checklist:[]});
+    const create=await plan([{action:'createFollowUpAction',fields:{taskId:task.id,action:'Confirmar resultado del origen',ownerId:other.id,priority:'MEDIA',visibility:'OPERATIVO'}}]);expect((await executePlan(create.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const follow=await prisma.followUp.findFirstOrThrow({where:{taskId:task.id}});const fields:Record<string,string|string[]>=Object.fromEntries(actionDefinition('updateFollowUpAction').requiredFields.map(key=>[key,'']));Object.assign(fields,{id:follow.id,ownerId:other.id,priority:'MEDIA',visibility:'OPERATIVO',status:'PENDIENTE',nextAction:'Consultar al responsable'});
+    const p=await plan([{action:'updateFollowUpAction',fields},{action:'updateFollowUpAction',fields:{...fields,status:'CUMPLIDO',result:'Respuesta recibida según declaración del usuario',nextAction:'Sin gestión adicional'}}]);expect((await executePlan(p.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);
+    for(const action of ['deleteFollowUpAction','restoreFollowUpAction']){const p=await plan([{action,fields:{id:follow.id,reason:'Efecto explícito para seguimiento sintético'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');}
+    const saved=await prisma.followUp.findUniqueOrThrow({where:{id:follow.id}});expect(saved.deletedAt).toBeNull();expect(saved.status).toBe('CUMPLIDO');expect(saved.taskId).toBe(task.id);expect(await prisma.followUp.count()).toBe(1);
+  });
+
 });

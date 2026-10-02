@@ -258,6 +258,7 @@ export async function invokeNativeAction(step: FrontiStep, expectedRevision?: st
   if(input.action==='logoutAction')z.literal('CERRAR_MI_SESION').parse(protectedForm?.get('logoutAcknowledged'));
   if(expectedRevision) form.append('__frontiRevision',expectedRevision);
   for (const [key, value] of Object.entries(input.fields)) for (const item of Array.isArray(value) ? value : [value]) form.append(key, item);
+  if(input.action==='updateEntryAction')for(const field of ['severity','impact'])if(input.fields[field]==='')form.delete(field);
   if (['declareElementsAction','confirmElementsAction'].includes(input.action)) {
     const marks=z.array(z.object({id:z.string().min(1).max(100),present:z.boolean()}).strict()).max(100).parse(JSON.parse(String(input.fields.elementMarksJson ?? '[]')));
     for(const mark of marks)form.set('e_'+mark.id,mark.present?'true':'false');
@@ -296,7 +297,7 @@ export async function invokeNativeAction(step: FrontiStep, expectedRevision?: st
   }
   // Runtime output validation; never persist credentials or unexpected fields.
   return z.discriminatedUnion('ok', [
-    z.object({ok:z.literal(true),message:z.string().max(6000),id:z.string().max(200).optional()}),
+    z.object({ok:z.literal(true),message:z.string().max(6000),id:z.string().max(200).optional(),committedRevision:z.string().regex(/^[a-f0-9]{64}$/).optional()}),
     z.object({ok:z.literal(false),error:z.string().max(6000)}),
   ]).parse(result);
 }

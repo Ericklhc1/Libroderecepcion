@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpAlarmVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
 
 import {
   AuditAction,
@@ -46,10 +47,13 @@ export async function listAlarmCandidates() {
   });
 }
 
-export async function listMyOperationalAlarms(userId: string, take = 60) {
+export async function listMyOperationalAlarms(user: FollowUpReader, take = 60) {
+  const userId = user.id;
+  const visibility = await followUpAlarmVisibility(user);
   return prisma.operationalAlarm.findMany({
     where: {
       OR: [{ createdById: userId }, { recipients: { some: { userId } } }],
+      AND: [visibility],
     },
     include: {
       createdBy: { select: { id: true, name: true } },
@@ -100,7 +104,7 @@ async function resolveRecipients(
   return valid.map((row) => row.id);
 }
 
-async function resolveAlarmRoomNumber(input: AlarmCreateInput): Promise<string | null> {
+async function resolveAlarmRoomNumber(user: FollowUpReader, input: AlarmCreateInput): Promise<string | null> {
   const explicit = input.roomNumber?.trim() || null;
   if (explicit) {
     if (!isOperationalRoomNumber(explicit)) {
@@ -128,8 +132,8 @@ async function resolveAlarmRoomNumber(input: AlarmCreateInput): Promise<string |
   }
 
   if (input.sourceEntity === 'FollowUp') {
-    const source = await prisma.followUp.findUnique({
-      where: { id: input.sourceId },
+    const source = await prisma.followUp.findFirst({
+      where: { id: input.sourceId, AND: [followUpReadWhere(user)] },
       select: {
         entry: { select: { room: { select: { number: true } } } },
         task: { select: { room: { select: { number: true } } } },
@@ -161,6 +165,11 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
     throw new RuleError('La repetición debe estar entre 5 minutos y 7 días.');
   }
 
+  if (input.sourceEntity === 'FollowUp' && input.sourceId) {
+    const source = await prisma.followUp.findFirst({ where: { id: input.sourceId, AND: [followUpReadWhere(user)] }, select: { visibility: true } });
+    if (!source) throw new NotFoundError('El seguimiento no existe.');
+    if (source.visibility === 'PRIVADO' && (input.scope !== OperationalAlarmScope.INDIVIDUAL || input.recipientIds?.some(id => id !== user.id))) throw new RuleError('Un seguimiento privado sólo puede originar una alerta personal.');
+  }
   const activeCount = await prisma.operationalAlarm.count({
     where: { createdById: user.id, status: OperationalAlarmStatus.ACTIVA },
   });
@@ -170,7 +179,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
 
   const recipientIds = await resolveRecipients(input.scope, input.recipientIds ?? []);
 
-  const roomNumber = await resolveAlarmRoomNumber(input);
+  const roomNumber = await resolveAlarmRoomNumber(user, input);
 
   const originShift =
     input.kind === OperationalAlarmKind.TIMER
@@ -340,11 +349,14 @@ export async function updateOperationalAlarm(
   });
 }
 
-export async function countMyActiveOperationalAlarms(userId: string): Promise<number> {
+export async function countMyActiveOperationalAlarms(user: FollowUpReader): Promise<number> {
+  const userId = user.id;
+  const visibility = await followUpAlarmVisibility(user);
   return prisma.operationalAlarm.count({
     where: {
       status: OperationalAlarmStatus.ACTIVA,
       recipients: { some: { userId, acknowledgedAt: null } },
+      AND: [visibility],
     },
   });
 }

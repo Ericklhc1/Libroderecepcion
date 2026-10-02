@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpNotificationVisibility, type FollowUpReader } from './followup-access';
 import { notificationDeviceItems, notificationPresentation } from '@/domain/notification-summary';
 
 import { generateKeyPairSync } from 'node:crypto';
@@ -371,7 +372,7 @@ export async function flushWebPushSubscriptions(): Promise<{
 }
 
 export async function getWebPushPayload(input: {
-  userId: string;
+  user: FollowUpReader;
   endpoint: string;
 }): Promise<{
   unread: number;
@@ -388,7 +389,7 @@ export async function getWebPushPayload(input: {
   const subscription = await prisma.pushSubscription.findFirst({
     where: {
       endpoint: input.endpoint,
-      userId: input.userId,
+      userId: input.user.id,
       disabledAt: null,
     },
     select: { id: true, createdAt: true, lastDeliveredAt: true },
@@ -397,11 +398,13 @@ export async function getWebPushPayload(input: {
     return { unread: 0, newCount: 0, items: [] };
   }
 
+  const visibility = await followUpNotificationVisibility(input.user);
   const cursor = subscription.lastDeliveredAt ?? subscription.createdAt;
   const [rows, unread] = await Promise.all([
     prisma.notification.findMany({
       where: {
-        userId: input.userId,
+        userId: input.user.id,
+        AND: [visibility],
         isDemo: false,
         readAt: null,
         createdAt: { gt: cursor },
@@ -418,7 +421,7 @@ export async function getWebPushPayload(input: {
       },
     }),
     prisma.notification.count({
-      where: { userId: input.userId, readAt: null },
+      where: { userId: input.user.id, readAt: null, AND: [visibility] },
     }),
   ]);
 

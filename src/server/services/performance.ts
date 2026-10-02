@@ -1,3 +1,4 @@
+import { followUpReadWhere } from '@/server/services/followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -92,7 +93,7 @@ export async function getUserPerformance(
         },
       }),
       prisma.followUp.findMany({
-        where: { deletedAt: null, ownerId: subject.id, createdAt: range },
+        where: { AND: [followUpReadWhere(user)], deletedAt: null, ownerId: subject.id, createdAt: range },
         select: { id: true, action: true, status: true, scheduledAt: true, completedAt: true },
       }),
       prisma.shiftAssignment.findMany({

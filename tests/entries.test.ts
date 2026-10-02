@@ -281,7 +281,7 @@ describe('registros del libro operativo', () => {
 
     await createFollowUp(receptionist, { entryId: entry.id, action: 'Llamada al proveedor.' });
 
-    const updated = await getEntry(entry.id);
+    const updated = await getEntry(entry.id, receptionist);
     expect(updated.requiresFollowUp).toBe(true);
   });
 
@@ -475,7 +475,7 @@ describe('historial de un registro', () => {
       resolution: 'Ascensor operativo y certificado.',
     });
 
-    const history = await getHistory({ entity: 'OperationalEntry', entityId: entry.id });
+    const history = await getHistory(receptionist, { entity: 'OperationalEntry', entityId: entry.id });
     const kinds = history.map((event) => event.kind);
     const labels = history.map((event) => event.actionLabel);
 

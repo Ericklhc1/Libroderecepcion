@@ -1,3 +1,4 @@
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -231,8 +232,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput) {
   });
 }
 
-export async function getTask(id: string): Promise<TaskWithRelations> {
-  const task = await prisma.task.findUnique({ where: { id }, include: taskInclude });
+export async function getTask(id: string, user: FollowUpReader): Promise<TaskWithRelations> {
+  const task = await prisma.task.findUnique({ where: { id }, include: { ...taskInclude, _count: { select: { ...taskInclude._count.select, followUps: { where: followUpReadWhere(user) } } } } });
   if (!task) throw new NotFoundError('La tarea no existe.');
   return task;
 }

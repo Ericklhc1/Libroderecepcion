@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpMemoryVisibilitySql } from '@/server/services/followup-access';
 
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -16,6 +17,7 @@ export async function getSharedShiftMemoryContext(
   const shift = await getMyOpenShift(user.id);
   if (!shift) return null;
 
+  const visibility = await followUpMemoryVisibilitySql(user);
   const rows = await prisma.$queryRaw<
     Array<{
       summary: string;
@@ -31,6 +33,7 @@ export async function getSharedShiftMemoryContext(
        AND shift_id = ${shift.id}
        AND user_id <> ${user.id}
        AND expires_at > NOW()
+       AND ${visibility}
      ORDER BY importance DESC, updated_at DESC
      LIMIT 12
   `;

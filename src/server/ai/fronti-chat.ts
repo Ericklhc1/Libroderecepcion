@@ -7,6 +7,7 @@ import {
   NotificationType,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import type { PermissionKey } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { RuleError, NotFoundError } from '@/server/errors';
 import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
@@ -45,6 +46,33 @@ function actorName(author: ChatMessageAuthor, senderName: string | null): string
   if (author === ChatMessageAuthor.FRONTI) return 'Fronti';
   if (author === ChatMessageAuthor.SYSTEM) return 'Sistema';
   return senderName ?? 'Usuario';
+}
+
+/** No se acepta audiencia del cliente: membresía y permisos efectivos vienen de la base. */
+export async function frontiChatReader(user: CurrentUser, conversationId: string): Promise<CurrentUser> {
+  const conversation = await prisma.chatConversation.findFirst({
+    where: { id: conversationId, deletedAt: null, participants: { some: { userId: user.id, leftAt: null } } },
+    select: {
+      type: true,
+      participants: {
+        where: { leftAt: null },
+        select: {
+          userId: true,
+          user: { select: { role: { select: {
+            permissions: { select: { permission: { select: { key: true } } } },
+          } } } },
+        },
+      },
+    },
+  });
+  if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
+  if (conversation.type === ChatConversationType.FRONTI && conversation.participants.length !== 1) {
+    throw new RuleError('La conversación individual de Fronti tiene una audiencia incompatible.');
+  }
+  return { ...user, followUpAudience: conversation.participants.filter(member => member.userId !== user.id).map(member => ({
+    id: member.userId,
+    permissions: member.user.role.permissions.map(rp => rp.permission.key as PermissionKey),
+  })) };
 }
 
 async function loadConversationContext(
@@ -248,6 +276,7 @@ export async function maybeInvokeFrontiInChat(
     : cleanMention(current.body?.trim() ?? '');
   if (!rawMessage) throw new RuleError('Escribe qué quieres preguntarle a Fronti.');
 
+  user = await frontiChatReader(user, conversation.id);
   const runtimeContext = await buildFrontiRuntimeContext(user, {
     pathname: '/',
     entityType: 'ChatConversation',
@@ -379,6 +408,7 @@ export async function confirmFrontiInChat(
     throw new RuleError(`${config.displayName} no está habilitado para tu cuenta.`);
   }
 
+  user = await frontiChatReader(user, input.conversationId);
   const result = await executeReceptionConfirmation(user, input.token);
   const messageId = await persistFrontiChatMessage({
     conversationId: input.conversationId,

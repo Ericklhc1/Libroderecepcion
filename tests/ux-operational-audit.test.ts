@@ -28,7 +28,7 @@ describe('auditoría UX operativa 1.10.10', () => {
     const gate = readFileSync('src/components/operational/announcement-gate.tsx', 'utf8');
 
     expect(feed).toContain('blockingAnnouncementIds');
-    expect(stream).toContain('getNotificationFeedForUser(user.id)');
+    expect(stream).toContain('getNotificationFeedForUser(user)');
     expect(center).toContain('snapshot.blockingAnnouncementIds');
     expect(center).toContain('router.refresh()');
     expect(gate).toContain('z-[200]');

@@ -18,6 +18,8 @@ export type CurrentUser = {
   departmentId: string | null;
   mustChangePassword: boolean;
   permissions: PermissionKey[];
+  /** Audiencia calculada en servidor para respuestas de Fronti en chats compartidos. */
+  followUpAudience?: Array<{ id: string; permissions: PermissionKey[] }>;
   isSystemAdmin: boolean;
   frontiAccessEnabled: boolean;
 };

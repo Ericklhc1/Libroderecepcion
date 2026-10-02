@@ -1,3 +1,4 @@
+import { followUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { FollowUpStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -30,18 +31,7 @@ export default async function FollowUpsPage({
   const humanId = /^\d+$/.test(q) ? Number(q) : null;
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';
-  const canSeeSupervision = user.permissions.includes('supervision.followup.manage');
-
-  const visibilityWhere: Prisma.FollowUpWhereInput = {
-    OR: [
-      { visibility: 'PRIVADO', createdById: user.id },
-      ...(canSeeSupervision ? [{ visibility: 'SUPERVISION' as const }] : []),
-      {
-        visibility: 'OPERATIVO',
-        OR: [{ ownerId: user.id }, { createdById: user.id }, ...(canSeeSupervision ? [{}] : [])],
-      },
-    ],
-  };
+  const visibilityWhere = followUpReadWhere(user);
 
   const where: Prisma.FollowUpWhereInput = {
     AND: [visibilityWhere],

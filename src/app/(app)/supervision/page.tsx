@@ -146,7 +146,7 @@ export default async function SupervisionCenterPage({
   const canAnnounce = hasPermission(user, 'announcement.manage');
   const [center, review, options, announcements, operationalUsers, performance] = await Promise.all([
     getSupervisionCenterSummary(user),
-    getSupervisionData(),
+    getSupervisionData(user),
     getFormOptions(),
     canAnnounce ? listAnnouncements() : Promise.resolve([]),
     canAnnounce ? listOperationalUsers() : Promise.resolve([]),

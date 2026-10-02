@@ -1,3 +1,4 @@
+import { followUpNotificationVisibility, type FollowUpReader } from './followup-access';
 import 'server-only';
 
 import { AnnouncementScope } from '@prisma/client';
@@ -13,15 +14,17 @@ export const NOTIFICATION_FEED_LIMIT = 40;
  * el mismo contrato alimente el render inicial y el stream en tiempo real.
  */
 export async function getNotificationFeedForUser(
-  userId: string,
+  user: FollowUpReader,
   limit = NOTIFICATION_FEED_LIMIT,
 ): Promise<NotificationFeedSnapshot> {
+  const userId = user.id;
+  const visibility = await followUpNotificationVisibility(user);
   const safeLimit = Math.max(1, Math.min(limit, NOTIFICATION_FEED_LIMIT));
 
   const now = new Date();
   const [rows, unread, blockingAnnouncements] = await Promise.all([
     prisma.notification.findMany({
-      where: { userId },
+      where: { userId, AND: [visibility] },
       orderBy: [{ createdAt: 'desc' }],
       take: safeLimit,
       select: {
@@ -36,7 +39,7 @@ export async function getNotificationFeedForUser(
         createdAt: true,
       },
     }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.notification.count({ where: { userId, readAt: null, AND: [visibility] } }),
     prisma.announcement.findMany({
       where: {
         active: true,

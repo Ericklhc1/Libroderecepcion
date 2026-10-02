@@ -1,3 +1,4 @@
+import { visibleHandoverItems, followUpReadWhere } from '@/server/services/followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -119,7 +120,7 @@ export async function getDashboardData(user: CurrentUser) {
       take: 8,
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)],
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
       },
@@ -196,7 +197,7 @@ export async function getDashboardData(user: CurrentUser) {
           : {}),
       },
     }),
-    countMyActiveOperationalAlarms(user.id),
+    countMyActiveOperationalAlarms(user),
   ]);
 
   const roomsNeedingAction: [] = [];
@@ -219,6 +220,7 @@ export async function getDashboardData(user: CurrentUser) {
     roomsNeedingAction: roomsNeedingAction.length,
   };
 
+  if (incoming) incoming.items = await visibleHandoverItems(user, incoming.items);
   const attention = buildOperationalAttention({
     rooms: [],
     alerts: alerts.map((alert) => ({

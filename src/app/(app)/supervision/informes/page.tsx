@@ -24,14 +24,14 @@ function key(date: Date) {
 }
 
 export default async function SupervisorReportsPage({ searchParams }: { searchParams: SearchParams }) {
-  await requirePagePermission('supervision.view');
+  const user = await requirePagePermission('supervision.view');
   const params = await searchParams;
   const q = (one(params.q) ?? '').trim().toLowerCase();
   const tipo = one(params.reporte) ?? '';
   const range = reportDateRange(one(params.desde), one(params.hasta));
   const from = key(range.from);
   const to = key(range.to);
-  const reports = await Promise.all(TYPES.map((type) => buildSupervisorReport(type, range)));
+  const reports = await Promise.all(TYPES.map((type) => buildSupervisorReport(user, type, range)));
   const visibleReports = reports.filter((report) => {
     const typeMatches = !tipo || report.type === tipo;
     const text = [report.title, report.type, ...report.summary].join(' ').toLowerCase();

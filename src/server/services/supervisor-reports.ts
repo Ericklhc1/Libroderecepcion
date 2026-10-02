@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpAlertVisibility, type FollowUpReader } from './followup-access';
 
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -51,6 +52,7 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
 }
 
 export async function buildSupervisorReport(
+  user: FollowUpReader,
   type: SupervisorReportType,
   range: { from: Date; to: Date },
 ): Promise<SupervisorReport> {
@@ -133,7 +135,7 @@ export async function buildSupervisorReport(
     }),
     prisma.alert.groupBy({
       by: ['status'],
-      where: { deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      where: { deletedAt: null, createdAt: { gte: range.from, lte: range.to }, AND: [followUpAlertVisibility(user)] },
       _count: { _all: true },
     }),
     prisma.shift.findMany({
@@ -149,7 +151,7 @@ export async function buildSupervisorReport(
       where: { deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
     }),
     prisma.alert.count({
-      where: { deletedAt: null, status: { not: AlertStatus.RESUELTA } },
+      where: { deletedAt: null, status: { not: AlertStatus.RESUELTA }, AND: [followUpAlertVisibility(user)] },
     }),
   ]);
 

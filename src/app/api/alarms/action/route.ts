@@ -51,5 +51,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json(await getNotificationFeedForUser(user.id), { headers });
+  return NextResponse.json(await getNotificationFeedForUser(user), { headers });
 }

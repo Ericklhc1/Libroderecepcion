@@ -55,7 +55,7 @@ describe('continuidad de la entrega de turno', () => {
       resolution: 'Tarjeta recibida en recepción.',
     });
 
-    const snapshot = await buildHandoverSnapshot(new Date(), { shiftId: shift.id });
+    const snapshot = await buildHandoverSnapshot(user, new Date(), { shiftId: shift.id });
     const resolved = snapshot.find(
       (item) => item.section === 'Resuelto en este turno' && item.refId === entry.id,
     );
@@ -88,10 +88,10 @@ describe('continuidad de la entrega de turno', () => {
       },
     });
 
-    const briefing = await getShiftBriefing(current);
+    const briefing = await getShiftBriefing(user, current);
     expect(briefing.openEntries.some((row) => row.id === entry.id)).toBe(true);
 
-    const snapshot = await buildHandoverSnapshot(new Date(), { shiftId: current.id });
+    const snapshot = await buildHandoverSnapshot(user, new Date(), { shiftId: current.id });
     expect(snapshot.some((item) => item.refId === entry.id)).toBe(true);
   });
 
@@ -119,7 +119,7 @@ describe('continuidad de la entrega de turno', () => {
       scheduledAt: new Date(Date.now() + 60 * 60_000),
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const taskItem = snapshot.find((item) => item.refId === task.id);
     const followUpItem = snapshot.find((item) => item.refId === followUp.id);
 
@@ -139,7 +139,7 @@ describe('continuidad de la entrega de turno', () => {
       update: { value: 950 },
     });
 
-    const snapshot = await buildHandoverSnapshot(new Date(), {
+    const snapshot = await buildHandoverSnapshot(user, new Date(), {
       shiftId: shift.id,
       includeMetrics: true,
     });
@@ -158,7 +158,7 @@ describe('continuidad de la entrega de turno', () => {
     });
     await changeTaskStatus(user, { id: task.id, status: TaskStatus.COMPLETADA });
 
-    const snapshot = await buildHandoverSnapshot(new Date(), { shiftId: shift.id });
+    const snapshot = await buildHandoverSnapshot(user, new Date(), { shiftId: shift.id });
     expect(
       snapshot.some(
         (item) => item.section === 'Resuelto en este turno' && item.refId === task.id,

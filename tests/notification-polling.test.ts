@@ -46,8 +46,8 @@ describe('notificaciones con sincronización eficiente', () => {
     expect(feed).toContain('export async function getNotificationFeedForUser');
     expect(feed).toContain('prisma.notification.findMany');
     expect(feed).toContain('prisma.notification.count');
-    expect(stream).toContain('getNotificationFeedForUser(user.id)');
-    expect(readRoute).toContain('getNotificationFeedForUser(user.id)');
+    expect(stream).toContain('getNotificationFeedForUser(user)');
+    expect(readRoute).toContain('getNotificationFeedForUser(user)');
   });
 
   it('marcar lectura queda protegido por usuario y se reconcilia con el feed', () => {

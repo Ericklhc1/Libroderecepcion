@@ -12,12 +12,14 @@ import { getManagementCockpit } from '@/server/services/management';
 import { canFrontiUseTool } from '@/server/ai/fronti-v2/tool-registry';
 
 describe('cockpit estratégico de Gerencia', () => {
+  let reader: Awaited<ReturnType<typeof createUser>>;
   beforeAll(async () => {
     await seedCatalog();
   });
 
   beforeEach(async () => {
     await resetOperationalData();
+    reader = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR });
     await seedCatalog();
   });
 
@@ -45,7 +47,7 @@ describe('cockpit estratégico de Gerencia', () => {
       requiresFollowUp: false,
     });
 
-    const cockpit = await getManagementCockpit(30);
+    const cockpit = await getManagementCockpit(reader, 30);
 
     expect(cockpit.execution.overdueTasks).toBe(1);
     expect(cockpit.execution.criticalOpenIncidents).toBe(1);
@@ -66,9 +68,9 @@ describe('cockpit estratégico de Gerencia', () => {
   });
 
   it('normaliza el rango a 7, 30 o 90 días y compara contra el período anterior', async () => {
-    const seven = await getManagementCockpit(7);
-    const invalid = await getManagementCockpit(21);
-    const ninety = await getManagementCockpit(90);
+    const seven = await getManagementCockpit(reader, 7);
+    const invalid = await getManagementCockpit(reader, 21);
+    const ninety = await getManagementCockpit(reader, 90);
 
     expect(seven.period.days).toBe(7);
     expect(invalid.period.days).toBe(30);
@@ -78,7 +80,7 @@ describe('cockpit estratégico de Gerencia', () => {
   });
 
   it('mantiene Gerencia sobre evidencia operativa de AROH y contexto por habitación', async () => {
-    const cockpit = await getManagementCockpit();
+    const cockpit = await getManagementCockpit(reader);
 
     expect(cockpit.sources.operational).toBe('connected');
     expect(cockpit.sources.roomContext).toBe('connected');

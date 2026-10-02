@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpAlertVisibility, type FollowUpReader } from './followup-access';
 
 import { AlertStatus, AuditAction, RoomStayStage } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -68,12 +69,13 @@ function alertSignature(alert: {
   ]);
 }
 
-export async function getDiagnosticReport(): Promise<DiagnosticReport> {
+export async function getDiagnosticReport(user: FollowUpReader): Promise<DiagnosticReport> {
   const [alerts, unlinkedStays, reservations, activeStays, runtimeErrors] = await Promise.all([
     prisma.alert.findMany({
       where: {
         deletedAt: null,
         status: { not: AlertStatus.RESUELTA },
+        AND: [followUpAlertVisibility(user)],
       },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -240,7 +242,7 @@ export async function repairSafeDiagnostics(
   staysLinked: number;
   reservationRoomsCorrected: number;
 }> {
-  const report = await getDiagnosticReport();
+  const report = await getDiagnosticReport(user);
 
   let duplicateAlertsRemoved = 0;
   let staysLinked = 0;

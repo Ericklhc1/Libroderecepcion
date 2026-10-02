@@ -4,6 +4,7 @@ import { ROLE_KEYS, createUser, resetOperationalData, seedCatalog } from './help
 import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
+import type { CurrentUser } from '@/server/auth/current-user';
 import { EntryType, Priority } from '@prisma/client';
 
 /**
@@ -18,10 +19,11 @@ import { EntryType, Priority } from '@prisma/client';
  * consultas arrancan antes de que termine la primera, van en paralelo.
  */
 describe('paralelismo de consultas', () => {
+  let user: CurrentUser;
   beforeAll(async () => {
     await seedCatalog();
     await resetOperationalData();
-    const user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
+    user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
     await createEntry(user, {
       type: EntryType.NOVEDAD,
       title: 'Cambio de tarifa del grupo',
@@ -96,7 +98,7 @@ describe('paralelismo de consultas', () => {
       un contexto de petición, que es el caso que antes tumbaba el panel.
     */
     const { getDashboardData } = await import('@/server/services/dashboard');
-    const user = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Panel' });
+    user = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Panel' });
     const data = await getDashboardData(user);
     expect(data.counters).toHaveProperty('openEntries');
     expect(data).toHaveProperty('roomsNeedingAction');
@@ -121,7 +123,7 @@ describe('paralelismo de consultas', () => {
       // Se importa después de inyectar el cliente: los servicios lo toman de
       // globalThis al cargarse.
       const { getDashboardData } = await import('@/server/services/dashboard');
-      const user = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Presupuesto' });
+      user = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Presupuesto' });
       queries = 0;
       await getDashboardData(user);
       expect(queries).toBeLessThanOrEqual(20);
@@ -151,7 +153,7 @@ describe('paralelismo de consultas', () => {
   });
 
   it('el resultado del libro sigue ordenado y completo tras el cambio', async () => {
-    const result = await getBookItems({});
+    const result = await getBookItems(user, {});
     expect(result.items.length).toBeGreaterThanOrEqual(2);
     // Mezcla clases distintas en una misma línea temporal…
     expect(new Set(result.items.map((item) => item.kind)).size).toBeGreaterThan(1);
@@ -161,7 +163,7 @@ describe('paralelismo de consultas', () => {
   });
 
   it('filtrar por clase devuelve sólo esa clase', async () => {
-    const tasks = await getBookItems({ kinds: ['task'] });
+    const tasks = await getBookItems(user, { kinds: ['task'] });
     expect(tasks.items.length).toBeGreaterThan(0);
     expect(tasks.items.every((item) => item.kind === 'task')).toBe(true);
   });

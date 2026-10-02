@@ -1,4 +1,5 @@
 import 'server-only';
+import { followUpReadWhere, followUpCommentVisibility, followUpAlertVisibility, followUpAuditVisibility, followUpNotificationVisibility, type FollowUpReader } from './followup-access';
 import { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { RuleError } from '@/server/errors';
@@ -48,7 +49,11 @@ export type ResetSummary = {
 };
 
 /** Lo que hay hoy, para poder mostrarlo ANTES de tocar nada. */
-export async function getResetPreview() {
+export async function getResetPreview(user: FollowUpReader) {
+  const scope = followUpReadWhere(user, { includeDeleted: user.permissions.includes('entry.restore') });
+  const alertsScope = followUpAlertVisibility(user, { includeDeleted: user.permissions.includes('entry.restore') });
+  const notificationScope = await followUpNotificationVisibility(user);
+  const auditScope = await followUpAuditVisibility(user);
   const housekeeping = await prisma.housekeepingRequest.count();
   const [
     entries,
@@ -91,9 +96,9 @@ export async function getResetPreview() {
   ] = await Promise.all([
     prisma.operationalEntry.count(),
     prisma.task.count(),
-    prisma.followUp.count(),
-    prisma.alert.count(),
-    prisma.comment.count(),
+    prisma.followUp.count({ where: scope }),
+    prisma.alert.count({ where: alertsScope }),
+    prisma.comment.count({ where: followUpCommentVisibility(user, { includeDeleted: user.permissions.includes('entry.restore') }) }),
     prisma.shift.count(),
     prisma.shiftHandover.count(),
     prisma.roomStay.count(),
@@ -105,9 +110,9 @@ export async function getResetPreview() {
     prisma.checklistRun.count(),
     prisma.checklistTemplate.count(),
     prisma.cashCount.count(),
-    prisma.notification.count(),
+    prisma.notification.count({ where: notificationScope }),
     prisma.pushSubscription.count(),
-    prisma.auditLog.count(),
+    prisma.auditLog.count({ where: auditScope }),
     prisma.performanceObservation.count(),
     prisma.correctiveMeasure.count(),
     prisma.taskAssignment.count(),

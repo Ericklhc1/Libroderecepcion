@@ -1,3 +1,4 @@
+import type { CurrentUser } from '@/server/auth/current-user';
 import type { NextRequest } from 'next/server';
 import { isHkFocused } from '@/domain/housekeeping-work';
 import { requireUser } from '@/server/auth/guard';
@@ -35,10 +36,10 @@ function reportLine(item: BookItem): string {
   ].filter(Boolean).join(' | ');
 }
 
-async function collect(filters: BookFilters): Promise<BookItem[]> {
+async function collect(user: CurrentUser, filters: BookFilters): Promise<BookItem[]> {
   const rows: BookItem[] = [];
   for (let page = 1; page <= 20; page += 1) {
-    const result = await getBookItems({ ...filters, page, pageSize: 100 });
+    const result = await getBookItems(user, { ...filters, page, pageSize: 100 });
     rows.push(...result.items);
     if (!result.hasMore) break;
   }
@@ -72,7 +73,8 @@ export async function GET(request: NextRequest) {
           pageSize: 100,
         };
 
-  const rows = await collect(filters);
+  if (filters.includeDeleted && !user.permissions.includes('entry.restore')) return Response.json({ error: 'No autorizado.' }, { status: 403 });
+  const rows = await collect(user, filters);
   const title = view === 'novedades' ? 'Informe de novedades en gestión' : 'Informe del historial operativo';
   const from = url.searchParams.get('desde');
   const to = url.searchParams.get('hasta');

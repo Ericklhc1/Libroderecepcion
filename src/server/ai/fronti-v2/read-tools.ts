@@ -1,3 +1,5 @@
+import { followUpAuditVisibility } from '@/server/services/followup-access';
+import { followUpReadWhere } from '@/server/services/followup-access';
 import { readScheduleContext } from './schedule-context';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import 'server-only';
@@ -5,7 +7,6 @@ import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 
 import {
   FollowUpStatus,
-  SupervisionVisibility,
 } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
@@ -259,36 +260,13 @@ async function followUpsTool(user: CurrentUser, args: Record<string, unknown>) {
   );
   const limit = limitArg(args);
   const onlyOpen = args.onlyOpen !== false;
-  const canSeeSupervision = hasAnyPermission(user, [
-    'supervision.view',
-    'supervision.center.view',
-    'supervision.followup.manage',
-  ]);
-
-  const visibility = canSeeSupervision
-    ? {
-        OR: [
-          { visibility: SupervisionVisibility.OPERATIVO },
-          { visibility: SupervisionVisibility.SUPERVISION },
-          { visibility: SupervisionVisibility.PRIVADO, createdById: user.id },
-          { visibility: SupervisionVisibility.PRIVADO, ownerId: user.id },
-        ],
-      }
-    : {
-        OR: [
-          { visibility: SupervisionVisibility.OPERATIVO },
-          { visibility: SupervisionVisibility.PRIVADO, createdById: user.id },
-          { visibility: SupervisionVisibility.PRIVADO, ownerId: user.id },
-        ],
-      };
-
   const rows = await prisma.followUp.findMany({
-    where: {
+    where: { AND: [followUpReadWhere(user)],
       deletedAt: null,
       ...(onlyOpen
         ? { status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] } }
         : {}),
-      ...visibility,
+
     },
     select: {
       id: true,
@@ -335,7 +313,7 @@ async function supervisionTool(user: CurrentUser) {
     ['supervision.view'],
     'No tienes permiso para consultar Supervisión.',
   );
-  const data = await getSupervisionData();
+  const data = await getSupervisionData(user);
   return {
     mode: 'overview',
     generatedAt: data.now,
@@ -346,7 +324,7 @@ async function supervisionTool(user: CurrentUser) {
 
 async function alertsTool(user: CurrentUser, args: Record<string, unknown>) {
   const limit = limitArg(args);
-  const rows = await listMyOperationalAlarms(user.id, limit);
+  const rows = await listMyOperationalAlarms(user, limit);
   return {
     generatedAt: new Date(),
     semantics:
@@ -384,7 +362,7 @@ async function auditTool(user: CurrentUser, args: Record<string, unknown>) {
       : null;
 
   const rows = await prisma.auditLog.findMany({
-    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)], ...(entity ? { entity } : {}) },
+    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user), await followUpAuditVisibility(user)], ...(entity ? { entity } : {}) },
     select: {
       id: true,
       entity: true,

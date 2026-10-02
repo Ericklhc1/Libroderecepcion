@@ -82,7 +82,7 @@ describe('dejar el sistema en cero', () => {
 
   it('sin la frase exacta no borra nada', async () => {
     await conDatosDePrueba();
-    const antes = await getResetPreview();
+    const antes = await getResetPreview(admin);
     expect(antes.entries).toBeGreaterThan(0);
 
     for (const intento of ['', 'dejar en 0', 'BORRAR TODO', 'DEJAR EN CEROO']) {
@@ -95,7 +95,7 @@ describe('dejar el sistema en cero', () => {
     }
 
     // Nada se movió.
-    const despues = await getResetPreview();
+    const despues = await getResetPreview(admin);
     expect(despues.entries).toBe(antes.entries);
     expect(despues.shifts).toBe(antes.shifts);
   });
@@ -122,7 +122,7 @@ describe('dejar el sistema en cero', () => {
 
     expect(summary.total).toBeGreaterThan(0);
 
-    const despues = await getResetPreview();
+    const despues = await getResetPreview(admin);
     expect(despues.entries).toBe(0);
     expect(despues.tasks).toBe(0);
     expect(despues.followUps).toBe(0);
@@ -162,7 +162,7 @@ describe('dejar el sistema en cero', () => {
       },
     });
 
-    const preview = await getResetPreview();
+    const preview = await getResetPreview(admin);
     expect(preview.supportRequests).toBe(1);
     expect(preview.supportAttachments).toBe(1);
 

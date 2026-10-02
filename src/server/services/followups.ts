@@ -1,3 +1,4 @@
+import { followUpReadWhere } from './followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -117,6 +118,10 @@ export async function createFollowUp(
       include: followUpInclude,
     });
 
+    if (user.followUpAudience?.length && await tx.followUp.count({ where: { id: created.id, AND: [followUpReadWhere(user)] } }) === 0) {
+      throw new RuleError('Este seguimiento no puede compartirse con todos los participantes del chat. Créalo en tu conversación individual.');
+    }
+
     // El registro asociado queda marcado como "con seguimiento".
     if (created.entryId) {
       await tx.operationalEntry.update({
@@ -150,7 +155,7 @@ export async function createFollowUp(
       tx,
     );
 
-    if (ownerId !== user.id) {
+    if (ownerId !== user.id && visibility !== 'PRIVADO') {
       await notify(
         {
           userId: ownerId,
@@ -188,7 +193,7 @@ export async function updateFollowUp(
   },
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, AND: [followUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El seguimiento no existe o fue eliminado.');
 
@@ -391,7 +396,7 @@ export async function softDeleteFollowUp(
   input: { id: string; reason: string },
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, AND: [followUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El seguimiento no existe o ya fue eliminado.');
   return prisma.$transaction(async (tx) => {
@@ -420,7 +425,7 @@ export async function restoreFollowUp(
   input: { id: string; reason?: string | null },
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, NOT: { deletedAt: null } },
+    where: { id: input.id, AND: [followUpReadWhere(user, { onlyDeleted: true })] },
   });
   if (!current) throw new NotFoundError('El seguimiento no está eliminado.');
   return prisma.$transaction(async (tx) => {

@@ -1,3 +1,5 @@
+import { followUpAlertVisibility } from '@/server/services/followup-access';
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -60,6 +62,7 @@ function dueText(date: Date | null, now: Date): string | null {
  * Novedades, Caja, Turnos y Llaves. No copia esos objetos ni consulta PMS.
  */
 export async function getSupervisionData(
+  user: FollowUpReader,
   options: { exhaustive?: boolean } = {},
 ): Promise<{
   now: Date;
@@ -115,7 +118,7 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND: [followUpReadWhere(user)],
         deletedAt: null,
         OR: [
           { status: FollowUpStatus.VENCIDO },
@@ -160,7 +163,7 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.alert.findMany({
-      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA },
+      where: { AND: [LIVE_ALERT_WHERE(now), followUpAlertVisibility(user)], level: AlertLevel.CRITICA },
       select: {
         id: true,
         title: true,

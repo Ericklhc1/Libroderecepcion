@@ -54,6 +54,6 @@ export async function POST(request: Request) {
     data: { readAt: new Date() },
   });
 
-  const snapshot = await getNotificationFeedForUser(user.id);
+  const snapshot = await getNotificationFeedForUser(user);
   return NextResponse.json(snapshot, { headers });
 }

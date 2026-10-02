@@ -1,4 +1,6 @@
+import { followUpAlertVisibility } from '@/server/services/followup-access';
 import 'server-only';
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import {
   AlertStatus,
   EntryStatus,
@@ -115,12 +117,13 @@ function priorityTone(priority: string): Tone {
   return 'neutro';
 }
 
-export async function getBookItems(filters: BookFilters): Promise<{
+export async function getBookItems(user: FollowUpReader, filters: BookFilters): Promise<{
   items: BookItem[];
   hasMore: boolean;
   page: number;
   pageSize: number;
 }> {
+  const scope = followUpReadWhere(user, { includeDeleted: filters.includeDeleted });
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? DEFAULT_PAGE_SIZE));
   const window = page * pageSize + 1;
@@ -194,7 +197,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
         shift: { select: { type: true, date: true } },
-        _count: { select: { comments: true, followUps: true } },
+        _count: { select: { comments: true, followUps: { where: scope } } },
       },
       orderBy: { occurredAt: 'desc' },
       take: window,
@@ -221,7 +224,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
         shiftLabel: shiftLabel(row.shift),
         dueAt: row.dueAt,
         overdue: isOverdue(row.dueAt, open),
-        hasFollowUp: row.requiresFollowUp || row._count.followUps > 0,
+        hasFollowUp: row._count.followUps > 0,
         commentCount: row._count.comments,
         guestLabel: null,
         href: `/libro/${row.id}`,
@@ -275,7 +278,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
         shift: { select: { type: true, date: true } },
-        _count: { select: { comments: true, followUps: true } },
+        _count: { select: { comments: true, followUps: { where: scope } } },
       },
       orderBy: { createdAt: 'desc' },
       take: window,
@@ -338,6 +341,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
     }
 
     const where: Prisma.FollowUpWhereInput = {
+      AND: [scope, ...(and.length > 0 ? and : [])],
       ...deletedFilter,
       ...(filters.ownerId ? { ownerId: filters.ownerId } : {}),
       ...(dateRange ? { createdAt: dateRange } : {}),
@@ -347,7 +351,6 @@ export async function getBookItems(filters: BookFilters): Promise<{
       ...(filters.onlyOpen
         ? { status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] } }
         : {}),
-      ...(and.length > 0 ? { AND: and } : {}),
     };
 
     const rows = await prisma.followUp.findMany({
@@ -416,6 +419,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
       });
     }
 
+    and.push(followUpAlertVisibility(user));
     const where: Prisma.AlertWhereInput = {
       ...deletedFilter,
       ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),

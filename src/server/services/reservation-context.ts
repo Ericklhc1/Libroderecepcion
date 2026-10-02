@@ -1,3 +1,4 @@
+import { followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 
@@ -17,7 +18,7 @@ import { prisma } from '@/lib/prisma';
  * reserva, incluidos comentarios y responsables. No se persiste un resumen
  * duplicado: se calcula leyendo las fuentes originales para que no se desincronicen.
  */
-export async function getReservationOperationalContext(id: string) {
+export async function getReservationOperationalContext(user: FollowUpReader, id: string) {
   return prisma.reservationReference.findFirst({
     where: { id, deletedAt: null },
     include: {
@@ -85,7 +86,7 @@ export async function getReservationOperationalContext(id: string) {
             },
           },
           followUps: {
-            where: { deletedAt: null },
+            where: followUpReadWhere(user),
             orderBy: { createdAt: 'desc' },
             include: {
               owner: { select: { name: true } },
@@ -115,12 +116,12 @@ export async function getReservationOperationalContext(id: string) {
   });
 }
 
-export async function getReservationOperationalContextByCode(code: string) {
+export async function getReservationOperationalContextByCode(user: FollowUpReader, code: string) {
   const reservation = await prisma.reservationReference.findFirst({
     where: { code, deletedAt: null },
     select: { id: true },
   });
-  return reservation ? getReservationOperationalContext(reservation.id) : null;
+  return reservation ? getReservationOperationalContext(user, reservation.id) : null;
 }
 
 export type ReservationOperationalContext = NonNullable<

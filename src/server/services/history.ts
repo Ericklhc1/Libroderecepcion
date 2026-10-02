@@ -1,3 +1,4 @@
+import { followUpCommentVisibility, followUpAlertVisibility, followUpReadWhere, type FollowUpReader } from './followup-access';
 import 'server-only';
 import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -28,7 +29,9 @@ type HistoryTarget = {
  * reasignaciones, seguimientos, cambios de estado y cierre, en orden
  * cronológico. Se alimenta del AuditLog más los objetos asociados.
  */
-export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]> {
+export async function getHistory(user: FollowUpReader, target: HistoryTarget): Promise<HistoryEvent[]> {
+  if (target.entity === 'FollowUp' && !(await prisma.followUp.findFirst({ where: { id: target.entityId, AND: [followUpReadWhere(user)] }, select: { id: true } }))) return [];
+  if (target.entity === 'Alert' && !(await prisma.alert.findFirst({ where: { id: target.entityId, AND: [followUpAlertVisibility(user)] }, select: { id: true } }))) return [];
   const [logs, comments, followUps] = await Promise.all([
     prisma.auditLog.findMany({
       where: { entity: target.entity, entityId: target.entityId },
@@ -39,6 +42,7 @@ export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]>
     prisma.comment.findMany({
       where: {
         deletedAt: null,
+        AND: [followUpCommentVisibility(user)],
         ...(target.entity === 'OperationalEntry' ? { entryId: target.entityId } : {}),
         ...(target.entity === 'Task' ? { taskId: target.entityId } : {}),
         ...(target.entity === 'FollowUp' ? { followUpId: target.entityId } : {}),
@@ -52,7 +56,7 @@ export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]>
     }),
     target.entity === 'OperationalEntry' || target.entity === 'Task'
       ? prisma.followUp.findMany({
-          where: {
+          where: { AND: [followUpReadWhere(user)],
             deletedAt: null,
             ...(target.entity === 'OperationalEntry'
               ? { entryId: target.entityId }

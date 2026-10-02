@@ -1,3 +1,4 @@
+import { followUpAlertVisibility } from '@/server/services/followup-access';
 import 'server-only';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
@@ -137,8 +138,8 @@ function compactReservationContext(
   };
 }
 
-async function bookSnapshot(page: FrontiResolvedPageContext) {
-  const result = await getBookItems({
+async function bookSnapshot(user: CurrentUser, page: FrontiResolvedPageContext) {
+  const result = await getBookItems(user, {
     q: page.filters.q || undefined,
     onlyOpen: page.moduleKey !== 'historial',
     page: 1,
@@ -169,7 +170,7 @@ async function detailSnapshot(
   if (!page.entityType || !page.entityId) return null;
 
   if (page.entityType === 'OperationalEntry') {
-    const entry = await getEntry(page.entityId).catch(() => null);
+    const entry = await getEntry(page.entityId, user).catch(() => null);
     if (!entry) return { found: false };
     const room = entry.roomId
       ? await prisma.room.findUnique({
@@ -198,7 +199,7 @@ async function detailSnapshot(
   }
 
   if (page.entityType === 'Task') {
-    const task = await getTask(page.entityId).catch(() => null);
+    const task = await getTask(page.entityId, user).catch(() => null);
     if (!task) return { found: false };
     const room = task.roomId
       ? await prisma.room.findUnique({
@@ -226,7 +227,7 @@ async function detailSnapshot(
 
   if (page.entityType === 'ReservationReference') {
     requireAny(user, ['guest.view', 'guest.manage'], 'No tienes permiso para consultar reservas.');
-    const reservation = await getReservationOperationalContext(page.entityId);
+    const reservation = await getReservationOperationalContext(user, page.entityId);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
@@ -236,7 +237,7 @@ async function detailSnapshot(
       ['room.view', 'guest.view', 'guest.manage'],
       'No tienes permiso para consultar reservas.',
     );
-    const reservation = await getReservationOperationalContextByCode(page.entityId);
+    const reservation = await getReservationOperationalContextByCode(user, page.entityId);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
@@ -469,7 +470,7 @@ async function supervisionSectionSnapshot(
       requested === 'estado' || requested === 'gimnasio' || requested === 'multas'
         ? [requested]
         : ['estado', 'gimnasio', 'multas'];
-    const reports = await Promise.all(types.map((type) => buildSupervisorReport(type, range)));
+    const reports = await Promise.all(types.map((type) => buildSupervisorReport(user, type, range)));
     return {
       range,
       reports: reports.map((report) => ({
@@ -620,7 +621,7 @@ async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext)
       if (!has(user, 'system.configure') && !user.isSystemAdmin) {
         throw new Error('No tienes permiso para consultar diagnóstico.');
       }
-      const report = await getDiagnosticReport();
+      const report = await getDiagnosticReport(user);
       return {
         duplicateAlerts: report.duplicateAlerts.slice(0, 20),
         unlinkedStayCount: report.unlinkedStayCount,
@@ -707,7 +708,7 @@ export async function executeFrontiPageContextTool(
       return { ...base, snapshot: await getDashboardData(user) };
     case 'buscar':
     case 'historial':
-      return { ...base, snapshot: await bookSnapshot(page) };
+      return { ...base, snapshot: await bookSnapshot(user, page) };
     case 'novedades':
       return {
         ...base,
@@ -727,10 +728,10 @@ export async function executeFrontiPageContextTool(
           },
         };
       }
-      const overview = await getRoomMonitorOverview();
+      const overview = await getRoomMonitorOverview(user);
       const roomNumber = page.filters.habitacion ?? '';
       const selected = roomNumber
-        ? await getRoomMonitorDetail(roomNumber).catch(() => null)
+        ? await getRoomMonitorDetail(user, roomNumber).catch(() => null)
         : null;
       return {
         ...base,
@@ -776,7 +777,7 @@ export async function executeFrontiPageContextTool(
         'No tienes permiso para consultar señales internas.',
       );
       const rows = await prisma.alert.findMany({
-        where: { deletedAt: null, status: { not: 'RESUELTA' } },
+        where: { deletedAt: null, status: { not: 'RESUELTA' }, AND: [followUpAlertVisibility(user)] },
         select: {
           id: true,
           humanId: true,
@@ -804,7 +805,7 @@ export async function executeFrontiPageContextTool(
     case 'notificaciones':
       return {
         ...base,
-        snapshot: await getNotificationFeedForUser(user.id, 40),
+        snapshot: await getNotificationFeedForUser(user, 40),
       };
     case 'reservas':
     case 'habitaciones':
@@ -877,7 +878,7 @@ export async function executeFrontiPageContextTool(
       };
     }
     case 'avisos': {
-      const alarms = await listMyOperationalAlarms(user.id, 60);
+      const alarms = await listMyOperationalAlarms(user, 60);
       return {
         ...base,
         snapshot: {

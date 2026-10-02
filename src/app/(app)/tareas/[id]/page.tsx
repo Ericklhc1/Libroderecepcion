@@ -53,11 +53,11 @@ export default async function TaskDetailPage({
   const user = await requirePageUser();
   const { id } = await params;
 
-  const task = await getTask(id).catch(() => null);
+  const task = await getTask(id, user).catch(() => null);
   if (!task) notFound();
 
   const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
-    getHistory({ entity: 'Task', entityId: task.id }),
+    getHistory(user, { entity: 'Task', entityId: task.id }),
     getFormOptions(),
     prisma.operationalAlarm.findMany({
       where: { sourceEntity: 'Task', sourceId: task.id },

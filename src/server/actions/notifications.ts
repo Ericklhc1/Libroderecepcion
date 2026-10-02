@@ -22,7 +22,7 @@ export async function getUnreadCounts(): Promise<{
   alerts: number;
 }> {
   const user = await requireUser();
-  return getUnreadCountsForUser(user.id);
+  return getUnreadCountsForUser(user);
 }
 
 const markSchema = z.object({ id: z.string().min(1).optional() });

@@ -393,6 +393,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/fronti/procedimientos') return detail('fronti-procedimientos', 'Fronti', 'ejecuciones', 'Mis procedimientos', ['consultar_contexto_pantalla', 'consultar_procedimientos']);
+  if (pathname === '/coordinacion/automatizaciones') return detail('automatizaciones', 'Coordinación', 'politicas', 'Reglas y procedimientos', ['consultar_contexto_pantalla']);
   if (pathname === '/coordinacion') return detail('coordinacion', 'Coordinación', 'pendientes', 'Coordinación y continuidad', ['consultar_contexto_pantalla']);
 
   if (pathname === '/admin') {

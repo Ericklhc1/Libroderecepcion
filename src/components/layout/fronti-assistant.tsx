@@ -275,6 +275,7 @@ export function FrontiAssistant() {
     try {
       const payload = await request({
         message: content,
+        requestKey: crypto.randomUUID(),
         pageContext: {
           pathname,
           search: window.location.search,
@@ -435,7 +436,7 @@ export function FrontiAssistant() {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => setConfirmations((current) => current.filter((candidate) => candidate.token !== item.token))}
+                    onClick={() => { if (item.token.startsWith('fronti-plan:')) void request({ cancelExecutionId: item.token.slice(12) }).then(() => setConfirmations(current => current.filter(candidate => candidate.token !== item.token))).catch(error => addFronti(String(error))); else setConfirmations(current => current.filter(candidate => candidate.token !== item.token)); }}
                     className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
                   >
                     Cancelar

@@ -26,7 +26,7 @@ export type CurrentUser = {
  * Usuario de la petición actual. Memoizado por petición con `cache()` para no
  * repetir la consulta en cada componente de servidor.
  */
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+export async function getCurrentUserFresh(): Promise<CurrentUser | null> {
   const store = await cookies();
   const payload = await readSessionToken(store.get(SESSION_COOKIE)?.value);
   if (!payload) return null;
@@ -54,7 +54,9 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     isSystemAdmin: user.role.key === ROLE_KEYS.SYSTEM_ADMIN,
     frontiAccessEnabled: user.frontiAccessEnabled,
   };
-});
+}
+
+export const getCurrentUser = cache(getCurrentUserFresh);
 
 export function hasPermission(
   user: Pick<CurrentUser, 'permissions'> | null,

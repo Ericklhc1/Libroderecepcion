@@ -1,3 +1,6 @@
+import { executeFrontiCommand } from '@/server/ai/execution/commands';
+import { cancelExecution } from '@/server/ai/execution/service';
+import { isSameOriginMutation } from '@/server/security/same-origin';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -37,6 +40,8 @@ export const dynamic = 'force-dynamic';
 const requestSchema = z
   .object({
     message: z.string().trim().min(1).max(6000).optional(),
+    requestKey: z.string().uuid().optional(),
+    cancelExecutionId: z.string().min(1).max(100).optional(),
     confirmationToken: z.string().min(20).max(20_000).optional(),
     action: z.enum(['new_conversation', 'forget_conversation']).optional(),
     pageContext: z
@@ -52,7 +57,7 @@ const requestSchema = z
       .optional(),
   })
   .refine(
-    (value) => Boolean(value.message || value.confirmationToken || value.action),
+    (value) => Boolean(value.message || value.confirmationToken || value.action || value.cancelExecutionId),
     { message: 'Falta el mensaje, la confirmación o la acción.' },
   );
 
@@ -142,6 +147,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) return NextResponse.json({ error: "Origen no autorizado." }, { status: 403 });
   const user = await authenticatedUser();
   if (!user) return expiredResponse();
 
@@ -156,6 +162,8 @@ export async function POST(request: Request) {
     }
 
     const body = requestSchema.parse(await request.json());
+
+    if (body.cancelExecutionId) return NextResponse.json({ reply: (await cancelExecution(body.cancelExecutionId)).message }, { headers: noStoreHeaders() });
 
     if (body.action === 'new_conversation') {
       const bootstrap = await startNewAssistantConversation(user);
@@ -208,6 +216,9 @@ export async function POST(request: Request) {
         { headers: noStoreHeaders() },
       );
     }
+
+    const command = await executeFrontiCommand(rawMessage, body.requestKey);
+    if (command) return NextResponse.json({ ...command, assistant: config.displayName, config: publicConfig(config, accessEnabled) }, { headers: noStoreHeaders() });
 
     const context = await prepareAssistantContext(user, rawMessage);
     const [sharedShiftMemory, runtimeContext] = await Promise.all([

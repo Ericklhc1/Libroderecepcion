@@ -1,3 +1,12 @@
+## 02/10/2026 · v1.47.0 · Etapa 2 local, pendiente de integración y subida
+
+- Rama local `feat/etapa-2-fronti-automatizacion` sobre árbol exacto de PR #241 (`50fb561e`, sigue abierto). No merge, deploy, migración/operación en producción ni nuevas reglas activadas.
+- 59 adaptadores a Server Actions originales, planes privados cifrados, permiso/sesión fresca por paso, reclamación atómica y cancelación de pendientes. Comandos exactos en ambos accesos a Fronti privado; propuestas IA requieren autorización. No se declara cobertura general: matriz de 210 exports y pendientes en `docs/etapa2/MATRIZ_ACCIONES.md`.
+- Reglas/plantillas pausadas, ocurrencias acotadas Santiago y tareas creadas con el servicio original; ejecución conectada al cron existente, apagada por variable ausente. Nuevos procedimientos requieren validación independiente. Migración aditiva preparada, no aplicada.
+- 86 pruebas en 13 archivos sin PostgreSQL, tipos y lint aprobados. Build de código aprobado usando la fuente Inter local sólo como fixture, porque Google Fonts está bloqueado por la red. No equivale a build normal ni integración.
+- Subida GitHub rechazada: «user rejected MCP tool call». NO rama remota/PR, NO revisión Copilot. Reintentar sólo con autorización posterior. Borrador concreto: `docs/etapa2/PR_BORRADOR.md`.
+- Pendientes: PostgreSQL/CI/browser, latencia ~30 s de etapa 1 sin causa acreditada, CRON_SECRET no consultable, Safari físico, acciones/lecturas restantes, delegaciones generales, suplencias y resúmenes/indicadores completos. No publicar.
+
 ## 02/10/2026 · Continuación de Etapa 1 / PR #241
 
 - Se mantiene autorización de implementación y preparación de PR; sin merge ni despliegue. Base main 52f7f229, último commit anterior 622ce10b con Compuerta aprobada: 1345 pruebas + navegador escritorio/ancho móvil.

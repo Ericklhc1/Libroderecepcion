@@ -431,6 +431,8 @@ model RolePermission {
 /// y cada persona puede desactivar los avisos externos sin afectar la campana
 /// interna del Libro.
 model User {
+  frontiExecutions FrontiExecution[]
+  operationalAutomations OperationalAutomation[]
   hkInspections HousekeepingRequest[] @relation("hkInspected")
   hkDayMemberships HousekeepingDayMember[]
   hkHandoversCreated HousekeepingHandover[] @relation("hkHandoverCreated")
@@ -646,6 +648,7 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  operationalAutomations OperationalAutomation[]
   hkRoutines HousekeepingRoutine[]
   hkDayMembers HousekeepingDayMember[]
   hkHandovers HousekeepingHandover[]
@@ -1277,6 +1280,8 @@ model HousekeepingEvent {
 }
 
 model Task {
+  procedureOccurrenceKey String? @unique
+  requiresIndependentValidation Boolean @default(false)
   workAssignedAt DateTime?
   workAcknowledgedAt DateTime?
   workAcknowledgedById String?
@@ -3346,4 +3351,75 @@ model HousekeepingDelegation {
   revokedAt DateTime?
   createdAt DateTime @default(now())
   @@index([userId, departmentId, endsAt])
+}
+
+
+/// Authorization is owned by the authenticated user; steps never contain an actor.
+model FrontiExecution {
+  id String @id @default(cuid())
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId String
+  sessionId String
+  requestKey String
+  fingerprint String
+  instruction String
+  status String @default("PREPARED")
+  authorizedAt DateTime?
+  expiresAt DateTime
+  cancelledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  steps FrontiExecutionStep[]
+  @@unique([userId, requestKey])
+  @@index([userId, createdAt])
+}
+
+model FrontiExecutionStep {
+  id String @id @default(cuid())
+  executionId String
+  execution FrontiExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  position Int
+  action String
+  fields Json
+  revision String?
+  status String @default("PENDING")
+  result Json?
+  startedAt DateTime?
+  completedAt DateTime?
+  @@unique([executionId, position])
+}
+
+
+/// A policy is inert until an authorized person enables it. No production seed.
+model OperationalAutomation {
+  id String @id @default(cuid())
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  ownerId String
+  departmentId String
+  name String
+  kind String
+  version Int @default(1)
+  enabled Boolean @default(false)
+  configuration Json
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastEvaluatedAt DateTime?
+  runs OperationalAutomationRun[]
+  @@index([enabled, expiresAt])
+}
+model OperationalAutomationRun {
+  id String @id @default(cuid())
+  policyId String
+  policy OperationalAutomation @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  occurrence String
+  policyVersion Int
+  snapshot Json
+  status String
+  result Json?
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+  @@unique([policyId, occurrence])
 }

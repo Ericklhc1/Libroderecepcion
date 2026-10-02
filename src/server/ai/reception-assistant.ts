@@ -1,4 +1,7 @@
 import 'server-only';
+import { FRONTI_ACTIONS } from './execution/catalog';
+import { prepareExecution, executionCard, executePlan } from './execution/service';
+import { executionSummary } from '@/domain/fronti-execution';
 
 import { revalidatePath } from 'next/cache';
 import { parseFrontiDueAt } from '@/domain/fronti-due-date';
@@ -972,6 +975,7 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
   runtimeContext: FrontiRuntimeContext | null = null,
+  options: { shared?: boolean } = {},
 ): Promise<AssistantResult> {
   const telemetry = startFrontiAgentRun(user.id);
   const startedAt = telemetry.startedAt.getTime();
@@ -1003,7 +1007,7 @@ export async function runReceptionAssistant(
     let activeProviders = [...providers];
     const latestUserMessage =
       [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-    const tools = chatTools(config, user, buildFrontiToolIntent(messages), runtimeContext);
+    const tools = chatTools(config, user, buildFrontiToolIntent(messages), runtimeContext).filter(() => !options.shared);
     let chat = messagesAsChat(messages, config);
     const confirmations: AssistantConfirmation[] = [];
     const proposalFingerprints = new Set<string>();
@@ -1105,7 +1109,11 @@ export async function runReceptionAssistant(
             });
             continue;
           }
-          const result = await executeTool(
+          const result = call.function.name === 'consultar_procedimientos'
+            ? { actions: FRONTI_ACTIONS, coverage: 'Adaptadores conectados; consultar matriz de recorridos acreditados en /fronti/procedimientos. No equivale a cobertura general.' }
+            : call.function.name === 'preparar_procedimiento'
+              ? { confirmation: await executionCard((await prepareExecution({ requestKey: randomUUID(), instruction: latestUserMessage, steps: JSON.parse(String(args.planJson)) })).id) }
+              : await executeTool(
             user,
             call.function.name,
             args,
@@ -1220,6 +1228,7 @@ export async function executeReceptionConfirmation(
   user: CurrentUser,
   token: string,
 ): Promise<{ reply: string }> {
+  if (token.startsWith('fronti-plan:')) { const result = await executePlan(token.slice(12), true); return { reply: executionSummary(result.steps) + '\n' + result.href }; }
   const config = await getFrontiConfig();
   if (!config.enabled) {
     throw new AssistantError('DESACTIVADO');

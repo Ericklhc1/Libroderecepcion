@@ -3,13 +3,13 @@ import { isHkFocused } from '@/domain/housekeeping-work';
 import { redirect } from 'next/navigation';
 import { AuthError, ForbiddenError } from '@/server/errors';
 import type { PermissionKey } from '@/lib/permissions';
-import { getCurrentUser, hasPermission, type CurrentUser } from './current-user';
+import { getCurrentUserFresh, hasPermission, type CurrentUser } from './current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 
 /** Autenticación pura para los flujos previos al acceso: contraseña y términos. */
 export async function requireAuthenticatedUser(): Promise<CurrentUser> {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserFresh();
   if (!user) throw new AuthError();
   return user;
 }

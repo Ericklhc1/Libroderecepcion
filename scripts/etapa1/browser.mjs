@@ -10,7 +10,8 @@ async function submit(page,button){
  const started=performance.now();
  const path=new URL(page.url()).pathname;
  const [response]=await Promise.all([page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===path),button.click()]);
- assert.ok(response.ok(),'Server action response succeeds');timings.push({label:'POST '+path,ms:Math.round(performance.now()-started)});
+ assert.ok(response.ok(),'Server action response succeeds');timings.push({label:'POST headers '+path,ms:Math.round(performance.now()-started)});
+ const stream=performance.now();await response.finished();timings.push({label:'POST stream '+path,ms:Math.round(performance.now()-stream)});
 }
 async function actor(name,width){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});

@@ -25,6 +25,10 @@ export async function resetOperationalData() {
   await prisma.$executeRawUnsafe('DELETE FROM "ShiftCashClosure"');
 
   await prisma.$transaction([
+    prisma.frontiExecutionStep.deleteMany(),
+    prisma.frontiExecution.deleteMany(),
+    prisma.operationalAutomationRun.deleteMany(),
+    prisma.operationalAutomation.deleteMany(),
     prisma.scheduleAcknowledgment.deleteMany(),
     prisma.scheduleImport.deleteMany(),
     prisma.scheduleEvent.deleteMany(),

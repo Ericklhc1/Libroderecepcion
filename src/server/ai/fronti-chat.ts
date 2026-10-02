@@ -1,4 +1,6 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
+import { executeFrontiCommand } from './execution/commands';
 
 import {
   ChatConversationType,
@@ -247,6 +249,15 @@ export async function maybeInvokeFrontiInChat(
     ? current.body?.trim() ?? ''
     : cleanMention(current.body?.trim() ?? '');
   if (!rawMessage) throw new RuleError('Escribe qué quieres preguntarle a Fronti.');
+  if (privateFronti) {
+    const hash = createHash('sha256').update('fronti-chat:' + current.id).digest('hex');
+    const requestKey = `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-a${hash.slice(17,20)}-${hash.slice(20,32)}`;
+    const command = await executeFrontiCommand(rawMessage, requestKey);
+    if (command) {
+      const messageId = await persistFrontiChatMessage({conversationId:conversation.id,invokedById:user.id,reply:command.reply});
+      return {invoked:true,...command,messageId};
+    }
+  }
 
   const runtimeContext = await buildFrontiRuntimeContext(user, {
     pathname: '/',
@@ -299,10 +310,7 @@ export async function maybeInvokeFrontiInChat(
       }),
     ];
   } else {
-    const [transcript, sharedShiftMemory] = await Promise.all([
-      sharedTranscript(conversation.id, current.id),
-      getSharedShiftMemoryContext(user),
-    ]);
+    const transcript = await sharedTranscript(conversation.id, current.id);
     const quote = current.replyTo?.body?.trim()
       ? `Mensaje citado de ${actorName(
           current.replyTo.author,
@@ -314,22 +322,19 @@ export async function maybeInvokeFrontiInChat(
       'CONTEXTO DEL CHAT COMPARTIDO. Úsalo sólo para entender la conversación actual.',
       transcript || '(sin mensajes previos relevantes)',
       quote,
-      sharedShiftMemory
-        ? 'Contexto compartido del turno (verifica cualquier estado actual con tools):\n' + sharedShiftMemory
-        : null,
+
     ]
       .filter(Boolean)
       .join('\n\n');
 
     modelMessages = [
       identityMessage(config.displayName, true),
-      { role: 'assistant', content: runtimeContextMessage(runtimeContext) },
       { role: 'assistant', content: sharedContext },
       { role: 'user', content: rawMessage },
     ];
   }
 
-  const result = await runReceptionAssistant(user, modelMessages, runtimeContext);
+  const result = await runReceptionAssistant(user, modelMessages, privateFronti ? runtimeContext : null, { shared: !privateFronti });
   const frontiMessageId = await persistFrontiChatMessage({
     conversationId: conversation.id,
     invokedById: user.id,
@@ -370,7 +375,7 @@ export async function confirmFrontiInChat(
       deletedAt: null,
       participants: { some: { userId: user.id, leftAt: null } },
     },
-    select: { id: true },
+    select: { id: true, type: true },
   });
   if (!conversation) throw new NotFoundError('La conversación ya no está disponible.');
 
@@ -379,6 +384,7 @@ export async function confirmFrontiInChat(
     throw new RuleError(`${config.displayName} no está habilitado para tu cuenta.`);
   }
 
+  if (conversation.type !== ChatConversationType.FRONTI) throw new RuleError('Confirma este procedimiento en Fronti privado.');
   const result = await executeReceptionConfirmation(user, input.token);
   const messageId = await persistFrontiChatMessage({
     conversationId: input.conversationId,

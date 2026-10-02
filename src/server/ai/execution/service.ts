@@ -126,8 +126,8 @@ export async function executePlan(id: string, authorize: boolean) {
       const result = await invokeNativeAction(command, step.revision);
       // Native actions may commit before a post-commit error. Conservatively stop on every failure.
       const status = result.ok ? 'SUCCEEDED' : 'INTERVENTION';
-      const module=actionDefinition(step.action).module;
-      const href=result.ok&&result.id&&(module==='tasks'||module==='entries')?`${module==='tasks'?'/tareas':'/libro'}/${result.id}`:undefined;
+      const actionModule=actionDefinition(step.action).module;
+      const href=result.ok&&result.id&&(actionModule==='tasks'||actionModule==='entries')?`${actionModule==='tasks'?'/tareas':'/libro'}/${result.id}`:undefined;
       const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null, ...(href?{href}:{}) } : { ok: false, message: result.error };
       await prisma.$transaction(async tx => {
         await tx.frontiExecutionStep.update({ where: { id: step.id }, data: { status, result: safeResult, completedAt: new Date() } });

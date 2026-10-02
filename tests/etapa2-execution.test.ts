@@ -7,6 +7,9 @@ import { prepareExecution, executePlan, cancelExecution, readExecution } from '@
 import { createTask, changeTaskStatus } from '@/server/services/tasks';
 import { saveAutomation, simulateAutomation, runOperationalAutomations, revokeAutomation } from '@/server/services/operational-automation';
 import type { FrontiStep } from '@/domain/fronti-execution';
+import { escalateUnreceivedWork } from '@/server/services/coordination';
+import { invokeNativeAction } from '@/server/ai/execution/catalog';
+import { revisionForStep } from '@/server/ai/execution/revision';
 import { hotelDateKey } from '@/domain/time';
 let actor:CurrentUser;
 vi.mock('@/server/auth/current-user',async original=>({...await original<object>(),getCurrentUserFresh:async()=> {
@@ -68,7 +71,7 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     await executePlan(p.id,true);expect(await prisma.cashMovement.count({where:{reference:'Ingreso sintético declarado'}})).toBe(1);
   });
   it('registra entrega y devolución de llave con la identidad del declarante',async()=>{
-    const room=await prisma.room.findUniqueOrThrow({where:{number:'401'}});const code='E2-'+randomUUID().slice(0,8);
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'401'}});const code='E2-'+randomUUID().slice(0,8).toUpperCase();
     const p=await plan([{action:'createPhysicalKeyAction',fields:{code,roomId:room.id,type:'COPIA',notes:'Llave sintética'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');
     const key=await prisma.roomKey.findUniqueOrThrow({where:{code}});
     const delivery=await plan([{action:'assignPhysicalKeyAction',fields:{keyId:key.id,roomId:room.id,note:'Declaro que entregué esta llave'}}]);expect((await executePlan(delivery.id,true)).steps[0]!.status).toBe('SUCCEEDED');
@@ -80,7 +83,48 @@ describe('Etapa 2: PostgreSQL y servicios nativos',()=>{
     const shift=await prisma.shift.findFirstOrThrow();const close=await plan([{action:'closeShiftAction',fields:{shiftId:shift.id}}]);expect((await executePlan(close.id,true)).steps[0]!.status).toBe('INTERVENTION');expect((await prisma.shift.findUniqueOrThrow({where:{id:shift.id}})).status).not.toBe('CERRADO');
   });
   it('permite configurar un área con permiso real de administración',async()=>{
-    const key='E2_'+randomUUID().slice(0,8).toUpperCase();const p=await plan([{action:'saveDepartmentAction',fields:{key,name:'Área sintética',order:'99',active:'true'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');expect((await prisma.department.findUniqueOrThrow({where:{key}})).active).toBe(true);
+    const key='E2_'+randomUUID().slice(0,8).toUpperCase();const p=await plan([{action:'saveDepartmentAction',fields:{key,name:'Área sintética',order:'99',active:'true'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');expect((await prisma.department.findUniqueOrThrow({where:{key}})).active).toBe(true);await prisma.department.delete({where:{key}});
+  });
+  it('conserva datos de usuario y bloquea cambios entre autorización y escritura nativa',async()=>{
+    const current=await prisma.user.findUniqueOrThrow({where:{id:other.id}});
+    const step={action:'updateUserAction',fields:{id:other.id,name:'Nombre actualizado',email:current.email??'',roleId:current.roleId,departmentId:area,phone:current.phone??'',emailNotificationsEnabled:String(current.emailNotificationsEnabled),hiddenFromSelectors:String(current.hiddenFromSelectors),active:'true'}};
+    const revision=await revisionForStep(step);await prisma.user.update({where:{id:other.id},data:{phone:'123456'}});
+    expect((await invokeNativeAction(step,revision)).ok).toBe(false);
+    const p=await plan([{...step,fields:{...step.fields,phone:'123456'}}]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+    const after=await prisma.user.findUniqueOrThrow({where:{id:other.id}});expect(after.name).toBe('Nombre actualizado');expect(after.active).toBe(true);expect(after.phone).toBe('123456');expect(after.email).toBe(current.email);
+  });
+  it('sustituye matriz completa explícita y rechaza revisión obsoleta dentro de la transacción',async()=>{
+    const role=await prisma.role.create({data:{key:'E2_'+randomUUID(),name:'Rol sintético'}});
+    try {
+      const step={action:'updateRolePermissionsAction',fields:{roleId:role.id,permissions:['task.create'],approvalRequired:[],permissionsBefore:[],approvalRequiredBefore:[],replacementAcknowledged:'REEMPLAZAR_MATRIZ_COMPLETA'}};
+      const p=await plan([step]);expect((await executePlan(p.id,true)).steps[0]!.status).toBe('SUCCEEDED');
+      const revision=await revisionForStep(step);const permission=await prisma.permission.findUniqueOrThrow({where:{key:'task.assign'}});await prisma.rolePermission.create({data:{roleId:role.id,permissionId:permission.id}});
+      expect((await invokeNativeAction(step,revision)).ok).toBe(false);expect(await prisma.rolePermission.count({where:{roleId:role.id}})).toBe(2);
+    } finally {await prisma.role.delete({where:{id:role.id}});}
+  });
+  it('Housekeeping usa el registro original y Equipo conserva usuario y horas semanales',async()=>{
+    const hk=await plan([{action:'createHousekeepingAction',fields:{requestKey:randomUUID(),title:'Solicitud sintética',description:'Revisar filtro informado por Recepción',departmentId:area}}]);
+    expect((await executePlan(hk.id,true)).steps[0]!.status).toBe('SUCCEEDED');await executePlan(hk.id,true);expect(await prisma.housekeepingRequest.count()).toBe(1);
+    const day=hotelDateKey(new Date());const schedule=await plan([{action:'saveScheduleCollaboratorAction',fields:{userId:other.id,departmentIds:[area],weeklyHours:'40',functionName:'Supervisor'}},{action:'createSchedulePlanAction',fields:{departmentId:area,startDate:day,endDate:day}}]);
+    expect((await executePlan(schedule.id,true)).steps.map(s=>s.status)).toEqual(['SUCCEEDED','SUCCEEDED']);expect((await prisma.scheduleCollaborator.findUniqueOrThrow({where:{userId:other.id}})).weeklyMinutes).toBe(2400);expect(await prisma.schedulePlan.count()).toBe(1);
+  });
+  it('reglas configuradas sustituyen el plazo original sin avisos duplicados y vuelven al pausar',async()=>{
+    process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const now=new Date();
+    const task=await createTask(admin,{title:'Recepción con plazo configurable',assigneeId:other.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});
+    await prisma.task.update({where:{id:task.id},data:{workAssignedAt:new Date(now.getTime()-35*60000)}});
+    const input={name:'Recepción a 45 minutos',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNRECEIVED',kind:'task',priority:'MEDIA',receiptMinutes:45,recipientId:other.id},expiresAt:new Date(Date.now()+86400000),enabled:true};
+    const policy=await saveAutomation(admin,input);expect((await simulateAutomation(admin,policy.id,now)).effects).toHaveLength(0);expect((await escalateUnreceivedWork(now)).escalated).toBe(0);
+    await expect(saveAutomation(admin,{...input,name:'Duplicada'})).rejects.toThrow('Ya existe');
+    await prisma.task.update({where:{id:task.id},data:{workAssignedAt:new Date(now.getTime()-60*60000)}});
+    const result=await runOperationalAutomations(now);expect(result.failed).toBe(0);expect(result.attempted).toBe(1);expect((await escalateUnreceivedWork(now)).escalated).toBe(0);
+    await runOperationalAutomations(now);expect(await prisma.notification.count({where:{entity:'OperationalAutomation'}})).toBe(1);
+    const next=await createTask(admin,{title:'Plazo original tras pausar',assigneeId:other.id,departmentId:area,priority:'MEDIA',tags:[],checklist:[]});await prisma.task.update({where:{id:next.id},data:{workAssignedAt:new Date(now.getTime()-35*60000)}});
+    await saveAutomation(admin,{...input,id:policy.id,version:1,enabled:false});expect((await escalateUnreceivedWork(now)).escalated).toBe(1);
+  });
+  it('preserva tiempo del cron y pausa con historial si se revoca al autorizador',async()=>{
+    process.env.AROH_AUTOMATION_EXECUTION_ENABLED='true';const policy=await saveAutomation(admin,{name:'Regla acotada',departmentId:area,kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',receiptMinutes:30,recipientId:other.id},expiresAt:new Date(Date.now()+86400000),enabled:true});
+    expect((await runOperationalAutomations(new Date(),Date.now())).attempted).toBe(0);
+    await prisma.user.update({where:{id:admin.id},data:{active:false}});expect((await runOperationalAutomations()).failed).toBe(1);expect((await prisma.operationalAutomation.findUniqueOrThrow({where:{id:policy.id}})).enabled).toBe(false);expect(await prisma.operationalAutomationRun.count({where:{policyId:policy.id,status:'INTERVENTION'}})).toBe(1);
   });
   it('simula sin efectos; pausa, concurrencia, versiones y revocación conservan historial',async()=>{
     const now=new Date();const config={title:'Revisión preventiva',description:'Procedimiento sintético',ownerId:other.id,priority:'MEDIA',nextAction:'Registrar evidencia',evidenceRequired:'Observación',checklist:['Revisar'],startDate:hotelDateKey(now),localTime:'01:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60};

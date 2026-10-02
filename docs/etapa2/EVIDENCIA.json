@@ -8,7 +8,7 @@
   },
   "localValidation": {
     "tests": {
-      "passed": 86,
+      "passed": 87,
       "files": 13,
       "kind": "domain/context/mocked",
       "command": "vitest run --config vitest.etapa2-domain.config.mts"
@@ -18,22 +18,45 @@
     "build": "passed with local existing Inter fixture; normal Google Fonts download blocked"
   },
   "pendingValidation": [
-    "PostgreSQL integration and migration application",
+    "new integration regressions and final CI green",
     "authenticated browser desktop/mobile",
     "physical Safari/iPhone",
-    "individual adapter procedure journeys",
+    "all individual adapter procedure journeys",
     "latency budgets"
   ],
   "github": {
-    "upload": "rejected: user rejected MCP tool call",
-    "remoteBranch": null,
-    "pr": null,
-    "actionsRunsCreated": 0
+    "upload": "authorized after initial rejection; completed",
+    "remoteBranch": "feat/etapa-2-fronti-automatizacion",
+    "pr": 244,
+    "url": "https://github.com/Ericklhc1/Libroderecepcion/pull/244",
+    "draft": true,
+    "actionsRuns": [
+      {
+        "id": 37007985785,
+        "result": "failure",
+        "passed": 1367,
+        "skipped": 1,
+        "failed": 1,
+        "finding": "Retry alias lost; corrected with FrontiExecutionRequest."
+      },
+      {
+        "id": 37008586461,
+        "result": "failure",
+        "passed": 1370,
+        "skipped": 1,
+        "failed": 2,
+        "finding": "Synthetic key uppercase lookup and synthetic department cleanup; corrected, rerun pending."
+      }
+    ]
   },
   "copilot": {
-    "reviewRequested": false,
-    "reviewReceived": false,
-    "balance": "not accessible; owner historical reference 1500 included / 0 consumed"
+    "reviewRequested": true,
+    "reviewReceived": true,
+    "balance": "not accessible; owner historical reference 1500 included / 0 consumed",
+    "reviewId": 5391944473,
+    "findings": 7,
+    "implementationAttributed": false,
+    "observedConsumption": "1 review received; credit cost and live balance inaccessible"
   },
   "coverage": {
     "serverActionsInventoried": 210,

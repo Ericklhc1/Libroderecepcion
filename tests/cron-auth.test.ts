@@ -4,7 +4,8 @@ import { GET as memory } from '@/app/api/cron/ai-memory/route';
 import { GET as proactive } from '@/app/api/cron/fronti-proactive/route';
 import { GET as mail } from '@/app/api/cron/operational-mail/route';
 import { GET as push } from '@/app/api/cron/web-push/route';
-const effects = vi.hoisted(() => ({ coordination: vi.fn(), retention: vi.fn(), alerts: vi.fn(), fronti: vi.fn(), mail: vi.fn(), hk: vi.fn(), alarms: vi.fn(), push: vi.fn() }));
+const effects = vi.hoisted(() => ({ automations: vi.fn(), coordination: vi.fn(), retention: vi.fn(), alerts: vi.fn(), fronti: vi.fn(), mail: vi.fn(), hk: vi.fn(), alarms: vi.fn(), push: vi.fn() }));
+vi.mock('@/server/services/operational-automation', () => ({ runOperationalAutomations: effects.automations }));
 vi.mock('@/server/services/coordination', () => ({ escalateUnreceivedWork: effects.coordination }));
 vi.mock('@/server/ai/retention-policy', () => ({ enforceFrontiRetentionPolicy: effects.retention }));
 vi.mock('@/server/services/alert-engine', () => ({ runAlertEngine: effects.alerts }));
@@ -38,7 +39,7 @@ describe('cron requiere secreto y token válidos', () => {
    it('token correcto conserva ejecución autorizada', async () => {
     vi.stubEnv('CRON_SECRET', secret); const response = await handler(request({ authorization: `Bearer ${secret}` }));
     expect(response.status).toBe(200);
-    const expected = name === 'memory' ? ['retention'] : name === 'proactive' ? ['alerts','fronti'] : name === 'mail' ? ['mail'] : ['coordination','hk','alarms','push'];
+    const expected = name === 'memory' ? ['retention'] : name === 'proactive' ? ['alerts','fronti'] : name === 'mail' ? ['mail'] : ['automations','coordination','hk','alarms','push'];
     for (const [key, effect] of Object.entries(effects)) expect(effect).toHaveBeenCalledTimes(expected.includes(key) ? 1 : 0);
     if (name === 'mail') expect(effects.mail).toHaveBeenCalledWith(40);
     if (name === 'proactive') expect(effects.fronti).toHaveBeenCalledWith({ trigger: 'vercel-cron', deadlineAt: expect.any(Number) });

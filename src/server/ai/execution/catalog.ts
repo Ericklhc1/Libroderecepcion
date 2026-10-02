@@ -750,7 +750,10 @@ export const FRONTI_ACTIONS = [
     "fields": [
       "roleId",
       "permissions",
-      "approvalRequired"
+      "approvalRequired",
+      "permissionsBefore",
+      "approvalRequiredBefore",
+      "replacementAcknowledged"
     ],
     "permission": "role.manage",
     "risk": "high",
@@ -932,13 +935,23 @@ export function validateStep(step: FrontiStep): FrontiStep {
   const action = actionDefinition(step.action);
   const shape = Object.fromEntries(action.fields.map(field => [field, z.union([z.string().max(6000), z.array(z.string().max(1000)).max(100)]).optional()]));
   const parsed = z.object(shape).strict().parse(step.fields);
+  if (step.action === 'updateUserAction') {
+    for (const field of action.fields) if (typeof parsed[field] !== 'string') throw new RuleError('La edición de usuario requiere su estado completo: falta ' + field + '. No se aplican cambios parciales implícitos.');
+    for (const field of ['active','emailNotificationsEnabled','hiddenFromSelectors']) z.enum(['true','false']).parse(parsed[field]);
+  }
+  if (step.action === 'updateRolePermissionsAction') {
+    z.literal('REEMPLAZAR_MATRIZ_COMPLETA').parse(parsed.replacementAcknowledged);
+    for (const field of ['permissions','approvalRequired','permissionsBefore','approvalRequiredBefore']) z.array(z.string().min(1)).parse(parsed[field]);
+    z.string().min(1).parse(parsed.roleId);
+  }
   // Credentials and identity of execution are never model-controlled fields.
   if (step.action === 'saveSettingAction' && /secret|password|token|key|credential/i.test(String(parsed.key))) throw new RuleError('Usa el formulario protegido para credenciales.');
   return { action: step.action, fields: Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)) };
 }
-export async function invokeNativeAction(step: FrontiStep): Promise<ActionState> {
+export async function invokeNativeAction(step: FrontiStep, expectedRevision?: string | null): Promise<ActionState> {
   const input = validateStep(step);
   const form = new FormData();
+  if(expectedRevision&&['updateUserAction','updateRolePermissionsAction'].includes(input.action)) form.append('__frontiRevision',expectedRevision);
   for (const [key, value] of Object.entries(input.fields)) for (const item of Array.isArray(value) ? value : [value]) form.append(key, item);
   if (['declareCashCountAction','confirmCashCountAction'].includes(input.action)) {
     const counts = z.array(z.object({ id: z.string().min(1).max(100), quantity: z.number().int().min(0).max(100000) }).strict()).max(100).parse(JSON.parse(String(input.fields.quantitiesJson ?? '[]')));

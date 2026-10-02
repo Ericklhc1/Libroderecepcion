@@ -11,7 +11,7 @@ import { canonicalJson } from '@/domain/fronti-execution';
 import { createTask } from './tasks';
 import { getCoordinationBoard, coordinationMetrics, type CoordinationRow } from './coordination';
 import { coordinationEntries, coordinationTasks, coordinationFollowUps } from './coordination-access';
-import { hkWorkVisibility } from './housekeeping-work';
+import { hkWorkVisibility, hkCapability } from './housekeeping-work';
 import { hasAcceptedCurrentTerms } from './legal-acceptance';
 import { assertReceptionOperationPermission } from './reception-operation-gate';
 import { notify } from '@/server/notifications';
@@ -38,6 +38,12 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
   if (input.expiresAt <= new Date() || input.expiresAt.getTime() > Date.now() + 366 * 86400000) throw new RuleError('Define una vigencia futura de hasta un año.');
   const configuration = input.kind === 'PROCEDURE' ? procedureSchema.parse(input.configuration) : escalationSchema.parse(input.configuration);
   return prisma.$transaction(async tx => {
+    if(input.kind==='ESCALATION'&&input.enabled){
+      const config=escalationSchema.parse(configuration);
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.departmentId+':'+config.trigger}))::text`;
+      const overlaps=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'ESCALATION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
+      if(overlaps.some(p=>{const other=escalationSchema.parse(p.configuration);return other.trigger===config.trigger&&(!other.kind||!config.kind||other.kind===config.kind)&&(!other.priority||!config.priority||other.priority===config.priority)}))throw new RuleError('Ya existe una regla habilitada para esta condición, tipo y prioridad del área. Pausa o acota su alcance antes de habilitar otra.');
+    }
     const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled };
     let id = input.id;
     if (id) {
@@ -49,9 +55,11 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
   });
 }
 export async function revokeAutomation(user: CurrentUser, id: string) {
-  const changed = await prisma.operationalAutomation.updateMany({ where: { id, ownerId: user.id, revokedAt: null }, data: { revokedAt: new Date(), enabled: false, version: { increment: 1 } } });
+  return prisma.$transaction(async tx => {
+  const changed = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, revokedAt: null }, data: { revokedAt: new Date(), enabled: false, version: { increment: 1 } } });
   if (!changed.count) throw new RuleError('No puedes revocar esta política.');
-  await prisma.auditLog.create({ data: { entity: 'OperationalAutomation', entityId: id, userId: user.id, sessionId: user.sessionId, action: 'CONFIGURAR', summary: 'Política revocada. Se conserva el historial.' } });
+  await tx.auditLog.create({ data: { entity: 'OperationalAutomation', entityId: id, userId: user.id, sessionId: user.sessionId, action: 'CONFIGURAR', summary: 'Política revocada. Se conserva el historial.' } });
+  });
 }
 
 /** Every page is read through the original access-filtered board. Bound and label incomplete scans. */
@@ -85,38 +93,60 @@ export async function simulateAutomation(user: CurrentUser, id: string, now = ne
 }
 
 /** Called only by the existing operational cron. No provider, push or Actions dependency. */
-export async function runOperationalAutomations(now = new Date()) {
+export async function runOperationalAutomations(now = new Date(), deadlineAt = Date.now() + 30_000) {
   if (process.env.AROH_AUTOMATION_EXECUTION_ENABLED !== 'true') return { enabled: false, attempted: 0, failed: 0 };
   const policies = await prisma.operationalAutomation.findMany({ where: { enabled: true, revokedAt: null, expiresAt: { gt: now } }, orderBy: [{ lastEvaluatedAt: { sort:'asc',nulls:'first' } },{id:'asc'}], take: 20 });
-  let attempted = 0, failed = 0;
+  let attempted = 0, failed = 0, scanned = 0, deferred = false;
   for (const policy of policies) {
+    if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
     try {
       const actor = await automationPrincipal(policy.ownerId, policy.id);
       const simulation = await simulateAutomation(actor, policy.id, now);
       for (const effect of simulation.effects) {
+        if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
+        scanned++;
         if (!effect.eligible) throw new RuleError('No hay responsable o destinatario elegible en el área. La política se pausa para intervención.');
         const occurrence = 'occurrence' in effect ? effect.occurrence : createHash('sha256').update(canonicalJson({ kind: effect.kind, id: effect.id, revision: effect.revision, trigger: escalationSchema.parse(policy.configuration).trigger })).digest('hex');
         await prisma.$transaction(async tx => {
           await tx.$queryRaw`SELECT "id" FROM "OperationalAutomation" WHERE "id"=${policy.id} FOR UPDATE`;
           const live = await tx.operationalAutomation.findFirst({ where: { id: policy.id, version: policy.version, enabled: true, revokedAt: null, expiresAt: { gt: new Date() } } });
           if (!live) return;
+          const executor=await automationPrincipal(policy.ownerId,policy.id);
+          await assertPolicyArea(executor,policy.departmentId);
           if (await tx.operationalAutomationRun.findUnique({ where: { policyId_occurrence: { policyId: policy.id, occurrence } } })) return;
           const run = await tx.operationalAutomationRun.create({ data: { policyId: policy.id, occurrence, policyVersion: policy.version, snapshot: json(policy.configuration), status: 'RUNNING' } });
           let result: unknown;
           if (policy.kind === 'PROCEDURE') {
             const config = procedureSchema.parse(policy.configuration);
-            if (!actor.permissions.includes('task.create') || !actor.permissions.includes('task.assign')) throw new ForbiddenError();
-            await assertReceptionOperationPermission(actor, 'task.create');
+            if (!executor.permissions.includes('task.create') || !executor.permissions.includes('task.assign')) throw new ForbiddenError();
+            await assertReceptionOperationPermission(executor, 'task.create');
             if (!await sameAreaUser(config.ownerId, policy.departmentId)) throw new ForbiddenError('Responsable no elegible para el área.');
             const date = procedureOccurrences(config, now).find(o => o.key === occurrence)!;
-            const task = await createTask(actor, { title: config.title, description: config.description, assigneeId: config.ownerId, departmentId: policy.departmentId, priority: config.priority, startsAt: date.at, dueAt: new Date(date.at.getTime() + config.deadlineMinutes * 60000), fulfillmentCriteria: config.nextAction, evidenceRequired: config.evidenceRequired, checklist: config.checklist, tags: ['procedimiento'], requiresIndependentValidation: config.requiresIndependentValidation, procedureOccurrenceKey: `${policy.id}:${occurrence}` }, tx);
+            const task = await createTask(executor, { title: config.title, description: config.description, assigneeId: config.ownerId, departmentId: policy.departmentId, priority: config.priority, startsAt: date.at, dueAt: new Date(date.at.getTime() + config.deadlineMinutes * 60000), fulfillmentCriteria: config.nextAction, evidenceRequired: config.evidenceRequired, checklist: config.checklist, tags: ['procedimiento'], requiresIndependentValidation: config.requiresIndependentValidation, procedureOccurrenceKey: `${policy.id}:${occurrence}` }, tx);
             result = { taskId: task.id, href: `/tareas/${task.id}` };
           } else if ('id' in effect) {
             const config = escalationSchema.parse(policy.configuration);
             const recipient = await automationPrincipal(config.recipientId, policy.id);
+            if(!await sameAreaUser(recipient.id,policy.departmentId))throw new ForbiddenError('Destinatario fuera del área.');
+            const canEscalate=effect.kind==='housekeeping'?await hkCapability(recipient,policy.departmentId,'housekeeping.assign',tx):recipient.permissions.includes(effect.kind==='entry'?'entry.edit':effect.kind==='task'?'task.assign':'supervision.followup.manage');
+            if(!canEscalate)throw new ForbiddenError('El destinatario no conserva autoridad de coordinación para este trabajo.');
+            const revision=new Date(effect.revision);
+            const unchanged=effect.kind==='entry'?await tx.operationalEntry.count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='task'?await tx.task.count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='housekeeping'?await tx.housekeepingRequest.count({where:{id:effect.id,updatedAt:revision}}):await tx.followUp.count({where:{id:effect.id,updatedAt:revision}});
+            if(!unchanged){await tx.operationalAutomationRun.update({where:{id:run.id},data:{status:'SKIPPED',result:{reason:'El origen cambió; se reevaluará en el próximo barrido.'},completedAt:new Date()}});return;}
             const visible = effect.kind === 'entry' ? await tx.operationalEntry.count({ where: { id: effect.id, AND: [coordinationEntries(recipient)] } }) : effect.kind === 'task' ? await tx.task.count({ where: { id: effect.id, AND: [coordinationTasks(recipient)] } }) : effect.kind === 'housekeeping' ? await tx.housekeepingRequest.count({ where: { id: effect.id, AND: [await hkWorkVisibility(recipient, tx)] } }) : effect.kind === 'followup' ? await tx.followUp.count({where:{id:effect.id,AND:[coordinationFollowUps(recipient)]}}) : 0;
             if (!visible) throw new ForbiddenError('Destinatario sin acceso al origen.');
+            if(config.trigger==='UNRECEIVED'&&(effect.kind==='entry'||effect.kind==='task')){
+              const claim={id:effect.id,updatedAt:revision,workAcknowledgedAt:null,workEscalatedAt:null};
+              const changed=effect.kind==='entry'?await tx.operationalEntry.updateMany({where:claim,data:{workEscalatedAt:now}}):await tx.task.updateMany({where:claim,data:{workEscalatedAt:now}});
+              if(!changed.count){await tx.operationalAutomationRun.update({where:{id:run.id},data:{status:'SKIPPED',result:{reason:'Ya recibido o escalado por el mecanismo original.'},completedAt:new Date()}});return;}
+            }
+            if(effect.kind==='housekeeping'&&['UNRECEIVED','OVERDUE'].includes(config.trigger)){
+              const origin=await tx.housekeepingRequest.findUniqueOrThrow({where:{id:effect.id}});
+              const changed=await tx.housekeepingRequest.updateMany({where:{id:origin.id,version:origin.version,OR:[{escalatedVersion:null},{escalatedVersion:{not:origin.version}}]},data:{escalatedVersion:origin.version}});
+              if(!changed.count){await tx.operationalAutomationRun.update({where:{id:run.id},data:{status:'SKIPPED',result:{reason:'Ya escalado por Housekeeping.'},completedAt:new Date()}});return;}
+            }
             await notify({ userId: recipient.id, type: 'ACCION_REQUERIDA', title: 'Trabajo del área requiere atención', link: effect.href, entity: 'OperationalAutomation', entityId: run.id }, tx);
+            if(!await tx.notification.count({where:{userId:recipient.id,entity:'OperationalAutomation',entityId:run.id}}))throw new RuleError('No se pudo conservar el aviso interno.');
             result = { sourceId: effect.id, recipientId: recipient.id };
           }
           await tx.operationalAutomationRun.update({ where: { id: run.id }, data: { status: 'SUCCEEDED', result: json(result), completedAt: new Date() } });
@@ -135,7 +165,7 @@ export async function runOperationalAutomations(now = new Date()) {
       });
     }
   }
-  return { enabled: true, attempted, failed, limit: 20 };
+  return { enabled: true, attempted, failed, scanned, deferred, policyLimit: 20, effectLimit: 25 };
 }
 
 export async function automationSummary(user: CurrentUser, departmentId?: string) {

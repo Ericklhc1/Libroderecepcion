@@ -1,3 +1,7 @@
+## Actualización Etapa 2 · 2 de octubre de 2026
+
+PR draft #244 abierto sobre rama del #241 (no fusionado). Sin despliegues, migración production ni automatizaciones activadas. Compuerta 37007985785 detectó alias de reintento; corregido. Compuerta 37008586461: 1370 aprobadas, una omisión, dos fallos de fixture corregidos; siguiente corrida pendiente. 87 pruebas locales de dominio/contexto pasan, tipos/lint pasan (dos avisos previos). Copilot entregó revisión 5391944473 con siete puntos: corregidos contratos administrativos/revisión atómica, permisos por efecto, plazo/límite de cron, auditoría revocación y evidencia; recorridos representativos ampliados pero cobertura completa pendiente. Estado vigente en docs/etapa2/EVIDENCIA.json e IMPLEMENTACION.md; las entradas históricas de bloqueo de subida de abajo quedan superadas por autorización «Permitir siempre». No afirmar etapa completa ni publicar.
+
 ## 02/10/2026 · v1.47.0 · Etapa 2 local, pendiente de integración y subida
 
 - Rama local `feat/etapa-2-fronti-automatizacion` sobre árbol exacto de PR #241 (`50fb561e`, sigue abierto). No merge, deploy, migración/operación en producción ni nuevas reglas activadas.

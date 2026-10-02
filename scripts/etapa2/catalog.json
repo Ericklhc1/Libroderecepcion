@@ -744,7 +744,10 @@
     "fields": [
       "roleId",
       "permissions",
-      "approvalRequired"
+      "approvalRequired",
+      "permissionsBefore",
+      "approvalRequiredBefore",
+      "replacementAcknowledged"
     ],
     "permission": "role.manage",
     "risk": "high",

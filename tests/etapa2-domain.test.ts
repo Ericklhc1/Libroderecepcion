@@ -25,6 +25,11 @@ describe('Etapa 2: contrato de autorización y recurrencias', () => {
       expect(()=>validateStep({action:action.name,fields:{sql:'select 1'}})).toThrow();
     }
   });
+  it('rechaza edición parcial de usuarios y sustitución implícita de permisos', () => {
+    expect(()=>validateStep({action:'updateUserAction',fields:{id:'u',name:'Nuevo nombre'}})).toThrow('estado completo');
+    expect(()=>validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create']}})).toThrow();
+    expect(validateStep({action:'updateRolePermissionsAction',fields:{roleId:'r',permissions:['task.create'],approvalRequired:[],permissionsBefore:[],approvalRequiredBefore:[],replacementAcknowledged:'REEMPLAZAR_MATRIZ_COMPLETA'}}).action).toBe('updateRolePermissionsAction');
+  });
   it('deriva progreso de los pasos y no de un estado agregado obsoleto', () => {
     expect(executionStatus({cancelledAt:null,authorizedAt:new Date(),steps:[{status:'SUCCEEDED'},{status:'RUNNING'}]})).toBe('RUNNING');
     expect(executionStatus({cancelledAt:null,authorizedAt:new Date(),steps:[{status:'SUCCEEDED'},{status:'CHANGED'}]})).toBe('INTERVENTION');

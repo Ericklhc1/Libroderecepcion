@@ -23,7 +23,7 @@ Inventario reproducible: `python scripts/etapa2/matrix.py`. Incluye las acciones
 | `resetUserPasswordAction` | `src/server/actions/admin.ts` | user.manage | Ver esquema/formulario nativo; adaptador pendiente | Pendiente de adaptador (no disponible por el catálogo nuevo) |
 | `deleteUserAction` | `src/server/actions/admin.ts` | user.manage | Ver esquema/formulario nativo; adaptador pendiente | Pendiente de adaptador (no disponible por el catálogo nuevo) |
 | `restoreUserAction` | `src/server/actions/admin.ts` | user.manage | Ver esquema/formulario nativo; adaptador pendiente | Pendiente de adaptador (no disponible por el catálogo nuevo) |
-| `updateRolePermissionsAction` | `src/server/actions/admin.ts` | role.manage | roleId, permissions, approvalRequired | Conectado; acreditación individual pendiente |
+| `updateRolePermissionsAction` | `src/server/actions/admin.ts` | role.manage | roleId, permissions, approvalRequired, permissionsBefore, approvalRequiredBefore, replacementAcknowledged | Conectado; acreditación individual pendiente |
 | `saveDepartmentAction` | `src/server/actions/admin.ts` | system.configure | id, key, name, order, active | Conectado; acreditación individual pendiente |
 | `saveSettingAction` | `src/server/actions/admin.ts` | system.configure | key, value | Conectado; acreditación individual pendiente |
 | `runMaintenanceAction` | `src/server/actions/admin.ts` | system.configure | Ver esquema/formulario nativo; adaptador pendiente | Pendiente de adaptador (no disponible por el catálogo nuevo) |

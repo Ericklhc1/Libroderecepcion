@@ -23,6 +23,15 @@ export async function prepareExecution(input: unknown) {
   const user = await executionActor();
   const plan = frontiPlanSchema.parse(input);
   const steps = plan.steps.map(validateStep);
+  for (const step of steps) {
+    if(step.action==='updateRolePermissionsAction') {
+      if(!user.permissions.includes('role.manage'))throw new ForbiddenError();
+      const before=await prisma.rolePermission.findMany({where:{roleId:String(step.fields.roleId)},include:{permission:true}});
+      const keys=before.map(p=>p.permission.key).sort(), approvals=before.filter(p=>p.requiresApproval).map(p=>p.permission.key).sort();
+      if(canonicalJson(keys)!==canonicalJson([...(step.fields.permissionsBefore as string[])].sort())||canonicalJson(approvals)!==canonicalJson([...(step.fields.approvalRequiredBefore as string[])].sort()))throw new RuleError('La matriz previa no coincide con el rol. Consulta su estado y presenta antes y después completos.');
+    }
+    if(step.action==='updateUserAction'&&!user.permissions.includes('user.manage'))throw new ForbiddenError();
+  }
   const fingerprint = digest({ instruction: plan.instruction, steps });
   const revisions = await Promise.all(steps.map(revisionForStep));
   return prisma.$transaction(async tx => {
@@ -114,7 +123,7 @@ export async function executePlan(id: string, authorize: boolean) {
         await prisma.frontiExecutionStep.update({ where: { id: step.id }, data: { status: 'CHANGED', result: { ok: false, message: 'El registro cambió después de preparar la acción. Revisa el nuevo estado y autoriza una propuesta actualizada.' }, completedAt: new Date() } });
         break;
       }
-      const result = await invokeNativeAction(command);
+      const result = await invokeNativeAction(command, step.revision);
       // Native actions may commit before a post-commit error. Conservatively stop on every failure.
       const status = result.ok ? 'SUCCEEDED' : 'INTERVENTION';
       const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null } : { ok: false, message: result.error };

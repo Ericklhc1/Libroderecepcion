@@ -1,3 +1,11 @@
+## 03/10/2026 · v1.51.0 · Secciones desplegables del sistema
+
+PR #255 sobre Production 1.50.1. Introduce el patrón común `DisclosureCard` con `details/summary` nativo, sin estado global ni overlays, para reducir scrolling vertical. Administración queda agrupada en Personas/roles/estructura, Sistema/Fronti/comunicaciones y Control/trazabilidad/soporte; también se aplica a sus páginas internas y a pantallas extensas de Gerencia, Supervisión, Salud operativa, Equipo y horarios, Coordinación, Indicadores, Automatizaciones y Procedimientos de Fronti. Housekeeping conserva su patrón plegable previo.
+
+El comportamiento mantiene permisos y lógica operativa. Bloques principales pueden abrir por defecto; los secundarios permanecen cerrados. Atajos de Supervisión conservan navegación y abren la sección solicitada; el filtro de delegaciones de Fronti abre su lista; Diagnóstico conserva conteos visibles; impresión fuerza a mostrar el contenido de todos los bloques plegables. Chevron con transición breve y `prefers-reduced-motion` respetado. Sin migraciones ni cambios de datos.
+
+Validación del PR: prueba estructural `tests/collapsible-sections.test.ts`; Chromium autenticado 1280/390 en Administración, Fronti, Indicadores, Salud operativa y Automatizaciones, además de la suite E2E existente. Codex revisó el bloque y sus hallazgos de impresión, navegación dirigida, delegaciones, conteos y relevo fueron atendidos. Integrar sólo con la Compuerta final verde y comprobar Vercel Production/versión 1.51.0. Safari/iPhone físico sigue pendiente explícito.
+
 ## 03/10/2026 · Etapa 3 bloque 2 · parche 1.50.1
 
 Production vigente al retomar: 1.50.0 / 4e5eaf8b06aae6930399b4087f9ae7f2b1542c95, Vercel READY. Esa versión fue fusionada tras Compuerta verde, pero la revisión Codex posterior detectó seis hallazgos relevantes en Coordinación. No considerar el bloque 2 cerrado hasta publicar 1.50.1.

@@ -19,7 +19,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
-import { Card, CardHeader, StatTile } from '@/components/ui/card';
+import { DisclosureCard, StatTile } from '@/components/ui/card';
 import { RunMaintenanceForm } from './admin-forms';
 import {
   hasTechnicalAdminAccess,
@@ -122,6 +122,27 @@ const SECTIONS: Array<{
   },
 ];
 
+const ADMIN_GROUPS = [
+  {
+    id: 'personas',
+    title: 'Personas, roles y estructura',
+    description: 'Usuarios, permisos y áreas del hotel.',
+    hrefs: ['/admin/usuarios', '/admin/roles', '/admin/areas'],
+  },
+  {
+    id: 'sistema',
+    title: 'Sistema, Fronti y comunicaciones',
+    description: 'Configuración, IA, diagnóstico y correo.',
+    hrefs: ['/admin/fronti', '/admin/parametros', '/admin/diagnostico', '/admin/correo'],
+  },
+  {
+    id: 'control',
+    title: 'Control, trazabilidad y soporte',
+    description: 'Turnos, auditoría, soporte, eliminados y puesta en cero.',
+    hrefs: ['/admin/soporte', '/admin/turnos', '/admin/auditoria', '/admin/eliminados', '/admin/puesta-en-cero'],
+  },
+] as const;
+
 export default async function AdminPage() {
   const user = await requirePageUser();
   if (!hasTechnicalAdminAccess(user.permissions)) {
@@ -152,13 +173,6 @@ export default async function AdminPage() {
         </p>
       </header>
 
-      {user.isSystemAdmin && (
-        <Link href="/admin/housekeeping" className="card block border-amber-200 px-4 py-4 hover:bg-amber-50">
-          <span className="block font-medium text-petrol-900">Housekeeping</span>
-          <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Acceso habilitable desde Roles y permisos.</span>
-        </Link>
-      )}
-
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Usuarios" value={users} />
         <StatTile label="Sesiones activas" value={activeSessions} />
@@ -166,31 +180,60 @@ export default async function AdminPage() {
         <StatTile label="Eventos de auditoría" value={auditCount} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {allowed.map((section) => {
-          const Icon = section.icon;
-          return (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="card flex items-start gap-3 px-4 py-4 transition-colors hover:bg-slate-50"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
-                <Icon className="h-4.5 w-4.5" aria-hidden="true" />
-              </span>
-              <span>
-                <span className="block font-medium text-petrol-900">{section.title}</span>
-                <span className="block text-sm text-slate-600">{section.description}</span>
-              </span>
+      {user.isSystemAdmin ? (
+        <DisclosureCard
+          title="Operación especializada"
+          description="Módulos administrativos que no necesitan permanecer abiertos mientras configuras el sistema."
+        >
+          <div className="p-4">
+            <Link href="/admin/housekeeping" className="block rounded-lg border border-amber-200 px-4 py-4 hover:bg-amber-50">
+              <span className="block font-medium text-petrol-900">Housekeeping</span>
+              <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Acceso habilitable desde Roles y permisos.</span>
             </Link>
-          );
-        })}
-      </div>
+          </div>
+        </DisclosureCard>
+      ) : null}
+
+      {ADMIN_GROUPS.map((group) => {
+        const sections = allowed.filter((section) => group.hrefs.includes(section.href as never));
+        if (sections.length === 0) return null;
+        return (
+          <DisclosureCard
+            key={group.id}
+            title={group.title}
+            description={group.description}
+            count={sections.length}
+          >
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
+              {sections.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <Link
+                    key={section.href}
+                    href={section.href}
+                    className="flex items-start gap-3 rounded-lg border border-slate-200 px-4 py-4 transition-colors hover:bg-slate-50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
+                      <Icon className="h-4.5 w-4.5" aria-hidden="true" />
+                    </span>
+                    <span>
+                      <span className="block font-medium text-petrol-900">{section.title}</span>
+                      <span className="block text-sm text-slate-600">{section.description}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </DisclosureCard>
+        );
+      })}
 
       {user.permissions.includes('system.configure') ? (
-        <Card>
-          <CardHeader title="Mantenimiento" />
-          <div className="space-y-3 px-4 py-4">
+        <DisclosureCard
+          title="Mantenimiento"
+          description="Acciones técnicas que normalmente no necesitas tener abiertas."
+        >
+          <div className="space-y-3 p-4">
             <p className="flex items-start gap-2 text-sm text-slate-600">
               <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               Recalcula las alertas automáticas y los estados derivados (seguimientos vencidos,
@@ -199,7 +242,7 @@ export default async function AdminPage() {
             </p>
             <RunMaintenanceForm />
           </div>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {/*

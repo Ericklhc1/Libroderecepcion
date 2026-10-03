@@ -310,13 +310,13 @@ export default async function LiveCashPage({
       </ListFilterBar>
 
       {state.currencies.length === 0 ? (
-        <Card>
+        <Card collapsible>
           <EmptyState message="No hay fondo fijo ni movimientos de Caja registrados todavía." />
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {state.currencies.map((item) => (
-            <Card key={item.currency}>
+            <Card collapsible key={item.currency}>
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -390,7 +390,7 @@ export default async function LiveCashPage({
 
       <div className="grid gap-4 xl:grid-cols-2">
         {show('garantias') ? (
-          <Card>
+          <Card collapsible>
             <CardHeader
               title="Garantías en efectivo bajo custodia"
               count={visibleGuarantees.length}
@@ -475,7 +475,7 @@ export default async function LiveCashPage({
         ) : null}
 
         {show('auditorias') ? (
-          <Card>
+          <Card collapsible>
             <CardHeader
               title="Arqueos del período"
               count={state.auditTotal}
@@ -533,7 +533,7 @@ export default async function LiveCashPage({
       </div>
 
       {show('gimnasio') ? (
-        <Card>
+        <Card collapsible>
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div>
               <h2 className="font-semibold text-petrol-900">Folios de gimnasio</h2>
@@ -621,7 +621,7 @@ export default async function LiveCashPage({
       ) : null}
 
       {show('estacionamiento') ? (
-        <Card>
+        <Card collapsible>
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div>
               <h2 className="font-semibold text-petrol-900">Tickets de estacionamiento</h2>
@@ -705,7 +705,7 @@ export default async function LiveCashPage({
       ) : null}
 
       {show('movimientos') ? (
-        <Card>
+        <Card collapsible>
           <CardHeader
             title="Movimientos del período"
             count={state.movementTotal}

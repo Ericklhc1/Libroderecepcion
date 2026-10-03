@@ -50,7 +50,7 @@ export default async function ProfilePage() {
         </h1>
       </header>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Datos de la cuenta" />
         <dl className="grid gap-x-6 gap-y-3 px-4 py-4 text-sm sm:grid-cols-2">
           <div>
@@ -112,7 +112,7 @@ export default async function ProfilePage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Avisos por correo" />
         <ActionForm action={updateMyEmailPreferencesAction} className="space-y-3 px-4 py-4">
           <Field
@@ -144,7 +144,7 @@ export default async function ProfilePage() {
       </Card>
 
       {record.role.operational ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Perfil de chat" />
           <div className="flex items-center gap-4 px-4 py-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-petrol-50 text-3xl">
@@ -165,7 +165,7 @@ export default async function ProfilePage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Ayuda" />
         <div className="space-y-2 px-4 py-4">
           <p className="text-sm text-slate-600">
@@ -176,7 +176,7 @@ export default async function ProfilePage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Permisos de mi rol" count={user.permissions.length} />
         <div className="space-y-3 px-4 py-4">
           {Array.from(groups.entries()).map(([group, names]) => (
@@ -195,7 +195,7 @@ export default async function ProfilePage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Sesiones activas" count={sessions.length} />
         <ul className="divide-y divide-slate-100">
           {sessions.map((session) => (

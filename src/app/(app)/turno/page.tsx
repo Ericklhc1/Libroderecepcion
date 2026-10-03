@@ -316,7 +316,7 @@ export default async function ShiftPage({
       ) : null}
 
       {pendingClosure && pendingClosure.id !== shift?.id ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Turno anterior pendiente de cierre" />
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
             <div>
@@ -370,7 +370,7 @@ export default async function ShiftPage({
       ) : null}
 
       {!shift ? (
-        <Card id="abrir-turno">
+        <Card collapsible id="abrir-turno">
           <CardHeader title="Entrar al turno" />
           <div className="space-y-3 px-4 py-4">
             {!user.roleOperational ? (
@@ -482,7 +482,7 @@ export default async function ShiftPage({
         </Card>
       ) : (
         <>
-          <Card>
+          <Card collapsible>
             <div className="px-4 py-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -704,7 +704,7 @@ export default async function ShiftPage({
           {visibleBriefing ? (
             <div className="grid gap-4 lg:grid-cols-2">
               {showSection('pendientes') ? (
-                <Card>
+                <Card collapsible>
                   <CardHeader
                     title="Pendientes operativos vigentes"
                     count={visibleBriefing.openEntries.length}
@@ -747,7 +747,7 @@ export default async function ShiftPage({
               ) : null}
 
               {showSection('tareas') ? (
-                <Card>
+                <Card collapsible>
                   <CardHeader
                     title="Tareas vencidas"
                     count={visibleBriefing.overdueTasks.length}
@@ -784,7 +784,7 @@ export default async function ShiftPage({
               ) : null}
 
               {showSection('alertas') ? (
-                <Card>
+                <Card collapsible>
                   <CardHeader
                     title="Alertas activas"
                     count={visibleBriefing.alerts.length}
@@ -810,7 +810,7 @@ export default async function ShiftPage({
               ) : null}
 
               {showSection('seguimientos') ? (
-                <Card>
+                <Card collapsible>
                   <CardHeader
                     title="Seguimientos"
                     count={visibleBriefing.followUps.length}
@@ -844,7 +844,7 @@ export default async function ShiftPage({
         </>
       )}
 
-      {showSection('historial') ? <Card>
+      {showSection('historial') ? <Card collapsible>
         <CardHeader title="Mis turnos recientes" count={visibleRecentShifts.length} />
         {visibleRecentShifts.length === 0 ? (
           <EmptyState message="Aún no tienes turnos registrados." />

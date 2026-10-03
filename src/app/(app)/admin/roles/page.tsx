@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { CardScroll, DisclosureCard } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { Chip } from '@/components/ui/badge';
@@ -93,26 +93,20 @@ export default async function RolesPage({
       </ListFilterBar>
 
       {visibleRoles.map((role) => (
-        <Card key={role.id} className="overflow-hidden">
-          <CardHeader
-            title={role.name}
-            count={role.permissions.length}
-            action={
-              <span className="flex items-center gap-1.5">
-                <Chip>{role._count.users} usuario(s)</Chip>
-                {role.operational ? (
-                  <Chip>Operativo</Chip>
-                ) : (
-                  <Chip>Fuera de la operación</Chip>
-                )}
-              </span>
-            }
-          />
+        <DisclosureCard
+          key={role.id}
+          title={role.name}
+          count={role.permissions.length}
+          description={role.description ?? undefined}
+          action={
+            <span className="flex items-center gap-1.5">
+              <Chip>{role._count.users} usuario(s)</Chip>
+              {role.operational ? <Chip>Operativo</Chip> : <Chip>Fuera de la operación</Chip>}
+            </span>
+          }
+        >
           <CardScroll maxHeight="max-h-[36rem]">
             <div className="px-4 py-4">
-            {role.description ? (
-              <p className="mb-4 text-sm text-slate-600">{role.description}</p>
-            ) : null}
             <RolePermissionsForm
               roleId={role.id}
               roleName={role.name}
@@ -125,7 +119,7 @@ export default async function RolesPage({
             />
             </div>
           </CardScroll>
-        </Card>
+        </DisclosureCard>
       ))}
     </div>
   );

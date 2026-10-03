@@ -188,7 +188,7 @@ export default async function AdminPage() {
       </div>
 
       {user.permissions.includes('system.configure') ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Mantenimiento" />
           <div className="space-y-3 px-4 py-4">
             <p className="flex items-start gap-2 text-sm text-slate-600">

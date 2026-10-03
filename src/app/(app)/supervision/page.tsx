@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowUpRight, ClipboardCheck, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';

@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getAllSettings } from '@/server/services/settings';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { CardScroll, DisclosureCard } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { Chip } from '@/components/ui/badge';
@@ -118,8 +118,7 @@ export default async function SettingsPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Caja" />
+      <DisclosureCard title="Caja" description="Fondo, transferencias y reglas operativas de Caja." defaultOpen>
         <div className="px-4 py-4">
           <CashConfigForm
             clpMinimum={clpMinimum}
@@ -142,11 +141,10 @@ export default async function SettingsPage({
             }))}
           />
         </div>
-      </Card>
+      </DisclosureCard>
 
       {visibleByCategory.map(([category, list]) => (
-        <Card key={category}>
-          <CardHeader title={category} count={list.length} />
+        <DisclosureCard key={category} title={category} count={list.length}>
           <CardScroll>
             <ul className="divide-y divide-slate-100">
             {list.map((setting) => (
@@ -173,7 +171,7 @@ export default async function SettingsPage({
             ))}
             </ul>
           </CardScroll>
-        </Card>
+        </DisclosureCard>
       ))}
     </div>
   );

@@ -43,6 +43,23 @@ try{
     assert.equal(await access.evaluate(el=>el.open),true);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Fronti no debe generar overflow horizontal');
 
+    await page.goto('http://localhost:3000/indicadores');
+    await page.getByRole('heading',{name:'Indicadores',exact:true}).waitFor();
+    assert.ok(await page.locator('[data-disclosure-summary]').count()>=4,'Indicadores debe agrupar sus bloques principales');
+    assert.equal(await page.locator('details').filter({hasText:'Tareas'}).first().evaluate(el=>el.open),true);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Indicadores no debe generar overflow horizontal');
+
+    await page.goto('http://localhost:3000/supervision/salud');
+    await page.getByRole('heading',{name:'Salud operativa',exact:true}).waitFor();
+    assert.ok(await page.locator('[data-disclosure-summary]').count()>=7,'Salud operativa debe plegar sus bloques');
+    assert.equal(await page.locator('details').filter({hasText:'Turnos y cierre'}).first().evaluate(el=>el.open),true);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Salud operativa no debe generar overflow horizontal');
+
+    await page.goto('http://localhost:3000/coordinacion/automatizaciones');
+    await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();
+    assert.ok(await page.locator('[data-disclosure-summary]').filter({hasText:'Tus últimas 50 políticas'}).count()===1,'Automatizaciones debe plegar el historial');
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Automatizaciones no debe generar overflow horizontal');
+
     results.push({width,adminGroups:await summaries.count(),status:'passed',physicalSafari:false});
     await context.close();
   }

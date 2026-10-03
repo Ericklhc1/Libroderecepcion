@@ -13,7 +13,7 @@ Base comprobada: Production 1.50.0 / 4e5eaf8b06aae6930399b4087f9ae7f2b1542c95. E
 | ID | Prioridad / impacto | Requisito pendiente | Motivo / criterio de cierre |
 |---|---|---|---|
 | E3-01 | Cerrado | Bloque 1 publicado | Production 1.48.0 / `91cf6df`; Compuerta y Chromium 1280/390 aprobados. |
-| E3-02 | Alta · coordinación | Publicar parche 1.50.1 del cierre de bloque 2 | Corrige aclaraciones heredadas de 1.49, preserva impedimentos, usa origen inmutable de Recepción, incluye `ENTREGA_ENVIADA`, alinea métricas y contexto Fronti con la vista visible. |
+| E3-02 | Alta · coordinación | Publicar parche 1.50.1 del cierre de bloque 2 | Compatibilidad 1.49 sin reescritura histórica; preserva impedimentos, añade Retomar al responsable, usa origen inmutable de Recepción, incluye `ENTREGA_ENVIADA`, alinea métricas y contexto Fronti con la vista visible. |
 | E3-03 | Cerrado · custodia | Registro de objetos olvidados publicado | Production 1.49.0 / `1c619cb`: folio global, historial, permisos, concurrencia, responsable, evidencia de cierre y Fronti nativo. |
 | E3-04 | Alta · decisiones | Completar vistas de supervisión y gerencia, carga por persona/área, períodos/cálculos y vínculos a fuentes | Bloque 3. Reutilizar indicadores de Etapa 2, distinguir datos medidos/estimados. |
 | E3-05 | Alta · Fronti | Cobertura natural restante y recorridos completos nuevos/modificados | Bloque 3; el bloque 1 sólo acredita sus frases/procedimientos comprobados. Permisos actuales y segunda persona para inspección se conservan. |

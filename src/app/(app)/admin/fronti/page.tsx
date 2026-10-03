@@ -20,7 +20,7 @@ import {
   providerIsConfigured,
   resolveFrontiProviderRuntime,
 } from '@/server/ai/fronti-provider';
-import { Card, CardHeader, CardScroll, StatTile } from '@/components/ui/card';
+import { CardScroll, DisclosureCard, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ROLE_KEYS } from '@/lib/permissions';
@@ -270,8 +270,7 @@ export default async function FrontiAdminPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Diagnóstico" />
+      <DisclosureCard title="Diagnóstico" description="Proveedor, modelo, memoria y zona horaria." defaultOpen>
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
             <p className="text-xs text-slate-500">Proveedor de IA</p>
@@ -301,10 +300,9 @@ export default async function FrontiAdminPage({
             <p className="mt-1 text-sm font-semibold text-petrol-900">{env().HOTEL_TIMEZONE}</p>
           </div>
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Acceso por usuario" count={userAccess.length} />
+      <DisclosureCard title="Acceso por usuario" description="Habilitación gradual de Fronti por cuenta." count={userAccess.length}>
         <div className="border-b border-slate-100 px-4 py-3">
           <p className="text-sm text-slate-600">
             Fronti se habilita de forma gradual por cuenta. El Administrador de sistema permanece
@@ -312,10 +310,9 @@ export default async function FrontiAdminPage({
           </p>
         </div>
         <FrontiUserAccessList users={userAccess} />
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Credenciales de proveedores" />
+      <DisclosureCard title="Credenciales de proveedores" description="Claves cifradas y prioridad sobre variables de entorno.">
         <div className="border-b border-slate-100 px-4 py-3">
           <p className="text-sm text-slate-600">
             Puedes administrar las credenciales sin volver a desplegar. Una credencial guardada aquí
@@ -324,10 +321,9 @@ export default async function FrontiAdminPage({
           </p>
         </div>
         <FrontiProviderCredentials credentials={credentials} />
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Seguridad obligatoria" />
+      <DisclosureCard title="Seguridad obligatoria" description="Controles que Fronti no puede omitir.">
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-3">
           {[
             ['Permisos del usuario', 'Fronti nunca obtiene más permisos que la cuenta que lo usa.'],
@@ -346,21 +342,13 @@ export default async function FrontiAdminPage({
         <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
           Estos controles no tienen interruptor: forman parte del contrato de seguridad del Libro.
         </p>
-      </Card>
+      </DisclosureCard>
 
       {visibleGroups.map(({ group, rows }) => {
         const Icon = group.icon;
         return (
-          <Card key={group.id} className="overflow-hidden">
-            <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
-                <Icon className="h-4 w-4" aria-hidden="true" />
-              </span>
-              <div>
-                <h2 className="font-semibold text-petrol-900">{group.title}</h2>
-                <p className="text-xs leading-5 text-slate-600">{group.description}</p>
-              </div>
-            </div>
+          <DisclosureCard key={group.id} title={group.title} description={group.description} defaultOpen={Boolean(grupo || q)}>
+
             <CardScroll maxHeight="max-h-[28rem]">
               <div className="divide-y divide-slate-100">
                 {rows.map((setting) => (
@@ -368,12 +356,11 @@ export default async function FrontiAdminPage({
                 ))}
               </div>
             </CardScroll>
-          </Card>
+          </DisclosureCard>
         );
       })}
 
-      <Card>
-        <CardHeader title="Mantenimiento de Fronti" />
+      <DisclosureCard title="Mantenimiento de Fronti" description="Limpieza y restablecimiento de datos propios del asistente.">
         <div className="space-y-3 px-4 py-4">
           <p className="flex items-start gap-2 text-sm text-slate-600">
             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
@@ -381,7 +368,7 @@ export default async function FrontiAdminPage({
           </p>
           <FrontiMaintenanceActions />
         </div>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

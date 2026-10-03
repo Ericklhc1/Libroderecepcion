@@ -357,7 +357,7 @@ export default async function SupervisionCenterPage({
           Tus tareas y seguimientos no se reinician con el turno: esta franja sólo resume qué cambió mientras no estabas ejerciendo Supervisión.
         </p>
       </Card>
-      </section>
+      </DisclosureCard>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatTile label="Alertas críticas" value={critical} tone={critical ? 'alert' : 'good'} />
@@ -396,7 +396,7 @@ export default async function SupervisionCenterPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section id="pendientes" className="scroll-mt-4">
+        <DisclosureCard id="pendientes" title="Asignado a mí" count={tasks.length}>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
 
           {tasks.length === 0 ? <EmptyState message="No tienes tareas asignadas con estos filtros." /> : (
@@ -442,7 +442,7 @@ export default async function SupervisionCenterPage({
             </CardScroll>
           )}
         </Card>
-        </section>
+        </DisclosureCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

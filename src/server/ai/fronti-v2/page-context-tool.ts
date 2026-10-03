@@ -1,7 +1,7 @@
 import 'server-only';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
-import { getCoordinationBoard, coordinationMetrics } from '@/server/services/coordination';
+import { getCoordinationBoard, coordinationMetrics, type CoordinationView } from '@/server/services/coordination';
 import { getHkWorkday } from '@/server/services/housekeeping-work';
 import { listLostFound } from '@/server/services/lost-found';
 import { HK_WORK_LABELS, isHkFocused } from '@/domain/housekeeping-work';
@@ -715,7 +715,9 @@ export async function executeFrontiPageContextTool(
       return {...base,snapshot:{scope:'Políticas propias',complete:rows.length<=50,rows:rows.slice(0,50),note:'Simula antes de habilitar. Los horarios no acreditan presencia.'}};
     }
     case 'coordinacion': {
-      const board=await getCoordinationBoard(user,{departmentId:page.filters.area,mine:page.filters.mios==='1',history:page.filters.historial==='1',page:Number(page.filters.pagina)||1});
+      const coordinationViews:CoordinationView[]=['all','reception','unassigned','unreceived','blocked','clarification','carryover'];
+      const view=coordinationViews.includes(page.filters.vista as CoordinationView)?page.filters.vista as CoordinationView:'all';
+      const board=await getCoordinationBoard(user,{departmentId:page.filters.area,mine:page.filters.mios==='1',history:page.filters.historial==='1',page:Number(page.filters.pagina)||1,view});
       return {...base,snapshot:{...board,metrics:coordinationMetrics(board.rows),metricsScope:'página visible',note:'Lectura del mismo alcance que Coordinación. Recibir no resuelve ni acredita asistencia.'}};
     }
     case 'inicio':

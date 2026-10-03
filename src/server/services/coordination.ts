@@ -31,10 +31,23 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const area = input.departmentId ? { departmentId: input.departmentId } : {};
   const hkScope = canAccessHousekeeping(user) ? await hkWorkVisibility(user) : { id: { in: [] as string[] } };
   const view=input.view??'all';
-  const receptionRoles=['RECEPCIONISTA','AUDITOR_NOCTURNO'] as const;
-  const entryView:Prisma.OperationalEntryWhereInput = view==='reception'?{createdBy:{role:{key:{in:[...receptionRoles]}}}}:view==='unassigned'?{ownerId:null}:view==='unreceived'?{ownerId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'EN_ESPERA'}:view==='clarification'?{status:'EN_ESPERA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:['CERRADO','ANULADO','RECIBIDO']}}}:{};
-  const taskView:Prisma.TaskWhereInput = view==='reception'?{createdBy:{role:{key:{in:[...receptionRoles]}}}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:['CERRADO','ANULADO','RECIBIDO']}}}:{};
-  const hkView:Prisma.HousekeepingRequestWhereInput = view==='reception'?{createdBy:{role:{key:{in:[...receptionRoles]}}}}:view==='unassigned'?{assignedToId:null}:view==='unreceived'?{assignedToId:{not:null},acknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADO'}:view==='clarification'?{id:{in:[]}}:view==='carryover'?{workDate:{lt:hotelDateKey(new Date())}}:{};
+  const receptionHkIds=view==='reception'?(await prisma.$queryRaw<Array<{id:string}>>`
+    SELECT DISTINCT h."id"
+    FROM "HousekeepingRequest" h
+    LEFT JOIN "OperationalEntry" source ON source."id"=h."sourceEntryId"
+    LEFT JOIN "ShiftAssignment" assignment ON assignment."userId"=h."createdById"
+    LEFT JOIN "Shift" shift ON shift."id"=assignment."shiftId"
+    WHERE source."shiftId" IS NOT NULL
+       OR (
+         assignment."activatedAt" IS NOT NULL
+         AND h."createdAt" >= assignment."activatedAt"
+         AND h."createdAt" <= COALESCE(assignment."leftAt", shift."actualEnd", 'infinity'::timestamp)
+       )
+  `).map(row=>row.id):[];
+  const carryoverShiftStatuses=['CERRADO','ANULADO','RECIBIDO','ENTREGA_ENVIADA'] as const;
+  const entryView:Prisma.OperationalEntryWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{ownerId:null}:view==='unreceived'?{ownerId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'EN_ESPERA'}:view==='clarification'?{status:'EN_ESPERA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
+  const taskView:Prisma.TaskWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
+  const hkView:Prisma.HousekeepingRequestWhereInput = view==='reception'?{id:{in:receptionHkIds}}:view==='unassigned'?{assignedToId:null}:view==='unreceived'?{assignedToId:{not:null},acknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADO'}:view==='clarification'?{id:{in:[]}}:view==='carryover'?{workDate:{lt:hotelDateKey(new Date())}}:{};
   // Linked records are grouped under their source. Hidden source work is never inferred from counts.
   const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView], ...area,
     ...(input.history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
@@ -64,7 +77,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const loads=new Map<string,{departmentId:string;name:string;total:number;blocked:number}>();
   for(const group of [...entryGroups,...taskGroups,...hkGroups]){
     const id=group.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
-    load.total+=group._count._all;if(['BLOQUEADO','BLOQUEADA'].includes(group.status))load.blocked+=group._count._all;loads.set(id,load);
+    load.total+=group._count._all;if(['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(group.status))load.blocked+=group._count._all;loads.set(id,load);
   }
   const followOwners=followGroups.length?await prisma.user.findMany({where:{id:{in:followGroups.map(g=>g.ownerId)}},select:{id:true,departmentId:true}}):[];
   for(const group of followGroups){const id=followOwners.find(u=>u.id===group.ownerId)?.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};load.total+=group._count._all;loads.set(id,load);}
@@ -117,6 +130,7 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       const person=await tx.user.findFirst({where:{id:nextOwner,active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true},OR:[{departmentId:current.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:current.departmentId,active:true}}}}]},select:{id:true}});
       if(!person)throw new RuleError('El responsable debe ser un usuario operativo activo del área.');
     }
+    if(input.action==='ACLARACION'&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA')))throw new RuleError('Este trabajo ya tiene un impedimento o espera activa. Resuélvelo antes de solicitar otra aclaración.');
     if(input.action==='RESPONDER_ACLARACION'&&!((entry&&entry.status==='EN_ESPERA'&&entry.workNextAction?.startsWith('Aclaración requerida:'))||(task&&task.status==='BLOQUEADA'&&task.workNextAction?.startsWith('Aclaración requerida:'))))throw new RuleError('No hay una aclaración pendiente en este trabajo.');
     const now=new Date();
     const clarificationQuestion=input.action==='ACLARACION'?`Aclaración requerida: ${input.nextAction.trim()}`:null;
@@ -125,9 +139,9 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       ...(input.action==='ASIGNAR'?{workAssignedAt:now,workAcknowledgedAt:null,workAcknowledgedById:null,workStartedAt:null,workEscalatedAt:null}:{}),
       ...(input.action==='RECIBIR'?{workAcknowledgedAt:current.workAcknowledgedAt??now,workAcknowledgedById:user.id}:{}),
     };
-    if(entry)await tx.operationalEntry.update({where:{id:entry.id},data:{...data,...(input.action==='ASIGNAR'?{ownerId:nextOwner}: {}),...(input.action==='ACLARACION'?{status:'EN_ESPERA'}:{}),...(input.action==='RESPONDER_ACLARACION'?{status:entry.workAcknowledgedAt?'EN_CURSO':'ABIERTO'}:{})}});
+    if(entry)await tx.operationalEntry.update({where:{id:entry.id},data:{...data,...(input.action==='ASIGNAR'?{ownerId:nextOwner}: {}),...(input.action==='ACLARACION'?{status:'EN_ESPERA'}:{}),...(input.action==='RESPONDER_ACLARACION'?{status:'EN_ESPERA'}:{})}});
     else{
-      await tx.task.update({where:{id:task!.id},data:{...data,...(input.action==='ASIGNAR'?{assigneeId:nextOwner}: {}),...(input.action==='RECIBIR'&&task!.status==='PENDIENTE'?{status:'ACEPTADA'}:{}),...(input.action==='ACLARACION'?{status:'BLOQUEADA',blockedReason:clarificationQuestion}: {}),...(input.action==='RESPONDER_ACLARACION'?{status:task!.workStartedAt?'EN_CURSO':task!.workAcknowledgedAt?'ACEPTADA':'PENDIENTE',blockedReason:null}: {})}});
+      await tx.task.update({where:{id:task!.id},data:{...data,...(input.action==='ASIGNAR'?{assigneeId:nextOwner}: {}),...(input.action==='RECIBIR'&&task!.status==='PENDIENTE'?{status:'ACEPTADA'}:{}),...(input.action==='ACLARACION'?{status:'BLOQUEADA',blockedReason:clarificationQuestion}: {}),...(input.action==='RESPONDER_ACLARACION'?{status:'BLOQUEADA',blockedReason:clarificationAnswer}: {})}});
       if(input.action==='ASIGNAR'){
         await tx.taskAssignment.updateMany({where:{taskId:input.id,role:'PRINCIPAL',removedAt:null},data:{removedAt:now,removalReason:input.nextAction}});
         await tx.taskAssignment.upsert({where:{taskId_userId:{taskId:input.id,userId:nextOwner}},create:{taskId:input.id,userId:nextOwner,role:'PRINCIPAL',assignedById:user.id},update:{role:'PRINCIPAL',assignedById:user.id,assignedAt:now,removedAt:null,removalReason:null}});
@@ -173,7 +187,7 @@ export async function escalateUnreceivedWork(now = new Date(), usePolicyOverride
 export function coordinationMetrics(rows: CoordinationRow[], now = new Date()) {
   const average=(values:Array<number|null>)=>{const valid=values.filter((n):n is number=>n!==null);return {minutes:valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length):null,samples:valid.length};};
   return {pending:rows.length,unassigned:rows.filter(r=>!r.ownerId).length,unreceived:rows.filter(r=>r.kind!=='followup'&&r.ownerId&&!r.receivedAt).length,
-    overdue:rows.filter(r=>r.dueAt&&r.dueAt<now).length,blocked:rows.filter(r=>['BLOQUEADO','BLOQUEADA'].includes(r.status)).length,
+    overdue:rows.filter(r=>r.dueAt&&r.dueAt<now).length,blocked:rows.filter(r=>['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(r.status)).length,
     confirmation:average(rows.map(r=>elapsedMinutes(r.assignedAt,r.receivedAt))),attention:average(rows.map(r=>elapsedMinutes(r.receivedAt,r.startedAt))),resolution:average(rows.map(r=>elapsedMinutes(r.startedAt,r.completedAt))),
     receiptLate:rows.filter(r=>!r.receivedAt&&receiptDueAt(r.assignedAt,r.availableAt)&&receiptDueAt(r.assignedAt,r.availableAt)!<now).length};
 }

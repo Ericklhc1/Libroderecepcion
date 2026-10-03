@@ -55,7 +55,7 @@
   {
     "module": "coordination",
     "name": "coordinateWorkAction",
-    "label": "Asignar o recibir trabajo",
+    "label": "Coordinar trabajo, recepción y aclaraciones",
     "fields": [
       "kind",
       "id",

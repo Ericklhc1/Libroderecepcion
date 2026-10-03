@@ -68,7 +68,7 @@ describe('Etapa 3 bloque 2: coordinación y custodia',()=>{
  });
 
  it('responde una aclaración en el mismo asunto, devuelve el trabajo y avisa al responsable',async()=>{
-  const creator=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+  const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
   const entry=await prisma.operationalEntry.create({data:{type:'INCIDENCIA',title:'Fuga en pasillo',description:'Revisar origen',severity:'MEDIA',departmentId:area.id,createdById:creator.id,ownerId:owner.id,workAssignedAt:new Date(),workAcknowledgedAt:new Date(),workAcknowledgedById:owner.id,workNextAction:'Revisar origen'}});
   const requested=await coordinateWork(owner,{kind:'entry',id:entry.id,updatedAt:entry.updatedAt,requestKey:randomUUID(),action:'ACLARACION',nextAction:'¿La fuga aparece sólo cuando llueve?'});
   expect(requested.id).toBe(entry.id);

@@ -29,6 +29,9 @@ describe('secciones desplegables del sistema',()=>{
       'src/app/(app)/coordinacion/page.tsx',
       'src/app/(app)/coordinacion/indicadores/page.tsx',
       'src/app/(app)/fronti/procedimientos/page.tsx',
+      'src/app/(app)/indicadores/page.tsx',
+      'src/app/(app)/supervision/salud/page.tsx',
+      'src/app/(app)/coordinacion/automatizaciones/page.tsx',
     ];
     for(const page of pages)expect(read(page),page).toContain('DisclosureCard');
   });

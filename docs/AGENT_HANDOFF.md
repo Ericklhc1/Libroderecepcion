@@ -1,10 +1,10 @@
-## 03/10/2026 · v1.51.0 · Secciones desplegables del sistema
+## 03/10/2026 · v1.51.1 · Estabilización de secciones desplegables
 
-PR #255 sobre Production 1.50.1. Introduce el patrón común `DisclosureCard` con `details/summary` nativo, sin estado global ni overlays, para reducir scrolling vertical. Administración queda agrupada en Personas/roles/estructura, Sistema/Fronti/comunicaciones y Control/trazabilidad/soporte; también se aplica a sus páginas internas y a pantallas extensas de Gerencia, Supervisión, Salud operativa, Equipo y horarios, Coordinación, Indicadores, Automatizaciones y Procedimientos de Fronti. Housekeeping conserva su patrón plegable previo.
+Production 1.51.0 / `2e44337` quedó READY antes de que terminara la revisión Codex del PR #255. La revisión detectó cinco ajustes que no deben quedar pendientes: impresión de bloques cerrados, atajos internos de Supervisión, apertura de la lista de delegaciones solicitada, conteos visibles en Diagnóstico y relevo actualizado.
 
-El comportamiento mantiene permisos y lógica operativa. Bloques principales pueden abrir por defecto; los secundarios permanecen cerrados. Atajos de Supervisión conservan navegación y abren la sección solicitada; el filtro de delegaciones de Fronti abre su lista; Diagnóstico conserva conteos visibles; impresión fuerza a mostrar el contenido de todos los bloques plegables. Chevron con transición breve y `prefers-reduced-motion` respetado. Sin migraciones ni cambios de datos.
+El parche 1.51.1 conserva el mismo alcance UI y no toca datos, permisos ni procedimientos. `DisclosureCard` marca sus bloques para que impresión muestre todo el contenido; los atajos de Supervisión navegan con `seccion` y abren el bloque pedido; `?delegaciones=1` abre inmediatamente la lista filtrada; Diagnóstico conserva los conteos de cada grupo plegado. La prueba estructural cubre estos contratos. Safari/iPhone físico sigue pendiente explícito.
 
-Validación del PR: prueba estructural `tests/collapsible-sections.test.ts`; Chromium autenticado 1280/390 en Administración, Fronti, Indicadores, Salud operativa y Automatizaciones, además de la suite E2E existente. Codex revisó el bloque y sus hallazgos de impresión, navegación dirigida, delegaciones, conteos y relevo fueron atendidos. Integrar sólo con la Compuerta final verde y comprobar Vercel Production/versión 1.51.0. Safari/iPhone físico sigue pendiente explícito.
+Validar mediante Compuerta completa con PostgreSQL desechable, lint, tipos, regresiones, build y Chromium 1280/390 antes de integrar. Tras merge, comprobar Vercel Production, SHA y versión 1.51.1. No hay migraciones.
 
 ## 03/10/2026 · Etapa 3 bloque 2 · parche 1.50.1
 

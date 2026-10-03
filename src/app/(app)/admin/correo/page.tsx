@@ -52,7 +52,7 @@ export default async function MailConfigPage() {
         </p>
       </header>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Estado" />
         <div className="space-y-3 px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -135,7 +135,7 @@ export default async function MailConfigPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Configuración" />
         <div className="px-4 py-4">
           <MailForm
@@ -158,7 +158,7 @@ export default async function MailConfigPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Qué notificaciones salen por correo" />
         <div className="space-y-3 px-4 py-4">
           <p className="text-sm text-slate-600">
@@ -177,7 +177,7 @@ export default async function MailConfigPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Probar el envío" />
         <div className="space-y-3 px-4 py-4">
           <p className="text-sm text-slate-600">

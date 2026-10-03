@@ -161,7 +161,7 @@ export default async function AuditPage({
         </div>
       </form>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title={`${total} evento(s)`} />
         {logs.length === 0 ? (
           <EmptyState message="Sin eventos para estos filtros." />

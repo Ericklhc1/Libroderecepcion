@@ -145,7 +145,7 @@ export default async function ShiftAdminPage({
         </label>
       </ListFilterBar>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Turnos recientes" count={visibleShifts.length} />
         {visibleShifts.length === 0 ? (
           <EmptyState message="Todavía no hay turnos en el historial." />

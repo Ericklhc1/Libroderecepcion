@@ -33,6 +33,24 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const area = input.departmentId ? { departmentId: input.departmentId } : {};
   const hkScope = canAccessHousekeeping(user) ? await hkWorkVisibility(user) : { id: { in: [] as string[] } };
   const view=input.view??'all';
+  const [legacyEntryRows,legacyTaskRows]=await Promise.all([
+    prisma.$queryRaw<Array<{id:string}>>\`
+      SELECT e."id" FROM "OperationalEntry" e
+      WHERE e."deletedAt" IS NULL AND e."isDemo"=false AND e."status"='EN_ESPERA'
+        AND (e."workNextAction" IS NULL OR e."workNextAction" NOT LIKE 'Aclaración requerida:%')
+        AND (SELECT a."summary" FROM "AuditLog" a WHERE a."entity"='OperationalEntry' AND a."entityId"=e."id" ORDER BY a."createdAt" DESC,a."id" DESC LIMIT 1)
+          = 'Coordinación #' || e."humanId"::text || ': ACLARACION'
+    \`,
+    prisma.$queryRaw<Array<{id:string}>>\`
+      SELECT t."id" FROM "Task" t
+      WHERE t."deletedAt" IS NULL AND t."isDemo"=false AND t."status"='BLOQUEADA'
+        AND (t."workNextAction" IS NULL OR t."workNextAction" NOT LIKE 'Aclaración requerida:%')
+        AND (SELECT a."summary" FROM "AuditLog" a WHERE a."entity"='Task' AND a."entityId"=t."id" ORDER BY a."createdAt" DESC,a."id" DESC LIMIT 1)
+          = 'Coordinación #' || t."humanId"::text || ': ACLARACION'
+    \`,
+  ]);
+  const legacyEntryIds=legacyEntryRows.map(row=>row.id),legacyTaskIds=legacyTaskRows.map(row=>row.id);
+  const legacyEntrySet=new Set(legacyEntryIds),legacyTaskSet=new Set(legacyTaskIds);
   const receptionHkIds=view==='reception'?(await prisma.$queryRaw<Array<{id:string}>>`
     SELECT DISTINCT h."id"
     FROM "HousekeepingRequest" h
@@ -47,8 +65,8 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
        )
   `).map(row=>row.id):[];
   const carryoverShiftStatuses=['CERRADO','ANULADO','RECIBIDO','ENTREGA_ENVIADA'] as const;
-  const entryView:Prisma.OperationalEntryWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{ownerId:null}:view==='unreceived'?{ownerId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'EN_ESPERA'}:view==='clarification'?{status:'EN_ESPERA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
-  const taskView:Prisma.TaskWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
+  const entryView:Prisma.OperationalEntryWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{ownerId:null}:view==='unreceived'?{ownerId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'EN_ESPERA'}:view==='clarification'?{status:'EN_ESPERA',OR:[{workNextAction:{startsWith:CLARIFICATION_REQUEST_PREFIX}},{id:{in:legacyEntryIds}}]}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
+  const taskView:Prisma.TaskWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',OR:[{workNextAction:{startsWith:CLARIFICATION_REQUEST_PREFIX}},{id:{in:legacyTaskIds}}]}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
   const hkView:Prisma.HousekeepingRequestWhereInput = view==='reception'?{id:{in:receptionHkIds}}:view==='unassigned'?{assignedToId:null}:view==='unreceived'?{assignedToId:{not:null},acknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADO'}:view==='clarification'?{id:{in:[]}}:view==='carryover'?{workDate:{lt:hotelDateKey(new Date())}}:{};
   // Linked records are grouped under their source. Hidden source work is never inferred from counts.
   const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView], ...area,

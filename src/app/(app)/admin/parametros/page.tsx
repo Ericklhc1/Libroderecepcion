@@ -118,7 +118,7 @@ export default async function SettingsPage({
         </label>
       </ListFilterBar>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Caja" />
         <div className="px-4 py-4">
           <CashConfigForm
@@ -145,7 +145,7 @@ export default async function SettingsPage({
       </Card>
 
       {visibleByCategory.map(([category, list]) => (
-        <Card key={category}>
+        <Card collapsible key={category}>
           <CardHeader title={category} count={list.length} />
           <CardScroll>
             <ul className="divide-y divide-slate-100">

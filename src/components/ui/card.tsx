@@ -1,19 +1,112 @@
 import Link from 'next/link';
+import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
+
+type CardHeaderProps = {
+  title: string;
+  count?: number | null;
+  action?: ReactNode;
+  href?: string;
+  hrefLabel?: string;
+};
+
+function HeaderTitle({ title, count }: Pick<CardHeaderProps, 'title' | 'count'>) {
+  return (
+    <h2 className="card-title">
+      {title}
+      {typeof count === 'number' ? (
+        <span className="ml-2 rounded-md bg-petrol-50 px-1.5 py-0.5 text-xs tabular text-petrol-700">
+          {count}
+        </span>
+      ) : null}
+    </h2>
+  );
+}
+
+function HeaderActions({
+  action,
+  href,
+  hrefLabel = 'Ver todo',
+}: Pick<CardHeaderProps, 'action' | 'href' | 'hrefLabel'>) {
+  return (
+    <div className="flex items-center gap-2">
+      {action}
+      {href ? (
+        <Link
+          href={href}
+          className="text-xs font-medium text-petrol-600 underline-offset-2 hover:underline"
+        >
+          {hrefLabel}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
 
 export function Card({
   children,
   className,
   id,
+  collapsible = false,
+  defaultOpen = false,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   id?: string;
+  /** Convierte una tarjeta con CardHeader directo en una sección desplegable semántica. */
+  collapsible?: boolean;
+  /** Sólo aplica cuando collapsible=true. Las secciones largas nacen cerradas por defecto. */
+  defaultOpen?: boolean;
 }) {
+  if (!collapsible) {
+    return (
+      <section id={id} className={cn('card scroll-mt-32', className)}>
+        {children}
+      </section>
+    );
+  }
+
+  const items = Children.toArray(children);
+  const headerIndex = items.findIndex(
+    (child) => isValidElement(child) && child.type === CardHeader,
+  );
+  if (headerIndex < 0) {
+    return (
+      <section id={id} className={cn('card scroll-mt-32', className)}>
+        {children}
+      </section>
+    );
+  }
+
+  const header = items[headerIndex] as ReactElement<CardHeaderProps>;
+  const body = items.filter((_, index) => index !== headerIndex);
+  const { title, count, action, href, hrefLabel } = header.props;
+
   return (
-    <section id={id} className={cn('card scroll-mt-32', className)}>
-      {children}
-    </section>
+    <details
+      id={id}
+      open={defaultOpen}
+      data-collapsible-card
+      className={cn('card group scroll-mt-32 overflow-hidden', className)}
+    >
+      <summary className="card-header cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
+        <HeaderTitle title={title} count={count} />
+        <span className="ml-auto inline-flex items-center gap-2 text-xs font-medium text-slate-500">
+          <span className="hidden sm:inline">Mostrar / ocultar</span>
+          <ChevronDown
+            className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </span>
+      </summary>
+      {action || href ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 border-b border-slate-100 px-4 py-2">
+          <HeaderActions action={action} href={href} hrefLabel={hrefLabel} />
+        </div>
+      ) : null}
+      {body}
+    </details>
   );
 }
 
@@ -23,34 +116,11 @@ export function CardHeader({
   action,
   href,
   hrefLabel = 'Ver todo',
-}: {
-  title: string;
-  count?: number | null;
-  action?: React.ReactNode;
-  href?: string;
-  hrefLabel?: string;
-}) {
+}: CardHeaderProps) {
   return (
     <header className="card-header">
-      <h2 className="card-title">
-        {title}
-        {typeof count === 'number' ? (
-          <span className="ml-2 rounded-md bg-petrol-50 px-1.5 py-0.5 text-xs tabular text-petrol-700">
-            {count}
-          </span>
-        ) : null}
-      </h2>
-      <div className="flex items-center gap-2">
-        {action}
-        {href ? (
-          <Link
-            href={href}
-            className="text-xs font-medium text-petrol-600 underline-offset-2 hover:underline"
-          >
-            {hrefLabel}
-          </Link>
-        ) : null}
-      </div>
+      <HeaderTitle title={title} count={count} />
+      <HeaderActions action={action} href={href} hrefLabel={hrefLabel} />
     </header>
   );
 }
@@ -60,7 +130,7 @@ export function CardScroll({
   children,
   className,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   maxHeight?: string;
 }) {

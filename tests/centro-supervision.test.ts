@@ -522,9 +522,10 @@ describe('Centro de Supervisión', () => {
     expect(page).toContain('Asignado a mí');
     expect(page).toContain('En seguimiento');
     expect(page).toContain('href="#continuidad"');
-    expect(page).toContain('href="#pendientes"');
-    expect(page).toContain('href="#seguimientos"');
-    expect(page).toContain('href="#senales"');
+    expect(page).toContain("sectionHref('pendientes')");
+    expect(page).toContain("sectionHref('seguimientos')");
+    expect(page).toContain("sectionHref('senales')");
+    expect(page).toContain("defaultOpen={requestedSection === 'pendientes'}");
     expect(page).toContain('Requiere atención · señales del Libro');
     expect(page).toContain('SupervisionAuditDashboard');
     expect(page).toContain('href="#auditoria-diaria"');

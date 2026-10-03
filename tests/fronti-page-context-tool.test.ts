@@ -154,4 +154,48 @@ describe('Fronti contextual · lector vivo de pantalla', () => {
       ),
     ).toBe(true);
   });
+
+  it('respeta la vista seleccionada de Coordinación al dar contexto a Fronti', async () => {
+    const admin = await createUser({
+      roleKey: ROLE_KEYS.SYSTEM_ADMIN,
+      username: 'fronti-context-coordination-view',
+    });
+    const area = await prisma.department.findUniqueOrThrow({ where: { key: 'MANTENIMIENTO' } });
+    const clarification = await prisma.operationalEntry.create({
+      data: {
+        type: EntryType.NOVEDAD,
+        title: 'Aclaración contextual',
+        description: 'Visible sólo en la vista de aclaraciones.',
+        priority: Priority.MEDIA,
+        departmentId: area.id,
+        createdById: admin.id,
+        ownerId: admin.id,
+        status: 'EN_ESPERA',
+        workAssignedAt: new Date(),
+        workAcknowledgedAt: new Date(),
+        workAcknowledgedById: admin.id,
+        workNextAction: 'Aclaración requerida: confirmar acceso',
+      },
+    });
+    await prisma.operationalEntry.create({
+      data: {
+        type: EntryType.NOVEDAD,
+        title: 'Pendiente normal fuera del filtro',
+        description: 'No debe entrar al contexto de esta pantalla.',
+        priority: Priority.MEDIA,
+        departmentId: area.id,
+        createdById: admin.id,
+        ownerId: admin.id,
+      },
+    });
+    const page = resolveFrontiPageContext({
+      pathname: '/coordinacion',
+      search: '?vista=clarification',
+    });
+    const result = (await executeFrontiPageContextTool(admin, page)) as {
+      snapshot: { rows: Array<{ id: string }> };
+    };
+    expect(result.snapshot.rows.map((row) => row.id)).toEqual([clarification.id]);
+  });
+
 });

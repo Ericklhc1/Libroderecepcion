@@ -47,6 +47,12 @@ try{
     await page.getByRole('heading',{name:'Indicadores',exact:true}).waitFor();
     assert.ok(await page.locator('[data-disclosure-summary]').count()>=4,'Indicadores debe agrupar sus bloques principales');
     assert.equal(await page.locator('details').filter({hasText:'Tareas'}).first().evaluate(el=>el.open),true);
+    const printDisclosure=page.locator('details[data-disclosure-card]').filter({has:page.locator('summary').filter({hasText:'Incidencias y alertas'})}).first();
+    assert.equal(await printDisclosure.evaluate(el=>el.open),false,'La sección secundaria debe iniciar plegada en pantalla');
+    assert.equal(await printDisclosure.locator('[data-disclosure-content]').isVisible(),false,'El contenido plegado no ocupa altura en pantalla');
+    await page.emulateMedia({media:'print'});
+    assert.equal(await printDisclosure.locator('[data-disclosure-content]').isVisible(),true,'Imprimir debe revelar el contenido aunque la sección esté plegada');
+    await page.emulateMedia({media:'screen'});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Indicadores no debe generar overflow horizontal');
 
     await page.goto('http://localhost:3000/supervision/salud');
@@ -54,6 +60,18 @@ try{
     assert.ok(await page.locator('[data-disclosure-summary]').count()>=7,'Salud operativa debe plegar sus bloques');
     assert.equal(await page.locator('details').filter({hasText:'Turnos y cierre'}).first().evaluate(el=>el.open),true);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Salud operativa no debe generar overflow horizontal');
+
+    await page.goto('http://localhost:3000/supervision?abrir=pendientes#pendientes');
+    await page.getByRole('heading',{name:'Centro de Supervisión',exact:true}).waitFor();
+    const supervisionPending=page.locator('details#pendientes');
+    await supervisionPending.waitFor();
+    assert.equal(await supervisionPending.evaluate(el=>el.open),true,'El atajo de Supervisión debe abrir la sección enlazada');
+
+    await page.goto('http://localhost:3000/fronti/procedimientos?delegaciones=1');
+    await page.getByRole('heading',{name:'Procedimientos de Fronti',exact:true}).waitFor();
+    const delegationList=page.locator('details[data-disclosure-card]').filter({has:page.locator('summary').filter({hasText:'Tus últimas 25 delegaciones'})}).first();
+    await delegationList.waitFor();
+    assert.equal(await delegationList.evaluate(el=>el.open),true,'Filtrar delegaciones debe mostrar la lista solicitada');
 
     await page.goto('http://localhost:3000/coordinacion/automatizaciones');
     await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();

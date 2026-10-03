@@ -9,6 +9,8 @@ describe('secciones desplegables del sistema',()=>{
     expect(source).toContain('export function DisclosureCard');
     expect(source).toContain('<details');
     expect(source).toContain('data-disclosure-summary');
+    expect(source).toContain('data-disclosure-card');
+    expect(source).toContain('data-disclosure-content');
     expect(source).toContain('<summary');
     expect(source).toContain('group-open:rotate-180');
     expect(source).not.toContain("'use client'");
@@ -39,6 +41,31 @@ describe('secciones desplegables del sistema',()=>{
       'src/app/(app)/coordinacion/automatizaciones/page.tsx',
     ];
     for(const page of pages)expect(read(page),page).toContain('DisclosureCard');
+  });
+
+  it('conserva impresión, enlaces profundos, filtros y conteos al plegar',()=>{
+    const css=read('src/app/globals.css');
+    expect(css).toContain('details[data-disclosure-card] > [data-disclosure-content]');
+    expect(css).toContain('display: block !important');
+
+    const supervision=read('src/app/(app)/supervision/page.tsx');
+    expect(supervision).toContain("sectionHref('pendientes')");
+    expect(supervision).toContain("sectionHref('seguimientos')");
+    expect(supervision).toContain("sectionHref('senales')");
+    expect(supervision).toContain("defaultOpen={openSection==='pendientes'}");
+    expect(supervision).toContain("defaultOpen={openSection==='seguimientos'}");
+    expect(supervision).toContain("defaultOpen={openSection==='senales'}");
+
+    const fronti=read('src/app/(app)/fronti/procedimientos/page.tsx');
+    expect(fronti).toContain("defaultOpen={delegaciones === '1'}");
+
+    const diagnostics=read('src/app/(app)/admin/diagnostico/page.tsx');
+    for(const expression of [
+      'count={visibleDuplicateAlerts.length}',
+      'count={visibleMismatches.length}',
+      'count={visibleDuplicateStays.length}',
+      'count={visibleRuntimeErrors.length}',
+    ]) expect(diagnostics).toContain(expression);
   });
 
   it('agrupa Administración y no vuelve a cargar todos los accesos como una lista abierta',()=>{

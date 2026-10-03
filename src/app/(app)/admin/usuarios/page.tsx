@@ -113,7 +113,7 @@ export default async function UsersPage({
         </label>
       </ListFilterBar>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Cuentas" count={visibleUsers.length} />
         {visibleUsers.length === 0 ? (
           <EmptyState message="No hay usuarios." />

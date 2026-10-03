@@ -17,12 +17,14 @@ import { notify } from '@/server/notifications';
 import { assertReceptionOperationPermission } from './reception-operation-gate';
 
 const taskClosed = ['VALIDADA','COMPLETADA','CANCELADA'] as const;
+const CLARIFICATION_REQUEST_PREFIX='Aclaración requerida:';
+const CLARIFICATION_ANSWER_PREFIX='Aclaración recibida:';
 export type CoordinationRow = {
   id: string; humanId: number; kind: CoordinationKind; priority?: string; title: string; status: string;
   departmentId: string | null; department: string; ownerId: string | null; owner: string; createdById:string|null;
   createdAt: Date; updatedAt: Date; dueAt: Date | null; receivedAt: Date | null; assignedAt: Date | null;
   availableAt: Date | null; startedAt: Date | null; completedAt: Date | null; nextAction: string; href: string;
-  canAssign: boolean; children: { label: string; href: string }[];
+  canAssign: boolean; clarificationPending:boolean; children: { label: string; href: string }[];
 };
 
 export type CoordinationView='all'|'reception'|'unassigned'|'unreceived'|'blocked'|'clarification'|'carryover';
@@ -99,7 +101,7 @@ export async function getCoordinationTeam(user: CurrentUser, departmentId: strin
   return team.map(p=>({...p,scheduled:coverageSlots(slots).some(s=>s.collaborator.userId===p.id&&scheduledAt(s,now)),scheduleVisible:areas===null||areas.includes(departmentId)}));
 }
 
-type Mutation = { kind:'entry'|'task'; id:string; updatedAt:Date; requestKey:string; action:'RECIBIR'|'ASIGNAR'|'SIGUIENTE'|'ACLARACION'|'RESPONDER_ACLARACION'; ownerId?:string; nextAction:string };
+type Mutation = { kind:'entry'|'task'; id:string; updatedAt:Date; requestKey:string; action:'RECIBIR'|'ASIGNAR'|'SIGUIENTE'|'ACLARACION'|'RESPONDER_ACLARACION'|'RETOMAR_ACLARACION'; ownerId?:string; nextAction:string };
 export async function coordinateWork(user: CurrentUser, input: Mutation, transaction?: Prisma.TransactionClient) {
   await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit');
   if (!input.nextAction.trim()) throw new RuleError('Indica la siguiente acción para quien continúa.');
@@ -112,7 +114,7 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
     const current=entry??task;if(!current)throw new NotFoundError();
     const ownerId=entry?entry.ownerId:task!.assigneeId;
     const assign=user.permissions.includes(input.kind==='entry'?'entry.edit':'task.assign');
-    const responding=input.action==='RESPONDER_ACLARACION';
+    const responding=input.action==='RESPONDER_ACLARACION';const resuming=input.action==='RETOMAR_ACLARACION';
     if(input.action==='ASIGNAR'?!assign:responding?!(current.createdById===user.id||assign):ownerId!==user.id)throw new ForbiddenError(responding?'La aclaración debe responderla quien solicitó el trabajo o un coordinador autorizado.':'Esta acción corresponde al responsable o al coordinador autorizado.');
     const keyPrefix=`${user.id}:${input.requestKey}:`;
     const requestHash=createHash('sha256').update(JSON.stringify({...input,updatedAt:input.updatedAt.toISOString()})).digest('hex');

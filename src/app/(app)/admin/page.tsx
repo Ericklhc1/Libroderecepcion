@@ -195,7 +195,7 @@ export default async function AdminPage() {
       ) : null}
 
       {ADMIN_GROUPS.map((group) => {
-        const sections = allowed.filter((section) => group.hrefs.includes(section.href as never));
+        const sections = allowed.filter((section) => group.hrefs.some((href) => href === section.href));
         if (sections.length === 0) return null;
         return (
           <DisclosureCard

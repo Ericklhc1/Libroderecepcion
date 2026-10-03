@@ -12,7 +12,7 @@ import { getTeamPerformance } from '@/server/services/performance';
 import { getFormOptions } from '@/server/services/options';
 import { listAnnouncements } from '@/server/services/announcements';
 import { listOperationalUsers } from '@/server/services/users';
-import { Card, CardHeader, CardScroll, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, CardScroll, DisclosureCard, EmptyState, StatTile } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge, Chip } from '@/components/ui/badge';
 import { TONE_STYLES } from '@/components/ui/tone';
@@ -334,7 +334,12 @@ export default async function SupervisionCenterPage({
 
       {openingReadiness ? <SupervisionOpeningPanel readiness={openingReadiness} /> : null}
 
-      <section id="continuidad" className="scroll-mt-4">
+      <DisclosureCard
+        id="continuidad"
+        title={center.sinceLastShift ? 'Desde tu último turno' : 'Continuidad de Supervisión'}
+        description={center.sinceLastShift ? `Cambios desde ${formatDateTime(center.sinceLastShift)}.` : 'Cambios y continuidad que sobreviven entre turnos.'}
+        defaultOpen
+      >
       <Card>
         <CardHeader
           title={center.sinceLastShift ? 'Desde tu último turno' : 'Continuidad de Supervisión'}
@@ -393,7 +398,7 @@ export default async function SupervisionCenterPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <section id="pendientes" className="scroll-mt-4">
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="Asignado a mí" count={tasks.length} />
+
           {tasks.length === 0 ? <EmptyState message="No tienes tareas asignadas con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
@@ -411,11 +416,11 @@ export default async function SupervisionCenterPage({
             </CardScroll>
           )}
         </Card>
-        </section>
+        </DisclosureCard>
 
-        <section id="seguimientos" className="scroll-mt-4">
+        <DisclosureCard id="seguimientos" title="En seguimiento" count={followUps.length}>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
-          <CardHeader title="En seguimiento" count={followUps.length} />
+
           {followUps.length === 0 ? <EmptyState message="No estás siguiendo asuntos con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
@@ -486,15 +491,19 @@ export default async function SupervisionCenterPage({
       ) : null}
 
       {blocks.length > 0 ? (
-        <section id="senales" className="scroll-mt-4">
-          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-petrol-900"><ClipboardCheck className="h-4 w-4" aria-hidden="true" />Requiere atención · señales del Libro</h2>
-          <div className="grid gap-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
+        <DisclosureCard
+          id="senales"
+          title="Requiere atención · señales del Libro"
+          description="Señales verificables para seguimiento, sin duplicar la operación."
+          count={blocks.length}
+        >
+          <div className="grid gap-4 p-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}
             block={block}
             canFollow={canFollow}
             followedSourceKeys={followedSourceKeys}
           />)}</div>
-        </section>
+        </DisclosureCard>
       ) : null}
 
       <p className="flex flex-wrap items-center gap-3 text-xs text-slate-500">

@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { CardScroll, DisclosureCard } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { DepartmentDialog } from '../admin-forms';
@@ -73,8 +73,8 @@ export default async function DepartmentsPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Listado" count={departments.length} />
+      <DisclosureCard title="Listado" description="Áreas operativas y su configuración básica." count={departments.length} defaultOpen>
+        
         <CardScroll>
           <ul className="divide-y divide-slate-100">
           {departments.map((department) => (
@@ -111,7 +111,7 @@ export default async function DepartmentsPage({
           ))}
           </ul>
         </CardScroll>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

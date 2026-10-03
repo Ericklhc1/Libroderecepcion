@@ -6,7 +6,7 @@ import {
   operationalHealthRange,
   type OperationalHealthPeriod,
 } from '@/server/services/operational-health';
-import { Card, CardHeader, StatTile } from '@/components/ui/card';
+import { DisclosureCard, StatTile } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
 
@@ -83,8 +83,7 @@ export default async function OperationalHealthPage({
         </nav>
       </header>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Turnos y cierre</h2>
+      <DisclosureCard title="Turnos y cierre" description="Inicio, cierres, contingencias y duración observada." defaultOpen contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatTile label="Turnos iniciados" value={health.shifts.started} />
           <StatTile label="Turnos cerrados" value={health.shifts.closed} />
@@ -109,10 +108,9 @@ export default async function OperationalHealthPage({
             tone={health.shifts.closeIncomplete > 0 ? 'alert' : 'good'}
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Caja y relevo</h2>
+      <DisclosureCard title="Caja y relevo" description="Arqueos, cierres de Caja y tiempos de recepción." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <StatTile
             label="Arqueos realizados"
@@ -141,10 +139,9 @@ export default async function OperationalHealthPage({
             }
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Libro · Registros</h2>
+      <DisclosureCard title="Libro · Registros" description="Creación, toma y resolución observada de registros." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatTile label="Registros creados" value={health.entries.created} />
           <StatTile
@@ -180,10 +177,9 @@ export default async function OperationalHealthPage({
             }
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Llaves · Inventario físico</h2>
+      <DisclosureCard title="Llaves · Inventario físico" description="Inventarios completados, diferencias y duración." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatTile label="Inventarios completados" value={health.keyInventory.completed} />
           <StatTile
@@ -201,10 +197,9 @@ export default async function OperationalHealthPage({
             }
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Tutorial guiado</h2>
+      <DisclosureCard title="Tutorial guiado" description="Uso del tutorial y fallos observados en procesos críticos." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatTile
             label="Tutoriales iniciados"
@@ -221,10 +216,9 @@ export default async function OperationalHealthPage({
             tone={health.failures > 0 ? 'alert' : 'good'}
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Fronti · Estabilidad real</h2>
+      <DisclosureCard title="Fronti · Estabilidad real" description="Éxito, latencia, fallbacks y herramientas ejecutadas." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile label="Solicitudes" value={health.fronti.requested} />
           <StatTile
@@ -255,10 +249,9 @@ export default async function OperationalHealthPage({
             tone={health.fronti.toolFailures > 0 ? 'alert' : 'good'}
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">Interfaz · Fallos técnicos</h2>
+      <DisclosureCard title="Interfaz · Fallos técnicos" description="Errores inesperados y acciones que superaron el umbral técnico." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Acciones con error inesperado"
@@ -282,11 +275,9 @@ export default async function OperationalHealthPage({
             }
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Línea base" />
-        <div className="space-y-2 px-4 py-4 text-sm text-slate-600">
+      <DisclosureCard title="Línea base" description="Contexto para interpretar la observabilidad sin convertirla en objetivos." contentClassName="space-y-2 p-4 text-sm text-slate-600">
           <p>
             Estos valores son observaciones, no objetivos. Durante los primeros 30 días sirven para
             conocer la distribución real antes de fijar umbrales de tiempo o productividad.
@@ -301,8 +292,7 @@ export default async function OperationalHealthPage({
             la misma infraestructura. No se guardan prompts, respuestas, campos de formulario ni
             ranking por usuario.
           </p>
-        </div>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

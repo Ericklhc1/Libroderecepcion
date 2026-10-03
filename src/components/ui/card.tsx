@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 export function Card({
@@ -14,6 +15,62 @@ export function Card({
     <section id={id} className={cn('card scroll-mt-32', className)}>
       {children}
     </section>
+  );
+}
+
+
+export function DisclosureCard({
+  title,
+  description,
+  count,
+  action,
+  children,
+  className,
+  contentClassName,
+  defaultOpen = false,
+  id,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  count?: number | null;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  contentClassName?: string;
+  defaultOpen?: boolean;
+  id?: string;
+}) {
+  return (
+    <details
+      id={id}
+      className={cn('group card scroll-mt-32 overflow-hidden', className)}
+      open={defaultOpen || undefined}
+    >
+      <summary
+        data-disclosure-summary
+        className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-petrol-900">{title}</h2>
+            {typeof count === 'number' ? (
+              <span className="rounded-md bg-petrol-50 px-1.5 py-0.5 text-xs tabular text-petrol-700">
+                {count}
+              </span>
+            ) : null}
+          </div>
+          {description ? <p className="mt-0.5 text-xs leading-5 text-slate-600">{description}</p> : null}
+        </div>
+        <span className="flex shrink-0 items-center gap-2">
+          {action}
+          <ChevronDown
+            className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </span>
+      </summary>
+      <div className={cn('border-t border-slate-100', contentClassName)}>{children}</div>
+    </details>
   );
 }
 

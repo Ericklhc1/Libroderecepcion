@@ -1,7 +1,7 @@
 import { BarChart3 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { defaultRange, getMetrics } from '@/server/services/metrics';
-import { Card, CardHeader, EmptyState, StatTile } from '@/components/ui/card';
+import { Card, CardHeader, DisclosureCard, EmptyState, StatTile } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
 
@@ -78,10 +78,7 @@ export default async function MetricsPage({
         </nav>
       </header>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">
-          Tareas
-        </h2>
+      <DisclosureCard title="Tareas" description="Cumplimiento, vencimientos y carga vigente." defaultOpen contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Completadas en plazo"
@@ -105,12 +102,9 @@ export default async function MetricsPage({
           />
           <StatTile label="Abiertas ahora" value={metrics.tasks.open} />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">
-          Incidencias y alertas
-        </h2>
+      <DisclosureCard title="Incidencias y alertas" description="Riesgos abiertos y tiempos observados." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Incidencias abiertas"
@@ -133,12 +127,9 @@ export default async function MetricsPage({
             tone={metrics.alerts.live > 0 ? 'alert' : 'good'}
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold text-slate-500">
-          Turnos y entregas
-        </h2>
+      <DisclosureCard title="Turnos y entregas" description="Recepción de relevos, cierres y continuidad." contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Cumplimiento de entregas"
@@ -173,9 +164,9 @@ export default async function MetricsPage({
             tone={metrics.openOperationalEntries > 5 ? 'alert' : 'neutral'}
           />
         </div>
-      </section>
+      </DisclosureCard>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <DisclosureCard title="Distribución operativa" description="Incidencias por área y volumen de registros por turno." contentClassName="grid gap-4 p-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Incidencias por área" />
           {metrics.incidents.byDepartment.length === 0 ? (
@@ -206,7 +197,7 @@ export default async function MetricsPage({
             </ul>
           )}
         </Card>
-      </div>
+      </DisclosureCard>
 
       <p className="pb-2 text-xs text-slate-400">
         Los indicadores se calculan en vivo sobre los datos operativos. Esta versión no pretende ser

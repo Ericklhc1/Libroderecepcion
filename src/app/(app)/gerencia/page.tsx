@@ -23,6 +23,7 @@ import {
   type ManagementTrend,
 } from '@/server/services/management';
 import { formatDateTime } from '@/lib/format';
+import { DisclosureCard } from '@/components/ui/card';
 
 export const metadata = { title: 'Gerencia' };
 export const dynamic = 'force-dynamic';
@@ -197,20 +198,13 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
       </header>
       <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
 
-      <section aria-labelledby="management-decisions">
-        <div className="mb-2 flex items-end justify-between gap-3">
-          <div>
-            <h2 id="management-decisions" className="text-sm font-semibold text-petrol-950">
-              Decisiones requeridas
-            </h2>
-            <p className="text-xs text-slate-500">
-              Excepciones que justifican intervención gerencial. No son notificaciones ni tareas nuevas.
-            </p>
-          </div>
-          <span className="text-xs font-medium text-slate-400">
-            {cockpit.decisions.length} señal(es)
-          </span>
-        </div>
+      <DisclosureCard
+        title="Decisiones requeridas"
+        description="Excepciones que justifican intervención gerencial. No son notificaciones ni tareas nuevas."
+        count={cockpit.decisions.length}
+        defaultOpen
+        contentClassName="p-4"
+      >
 
         {cockpit.decisions.length === 0 ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-5">
@@ -308,14 +302,12 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             })}
           </div>
         )}
-      </section>
+      </DisclosureCard>
 
-      <section aria-labelledby="management-scorecard" className="rounded-lg border border-slate-300 bg-white shadow-card">
-        <div className="border-b border-slate-200 bg-[#f8fafc] px-4 py-3">
-          <h2 id="management-scorecard" className="text-[0.78rem] font-semibold uppercase tracking-[0.055em] text-petrol-900">
-            Scorecard ejecutivo · {periodLabel}
-          </h2>
-        </div>
+      <DisclosureCard
+        title={`Scorecard ejecutivo · ${periodLabel}`}
+        description="Indicadores de ejecución, habitaciones y control."
+      >
 
         <div className="divide-y divide-slate-200">
           <div className="grid gap-0 px-2 py-2 lg:grid-cols-[12rem_1fr]">
@@ -366,9 +358,13 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             </div>
           </div>
         </div>
-      </section>
+      </DisclosureCard>
 
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+      <DisclosureCard
+        title="Tendencias, exposición y fuentes"
+        description="Comparación con el período anterior y calidad de los datos conectados."
+        contentClassName="grid gap-4 p-4 xl:grid-cols-[1.35fr_0.65fr]"
+      >
         <div className="rounded-lg border border-slate-300 bg-white shadow-card">
           <div className="border-b border-slate-200 bg-[#f8fafc] px-4 py-3">
             <h2 className="text-[0.78rem] font-semibold uppercase tracking-[0.055em] text-petrol-900">
@@ -465,7 +461,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             </div>
           </div>
         </div>
-      </section>
+      </DisclosureCard>
 
       <footer className="rounded-lg border border-slate-200 bg-[#f8fafc] px-4 py-3 text-xs leading-5 text-slate-500">
         <strong className="text-petrol-800">Principio de diseño:</strong> una decisión gerencial puede transformarse después en una

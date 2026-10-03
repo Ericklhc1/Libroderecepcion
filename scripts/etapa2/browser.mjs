@@ -79,12 +79,13 @@ try {
   const dynamicMessage='/usar-delegacion-dinamica '+JSON.stringify({id:dynamicId,steps:[{action:'createTaskAction',fields:{title:`ETAPA2_DYNAMIC_${width}`,description:'Trabajo sintético autorizado',priority:'MEDIA',targetType:'PROPIO'}}]});
   const dynamicStart=performance.now();const dynamicRun=await context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:dynamicMessage,requestKey:randomUUID()}});const dynamicResult=await dynamicRun.json();assert.equal(dynamicRun.status(),200,dynamicResult.error);assert.match(dynamicResult.reply,/Completado/);const dynamicMs=Math.round(performance.now()-dynamicStart);assert.ok(dynamicMs<=2000);
   await page.reload();await page.getByText(/Usos reservados: 1 \/ 1/).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
-  await page.goto('http://localhost:3000/coordinacion/indicadores');await page.getByRole('heading',{name:'Resumen e indicadores operativos',exact:true}).waitFor();await page.getByRole('heading',{name:'Tiempos observados',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('No hay línea base humana'));assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
+  await page.goto('http://localhost:3000/coordinacion/indicadores');await page.getByRole('heading',{name:'Resumen e indicadores operativos',exact:true}).waitFor();await page.getByRole('heading',{name:'Tiempos observados',exact:true}).waitFor();const frontiDisclosure=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Automatizaciones y Fronti'})}).first();if(!(await frontiDisclosure.evaluate(el=>el.open)))await frontiDisclosure.locator('summary').click();assert.ok((await frontiDisclosure.innerText()).includes('No hay línea base humana'));assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
   results.push({width,scenario:'dynamic-delegation-budget-and-indicators',ms:dynamicMs,budgetMs:2000,status:'passed',provider:'not-used'});
   const summary=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message:'/resumen',requestKey:randomUUID()}});assert.equal(summary.status(),200);assert.match((await summary.json()).reply,/Coordinación: \/coordinacion/);
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('deshabilitada'));
   // The same public form saves a paused version, simulates without effects, then pauses/revokes.
   const policyName=`ETAPA2_POLICY_${width}`;
+  const openPolicyList=async()=>{const disclosure=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Tus últimas 50 políticas'})}).first();if(!(await disclosure.evaluate(el=>el.open)))await disclosure.locator('summary').click();return disclosure;};
   const details=page.locator('details').filter({has:page.getByText('Nuevo procedimiento o mantenimiento preventivo',{exact:true})});
   await details.locator('summary').click();
   await details.getByLabel('Nombre',{exact:true}).fill(policyName);
@@ -100,7 +101,7 @@ try {
   await details.getByLabel('Autorización válida hasta',{exact:true}).fill(expiry);
   let operationStart=performance.now();
   await details.getByRole('button',{name:'Guardar versión en pausa',exact:true}).click();
-  let policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
+  let policyList=await openPolicyList();let policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
   await policy.getByText(/^En pausa/).waitFor();
   const saveMs=Math.round(performance.now()-operationStart);assert.ok(saveMs<=3000,`Policy save visible ${saveMs} ms exceeds 3000 ms`);
   const before={tasks:await db.task.count(),runs:await db.operationalAutomationRun.count(),notifications:await db.notification.count()};
@@ -121,13 +122,14 @@ try {
     await db.department.update({where:{id:f.areaId},data:{active:true}});
   }
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');
+  policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
   await policy.locator('select[name=state]').selectOption('pause');
-  await policy.getByRole('button',{name:'Guardar estado',exact:true}).click();
-  policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});
+  await Promise.all([page.waitForNavigation(),policy.getByRole('button',{name:'Guardar estado',exact:true}).click()]);
+  policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});
   await policy.getByText(/^En pausa/).waitFor();
   await policy.locator('select[name=state]').selectOption('revoke');
-  await policy.getByRole('button',{name:'Guardar estado',exact:true}).click();
-  policy=page.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 3',exact:true})});
+  await Promise.all([page.waitForNavigation(),policy.getByRole('button',{name:'Guardar estado',exact:true}).click()]);
+  policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 3',exact:true})});
   await policy.getByText(/^Revocada/).waitFor();
   assert.equal(await policy.getByRole('button',{name:'Guardar estado',exact:true}).count(),0);
   results.push({width,scenario:'policy-save-simulate-no-effects-pause-revoke-history',ms:saveMs,budgetMs:3000,status:'passed',automaticExecution:false});

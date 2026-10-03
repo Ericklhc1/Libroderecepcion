@@ -5,7 +5,7 @@ import { AuditAction } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { CardScroll, DisclosureCard, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
@@ -161,8 +161,7 @@ export default async function AuditPage({
         </div>
       </form>
 
-      <Card>
-        <CardHeader title={`${total} evento(s)`} />
+      <DisclosureCard title={`${total} evento(s)`} description="Historial completo dentro del alcance actual." defaultOpen>
         {logs.length === 0 ? (
           <EmptyState message="Sin eventos para estos filtros." />
         ) : (
@@ -230,7 +229,7 @@ export default async function AuditPage({
             <span />
           )}
         </nav>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

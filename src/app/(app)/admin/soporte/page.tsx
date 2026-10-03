@@ -123,7 +123,7 @@ export default async function SupportInboxPage({
         <StatTile label="En revisión" value={reviewCount} />
       </div>
 
-      <Card>
+      <Card collapsible>
         <form method="get" className="flex flex-wrap items-end gap-3 p-4">
           <label className="min-w-[16rem] flex-1">
             <span className="mb-1 block text-xs font-medium text-slate-500">Buscar</span>
@@ -166,7 +166,7 @@ export default async function SupportInboxPage({
       </Card>
 
       {rows.length === 0 ? (
-        <Card>
+        <Card collapsible>
           <EmptyState message="No hay reportes o solicitudes con estos filtros." />
         </Card>
       ) : (
@@ -185,7 +185,7 @@ export default async function SupportInboxPage({
             );
 
             return (
-              <Card key={row.id}>
+              <Card collapsible key={row.id}>
                 <div className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

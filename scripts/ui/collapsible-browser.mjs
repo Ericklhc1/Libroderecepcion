@@ -26,7 +26,7 @@ try{
     const closedHeight=(await peopleDetails.boundingBox())?.height??0;
     await peopleSummary.click();
     assert.equal(await peopleDetails.evaluate(el=>el.open),true);
-    await peopleDetails.getByRole('link',{name:'Usuarios',exact:true}).waitFor();
+    await peopleDetails.locator('a[href="/admin/usuarios"]').waitFor();
     const openHeight=(await peopleDetails.boundingBox())?.height??0;
     assert.ok(openHeight>closedHeight+20,'Abrir una sección debe revelar contenido real');
     await peopleSummary.click();

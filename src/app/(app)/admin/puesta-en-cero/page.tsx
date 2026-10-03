@@ -106,7 +106,7 @@ export default async function FactoryResetPage() {
         </p>
       </div>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Qué se va a borrar" />
         <div className="divide-y divide-slate-100">
           {GROUPS.map((group) => (
@@ -133,7 +133,7 @@ export default async function FactoryResetPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Qué se conserva" />
         <div className="px-4 py-3 text-sm text-slate-700">
           <p>
@@ -156,7 +156,7 @@ export default async function FactoryResetPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Confirmar" />
         <div className="px-4 py-4">
           <FactoryResetForm

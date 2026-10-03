@@ -1,3 +1,11 @@
+## 03/10/2026 · v1.51.1 · Secciones desplegables estabilizadas
+
+Production publicada: v1.51.0 / `2e44337aaaa368e775ca877efb95401f9440477a`, Vercel READY. PR #255 introdujo el patrón nativo `DisclosureCard` en Administración y pantallas extensas de Gerencia, Supervisión, Equipo, Coordinación, Indicadores, Fronti y configuración. Housekeeping conserva su patrón desplegable previo. No hubo migraciones ni cambios de permisos o reglas operativas.
+
+La revisión Codex posterior a la publicación detectó cinco puntos: relevo documental desactualizado; secciones cerradas omitidas al imprimir/PDF; atajos internos de Supervisión que desplazaban sin abrir el bloque; filtro `?delegaciones=1` que ocultaba su lista al quedar plegada; y conteos filtrados retirados de los encabezados de Diagnóstico. La candidata v1.51.1 corrige esos casos sin tocar datos operativos: contenido de `DisclosureCard` visible en impresión, destinos de Supervisión abiertos mediante `abrir=`, lista de delegaciones abierta cuando fue solicitada y conteos visibles en Diagnóstico.
+
+Validación requerida antes de publicar v1.51.1: Compuerta completa sobre PostgreSQL efímero, lint, tipos, regresiones, build y Chromium 1280/390; el recorrido UI debe comprobar impresión, enlace profundo de Supervisión y filtro de delegaciones. No declarar v1.51.1 publicada hasta Vercel Production READY y smoke HTTP. Safari/iPhone físico continúa pendiente explícito.
+
 ## 03/10/2026 · Etapa 3 bloque 2 · parche 1.50.1
 
 Production vigente al retomar: 1.50.0 / 4e5eaf8b06aae6930399b4087f9ae7f2b1542c95, Vercel READY. Esa versión fue fusionada tras Compuerta verde, pero la revisión Codex posterior detectó seis hallazgos relevantes en Coordinación. No considerar el bloque 2 cerrado hasta publicar 1.50.1.

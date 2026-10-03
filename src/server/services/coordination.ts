@@ -151,10 +151,23 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       if(!person)throw new RuleError('El responsable debe ser un usuario operativo activo del área.');
     }
     if(input.action==='ACLARACION'&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA')))throw new RuleError('Este trabajo ya tiene un impedimento o espera activa. Resuélvelo antes de solicitar otra aclaración.');
-    if(input.action==='RESPONDER_ACLARACION'&&!((entry&&entry.status==='EN_ESPERA'&&entry.workNextAction?.startsWith('Aclaración requerida:'))||(task&&task.status==='BLOQUEADA'&&task.workNextAction?.startsWith('Aclaración requerida:'))))throw new RuleError('No hay una aclaración pendiente en este trabajo.');
+    if(responding){
+      const prefixed=(entry?.status==='EN_ESPERA'&&entry.workNextAction?.startsWith(CLARIFICATION_REQUEST_PREFIX))||(task?.status==='BLOQUEADA'&&task.workNextAction?.startsWith(CLARIFICATION_REQUEST_PREFIX));
+      let legacy=false;
+      if(!prefixed&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA'))){
+        const entity=entry?'OperationalEntry':'Task';
+        const last=await tx.auditLog.findFirst({where:{entity,entityId:input.id},select:{summary:true},orderBy:[{createdAt:'desc'},{id:'desc'}]});
+        legacy=last?.summary===`Coordinación #${current.humanId}: ACLARACION`;
+      }
+      if(!prefixed&&!legacy)throw new RuleError('No hay una aclaración pendiente en este trabajo.');
+    }
+    if(resuming){
+      const answer=entry?.workNextAction??task?.workNextAction??task?.blockedReason;
+      if(!((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA'))||!answer?.startsWith(CLARIFICATION_ANSWER_PREFIX))throw new RuleError('No hay una aclaración respondida pendiente de retomar.');
+    }
     const now=new Date();
-    const clarificationQuestion=input.action==='ACLARACION'?`Aclaración requerida: ${input.nextAction.trim()}`:null;
-    const clarificationAnswer=input.action==='RESPONDER_ACLARACION'?`Aclaración recibida: ${input.nextAction.trim()}`:null;
+    const clarificationQuestion=input.action==='ACLARACION'?`${CLARIFICATION_REQUEST_PREFIX} ${input.nextAction.trim()}`:null;
+    const clarificationAnswer=input.action==='RESPONDER_ACLARACION'?`${CLARIFICATION_ANSWER_PREFIX} ${input.nextAction.trim()}`:null;
     const data={updatedAt:new Date(Math.max(now.getTime(),current.updatedAt.getTime()+1)),workNextAction:clarificationQuestion??clarificationAnswer??input.nextAction.trim(),workRequestKey:keyPrefix+requestHash,
       ...(input.action==='ASIGNAR'?{workAssignedAt:now,workAcknowledgedAt:null,workAcknowledgedById:null,workStartedAt:null,workEscalatedAt:null}:{}),
       ...(input.action==='RECIBIR'?{workAcknowledgedAt:current.workAcknowledgedAt??now,workAcknowledgedById:user.id}:{}),

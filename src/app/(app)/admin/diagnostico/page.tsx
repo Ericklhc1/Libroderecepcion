@@ -71,7 +71,7 @@ export default async function DiagnosticsPage({
       </header>
 
       {!enabled || !report ? (
-        <Card>
+        <Card collapsible>
           <EmptyState
             message="El Centro de diagnóstico está desactivado."
             hint="Actívalo desde Administración → Parámetros → diagnóstico."
@@ -80,10 +80,10 @@ export default async function DiagnosticsPage({
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card><div className="p-4"><p className="text-xs text-slate-500">Alertas duplicadas</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.duplicateAlerts.length}</p></div></Card>
-            <Card><div className="p-4"><p className="text-xs text-slate-500">Estadías sin vínculo FNS</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.unlinkedStayCount}</p></div></Card>
-            <Card><div className="p-4"><p className="text-xs text-slate-500">Asignaciones a corregir</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.reservationRoomMismatches.length}</p></div></Card>
-            <Card><div className="p-4"><p className="text-xs text-slate-500">Errores de ejecución</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.runtimeErrors.length}</p></div></Card>
+            <Card collapsible><div className="p-4"><p className="text-xs text-slate-500">Alertas duplicadas</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.duplicateAlerts.length}</p></div></Card>
+            <Card collapsible><div className="p-4"><p className="text-xs text-slate-500">Estadías sin vínculo FNS</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.unlinkedStayCount}</p></div></Card>
+            <Card collapsible><div className="p-4"><p className="text-xs text-slate-500">Asignaciones a corregir</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.reservationRoomMismatches.length}</p></div></Card>
+            <Card collapsible><div className="p-4"><p className="text-xs text-slate-500">Errores de ejecución</p><p className="mt-1 text-2xl font-semibold tabular text-petrol-900">{report.runtimeErrors.length}</p></div></Card>
           </div>
 
           <ListFilterBar
@@ -103,7 +103,7 @@ export default async function DiagnosticsPage({
             </label>
           </ListFilterBar>
 
-          <Card className="border-gold-300">
+          <Card collapsible className="border-gold-300">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
               <div className="max-w-3xl">
                 <h2 className="flex items-center gap-2 font-semibold text-petrol-900">
@@ -124,7 +124,7 @@ export default async function DiagnosticsPage({
 
           <div className="grid gap-4 xl:grid-cols-2">
             {show('alertas') ? (
-              <Card>
+              <Card collapsible>
                 <CardHeader title="Alertas duplicadas" count={visibleDuplicateAlerts.length} />
                 {visibleDuplicateAlerts.length === 0 ? (
                   <EmptyState message="No se detectaron duplicados exactos con estos filtros." />
@@ -151,7 +151,7 @@ export default async function DiagnosticsPage({
             ) : null}
 
             {show('asignaciones') ? (
-              <Card>
+              <Card collapsible>
                 <CardHeader title="Asignación Reserva ↔ Habitación" count={visibleMismatches.length} />
                 {visibleMismatches.length === 0 ? (
                   <EmptyState message="Las proyecciones de habitación están coherentes con estos filtros." />
@@ -177,7 +177,7 @@ export default async function DiagnosticsPage({
           </div>
 
           {show('estadias') ? (
-            <Card>
+            <Card collapsible>
               <CardHeader title="Estadías activas potencialmente duplicadas" count={visibleDuplicateStays.length} />
               {visibleDuplicateStays.length === 0 ? (
                 <EmptyState message="No se detectaron estadías activas duplicadas con estos filtros." />
@@ -202,7 +202,7 @@ export default async function DiagnosticsPage({
           ) : null}
 
           {show('errores') ? (
-            <Card>
+            <Card collapsible>
               <CardHeader title="Errores de ejecución capturados" count={visibleRuntimeErrors.length} />
               {visibleRuntimeErrors.length === 0 ? (
                 <EmptyState message="No hay errores de ejecución con estos filtros." />
@@ -234,7 +234,7 @@ export default async function DiagnosticsPage({
             </Card>
           ) : null}
 
-          <Card>
+          <Card collapsible>
             <div className="flex items-start gap-3 px-4 py-4 text-sm">
               <DatabaseZap className="mt-0.5 h-5 w-5 shrink-0 text-petrol-600" aria-hidden="true" />
               <div>

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
-import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { Card, DisclosureCard, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { Chip } from '@/components/ui/badge';
@@ -159,8 +159,8 @@ export default async function DeletedPage({
       ) : null}
 
       {shownEntries.length > 0 ? (
-        <Card>
-          <CardHeader title="Registros del libro" count={shownEntries.length} />
+        <DisclosureCard title="Registros del libro" count={shownEntries.length} defaultOpen>
+          
           <CardScroll>
           <ul className="divide-y divide-slate-100">
             {shownEntries.map((entry) => (
@@ -184,12 +184,12 @@ export default async function DeletedPage({
             ))}
           </ul>
         </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {shownTasks.length > 0 ? (
-        <Card>
-          <CardHeader title="Tareas" count={shownTasks.length} />
+        <DisclosureCard title="Tareas" count={shownTasks.length}>
+          
           <CardScroll>
           <ul className="divide-y divide-slate-100">
             {shownTasks.map((task) => (
@@ -212,12 +212,12 @@ export default async function DeletedPage({
             ))}
           </ul>
         </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {shownFollowUps.length > 0 ? (
-        <Card>
-          <CardHeader title="Seguimientos" count={shownFollowUps.length} />
+        <DisclosureCard title="Seguimientos" count={shownFollowUps.length}>
+          
           <CardScroll>
           <ul className="divide-y divide-slate-100">
             {shownFollowUps.map((followUp) => (
@@ -237,12 +237,12 @@ export default async function DeletedPage({
             ))}
           </ul>
         </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {shownAlerts.length > 0 ? (
-        <Card>
-          <CardHeader title="Alertas" count={shownAlerts.length} />
+        <DisclosureCard title="Alertas" count={shownAlerts.length}>
+          
           <CardScroll>
           <ul className="divide-y divide-slate-100">
             {shownAlerts.map((alert) => (
@@ -262,12 +262,12 @@ export default async function DeletedPage({
             ))}
           </ul>
         </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {shownNotes.length > 0 ? (
-        <Card>
-          <CardHeader title="Notas de Supervisión" count={shownNotes.length} />
+        <DisclosureCard title="Notas de Supervisión" count={shownNotes.length}>
+          
           <CardScroll>
             <ul className="divide-y divide-slate-100">
               {shownNotes.map((note) => (
@@ -284,12 +284,12 @@ export default async function DeletedPage({
               ))}
             </ul>
           </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
 
       {shownMeasures.length > 0 ? (
-        <Card>
-          <CardHeader title="Medidas correctivas" count={shownMeasures.length} />
+        <DisclosureCard title="Medidas correctivas" count={shownMeasures.length}>
+          
           <CardScroll>
             <ul className="divide-y divide-slate-100">
               {shownMeasures.map((measure) => (
@@ -306,7 +306,7 @@ export default async function DeletedPage({
               ))}
             </ul>
           </CardScroll>
-        </Card>
+        </DisclosureCard>
       ) : null}
     </div>
   );

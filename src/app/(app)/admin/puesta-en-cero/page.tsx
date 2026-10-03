@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft, TriangleAlert } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getResetPreview, RESET_PHRASE } from '@/server/services/factory-reset';
-import { Card, CardHeader } from '@/components/ui/card';
+import { DisclosureCard } from '@/components/ui/card';
 import { FactoryResetForm } from '@/components/admin/factory-reset-form';
 
 export const metadata = { title: 'Puesta en cero' };
@@ -106,8 +106,8 @@ export default async function FactoryResetPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader title="Qué se va a borrar" />
+      <DisclosureCard title="Qué se va a borrar" defaultOpen>
+        
         <div className="divide-y divide-slate-100">
           {GROUPS.map((group) => (
             <div key={group.title} className="px-4 py-3">
@@ -131,10 +131,10 @@ export default async function FactoryResetPage() {
             </div>
           ))}
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Qué se conserva" />
+      <DisclosureCard title="Qué se conserva">
+        
         <div className="px-4 py-3 text-sm text-slate-700">
           <p>
             El <strong>catálogo</strong>, que es la instalación del hotel: roles y
@@ -154,10 +154,10 @@ export default async function FactoryResetPage() {
             inventario.
           </p>
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Confirmar" />
+      <DisclosureCard title="Confirmar">
+        
         <div className="px-4 py-4">
           <FactoryResetForm
             phrase={RESET_PHRASE}
@@ -166,7 +166,7 @@ export default async function FactoryResetPage() {
             users={preview.users}
           />
         </div>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

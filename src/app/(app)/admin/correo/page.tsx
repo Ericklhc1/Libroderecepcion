@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Info, XCircle } from 'lucide-react';
 import { NotificationType } from '@prisma/client';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getMailConfigView } from '@/server/services/mail-settings';
-import { Card, CardHeader } from '@/components/ui/card';
+import { DisclosureCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   EmailNotificationPolicyForm,
@@ -52,8 +52,7 @@ export default async function MailConfigPage() {
         </p>
       </header>
 
-      <Card>
-        <CardHeader title="Estado" />
+      <DisclosureCard title="Estado" description="Disponibilidad real del envío y configuración activa." defaultOpen>
         <div className="space-y-3 px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
             {config.canSend ? (
@@ -133,10 +132,9 @@ export default async function MailConfigPage() {
             </p>
           ) : null}
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Configuración" />
+      <DisclosureCard title="Configuración" description="Servidor, remitente y destinos de correo.">
         <div className="px-4 py-4">
           <MailForm
             values={{
@@ -156,10 +154,9 @@ export default async function MailConfigPage() {
             }}
           />
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Qué notificaciones salen por correo" />
+      <DisclosureCard title="Qué notificaciones salen por correo" description="Políticas de avisos obligatorios y preferencias individuales.">
         <div className="space-y-3 px-4 py-4">
           <p className="text-sm text-slate-600">
             La Central separa avisos operativos obligatorios de novedades opcionales. El correo
@@ -175,10 +172,9 @@ export default async function MailConfigPage() {
             }))}
           />
         </div>
-      </Card>
+      </DisclosureCard>
 
-      <Card>
-        <CardHeader title="Probar el envío" />
+      <DisclosureCard title="Probar el envío" description="Prueba manual y diagnóstico del servidor de salida.">
         <div className="space-y-3 px-4 py-4">
           <p className="text-sm text-slate-600">
             Configurar el correo a ciegas es cómo se llega a un sistema que no avisa de nada. El
@@ -186,7 +182,7 @@ export default async function MailConfigPage() {
           </p>
           <MailTestForm defaultTo={config.credentialsMailTo} />
         </div>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

@@ -188,6 +188,11 @@ h4 {
     display: none !important;
   }
 
+  /* Los paneles plegados siguen completos al imprimir/PDF. */
+  details[data-disclosure-card] > [data-disclosure-content] {
+    display: block !important;
+  }
+
   .card {
     break-inside: avoid;
     box-shadow: none !important;

@@ -114,7 +114,9 @@ jobs:
         run: npm run lint
 
       - name: Tipos
-        run: npm run typecheck 2>&1 | tee etapa3-typecheck.log
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
       - name: Regresiones
         run: npm run test

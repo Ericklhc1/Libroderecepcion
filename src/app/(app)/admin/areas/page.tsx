@@ -73,8 +73,8 @@ export default async function DepartmentsPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Listado" count={departments.length} />
+      <DisclosureCard title="Listado" description="Áreas operativas y su configuración básica." count={departments.length} defaultOpen>
+        
         <CardScroll>
           <ul className="divide-y divide-slate-100">
           {departments.map((department) => (
@@ -111,7 +111,7 @@ export default async function DepartmentsPage({
           ))}
           </ul>
         </CardScroll>
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

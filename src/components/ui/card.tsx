@@ -43,6 +43,7 @@ export function DisclosureCard({
   return (
     <details
       id={id}
+      data-disclosure-card
       className={cn('group card scroll-mt-32 overflow-hidden', className)}
       open={defaultOpen || undefined}
     >

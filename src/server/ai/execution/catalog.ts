@@ -142,6 +142,8 @@ const handlers: Record<string, () => Promise<Handler>> = {
   simulateAutomationAction: async () => (await import('@/server/actions/operational-automation')).simulateAutomationAction,
   setAutomationStateAction: async () => (await import('@/server/actions/operational-automation')).setAutomationStateAction,
 
+  createLostFoundAction: async () => (await import('@/server/actions/lost-found')).createLostFoundAction,
+  changeLostFoundAction: async () => (await import('@/server/actions/lost-found')).changeLostFoundAction,
   createEntryAction: async () => (await import('@/server/actions/entries')).createEntryAction,
   createTaskAction: async () => (await import('@/server/actions/tasks')).createTaskAction,
   coordinateWorkAction: async () => (await import('@/server/actions/coordination')).coordinateWorkAction,

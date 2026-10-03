@@ -270,7 +270,7 @@ export default async function FrontiAdminPage({
         </label>
       </ListFilterBar>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Diagnóstico" />
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
@@ -303,7 +303,7 @@ export default async function FrontiAdminPage({
         </div>
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Acceso por usuario" count={userAccess.length} />
         <div className="border-b border-slate-100 px-4 py-3">
           <p className="text-sm text-slate-600">
@@ -314,7 +314,7 @@ export default async function FrontiAdminPage({
         <FrontiUserAccessList users={userAccess} />
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Credenciales de proveedores" />
         <div className="border-b border-slate-100 px-4 py-3">
           <p className="text-sm text-slate-600">
@@ -326,7 +326,7 @@ export default async function FrontiAdminPage({
         <FrontiProviderCredentials credentials={credentials} />
       </Card>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Seguridad obligatoria" />
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-3">
           {[
@@ -351,7 +351,7 @@ export default async function FrontiAdminPage({
       {visibleGroups.map(({ group, rows }) => {
         const Icon = group.icon;
         return (
-          <Card key={group.id} className="overflow-hidden">
+          <Card collapsible key={group.id} className="overflow-hidden">
             <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-petrol-50 text-petrol-700">
                 <Icon className="h-4 w-4" aria-hidden="true" />
@@ -372,7 +372,7 @@ export default async function FrontiAdminPage({
         );
       })}
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Mantenimiento de Fronti" />
         <div className="space-y-3 px-4 py-4">
           <p className="flex items-start gap-2 text-sm text-slate-600">

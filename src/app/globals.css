@@ -209,6 +209,14 @@ h4 {
     padding-bottom: 0.18cm !important;
   }
 
+  details[data-disclosure-card] > :not(summary) {
+    display: block !important;
+  }
+
+  details[data-disclosure-card] > summary svg {
+    display: none !important;
+  }
+
   h1 {
     font-size: 15pt !important;
   }

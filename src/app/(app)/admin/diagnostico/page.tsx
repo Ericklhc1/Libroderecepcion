@@ -124,7 +124,7 @@ export default async function DiagnosticsPage({
 
           <div className="grid gap-4 xl:grid-cols-2">
             {show('alertas') ? (
-              <DisclosureCard title="Alertas duplicadas" description="Grupos equivalentes que pueden depurarse de forma segura.">
+              <DisclosureCard title="Alertas duplicadas" description="Grupos equivalentes que pueden depurarse de forma segura." count={visibleDuplicateAlerts.length}>
 {visibleDuplicateAlerts.length === 0 ? (
                   <EmptyState message="No se detectaron duplicados exactos con estos filtros." />
                 ) : (
@@ -150,7 +150,7 @@ export default async function DiagnosticsPage({
             ) : null}
 
             {show('asignaciones') ? (
-              <DisclosureCard title="Asignación Reserva ↔ Habitación" description="Diferencias entre la referencia operativa y la habitación asociada.">
+              <DisclosureCard title="Asignación Reserva ↔ Habitación" description="Diferencias entre la referencia operativa y la habitación asociada." count={visibleMismatches.length}>
 {visibleMismatches.length === 0 ? (
                   <EmptyState message="Las proyecciones de habitación están coherentes con estos filtros." />
                 ) : (
@@ -175,7 +175,7 @@ export default async function DiagnosticsPage({
           </div>
 
           {show('estadias') ? (
-            <DisclosureCard title="Estadías activas potencialmente duplicadas" description="Casos que requieren revisión antes de intervenir.">
+            <DisclosureCard title="Estadías activas potencialmente duplicadas" description="Casos que requieren revisión antes de intervenir." count={visibleDuplicateStays.length}>
 {visibleDuplicateStays.length === 0 ? (
                 <EmptyState message="No se detectaron estadías activas duplicadas con estos filtros." />
               ) : (
@@ -199,7 +199,7 @@ export default async function DiagnosticsPage({
           ) : null}
 
           {show('errores') ? (
-            <DisclosureCard title="Errores de ejecución capturados" description="Errores recientes con contexto técnico para diagnóstico.">
+            <DisclosureCard title="Errores de ejecución capturados" description="Errores recientes con contexto técnico para diagnóstico." count={visibleRuntimeErrors.length}>
 {visibleRuntimeErrors.length === 0 ? (
                 <EmptyState message="No hay errores de ejecución con estos filtros." />
               ) : (

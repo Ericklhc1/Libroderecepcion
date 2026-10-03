@@ -139,6 +139,16 @@ export default async function SupervisionCenterPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';
   const period = parsePeriod(params);
+  const requestedSection = typeof params.seccion === 'string' ? params.seccion : '';
+  const sectionHref = (section: string) => {
+    const query = new URLSearchParams();
+    if (typeof params.q === 'string' && params.q.trim()) query.set('q', params.q.trim());
+    if (priority) query.set('prioridad', priority);
+    query.set('desde', hotelDateKey(period.from));
+    query.set('hasta', hotelDateKey(period.to));
+    query.set('seccion', section);
+    return `/supervision?${query.toString()}#${section}`;
+  };
   const isSupervisor = (user.roleKey === ROLE_KEYS.SUPERVISOR || user.roleKey === ROLE_KEYS.SYSTEM_ADMIN);
   const canPerformance = hasPermission(user, 'supervision.performance.view');
   const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
@@ -244,9 +254,9 @@ export default async function SupervisionCenterPage({
 
       <nav className="flex flex-wrap gap-2 no-print" aria-label="Atajos del Centro de Supervisión">
         <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Desde mi último turno</a>
-        <a href="#pendientes" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Asignado a mí</a>
-        <a href="#seguimientos" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">En seguimiento</a>
-        <a href="#senales" className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Requiere atención</a>
+        <Link href={sectionHref('pendientes')} className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Asignado a mí</Link>
+        <Link href={sectionHref('seguimientos')} className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">En seguimiento</Link>
+        <Link href={sectionHref('senales')} className="rounded-full bg-gold-50 px-3 py-1.5 text-xs font-medium text-petrol-800 ring-1 ring-gold-200 hover:bg-gold-100">Requiere atención</Link>
         <a href="#auditoria-diaria" className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100">Auditoría diaria</a>
       </nav>
 
@@ -396,7 +406,7 @@ export default async function SupervisionCenterPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <DisclosureCard id="pendientes" title="Asignado a mí" count={tasks.length}>
+        <DisclosureCard id="pendientes" title="Asignado a mí" count={tasks.length} defaultOpen={requestedSection === 'pendientes'}>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
 
           {tasks.length === 0 ? <EmptyState message="No tienes tareas asignadas con estos filtros." /> : (
@@ -418,7 +428,7 @@ export default async function SupervisionCenterPage({
         </Card>
         </DisclosureCard>
 
-        <DisclosureCard id="seguimientos" title="En seguimiento" count={followUps.length}>
+        <DisclosureCard id="seguimientos" title="En seguimiento" count={followUps.length} defaultOpen={requestedSection === 'seguimientos'}>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
 
           {followUps.length === 0 ? <EmptyState message="No estás siguiendo asuntos con estos filtros." /> : (
@@ -496,6 +506,7 @@ export default async function SupervisionCenterPage({
           title="Requiere atención · señales del Libro"
           description="Señales verificables para seguimiento, sin duplicar la operación."
           count={blocks.length}
+          defaultOpen={requestedSection === 'senales'}
         >
           <div className="grid gap-4 p-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}

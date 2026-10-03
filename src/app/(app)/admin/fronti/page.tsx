@@ -345,7 +345,6 @@ export default async function FrontiAdminPage({
       </DisclosureCard>
 
       {visibleGroups.map(({ group, rows }) => {
-        const Icon = group.icon;
         return (
           <DisclosureCard key={group.id} title={group.title} description={group.description} defaultOpen={Boolean(grupo || q)}>
 

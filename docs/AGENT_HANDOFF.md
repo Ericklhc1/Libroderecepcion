@@ -1,3 +1,11 @@
+## 03/10/2026 · v1.51.1 · Estabilización de secciones desplegables
+
+Production 1.51.0 / `2e44337` quedó READY antes de que terminara la revisión Codex del PR #255. La revisión detectó cinco ajustes que no deben quedar pendientes: impresión de bloques cerrados, atajos internos de Supervisión, apertura de la lista de delegaciones solicitada, conteos visibles en Diagnóstico y relevo actualizado.
+
+El parche 1.51.1 conserva el mismo alcance UI y no toca datos, permisos ni procedimientos. `DisclosureCard` marca sus bloques para que impresión muestre todo el contenido; los atajos de Supervisión navegan con `seccion` y abren el bloque pedido; `?delegaciones=1` abre inmediatamente la lista filtrada; Diagnóstico conserva los conteos de cada grupo plegado. La prueba estructural cubre estos contratos. Safari/iPhone físico sigue pendiente explícito.
+
+Validar mediante Compuerta completa con PostgreSQL desechable, lint, tipos, regresiones, build y Chromium 1280/390 antes de integrar. Tras merge, comprobar Vercel Production, SHA y versión 1.51.1. No hay migraciones.
+
 ## 03/10/2026 · Etapa 3 bloque 2 · parche 1.50.1
 
 Production vigente al retomar: 1.50.0 / 4e5eaf8b06aae6930399b4087f9ae7f2b1542c95, Vercel READY. Esa versión fue fusionada tras Compuerta verde, pero la revisión Codex posterior detectó seis hallazgos relevantes en Coordinación. No considerar el bloque 2 cerrado hasta publicar 1.50.1.

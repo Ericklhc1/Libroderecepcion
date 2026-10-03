@@ -5,7 +5,7 @@ import {parseHotelDateInput} from '@/domain/time';
 import {ROLE_KEYS} from '@/lib/permissions';
 import {ShiftStatus,ShiftType} from '@prisma/client';
 import {createLostFound,changeLostFound,listLostFound} from '@/server/services/lost-found';
-import {coordinateWork,getCoordinationBoard} from '@/server/services/coordination';
+import {coordinateWork,getCoordinationBoard,coordinationMetrics} from '@/server/services/coordination';
 
 describe('Etapa 3 bloque 2: coordinación y custodia',()=>{
  beforeAll(seedCatalog);beforeEach(resetOperationalData);
@@ -74,22 +74,30 @@ describe('Etapa 3 bloque 2: coordinación y custodia',()=>{
   expect(requested.id).toBe(entry.id);
   const waiting=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(waiting.status).toBe('EN_ESPERA');expect(waiting.workNextAction).toBe('Aclaración requerida: ¿La fuga aparece sólo cuando llueve?');
   await coordinateWork(creator,{kind:'entry',id:entry.id,updatedAt:waiting.updatedAt,requestKey:randomUUID(),action:'RESPONDER_ACLARACION',nextAction:'Sí, sólo aparece durante lluvia intensa.'});
-  const resumed=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(resumed.status).toBe('EN_CURSO');expect(resumed.ownerId).toBe(owner.id);expect(resumed.workNextAction).toContain('Aclaración recibida: Sí');
+  const resumed=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(resumed.status).toBe('EN_ESPERA');expect(resumed.ownerId).toBe(owner.id);expect(resumed.workNextAction).toContain('Aclaración recibida: Sí');
   expect(await prisma.operationalEntry.count({where:{id:entry.id}})).toBe(1);
   expect(await prisma.notification.count({where:{userId:owner.id,entityId:entry.id,type:'ACTUALIZACION_OPERATIVA'}})).toBe(1);
   expect(await prisma.auditLog.count({where:{entity:'OperationalEntry',entityId:entry.id,summary:{contains:'RESPONDER_ACLARACION'}}})).toBe(1);
  });
- it('ofrece vistas de Recepción, no confirmados, impedimentos, aclaraciones y turnos anteriores sin duplicar fuentes',async()=>{
+ it('ofrece vistas con origen de Recepción inmutable y continuidad desde entrega enviada',async()=>{
   const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
-  const oldShift=await createShift({userId:receptionist.id,type:ShiftType.DIA,status:ShiftStatus.CERRADO});
+  const oldShift=await createShift({userId:receptionist.id,type:ShiftType.DIA,status:ShiftStatus.ENTREGA_ENVIADA});
   const carry=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Pendiente heredado',description:'Continúa al relevo',departmentId:area.id,createdById:receptionist.id,ownerId:supervisor.id,shiftId:oldShift.id,workAssignedAt:new Date(),workNextAction:'Continuar revisión'}});
-  const clarification=await prisma.task.create({data:{title:'Confirmar repuesto',description:'Esperar dato',createdById:receptionist.id,assigneeId:supervisor.id,departmentId:area.id,status:'BLOQUEADA',workAssignedAt:new Date(),workAcknowledgedAt:new Date(),workAcknowledgedById:supervisor.id,workNextAction:'Aclaración requerida: indicar modelo exacto',blockedReason:'Aclaración requerida: indicar modelo exacto'}});
-  const unassigned=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Sin responsable',description:'Asignar',departmentId:area.id,createdById:receptionist.id}});
+  const clarification=await prisma.task.create({data:{title:'Confirmar repuesto',description:'Esperar dato',createdById:receptionist.id,assigneeId:supervisor.id,departmentId:area.id,shiftId:oldShift.id,status:'BLOQUEADA',workAssignedAt:new Date(),workAcknowledgedAt:new Date(),workAcknowledgedById:supervisor.id,workNextAction:'Aclaración requerida: indicar modelo exacto',blockedReason:'Aclaración requerida: indicar modelo exacto'}});
+  const unassigned=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Sin responsable',description:'Asignar',departmentId:area.id,createdById:receptionist.id,shiftId:oldShift.id}});
+  const managementRole=await prisma.role.findUniqueOrThrow({where:{key:ROLE_KEYS.MANAGEMENT}});await prisma.user.update({where:{id:receptionist.id},data:{roleId:managementRole.id}});
   expect((await getCoordinationBoard(supervisor,{view:'reception'})).rows.map(r=>r.id)).toEqual(expect.arrayContaining([carry.id,clarification.id,unassigned.id]));
   expect((await getCoordinationBoard(supervisor,{view:'unassigned'})).rows.map(r=>r.id)).toContain(unassigned.id);
   expect((await getCoordinationBoard(supervisor,{view:'unreceived'})).rows.map(r=>r.id)).toContain(carry.id);
-  expect((await getCoordinationBoard(supervisor,{view:'blocked'})).rows.map(r=>r.id)).toContain(clarification.id);
+  const blocked=await getCoordinationBoard(supervisor,{view:'blocked'});expect(blocked.rows.map(r=>r.id)).toContain(clarification.id);expect(coordinationMetrics(blocked.rows).blocked).toBeGreaterThan(0);
   expect((await getCoordinationBoard(supervisor,{view:'clarification'})).rows.map(r=>r.id)).toEqual([clarification.id]);
-  expect((await getCoordinationBoard(supervisor,{view:'carryover'})).rows.map(r=>r.id)).toContain(carry.id);
+  expect((await getCoordinationBoard(supervisor,{view:'carryover'})).rows.map(r=>r.id)).toEqual(expect.arrayContaining([carry.id,clarification.id]));
  });
+ it('no reemplaza un impedimento existente por una aclaración',async()=>{
+  const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+  const entry=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Bloqueo previo',description:'Sin acceso',departmentId:area.id,createdById:admin.id,ownerId:owner.id,status:'EN_ESPERA',workAssignedAt:new Date(),workAcknowledgedAt:new Date(),workAcknowledgedById:owner.id,workNextAction:'Esperar acceso técnico'}});
+  await expect(coordinateWork(owner,{kind:'entry',id:entry.id,updatedAt:entry.updatedAt,requestKey:randomUUID(),action:'ACLARACION',nextAction:'¿Hay llave disponible?'})).rejects.toThrow('impedimento o espera activa');
+  const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}});expect(current.status).toBe('EN_ESPERA');expect(current.workNextAction).toBe('Esperar acceso técnico');
+ });
+
 });

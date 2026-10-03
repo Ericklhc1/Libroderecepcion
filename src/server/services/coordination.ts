@@ -34,20 +34,20 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const hkScope = canAccessHousekeeping(user) ? await hkWorkVisibility(user) : { id: { in: [] as string[] } };
   const view=input.view??'all';
   const [legacyEntryRows,legacyTaskRows]=await Promise.all([
-    prisma.$queryRaw<Array<{id:string}>>\`
+    prisma.$queryRaw<Array<{id:string}>>`
       SELECT e."id" FROM "OperationalEntry" e
       WHERE e."deletedAt" IS NULL AND e."isDemo"=false AND e."status"='EN_ESPERA'
         AND (e."workNextAction" IS NULL OR e."workNextAction" NOT LIKE 'Aclaración requerida:%')
         AND (SELECT a."summary" FROM "AuditLog" a WHERE a."entity"='OperationalEntry' AND a."entityId"=e."id" ORDER BY a."createdAt" DESC,a."id" DESC LIMIT 1)
           = 'Coordinación #' || e."humanId"::text || ': ACLARACION'
-    \`,
-    prisma.$queryRaw<Array<{id:string}>>\`
+    `,
+    prisma.$queryRaw<Array<{id:string}>>`
       SELECT t."id" FROM "Task" t
       WHERE t."deletedAt" IS NULL AND t."isDemo"=false AND t."status"='BLOQUEADA'
         AND (t."workNextAction" IS NULL OR t."workNextAction" NOT LIKE 'Aclaración requerida:%')
         AND (SELECT a."summary" FROM "AuditLog" a WHERE a."entity"='Task' AND a."entityId"=t."id" ORDER BY a."createdAt" DESC,a."id" DESC LIMIT 1)
           = 'Coordinación #' || t."humanId"::text || ': ACLARACION'
-    \`,
+    `,
   ]);
   const legacyEntryIds=legacyEntryRows.map(row=>row.id),legacyTaskIds=legacyTaskRows.map(row=>row.id);
   const legacyEntrySet=new Set(legacyEntryIds),legacyTaskSet=new Set(legacyTaskIds);

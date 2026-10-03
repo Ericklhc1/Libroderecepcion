@@ -153,13 +153,13 @@ export default async function DeletedPage({
       </ListFilterBar>
 
       {total === 0 ? (
-        <Card>
+        <Card collapsible>
           <EmptyState message="No hay registros eliminados." />
         </Card>
       ) : null}
 
       {shownEntries.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Registros del libro" count={shownEntries.length} />
           <CardScroll>
           <ul className="divide-y divide-slate-100">
@@ -188,7 +188,7 @@ export default async function DeletedPage({
       ) : null}
 
       {shownTasks.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Tareas" count={shownTasks.length} />
           <CardScroll>
           <ul className="divide-y divide-slate-100">
@@ -216,7 +216,7 @@ export default async function DeletedPage({
       ) : null}
 
       {shownFollowUps.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Seguimientos" count={shownFollowUps.length} />
           <CardScroll>
           <ul className="divide-y divide-slate-100">
@@ -241,7 +241,7 @@ export default async function DeletedPage({
       ) : null}
 
       {shownAlerts.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Alertas" count={shownAlerts.length} />
           <CardScroll>
           <ul className="divide-y divide-slate-100">
@@ -266,7 +266,7 @@ export default async function DeletedPage({
       ) : null}
 
       {shownNotes.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Notas de Supervisión" count={shownNotes.length} />
           <CardScroll>
             <ul className="divide-y divide-slate-100">
@@ -288,7 +288,7 @@ export default async function DeletedPage({
       ) : null}
 
       {shownMeasures.length > 0 ? (
-        <Card>
+        <Card collapsible>
           <CardHeader title="Medidas correctivas" count={shownMeasures.length} />
           <CardScroll>
             <ul className="divide-y divide-slate-100">

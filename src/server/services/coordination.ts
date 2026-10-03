@@ -44,7 +44,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     status: input.history ? { in: [...taskClosed] } : { notIn: [...taskClosed] }, ...(input.mine ? { assigneeId: user.id } : {}) };
   const hkWhere: Prisma.HousekeepingRequestWhereInput = { AND: [hkScope,hkView], ...area, workflowVersion: 1, isDemo: false,
     status: input.history ? { in: ['RESUELTO','CANCELADO'] } : { notIn: ['RESUELTO','CANCELADO'] }, ...(input.mine ? { assignedToId: user.id } : {}) };
-  const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(input.mine?{ownerId:user.id}:{}), status:input.history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
+  const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), ...(view==='all'?[]:[{id:{in:[] as string[]}}]), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(input.mine?{ownerId:user.id}:{}), status:input.history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
   const window = { take: 25, skip: (page-1)*25, orderBy: [{ dueAt: { sort: 'asc' as const, nulls: 'last' as const } }, { id: 'asc' as const }] };
   const [entries,tasks,hk,followups,entryGroups,taskGroups,hkGroups,followGroups,departments] = await Promise.all([
     prisma.operationalEntry.findMany({ where: entryWhere, ...window, include: {

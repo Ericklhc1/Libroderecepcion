@@ -59,6 +59,23 @@ describe('secciones desplegables del sistema',()=>{
     expect(diagnostics).toContain('count={visibleRuntimeErrors.length}');
   });
 
+  it('conserva impresión, enlaces dirigidos, filtros solicitados y conteos visibles',()=>{
+    const card=read('src/components/ui/card.tsx');
+    const css=read('src/app/globals.css');
+    const supervision=read('src/app/(app)/supervision/page.tsx');
+    const fronti=read('src/app/(app)/fronti/procedimientos/page.tsx');
+    const diagnostics=read('src/app/(app)/admin/diagnostico/page.tsx');
+    expect(card).toContain('data-disclosure-card');
+    expect(css).toContain('details[data-disclosure-card] > :not(summary)');
+    expect(supervision).toContain("sectionHref('pendientes')");
+    expect(supervision).toContain("defaultOpen={requestedSection === 'seguimientos'}");
+    expect(supervision).toContain("defaultOpen={requestedSection === 'senales'}");
+    expect(fronti).toContain("defaultOpen={delegaciones === '1'}");
+    expect(diagnostics).toContain('count={visibleDuplicateAlerts.length}');
+    expect(diagnostics).toContain('count={visibleMismatches.length}');
+    expect(diagnostics).toContain('count={visibleDuplicateStays.length}');
+    expect(diagnostics).toContain('count={visibleRuntimeErrors.length}');
+  });
   it('agrupa Administración y no vuelve a cargar todos los accesos como una lista abierta',()=>{
     const source=read('src/app/(app)/admin/page.tsx');
     expect(source).toContain('ADMIN_GROUPS');

@@ -93,7 +93,7 @@ export default async function RolesPage({
       </ListFilterBar>
 
       {visibleRoles.map((role) => (
-        <Card key={role.id} className="overflow-hidden">
+        <Card collapsible key={role.id} className="overflow-hidden">
           <CardHeader
             title={role.name}
             count={role.permissions.length}

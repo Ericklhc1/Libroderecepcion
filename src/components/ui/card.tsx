@@ -23,6 +23,7 @@ export function DisclosureCard({
   title,
   description,
   count,
+  action,
   children,
   className,
   contentClassName,
@@ -32,6 +33,7 @@ export function DisclosureCard({
   title: React.ReactNode;
   description?: React.ReactNode;
   count?: number | null;
+  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   contentClassName?: string;
@@ -59,10 +61,13 @@ export function DisclosureCard({
           </div>
           {description ? <p className="mt-0.5 text-xs leading-5 text-slate-600">{description}</p> : null}
         </div>
-        <ChevronDown
-          className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
-          aria-hidden="true"
-        />
+        <span className="flex shrink-0 items-center gap-2">
+          {action}
+          <ChevronDown
+            className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </span>
       </summary>
       <div className={cn('border-t border-slate-100', contentClassName)}>{children}</div>
     </details>

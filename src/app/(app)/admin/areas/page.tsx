@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, CardScroll } from '@/components/ui/card';
+import { CardScroll, DisclosureCard } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { DepartmentDialog } from '../admin-forms';

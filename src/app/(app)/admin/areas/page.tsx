@@ -73,7 +73,7 @@ export default async function DepartmentsPage({
         </label>
       </ListFilterBar>
 
-      <Card>
+      <Card collapsible>
         <CardHeader title="Listado" count={departments.length} />
         <CardScroll>
           <ul className="divide-y divide-slate-100">

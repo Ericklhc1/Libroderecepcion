@@ -3,7 +3,7 @@ import { ArrowLeft, Bug, CheckCircle2, CircleAlert, DatabaseZap, Wrench } from '
 import { requirePagePermission } from '@/server/auth/guard';
 import { getDiagnosticReport } from '@/server/services/diagnostics';
 import { getSettingBool } from '@/server/services/settings';
-import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { Card, CardScroll, DisclosureCard, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import { Badge } from '@/components/ui/badge';
 import { ActionForm } from '@/components/ui/form';
@@ -124,9 +124,8 @@ export default async function DiagnosticsPage({
 
           <div className="grid gap-4 xl:grid-cols-2">
             {show('alertas') ? (
-              <Card>
-                <CardHeader title="Alertas duplicadas" count={visibleDuplicateAlerts.length} />
-                {visibleDuplicateAlerts.length === 0 ? (
+              <DisclosureCard title="Alertas duplicadas" description="Grupos equivalentes que pueden depurarse de forma segura.">
+{visibleDuplicateAlerts.length === 0 ? (
                   <EmptyState message="No se detectaron duplicados exactos con estos filtros." />
                 ) : (
                   <CardScroll>
@@ -147,13 +146,12 @@ export default async function DiagnosticsPage({
                     </ul>
                   </CardScroll>
                 )}
-              </Card>
+              </DisclosureCard>
             ) : null}
 
             {show('asignaciones') ? (
-              <Card>
-                <CardHeader title="Asignación Reserva ↔ Habitación" count={visibleMismatches.length} />
-                {visibleMismatches.length === 0 ? (
+              <DisclosureCard title="Asignación Reserva ↔ Habitación" description="Diferencias entre la referencia operativa y la habitación asociada.">
+{visibleMismatches.length === 0 ? (
                   <EmptyState message="Las proyecciones de habitación están coherentes con estos filtros." />
                 ) : (
                   <CardScroll>
@@ -172,14 +170,13 @@ export default async function DiagnosticsPage({
                     </ul>
                   </CardScroll>
                 )}
-              </Card>
+              </DisclosureCard>
             ) : null}
           </div>
 
           {show('estadias') ? (
-            <Card>
-              <CardHeader title="Estadías activas potencialmente duplicadas" count={visibleDuplicateStays.length} />
-              {visibleDuplicateStays.length === 0 ? (
+            <DisclosureCard title="Estadías activas potencialmente duplicadas" description="Casos que requieren revisión antes de intervenir.">
+{visibleDuplicateStays.length === 0 ? (
                 <EmptyState message="No se detectaron estadías activas duplicadas con estos filtros." />
               ) : (
                 <CardScroll>
@@ -198,13 +195,12 @@ export default async function DiagnosticsPage({
                   </ul>
                 </CardScroll>
               )}
-            </Card>
+            </DisclosureCard>
           ) : null}
 
           {show('errores') ? (
-            <Card>
-              <CardHeader title="Errores de ejecución capturados" count={visibleRuntimeErrors.length} />
-              {visibleRuntimeErrors.length === 0 ? (
+            <DisclosureCard title="Errores de ejecución capturados" description="Errores recientes con contexto técnico para diagnóstico.">
+{visibleRuntimeErrors.length === 0 ? (
                 <EmptyState message="No hay errores de ejecución con estos filtros." />
               ) : (
                 <CardScroll>
@@ -231,7 +227,7 @@ export default async function DiagnosticsPage({
                   </ul>
                 </CardScroll>
               )}
-            </Card>
+            </DisclosureCard>
           ) : null}
 
           <Card>

@@ -253,9 +253,9 @@ export default async function KeysPage({
 
       <Link className="inline-flex rounded border bg-white px-3 py-2 text-sm font-semibold" href="/llaves/personal">Áreas · Entregar a personal · Mi stock</Link>
       <nav className="flex flex-wrap gap-2" aria-label="Secciones de Llaves">{[['inventario', 'Inventario completo'], ['llaves', 'Llaves y entregas'], ['historial', 'Historial e impresión']].map(([value, label]) => <Link key={value} className={`rounded border px-3 py-2 text-sm ${section === value ? 'bg-petrol-800 text-white' : 'bg-white'}`} href={`/llaves?vista=${value}&piso=${floorParam}`}>{label}</Link>)}</nav>
-      {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms).map(r => ({...r,custody:custody.filter(c => c.destinationId === r.roomId).map(c => c.label)}))} areas={areas.map(a => ({roomId:a.id,roomNumber:a.name,floor:0,expected:a.keys.filter(k => k.movements[0]?.action !== 'BAJA').length,keys:a.keys,custody:custody.filter(c => c.destinationId === a.id).map(c => c.label)}))} initialFloor={floorParam} /></Card>}
+      {section === 'inventario' && canInventory && <Card collapsible><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms).map(r => ({...r,custody:custody.filter(c => c.destinationId === r.roomId).map(c => c.label)}))} areas={areas.map(a => ({roomId:a.id,roomNumber:a.name,floor:0,expected:a.keys.filter(k => k.movements[0]?.action !== 'BAJA').length,keys:a.keys,custody:custody.filter(c => c.destinationId === a.id).map(c => c.label)}))} initialFloor={floorParam} /></Card>}
 
-      {section === 'llaves' && <Card>
+      {section === 'llaves' && <Card collapsible>
         <CardHeader title={allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />
         {inventory.rooms.length === 0 ? (
           <EmptyState
@@ -435,7 +435,7 @@ export default async function KeysPage({
         )}
       </Card>}
 
-      {section === 'historial' && <Card>
+      {section === 'historial' && <Card collapsible>
         <CardHeader title="Historial de inventarios · todos los pisos" count={recentCounts.length} />
         {recentCounts.length === 0 ? (
           <EmptyState message="Todavía no hay inventarios físicos guardados para el hotel." />

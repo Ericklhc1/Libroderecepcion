@@ -125,11 +125,15 @@ try {
   policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
   await policy.locator('select[name=state]').selectOption('pause');
   await Promise.all([page.waitForNavigation(),policy.getByRole('button',{name:'Guardar estado',exact:true}).click()]);
-  policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});
+  let policyRow=await db.operationalAutomation.findFirstOrThrow({where:{ownerId:f.users.admin.id,name:policyName}});
+  assert.equal(policyRow.version,2);assert.equal(policyRow.enabled,false);
+  await page.goto('http://localhost:3000/coordinacion/automatizaciones');policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 2',exact:true})});
   await policy.getByText(/^En pausa/).waitFor();
   await policy.locator('select[name=state]').selectOption('revoke');
   await Promise.all([page.waitForNavigation(),policy.getByRole('button',{name:'Guardar estado',exact:true}).click()]);
-  policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 3',exact:true})});
+  policyRow=await db.operationalAutomation.findFirstOrThrow({where:{ownerId:f.users.admin.id,name:policyName}});
+  assert.equal(policyRow.version,3);assert.ok(policyRow.revokedAt);
+  await page.goto('http://localhost:3000/coordinacion/automatizaciones');policyList=await openPolicyList();policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 3',exact:true})});
   await policy.getByText(/^Revocada/).waitFor();
   assert.equal(await policy.getByRole('button',{name:'Guardar estado',exact:true}).count(),0);
   results.push({width,scenario:'policy-save-simulate-no-effects-pause-revoke-history',ms:saveMs,budgetMs:3000,status:'passed',automaticExecution:false});

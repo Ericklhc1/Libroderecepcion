@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { CardScroll, DisclosureCard, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import {
@@ -113,8 +113,8 @@ export default async function UsersPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Cuentas" count={visibleUsers.length} />
+      <DisclosureCard title="Cuentas" description="Usuarios activos, desactivados y sus acciones administrativas." count={visibleUsers.length} defaultOpen>
+        
         {visibleUsers.length === 0 ? (
           <EmptyState message="No hay usuarios." />
         ) : (
@@ -192,7 +192,7 @@ export default async function UsersPage({
             </ul>
           </CardScroll>
         )}
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

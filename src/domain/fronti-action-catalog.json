@@ -2731,5 +2731,51 @@
     "protectedInputs": [
       "logoutAcknowledged"
     ]
+  },
+  {
+    "module": "custodia",
+    "name": "createLostFoundAction",
+    "label": "Objeto registrado en custodia",
+    "fields": [
+      "requestKey",
+      "item",
+      "foundLocation",
+      "foundAt",
+      "custodyLocation",
+      "custodianId"
+    ],
+    "permission": "custody.manage",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "requestKey",
+      "item",
+      "foundLocation",
+      "foundAt",
+      "custodyLocation"
+    ]
+  },
+  {
+    "module": "custodia",
+    "name": "changeLostFoundAction",
+    "label": "Custodia actualizada",
+    "fields": [
+      "id",
+      "version",
+      "action",
+      "custodyLocation",
+      "custodianId",
+      "note",
+      "evidenceNote"
+    ],
+    "permission": "custody.manage",
+    "risk": "normal",
+    "physical": false,
+    "requiredFields": [
+      "id",
+      "version",
+      "action",
+      "note"
+    ]
   }
 ]

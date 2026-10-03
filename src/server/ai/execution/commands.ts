@@ -10,6 +10,9 @@ import { FRONTI_ACTIONS } from './catalog';
 
 /** Deterministic commands use only this authenticated user's current message. */
 export async function executeFrontiCommand(message: string, requestKey?: string) {
+  const {executeNaturalCustody}=await import('./natural-custody');
+  const custody=await executeNaturalCustody(message,requestKey);
+  if(custody)return custody;
   const {executeNaturalHousekeeping}=await import('./natural-housekeeping');
   const natural=await executeNaturalHousekeeping(message,requestKey);
   if(natural)return natural;

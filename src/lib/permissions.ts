@@ -32,6 +32,9 @@ export const PERMISSIONS = {
   'housekeeping.view': { group: 'Housekeeping', name: 'Consultar avisos de Housekeeping' },
   'housekeeping.manage': { group: 'Housekeeping', name: 'Crear y gestionar avisos de Housekeeping' },
 
+  'custody.view': { group: 'Objetos olvidados', name: 'Consultar objetos olvidados y su custodia' },
+  'custody.manage': { group: 'Objetos olvidados', name: 'Registrar y actualizar objetos olvidados y su custodia' },
+
   'task.create': { group: 'Tareas', name: 'Crear tareas' },
   'task.assign': { group: 'Tareas', name: 'Asignar y reasignar tareas' },
   'task.edit': { group: 'Tareas', name: 'Editar tareas' },
@@ -198,6 +201,8 @@ export function hasTechnicalAdminAccess(
 
 const OPERATIONAL_BASE: PermissionKey[] = [
   'entry.create',
+  'custody.view',
+  'custody.manage',
   'entry.edit',
   'entry.close',
   'task.create',
@@ -317,6 +322,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     reparación global auditada, no una operación habitual.
   */
   [ROLE_KEYS.MANAGEMENT]: [
+    'custody.view',
     'housekeeping.view.all',
     'guest.view',
     'supervision.view',

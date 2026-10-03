@@ -70,6 +70,12 @@ const PRIMARY: NavItem[] = [
             label: 'Mis tareas',
             description: 'Trabajo operativo asignado a tu cuenta.',
           },
+          {
+            href: '/custodia',
+            label: 'Objetos olvidados',
+            description: 'Hallazgos, custodia, entrega y disposición final.',
+            anyOf: ['custody.view','custody.manage'],
+          },
         ],
       },
       {

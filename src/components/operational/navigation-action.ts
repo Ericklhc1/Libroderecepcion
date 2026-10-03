@@ -1,7 +1,7 @@
 'use client';
 import type { ActionState } from '@/server/action';
 
-async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state', form: FormData): Promise<ActionState> {
+async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change', form: FormData): Promise<ActionState> {
   try {
     const fields:Record<string,string|string[]>={};
     for(const [key,value] of form.entries()){if(typeof value!=='string')throw new Error('File not supported');if(key==='weekdays')fields[key]=form.getAll(key).map(String);else fields[key]=value;}
@@ -25,3 +25,6 @@ export async function changeTaskStatusFormAction(_state:ActionState|null,form:Fo
 export async function saveAutomationAction(_state:ActionState|null,form:FormData){return submit('automation-save',form);}
 export async function simulateAutomationAction(_state:ActionState|null,form:FormData){return submit('automation-simulate',form);}
 export async function setAutomationStateAction(_state:ActionState|null,form:FormData){return submit('automation-state',form);}
+
+export async function createLostFoundAction(_state:ActionState|null,form:FormData){return submit('custody-create',form);}
+export async function changeLostFoundAction(_state:ActionState|null,form:FormData){return submit('custody-change',form);}

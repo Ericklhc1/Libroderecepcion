@@ -1,0 +1,45 @@
+name: Diagnóstico acotado Etapa 3
+on:
+  push:
+    branches: [feat/etapa3-bloque2-coordinacion-custodia]
+    paths: [.github/workflows/etapa3-diagnostico-temporal.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Copia de código versionado, sin credenciales ni entorno
+        run: git archive --format=tar.gz --output=/tmp/etapa3-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: etapa3-source
+          path: /tmp/etapa3-source.tar.gz
+          retention-days: 1
+      - name: Leer exclusivamente fallos del CI sintético anterior
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import urllib.request, os, re
+          class PublicRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+              redirected=super().redirect_request(req,fp,code,msg,headers,newurl)
+              if redirected: redirected.remove_header('Authorization')
+              return redirected
+          opener=urllib.request.build_opener(PublicRedirect())
+          url='https://api.github.com/repos/Ericklhc1/Libroderecepcion/actions/jobs/111202894469/logs'
+          request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with opener.open(request,timeout=30) as r: text=r.read().decode('utf-8','replace')
+          text=re.sub(r'\x1b\[[0-9;]*m','',text)
+          lines=text.splitlines()
+          index=next((i for i,line in enumerate(lines) if 'Failed Tests' in line or 'Failed Suites' in line),None)
+          selected=lines[index:index+70] if index is not None else [line for line in lines if 'FAIL ' in line or 'AssertionError' in line][-20:]
+          print('=== DIAGNOSTICO DE REGRESIONES ===')
+          print('\n'.join(selected)[:10000])
+          PY

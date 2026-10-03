@@ -3,6 +3,7 @@ import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
 import { getCoordinationBoard, coordinationMetrics } from '@/server/services/coordination';
 import { getHkWorkday } from '@/server/services/housekeeping-work';
+import { listLostFound } from '@/server/services/lost-found';
 import { HK_WORK_LABELS, isHkFocused } from '@/domain/housekeeping-work';
 
 import { OperationalAlarmStatus } from '@prisma/client';
@@ -730,7 +731,12 @@ export async function executeFrontiPageContextTool(
           onlyOpen: page.sectionKey !== 'historial',
         }),
       };
-    case 'novedades-habitacion': {
+    case 'custodia': {
+      requireAny(user, ['custody.view','custody.manage'], 'No tienes permiso para consultar objetos olvidados.');
+      const items=await listLostFound(user,{status:page.filters.estado,q:page.filters.q});
+      return { ...base, snapshot: { items: items.slice(0,50).map(i=>({ref:'#'+i.humanId,item:i.item,status:i.status,foundLocation:i.foundLocation,custodyLocation:i.custodyLocation,custodian:i.custodian?.name??null,foundAt:i.foundAt,closedAt:i.closedAt})) } };
+    }
+        case 'novedades-habitacion': {
       if (page.sectionKey === 'redireccion') {
         return {
           ...base,

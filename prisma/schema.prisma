@@ -431,6 +431,9 @@ model RolePermission {
 /// y cada persona puede desactivar los avisos externos sin afectar la campana
 /// interna del Libro.
 model User {
+  lostFoundRegistered LostFoundItem[] @relation("lostFoundRegistered")
+  lostFoundCustody LostFoundItem[] @relation("lostFoundCustodian")
+  lostFoundClosed LostFoundItem[] @relation("lostFoundClosed")
   frontiExecutions FrontiExecution[]
   operationalAutomations OperationalAutomation[]
   hkInspections HousekeepingRequest[] @relation("hkInspected")
@@ -1642,6 +1645,48 @@ model ReservationReference {
 
   @@index([status])
   @@index([requiresAction])
+}
+
+// ======================= OBJETOS OLVIDADOS / CUSTODIA ======================
+
+model LostFoundItem {
+  id              String   @id @default(cuid())
+  humanId         Int      @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  requestKey      String   @unique
+  item            String
+  foundLocation   String
+  foundAt         DateTime
+  custodyLocation String
+  status          String   @default("EN_CUSTODIA")
+  registeredById  String
+  registeredBy    User     @relation("lostFoundRegistered", fields: [registeredById], references: [id], onDelete: Restrict)
+  custodianId     String?
+  custodian       User?    @relation("lostFoundCustodian", fields: [custodianId], references: [id], onDelete: Restrict)
+  finalAction     String?
+  evidenceNote    String?
+  closedById      String?
+  closedBy        User?    @relation("lostFoundClosed", fields: [closedById], references: [id], onDelete: Restrict)
+  closedAt        DateTime?
+  version         Int      @default(1)
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  events          LostFoundEvent[]
+
+  @@index([status, foundAt])
+  @@index([custodianId, status])
+}
+
+model LostFoundEvent {
+  id        String        @id @default(cuid())
+  itemId    String
+  item      LostFoundItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actorId   String
+  action    String
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@index([itemId, createdAt])
 }
 
 // ========================= TRAZABILIDAD Y SISTEMA =========================

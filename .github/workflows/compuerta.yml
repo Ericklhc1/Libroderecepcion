@@ -50,6 +50,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fuentes para diagnóstico del bloque 2
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 249
+        run: git archive --format=tar.gz --output=/tmp/etapa3-source.tar.gz HEAD
+
+      - name: Conservar fuentes sin dependencias ni credenciales
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 249
+        uses: actions/upload-artifact@v4
+        with:
+          name: etapa3-source-${{ github.sha }}
+          path: /tmp/etapa3-source.tar.gz
+          retention-days: 1
+
       - name: Node 24
         uses: actions/setup-node@v4
         with:
@@ -78,11 +90,9 @@ jobs:
           current_version=$(node -p "require('./package.json').version")
           lock_version=$(node -p "require('./package-lock.json').version")
           lock_root_version=$(node -p "require('./package-lock.json').packages[''].version")
-
           printf '%s' "$current_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
           test "$lock_version" = "$current_version"
           test "$lock_root_version" = "$current_version"
-
           if [ "$EVENT_NAME" = "pull_request" ]; then
             base_version=$(git show "origin/$BASE_REF:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
             node -e "const p=s=>s.split('.').map(Number); const b=p(process.argv[1]), c=p(process.argv[2]); const ok=c[0]>b[0]||(c[0]===b[0]&&c[1]>b[1])||(c[0]===b[0]&&c[1]===b[1]&&c[2]>b[2]); if(!ok){console.error('Toda actualización de Production debe incrementar la versión: '+process.argv[1]+' → '+process.argv[2]); process.exit(1)}" "$base_version" "$current_version"
@@ -104,7 +114,7 @@ jobs:
         run: npm run lint
 
       - name: Tipos
-        run: npm run typecheck
+        run: npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
       - name: Regresiones
         run: npm run test
@@ -158,5 +168,6 @@ jobs:
             etapa2-browser-results.json
             etapa3-browser-results.json
             etapa3-block2-browser-results.json
+            etapa3-typecheck.log
           if-no-files-found: warn
           retention-days: 7

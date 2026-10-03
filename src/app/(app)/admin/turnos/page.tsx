@@ -4,7 +4,7 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
 import { Badge, Chip } from '@/components/ui/badge';
-import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
+import { DisclosureCard, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
 import { ArchiveShiftDialog } from './cancel-shift';
@@ -145,8 +145,8 @@ export default async function ShiftAdminPage({
         </label>
       </ListFilterBar>
 
-      <Card>
-        <CardHeader title="Turnos recientes" count={visibleShifts.length} />
+      <DisclosureCard title="Turnos recientes" count={visibleShifts.length} defaultOpen>
+        
         {visibleShifts.length === 0 ? (
           <EmptyState message="Todavía no hay turnos en el historial." />
         ) : (
@@ -211,7 +211,7 @@ export default async function ShiftAdminPage({
             </ul>
           </CardScroll>
         )}
-      </Card>
+      </DisclosureCard>
     </div>
   );
 }

@@ -90,7 +90,10 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
   it('recibir un trabajo HK no lo comienza; reasignar obliga una nueva recepción',async()=>{
     const r=await createHkWork(admin,{requestKey:randomUUID(),title:'Reponer toallas',description:'Atención sintética',departmentId:hkArea,workDate:hotelDateKey(new Date()),workKind:'REPOSICION',location:'Zona sintética',priority:'MEDIA',effortMinutes:10,assignedToId:maid.id});
     await prisma.housekeepingRequest.update({where:{id:r.id},data:{workAssignedAt:new Date(Date.now()-3600000)}});
-    expect((await escalateHousekeepingRequests()).escalated).toBe(1);expect((await escalateHousekeepingRequests()).escalated).toBe(0);
+    // El plazo comienza cuando el trabajo está disponible. Cerca de medianoche
+    // «asignado hace una hora» no implica treinta minutos del nuevo día.
+    const escalationAt=new Date(Math.max(Date.now(),hotelWallDateTime(r.workDate!,0,0).getTime()+1800001));
+    expect((await escalateHousekeepingRequests(escalationAt)).escalated).toBe(1);expect((await escalateHousekeepingRequests(escalationAt)).escalated).toBe(0);
     const received=await changeHkWork(maid,{id:r.id,version:r.version,action:'RECIBIR'});expect(received.status).toBe('RECIBIDO');expect(received.startedAt).toBeNull();
     const started=await changeHkWork(maid,{id:r.id,version:received.version,action:'COMENZAR'});expect(started.acknowledgedAt).toEqual(received.acknowledgedAt);expect(started.startedAt).not.toBeNull();
   });

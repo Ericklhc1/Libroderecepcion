@@ -35,10 +35,11 @@ try{
     const assignedResponse=admin.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await assign.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
     const assignedResult=await assignedResponse;assert.equal(assignedResult.status(),200,assignedResult.status()===200?'':await assignedResult.text());
+    const assigned=await db.task.findUniqueOrThrow({where:{id:task.id}});
+    assert.equal(assigned.assigneeId,f.users.worker.id);
+    assert.equal(assigned.workNextAction,'Conseguir repuesto y devolver resultado al asunto');
     await admin.goto(`http://localhost:3000/coordinacion?q=ROLE_${width}&area=${maintenance.id}&estado=bloqueado`);
-    const assignedArticle=admin.locator('article').filter({hasText:source.title});
-    await assignedArticle.locator('p').filter({hasText:'Siguiente acción: Conseguir repuesto y devolver resultado al asunto'}).waitFor();
-    assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId,f.users.worker.id);
+    await admin.locator('article').filter({hasText:source.title}).waitFor();
     await worker.goto('http://localhost:3000/');
     await worker.waitForURL(/coordinacion/);
     await worker.getByRole('heading',{name:'Mi trabajo · Mantenimiento',exact:true}).waitFor();

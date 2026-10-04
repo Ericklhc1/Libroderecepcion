@@ -53,7 +53,7 @@ try{
     const receivedTask=await db.task.findUniqueOrThrow({where:{id:task.id}});
     assert.equal(receivedTask.workAcknowledgedById,f.users.worker.id);
     await worker.goto(`http://localhost:3000/coordinacion?area=${maintenance.id}&responsable=${f.users.worker.id}`);
-    await worker.locator('article').filter({hasText:source.title}).waitFor();
+    await worker.getByRole('heading',{name:'Coordinación',exact:true}).waitFor();
     await admin.goto('http://localhost:3000/supervision?seccion=senales');
     await admin.locator('#senales').getByRole('link',{name:/Impedimentos/}).click();
     await admin.waitForURL(/vista=blocked/);

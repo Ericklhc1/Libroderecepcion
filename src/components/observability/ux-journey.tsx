@@ -16,7 +16,7 @@ export function UxJourney() {
     const click=(event:MouseEvent)=>{
       if(!(event.target instanceof Element))return;
       const el=event.target.closest('button,a,summary');if(!el)return;
-      const selected=uxAction(el.getAttribute('data-ux-label')??el.textContent??'');if(selected==='OTHER')return;
+      const selected=uxAction(el.getAttribute('data-ux-label')??el.textContent??'');if(selected==='OTHER'){if(!(el instanceof HTMLButtonElement&&el.type==='submit'&&action&&action!=='MORE')){action=undefined;pendingForm=null;}return;}
       // Un nuevo procedimiento de creación inicia una correlación explícita.
       if(['INFORM','REQUEST_ATTENTION','REMIND'].includes(selected!)){intentId=crypto.randomUUID();try{sessionStorage.setItem('aroh-ux-journey',intentId);}catch{/* Sin almacenamiento, correlación sólo de esta pantalla. */}}
       action=selected;actionAt=performance.now();resultObserved=false;pendingForm=null;send('ACTION',{selectedAction:action});

@@ -980,3 +980,11 @@ Cinco regresiones PostgreSQL agregadas: continuidad/reintento, cambio externo en
 Compuerta 37044898523: 1428 aprobadas, 1 fallida, 1 omitida. Edición de NOVEDAD enviaba occurredAt=null a columna obligatoria; Prisma mostraba Unknown argument departmentId al rechazar el conjunto de entrada. Se conserva la fecha registrada si no se comunica una corrección; una fecha explícita sí la reemplaza. Gravedad/impacto vacíos se interpretan en el esquema nativo como null, en vez de suprimir la intención de borrar impacto. Incidencias mantienen gravedad obligatoria.
 
 Revisión automática Codex 5395154247 (no Copilot) identificó además hash anterior a ensureIncidentWorkflow y borrado de impacto omitido. Edición y aseguramiento del flujo quedan en una transacción con bloqueo del registro; sólo se devuelve la revisión final bajo ese bloqueo. No se toma una lectura posterior al commit como autorización. Nuevas regresiones cubren incidencia encadenada sin duplicar tarea/seguimiento, impacto vaciado, fecha conservada/corregida y rechazo de gravedad vacía. Se requiere nueva compuerta completa antes de integrar. Sin cambio en producción 1.47.0.
+
+## Etapa 4 · bloque de asuntos, validación 4 octubre 2026
+
+Producción comprobada: 1.52.0 / 0b05951 / PR #260. PR #261 (1.53.0) todavía sin publicar. La lista única de esta etapa permanece en docs/etapa4/PENDIENTES.md.
+
+Compuerta 37177496401 falló al detectar el marcador sintético privado en el navegador. La repetición diagnóstica 37177967115 sobre 6c34ccd aprobó 1492 pruebas, build y recorridos 1280/390 sin reproducir la proyección; no se atribuye causa demostrada a esa intermitencia. La consulta PostgreSQL confirmó que la reserva canónica excluye tanto seguimiento como tarea vinculada. Se protege además la lectura de opciones de formularios y la bandeja de tareas con el mismo alcance reservado, antes de serializar datos al cliente. La siguiente compuerta debe acreditar estos cambios.
+
+Correcciones de revisión Codex: sólo el responsable asignado confirma recepción; la validación específica conserva separación de ejecutor; resultados devueltos se identifican como último intento histórico; clics desconocidos no heredan la etiqueta Más en telemetría. Sin motor nuevo ni migración de este bloque. No atribuir mejoras preparadas a producción ni inferir abandono de un resultado pendiente.

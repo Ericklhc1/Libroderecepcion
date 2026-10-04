@@ -64,7 +64,7 @@ export default async function BookPage({
 
   const [result, options, shifts] = await Promise.all([
     getBookItems(filters),
-    getFormOptions(),
+    getFormOptions(user),
     getShiftOptions(),
   ]);
   const activeTab =

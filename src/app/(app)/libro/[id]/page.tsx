@@ -106,7 +106,7 @@ export default async function EntryDetailPage({
     }),
     listAlarmCandidates(),
     getHistory({ entity: 'OperationalEntry', entityId: entry.id }),
-    getFormOptions(),
+    getFormOptions(user),
   ]);
 
   const isIncident = entry.type === EntryType.INCIDENCIA;
@@ -539,7 +539,7 @@ export default async function EntryDetailPage({
                         </Badge>
                       </div>
                       <p className="mt-1 text-sm font-medium text-petrol-900">{task.title}</p>
-                      {task.completedAt && <p className="mt-2 text-sm text-petrol-900">Resultado recibido · {TASK_STATUS_LABEL[task.status]} · {formatDateTime(task.completedAt)}</p>}
+                      {task.completedAt && <p className="mt-2 text-sm text-petrol-900">{['VALIDADA','COMPLETADA'].includes(task.status)?'Resultado recibido':task.status === 'REALIZADA'?'Resultado por revisar':'Último intento histórico'} · {TASK_STATUS_LABEL[task.status]} · {formatDateTime(task.completedAt)}</p>}
                       {task.evidenceProvided && <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-slate-700">{task.evidenceProvided}</p>}
                       <p className="mt-0.5 text-xs text-slate-500">
                         {task.assignee?.name ?? 'Sin asignar'}

@@ -44,7 +44,7 @@ export default async function HistoryPage({
 
   const [result, options, shifts, auditLogs] = await Promise.all([
     getBookItems(filters),
-    getFormOptions(),
+    getFormOptions(user),
     getShiftOptions(),
     user.permissions.includes('audit.view')
       ? prisma.auditLog.findMany({

@@ -89,7 +89,7 @@ export default async function SurpriseAuditsPage({
       orderBy: { createdAt: 'desc' },
       take: 80,
     }),
-    getFormOptions(),
+    getFormOptions(user),
   ]);
 
   const matches = (...values: Array<string | number | null | undefined>) =>

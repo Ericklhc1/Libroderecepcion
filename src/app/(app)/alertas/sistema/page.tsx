@@ -116,7 +116,7 @@ export default async function AlertsPage({
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     }),
-    getFormOptions(),
+    getFormOptions(user),
     prisma.alert.groupBy({
       by: ['status'],
       where: {

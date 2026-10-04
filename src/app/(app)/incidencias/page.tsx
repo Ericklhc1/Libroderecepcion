@@ -31,7 +31,7 @@ export default async function IncidentsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePageUser();
+  const user = await requirePageUser();
   const params = await searchParams;
   const values = filterValues(params);
   const gravedad = typeof params.gravedad === 'string' ? params.gravedad : undefined;
@@ -75,7 +75,7 @@ export default async function IncidentsPage({
       orderBy: [{ severity: 'desc' }, { occurredAt: 'desc' }],
       take: 150,
     }),
-    getFormOptions(),
+    getFormOptions(user),
     prisma.operationalEntry.groupBy({
       by: ['severity'],
       where: {

@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
+import {getFormOptions} from '@/server/services/options';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import {createEntry,getSubjectEntry} from '@/server/services/entries';
 import {createTask,changeTaskStatus} from '@/server/services/tasks';
@@ -29,6 +30,16 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     await prisma.task.create({data:{title:'Trabajo reservado',createdById:owner.id,entryId:source.id,followUpId:reserved.id}});
     expect(await prisma.followUp.count({where:{entryId:source.id,AND:[followUpReadWhere(reader)]}})).toBe(0);
     expect(await prisma.task.count({where:{entryId:source.id,AND:[taskFollowUpReadWhere(reader)]}})).toBe(0);
+    expect(JSON.stringify((await getFormOptions(reader)).openTasks)).not.toContain('Trabajo reservado');
+  });
+  it('la aceptación registra recepción sólo por el responsable asignado',async()=>{
+    const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const receiver=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const task=await createTask(creator,{title:'Por recibir',assigneeId:receiver.id,priority:'MEDIA',tags:[],checklist:[]});
+    await expect(changeTaskStatus(creator,{id:task.id,status:'ACEPTADA'})).rejects.toThrow('responsable');
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedAt).toBeNull();
+    await changeTaskStatus(receiver,{id:task.id,status:'ACEPTADA'});
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedById).toBe(receiver.id);
   });
   it('permite validar con el permiso específico y conserva separación de ejecutor y reserva',async()=>{
     const executor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

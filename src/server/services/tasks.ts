@@ -452,6 +452,7 @@ export async function changeTaskStatus(
   const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
+  if (input.status === TaskStatus.ACEPTADA && current.assigneeId !== user.id) throw new RuleError('La recepción corresponde al responsable asignado.');
   if (current.status === input.status) return current;
 
   const startsInFuture = Boolean(current.startsAt && current.startsAt > new Date());

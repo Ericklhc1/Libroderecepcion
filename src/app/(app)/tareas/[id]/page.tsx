@@ -61,7 +61,7 @@ export default async function TaskDetailPage({
 
   const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
     getHistory({ entity: 'Task', entityId: task.id }),
-    getFormOptions(),
+    getFormOptions(user),
     prisma.operationalAlarm.findMany({
       where: { sourceEntity: 'Task', sourceId: task.id },
       include: {
@@ -90,10 +90,10 @@ export default async function TaskDetailPage({
     : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
   const primaryAction = !open ? <a href="#historial-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado</a>
     : scheduled ? <p className="text-sm text-slate-600">Disponible desde {formatDateTime(task.startsAt!)}</p>
-    : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? (canChange ? task.status === TaskStatus.PENDIENTE ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : task.status === TaskStatus.BLOQUEADA ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : finish : null))
+    : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? (canChange ? task.status === TaskStatus.PENDIENTE ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : task.status === TaskStatus.BLOQUEADA ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : finish : null))
     : task.status === TaskStatus.REALIZADA ? (canValidate ? statusAction(TaskStatus.VALIDADA,'Validar') : <p className="text-sm text-slate-600">Pendiente de revisión autorizada</p>)
     : task.status === TaskStatus.BLOQUEADA ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : null)
-    : task.status === TaskStatus.PENDIENTE ? (canChange ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : null)
+    : task.status === TaskStatus.PENDIENTE ? (task.assigneeId === user.id ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : assign ?? <p className="text-sm text-slate-600">El responsable debe confirmar la recepción</p>)
     : task.status === TaskStatus.ACEPTADA && !task.evidenceRequired && !task.requiresIndependentValidation && user.permissions.includes('task.close') ? finish
     : ['ACEPTADA','DEVUELTA'].includes(task.status) ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : null)
     : finish;

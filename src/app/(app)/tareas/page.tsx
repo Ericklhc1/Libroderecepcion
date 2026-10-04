@@ -1,3 +1,4 @@
+import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { TaskStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -36,6 +37,7 @@ export default async function TasksPage({
   const estado = values.estado;
   const where: Prisma.TaskWhereInput = {
     deletedAt: null,
+    AND:[taskFollowUpReadWhere(user)],
     ...(onlyMine ? { assigneeId: user.id } : {}),
     ...(estado === 'abiertos'
       ? { status: { in: TASK_OPEN_STATUSES } }
@@ -69,10 +71,10 @@ export default async function TasksPage({
       orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' }],
       take: 200,
     }),
-    getFormOptions(),
+    getFormOptions(user),
     prisma.task.groupBy({
       by: ['status'],
-      where: { deletedAt: null, ...(onlyMine ? { assigneeId: user.id } : {}) },
+      where: { deletedAt: null, AND:[taskFollowUpReadWhere(user)], ...(onlyMine ? { assigneeId: user.id } : {}) },
       _count: { _all: true },
     }),
   ]);

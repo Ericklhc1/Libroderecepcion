@@ -44,6 +44,10 @@ try{
     await page.getByRole('link',{name:'Ver resultado',exact:true}).waitFor();
     await page.goto(`http://localhost:3000/libro/${entry.id}`);
     await page.getByText(/Resultado recibido · Completada/).waitFor();
+    await db.task.update({where:{id:task.id},data:{status:'DEVUELTA',returnReason:'Resultado devuelto para corrección'}});
+    await page.reload();
+    await page.getByText(/Último intento histórico · Devuelta/).waitFor();
+    assert.ok(!(await page.locator('main').innerText()).includes('Resultado recibido · Devuelta'));
     await page.goto(`http://localhost:3000/novedades/habitacion?habitacion=${room.number}`);
     await page.getByRole('button',{name:'Registrar / actuar',exact:true}).click();
     await page.getByText('Informar algo',{exact:true}).click();

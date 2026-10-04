@@ -154,7 +154,7 @@ describe('tareas', () => {
   });
 
   it('respeta las transiciones válidas de estado', async () => {
-    const task = await createTask(receptionist, base);
+    const task = await createTask(receptionist, { ...base, assigneeId: receptionist.id });
 
     const inProgress = await changeTaskStatus(receptionist, {
       id: task.id,
@@ -177,7 +177,7 @@ describe('tareas', () => {
   });
 
   it('exige motivo al bloquear una tarea y lo limpia al desbloquear', async () => {
-    const task = await createTask(receptionist, base);
+    const task = await createTask(receptionist, { ...base, assigneeId: receptionist.id });
 
     await expect(
       changeTaskStatus(receptionist, { id: task.id, status: TaskStatus.BLOQUEADA }),

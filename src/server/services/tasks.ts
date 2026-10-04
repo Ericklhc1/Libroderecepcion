@@ -76,7 +76,7 @@ export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, i
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
     const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
-    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,deletedAt:null,AND:[alertReadWhere(reader)]}})){
+    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
       throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
     }
   }
@@ -380,6 +380,7 @@ export async function assignTask(
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {
+    if (input.assigneeId) await assertTaskSourceRecipients(tx,[input.assigneeId],current);
     const updated = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { assigneeId: input.assigneeId ?? null, workAssignedAt: input.assigneeId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
@@ -491,6 +492,10 @@ export async function changeTaskStatus(
     );
   }
 
+  if (input.status === TaskStatus.EN_CURSO && !current.assigneeId) {
+    throw new RuleError('Asigna una persona responsable antes de comenzar la atención.');
+  }
+
   if (!(TASK_TRANSITIONS[current.status] ?? []).includes(input.status)) {
     throw new RuleError(
       `No puedes pasar una tarea de ${TASK_STATUS_LABEL[current.status]} a ${TASK_STATUS_LABEL[input.status]}.`,
@@ -528,7 +533,7 @@ export async function changeTaskStatus(
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
+      where: { id: input.id, updatedAt: current.updatedAt, assigneeId: current.assigneeId, status: current.status, AND:[taskFollowUpReadWhere(user)] },
       data: {
         status: input.status,
         ...(['ACEPTADA','EN_CURSO'].includes(input.status) && current.assigneeId === user.id ? { workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id } : {}),

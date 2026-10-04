@@ -144,6 +144,7 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     const cycle=await prisma.alert.create({data:{title:'Reserva profunda ciclo',taskId:previous.id,type:'TAREA_VENCIDA'}});
     await prisma.task.update({where:{id:first.id},data:{alertId:cycle.id}});
     await prisma.followUp.update({where:{id:source.id},data:{deletedAt:new Date()}});
+    await prisma.alert.update({where:{id:cycle.id},data:{deletedAt:new Date()}});
     const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
     await prisma.user.update({where:{id:owner.id},data:{departmentId:area.id}});
     await prisma.task.update({where:{id:first.id},data:{assigneeId:null,departmentId:area.id}});
@@ -254,11 +255,23 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     await changeTaskStatus(receiver,{id:task.id,status:'ACEPTADA'});
     expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedById).toBe(receiver.id);
   });
+  it('el creador no puede iniciar sin responsable mediante servicio ni acción avanzada',async()=>{
+    const creator=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const task=await createTask(creator,{title:'Pendiente de asignación',priority:'MEDIA',tags:[],checklist:[]});
+    await expect(changeTaskStatus(creator,{id:task.id,status:'EN_CURSO'})).rejects.toThrow('responsable');
+    auth.current.mockResolvedValue(creator);
+    const form=new FormData();form.set('id',task.id);form.set('status','EN_CURSO');
+    expect(await changeTaskStatusAction(null,form)).toMatchObject({ok:false,error:expect.stringContaining('responsable')});
+    expect(await prisma.task.findUniqueOrThrow({where:{id:task.id}})).toMatchObject({status:'PENDIENTE',assigneeId:null,workStartedAt:null,workAcknowledgedAt:null});
+    await assignTask(creator,{id:task.id,assigneeId:creator.id});
+    await changeTaskStatus(creator,{id:task.id,status:'EN_CURSO'});
+    expect(await prisma.task.findUniqueOrThrow({where:{id:task.id}})).toMatchObject({status:'EN_CURSO',assigneeId:creator.id,workAcknowledgedById:creator.id});
+  });
   it('permite validar con el permiso específico y conserva separación de ejecutor y reserva',async()=>{
     const executor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
     const reviewer=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});
     reviewer.permissions=['supervision.task.validate'];
-    const task=await createTask(executor,{title:'Trabajo sujeto a revisión',priority:'MEDIA',tags:[],checklist:[],requiresIndependentValidation:true});
+    const task=await createTask(executor,{title:'Trabajo sujeto a revisión',assigneeId:executor.id,priority:'MEDIA',tags:[],checklist:[],requiresIndependentValidation:true});
     await changeTaskStatus(executor,{id:task.id,status:'EN_CURSO'});
     await changeTaskStatus(executor,{id:task.id,status:'REALIZADA',evidenceProvided:'Resultado del ejecutor'});
     const form=new FormData();form.set('id',task.id);form.set('status','VALIDADA');

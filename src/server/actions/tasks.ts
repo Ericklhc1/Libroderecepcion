@@ -97,7 +97,7 @@ export async function changeTaskStatusAction(
       });
       return [task?.assigneeId, task?.createdById];
     });
-    if (validation && !await prisma.task.count({ where: { id: input.id, AND: [taskFollowUpReadWhere(user)] } })) throw new NotFoundError();
+    if (!await prisma.task.count({ where: { id: input.id, AND: [taskFollowUpReadWhere(user)] } })) throw new NotFoundError();
     const task = await changeTaskStatus(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id, committedRevision: operationalRecordRevision('tasks', task) };

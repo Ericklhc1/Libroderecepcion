@@ -263,7 +263,7 @@ export default async function TaskDetailPage({
               ))}
             </div>
           ) : null}
-          <SubjectContext folio={task.entry ? `Asunto #${task.entry.humanId} · Trabajo #${task.humanId}` : `Asunto #${task.humanId}`} origin={task.entry ? task.entry.title : task.createdBy.name} nextAction={nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.workNextAction)} impediment={task.blockedReason} result={task.evidenceProvided}/>
+          <SubjectContext folio={task.entry ? `Asunto #${task.entry.humanId} · Trabajo #${task.humanId}` : `Asunto #${task.humanId}`} origin={task.entry ? task.entry.title : task.createdBy.name} nextAction={nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.workNextAction)} impediment={task.blockedReason} result={task.evidenceProvided} resultLabel={['COMPLETADA','VALIDADA'].includes(task.status)?'Resultado':task.status==='REALIZADA'?'Resultado por revisar':'Último intento histórico'}/>
         </div>
 
         {!task.deletedAt ? (

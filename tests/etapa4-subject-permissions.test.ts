@@ -3,6 +3,7 @@ import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
 import {getFormOptions} from '@/server/services/options';
 import {getHistory} from '@/server/services/history';
+import {getBookItems} from '@/server/services/book';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import {createEntry,getSubjectEntry} from '@/server/services/entries';
 import {createTask,changeTaskStatus} from '@/server/services/tasks';
@@ -28,7 +29,7 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     const source=await createEntry(reader,{type:'NOVEDAD',title:'Origen común',description:'Contexto',priority:'MEDIA',requiresFollowUp:false,tags:[]});
     const reserved=await prisma.followUp.create({data:{action:'Reservado',visibility:'PRIVADO',createdById:owner.id,ownerId:owner.id,entryId:source.id}});
-    await prisma.task.create({data:{title:'Trabajo reservado',createdById:owner.id,entryId:source.id,followUpId:reserved.id}});
+    const task=await prisma.task.create({data:{title:'Trabajo reservado',createdById:owner.id,entryId:source.id,followUpId:reserved.id}});
     expect(await prisma.followUp.count({where:{entryId:source.id,AND:[followUpReadWhere(reader)]}})).toBe(0);
     expect(await prisma.task.count({where:{entryId:source.id,AND:[taskFollowUpReadWhere(reader)]}})).toBe(0);
     expect(JSON.stringify((await getFormOptions(reader)).openTasks)).not.toContain('Trabajo reservado');
@@ -37,6 +38,13 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     expect(history.some(event=>event.id===reserved.id)).toBe(false);
     expect(JSON.stringify(history)).not.toContain('Comentario reservado');
     expect((await getHistory({entity:'OperationalEntry',entityId:source.id},owner)).some(event=>event.id===reserved.id)).toBe(true);
+    expect((await getBookItems({},reader)).items.some(item=>item.id===task.id||item.id===reserved.id)).toBe(false);
+    expect((await getBookItems({kinds:['task']},owner)).items.some(item=>item.id===task.id)).toBe(true);
+    await expect(changeTaskStatus(reader,{id:task.id,status:'EN_CURSO'})).rejects.toThrow();
+    const attempt=new FormData();attempt.set('id',task.id);attempt.set('status','EN_CURSO');
+    auth.current.mockResolvedValue(reader);
+    await expect(changeTaskStatusAction(null,attempt)).resolves.toMatchObject({ok:false});
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('PENDIENTE');
   });
   it('la aceptación registra recepción sólo por el responsable asignado',async()=>{
     const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

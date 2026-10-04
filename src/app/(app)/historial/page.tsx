@@ -43,7 +43,7 @@ export default async function HistoryPage({
   reportParams.set('vista', 'historial');
 
   const [result, options, shifts, auditLogs] = await Promise.all([
-    getBookItems(filters),
+    getBookItems(filters,user),
     getFormOptions(user),
     getShiftOptions(),
     user.permissions.includes('audit.view')

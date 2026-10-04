@@ -1,5 +1,6 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
+import {taskFollowUpReadWhere} from './followup-access';
 import {
   AuditAction,
   NotificationType,
@@ -271,7 +272,7 @@ export async function updateTask(
   input: { id: string } & Partial<TaskCreateInput> & { blockedReason?: string | null },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
 
@@ -449,7 +450,7 @@ export async function changeTaskStatus(
   },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   if (input.status === TaskStatus.ACEPTADA && current.assigneeId !== user.id) throw new RuleError('La recepción corresponde al responsable asignado.');

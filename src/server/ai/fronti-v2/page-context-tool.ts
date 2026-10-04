@@ -139,13 +139,13 @@ function compactReservationContext(
   };
 }
 
-async function bookSnapshot(page: FrontiResolvedPageContext) {
+async function bookSnapshot(page: FrontiResolvedPageContext,user:CurrentUser) {
   const result = await getBookItems({
     q: page.filters.q || undefined,
     onlyOpen: page.moduleKey !== 'historial',
     page: 1,
     pageSize: 30,
-  });
+  },user);
   return {
     query: page.filters.q || null,
     hasMore: result.hasMore,
@@ -727,7 +727,7 @@ export async function executeFrontiPageContextTool(
       return { ...base, snapshot: await getDashboardData(user) };
     case 'buscar':
     case 'historial':
-      return { ...base, snapshot: await bookSnapshot(page) };
+      return { ...base, snapshot: await bookSnapshot(page,user) };
     case 'novedades':
       return {
         ...base,

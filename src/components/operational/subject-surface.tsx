@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
 
 /** Fachada de lectura; los servicios, estados y permisos de cada fuente siguen vigentes. */
-export function SubjectContext({folio, origin, nextAction, impediment, result}: {
-  folio: string; origin: string; nextAction: string; impediment?: string | null; result?: string | null;
+export function SubjectContext({folio, origin, nextAction, impediment, result,resultLabel='Resultado'}: {
+  folio: string; origin: string; nextAction: string; impediment?: string | null; result?: string | null;resultLabel?:string;
 }) {
   return <section aria-label="Continuidad del asunto" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
     <p className="font-semibold text-petrol-900">{folio}</p>
     <p className="mt-1 text-slate-600">Origen: {origin}</p>
     <p className="mt-2"><span className="font-semibold">Siguiente acción: </span>{nextAction}</p>
     {impediment && <p className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-amber-900"><span className="font-semibold">Impedimento: </span>{impediment}</p>}
-    {result && <p className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="font-semibold">Resultado: </span>{result}</p>}
+    {result && <p className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="font-semibold">{resultLabel}: </span>{result}</p>}
   </section>;
 }
 

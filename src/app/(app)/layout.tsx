@@ -86,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : [];
   const groups = visibleNavGroups(user.permissions, user.isSystemAdmin);
   const items = groups.flatMap((group) => group.items);
-  const badges = { '/alertas': alerts, '/libro': myOpenTasks };
+  const badges = { '/notificaciones': alerts, '/libro': myOpenTasks };
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (

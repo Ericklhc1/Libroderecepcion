@@ -36,9 +36,11 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
   it('dos solicitudes concurrentes al mismo asunto conservan una atención y una auditoría nativa',async()=>{
     const f=await fixture();const [first,second]=await Promise.all([requestSubjectAttention(f.actor,f.input),requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID()})]);
     expect(first.id).toBe(second.id);
+    const created=await prisma.task.findUniqueOrThrow({where:{id:first.id}});
+    const winningInput={...f.input,requestKey:created.procedureOccurrenceKey!.split(':')[2]!};
     await prisma.task.update({where:{id:first.id},data:{assigneeId:f.actor.id}});
     expect((await requestSubjectAttention(f.actor,f.input)).id).toBe(first.id);
-    await expect(requestSubjectAttention(f.actor,{...f.input,assigneeId:f.actor.id})).rejects.toThrow('reintento');
+    await expect(requestSubjectAttention(f.actor,{...winningInput,assigneeId:f.actor.id})).rejects.toThrow('reintento');
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(1);
     expect(await prisma.auditLog.count({where:{entity:'Task',entityId:first.id,action:'CREAR'}})).toBe(1);
     await expect(requestSubjectAttention(f.actor,{...f.input,entryId:'otro-origen'})).rejects.toThrow();

@@ -87,11 +87,6 @@ const PRIMARY: NavItem[] = [
             label: 'Seguimientos',
             description: 'Continuidad personal y de Supervisión.',
           },
-          {
-            href: '/alertas',
-            label: 'Recordatorios',
-            description: 'Llamadas de atención programables vinculadas a la operación.',
-          },
         ],
       },
       {
@@ -101,11 +96,6 @@ const PRIMARY: NavItem[] = [
             href: '/historial',
             label: 'Historial',
             description: 'Registros resueltos y consulta histórica.',
-          },
-          {
-            href: '/notificaciones',
-            label: 'Avisos recibidos',
-            description: 'Avisos que recibió tu cuenta.',
           },
         ],
       },

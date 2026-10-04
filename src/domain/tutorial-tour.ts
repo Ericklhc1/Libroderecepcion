@@ -54,7 +54,7 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
     route: '/llaves',
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
-  { key: 'alertas', label: 'Alertas', route: '/alertas' },
+  { key: 'alertas', label: 'Avisos', route: '/notificaciones' },
   { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
   { key: 'equipo', label: 'Equipo y horarios', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
@@ -207,9 +207,17 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   {
+    id: 'avisos-recibidos',
+    module: 'alertas',
+    title: 'Avisos recibidos',
+    description: 'Desde Avisos puedes abrir el asunto que originó cada cambio, programar un recordatorio o retomar un pendiente. Leer un aviso no resuelve el asunto ni cambia sus permisos.',
+    route: '/notificaciones',
+    target: ROUTE_TARGET,
+  },
+  {
     id: 'alertas',
     module: 'alertas',
-    title: 'Alertas',
+    title: 'Recordarme / avisar',
     description:
       'Una alerta es una llamada de atención programable. Una notificación sólo avisa y te lleva al objeto original; no crea una segunda tarea ni una segunda novedad.',
     route: '/alertas',

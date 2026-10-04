@@ -20,6 +20,7 @@ import {addComment,listComments} from '@/server/services/comments';
 import {restoreFollowUp} from '@/server/services/followups';
 import {buildHandoverSnapshot,visibleSnapshotItems} from '@/server/services/handover-snapshot';
 import {getShiftBriefing} from '@/server/services/shifts';
+import {coordinateWork} from '@/server/services/coordination';
 import {getAssignmentBoard} from '@/server/services/assignment-board';
 import {getUserPerformance} from '@/server/services/performance';
 import {sendMail} from '@/server/mail';
@@ -33,12 +34,13 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
   it('asignar desde el formulario conserva causa y resultado, y permite corregirlos explícitamente',async()=>{
     const actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const assignee=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     const source=await createEntry(actor,{type:'INCIDENCIA',title:'Causa documentada antes de asignar',description:'Contexto',priority:'ALTA',severity:'ALTA',requiresFollowUp:false,tags:[]});
     await prisma.operationalEntry.update({where:{id:source.id},data:{rootCause:'Causa comprobada',resolution:'Resultado anterior conservado'}});
-    const form=new FormData();form.set('id',source.id);form.set('ownerId',actor.id);
+    const form=new FormData();form.set('id',source.id);form.set('ownerId',assignee.id);
     auth.current.mockResolvedValue(actor);
     expect((await updateEntryAction(null,form)).ok).toBe(true);
-    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:source.id}})).toMatchObject({ownerId:actor.id,rootCause:'Causa comprobada',resolution:'Resultado anterior conservado'});
+    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:source.id}})).toMatchObject({ownerId:assignee.id,rootCause:'Causa comprobada',resolution:'Resultado anterior conservado'});
     form.set('rootCause','Causa corregida');form.set('resolution','Resultado corregido');
     expect((await updateEntryAction(null,form)).ok).toBe(true);
     expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:source.id}})).toMatchObject({rootCause:'Causa corregida',resolution:'Resultado corregido'});
@@ -61,7 +63,14 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     const task=await prisma.task.create({data:{title:'Contenido reservado de ejecución',followUpId:follow.id,createdById:owner.id,assigneeId:owner.id,dueAt:new Date(Date.now()-3600000)}});
     const alert=await prisma.alert.create({data:{taskId:task.id,title:'Contenido reservado de señal',message:'Evidencia reservada',type:'TAREA_VENCIDA',level:'CRITICA'}});
     await expect(createTask(reader,{title:'Origen oculto',alertId:alert.id,priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
-    await expect(assignTask(owner,{id:task.id,assigneeId:reader.id})).rejects.toThrow('origen reservado');
+    const recipient=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+    await prisma.user.update({where:{id:recipient.id},data:{departmentId:area.id}});
+    const assignedSource=await prisma.task.update({where:{id:task.id},data:{departmentId:area.id}});
+    await expect(assignTask(owner,{id:task.id,assigneeId:recipient.id})).rejects.toThrow('origen reservado');
+    await expect(coordinateWork(owner,{kind:'task',id:task.id,updatedAt:assignedSource.updatedAt,requestKey:randomUUID(),action:'ASIGNAR',ownerId:recipient.id,nextAction:'Asignación debe respetar la reserva'})).rejects.toThrow('origen reservado');
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId).toBe(owner.id);
+    expect(await prisma.notification.count({where:{userId:recipient.id}})).toBe(0);
     const derived=await createTask(owner,{title:'Contenido reservado derivado',alertId:alert.id,priority:'MEDIA',tags:[],checklist:[]});
     expect(derived.followUpId).toBe(follow.id);
     expect((await searchOperationalRecords(reader,'Contenido reservado')).some(row=>row.entityId===derived.id)).toBe(false);
@@ -70,6 +79,10 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
       expect(await listComments(target,reader)).toHaveLength(0);
     }
     expect(await prisma.comment.count()).toBe(0);
+    await addComment(owner,{taskId:task.id,body:`@${reader.username} Resultado reservado comentado`});
+    expect(await prisma.notification.count({where:{userId:reader.id}})).toBe(0);
+    expect(await listComments({taskId:task.id},reader)).toHaveLength(0);
+    expect(await listComments({taskId:task.id},owner)).toHaveLength(1);
     auth.current.mockResolvedValue(reader);vi.mocked(sendMail).mockClear();
     for(const [kind,id] of [['task',task.id],['followup',follow.id],['alert',alert.id]]){
       const form=new FormData();form.set('kind',kind!);form.set('id',id!);form.set('to','synthetic@example.invalid');

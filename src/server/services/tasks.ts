@@ -71,7 +71,7 @@ export type TaskCreateInput = {
 };
 
 /** Do not notify somebody about work whose reserved source they cannot read. */
-async function assertSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}) {
+export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}) {
   if (!source.followUpId && !source.alertId) return;
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
@@ -131,7 +131,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   if (input.alertId && !await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{id:true}})) {
     throw new NotFoundError('La alerta de origen no existe.');
   }
-  await assertSourceRecipients(db,participantIds,input);
+  await assertTaskSourceRecipients(db,participantIds,input);
   const alertSource=input.alertId?await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{followUpId:true,task:{select:{followUpId:true}}}}):null;
   const inheritedFollowUpId=input.followUpId??alertSource?.followUpId??alertSource?.task?.followUpId??null;
   let origin = inferOrigin(input);
@@ -160,7 +160,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
-    await assertSourceRecipients(tx,participantIds,input);
+    await assertTaskSourceRecipients(tx,participantIds,input);
     if (input.procedureOccurrenceKey) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.procedureOccurrenceKey}))::text`;
       const existing = await tx.task.findUnique({ where: { procedureOccurrenceKey: input.procedureOccurrenceKey }, include: taskInclude });
@@ -376,7 +376,7 @@ export async function assignTask(
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
-  if (input.assigneeId) {await assertAssignable(input.assigneeId);await assertSourceRecipients(prisma,[input.assigneeId],current);}
+  if (input.assigneeId) {await assertAssignable(input.assigneeId);await assertTaskSourceRecipients(prisma,[input.assigneeId],current);}
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {

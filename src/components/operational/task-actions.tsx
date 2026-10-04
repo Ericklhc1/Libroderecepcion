@@ -114,12 +114,12 @@ export function AssignTaskDialog({
 }) {
   return (
     <Dialog
-      title="Reasignar tarea"
+      title={currentAssigneeId?"Reasignar atención":"Asignar atención"}
       description="Sólo puede asignarse a personal operativo."
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
-      trigger="Reasignar"
+      trigger={currentAssigneeId?"Reasignar":"Asignar"}
     >
       <ActionForm action={assignTaskAction} closeOnSuccess>
         <input type="hidden" name="id" value={taskId} />

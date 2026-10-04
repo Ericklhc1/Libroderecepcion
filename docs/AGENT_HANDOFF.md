@@ -1,3 +1,7 @@
+## 2026-10-04 · Acceso del dominio general recuperado
+
+`operacionesaroh.app` estaba registrado y verificado en el mismo equipo Vercel, pero ausente de los dominios del único proyecto existente. Se asoció con redirección 308 a `hwl.operacionesaroh.app`; comprobación HTTP del dominio general y versión destino 1.52.0 / 0b05951 aprobadas. No hay proyecto, proveedor ni gasto nuevo. Nueva comprobación en navegador pendiente: sesión rechazó recargar su página de error por política de URL. E4-14 cerrado con evidencia HTTP; no inferir el estado físico de la llave histórica E4-13.
+
 ## Bloque 0 publicado · 1.52.0 / 0b05951 / PR260
 
 Vercel dpl_4ox5CpG74v79GRPUB5L8Ni62XwGd READY, health operativo SHA/versión correctos y acta existente carga con historial intacto. Compuerta 37175857595: 1481 pruebas, una omisión heredada, PG16/migración/lint/tipos/build/navegador 1280/390 aprobados. Codex revisó be94c94 sin hallazgos relevantes; corte visual posterior conserva motivos/diffs completos. El acta histórica contiene observación de ausencia pese a confirmación; no se modifica posesión histórica sin verificación física. Dominio general devuelve 502; operativa hwl comprobada. Pendientes únicos E4-13/E4-14 en docs/etapa4/PENDIENTES.md. Continúan los demás requisitos funcionales.

@@ -17,6 +17,5 @@ Base comprobada: 1.51.1 / 163d61ca0b740b0af09d393dfd1f34fa94a5d534, Vercel READY
 | E4-10 | 🟡 Media | Media | Dispositivos | Safari/iPhone físico | No hay dispositivo físico disponible; Chromium 390 no acredita Safari. |
 | E4-11 | 🔵 Observación | Media | Alcance previo | Arrastres de Etapas 2–3 | Matriz y listas anteriores conservan requisitos abiertos. Verificar sólo los relacionados; no ampliar alcance. |
 | E4-12 | 🔵 Observación | Media | Administración | Conservar desplegables y términos de seguridad inequívocos | Administración permanece técnica; cambiar sólo fricción comprobada. |
-
 | E4-13 | 🔵 Observación | Alta | Custodia física | Revisar declaración histórica de llave en acta cmut3keci0001lc04fe9sdmqm | El receptor dejó constancia de ausencia pese a confirmación histórica; no inferir posesión ni corregir evidencia retroactivamente. Supervisión debe comprobar el bien y tratar la diferencia por mecanismo auditado. |
-| E4-14 | 🟠 Alta | Alta | Dominio general | Resolver respuesta 502 en operacionesaroh.app | hwl.operacionesaroh.app sirve 1.52.0/SHA correcto; el dominio general devuelve 502 en HTTP y navegador. Diagnóstico dirigido de configuración, sin nuevos proveedores. |
+| E4-14 | 🟢 Cerrado | Alta | Dominio general | Resolver respuesta 502 en operacionesaroh.app | Dominio del equipo Vercel verificado; faltaba asociación al proyecto. Redirección 308 a hwl configurada y comprobada por HTTP el 04-10-2026. Destino 1.52.0/SHA correcto. Nueva comprobación en navegador no disponible por restricción de sesión. |

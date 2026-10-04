@@ -4,6 +4,7 @@ import { Bell, Search } from 'lucide-react';
 import type { Prisma } from '@prisma/client';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
+import { notificationReadWhere } from '@/server/services/followup-access';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
@@ -28,6 +29,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
 
   const notificationWhere: Prisma.NotificationWhereInput = {
     userId: user.id,
+    AND:[notificationReadWhere(user)],
     ...(estado === 'nuevas'
       ? { readAt: null }
       : estado === 'leidas'
@@ -59,7 +61,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
             Avisos · Recibidos
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Resultados y cambios que recibiste. Abre el aviso para continuar en el asunto original.
+            Resultados y cambios que recibiste. Abre el aviso para continuar en el asunto original. Leer un aviso no resuelve el asunto.
           </p>
         </div>
         {unread.length > 0 ? <MarkAllReadForm /> : null}

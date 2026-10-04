@@ -41,7 +41,7 @@ export default async function AlertsPage() {
           <h1 className="text-xl font-semibold text-petrol-900">Avisos · Recordatorios</h1>
         </div>
         <p className="mt-1 text-sm text-slate-600">
-          Recuérdalo más tarde o avisa a alguien. El recordatorio abre el asunto original y conserva su estado.
+          Recuérdalo más tarde o avisa a alguien. El recordatorio abre el asunto original; no crea otro asunto ni cambia su estado.
         </p>
       </header>
 

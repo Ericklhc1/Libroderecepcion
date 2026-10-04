@@ -13,8 +13,8 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
     const page = readFileSync('src/app/(app)/alertas/page.tsx', 'utf8');
     const service = readFileSync('src/server/services/operational-alarms.ts', 'utf8');
 
-    expect(page).toContain('Llamadas de atención programables');
-    expect(page).toContain('nunca duplica ni cambia el estado');
+    expect(page).toContain('Recuérdalo más tarde o avisa a alguien');
+    expect(page).toContain('no crea otro asunto ni cambia su estado');
     expect(page).toContain('Abrir objeto original');
     expect(service).toContain('sourceLink');
     expect(service).toContain("link: recipient.alarm.sourceLink ?? '/alertas'");
@@ -28,8 +28,8 @@ describe('semántica sostenida de Tareas, Alertas y Notificaciones', () => {
       'utf8',
     );
 
-    expect(page).toContain('no tienen estado operativo propio');
-    expect(page).toContain('te llevan al objeto original');
+    expect(page).toContain('Leer un aviso no resuelve el asunto');
+    expect(page).toContain('Abre el aviso para continuar en el asunto original');
     expect(actions).toContain("fetch('/api/notifications/read'");
     expect(actions).toContain('router.push(href)');
   });

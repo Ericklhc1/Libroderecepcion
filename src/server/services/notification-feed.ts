@@ -2,6 +2,7 @@ import 'server-only';
 
 import { AnnouncementScope } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { notificationWhereForUser } from './notification-access';
 import type { NotificationFeedSnapshot } from '@/domain/notifications';
 
 export const NOTIFICATION_FEED_LIMIT = 40;
@@ -17,11 +18,12 @@ export async function getNotificationFeedForUser(
   limit = NOTIFICATION_FEED_LIMIT,
 ): Promise<NotificationFeedSnapshot> {
   const safeLimit = Math.max(1, Math.min(limit, NOTIFICATION_FEED_LIMIT));
+  const visible = await notificationWhereForUser(userId);
 
   const now = new Date();
   const [rows, unread, blockingAnnouncements] = await Promise.all([
     prisma.notification.findMany({
-      where: { userId },
+      where: visible,
       orderBy: [{ createdAt: 'desc' }],
       take: safeLimit,
       select: {
@@ -36,7 +38,7 @@ export async function getNotificationFeedForUser(
         createdAt: true,
       },
     }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.notification.count({ where: { ...visible, readAt: null } }),
     prisma.announcement.findMany({
       where: {
         active: true,

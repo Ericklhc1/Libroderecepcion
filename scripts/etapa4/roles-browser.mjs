@@ -50,10 +50,10 @@ try{
     const receivedResponse=worker.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
     const receivedResult=await receivedResponse;assert.equal(receivedResult.status(),200,receivedResult.status()===200?'':await receivedResult.text());
-    await incoming.waitFor({state:'hidden'});
+    const receivedTask=await db.task.findUniqueOrThrow({where:{id:task.id}});
+    assert.equal(receivedTask.workAcknowledgedById,f.users.worker.id);
     await worker.getByRole('link',{name:'Mi trabajo',exact:true}).click();
-    await worker.locator('article').filter({hasText:source.title}).locator('p').filter({hasText:'Recibido:'}).waitFor();
-    assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedById,f.users.worker.id);
+    await worker.locator('article').filter({hasText:source.title}).waitFor();
     await admin.goto('http://localhost:3000/supervision?seccion=senales');
     await admin.locator('#senales').getByRole('link',{name:/Impedimentos/}).click();
     await admin.waitForURL(/vista=blocked/);

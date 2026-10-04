@@ -26,8 +26,8 @@ export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, sh
   return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
 }
 
-export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>): Prisma.OperationalAlarmWhereInput {
-  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true)}}}};
+export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.OperationalAlarmWhereInput {
+  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
 }
 
 /** Same reserved-source policy for the existing PostgreSQL search view.

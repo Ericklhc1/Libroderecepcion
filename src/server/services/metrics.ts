@@ -1,3 +1,4 @@
+import {taskFollowUpReadWhere,operationalAlarmReadWhere} from './followup-access';
 import 'server-only';
 import {
   EntryStatus,
@@ -11,6 +12,10 @@ import { prisma } from '@/lib/prisma';
 import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+
+// Shared operational aggregates never disclose private or supervisory sources.
+const sharedReader={id:'',permissions:[]};
+const sharedTasks=taskFollowUpReadWhere(sharedReader,true);
 
 export type MetricsRange = { from: Date; to: Date };
 
@@ -42,7 +47,7 @@ export async function getMetrics(range: MetricsRange) {
     openOperationalEntries,
   ] = await Promise.all([
     prisma.task.findMany({
-      where: {
+      where: { AND:[sharedTasks],
         deletedAt: null,
         status: TaskStatus.COMPLETADA,
         completedAt: { gte: range.from, lte: range.to },
@@ -50,7 +55,7 @@ export async function getMetrics(range: MetricsRange) {
       select: { completedAt: true, dueAt: true, createdAt: true },
     }),
     prisma.task.count({
-      where: {
+      where: { AND:[sharedTasks],
         deletedAt: null,
         status: { in: TASK_OPEN_STATUSES },
         dueAt: { lt: now },
@@ -89,9 +94,9 @@ export async function getMetrics(range: MetricsRange) {
       _count: { _all: true },
     }),
     prisma.task.count({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND:[sharedTasks], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
-    prisma.operationalAlarm.count({ where: { status: OperationalAlarmStatus.ACTIVA } }),
+    prisma.operationalAlarm.count({ where: { AND:[operationalAlarmReadWhere(sharedReader,true)], status: OperationalAlarmStatus.ACTIVA } }),
     // La continuidad es inherente: todo registro abierto sigue vigente entre
     // turnos hasta resolverse o cerrarse. No existe una categoría separada de
     // «heredados» ni un umbral horario artificial.
@@ -209,9 +214,9 @@ export async function getShiftMetrics(shiftId: string) {
     prisma.operationalEntry.count({
       where: { shiftId, deletedAt: null, type: EntryType.INCIDENCIA },
     }),
-    prisma.task.count({ where: { shiftId, deletedAt: null } }),
+    prisma.task.count({ where: { AND:[sharedTasks], shiftId, deletedAt: null } }),
     prisma.task.count({
-      where: { shiftId, deletedAt: null, status: TaskStatus.COMPLETADA },
+      where: { AND:[sharedTasks], shiftId, deletedAt: null, status: TaskStatus.COMPLETADA },
     }),
   ]);
   return { entries, incidents, tasksCreated, tasksCompleted };

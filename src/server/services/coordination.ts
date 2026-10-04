@@ -93,9 +93,13 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   identities.sort((a,b)=>(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id));
   const subjectGroups=new Map<string,Identity[]>();
   for(const row of identities){const key=row.sourceId?`entry:${row.sourceId}`:`${row.kind}:${row.id}`;const group=subjectGroups.get(key)??[];group.push(row);subjectGroups.set(key,group);}
-  const groups=[...subjectGroups.values()];
+  const representative=(group:Identity[])=>[...group].sort((a,b)=>{
+    const rank=(row:Identity)=>row.kind==='entry'?0:row.kind==='task'?1:row.kind==='housekeeping'?2:3;
+    return rank(a)-rank(b)||(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id);
+  })[0]!;
+  const groups=[...subjectGroups.values()].sort((a,b)=>(a[0]?.dueAt?.getTime()??Infinity)-(b[0]?.dueAt?.getTime()??Infinity)||(representative(a).id.localeCompare(representative(b).id)));
   const pageGroups=groups.slice((page-1)*25,page*25);
-  const pageIds=(kind:CoordinationKind)=>pageGroups.map(group=>group[0]!).filter(row=>row.kind===kind).map(row=>row.id);
+  const pageIds=(kind:CoordinationKind)=>pageGroups.map(representative).filter(row=>row.kind===kind).map(row=>row.id);
   const orderBy=[{dueAt:{sort:'asc' as const,nulls:'last' as const}},{id:'asc' as const}];
   const [entries,tasks,hk,followups,departments] = await Promise.all([
     prisma.operationalEntry.findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
@@ -110,9 +114,13 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   ]);
   const loads=new Map<string,{departmentId:string;name:string;total:number;blocked:number}>();
   for(const group of groups){
-    const first=group[0]!,id=first.departmentId??'';
-    const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
-    load.total+=1;if(group.some(row=>['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(row.status)))load.blocked+=1;loads.set(id,load);
+    const blocked=group.some(row=>['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(row.status));
+    const areaIds=[...new Set(group.map(row=>row.departmentId??'').filter(Boolean))];
+    if(!areaIds.length)areaIds.push('');
+    for(const id of areaIds){
+      const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
+      load.total+=1;if(blocked)load.blocked+=1;loads.set(id,load);
+    }
   }
   const byArea=[...loads.values()].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'es'));
   const sourceIds=[...new Set([...tasks.map(t=>t.entryId),...hk.map(h=>h.sourceEntryId)].filter((id):id is string=>Boolean(id)))];
@@ -125,8 +133,8 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     ...followups.map(r=>({id:r.id,humanId:r.humanId,kind:'followup' as const,title:r.action,status:r.status,priority:r.priority,departmentId:r.owner.departmentId,department:r.owner.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner.name,createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.scheduledAt,receivedAt:null,assignedAt:null,availableAt:null,startedAt:null,completedAt:r.completedAt,nextAction:r.nextAction??(input.history?'Consultar resultado':'Revisar y registrar siguiente acción'),href:`/seguimientos?q=${r.humanId}&estado=todos`,canAssign:false,children:[]})),
   ];
   const groupedRows=pageGroups.flatMap(group=>{
-    const first=group[0]!;const row=rows.find(r=>r.kind===first.kind&&r.id===first.id);if(!row)return[];
-    for(const child of group.slice(1)){
+    const first=representative(group);const row=rows.find(r=>r.kind===first.kind&&r.id===first.id);if(!row)return[];
+    for(const child of group.filter(candidate=>candidate.id!==first.id||candidate.kind!==first.kind)){
       const href=child.kind==='task'?`/tareas/${child.id}`:child.kind==='housekeeping'?`/admin/housekeeping?area=${child.departmentId??''}&aviso=${child.humanId}`:child.kind==='entry'?`/libro/${child.id}`:`/seguimientos?q=${child.humanId}&estado=todos`;
       if(!row.children.some(link=>link.href===href))row.children.push({label:`${child.kind==='task'?'Tarea':child.kind==='housekeeping'?'Housekeeping':child.kind==='entry'?'Asunto':'Seguimiento'} #${child.humanId} · ${child.status}`,href});
     }

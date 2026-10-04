@@ -66,6 +66,15 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     expect((await getEntry(f.source.id)).housekeepingRequest?.resolution).toContain('Trabajo atendido');
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(0);
   });
+  it('incorpora atómicamente un trabajo ordinario a la atención y exige su resultado',async()=>{
+    const f=await fixture();const ordinary=await prisma.task.create({data:{title:'Trabajo existente',createdById:f.actor.id,entryId:f.source.id,departmentId:f.maintenance.id,assigneeId:f.actor.id}});
+    const result=await requestSubjectAttention(f.actor,f.input);expect(result.id).toBe(ordinary.id);
+    expect((await prisma.task.findUniqueOrThrow({where:{id:ordinary.id}})).procedureOccurrenceKey).toMatch(/^subject:/);
+    await expect(changeTaskStatus(f.actor,{id:ordinary.id,status:'COMPLETADA'})).rejects.toThrow('resultado');
+    await changeTaskStatus(f.actor,{id:ordinary.id,status:'COMPLETADA',evidenceProvided:'Atención terminada y comprobada'});
+    expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(1);
+    expect(await prisma.auditLog.count({where:{entity:'Task',entityId:ordinary.id,action:'EDITAR'}})).toBe(1);
+  });
   it('regulariza sólo por Administración un vínculo piloto, conservando su evidencia',async()=>{
     const f=await fixture();const first=await requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id});
     const pilot=await prisma.housekeepingRequest.update({where:{id:first.id},data:{isDemo:true}});

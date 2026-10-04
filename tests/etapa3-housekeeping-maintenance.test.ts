@@ -42,7 +42,7 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
  });
  it('rechaza un resultado vacío y revierte la transición y sus derivados',async()=>{
   const r=await blocked();const before=await prisma.operationalEntry.findUniqueOrThrow({where:{id:r.maintenanceEntryId!}});const events=await prisma.housekeepingEvent.count({where:{requestId:r.id}});
-  await expect(changeEntryStatus(admin,{id:before.id,status:'RESUELTO',resolution:'   '})).rejects.toThrow('resultado de Mantenimiento');
+  await expect(changeEntryStatus(admin,{id:before.id,status:'RESUELTO',resolution:'   '})).rejects.toThrow(/resultado de Mantenimiento|cómo se resolvió/);
   expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:before.id}})).status).toBe(before.status);expect(await prisma.housekeepingEvent.count({where:{requestId:r.id}})).toBe(events);
  });
  it('reintentos concurrentes generan un solo resultado y conservan ambas identidades vinculadas',async()=>{

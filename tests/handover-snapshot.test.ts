@@ -91,7 +91,7 @@ describe('resumen automático de la entrega', () => {
       dueAt: hoursAgo(2),
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const sections = new Set(snapshot.map((item) => item.section));
 
     expect(sections).toContain('Incidencias abiertas');
@@ -126,7 +126,7 @@ describe('resumen automático de la entrega', () => {
       },
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const sections = snapshot.map((item) => item.section);
 
     expect(sections).not.toContain('Cobros pendientes');
@@ -154,7 +154,7 @@ describe('resumen automático de la entrega', () => {
     });
     await runAlertEngine();
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const alertItems = snapshot.filter((item) => item.section === 'Alertas activas');
 
     expect(alertItems.some((item) => item.title.includes('Revisar comprobantes'))).toBe(false);
@@ -174,7 +174,7 @@ describe('resumen automático de la entrega', () => {
       },
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const alertItems = snapshot.filter((item) => item.section === 'Alertas activas');
     expect(alertItems.some((item) => item.title.includes('Salida anticipada'))).toBe(true);
   });
@@ -200,7 +200,7 @@ describe('resumen automático de la entrega', () => {
     });
     await runAlertEngine();
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const seguimientos = snapshot.filter((item) => item.section === 'Seguimientos próximos');
 
     expect(seguimientos).toHaveLength(2);
@@ -248,7 +248,7 @@ describe('resumen automático de la entrega', () => {
   });
 
   it('el resumen queda vacío cuando no hay nada pendiente', async () => {
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     expect(snapshot).toHaveLength(0);
   });
 });

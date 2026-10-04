@@ -138,7 +138,7 @@ export default async function ShiftPage({
   );
 
   const [briefing, metrics] = shift
-    ? await Promise.all([getShiftBriefing(shift), getShiftMetrics(shift.id)])
+    ? await Promise.all([getShiftBriefing(user,shift), getShiftMetrics(shift.id)])
     : [null, null];
 
   const linkedReception = shift

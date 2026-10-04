@@ -1,4 +1,6 @@
 'use server';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
@@ -50,7 +52,7 @@ function dateTime(date: Date) {
   }).format(date);
 }
 
-async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null> {
+async function loadRecord(kind: BookKind, id: string, user: CurrentUser): Promise<MailRecord | null> {
   if (kind === 'entry') {
     const row = await prisma.operationalEntry.findUnique({
       where: { id },
@@ -84,8 +86,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
   }
 
   if (kind === 'task') {
-    const row = await prisma.task.findUnique({
-      where: { id },
+    const row = await prisma.task.findFirst({
+      where: { id,deletedAt:null,AND:[taskFollowUpReadWhere(user)] },
       include: {
         assignee: { select: { name: true } },
         createdBy: { select: { name: true } },
@@ -113,8 +115,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
   }
 
   if (kind === 'followup') {
-    const row = await prisma.followUp.findUnique({
-      where: { id },
+    const row = await prisma.followUp.findFirst({
+      where: { id,deletedAt:null,AND:[followUpReadWhere(user)] },
       include: {
         owner: { select: { name: true } },
         createdBy: { select: { name: true } },
@@ -141,8 +143,8 @@ async function loadRecord(kind: BookKind, id: string): Promise<MailRecord | null
     };
   }
 
-  const row = await prisma.alert.findUnique({
-    where: { id },
+  const row = await prisma.alert.findFirst({
+    where: { id,deletedAt:null,AND:[alertReadWhere(user)] },
     include: {
       createdBy: { select: { name: true } },
       department: { select: { name: true } },
@@ -207,7 +209,7 @@ export async function sendBookItemMailAction(
     const user = await requireUser();
     await assertReceptionOperationPermission(user, 'entry.edit');
     const input = parseOrThrow(schema, formDataToObject(formData));
-    const record = await loadRecord(input.kind, input.id);
+    const record = await loadRecord(input.kind, input.id,user);
     if (!record) throw new RuleError('Ese registro ya no existe o no está disponible.');
 
     const body = render(record, input.note);

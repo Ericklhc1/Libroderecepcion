@@ -1,3 +1,4 @@
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import { AuditAction, NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -31,6 +32,7 @@ export async function addComment(
     throw new RuleError('El comentario debe referirse a un único registro.');
   }
 
+  return prisma.$transaction(async tx=>{
   /*
     Responder a un comentario.
 
@@ -44,7 +46,7 @@ export async function addComment(
   */
   let parentId: string | null = null;
   if (input.parentId) {
-    const parent = await prisma.comment.findFirst({
+    const parent = await tx.comment.findFirst({
       where: { id: input.parentId, deletedAt: null },
       select: {
         id: true,
@@ -77,7 +79,7 @@ export async function addComment(
   let link = '/';
 
   if (input.entryId) {
-    const entry = await prisma.operationalEntry.findFirst({
+    const entry = await tx.operationalEntry.findFirst({
       where: { id: input.entryId, deletedAt: null },
       select: { id: true, humanId: true, title: true, createdById: true, ownerId: true },
     });
@@ -87,8 +89,8 @@ export async function addComment(
     summaryRef = `registro #${entry.humanId}`;
     link = `/libro/${entry.id}`;
   } else if (input.taskId) {
-    const task = await prisma.task.findFirst({
-      where: { id: input.taskId, deletedAt: null },
+    const task = await tx.task.findFirst({
+      where: { id: input.taskId, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
       select: { id: true, humanId: true, createdById: true, assigneeId: true },
     });
     if (!task) throw new NotFoundError('La tarea no existe.');
@@ -97,8 +99,8 @@ export async function addComment(
     summaryRef = `tarea #${task.humanId}`;
     link = `/tareas/${task.id}`;
   } else if (input.followUpId) {
-    const followUp = await prisma.followUp.findFirst({
-      where: { id: input.followUpId, deletedAt: null },
+    const followUp = await tx.followUp.findFirst({
+      where: { id: input.followUpId, deletedAt: null, AND:[followUpReadWhere(user)] },
       select: { id: true, action: true, ownerId: true, createdById: true, entryId: true },
     });
     if (!followUp) throw new NotFoundError('El seguimiento no existe.');
@@ -107,8 +109,8 @@ export async function addComment(
     summaryRef = `seguimiento "${followUp.action}"`;
     link = followUp.entryId ? `/libro/${followUp.entryId}` : '/seguimientos';
   } else if (input.alertId) {
-    const alert = await prisma.alert.findFirst({
-      where: { id: input.alertId, deletedAt: null },
+    const alert = await tx.alert.findFirst({
+      where: { id: input.alertId, deletedAt: null, AND:[alertReadWhere(user)] },
       select: { id: true, title: true, createdById: true },
     });
     if (!alert) throw new NotFoundError('La alerta no existe.');
@@ -116,7 +118,7 @@ export async function addComment(
     summaryRef = `alerta "${alert.title}"`;
     link = '/alertas/sistema';
   } else if (input.handoverId) {
-    const handover = await prisma.shiftHandover.findUnique({
+    const handover = await tx.shiftHandover.findUnique({
       where: { id: input.handoverId },
       select: { id: true, issuedById: true, receivedById: true },
     });
@@ -127,7 +129,7 @@ export async function addComment(
     link = `/turno/entrega/${handover.id}`;
   }
 
-  const comment = await prisma.comment.create({
+  const comment = await tx.comment.create({
     data: {
       body: input.body,
       authorId: user.id,
@@ -160,7 +162,7 @@ export async function addComment(
     summary: `Comentario de ${user.name} en ${summaryRef}`,
     user,
     after: { body: input.body.slice(0, 500) },
-  });
+  },tx);
 
   /*
     Menciones con «@».
@@ -172,7 +174,17 @@ export async function addComment(
     Y se le quita de los interesados para que no reciba los dos avisos por el
     mismo comentario. La mención manda, porque es la más específica.
   */
-  const mencionados = await mentionRecipients(input.body, user.id);
+  const mentioned = await mentionRecipients(input.body, user.id);
+  const candidateIds=[...new Set([...recipients,...mentioned.map(person=>person.id)])];
+  const candidates=await tx.user.findMany({where:{id:{in:candidateIds},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
+  const allowedIds=new Set<string>();
+  for(const person of candidates){
+    const reader:Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
+    if(input.taskId && !await tx.task.count({where:{id:input.taskId,AND:[taskFollowUpReadWhere(reader)]}}) || input.followUpId && !await tx.followUp.count({where:{id:input.followUpId,AND:[followUpReadWhere(reader)]}}) || input.alertId && !await tx.alert.count({where:{id:input.alertId,AND:[alertReadWhere(reader)]}})) continue;
+    allowedIds.add(person.id);
+  }
+  for(const recipient of recipients) if(!allowedIds.has(recipient)) recipients.delete(recipient);
+  const mencionados=mentioned.filter(person=>allowedIds.has(person.id));
   for (const mencionado of mencionados) recipients.delete(mencionado.id);
 
   recipients.delete(user.id);
@@ -195,9 +207,10 @@ export async function addComment(
       entity,
       entityId,
     })),
-  ]);
+  ],tx);
 
   return comment;
+  });
 }
 
 export async function softDeleteComment(
@@ -205,7 +218,11 @@ export async function softDeleteComment(
   input: { id: string; reason: string },
 ) {
   const comment = await prisma.comment.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null,AND:[
+      {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+      {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+      {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
+    ] },
   });
   if (!comment) throw new NotFoundError('El comentario no existe.');
   if (comment.authorId !== user.id && !user.permissions.includes('entry.delete')) {
@@ -228,10 +245,14 @@ export async function softDeleteComment(
 }
 
 /** Comentarios de un objeto, del más antiguo al más reciente. */
-export async function listComments(target: CommentTarget) {
+export async function listComments(target: CommentTarget,user:CurrentUser) {
   return prisma.comment.findMany({
     where: {
-      deletedAt: null,
+      deletedAt: null,AND:[
+        {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+        {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+        {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
+      ],
       ...(target.entryId ? { entryId: target.entryId } : {}),
       ...(target.taskId ? { taskId: target.taskId } : {}),
       ...(target.followUpId ? { followUpId: target.followUpId } : {}),
@@ -260,8 +281,8 @@ export type CommentThread = Awaited<ReturnType<typeof listComments>>[number] & {
  * Los `@401` de un cierre de turno se resuelven una vez por comentario, no una
  * vez por lectura de la pantalla.
  */
-export async function listCommentThreads(target: CommentTarget): Promise<CommentThread[]> {
-  const todos = await listComments(target);
+export async function listCommentThreads(target: CommentTarget,user:CurrentUser): Promise<CommentThread[]> {
+  const todos = await listComments(target,user);
 
   const raices = todos.filter((c) => !c.parentId);
   const porPadre = new Map<string, typeof todos>();

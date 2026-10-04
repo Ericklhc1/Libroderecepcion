@@ -1,3 +1,5 @@
+import type {CurrentUser} from '@/server/auth/current-user';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -28,6 +30,20 @@ export type SnapshotItem = {
   refType: string | null;
   refId: string | null;
 };
+
+/** Preserve historical evidence and controls; redact reserved content for the current reader. */
+export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[]):Promise<T[]> {
+  const ids=(kind:string)=>items.filter(i=>i.refType===kind&&i.refId).map(i=>i.refId!);
+  const [tasks,followUps,alerts]=await Promise.all([
+    prisma.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user)]},select:{id:true}}),
+    prisma.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true)]},select:{id:true}}),
+    prisma.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user)]},select:{id:true}}),
+  ]);
+  const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
+  return items.map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
+    ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
+    : item);
+}
 
 const SECTIONS = {
   resueltos: 'Resuelto en este turno',
@@ -77,6 +93,7 @@ type SnapshotOptions = {
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
  */
 export async function buildHandoverSnapshot(
+  user: CurrentUser,
   now = new Date(),
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
@@ -131,7 +148,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, AND:[taskFollowUpReadWhere(user,true)] },
       select: {
         id: true,
         humanId: true,
@@ -147,7 +164,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.alert.findMany({
-      where: LIVE_ALERT_WHERE(now),
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true)]},
       select: {
         id: true,
         type: true,
@@ -166,6 +183,7 @@ export async function buildHandoverSnapshot(
       where: {
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+        AND:[followUpReadWhere(user,false,true)],
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }],
       },
       select: {
@@ -195,7 +213,7 @@ export async function buildHandoverSnapshot(
             title: true,
             resolution: true,
             closedAt: true,
-            _count: { select: { tasks: true, followUps: true } },
+            _count: { select: { tasks: {where:taskFollowUpReadWhere(user,true)}, followUps: {where:followUpReadWhere(user,false,true)} } },
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
           take: 150,
@@ -208,6 +226,7 @@ export async function buildHandoverSnapshot(
             deletedAt: null,
             entryId: null,
             status: TaskStatus.COMPLETADA,
+            AND:[taskFollowUpReadWhere(user,true)],
           },
           select: { id: true, humanId: true, title: true, completedAt: true },
           orderBy: { completedAt: 'asc' },

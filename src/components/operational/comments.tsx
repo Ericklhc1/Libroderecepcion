@@ -1,3 +1,4 @@
+import {requirePageUser} from '@/server/auth/guard';
 import { MessageSquare } from 'lucide-react';
 import { formatDateTime, initials } from '@/lib/format';
 import { listComments } from '@/server/services/comments';
@@ -19,7 +20,7 @@ export async function Comments({
   target: Target;
   readOnly?: boolean;
 }) {
-  const comments = await listComments(target);
+  const comments = await listComments(target,await requirePageUser({allowAreaOperation:true}));
 
   return (
     <div>

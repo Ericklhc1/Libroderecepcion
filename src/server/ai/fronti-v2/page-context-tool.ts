@@ -1,3 +1,4 @@
+import {alertReadWhere} from '@/server/services/followup-access';
 import 'server-only';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
@@ -801,7 +802,7 @@ export async function executeFrontiPageContextTool(
         'No tienes permiso para consultar señales internas.',
       );
       const rows = await prisma.alert.findMany({
-        where: { deletedAt: null, status: { not: 'RESUELTA' } },
+        where: { deletedAt: null, status: { not: 'RESUELTA' }, AND:[alertReadWhere(user)] },
         select: {
           id: true,
           humanId: true,

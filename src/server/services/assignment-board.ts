@@ -1,3 +1,5 @@
+import type {CurrentUser} from '@/server/auth/current-user';
+import {taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { Priority, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -54,12 +56,12 @@ export type AssignmentBoard = {
   unassignedTotal: number;
 };
 
-export async function getAssignmentBoard(): Promise<AssignmentBoard> {
+export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentBoard> {
   const now = new Date();
 
   const [unassignedTasks, unassignedEntries, unassignedTaskCount, unassignedEntryCount, people] = await Promise.all([
     prisma.task.findMany({
-      where: { deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
       select: {
         id: true,
         humanId: true,
@@ -91,7 +93,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
       diez viajes a otra región por cada carga de la pantalla.
     */
     prisma.task.count({
-      where: { deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
     }),
     prisma.operationalEntry.count({
       where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
@@ -108,7 +110,7 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
         name: true,
         role: { select: { name: true } },
         tasksAssigned: {
-          where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+          where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
           select: { priority: true, dueAt: true },
         },
         entriesOwned: {
@@ -191,9 +193,9 @@ export async function getAssignmentBoard(): Promise<AssignmentBoard> {
 }
 
 /** Tareas abiertas de una persona, para mirar su carga en detalle. */
-export async function getPersonWorkload(userId: string) {
+export async function getPersonWorkload(userId: string,user: CurrentUser) {
   return prisma.task.findMany({
-    where: { deletedAt: null, assigneeId: userId, status: { in: TASK_OPEN_STATUSES } },
+    where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: userId, status: { in: TASK_OPEN_STATUSES } },
     select: {
       id: true,
       humanId: true,

@@ -6,7 +6,7 @@ import {searchOperationalRecords} from '@/server/services/global-search';
 import {getSupervisionData} from '@/server/services/supervision';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
+import {prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS} from './helpers';
 import {getFormOptions} from '@/server/services/options';
 import {getHistory} from '@/server/services/history';
 import {getBookItems} from '@/server/services/book';
@@ -14,13 +14,88 @@ import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followu
 import {createEntry,getSubjectEntry,changeEntryStatus} from '@/server/services/entries';
 import {createTask,changeTaskStatus,getTask,assignTask,toggleChecklistItem,softDeleteTask,restoreTask} from '@/server/services/tasks';
 import {changeTaskStatusAction} from '@/server/actions/tasks';
+import {updateEntryAction} from '@/server/actions/entries';
+import {sendBookItemMailAction} from '@/server/actions/book-mail';
+import {addComment,listComments} from '@/server/services/comments';
+import {restoreFollowUp} from '@/server/services/followups';
+import {buildHandoverSnapshot,visibleSnapshotItems} from '@/server/services/handover-snapshot';
+import {getShiftBriefing} from '@/server/services/shifts';
+import {getAssignmentBoard} from '@/server/services/assignment-board';
+import {getUserPerformance} from '@/server/services/performance';
+import {sendMail} from '@/server/mail';
 const auth=vi.hoisted(()=>({current:vi.fn()}));
 vi.mock('@/server/auth/current-user',async original=>({...await original<object>(),getCurrentUserFresh:auth.current}));
 vi.mock('@/server/services/legal-acceptance',()=>({hasAcceptedCurrentTerms:async()=>true}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/mail',()=>({sendMail:vi.fn()}));
 
 describe('AROH Simple · reserva y revisión independiente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  it('asignar desde el formulario conserva causa y resultado, y permite corregirlos explícitamente',async()=>{
+    const actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const source=await createEntry(actor,{type:'INCIDENCIA',title:'Causa documentada antes de asignar',description:'Contexto',priority:'ALTA',severity:'ALTA',requiresFollowUp:false,tags:[]});
+    await prisma.operationalEntry.update({where:{id:source.id},data:{rootCause:'Causa comprobada',resolution:'Resultado anterior conservado'}});
+    const form=new FormData();form.set('id',source.id);form.set('ownerId',actor.id);
+    auth.current.mockResolvedValue(actor);
+    expect((await updateEntryAction(null,form)).ok).toBe(true);
+    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:source.id}})).toMatchObject({ownerId:actor.id,rootCause:'Causa comprobada',resolution:'Resultado anterior conservado'});
+    form.set('rootCause','Causa corregida');form.set('resolution','Resultado corregido');
+    expect((await updateEntryAction(null,form)).ok).toBe(true);
+    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:source.id}})).toMatchObject({rootCause:'Causa corregida',resolution:'Resultado corregido'});
+  });
+  it('no crea ni notifica trabajo reservado a personas que no pueden recibirlo',async()=>{
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const receiver=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    for(const visibility of ['PRIVADO','SUPERVISION'] as const){
+      const follow=await prisma.followUp.create({data:{action:'Origen reservado',visibility,ownerId:owner.id,createdById:owner.id}});
+      const alert=await prisma.alert.create({data:{followUpId:follow.id,title:'Alerta reservada',message:'Evidencia',type:'SEGUIMIENTO_VENCIDO',level:'ATENCION'}});
+      await expect(createTask(owner,{title:'No debe notificarse',alertId:alert.id,assigneeId:receiver.id,priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow('origen reservado');
+      expect(await prisma.task.count({where:{alertId:alert.id}})).toBe(0);
+    }
+    expect(await prisma.notification.count({where:{userId:receiver.id}})).toBe(0);
+  });
+  it('protege IDs conocidos en comentarios, correo, Fronti, asignación, rendimiento y relevo',async()=>{
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const follow=await prisma.followUp.create({data:{action:'Contenido reservado de continuidad',visibility:'PRIVADO',ownerId:owner.id,createdById:owner.id}});
+    const task=await prisma.task.create({data:{title:'Contenido reservado de ejecución',followUpId:follow.id,createdById:owner.id,assigneeId:owner.id,dueAt:new Date(Date.now()-3600000)}});
+    const alert=await prisma.alert.create({data:{taskId:task.id,title:'Contenido reservado de señal',message:'Evidencia reservada',type:'TAREA_VENCIDA',level:'CRITICA'}});
+    await expect(createTask(reader,{title:'Origen oculto',alertId:alert.id,priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
+    await expect(assignTask(owner,{id:task.id,assigneeId:reader.id})).rejects.toThrow('origen reservado');
+    const derived=await createTask(owner,{title:'Contenido reservado derivado',alertId:alert.id,priority:'MEDIA',tags:[],checklist:[]});
+    expect(derived.followUpId).toBe(follow.id);
+    expect((await searchOperationalRecords(reader,'Contenido reservado')).some(row=>row.entityId===derived.id)).toBe(false);
+    for(const target of [{taskId:task.id},{followUpId:follow.id},{alertId:alert.id}]){
+      await expect(addComment(reader,{...target,body:'No debe guardarse ni notificarse'})).rejects.toThrow();
+      expect(await listComments(target,reader)).toHaveLength(0);
+    }
+    expect(await prisma.comment.count()).toBe(0);
+    auth.current.mockResolvedValue(reader);vi.mocked(sendMail).mockClear();
+    for(const [kind,id] of [['task',task.id],['followup',follow.id],['alert',alert.id]]){
+      const form=new FormData();form.set('kind',kind!);form.set('id',id!);form.set('to','synthetic@example.invalid');
+      expect((await sendBookItemMailAction(null,form)).ok).toBe(false);
+    }
+    expect(sendMail).not.toHaveBeenCalled();
+    const context=await executeFrontiPageContextTool(reader,resolveFrontiPageContext({pathname:'/alertas/sistema'}));
+    expect(JSON.stringify(context)).not.toContain('Contenido reservado');
+    const board=await getAssignmentBoard(reader);
+    expect(board.unassigned.some(row=>row.id===derived.id)).toBe(false);
+    expect(board.workload.find(row=>row.userId===owner.id)?.openTasks).toBe(0);
+    const range={from:new Date(Date.now()-86400000),to:new Date(Date.now()+86400000)};
+    expect(JSON.stringify(await getUserPerformance(reader,owner.id,range))).not.toContain('Contenido reservado');
+    const shift=await createShift({type:'DIA'});
+    expect(JSON.stringify(await getShiftBriefing(reader,shift))).not.toContain('Contenido reservado');
+    expect(JSON.stringify(await buildHandoverSnapshot(reader))).not.toContain('Contenido reservado');
+    // Even its author must not copy private content into a shared reception delivery.
+    expect(JSON.stringify(await buildHandoverSnapshot(owner))).not.toContain('Contenido reservado');
+    const historical=[{refType:'task',refId:task.id,title:task.title,detail:'Evidencia reservada'}];
+    expect(await visibleSnapshotItems(reader,historical)).toMatchObject([{title:'Asunto reservado',refId:null}]);
+    expect(await visibleSnapshotItems(owner,historical)).toEqual(historical);
+    await prisma.followUp.update({where:{id:follow.id},data:{deletedAt:new Date()}});
+    await expect(restoreFollowUp(reader,{id:follow.id})).rejects.toThrow();
+    expect((await prisma.followUp.findUniqueOrThrow({where:{id:follow.id}})).deletedAt).not.toBeNull();
+    await restoreFollowUp(owner,{id:follow.id});
+  });
   it('filtra Housekeeping histórico reservado antes del contexto sin ocultar la novedad',async()=>{
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
     const reader=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

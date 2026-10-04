@@ -1,3 +1,4 @@
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import { assertElementActor, lockHandover } from './handover-elements';
 import 'server-only';
 import {
@@ -37,7 +38,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { buildHandoverSnapshot, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { buildHandoverSnapshot, visibleSnapshotItems, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -411,8 +412,8 @@ export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
     current,
     operationalCurrent,
     iAmIn: Boolean(current),
-    pending,
-    cashPending,
+    pending: pending ? {...pending,items:await visibleSnapshotItems(user,pending.items)} : null,
+    cashPending: cashPending ? {...cashPending,items:await visibleSnapshotItems(user,cashPending.items)} : null,
     awaitingReceipt,
     suggestedType,
     suggestedWindow: SHIFT_WINDOW_LABEL[suggestedType],
@@ -431,7 +432,7 @@ export async function getShiftById(shiftId: string): Promise<ShiftWithDetail> {
 /**
  * Información que se muestra al iniciar turno: qué está pasando y qué se hereda.
  */
-export async function getShiftBriefing(shift: { id: string; date: Date; type: ShiftType }) {
+export async function getShiftBriefing(user: CurrentUser, shift: { id: string; date: Date; type: ShiftType }) {
   const now = new Date();
   const [incoming, openEntries, overdueTasks, myTasks, alerts, followUps] =
     await Promise.all([
@@ -449,6 +450,7 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         where: {
           deletedAt: null,
           status: { in: TASK_OPEN_STATUSES },
+          AND:[taskFollowUpReadWhere(user)],
           dueAt: { lt: now },
         },
         include: { assignee: { select: { id: true, name: true } } },
@@ -456,13 +458,13 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         take: 25,
       }),
       prisma.task.findMany({
-        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES },AND:[taskFollowUpReadWhere(user)] },
         include: { assignee: { select: { id: true, name: true } } },
         orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
         take: 25,
       }),
       prisma.alert.findMany({
-        where: LIVE_ALERT_WHERE(now),
+        where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user)]},
         orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
         take: 25,
       }),
@@ -470,6 +472,7 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
         where: {
           deletedAt: null,
           status: { in: ['PENDIENTE', 'VENCIDO'] },
+          AND:[followUpReadWhere(user)],
         },
         include: {
           owner: { select: { id: true, name: true } },
@@ -481,7 +484,11 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
     ]);
 
   const comments = await prisma.comment.findMany({
-    where: { deletedAt: null },
+    where: { deletedAt: null,AND:[
+      {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+      {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+      {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
+    ] },
     include: {
       author: { select: { id: true, name: true } },
       entry: { select: { id: true, humanId: true, title: true } },
@@ -492,7 +499,7 @@ export async function getShiftBriefing(shift: { id: string; date: Date; type: Sh
   });
 
   return {
-    incoming,
+    incoming: incoming ? {...incoming,items:await visibleSnapshotItems(user,incoming.items)} : null,
     openEntries,
     overdueTasks,
     myTasks,
@@ -612,7 +619,7 @@ export async function openShift(
 
   const continuitySnapshot =
     outgoing && continuityRequested
-      ? await buildHandoverSnapshot(new Date(), {
+      ? await buildHandoverSnapshot(user,new Date(), {
           shiftId: outgoing.id,
           includeMetrics: true,
         })
@@ -2246,7 +2253,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
     assertTransition(shift.status, ShiftStatus.PREPARANDO_ENTREGA);
   }
 
-  const snapshot = await buildHandoverSnapshot();
+  const snapshot = await buildHandoverSnapshot(user);
   /*
     El destino queda NULO a propósito: cuando alguien entrega, el turno que va
     a recibir todavía no existe —se crea cuando el relevo llega al mesón—. La

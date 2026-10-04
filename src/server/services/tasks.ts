@@ -1,6 +1,6 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import {
   AuditAction,
   NotificationType,
@@ -70,6 +70,18 @@ export type TaskCreateInput = {
   checklist: string[];
 };
 
+/** Do not notify somebody about work whose reserved source they cannot read. */
+async function assertSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}) {
+  if (!source.followUpId && !source.alertId) return;
+  const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
+  for(const person of people){
+    const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
+    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,deletedAt:null,AND:[alertReadWhere(reader)]}})){
+      throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
+    }
+  }
+}
+
 /** Deduce el origen de la tarea a partir del registro que la motivó. */
 function inferOrigin(input: TaskCreateInput): TaskOrigin {
   if (input.entryId) return TaskOrigin.REGISTRO;
@@ -116,9 +128,12 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   if (input.followUpId && !await db.followUp.findFirst({where:{id:input.followUpId,AND:[followUpReadWhere(user)]},select:{id:true}})) {
     throw new NotFoundError('El seguimiento de origen no existe.');
   }
-  if (input.alertId && !await db.alert.findFirst({where:{id:input.alertId,OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},select:{id:true}})) {
+  if (input.alertId && !await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{id:true}})) {
     throw new NotFoundError('La alerta de origen no existe.');
   }
+  await assertSourceRecipients(db,participantIds,input);
+  const alertSource=input.alertId?await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{followUpId:true,task:{select:{followUpId:true}}}}):null;
+  const inheritedFollowUpId=input.followUpId??alertSource?.followUpId??alertSource?.task?.followUpId??null;
   let origin = inferOrigin(input);
   let roomId = input.roomId ?? null;
   if (input.entryId) {
@@ -145,6 +160,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    await assertSourceRecipients(tx,participantIds,input);
     if (input.procedureOccurrenceKey) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.procedureOccurrenceKey}))::text`;
       const existing = await tx.task.findUnique({ where: { procedureOccurrenceKey: input.procedureOccurrenceKey }, include: taskInclude });
@@ -163,7 +179,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
         dueAt: input.dueAt ?? null,
         departmentId: input.departmentId ?? null,
         entryId: input.entryId ?? null,
-        followUpId: input.followUpId ?? null,
+        followUpId: inheritedFollowUpId,
         alertId: input.alertId ?? null,
         handoverId: input.handoverId ?? null,
         fulfillmentCriteria: input.fulfillmentCriteria ?? null,
@@ -360,7 +376,7 @@ export async function assignTask(
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
-  if (input.assigneeId) await assertAssignable(input.assigneeId);
+  if (input.assigneeId) {await assertAssignable(input.assigneeId);await assertSourceRecipients(prisma,[input.assigneeId],current);}
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {

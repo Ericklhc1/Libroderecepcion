@@ -1,3 +1,4 @@
+import {returnedSubjectTask} from '@/domain/subject-attention';
 import { followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { getSubjectAttentionAreas } from '@/server/services/subject-attention';
 import { randomUUID } from 'node:crypto';
@@ -115,10 +116,10 @@ export default async function EntryDetailPage({
   const isIncident = entry.type === EntryType.INCIDENCIA;
   const canAttend = Boolean(entry.ownerId) && (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id);
   const canFinish = (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id) && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
-  const activeHk = entry.housekeepingRequest && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
+  const activeHk = entry.housekeepingRequest && !entry.housekeepingRequest.isDemo && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
   const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
-  const returnedTask=tasks.find(t=>t.id===tasks[0]?.id&&['VALIDADA','COMPLETADA'].includes(t.status)&&(!entry.reopenedAt||!!t.completedAt&&t.completedAt>=entry.reopenedAt));
-  const returnedHk=entry.housekeepingRequest?.status==='RESUELTO'&&(!entry.reopenedAt||!!entry.housekeepingRequest.resolvedAt&&entry.housekeepingRequest.resolvedAt>=entry.reopenedAt)?entry.housekeepingRequest:null;
+  const returnedTask=returnedSubjectTask(tasks,entry.reopenedAt);
+  const returnedHk=entry.housekeepingRequest&&!entry.housekeepingRequest.isDemo&&entry.housekeepingRequest.status==='RESUELTO'&&(!entry.reopenedAt||!!entry.housekeepingRequest.resolvedAt&&entry.housekeepingRequest.resolvedAt>=entry.reopenedAt)?entry.housekeepingRequest:null;
   const returnedWork=Boolean(returnedTask||returnedHk);
   const open = ENTRY_OPEN_STATUSES.includes(entry.status);
   const areaResult=returnedTask?.evidenceProvided??returnedHk?.resolution;

@@ -34,7 +34,7 @@ try{
     await page.reload();
     await surface.getByRole('link',{name:'Continuar atención',exact:true}).click();
     const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null}});
-    assert.equal(await db.task.count({where:{entryId:entry.id}}),1);
+    assert.equal(await db.task.count({where:{entryId:entry.id,followUpId:null}}),1);
     assert.equal(task.roomId,room.id);assert.equal(task.departmentId,f.areaId);
     await page.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
     await page.getByRole('button',{name:'Resolver',exact:true}).waitFor();

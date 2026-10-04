@@ -1,4 +1,5 @@
 import {createOperationalAlarm,dispatchDueAlarmsForUser,listMyOperationalAlarms} from '@/server/services/operational-alarms';
+import {runReceptionAssistant} from '@/server/ai/reception-assistant';
 import {acknowledgeAlert} from '@/server/services/alerts';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
@@ -25,11 +26,13 @@ import {coordinateWork} from '@/server/services/coordination';
 import {getAssignmentBoard} from '@/server/services/assignment-board';
 import {getUserPerformance} from '@/server/services/performance';
 import {sendMail} from '@/server/mail';
-const auth=vi.hoisted(()=>({current:vi.fn()}));
+const auth=vi.hoisted(()=>({current:vi.fn(),chat:vi.fn()}));
 vi.mock('@/server/auth/current-user',async original=>({...await original<object>(),getCurrentUserFresh:auth.current}));
 vi.mock('@/server/services/legal-acceptance',()=>({hasAcceptedCurrentTerms:async()=>true}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('@/server/mail',async original=>({...await original<object>(),sendMail:vi.fn()}));
+vi.mock('@/server/ai/fronti-provider',async original=>({...await original<object>(),chatWithFrontiProviderChain:auth.chat,resolveFrontiProviderChainRuntime:async()=>[{provider:'groq',model:'synthetic'}]}));
+vi.mock('@/server/ai/fronti-config',async original=>{const actual=await original<typeof import('@/server/ai/fronti-config')>();return {...actual,getFrontiConfig:async()=>({...await actual.getFrontiConfig(),enabled:true,tools:{room:true,priorities:true,deadlines:true,checkout:true,reminder:true,fine:true}})};});
 
 describe('AROH Simple · reserva y revisión independiente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
@@ -109,6 +112,23 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     await expect(restoreFollowUp(reader,{id:follow.id})).rejects.toThrow();
     expect((await prisma.followUp.findUniqueOrThrow({where:{id:follow.id}})).deletedAt).not.toBeNull();
     await restoreFollowUp(owner,{id:follow.id});
+  });
+  it('Fronti no entrega vencimientos ni propone completar una fuente reservada',async()=>{
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const follow=await prisma.followUp.create({data:{action:'FRONTI_SECRETO_FOLLOWUP',visibility:'PRIVADO',createdById:owner.id,ownerId:reader.id,scheduledAt:new Date(Date.now()-1000)}});
+    const task=await prisma.task.create({data:{title:'FRONTI_SECRETO_TASK',followUpId:follow.id,createdById:owner.id,assigneeId:reader.id,dueAt:new Date(Date.now()-1000)}});
+    auth.current.mockResolvedValue(reader);
+    for(const [tool,args,text] of [['consultar_vencimientos',{},'Consulta vencimientos'],['proponer_resolver_tarea',{taskId:task.id},`Completa tarea #${task.humanId}`]] as const){
+      auth.chat.mockReset();
+      const call={id:randomUUID(),type:'function',function:{name:tool,arguments:JSON.stringify(args)}};
+      auth.chat.mockResolvedValueOnce({text:null,toolCalls:[call],assistantMessage:{role:'assistant',content:null,tool_calls:[call]},providerUsed:'groq',modelUsed:'synthetic'}).mockResolvedValueOnce({text:'Consulta terminada.',toolCalls:[],assistantMessage:{role:'assistant',content:'Consulta terminada.'},providerUsed:'groq',modelUsed:'synthetic'});
+      const result=await runReceptionAssistant(reader,[{role:'user',content:text}]);
+      expect(result.confirmations).toHaveLength(0);
+      expect(auth.chat).toHaveBeenCalledTimes(2);
+      expect(JSON.stringify(auth.chat.mock.calls[1])).not.toContain('FRONTI_SECRETO');
+    }
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('PENDIENTE');
   });
   it('resuelve cadenas históricas completas y ciclos sin perder reserva ni trabajo archivado',async()=>{
     const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

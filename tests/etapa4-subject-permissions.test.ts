@@ -1,3 +1,4 @@
+import {createOperationalAlarm,dispatchDueAlarmsForUser,listMyOperationalAlarms} from '@/server/services/operational-alarms';
 import {acknowledgeAlert} from '@/server/services/alerts';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
@@ -10,7 +11,7 @@ import {prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS
 import {getFormOptions} from '@/server/services/options';
 import {getHistory} from '@/server/services/history';
 import {getBookItems} from '@/server/services/book';
-import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 import {createEntry,getSubjectEntry,changeEntryStatus} from '@/server/services/entries';
 import {createTask,changeTaskStatus,getTask,assignTask,toggleChecklistItem,softDeleteTask,restoreTask} from '@/server/services/tasks';
 import {changeTaskStatusAction} from '@/server/actions/tasks';
@@ -28,7 +29,7 @@ const auth=vi.hoisted(()=>({current:vi.fn()}));
 vi.mock('@/server/auth/current-user',async original=>({...await original<object>(),getCurrentUserFresh:auth.current}));
 vi.mock('@/server/services/legal-acceptance',()=>({hasAcceptedCurrentTerms:async()=>true}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-vi.mock('@/server/mail',()=>({sendMail:vi.fn()}));
+vi.mock('@/server/mail',async original=>({...await original<object>(),sendMail:vi.fn()}));
 
 describe('AROH Simple · reserva y revisión independiente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
@@ -108,6 +109,45 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     await expect(restoreFollowUp(reader,{id:follow.id})).rejects.toThrow();
     expect((await prisma.followUp.findUniqueOrThrow({where:{id:follow.id}})).deletedAt).not.toBeNull();
     await restoreFollowUp(owner,{id:follow.id});
+  });
+  it('resuelve cadenas históricas completas y ciclos sin perder reserva ni trabajo archivado',async()=>{
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const source=await prisma.followUp.create({data:{action:'Reserva profunda',visibility:'PRIVADO',createdById:owner.id,ownerId:owner.id}});
+    let previous=await prisma.task.create({data:{title:'Reserva profunda 0',followUpId:source.id,createdById:owner.id,assigneeId:owner.id}});
+    const first=previous;
+    for(let i=1;i<=5;i++){
+      const alert=await prisma.alert.create({data:{title:`Reserva profunda alerta ${i}`,taskId:previous.id,type:'TAREA_VENCIDA'}});
+      previous=await prisma.task.create({data:{title:`Reserva profunda ${i}`,alertId:alert.id,createdById:owner.id,assigneeId:owner.id}});
+      expect(await prisma.alert.count({where:{id:alert.id,AND:[alertReadWhere(reader)]}})).toBe(0);
+    }
+    const cycle=await prisma.alert.create({data:{title:'Reserva profunda ciclo',taskId:previous.id,type:'TAREA_VENCIDA'}});
+    await prisma.task.update({where:{id:first.id},data:{alertId:cycle.id}});
+    await prisma.followUp.update({where:{id:source.id},data:{deletedAt:new Date()}});
+    expect((await getTask(previous.id,owner)).id).toBe(previous.id);
+    await expect(getTask(previous.id,reader)).rejects.toThrow();
+    expect((await searchOperationalRecords(reader,'Reserva profunda')).some(r=>r.entityId===previous.id)).toBe(false);
+    expect((await searchOperationalRecords(owner,'Reserva profunda')).some(r=>r.entityId===previous.id)).toBe(true);
+    await changeTaskStatus(owner,{id:previous.id,status:'ACEPTADA'});
+    expect((await getTask(previous.id,owner)).workAcknowledgedById).toBe(owner.id);
+    expect(await prisma.taskSourceFollowUp.count({where:{taskId:previous.id,followUpId:source.id}})).toBe(1);
+  });
+  it('los recordatorios reservados respetan fuente antes de habitación, bandeja y aviso',async()=>{
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const source=await prisma.followUp.create({data:{action:'Recordatorio reservado',visibility:'PRIVADO',createdById:owner.id,ownerId:owner.id}});
+    const room=await prisma.room.findFirstOrThrow({where:{number:'512'}});
+    const task=await prisma.task.create({data:{title:'Origen reservado del recordatorio',roomId:room.id,followUpId:source.id,createdById:owner.id}});
+    await expect(createOperationalAlarm(owner,{kind:'RECORDATORIO',scope:'INDIVIDUAL',title:'No copiar secreto',dueAt:new Date(Date.now()+3600000),recipientIds:[reader.id],sourceEntity:'Task',sourceId:task.id})).rejects.toThrow('origen reservado');
+    expect(await prisma.operationalAlarm.count()).toBe(0);
+    // Legacy record already assigned to an outsider must not leak on dispatch or room reads.
+    const alarm=await prisma.operationalAlarm.create({data:{kind:'RECORDATORIO',scope:'INDIVIDUAL',title:'Contenido reservado de recordatorio',note:'Evidencia privada',dueAt:new Date(Date.now()-1000),createdById:owner.id,roomNumber:'512',sourceEntity:'Task',sourceId:task.id,sourceLink:`/tareas/${task.id}`,recipients:{create:{userId:reader.id}}}});
+    expect((await getRoomMonitorDetail('512',reader)).alarms.some(a=>a.id===alarm.id)).toBe(false);
+    expect((await getRoomMonitorDetail('512',owner)).alarms.some(a=>a.id===alarm.id)).toBe(true);
+    expect(await listMyOperationalAlarms(reader.id)).toHaveLength(0);
+    expect(await dispatchDueAlarmsForUser(reader.id)).toBe(0);
+    expect(await prisma.notification.count({where:{userId:reader.id}})).toBe(0);
+    expect(await prisma.operationalAlarmRecipient.findFirst({where:{alarmId:alarm.id}})).toMatchObject({lastTriggeredAt:null});
   });
   it('filtra Housekeeping histórico reservado antes del contexto sin ocultar la novedad',async()=>{
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

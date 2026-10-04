@@ -10,7 +10,7 @@ import {
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
-import type { Priority, Severity } from '@prisma/client';
+import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import {
@@ -32,12 +32,12 @@ export type SnapshotItem = {
 };
 
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
-export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[]):Promise<T[]> {
+export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
   const ids=(kind:string)=>items.filter(i=>i.refType===kind&&i.refId).map(i=>i.refId!);
   const [tasks,followUps,alerts]=await Promise.all([
-    prisma.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user)]},select:{id:true}}),
-    prisma.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true)]},select:{id:true}}),
-    prisma.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user)]},select:{id:true}}),
+    db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
+    db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
+    db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared)]},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
   return items.map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)

@@ -2490,12 +2490,13 @@ export async function sendHandover(
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
   }
 
-  const items = await prisma.handoverItem.findMany({
-    where: { handoverId: handover.id },
-    orderBy: [{ level: 'asc' }, { order: 'asc' }],
-  });
-
   return prisma.$transaction(async (tx) => {
+    // Sanitize old drafts at the shared boundary, preserving original item evidence.
+    const originalItems = await tx.handoverItem.findMany({
+      where: { handoverId: handover.id },
+      orderBy: [{ level: 'asc' }, { order: 'asc' }],
+    });
+    const items = await visibleSnapshotItems(user, originalItems, true, tx);
     const now = new Date();
     const sent = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },

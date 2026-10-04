@@ -14,8 +14,14 @@ import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { scheduleWebPushForUsers } from '@/server/services/web-push-scheduler';
+import { operationalAlarmReadWhere } from './followup-access';
 import { isOperationalRoomNumber } from '@/domain/room-catalog';
 
+
+async function alarmReader(userId: string, db: Prisma.TransactionClient=prisma): Promise<Pick<CurrentUser,'id'|'permissions'> | null> {
+  const user=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{select:{permission:{select:{key:true}}}}}}}});
+  return user ? {id:user.id,permissions:user.role.permissions.map(p=>p.permission.key) as CurrentUser['permissions']} : null;
+}
 
 const MAX_ACTIVE_PER_CREATOR = 100;
 
@@ -47,8 +53,11 @@ export async function listAlarmCandidates() {
 }
 
 export async function listMyOperationalAlarms(userId: string, take = 60) {
+  const reader=await alarmReader(userId);
+  if (!reader) return [];
   return prisma.operationalAlarm.findMany({
     where: {
+      AND:[operationalAlarmReadWhere(reader)],
       OR: [{ createdById: userId }, { recipients: { some: { userId } } }],
     },
     include: {
@@ -218,6 +227,13 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
       },
     });
 
+    // Validate the source for every recipient before commit, audit or notifications.
+    for (const id of new Set([user.id,...recipientIds])) {
+      const reader=await alarmReader(id,tx);
+      if (!reader || !await tx.operationalAlarm.findFirst({where:{id:created.id,AND:[operationalAlarmReadWhere(reader)]},select:{id:true}})) {
+        throw new RuleError('El destinatario no puede acceder al origen reservado del recordatorio.');
+      }
+    }
     await recordAudit(
       {
         entity: 'OperationalAlarm',
@@ -257,8 +273,8 @@ export async function updateOperationalAlarm(
     repeatMinutes?: number | null;
   },
 ) {
-  const alarm = await prisma.operationalAlarm.findUnique({
-    where: { id: input.id },
+  const alarm = await prisma.operationalAlarm.findFirst({
+    where: { id: input.id, AND:[operationalAlarmReadWhere(user)] },
   });
   if (!alarm) throw new NotFoundError('La alerta ya no existe.');
   if (
@@ -285,7 +301,7 @@ export async function updateOperationalAlarm(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.operationalAlarm.update({
-      where: { id: alarm.id },
+      where: { id: alarm.id, AND:[operationalAlarmReadWhere(user)] },
       data: {
         title: input.title.trim(),
         note: input.note?.trim() || null,
@@ -341,17 +357,20 @@ export async function updateOperationalAlarm(
 }
 
 export async function countMyActiveOperationalAlarms(userId: string): Promise<number> {
+  const reader=await alarmReader(userId);
+  if (!reader) return 0;
   return prisma.operationalAlarm.count({
     where: {
       status: OperationalAlarmStatus.ACTIVA,
+      AND:[operationalAlarmReadWhere(reader)],
       recipients: { some: { userId, acknowledgedAt: null } },
     },
   });
 }
 
 export async function cancelOperationalAlarm(user: CurrentUser, alarmId: string) {
-  const alarm = await prisma.operationalAlarm.findUnique({
-    where: { id: alarmId },
+  const alarm = await prisma.operationalAlarm.findFirst({
+    where: { id: alarmId, AND:[operationalAlarmReadWhere(user)] },
     include: { recipients: { select: { id: true } } },
   });
   if (!alarm) throw new NotFoundError('La alerta ya no existe.');
@@ -363,7 +382,7 @@ export async function cancelOperationalAlarm(user: CurrentUser, alarmId: string)
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalAlarm.update({
-      where: { id: alarm.id },
+      where: { id: alarm.id, AND:[operationalAlarmReadWhere(user)] },
       data: { status: OperationalAlarmStatus.CANCELADA, cancelledAt: now },
     });
     await tx.notification.updateMany({
@@ -391,6 +410,8 @@ export async function cancelOperationalAlarm(user: CurrentUser, alarmId: string)
 }
 
 export async function dispatchDueAlarmsForUser(userId: string, now = new Date()) {
+  const reader=await alarmReader(userId);
+  if (!reader) return 0;
   const due = await prisma.operationalAlarmRecipient.findMany({
     where: {
       userId,
@@ -398,6 +419,7 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
       OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
       alarm: {
         status: OperationalAlarmStatus.ACTIVA,
+        AND:[operationalAlarmReadWhere(reader)],
         dueAt: { lte: now },
       },
     },
@@ -437,7 +459,7 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
           acknowledgedAt: null,
           lastTriggeredAt: recipient.lastTriggeredAt,
           OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
-          alarm: { status: OperationalAlarmStatus.ACTIVA },
+          alarm: { status: OperationalAlarmStatus.ACTIVA, AND:[operationalAlarmReadWhere(reader)] },
         },
         data: { lastTriggeredAt: now, snoozedUntil: null },
       });
@@ -501,8 +523,8 @@ export async function dispatchDueAlarmsForAllUsers(now = new Date()): Promise<{
 }
 
 export async function acknowledgeOperationalAlarm(user: CurrentUser, recipientId: string) {
-  const recipient = await prisma.operationalAlarmRecipient.findUnique({
-    where: { id: recipientId },
+  const recipient = await prisma.operationalAlarmRecipient.findFirst({
+    where: { id: recipientId, alarm:operationalAlarmReadWhere(user) },
     include: { alarm: { include: { recipients: { select: { id: true, acknowledgedAt: true } } } } },
   });
   if (!recipient || recipient.userId !== user.id) {
@@ -513,7 +535,7 @@ export async function acknowledgeOperationalAlarm(user: CurrentUser, recipientId
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalAlarmRecipient.update({
-      where: { id: recipient.id },
+      where: { id: recipient.id, alarm:operationalAlarmReadWhere(user) },
       data: { acknowledgedAt: now, snoozedUntil: null },
     });
     await tx.notification.updateMany({
@@ -545,8 +567,8 @@ export async function snoozeOperationalAlarm(
   minutes: number,
 ) {
   if (![5, 10, 15].includes(minutes)) throw new RuleError('La posposición debe ser de 5, 10 o 15 minutos.');
-  const recipient = await prisma.operationalAlarmRecipient.findUnique({
-    where: { id: recipientId },
+  const recipient = await prisma.operationalAlarmRecipient.findFirst({
+    where: { id: recipientId, alarm:operationalAlarmReadWhere(user) },
     select: { id: true, userId: true, acknowledgedAt: true },
   });
   if (!recipient || recipient.userId !== user.id) {
@@ -558,7 +580,7 @@ export async function snoozeOperationalAlarm(
   const snoozedUntil = new Date(now.getTime() + minutes * 60_000);
   await prisma.$transaction([
     prisma.operationalAlarmRecipient.update({
-      where: { id: recipient.id },
+      where: { id: recipient.id, alarm:operationalAlarmReadWhere(user) },
       data: { snoozedUntil, lastTriggeredAt: null },
     }),
     prisma.notification.updateMany({

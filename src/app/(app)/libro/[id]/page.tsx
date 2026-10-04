@@ -110,7 +110,7 @@ export default async function EntryDetailPage({
   ]);
 
   const isIncident = entry.type === EntryType.INCIDENCIA;
-  const canAttend = user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id;
+  const canAttend = Boolean(entry.ownerId) && (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id);
   const canFinish = canAttend && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
   const activeHk = entry.housekeepingRequest && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
   const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
@@ -238,7 +238,7 @@ export default async function EntryDetailPage({
               ))}
             </div>
           ) : null}
-          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={entry.resolution ?? entry.housekeepingRequest?.resolution}/>
+          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={entry.resolution ?? entry.housekeepingRequest?.resolution} resultLabel={open ? 'Último intento histórico' : 'Resultado'}/>
         </div>
 
         {!entry.deletedAt ? (
@@ -369,7 +369,7 @@ export default async function EntryDetailPage({
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-slate-500">Resolución</p>
+                    <p className="text-xs font-medium text-slate-500">{open ? 'Último intento histórico' : 'Resolución'}</p>
                     <p className="whitespace-pre-line text-sm text-petrol-900">
                       {entry.resolution ?? 'Pendiente'}
                     </p>
@@ -377,7 +377,7 @@ export default async function EntryDetailPage({
                 </div>
               ) : entry.resolution ? (
                 <div>
-                  <p className="text-xs font-medium text-slate-500">Resolución</p>
+                  <p className="text-xs font-medium text-slate-500">{open ? 'Último intento histórico' : 'Resolución'}</p>
                   <p className="whitespace-pre-line text-sm text-petrol-900">{entry.resolution}</p>
                 </div>
               ) : null}

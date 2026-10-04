@@ -5,6 +5,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["views"]
 }
 
 datasource db {
@@ -1283,6 +1284,7 @@ model HousekeepingEvent {
 }
 
 model Task {
+  sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
   requiresIndependentValidation Boolean @default(false)
   workAssignedAt DateTime?
@@ -1408,6 +1410,9 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
+  sourceTasks TaskSourceFollowUp[]
+  sourceAlerts AlertSourceFollowUp[]
+  sourceAlarms AlarmSourceFollowUp[]
   id          String                @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   action      String
@@ -1462,6 +1467,7 @@ model FollowUp {
 }
 
 model Alert {
+  sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   type         AlertType
@@ -1968,6 +1974,7 @@ model SupportRequestAttachment {
 }
 
 model OperationalAlarm {
+  sourceFollowUps AlarmSourceFollowUp[]
   id            String                 @id @default(cuid())
   kind          OperationalAlarmKind
   scope         OperationalAlarmScope
@@ -3498,4 +3505,28 @@ model FrontiExecutionRequest {
   execution FrontiExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
   @@unique([userId, requestKey])
+}
+
+// Read-only provenance of the existing sources, including historical chains.
+// SQL UNION makes each pair unique and terminates cycles; no task engine or stored copy.
+view TaskSourceFollowUp {
+  taskId String
+  followUpId String
+  task Task @relation(fields: [taskId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([taskId, followUpId])
+}
+view AlertSourceFollowUp {
+  alertId String
+  followUpId String
+  alert Alert @relation(fields: [alertId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([alertId, followUpId])
+}
+view AlarmSourceFollowUp {
+  alarmId String
+  followUpId String
+  alarm OperationalAlarm @relation(fields: [alarmId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([alarmId, followUpId])
 }

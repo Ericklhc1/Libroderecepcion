@@ -11,30 +11,25 @@ export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>,
   ] };
 }
 
-function taskSourceReadWhere(user:Pick<CurrentUser,'id'|'permissions'>,shared=false):Prisma.TaskWhereInput {
-  const scope=followUpReadWhere(user,false,shared);
-  return {AND:[
-    {OR:[{followUpId:null},{followUp:scope}]},
-    {OR:[{alertId:null},{sourceAlert:{OR:[{followUpId:null},{followUp:scope}]}}]},
-  ]};
+// An archived origin retains its authorization; active work does not disappear.
+// The views resolve every native source edge, including old chains and cycles.
+export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.TaskWhereInput {
+  return {sourceFollowUps: {none: {followUp: {NOT: followUpReadWhere(user,true,shared)}}}};
 }
 
-export function taskFollowUpReadWhere(user:Pick<CurrentUser,'id'|'permissions'>,shared=false):Prisma.TaskWhereInput {
-  return {AND:[taskSourceReadWhere(user,shared),{OR:[{alertId:null},{sourceAlert:{OR:[{taskId:null},{task:taskSourceReadWhere(user,shared)}]}}]}]};
+export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.AlertWhereInput {
+  return {sourceFollowUps: {none: {followUp: {NOT: followUpReadWhere(user,true,shared)}}}};
 }
 
-export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>,shared=false): Prisma.AlertWhereInput {
-  return {AND:[
-    {OR:[{followUpId:null},{followUp:followUpReadWhere(user,false,shared)}]},
-    {OR:[{taskId:null},{task:taskFollowUpReadWhere(user,shared)}]},
-  ]};
+export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>): Prisma.OperationalAlarmWhereInput {
+  return {sourceFollowUps: {none: {followUp: {NOT: followUpReadWhere(user,true)}}}};
 }
 
 /** Same reserved-source policy for the existing PostgreSQL search view.
  * Fixed aliases f/t are internal SQL identifiers, never supplied by a request. */
-export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
+export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted=false) {
   const manager = user.permissions.includes('supervision.followup.manage');
-  return Prisma.sql`f."deletedAt" IS NULL AND (
+  return Prisma.sql`${includeDeleted ? Prisma.sql`TRUE` : Prisma.sql`f."deletedAt" IS NULL`} AND (
     (f."visibility" = 'PRIVADO' AND f."createdById" = ${user.id}) OR
     (f."visibility" = 'SUPERVISION' AND ${manager}) OR
     (f."visibility" = 'OPERATIVO' AND (${manager} OR f."ownerId" = ${user.id} OR f."createdById" = ${user.id}))
@@ -42,21 +37,13 @@ export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
 }
 
 export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
-  const scope = followUpReadSql(user);
-  return Prisma.sql`(
-    (t."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = t."followUpId" AND ${scope})) AND
-    (t."alertId" IS NULL OR EXISTS (SELECT 1 FROM "Alert" a WHERE a.id = t."alertId" AND
-      (a."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = a."followUpId" AND ${scope})) AND
-      (a."taskId" IS NULL OR EXISTS (SELECT 1 FROM "Task" source_task WHERE source_task.id=a."taskId" AND
-        (source_task."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id=source_task."followUpId" AND ${scope})) AND
-        (source_task."alertId" IS NULL OR EXISTS (SELECT 1 FROM "Alert" source_alert WHERE source_alert.id=source_task."alertId" AND
-          (source_alert."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id=source_alert."followUpId" AND ${scope}))))))))
-  )`;
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
+    JOIN "FollowUp" f ON f.id=origin."followUpId"
+    WHERE origin."taskId"=t.id AND NOT (${followUpReadSql(user,true)}))`;
 }
 
 export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
-  return Prisma.sql`(
-    (a."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = a."followUpId" AND ${followUpReadSql(user)})) AND
-    (a."taskId" IS NULL OR EXISTS (SELECT 1 FROM "Task" t WHERE t.id = a."taskId" AND ${taskFollowUpReadSql(user)}))
-  )`;
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
+    JOIN "FollowUp" f ON f.id=origin."followUpId"
+    WHERE origin."alertId"=a.id AND NOT (${followUpReadSql(user,true)}))`;
 }

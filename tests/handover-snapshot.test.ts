@@ -209,6 +209,22 @@ describe('resumen automático de la entrega', () => {
     expect(vencido?.detail).toContain('VENCIDO');
   });
 
+  it('sanea al enviar un borrador histórico sin borrar evidencia ni controles',async()=>{
+    const shift=await openShiftAs(user);
+    await receiveHandover(user,{shiftId:shift.id});
+    const follow=await prisma.followUp.create({data:{action:'SECRETO_NO_COMPARTIR',visibility:'PRIVADO',createdById:user.id,ownerId:user.id}});
+    const handover=await prepareHandover(user,shift.id);
+    const original=await prisma.handoverItem.create({data:{handoverId:handover.id,title:'SECRETO_NO_COMPARTIR',detail:'Detalle privado histórico',refType:'followup',refId:follow.id,section:'Seguimientos próximos',level:'INFORMATIVO'}});
+    await confirmReview(user,handover.id);
+    const sent=await sendHandover(user,{shiftId:shift.id});
+    expect(JSON.stringify(sent.snapshot)).not.toContain('SECRETO_NO_COMPARTIR');
+    expect(JSON.stringify(sent.snapshot)).not.toContain('Detalle privado histórico');
+    expect(JSON.stringify(sent.snapshot)).toContain('Asunto reservado');
+    expect(await prisma.handoverItem.findUniqueOrThrow({where:{id:original.id}})).toMatchObject({title:'SECRETO_NO_COMPARTIR',detail:'Detalle privado histórico',refId:follow.id});
+    expect(await prisma.operationalMailOutbox.findFirst({where:{eventKey:`handover-sent:${sent.id}`}})).toMatchObject({text:expect.not.stringContaining('SECRETO_NO_COMPARTIR')});
+    expect(sent.pendingsReviewedAt).not.toBeNull();expect(sent.finalReviewAt).not.toBeNull();
+  });
+
   it('la entrega enviada guarda una fotografía inmutable de lo entregado', async () => {
     const shiftA = await createShift({ userId: user.id, type: ShiftType.DIA });
     const entry = await createEntry(user, {

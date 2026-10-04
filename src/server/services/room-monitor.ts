@@ -1,6 +1,6 @@
 import 'server-only';
 import type {CurrentUser} from '@/server/auth/current-user';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,operationalAlarmReadWhere} from './followup-access';
 
 import {
   EntryType,
@@ -88,6 +88,7 @@ export async function getRoomMonitorOverview(user: CurrentUser, now = new Date()
     prisma.operationalAlarm.findMany({
       where: {
         roomNumber: { in: ROOM_NUMBERS },
+        AND:[operationalAlarmReadWhere(user)],
         status: OperationalAlarmStatus.ACTIVA,
       },
       select: { roomNumber: true, updatedAt: true },
@@ -263,7 +264,7 @@ export async function getRoomMonitorDetail(number: string, user: CurrentUser, no
       },
     }),
     prisma.operationalAlarm.findMany({
-      where: { roomNumber: number },
+      where: { roomNumber: number, AND:[operationalAlarmReadWhere(user)] },
       orderBy: [{ status: 'asc' }, { dueAt: 'desc' }],
       take: 30,
       select: {

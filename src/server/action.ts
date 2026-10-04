@@ -39,6 +39,10 @@ export type ActionState =
       id?: string;
       /** Native committed snapshot for continuing an already authorized procedure. */
       committedRevision?: string;
+      /** UI snapshot for native state machines that continue without waiting for an RSC refresh. */
+      committedVersion?: number;
+      committedStatus?: string;
+      committedOwnerId?: string | null;
       /**
        * Su presencia obliga a la interfaz a mantener el formulario abierto:
        * quien lo ve tiene que poder copiarlas antes de cerrar.

@@ -1,4 +1,5 @@
 import 'server-only';
+import {followUpReadSql,taskFollowUpReadSql} from './followup-access';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -143,6 +144,11 @@ export async function searchOperationalRecords(
     FROM "HumanOperationalRecord"
     WHERE "entityType" IN (${Prisma.join(types)})
       AND ${Prisma.join(termFilters, ' AND ')}
+      AND CASE
+        WHEN "entityType" = 'Task' THEN EXISTS (SELECT 1 FROM "Task" t WHERE t.id = "HumanOperationalRecord"."entityId" AND ${taskFollowUpReadSql(user)})
+        WHEN "entityType" = 'FollowUp' THEN EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = "HumanOperationalRecord"."entityId" AND ${followUpReadSql(user)})
+        ELSE TRUE
+      END
     ORDER BY
       CASE
         WHEN ${numeric}::integer IS NOT NULL AND "humanId" = ${numeric} THEN 0

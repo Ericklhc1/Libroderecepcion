@@ -1,6 +1,6 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
-import {taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import {
   AuditAction,
   NotificationType,
@@ -113,6 +113,12 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   for (const participantId of participantIds) await assertAssignable(participantId);
   if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
+  if (input.followUpId && !await db.followUp.findFirst({where:{id:input.followUpId,AND:[followUpReadWhere(user)]},select:{id:true}})) {
+    throw new NotFoundError('El seguimiento de origen no existe.');
+  }
+  if (input.alertId && !await db.alert.findFirst({where:{id:input.alertId,OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},select:{id:true}})) {
+    throw new NotFoundError('La alerta de origen no existe.');
+  }
   let origin = inferOrigin(input);
   let roomId = input.roomId ?? null;
   if (input.entryId) {
@@ -246,8 +252,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   return client ? write(client) : prisma.$transaction(write);
 }
 
-export async function getTask(id: string): Promise<TaskWithRelations> {
-  const task = await prisma.task.findUnique({ where: { id }, include: taskInclude });
+export async function getTask(id: string, user: CurrentUser): Promise<TaskWithRelations> {
+  const task = await prisma.task.findFirst({ where: { id, AND:[taskFollowUpReadWhere(user)] }, include: {...taskInclude,_count:{select:{followUps:{where:followUpReadWhere(user)},comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}}}} });
   if (!task) throw new NotFoundError('La tarea no existe.');
   return task;
 }
@@ -321,7 +327,7 @@ export async function updateTask(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data,
       include: taskInclude,
     });
@@ -349,7 +355,7 @@ export async function assignTask(
   expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
     include: { assignee: { select: { name: true } } },
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
@@ -359,7 +365,7 @@ export async function assignTask(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { assigneeId: input.assigneeId ?? null, workAssignedAt: input.assigneeId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
       include: taskInclude,
     });
@@ -506,7 +512,7 @@ export async function changeTaskStatus(
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: {
         status: input.status,
         ...(['ACEPTADA','EN_CURSO'].includes(input.status) && current.assigneeId === user.id ? { workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id } : {}),
@@ -583,8 +589,8 @@ export async function toggleChecklistItem(
   user: CurrentUser,
   input: { itemId: string; done: boolean },
 ) {
-  const item = await prisma.taskChecklistItem.findUnique({
-    where: { id: input.itemId },
+  const item = await prisma.taskChecklistItem.findFirst({
+    where: { id: input.itemId,task:{deletedAt:null,AND:[taskFollowUpReadWhere(user)]} },
     include: {
       task: {
         select: { id: true, humanId: true, deletedAt: true, startsAt: true },
@@ -598,8 +604,9 @@ export async function toggleChecklistItem(
     );
   }
 
-  const updated = await prisma.taskChecklistItem.update({
-    where: { id: input.itemId },
+  return prisma.$transaction(async tx=>{
+  const updated = await tx.taskChecklistItem.update({
+    where: { id: input.itemId,task:{deletedAt:null,AND:[taskFollowUpReadWhere(user)]} },
     data: {
       done: input.done,
       doneAt: input.done ? new Date() : null,
@@ -614,8 +621,9 @@ export async function toggleChecklistItem(
     user,
     before: { done: item.done },
     after: { done: input.done },
-  });
+  },tx);
   return updated;
+  });
 }
 
 export async function softDeleteTask(
@@ -623,12 +631,12 @@ export async function softDeleteTask(
   input: { id: string; reason: string },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o ya fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
     });
     await recordAudit(
@@ -660,13 +668,13 @@ export async function restoreTask(
   expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
-    where: { id: input.id, NOT: { deletedAt: null } },
+    where: { id: input.id, NOT: { deletedAt: null }, AND:[taskFollowUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const restored = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
     await recordAudit(
@@ -687,9 +695,9 @@ export async function restoreTask(
 }
 
 /** Tareas abiertas asignadas al usuario, ordenadas por urgencia real. */
-export async function listMyTasks(userId: string, take = 20) {
+export async function listMyTasks(user: CurrentUser, take = 20) {
   return prisma.task.findMany({
-    where: { deletedAt: null, assigneeId: userId, status: { in: TASK_OPEN_STATUSES } },
+    where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES }, AND:[taskFollowUpReadWhere(user)] },
     include: taskInclude,
     orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
     take,

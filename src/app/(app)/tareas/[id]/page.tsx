@@ -56,7 +56,7 @@ export default async function TaskDetailPage({
   const user = await requirePageUser();
   const { id } = await params;
 
-  const task = await getTask(id).catch(() => null);
+  const task = await getTask(id,user).catch(() => null);
   if (!task || !await prisma.task.count({where:{id:task.id,AND:[taskFollowUpReadWhere(user)]}})) notFound();
 
   const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
@@ -88,7 +88,7 @@ export default async function TaskDetailPage({
   const finish = canChange ? (task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
     ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.REALIZADA} label="Finalizar" variant="gold"/>
     : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
-  const primaryAction = !open ? <a href="#historial-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado</a>
+  const primaryAction = !open ? <a href={task.evidenceProvided ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{task.evidenceProvided ? "Ver resultado" : "Ver historial"}</a>
     : scheduled ? <p className="text-sm text-slate-600">Disponible desde {formatDateTime(task.startsAt!)}</p>
     : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? (canChange ? task.status === TaskStatus.PENDIENTE ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : task.status === TaskStatus.BLOQUEADA ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : finish : null))
     : task.status === TaskStatus.REALIZADA ? (canValidate ? statusAction(TaskStatus.VALIDADA,'Validar') : <p className="text-sm text-slate-600">Pendiente de revisión autorizada</p>)
@@ -263,7 +263,7 @@ export default async function TaskDetailPage({
               ))}
             </div>
           ) : null}
-          <SubjectContext folio={task.entry ? `Asunto #${task.entry.humanId} · Trabajo #${task.humanId}` : `Asunto #${task.humanId}`} origin={task.entry ? task.entry.title : task.createdBy.name} nextAction={nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.workNextAction)} impediment={task.blockedReason} result={task.evidenceProvided} resultLabel={['COMPLETADA','VALIDADA'].includes(task.status)?'Resultado':task.status==='REALIZADA'?'Resultado por revisar':'Último intento histórico'}/>
+          <span id="resultado-asunto"/><SubjectContext folio={task.entry ? `Asunto #${task.entry.humanId} · Trabajo #${task.humanId}` : `Asunto #${task.humanId}`} origin={task.entry ? task.entry.title : task.createdBy.name} nextAction={nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.workNextAction)} impediment={task.blockedReason} result={task.evidenceProvided} resultLabel={['COMPLETADA','VALIDADA'].includes(task.status)?'Resultado':task.status==='REALIZADA'?'Resultado por revisar':'Último intento histórico'}/>
         </div>
 
         {!task.deletedAt ? (

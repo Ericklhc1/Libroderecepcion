@@ -71,8 +71,8 @@ export function EntryStatusForm({
           </Field>
         </>
       ) : null}
-      {(isIncident || targetStatus === EntryStatus.CERRADO) && <Field label="Resultado" name="resolution" hint="Cómo quedó atendido el asunto.">
-        <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} required={targetStatus === EntryStatus.CERRADO}/>
+      {<Field label="Resultado" name="resolution" hint="Cómo quedó atendido el asunto.">
+        <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} required={isIncident && (targetStatus === EntryStatus.CERRADO || targetStatus === EntryStatus.RESUELTO)}/>
       </Field>}
       <Field label="Motivo del cambio" name="reason" hint="Queda en la auditoría.">
         <Input name="reason" placeholder="Opcional" />

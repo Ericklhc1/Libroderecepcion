@@ -17,9 +17,9 @@ export function SubjectContext({folio, origin, nextAction, impediment, result,re
 export function SubjectActions({primary, secondary, more}: {primary: ReactNode; secondary?: ReactNode; more?: ReactNode}) {
   return <div aria-label="Acciones del asunto" className="border-t border-slate-200 px-4 py-3 no-print">
     <div className="flex flex-wrap items-center gap-2">{primary}{secondary}</div>
-    {more && <details className="mt-2">
+    {more && <details className="group/subject mt-2">
       <summary className="w-fit cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-petrol-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">Más ···</summary>
-      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">{more}</div>
+      <div className="mt-2 hidden flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 group-open/subject:flex">{more}</div>
     </details>}
   </div>;
 }

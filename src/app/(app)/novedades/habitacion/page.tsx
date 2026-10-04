@@ -170,11 +170,11 @@ export default async function RoomOperationsMonitor({
   const params = await searchParams;
   const requestedRoom = one(params.habitacion).trim();
 
-  const overview = await getRoomMonitorOverview();
+  const overview = await getRoomMonitorOverview(user);
   const selectedTile =
     overview.rooms.find((room) => room.number === requestedRoom) ?? null;
   const [detail, formOptions, alarmCandidates] = await Promise.all([
-    selectedTile ? getRoomMonitorDetail(selectedTile.number) : Promise.resolve(null),
+    selectedTile ? getRoomMonitorDetail(selectedTile.number,user) : Promise.resolve(null),
     getFormOptions(user),
     listAlarmCandidates(),
   ]);

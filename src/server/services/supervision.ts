@@ -19,6 +19,9 @@ import {
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
 import { LIVE_ALERT_WHERE } from './alert-engine';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {ForbiddenError} from '@/server/errors';
+import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 
 export type SupervisionRow = {
   id: string;
@@ -60,12 +63,14 @@ function dueText(date: Date | null, now: Date): string | null {
  * Novedades, Caja, Turnos y Llaves. No copia esos objetos ni consulta PMS.
  */
 export async function getSupervisionData(
+  user:CurrentUser,
   options: { exhaustive?: boolean } = {},
 ): Promise<{
   now: Date;
   blocks: SupervisionBlock[];
   total: number;
 }> {
+  if(!user.permissions.some(p=>['supervision.view','supervision.center.view'].includes(p)))throw new ForbiddenError();
   const now = new Date();
   const exhaustive = options.exhaustive === true;
   const take = (limit: number) => (exhaustive ? undefined : limit);
@@ -102,7 +107,7 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
+      where: { deletedAt: null,isDemo:false,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
       select: {
         id: true,
         humanId: true,
@@ -117,6 +122,7 @@ export async function getSupervisionData(
     prisma.followUp.findMany({
       where: {
         deletedAt: null,
+        isDemo:false,AND:[followUpReadWhere(user)],
         OR: [
           { status: FollowUpStatus.VENCIDO },
           { status: FollowUpStatus.PENDIENTE, scheduledAt: { lt: now } },
@@ -160,7 +166,7 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.alert.findMany({
-      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA },
+      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA,AND:[{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]}] },
       select: {
         id: true,
         title: true,

@@ -200,7 +200,7 @@ async function detailSnapshot(
   }
 
   if (page.entityType === 'Task') {
-    const task = await getTask(page.entityId).catch(() => null);
+    const task = await getTask(page.entityId,user).catch(() => null);
     if (!task) return { found: false };
     const room = task.roomId
       ? await prisma.room.findUnique({
@@ -752,10 +752,10 @@ export async function executeFrontiPageContextTool(
           },
         };
       }
-      const overview = await getRoomMonitorOverview();
+      const overview = await getRoomMonitorOverview(user);
       const roomNumber = page.filters.habitacion ?? '';
       const selected = roomNumber
-        ? await getRoomMonitorDetail(roomNumber).catch(() => null)
+        ? await getRoomMonitorDetail(roomNumber,user).catch(() => null)
         : null;
       return {
         ...base,

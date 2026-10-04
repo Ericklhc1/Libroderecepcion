@@ -20,8 +20,8 @@ try{
     if(sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'))console.error('Synthetic reserved projection:',await page.locator('main').getByText('PRUEBA_PRIVADA_NO_PROYECTAR',{exact:true}).evaluateAll(es=>es.map(e=>({tag:e.tagName,section:e.closest('section')?.innerText,visible:e.getClientRects().length>0}))),sourceText);
     assert.ok(!sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'));
     const surface=page.locator('[aria-label="Acciones del asunto"]');
-    const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.getClientRects().length>0).length);
-    assert.ok(visibleBefore<=4,'Una primaria, hasta dos secundarias y Más');
+    const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.checkVisibility()).length);
+    assert.ok(visibleBefore<=4,`Una primaria, hasta dos secundarias y Más: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
     assert.equal(await surface.getByRole('button',{name:'Editar',exact:true}).isVisible(),false);
     await surface.getByText('Más ···',{exact:true}).click();
     await surface.getByRole('button',{name:'Solicitar otra atención',exact:true}).click();
@@ -41,7 +41,7 @@ try{
     await page.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
     await page.getByRole('button',{name:'Resolver',exact:true}).waitFor();
     await page.getByRole('button',{name:'Resolver',exact:true}).click();
-    await page.getByRole('link',{name:'Ver resultado',exact:true}).waitFor();
+    await page.getByRole('link',{name:'Ver historial',exact:true}).waitFor();
     await page.goto(`http://localhost:3000/libro/${entry.id}`);
     await page.getByText(/Resultado recibido · Completada/).waitFor();
     await db.task.update({where:{id:task.id},data:{status:'DEVUELTA',returnReason:'Resultado devuelto para corrección'}});

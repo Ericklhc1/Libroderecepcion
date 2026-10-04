@@ -230,7 +230,7 @@ describe('tareas', () => {
     await changeTaskStatus(supervisor, { id: done.id, status: TaskStatus.COMPLETADA });
     await createTask(supervisor, { ...base, title: 'Tarea de otra persona', assigneeId: other.id });
 
-    const mine = await listMyTasks(receptionist.id);
+    const mine = await listMyTasks(receptionist);
     expect(mine.map((task) => task.title)).toEqual([
       'Tarea con vencimiento próximo',
       'Tarea con vencimiento lejano',

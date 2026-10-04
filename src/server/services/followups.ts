@@ -33,6 +33,21 @@ export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
   include: typeof followUpInclude;
 }>;
 
+async function assertDerivedFollowUpAccess(tx:Prisma.TransactionClient, user:CurrentUser, follow:{id:string;ownerId:string;visibility:SupervisionVisibility}, validateVisibility=true) {
+  const sources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUpId:true,followUp:{select:{visibility:true}}}});
+  // A source reserve cannot change while its evidence is copied/assigned.
+  for(const source of [...sources].sort((a,b)=>a.followUpId.localeCompare(b.followUpId))){
+    await tx.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${source.followUpId} FOR SHARE`;
+  }
+  if(!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere(user,true)]}}))throw new RuleError('No puedes acceder al origen reservado del seguimiento.');
+  const owner=await tx.user.findFirst({where:{id:follow.ownerId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{where:{permission:{key:'supervision.followup.manage'}},select:{permissionId:true}}}}}});
+  if(!owner||!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere({id:owner.id,permissions:owner.role.permissions.length?['supervision.followup.manage']:[]},true)]}}))throw new RuleError('El responsable no puede acceder al origen reservado del seguimiento.');
+  if(validateVisibility){
+    const currentSources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUp:{select:{visibility:true}}}});
+    if(currentSources.some(s=>s.followUp.visibility==='PRIVADO'&&follow.visibility!=='PRIVADO'||s.followUp.visibility==='SUPERVISION'&&follow.visibility==='OPERATIVO'))throw new RuleError('La visibilidad del seguimiento debe conservar la reserva del origen.');
+  }
+}
+
 /**
  * Crea un seguimiento operativo vinculado al objeto real que lo motivó.
  * Para Supervisión, la continuidad sobrevive al turno: un seguimiento puede
@@ -118,6 +133,8 @@ export async function createFollowUp(
       },
       include: followUpInclude,
     });
+
+    await assertDerivedFollowUpAccess(tx,user,created);
 
     // El registro asociado queda marcado como "con seguimiento".
     if (created.entryId) {
@@ -248,6 +265,8 @@ export async function updateFollowUp(
       data: updateData,
       include: followUpInclude,
     });
+
+    await assertDerivedFollowUpAccess(tx,user,updated,input.visibility!==undefined||Boolean(input.ownerId));
 
     if (closing) {
       await tx.alert.updateMany({

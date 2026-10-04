@@ -3,6 +3,7 @@ import { Bell, Search } from 'lucide-react';
 import type { Prisma } from '@prisma/client';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
+import { notificationReadWhere } from '@/server/services/followup-access';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { NOTIFICATION_TYPE_LABEL } from '@/domain/labels';
@@ -27,6 +28,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
 
   const notificationWhere: Prisma.NotificationWhereInput = {
     userId: user.id,
+    AND:[notificationReadWhere(user)],
     ...(estado === 'nuevas'
       ? { readAt: null }
       : estado === 'leidas'

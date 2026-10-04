@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
+import { notificationWhereForUser } from './notification-access';
 import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 
@@ -26,9 +27,10 @@ export async function getUnreadCountsForUser(userId: string): Promise<{
   alerts: number;
 }> {
   refreshFrontiIfDue();
+  const visible = await notificationWhereForUser(userId);
 
   const [notifications, alerts] = await Promise.all([
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.notification.count({ where: { ...visible, readAt: null } }),
     countMyActiveOperationalAlarms(userId),
   ]);
 

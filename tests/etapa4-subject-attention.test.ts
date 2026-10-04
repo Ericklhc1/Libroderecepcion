@@ -80,7 +80,7 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     const ordinary=await prisma.task.create({data:{title:'Trabajo ordinario anterior',createdById:f.actor.id,entryId:f.source.id,departmentId:f.maintenance.id,assigneeId:f.actor.id,status:'COMPLETADA',completedAt:new Date()}});
     const canonical=await requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID(),assigneeId:f.actor.id});
     expect(canonical.id).not.toBe(ordinary.id);
-    await changeTaskStatus(f.actor,{id:ordinary.id,status:'PENDIENTE'});
+    await changeTaskStatus(f.actor,{id:ordinary.id,status:'EN_CURSO'});
     const again=await requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID(),assigneeId:f.actor.id});
     expect(again.id).toBe(canonical.id);
     expect((await prisma.task.findUniqueOrThrow({where:{id:ordinary.id}})).procedureOccurrenceKey).toBeNull();

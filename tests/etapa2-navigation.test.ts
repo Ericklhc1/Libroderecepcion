@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-const calls = vi.hoisted(() => ({ coordination: vi.fn(), task: vi.fn(),save:vi.fn(),simulate:vi.fn(),state:vi.fn() }));
+const calls = vi.hoisted(() => ({ coordination: vi.fn(), task: vi.fn(),save:vi.fn(),simulate:vi.fn(),state:vi.fn(),missing:vi.fn(),approveMissing:vi.fn() }));
+vi.mock('@/server/actions/cash',()=>({reportMissingElementAction:calls.missing,approveMissingElementAction:calls.approveMissing}));
 vi.mock('@/server/actions/coordination', () => ({ coordinateWorkAction: calls.coordination }));
 vi.mock('@/server/actions/operational-automation',()=>({saveAutomationAction:calls.save,simulateAutomationAction:calls.simulate,setAutomationStateAction:calls.state}));
 vi.mock('@/server/actions/tasks', () => ({ changeTaskStatusAction: calls.task }));
@@ -70,5 +71,30 @@ describe('Formularios de políticas por el mismo servicio',()=>{
   it('rechaza arrays fuera de días y campos de identidad',async()=>{
     for(const payload of [{ownerId:['1']},{userId:'otra-persona'}])expect((await POST(request(payload),context('automation-save'))).status).toBe(400);
     expect(calls.save).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Recepción veraz por transporte operativo existente',()=>{
+  it('envía revisión y motivo a la acción nativa, conservando el acta como destino',async()=>{
+    for(const [procedure,action] of [['handover-missing',calls.missing],['handover-missing-approve',calls.approveMissing]] as const){
+      action.mockResolvedValue({ok:true,message:'Diferencia registrada'});
+      const data={handoverId:'acta',elementId:'elemento',revision:'2026-10-04T03:00:00.000Z',reason:'Localizar con saliente'};
+      const response=await POST(request(data),context(procedure));
+      expect(response.status).toBe(200);
+      expect((await response.json()).navigateTo).toBe('/turno/entrega/acta');
+      expect(Object.fromEntries(action.mock.calls[0]![1])).toEqual(data);
+    }
+  });
+  it('preserva rechazos nativos y rechaza campos de posesión e identidad',async()=>{
+    calls.approveMissing.mockResolvedValue({ok:false,error:'No puedes autorizar tu propia declaración.'});
+    const response=await POST(request({handoverId:'acta'}),context('handover-missing-approve'));
+    expect(response.status).toBe(400);expect((await response.json()).navigateTo).toBeUndefined();
+    for(const procedure of ['handover-missing','handover-missing-approve']){
+      expect((await POST(request({confirmed:'true'}),context(procedure))).status).toBe(400);
+      expect((await POST(request({userId:'otra-persona'}),context(procedure))).status).toBe(400);
+      expect((await POST(request({},'https://foreign.invalid'),context(procedure))).status).toBe(403);
+    }
+    expect(calls.missing).not.toHaveBeenCalled();expect(calls.approveMissing).toHaveBeenCalledTimes(1);
   });
 });

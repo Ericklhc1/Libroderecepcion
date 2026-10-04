@@ -327,13 +327,16 @@ async function detailSnapshot(
         receivedBy: { select: { name: true } },
         fromShift: { select: { id: true, type: true, date: true, status: true } },
         toShift: { select: { id: true, type: true, date: true, status: true } },
+        elements: {
+          select: { id: true, declared: true, confirmed: true, missingReason: true, missingReportedById: true, missingApprovedAt: true, missingApprovalNote: true, updatedAt: true, elementType: { select: { name: true } } },
+        },
         items: {
-          select: { id: true, level: true, text: true, order: true },
+          select: { id: true, level: true, title: true, detail: true, order: true },
           orderBy: [{ level: 'asc' }, { order: 'asc' }],
         },
       },
     });
-    return handover ?? { found: false };
+    return handover ? { ...handover, elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
   }
 
   if (page.entityType === 'ChecklistRun') {

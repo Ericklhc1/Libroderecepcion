@@ -2777,5 +2777,33 @@
       "action",
       "note"
     ]
+  },
+  {
+    "module": "cash",
+    "name": "reportMissingElementAction",
+    "label": "Registrar elemento no recibido",
+    "fields": [
+      "handoverId",
+      "elementId",
+      "reason",
+      "revision"
+    ],
+    "permission": "shift.receive",
+    "risk": "high",
+    "physical": true
+  },
+  {
+    "module": "cash",
+    "name": "approveMissingElementAction",
+    "label": "Revisar diferencia de custodia",
+    "fields": [
+      "handoverId",
+      "elementId",
+      "reason",
+      "revision"
+    ],
+    "permission": "shift.manage",
+    "risk": "high",
+    "physical": true
   }
 ]

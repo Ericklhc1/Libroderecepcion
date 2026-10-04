@@ -20,6 +20,7 @@ import {
   recordCashTransfer,
   saveCashCount,
 } from '@/server/services/cash';
+import { reportHandoverElementMissing, approveHandoverElementException } from '@/server/services/handover-elements';
 import { receiveShiftCash } from '@/server/services/shifts';
 import { getSettingBool } from '@/server/services/settings';
 import { fromMinor } from '@/domain/cash';
@@ -581,5 +582,30 @@ export async function confirmElementsAction(
     revalidatePath('/turno');
     revalidatePath(`/turno/entrega/${handoverId}`);
     return { ok: true as const, message: 'Elementos confirmados.' };
+  });
+}
+
+const missingElementSchema = z.object({
+  handoverId: z.string().min(1), elementId: z.string().min(1),
+  reason: z.string().trim().min(5).max(500), revision: z.string().datetime(),
+});
+
+export async function reportMissingElementAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.receive');
+    const input = missingElementSchema.parse(formDataToObject(formData));
+    await reportHandoverElementMissing(user, input);
+    revalidatePath('/turno'); revalidatePath(`/turno/entrega/${input.handoverId}`); revalidatePath('/notificaciones');
+    return { ok: true as const, message: 'No recibido registrado. Supervisión debe revisar la diferencia; no se confirmó posesión.' };
+  });
+}
+
+export async function approveMissingElementAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requirePermission('shift.manage');
+    const input = missingElementSchema.parse(formDataToObject(formData));
+    await approveHandoverElementException(user, input);
+    revalidatePath('/turno'); revalidatePath(`/turno/entrega/${input.handoverId}`); revalidatePath('/notificaciones');
+    return { ok: true as const, message: 'Continuidad autorizada con diferencia. El elemento permanece no recibido.' };
   });
 }

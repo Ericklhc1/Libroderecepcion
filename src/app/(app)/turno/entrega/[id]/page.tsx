@@ -1,3 +1,4 @@
+import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CashCountKind, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
@@ -114,7 +115,7 @@ export default async function HandoverPage({
 
   const cashReadyForReception = !cashState.enabled || Boolean(cashState.confirmed);
   const pendingReceptionElements = cashState.elements.filter(
-    (element) => element.declared && !element.confirmed,
+    handoverElementPending,
   );
   const receptionStep = !receptionInProgress
     ? null
@@ -630,6 +631,8 @@ export default async function HandoverPage({
             }))}
             previous={previousQuantities}
             role="receptor"
+            canApproveMissing={user.permissions.includes('shift.manage')}
+            reviewerId={user.id}
             receiverStage="CUSTODY"
           />
           <Card className="no-print">
@@ -637,7 +640,7 @@ export default async function HandoverPage({
             <div className="space-y-3 px-4 py-4">
               {pendingReceptionElements.length > 0 ? (
                 <p className="text-sm text-amber-900">
-                  Aún falta confirmar: {pendingReceptionElements.map((element) => element.name).join(', ')}.
+                  Aún falta recibir o revisar la diferencia: {pendingReceptionElements.map((element) => element.name).join(', ')}.
                 </p>
               ) : (
                 <p className="text-sm text-slate-600">
@@ -669,6 +672,8 @@ export default async function HandoverPage({
           }))}
           previous={previousQuantities}
           role="lector"
+          canApproveMissing={user.permissions.includes('shift.manage') && handover.status === HandoverStatus.ENVIADA}
+          reviewerId={user.id}
         />
       ) : null}
 

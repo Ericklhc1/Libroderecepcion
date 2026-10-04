@@ -28,6 +28,9 @@ export type CoordinationRow = {
 
 export type CoordinationView='all'|'reception'|'unassigned'|'unreceived'|'blocked'|'clarification'|'carryover';
 export type CoordinationState='abierto'|'atencion'|'bloqueado'|'revision'|'resuelto';
+const COORDINATION_PAGE_SIZE=25;
+const COORDINATION_MAX_PAGE=100;
+const COORDINATION_IDENTITY_SCAN_LIMIT=5000;
 export async function getCoordinationBoard(user: CurrentUser, input: { departmentId?: string; mine?: boolean; page?: number; history?: boolean; view?:CoordinationView;q?:string;ownerId?:string;state?:CoordinationState;date?:string } = {}) {
   const states:Record<CoordinationState,{entry:Prisma.EnumEntryStatusFilter['in'];task:Prisma.EnumTaskStatusFilter['in'];hk:string[];follow:Prisma.EnumFollowUpStatusFilter['in']}>= {
     abierto:{entry:['ABIERTO'],task:['PENDIENTE','ACEPTADA','DEVUELTA'],hk:['PENDIENTE','RECIBIDO'],follow:['PENDIENTE','VENCIDO']},
@@ -44,7 +47,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const human=folio!==null&&Number.isSafeInteger(folio)&&folio<=2147483647?{humanId:folio}:null;
   const date=(()=>{try{return input.date&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)?hotelWallDateTime(input.date,0):null;}catch{return null;}})();
   const due=date&&!Number.isNaN(date.getTime())&&hotelDateKey(date)===input.date?{gte:date,lt:addHotelCalendarDays(date,1)}:undefined;
-  const page = Math.max(1, Math.min(10000, input.page || 1));
+  const page = Math.max(1, Math.min(COORDINATION_MAX_PAGE, input.page || 1));
   const area = input.departmentId ? { departmentId: input.departmentId } : {};
   const hkScope = canAccessHousekeeping(user) ? await hkWorkVisibility(user) : { id: { in: [] as string[] } };
   const view=input.view??'all';
@@ -77,12 +80,22 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), ...(view==='all'?[]:[{id:{in:[] as string[]}}]),...(state?[{status:{in:state.follow}}]:[]),...(q?[{OR:[...(human?[human]:[]),{action:{contains:q,mode:'insensitive' as const}}]}]:[]), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(owner?{ownerId:owner}:{}),...(due?{scheduledAt:due}:{}), status:history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
   // Group authorized identities before paging, so one source never inflates rows or totals.
   const identity={id:true,humanId:true,departmentId:true,status:true,dueAt:true} as const;
-  const [entryRefs,taskRefs,hkRefs,followRefs]=await Promise.all([
-    prisma.operationalEntry.findMany({where:entryWhere,select:identity}),
-    prisma.task.findMany({where:taskWhere,select:{...identity,entryId:true}}),
-    prisma.housekeepingRequest.findMany({where:hkWhere,select:{...identity,sourceEntryId:true}}),
-    prisma.followUp.findMany({where:followWhere,select:{id:true,humanId:true,status:true,scheduledAt:true,entryId:true,task:{select:{entryId:true}},owner:{select:{departmentId:true}}}}),
+  // Keep the coordination read bounded in PostgreSQL. The UI is an operational inbox,
+  // not an export: at most 100 pages are browsable; older/deeper history remains
+  // reachable through the existing search/date/area filters. Fetch one extra row per
+  // source to know whether totals are exact without materializing hotel lifetime data.
+  const scanTake=COORDINATION_IDENTITY_SCAN_LIMIT+1;
+  const [entryRefsRaw,taskRefsRaw,hkRefsRaw,followRefsRaw]=await Promise.all([
+    prisma.operationalEntry.findMany({where:entryWhere,select:identity,orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.task.findMany({where:taskWhere,select:{...identity,entryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.housekeepingRequest.findMany({where:hkWhere,select:{...identity,sourceEntryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.followUp.findMany({where:followWhere,select:{id:true,humanId:true,status:true,scheduledAt:true,entryId:true,task:{select:{entryId:true}},owner:{select:{departmentId:true}}},orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
   ]);
+  const identityWindowTruncated=[entryRefsRaw,taskRefsRaw,hkRefsRaw,followRefsRaw].some(rows=>rows.length>COORDINATION_IDENTITY_SCAN_LIMIT);
+  const entryRefs=entryRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const taskRefs=taskRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const hkRefs=hkRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const followRefs=followRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
   type Identity={id:string;humanId:number;kind:CoordinationKind;sourceId:string|null;departmentId:string|null;status:string;dueAt:Date|null};
   const identities:Identity[]=[
     ...entryRefs.map(r=>({...r,kind:'entry' as const,sourceId:r.id})),
@@ -98,7 +111,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     return rank(a)-rank(b)||(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id);
   })[0]!;
   const groups=[...subjectGroups.values()].sort((a,b)=>(a[0]?.dueAt?.getTime()??Infinity)-(b[0]?.dueAt?.getTime()??Infinity)||(representative(a).id.localeCompare(representative(b).id)));
-  const pageGroups=groups.slice((page-1)*25,page*25);
+  const pageGroups=groups.slice((page-1)*COORDINATION_PAGE_SIZE,page*COORDINATION_PAGE_SIZE);
   const pageIds=(kind:CoordinationKind)=>pageGroups.map(representative).filter(row=>row.kind===kind).map(row=>row.id);
   const orderBy=[{dueAt:{sort:'asc' as const,nulls:'last' as const}},{id:'asc' as const}];
   const [entries,tasks,hk,followups,departments] = await Promise.all([
@@ -140,7 +153,8 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     }
     return[row];
   });
-  return {rows:groupedRows,departments,byArea,page,total:groups.length,hasMore:groups.length>page*25};
+  const totalExact=!identityWindowTruncated;
+  return {rows:groupedRows,departments,byArea,page,total:groups.length,totalExact,hasMore:groups.length>page*COORDINATION_PAGE_SIZE||identityWindowTruncated};
 }
 
 export async function getCoordinationTeam(user: CurrentUser, departmentId: string, now = new Date()) {

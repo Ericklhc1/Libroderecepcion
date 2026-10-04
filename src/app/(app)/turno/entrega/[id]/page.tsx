@@ -76,7 +76,7 @@ export default async function HandoverPage({
   if (!handover) notFound();
 
   const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
-    getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
+    getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),

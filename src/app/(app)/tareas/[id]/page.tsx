@@ -60,7 +60,7 @@ export default async function TaskDetailPage({
   if (!task || !await prisma.task.count({where:{id:task.id,AND:[taskFollowUpReadWhere(user)]}})) notFound();
 
   const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
-    getHistory({ entity: 'Task', entityId: task.id }),
+    getHistory({ entity: 'Task', entityId: task.id },user),
     getFormOptions(user),
     prisma.operationalAlarm.findMany({
       where: { sourceEntity: 'Task', sourceId: task.id },

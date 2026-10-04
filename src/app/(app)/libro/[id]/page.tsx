@@ -105,7 +105,7 @@ export default async function EntryDetailPage({
       take: 50,
     }),
     listAlarmCandidates(),
-    getHistory({ entity: 'OperationalEntry', entityId: entry.id }),
+    getHistory({ entity: 'OperationalEntry', entityId: entry.id },user),
     getFormOptions(user),
   ]);
 

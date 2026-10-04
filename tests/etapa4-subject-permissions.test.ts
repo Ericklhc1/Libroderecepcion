@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
 import {getFormOptions} from '@/server/services/options';
+import {getHistory} from '@/server/services/history';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import {createEntry,getSubjectEntry} from '@/server/services/entries';
 import {createTask,changeTaskStatus} from '@/server/services/tasks';
@@ -31,6 +32,11 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     expect(await prisma.followUp.count({where:{entryId:source.id,AND:[followUpReadWhere(reader)]}})).toBe(0);
     expect(await prisma.task.count({where:{entryId:source.id,AND:[taskFollowUpReadWhere(reader)]}})).toBe(0);
     expect(JSON.stringify((await getFormOptions(reader)).openTasks)).not.toContain('Trabajo reservado');
+    await prisma.comment.create({data:{entryId:source.id,followUpId:reserved.id,authorId:owner.id,body:'Comentario reservado'}});
+    const history=await getHistory({entity:'OperationalEntry',entityId:source.id},reader);
+    expect(history.some(event=>event.id===reserved.id)).toBe(false);
+    expect(JSON.stringify(history)).not.toContain('Comentario reservado');
+    expect((await getHistory({entity:'OperationalEntry',entityId:source.id},owner)).some(event=>event.id===reserved.id)).toBe(true);
   });
   it('la aceptación registra recepción sólo por el responsable asignado',async()=>{
     const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

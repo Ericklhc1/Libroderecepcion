@@ -488,7 +488,7 @@ describe('historial de un registro', () => {
       resolution: 'Ascensor operativo y certificado.',
     });
 
-    const history = await getHistory({ entity: 'OperationalEntry', entityId: entry.id });
+    const history = await getHistory({ entity: 'OperationalEntry', entityId: entry.id },receptionist);
     const kinds = history.map((event) => event.kind);
     const labels = history.map((event) => event.actionLabel);
 

@@ -1,4 +1,4 @@
-import {followUpReadWhere,taskFollowUpReadWhere} from '@/server/services/followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { readScheduleContext } from './schedule-context';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import 'server-only';
@@ -361,7 +361,7 @@ async function auditTool(user: CurrentUser, args: Record<string, unknown>) {
       : null;
 
   const rows = await prisma.auditLog.findMany({
-    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)], ...(entity ? { entity } : {}) },
+    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)], ...(entity ? { entity } : {}) },
     select: {
       id: true,
       entity: true,

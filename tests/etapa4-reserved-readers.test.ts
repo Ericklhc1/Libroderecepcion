@@ -5,6 +5,7 @@ import {changeEntryStatusAction} from '@/server/actions/entries';
 import {getDashboardData} from '@/server/services/dashboard';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
+import {executeFrontiV2ReadTool} from '@/server/ai/fronti-v2/read-tools';
 import {getBookItems} from '@/server/services/book';
 import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import {runFrontiProactiveSweep} from '@/server/ai/fronti-proactive';
@@ -71,6 +72,8 @@ describe('AROH Simple · lectores independientes reservados',()=>{
     expect(await prisma.auditLog.count({where})).toBe(1);
     expect(await prisma.auditLog.findMany({where,take:1,orderBy:{createdAt:'desc'}})).toMatchObject([{id:publicLog.id}]);
     expect(await prisma.auditLog.count({where:auditFollowUpReadWhere(f.owner)})).toBe(6);
+    expect(JSON.stringify(await executeFrontiV2ReadTool(f.reader,'consultar_auditoria',{}))).not.toContain('E4_SECRETO');
+    expect(JSON.stringify(await executeFrontiV2ReadTool(f.owner,'consultar_auditoria',{}))).toContain('E4_SECRETO');
     await prisma.followUp.update({where:{id:f.follow.id},data:{deletedAt:new Date()}});
     expect(await prisma.auditLog.count({where:auditFollowUpReadWhere(f.reader)})).toBe(1);
     expect(await prisma.auditLog.count()).toBe(6);

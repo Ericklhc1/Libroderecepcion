@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 import type {CurrentUser} from '@/server/auth/current-user';
-import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere,auditFollowUpReadWhere} from './followup-access';
 
 export type HistoryEvent = {
   id: string;
@@ -37,7 +37,7 @@ export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id
   if(!visible) return [];
   const [logs, comments, followUps] = await Promise.all([
     prisma.auditLog.findMany({
-      where: { entity: target.entity, entityId: target.entityId },
+      where: { entity: target.entity, entityId: target.entityId,AND:[auditFollowUpReadWhere(user)] },
       include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
       take: 300,

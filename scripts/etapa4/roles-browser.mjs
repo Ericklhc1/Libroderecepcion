@@ -28,8 +28,10 @@ try{
     await article.getByRole('link',{name:`Asunto #${source.humanId} · ${source.title}`,exact:true}).waitFor();
     assert.equal(await article.count(),1,'Una fila con folio del origen y responsable del trabajo');
     assert.ok(!(await admin.locator('main').innerText()).includes(`PRIVATE_ROLE_${width}`));
-    await article.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-    const assign=article.locator('form').filter({has:admin.locator('input[name=action][value=ASIGNAR]')});
+    await article.locator('[data-list-item][aria-haspopup="dialog"]').click();
+    const assignmentPanel=admin.getByRole('dialog');
+    await assignmentPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+    const assign=assignmentPanel.locator('form').filter({has:admin.locator('input[name=action][value=ASIGNAR]')});
     await assign.locator('select[name=ownerId]').selectOption(f.users.worker.id);
     await assign.locator('textarea[name=nextAction]').fill('Conseguir repuesto y devolver resultado al asunto');
     const assignedResponse=admin.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
@@ -44,8 +46,10 @@ try{
     await worker.waitForURL(/coordinacion/);
     await worker.getByRole('heading',{name:'Mi trabajo · Mantenimiento',exact:true}).waitFor();
     const incoming=worker.locator('article').filter({hasText:source.title});
-    await incoming.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-    const receive=incoming.locator('form').filter({has:worker.locator('input[name=action][value=RECIBIR]')});
+    await incoming.locator('[data-list-item][aria-haspopup="dialog"]').click();
+    const receiptPanel=worker.getByRole('dialog');
+    await receiptPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+    const receive=receiptPanel.locator('form').filter({has:worker.locator('input[name=action][value=RECIBIR]')});
     await receive.locator('textarea[name=nextAction]').fill('Recibido; gestionar repuesto y atender');
     const receivedResponse=worker.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click();

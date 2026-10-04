@@ -39,13 +39,15 @@ try{
   await admin.page.getByRole('heading',{name:'Coordinación y continuidad',exact:true}).waitFor();
   console.log('Coordinator heading visible',width);
   if(width===1280){
-    await admin.page.getByRole('button',{name:'Reducir barra lateral a iconos',exact:true}).click();
-    assert.equal(await admin.page.locator('aside nav a').count(),1,'Compact sidebar shows group controls, not every module');
-    await admin.page.locator('aside').getByRole('button',{name:'Operación',exact:true}).click();
-    await admin.page.locator('[aria-label="Opciones de Operación"]').waitFor();
-    await admin.page.keyboard.press('Escape');
-    await admin.page.locator('[aria-label="Opciones de Operación"]').waitFor({state:'hidden'});
-    await admin.page.getByRole('button',{name:'Ampliar barra lateral',exact:true}).click();
+    const moduleNav=admin.page.getByRole('navigation',{name:'Módulos',exact:true});
+    await moduleNav.waitFor();
+    assert.equal(await admin.page.locator('aside').count(),0,'The shared shell uses horizontal module groups');
+    const operation=moduleNav.getByRole('button',{name:'Operación',exact:true});
+    await operation.click();
+    const panel=admin.page.locator('[aria-label="Accesos de Operación"]');await panel.waitFor();
+    await panel.getByRole('link',{name:'Coordinación',exact:true}).waitFor();
+    await admin.page.keyboard.press('Escape');await panel.waitFor({state:'hidden'});
+    assert.equal(await operation.evaluate(node=>node===document.activeElement),true,'Escape returns focus to the group trigger');
   }else{
     await admin.page.getByRole('button',{name:'Más',exact:true}).click();
     const menu=admin.page.getByRole('dialog',{name:'Todo el menú'});await menu.waitFor();
@@ -54,15 +56,19 @@ try{
   }
   console.log('Navigation controls verified',width);
   const card=admin.page.locator('article').filter({hasText:t.title});
-  await card.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-  await card.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
-  await card.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
-  await measured(`assign visible ${width}`,async()=>{await submit(admin.page,card.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
+  await card.locator('[data-list-item][aria-haspopup="dialog"]').click();
+  const assignmentPanel=admin.page.getByRole('dialog');
+  await assignmentPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+  await assignmentPanel.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
+  await assignmentPanel.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
+  await measured(`assign visible ${width}`,async()=>{await submit(admin.page,assignmentPanel.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
   activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
-  await own.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-  await measured(`receive visible ${width}`,async()=>{await submit(worker.page,own.getByRole('button',{name:'Confirmar recepción',exact:true}));await own.getByText(/^Recibido:/).waitFor();});console.log('Receipt visible',width);
+  await own.locator('[data-list-item][aria-haspopup="dialog"]').click();
+  const receiptPanel=worker.page.getByRole('dialog');
+  await receiptPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+  await measured(`receive visible ${width}`,async()=>{await submit(worker.page,receiptPanel.getByRole('button',{name:'Confirmar recepción',exact:true}));await own.getByText(/^Recibido:/).waitFor();});console.log('Receipt visible',width);
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await measured(`navigation task ${width}`,()=>worker.page.goto(`http://localhost:3000/tareas/${t.id}`));
   await measured(`resolve visible ${width}`,async()=>{await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));await worker.page.getByText('Completada',{exact:true}).first().waitFor();});console.log('Resolution visible',width);

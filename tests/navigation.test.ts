@@ -184,19 +184,20 @@ describe('visibilidad por rol', () => {
   });
 });
 
-describe('shell corporativo con sidebar', () => {
+describe('shell corporativo con módulos horizontales', () => {
   const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
   const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
 
-  it('usa sidebar oscuro en escritorio y conserva navegación móvil separada', () => {
-    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
-    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('<aside');
-    expect(layout).not.toContain('<DesktopNav groups={groups} badges={badges} />');
+  it('usa módulos horizontales persistentes y conserva accesos móviles', () => {
+    expect(layout).toContain('<DesktopNav groups={groups} badges={badges} />');
+    expect(layout).not.toContain('<AppSidebar');
+    expect(layout).toContain('<MobileNav items={items} groups={groups} badges={badges}');
+    expect(layout.indexOf('<MobileNav')).toBeLessThan(layout.indexOf('</header>'));
+    expect(readFileSync('src/components/layout/fns-navigation.tsx', 'utf8')).toContain('groups.map((group, index)');
     expect(nav).toContain('export function SidebarNav');
-    expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 
-  it('la cabecera global conserva sólo utilidades globales', () => {
+  it('la cabecera conserva las utilidades globales originales', () => {
     expect(layout).toContain('data-tour="global-search"');
     expect(layout).toContain('<PropertyMenu');
     expect(layout).toContain('<AccountMenu');
@@ -256,7 +257,7 @@ describe('shell corporativo con sidebar', () => {
     }
   });
 
-  it('usa geometría recta y cian como acento visual del estado activo', () => {
+  it('mantiene geometría y acento compartidos en las superficies de navegación', () => {
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('rounded-md border-l-2');
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('border-gold-500 bg-petrol-800');
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');

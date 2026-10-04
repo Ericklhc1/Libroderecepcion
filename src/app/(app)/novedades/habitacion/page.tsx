@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { ListNavigation } from '@/components/operational/list-navigation';
+import { detailHrefWithReturnContext, listRowAnchor, operationalListHref } from '@/lib/list-navigation';
 import { EntryType } from '@prisma/client';
 import {
   AlarmClock,
@@ -74,9 +76,11 @@ function human(value: string) {
 function RoomTile({
   room,
   selected,
+  href,
 }: {
   room: RoomMonitorTile;
   selected: boolean;
+  href: string;
 }) {
   const tone = ROOM_TONE[room.attention];
   const metrics = [
@@ -90,7 +94,8 @@ function RoomTile({
 
   return (
     <Link
-      href={`/novedades/habitacion?habitacion=${room.number}#detalle-habitacion`}
+      href={href}
+      data-room-number={room.number}
       aria-current={selected ? 'page' : undefined}
       className={`group flex h-full min-h-[8.5rem] flex-col rounded-lg border p-3 shadow-card transition-[border-color,background-color,transform] hover:-translate-y-0.5 ${
         selected ? 'ring-2 ring-gold-500 ring-offset-2' : ''
@@ -169,6 +174,8 @@ export default async function RoomOperationsMonitor({
   const user = await requirePageUser();
   const params = await searchParams;
   const requestedRoom = one(params.habitacion).trim();
+  const floorValue = one(params.piso);
+  const selectedFloor = /^[456]$/.test(floorValue) ? Number(floorValue) : null;
 
   const overview = await getRoomMonitorOverview(user);
   const selectedTile =
@@ -181,12 +188,19 @@ export default async function RoomOperationsMonitor({
 
   const canViewCash = user.permissions.includes('cash.view');
 
-  const floors = [4, 5, 6].map((floor) => ({
+  const roomHref = (number?: string, floor: number | null = selectedFloor) => operationalListHref('/novedades/habitacion', {
+    ...(number ? { habitacion: number } : {}), ...(floor ? { piso: String(floor) } : {}),
+  });
+  const roomContextHref = roomHref(selectedTile?.number);
+  const roomReturnHref = detail ? `${roomContextHref}#${listRowAnchor('room', detail.room.id)}` : roomContextHref;
+
+  const floors = [4, 5, 6].filter(floor => !selectedFloor || floor === selectedFloor).map((floor) => ({
     floor,
     rooms: overview.rooms.filter((room) => room.floor === floor),
   }));
 
   return (
+    <ListNavigation href={roomContextHref} scope={user.id}>
     <div className="mx-auto max-w-[1500px] space-y-5">
       <header className="border-b border-slate-300 pb-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -235,6 +249,15 @@ export default async function RoomOperationsMonitor({
         ))}
       </section>
 
+      <nav aria-label="Pisos del hotel" className="flex flex-wrap items-center gap-2">
+        <Link href={roomHref(selectedTile?.number, null)} aria-current={!selectedFloor ? 'page' : undefined}
+          className={cn('rounded-lg border px-3 py-2 text-sm font-medium', !selectedFloor ? 'border-petrol-800 bg-petrol-800 text-white' : 'border-slate-200 bg-white text-petrol-800')}>Todos los pisos</Link>
+        {[4, 5, 6].map(floor => <Link key={floor}
+          href={roomHref(selectedTile?.floor === floor ? selectedTile.number : undefined, floor)}
+          aria-current={selectedFloor === floor ? 'page' : undefined}
+          className={cn('rounded-lg border px-3 py-2 text-sm font-medium', selectedFloor === floor ? 'border-petrol-800 bg-petrol-800 text-white' : 'border-slate-200 bg-white text-petrol-800')}>Piso {floor}</Link>)}
+        <span className="text-xs text-slate-500">El piso filtra el mapa; los totales mantienen el alcance del hotel permitido para tu cuenta.</span>
+      </nav>
       <div className="grid gap-5 2xl:grid-cols-[1fr_31rem]">
         <div className="space-y-5">
           {floors.map(({ floor, rooms }) => (
@@ -256,6 +279,7 @@ export default async function RoomOperationsMonitor({
                     key={room.id}
                     room={room}
                     selected={selectedTile?.id === room.id}
+                    href={`${roomHref(room.number)}#detalle-habitacion`}
                   />
                 ))}
               </div>
@@ -269,12 +293,12 @@ export default async function RoomOperationsMonitor({
               <div className="px-5 py-8">
                 <EmptyState
                   message="Selecciona una habitación."
-                  hint="Toca cualquier número para ver su contexto operativo. Una habitación sin actividad seguirá apareciendo: el mapa siempre muestra las 89."
+                  hint="Toca un número para ver su contexto operativo. También se muestran las habitaciones sin actividad; Todos los pisos recupera el mapa completo."
                 />
               </div>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <div id={listRowAnchor('room', detail.room.id)} tabIndex={-1} className="space-y-3 scroll-mt-40">
               <Card>
                 <div className="border-b border-slate-200 bg-[#f8fafc] px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
@@ -287,7 +311,7 @@ export default async function RoomOperationsMonitor({
                       </h2>
                     </div>
                     <Link
-                      href="/novedades/habitacion"
+                      href={roomHref()}
                       className="text-xs font-medium text-slate-500 hover:text-petrol-800"
                     >
                       Cerrar
@@ -321,7 +345,7 @@ export default async function RoomOperationsMonitor({
                         {detail.entries.slice(0, 12).map((entry) => (
                           <li key={entry.id} className="rounded-md border border-slate-200 bg-white p-2.5">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <Link href={`/libro/${entry.id}`} className="text-sm font-semibold text-petrol-950 hover:underline">
+                              <Link href={detailHrefWithReturnContext(`/libro/${entry.id}`, roomReturnHref)} className="text-sm font-semibold text-petrol-950 hover:underline">
                                 #{entry.humanId} · {entry.title}
                               </Link>
                               <Badge tone={entry.severity === 'CRITICA' || entry.priority === 'CRITICA' ? 'critico' : 'neutro'}>
@@ -346,7 +370,7 @@ export default async function RoomOperationsMonitor({
                       <ul className="mt-2 space-y-2">
                         {detail.tasks.slice(0, 10).map((task) => (
                           <li key={task.id} className="rounded-md border border-slate-200 bg-white p-2.5">
-                            <Link href={`/tareas/${task.id}`} className="text-sm font-semibold text-petrol-950 hover:underline">
+                            <Link href={detailHrefWithReturnContext(`/tareas/${task.id}`, roomReturnHref)} className="text-sm font-semibold text-petrol-950 hover:underline">
                               #{task.humanId} · {task.title}
                             </Link>
                             <p className="mt-1 text-xs text-slate-500">
@@ -493,5 +517,6 @@ export default async function RoomOperationsMonitor({
         </aside>
       </div>
     </div>
+    </ListNavigation>
   );
 }

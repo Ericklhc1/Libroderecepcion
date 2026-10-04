@@ -1,10 +1,11 @@
-import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { searchOperationalRecords } from '@/server/services/global-search';
 import { Card, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
+import { ListItemLink, ListNavigation } from '@/components/operational/list-navigation';
 import { formatDateTime } from '@/lib/format';
+import { listRowAnchor, operationalListHref } from '@/lib/list-navigation';
 import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Buscar' };
@@ -19,6 +20,46 @@ export default async function GlobalSearchPage({
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim() : '';
   const results = q ? await searchOperationalRecords(user, q) : [];
+  const currentListHref = operationalListHref('/buscar', { q });
+  // Oversized queries retain native detail links rather than claiming a return
+  // to a different (empty) search after the guarded URL helper falls back.
+  const preserveSearchContext = new URLSearchParams(currentListHref.split('?')[1]).get('q') === q;
+  const resultsList = (
+    <Card>
+      <ul className="divide-y divide-slate-100">
+        {results.map((result) => (
+          <li key={`${result.entityType}-${result.entityId}`}>
+            <ListItemLink
+              href={result.href}
+              rowAnchor={listRowAnchor('search', `${result.entityType}-${result.entityId}`)}
+              className="block break-words px-4 py-3 hover:bg-slate-50"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold tabular text-petrol-700">#{result.humanId}</span>
+                <Chip>{result.kind}</Chip>
+                {result.status ? (
+                  <span className="text-xs font-medium text-slate-500">
+                    {result.status.toLocaleLowerCase('es-CL').replaceAll('_', ' ')}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 font-medium text-petrol-900">{result.title}</p>
+              {result.summary ? (
+                <p className="mt-0.5 line-clamp-2 text-sm text-slate-600">{result.summary}</p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                {result.roomNumber ? <span>Hab. {result.roomNumber}</span> : null}
+                {result.guestName ? <span>{result.guestName}</span> : null}
+                {result.responsible ? <span>Responsable: {result.responsible}</span> : null}
+                {result.category ? <span>{result.category.replaceAll('_', ' ')}</span> : null}
+                <span>{formatDateTime(result.createdAt)}</span>
+              </div>
+            </ListItemLink>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -39,7 +80,7 @@ export default async function GlobalSearchPage({
             type="search"
             name="q"
             defaultValue={q}
-            autoFocus
+            autoFocus={!q}
             placeholder="Ej.: #1252, 617, Jaime, multa, garantía, caja…"
             className="input-base w-full pl-9"
             aria-label="Buscar en todo el Libro"
@@ -68,36 +109,9 @@ export default async function GlobalSearchPage({
           />
         </Card>
       ) : (
-        <Card>
-          <ul className="divide-y divide-slate-100">
-            {results.map((result) => (
-              <li key={`${result.entityType}-${result.entityId}`}>
-                <Link href={result.href} className="block px-4 py-3 hover:bg-slate-50">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold tabular text-petrol-700">#{result.humanId}</span>
-                    <Chip>{result.kind}</Chip>
-                    {result.status ? (
-                      <span className="text-xs font-medium text-slate-500">
-                        {result.status.toLocaleLowerCase('es-CL').replaceAll('_', ' ')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 font-medium text-petrol-900">{result.title}</p>
-                  {result.summary ? (
-                    <p className="mt-0.5 line-clamp-2 text-sm text-slate-600">{result.summary}</p>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                    {result.roomNumber ? <span>Hab. {result.roomNumber}</span> : null}
-                    {result.guestName ? <span>{result.guestName}</span> : null}
-                    {result.responsible ? <span>Responsable: {result.responsible}</span> : null}
-                    {result.category ? <span>{result.category.replaceAll('_', ' ')}</span> : null}
-                    <span>{formatDateTime(result.createdAt)}</span>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        preserveSearchContext ? (
+          <ListNavigation href={currentListHref} scope={user.id}>{resultsList}</ListNavigation>
+        ) : resultsList
       )}
     </div>
   );

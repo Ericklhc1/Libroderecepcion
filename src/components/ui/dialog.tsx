@@ -32,6 +32,7 @@ export function Dialog({
   description,
   children,
   width = 'md',
+  presentation = 'centered',
   triggerVariant = 'primary',
   triggerSize = 'md',
   triggerClassName,
@@ -44,6 +45,8 @@ export function Dialog({
   description?: string;
   children: React.ReactNode;
   width?: 'sm' | 'md' | 'lg';
+  /** Sólo presentación; comparte foco, Escape y pila de bloqueo con el modal. */
+  presentation?: 'centered' | 'side-panel';
   triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold';
   triggerSize?: 'sm' | 'md' | 'lg';
   triggerClassName?: string;
@@ -109,10 +112,10 @@ export function Dialog({
       const last = focusable[focusable.length - 1]!;
       const active = document.activeElement;
 
-      if (event.shiftKey && active === first) {
+      if (event.shiftKey && (active === first || active === panelRef.current || !panelRef.current.contains(active))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && active === last) {
+      } else if (!event.shiftKey && (active === last || !panelRef.current.contains(active))) {
         event.preventDefault();
         first.focus();
       }
@@ -149,6 +152,7 @@ export function Dialog({
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
+        data-dialog-presentation={presentation}
         aria-label={title}
         className={cn(
           /*
@@ -159,13 +163,16 @@ export function Dialog({
             Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
             `transform` y pisaría el `translate` que hace el centrado.
           */
-          'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none dialog-enter',
-          width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl',
+          'fixed flex flex-col border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none dialog-enter',
+          presentation === 'side-panel'
+            ? 'inset-y-0 right-0 h-[100dvh] max-h-[100dvh] w-full max-w-2xl'
+            : 'left-[50vw] top-[50dvh] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg',
+          presentation === 'centered' && (width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl'),
         )}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-[#f8fafc] px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-petrol-900">{title}</h2>
+          <div className="min-w-0">
+            <h2 className="break-words text-base font-semibold text-petrol-900">{title}</h2>
             {description ? (
               <p className="mt-0.5 text-xs text-slate-500">{description}</p>
             ) : null}
@@ -175,7 +182,7 @@ export function Dialog({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Cerrar"
-              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
+              className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-petrol-800"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>

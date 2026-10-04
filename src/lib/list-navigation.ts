@@ -1,25 +1,35 @@
 import type { RawSearchParams } from './search-params';
 
-export type OperationalListPath = '/libro' | '/tareas';
+export type OperationalListPath = '/libro' | '/tareas' | '/coordinacion' | '/admin/housekeeping' | '/novedades/habitacion' | '/custodia' | '/buscar' | '/historial';
 
 const ORIGIN = 'https://aroh.invalid';
 const MAX_HREF_LENGTH = 1900;
-const LIST_PARAMS = new Set([
+const ENTRY_TASK_PARAMS = new Set([
   'q', 'clase', 'tipo', 'estado', 'prioridad', 'area', 'responsable',
   'usuario', 'turno', 'desde', 'hasta', 'pagina', 'eliminados', 'mias',
 ]);
-const ROW_ANCHOR = /^registro-(entry|task|followup|alert)-[a-zA-Z0-9_-]+$/;
+const LIST_PARAMS: Record<OperationalListPath, ReadonlySet<string>> = {
+  '/libro': ENTRY_TASK_PARAMS,
+  '/tareas': ENTRY_TASK_PARAMS,
+  '/coordinacion': new Set(['q', 'area', 'mios', 'pagina', 'historial', 'vista', 'estado', 'responsable', 'fecha']),
+  '/admin/housekeeping': new Set(['vista', 'fecha', 'area', 'piso', 'responsable', 'pagina', 'aviso', 'q', 'estado']),
+  '/novedades/habitacion': new Set(['habitacion', 'piso']),
+  '/custodia': new Set(['estado', 'q', 'pagina', 'objeto']),
+  '/buscar': new Set(['q']),
+  '/historial': ENTRY_TASK_PARAMS,
+};
+const ROW_ANCHOR = /^registro-(entry|task|followup|alert|housekeeping|room|custody|search)-[a-zA-Z0-9_-]+$/;
 
 function parseListReturnHref(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > MAX_HREF_LENGTH || /[\\\u0000-\u0020\u007f]/.test(value)) return null;
   const path = value.split(/[?#]/, 1)[0];
-  if (path !== '/libro' && path !== '/tareas') return null;
+  if (path !== '/libro' && path !== '/tareas' && path !== '/coordinacion' && path !== '/admin/housekeeping' && path !== '/novedades/habitacion' && path !== '/custodia' && path !== '/buscar' && path !== '/historial') return null;
   try {
     const url = new URL(value, ORIGIN);
     if (url.origin !== ORIGIN || url.pathname !== path) return null;
     const search = new URLSearchParams();
     for (const [key, item] of url.searchParams) {
-      if (LIST_PARAMS.has(key) && item && !search.has(key)) search.set(key, item);
+      if (LIST_PARAMS[path].has(key) && item && !search.has(key)) search.set(key, item);
     }
     const hash = ROW_ANCHOR.test(url.hash.slice(1)) ? url.hash : '';
     const query = search.toString();
@@ -35,12 +45,21 @@ export function safeListReturnHref(value: unknown, fallback: OperationalListPath
   return parseListReturnHref(value) ?? fallback;
 }
 
+/** Compare only recognized presentation filters, not their order or fragments. */
+export function sameOperationalList(left: string, right: string): boolean {
+  const a = parseListReturnHref(left), b = parseListReturnHref(right);
+  if (!a || !b) return false;
+  const first = new URL(a, ORIGIN), second = new URL(b, ORIGIN);
+  first.searchParams.sort(); second.searchParams.sort();
+  return first.pathname === second.pathname && first.search === second.search;
+}
+
 /** Capture native filters and pagination; ephemeral return data is not a filter. */
 export function operationalListHref(path: OperationalListPath, params: RawSearchParams): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     const item = Array.isArray(value) ? value[0] : value;
-    if (LIST_PARAMS.has(key) && item) search.set(key, item);
+    if (LIST_PARAMS[path].has(key) && item) search.set(key, item);
   }
   const query = search.toString();
   return safeListReturnHref(`${path}${query ? `?${query}` : ''}`, path);
@@ -72,6 +91,12 @@ export function detailHrefWithReturnContext(href: string, context: unknown): str
 
 export function listReturnLabel(href: string): string {
   const url = new URL(href, ORIGIN);
+  if (url.pathname === '/historial') return 'Volver al historial';
+  if (url.pathname === '/buscar') return 'Volver a resultados';
+  if (url.pathname === '/custodia') return 'Volver a custodia';
+  if (url.pathname === '/novedades/habitacion') return 'Volver al contexto de habitación';
+  if (url.pathname === '/admin/housekeeping') return 'Volver a Housekeeping';
+  if (url.pathname === '/coordinacion') return 'Volver a coordinación';
   if (url.pathname === '/tareas') return 'Volver a tareas';
   if (url.searchParams.get('clase') === 'task') return 'Volver a la lista de tareas';
   if (url.searchParams.get('tipo') === 'INCIDENCIA') return 'Volver a incidencias';

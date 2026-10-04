@@ -33,7 +33,8 @@ describe('sistema visual corporativo AROH', () => {
     expect(layout).toContain('AROH');
     expect(layout).toContain('Central IA');
     expect(layout).toContain('hotelName={hotelName}');
-    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
+    expect(layout).toContain('<DesktopNav groups={groups} badges={badges} />');
+    expect(layout).not.toContain('<AppSidebar');
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 });

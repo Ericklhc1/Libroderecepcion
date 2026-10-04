@@ -124,6 +124,7 @@ jobs:
         run: npm run test
 
       - name: Build
+        id: production_build
         env:
           NODE_ENV: production
         run: npm run build
@@ -207,11 +208,65 @@ jobs:
           done
           exit "$journey_status"
 
+      - name: Navegación funcional y bandejas de trabajo
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          journey_status=0
+          for script in module-navigation-browser context-worklist-browser housekeeping-worklist-browser room-context-browser; do
+            npx tsx scripts/etapa1/fixture.mts
+            NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/functional-surface-server.log 2>&1 &
+            server_pid=$!
+            trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+            for i in $(seq 1 60); do
+              if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+              sleep 1
+            done
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/functional-surface-server.log
+            fi
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          done
+          exit "$journey_status"
+
+      - name: Custodia y consulta con contexto
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          journey_status=0
+          for script in custody-worklist-browser search-context-browser history-context-browser; do
+            npx tsx scripts/etapa1/fixture.mts
+            NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/custody-search-server.log 2>&1 &
+            server_pid=$!
+            trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+            for i in $(seq 1 60); do
+              if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+              sleep 1
+            done
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/custody-search-server.log
+            fi
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          done
+          exit "$journey_status"
+
       - name: Evidencia temporal en logs sin almacenamiento adicional
         if: ${{ always() && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
         run: |
           echo "Candidate commit: $GITHUB_SHA"
-          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json; do
+          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json search-context-browser-results.json history-context-browser-results.json; do
             if [ -f "$file" ]; then
               printf '\n=== %s ===\n' "$file"
               cat "$file"
@@ -239,5 +294,12 @@ jobs:
             appearance-browser-results.json
             /tmp/list-context-browser-results.json
             substitution-candidates-browser-results.json
+            module-navigation-browser-results.json
+            /tmp/context-worklist-browser-results.json
+            housekeeping-worklist-browser-results.json
+            room-context-browser-results.json
+            custody-worklist-browser-results.json
+            search-context-browser-results.json
+            history-context-browser-results.json
           if-no-files-found: warn
           retention-days: 7

@@ -13,8 +13,7 @@ import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 import { visibleNavGroups } from '@/components/layout/nav-items';
-import { MobileNav } from '@/components/layout/nav';
-import { AppSidebar } from '@/components/layout/app-sidebar';
+import { DesktopNav, MobileNav } from '@/components/layout/nav';
 import { AnnouncementGate } from '@/components/operational/announcement-gate';
 import { ReceptionOperationGate } from '@/components/operational/reception-operation-gate';
 import { HelpCenter } from '@/components/layout/help-center';
@@ -26,7 +25,8 @@ import {
 } from '@/domain/tutorial-tour';
 import { getBlockingAnnouncements } from '@/server/services/announcements';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
-import { initials } from '@/lib/format';
+import { initials, formatCalendarDate } from '@/lib/format';
+import { resolveOperationalBusinessDate } from '@/server/services/shifts';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getChatUnreadCount } from '@/server/services/chat';
@@ -60,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     chatUnread,
     frontiConfig,
     receptionGate,
+    businessDate,
   ] = await Promise.all([
     getSettingString('hotel.name', 'Hotel'),
     countMyActiveOperationalAlarms(user.id),
@@ -77,6 +78,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       : Promise.resolve(0),
     getFrontiConfig(),
     getReceptionOperationGate(user),
+    resolveOperationalBusinessDate(),
   ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
@@ -95,19 +97,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <a href="#contenido-principal" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-petrol-900">Ir al contenido principal</a>
       <UxJourney/>
       <div className="flex min-h-screen min-w-0">
-        <AppSidebar groups={groups} badges={badges} hotelName={hotelName} version={packageJson.version} userId={user.id} />
-
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
-            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2 flex-wrap lg:flex-nowrap">
-              <Link href="/" className="flex shrink-0 items-baseline gap-1 lg:hidden">
-                <span className="text-sm font-semibold text-petrol-950">AROH</span>
-                <span className="text-sm font-semibold text-gold-600">Central IA</span>
+            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 flex-wrap items-center gap-2 px-4 py-2 lg:gap-3 xl:flex-nowrap">
+              <Link href="/" className="min-w-0 max-w-[min(12rem,45vw)] shrink-0" title={'AROH Central IA · ' + hotelName}>
+                <span className="block text-sm font-semibold text-petrol-950">AROH <span className="text-gold-600">Central IA</span></span>
+                <span className="block truncate text-xs text-slate-500">{hotelName}</span>
               </Link>
 
               <form
                 action="/buscar"
-                className="relative order-last w-full min-w-0 lg:order-none lg:w-auto lg:flex-1 xl:max-w-2xl"
+                className="relative order-last w-full min-w-0 xl:order-none xl:w-auto xl:flex-1 xl:max-w-2xl"
                 data-tour="global-search"
               >
                 <Search
@@ -152,6 +152,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 </Link>
               </div>
             </div>
+            <div className="mx-auto flex w-full max-w-[1680px] flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-2 text-xs text-slate-600" aria-label="Contexto operativo">
+              <p>Fecha operativa: <time dateTime={businessDate.toISOString().slice(0, 10)} className="font-semibold tabular text-petrol-900">{formatCalendarDate(businessDate)}</time></p>
+              <p className="min-w-0 truncate" title={user.roleName}>{user.roleName}</p>
+            </div>
+            <DesktopNav groups={groups} badges={badges} />
+            <MobileNav items={items} groups={groups} badges={badges} hotelName={hotelName} roleName={user.roleName} />
+            <noscript>
+              <details className="mx-auto w-full max-w-[1680px] border-t border-slate-200 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-semibold text-petrol-900">Abrir módulos disponibles</summary>
+                <nav aria-label="Módulos sin JavaScript" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {groups.map((group, index) => <section key={index}>
+                    <h2 className="text-sm font-semibold text-petrol-900">{group.title || 'Inicio'}</h2>
+                    <ul className="mt-2 space-y-2 text-sm">{[...new Map(group.items.flatMap(item => [{ href: item.href, label: item.label }, ...(item.menu?.flatMap(section => section.items) || [])]).map(link => [link.href, link])).values()].map(link => <li key={link.href}><Link href={link.href} className="underline text-petrol-700">{link.label}</Link></li>)}</ul>
+                  </section>)}
+                </nav>
+              </details>
+            </noscript>
           </header>
 
           <main id="contenido-principal" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
@@ -160,14 +177,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           <div className="mx-auto w-full max-w-[1680px] px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">
             <AiAttribution />
-            <p className="mt-1 text-center text-[0.65rem] text-slate-400 lg:hidden">
+            <p className="mt-1 text-center text-[0.65rem] text-slate-400">
               AROH Central IA v{packageJson.version}
             </p>
           </div>
         </div>
       </div>
-
-      <MobileNav items={items} groups={groups} badges={badges} />
 
       {frontiVisible ? <ReceptionAssistant /> : null}
 

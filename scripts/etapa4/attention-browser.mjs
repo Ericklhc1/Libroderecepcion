@@ -51,7 +51,7 @@ try{
         const work=await db.housekeepingRequest.findUniqueOrThrow({where:{sourceEntryId:source.id}});
         assert.equal(work.roomId,room.id);assert.equal(work.title,null);assert.equal(work.description,null);
         await origin.page.getByRole('link',{name:'Ver atención del área',exact:true}).click();
-        const card=origin.page.locator(`#aviso-${work.humanId}`);
+        const card=origin.page.locator(`[data-housekeeping-detail="${work.id}"]`);
         await card.getByRole('button',{name:'Asignar / reasignar',exact:true}).waitFor();
         const count=await card.locator('[aria-label="Acciones del asunto"] button,[aria-label="Acciones del asunto"] a,[aria-label="Acciones del asunto"] summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).length);
         assert.ok(count<=4,'Housekeeping prioriza una acción y conserva Más');
@@ -60,7 +60,7 @@ try{
         const assignedBody=await assign.json();assert.equal(assign.status(),200,assignedBody.error);assert.match(assignedBody.reply,/Completado/);
         const workHref=`http://localhost:3000/admin/housekeeping?area=${area.id}&aviso=${work.humanId}`;
         await maid.page.goto(workHref);
-        const maidCard=maid.page.locator(`#aviso-${work.humanId}`);
+        const maidCard=maid.page.locator(`[data-housekeeping-detail="${work.id}"]`);
         await maidCard.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
         await maidCard.getByText('Recibido',{exact:true}).waitFor();
         const startButton=maidCard.getByRole('button',{name:'Comenzar',exact:true});
@@ -71,7 +71,7 @@ try{
         try { await maidCard.getByText('En proceso',{exact:true}).waitFor(); }
         catch(error){console.error('HK start diagnostic',JSON.stringify({before:beforeStart,formVersion:startVersion,after:await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true,sourceVersion:true}}),visible:await maidCard.innerText(),forms:await maidCard.locator('form').evaluateAll(forms=>forms.map(form=>Object.fromEntries(new FormData(form))))}));throw error;}
         await maidCard.getByRole('button',{name:'Marcar terminado',exact:true}).click();
-        const resultDialog=maid.page.getByRole('dialog');
+        const resultDialog=maid.page.getByRole('dialog',{name:'Marcar terminado',exact:true});
         await resultDialog.locator('textarea[name=note]').fill('Necesidad atendida y comprobada');
         await resultDialog.getByRole('button',{name:'Confirmar',exact:true}).click();
         await resultDialog.waitFor({state:'hidden'});

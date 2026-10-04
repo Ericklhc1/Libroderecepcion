@@ -4,7 +4,7 @@ const calls = vi.hoisted(() => ({ task: vi.fn(), coordination: vi.fn(), assign: 
 vi.mock('@/server/actions/tasks', () => ({ changeTaskStatusAction: calls.task }));
 vi.mock('@/server/actions/coordination', () => ({ coordinateWorkAction: calls.coordination }));
 import { changeTaskStatusFormAction } from '@/server/actions/operational-navigation';
-import { requestSubjectAttentionAction } from '@/components/operational/navigation-action';
+import { requestSubjectAttentionAction, changeLostFoundAction, createLostFoundAction } from '@/components/operational/navigation-action';
 import { detailHrefWithReturnContext } from '@/lib/list-navigation';
 
 const origin = 'https://aroh.invalid';
@@ -65,6 +65,27 @@ describe('retorno de lista después de acciones nativas', () => {
     calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, message: 'Guardado', navigateTo })));
     expect((await requestSubjectAttentionAction(null, new FormData())).ok).toBe(false);
     expect(calls.assign).not.toHaveBeenCalled();
+  });
+
+  it('custodia conserva sólo filtros vigentes y usa el resultado real como pista de foco', async () => {
+    setCurrent('/custodia?estado=EN_CUSTODIA&q=llave&pagina=2&objeto=123&next=https%3A%2F%2Fevil.invalid');
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'objeto-real', message: 'Actualizado', navigateTo: '/custodia' })));
+    await changeLostFoundAction(null, new FormData());
+    expect(calls.assign).toHaveBeenCalledExactlyOnceWith(origin + '/custodia?estado=EN_CUSTODIA&q=llave&pagina=2#registro-custody-objeto-real');
+  });
+
+  it('registrar custodia no reabre una selección anterior ni acepta filtros repetidos', async () => {
+    setCurrent('/custodia?q=uno&q=dos&pagina=3&objeto=123');
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'nuevo', message: 'Registrado', navigateTo: '/custodia' })));
+    await createLostFoundAction(null, new FormData());
+    expect(calls.assign).toHaveBeenCalledExactlyOnceWith(origin + '/custodia?pagina=3');
+  });
+
+  it('no transmite contexto de custodia desde otra ruta ni altera el destino nativo', async () => {
+    setCurrent('/libro?q=privado');
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'objeto-real', message: 'Actualizado', navigateTo: '/custodia' })));
+    await changeLostFoundAction(null, new FormData());
+    expect(calls.assign).toHaveBeenCalledExactlyOnceWith(origin + '/custodia');
   });
 
   it('no navega si la acción nativa rechaza permisos o datos', async () => {

@@ -1,6 +1,6 @@
 'use client';
 import type { ActionState } from '@/server/action';
-import { detailHrefWithReturnContext } from '@/lib/list-navigation';
+import { detailHrefWithReturnContext, operationalListHref, listRowAnchor } from '@/lib/list-navigation';
 
 async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change'|'handover-missing'|'handover-missing-approve'|'subject-attention', form: FormData): Promise<ActionState> {
   try {
@@ -18,6 +18,20 @@ async function submit(procedure: 'coordination'|'task-status'|'automation-save'|
       const context = current.searchParams.getAll('desdeLista');
       const contextual = detailHrefWithReturnContext(destination.pathname + destination.search + destination.hash, context.length === 1 ? context[0] : undefined);
       destination.search = new URL(contextual, window.location.origin).search;
+    }
+    if ((procedure === 'custody-create' || procedure === 'custody-change') && destination.pathname === '/custodia' && window.location.pathname === '/custodia') {
+      const current = new URL(window.location.href);
+      const params: Record<string, string> = {};
+      for (const key of ['estado', 'q', 'pagina']) {
+        const values = current.searchParams.getAll(key);
+        if (values.length === 1 && values[0]) params[key] = values[0];
+      }
+      const contextual = new URL(operationalListHref('/custodia', params), window.location.origin);
+      destination.search = contextual.search;
+      // A fragment is only a focus hint. The next page decides whether the row
+      // is still visible under its native status and permission filters.
+      destination.hash = procedure === 'custody-change' && typeof result.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(result.id)
+        ? listRowAnchor('custody', result.id) : '';
     }
     // A document navigation does not depend on the stalled RSC action transition.
     window.location.assign(destination.href);

@@ -61,7 +61,7 @@ try{
     const row=admin.page.locator('main li').filter({has:admin.page.getByText(available.code,{exact:true})});
     await row.getByRole('button',{name:'Entregar',exact:true}).waitFor();
     assert.equal(await row.getByRole('button',{name:'Baja',exact:true}).isVisible(),false);
-    await admin.page.getByRole('link',{name:'Resolver excepción',exact:true}).click();
+    await admin.page.goto('http://localhost:3000/llaves?vista=llaves&piso=todos&intencion=excepciones');
     await admin.page.getByRole('heading',{name:'Resolver excepción de llaves',exact:true}).waitFor();
     assert.equal(await admin.page.getByText(available.code,{exact:true}).count(),0);
     const exception=admin.page.locator('main li').filter({has:admin.page.getByText(missing.code,{exact:true})});

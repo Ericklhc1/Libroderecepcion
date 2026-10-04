@@ -191,10 +191,13 @@ export function ContextWorklist({ href, scope, label, rows, emptyMessage = 'No h
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           </a>
           <div className="px-4 pb-3"><a href={nativeHref(row)} onClick={() => remember(row.id)} className="inline-flex items-center gap-1 text-xs font-medium text-petrol-700 underline" data-worklist-native>{row.nativeLabel || 'Abrir ficha completa'}<ExternalLink className="h-3 w-3" aria-hidden="true" /></a></div>
-          {!hydrated && <noscript><details open={initialOpenId === row.id} className="border-t border-slate-100 px-4 py-3" data-worklist-fallback>
+          {/* Keep fallback context as ordinary server-rendered HTML, independent
+              of noscript parsing and client-side execution. Once this list
+              hydrates, remove this copy before mounting interactive forms. */}
+          {!hydrated && <details open={initialOpenId === row.id} className="border-t border-slate-100 px-4 py-3" data-worklist-fallback>
             <summary className="cursor-pointer text-sm font-medium">Consultar contexto y acciones</summary>
             <div className="mt-4 space-y-4">{row.children}</div>
-          </details></noscript>}
+          </details>}
         </article></li>)}
       </ul>}
       <Dialog open={Boolean(active)} onOpenChange={open => { if (!open) closePanel(); }} title={active?.title || 'Contexto del trabajo'} description="Información y acciones del registro original" presentation="side-panel">

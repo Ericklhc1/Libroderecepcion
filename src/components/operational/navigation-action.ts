@@ -32,6 +32,15 @@ async function submit(procedure: 'coordination'|'task-status'|'automation-save'|
       // is still visible under its native status and permission filters.
       destination.hash = procedure === 'custody-change' && typeof result.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(result.id)
         ? listRowAnchor('custody', result.id) : '';
+      if (destination.search === current.search && destination.hash) {
+        // Assigning a fragment on the same document never refetches its rows,
+        // even when that fragment is already current. Drop the panel marker so
+        // a surviving row returns as a focus hint, then read the saved revision.
+        // Next's native-history adapter preserves its own router metadata.
+        window.history.replaceState(null, '', destination.href);
+        window.location.reload();
+        return result;
+      }
     }
     // A document navigation does not depend on the stalled RSC action transition.
     window.location.assign(destination.href);

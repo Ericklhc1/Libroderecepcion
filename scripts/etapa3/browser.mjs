@@ -5,14 +5,14 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
-const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[],pages=[];
+const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[],pages=[],pageErrors=[];
 try{
  const area=await db.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});const room=await db.room.findUniqueOrThrow({where:{number:'512'}});
  await db.user.update({where:{id:f.users.maid.id},data:{departmentId:area.id}});
  const date=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  for(const width of [1280,390]){
   const contexts=[];
-  async function session(key){const context=await browser.newContext({viewport:{width,height:900}});contexts.push(context);await context.addCookies([{name:'lor_session',value:f.users[key].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});const page=await context.newPage();pages.push(page);page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);page.on('pageerror',error=>console.error('Synthetic page error:',error.message));return {context,page};}
+  async function session(key){const context=await browser.newContext({viewport:{width,height:900}});contexts.push(context);await context.addCookies([{name:'lor_session',value:f.users[key].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});const page=await context.newPage();pages.push(page);page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);page.on('pageerror',error=>{pageErrors.push({width,role:key,name:error.name,message:error.message});console.error('Synthetic page error:',error.message);});return {context,page};}
   const admin=await session('admin'),maid=await session('maid');const key=randomUUID(),title=`ETAPA3_HK_${width}`;
   const create=await admin.context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:'/ejecutar '+JSON.stringify([{action:'createHkWorkAction',fields:{requestKey:key,title,description:'Limpiar tras revisión de fuga sintética',workKind:'LIMPIEZA',workDate:date,departmentId:area.id,roomId:room.id,priority:'ALTA',effortMinutes:'25',assignedToId:f.users.maid.id}}]),requestKey:randomUUID()}});
   const createBody=await create.json();assert.equal(create.status(),200,createBody.error);assert.match(createBody.reply,/Completado/);
@@ -33,6 +33,7 @@ try{
   results.push({width,scenario:'HK-impediment-maintenance-native-Fronti-result-retry-resume-inspection',status:'passed',physicalSafari:false,provider:'not-used'});
   for(const context of contexts)await context.close();
  }
+ assert.deepEqual(pageErrors,[],'Authenticated journeys must not conceal hydration or runtime errors');
  console.log('Etapa 3 authenticated desktop/mobile journeys passed.',JSON.stringify(results));
 }catch(error){
  const failed=await db.frontiExecutionStep.findMany({where:{execution:{userId:{in:Object.values(f.users).map(u=>u.id)}},status:{notIn:['SUCCEEDED','PENDING']}},select:{action:true,status:true,result:true},take:20,orderBy:{startedAt:'desc'}});

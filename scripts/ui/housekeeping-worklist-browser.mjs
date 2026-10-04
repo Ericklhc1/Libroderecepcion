@@ -33,6 +33,7 @@ try {
     const rowId = `registro-housekeeping-${work.id}`;
     const row = maid.page.locator(`[data-list-item="${rowId}"][aria-haspopup="dialog"]`);
     await row.waitFor();
+    assert.equal(await maid.page.locator('[data-worklist-fallback]').count(), 0, 'Hydrated rows remove fallback forms before opening the panel');
     assert.equal(await maid.page.locator('[data-worklist-panel]').count(), 0);
     await row.click();
     const panel = maid.page.locator(`[data-housekeeping-detail="${work.id}"]`);
@@ -73,7 +74,21 @@ try {
 
     const noJs = await session('maid', width, { javaScriptEnabled: false });
     await noJs.page.goto(base + list + `&aviso=${work.humanId}`);
-    await noJs.page.locator('[data-worklist-fallback][open]').getByText(source.description, { exact: true }).waitFor();
+    const fallback = noJs.page.locator('[data-worklist-fallback][open]');
+    try {
+      await fallback.getByText(source.description, { exact: true }).waitFor();
+    } catch (error) {
+      const ancestors = await fallback.evaluate(element => {
+        const state = [];
+        for (let node = element; node && state.length < 12; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          state.push({ tag: node.tagName, hidden: node.hidden, open: node instanceof HTMLDetailsElement ? node.open : undefined, display: style.display, visibility: style.visibility, rects: node.getClientRects().length });
+        }
+        return state;
+      }).catch(() => []);
+      console.error('Synthetic no-JavaScript worklist visibility:', JSON.stringify(ancestors));
+      throw error;
+    }
     // A focused native destination must not retain page-two offset after the
     // server narrows the result to one authorized human folio.
     const archiveMarker = `HK_ARCHIVE_${width}_${randomUUID().slice(0, 6)}`;

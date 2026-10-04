@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ task: vi.fn(), coordination: vi.fn(), assign: vi.fn(), fetch: vi.fn() }));
+const calls = vi.hoisted(() => ({ task: vi.fn(), coordination: vi.fn(), assign: vi.fn(), reload: vi.fn(), replaceState: vi.fn(), fetch: vi.fn() }));
 vi.mock('@/server/actions/tasks', () => ({ changeTaskStatusAction: calls.task }));
 vi.mock('@/server/actions/coordination', () => ({ coordinateWorkAction: calls.coordination }));
 import { changeTaskStatusFormAction } from '@/server/actions/operational-navigation';
@@ -12,7 +12,10 @@ const list = '/libro?q=ruido&clase=entry&pagina=2#registro-entry-origen';
 
 function setCurrent(href: string) {
   const url = new URL(href, origin);
-  vi.stubGlobal('window', { location: { origin, href: url.href, pathname: url.pathname, assign: calls.assign } });
+  vi.stubGlobal('window', {
+    location: { origin, href: url.href, pathname: url.pathname, assign: calls.assign, reload: calls.reload },
+    history: { state: { arohContextPanel: { rowAnchor: 'registro-custody-objeto-real' } }, replaceState: calls.replaceState },
+  });
 }
 
 beforeEach(() => {
@@ -72,6 +75,41 @@ describe('retorno de lista después de acciones nativas', () => {
     calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'objeto-real', message: 'Actualizado', navigateTo: '/custodia' })));
     await changeLostFoundAction(null, new FormData());
     expect(calls.assign).toHaveBeenCalledExactlyOnceWith(origin + '/custodia?estado=EN_CUSTODIA&q=llave&pagina=2#registro-custody-objeto-real');
+    expect(calls.reload).not.toHaveBeenCalled();
+    expect(calls.replaceState).not.toHaveBeenCalled();
+  });
+
+  it.each(['MOVER', 'ENTREGAR', 'DISPONER', 'REABRIR'])('reconsulta el documento tras %s cuando el panel ya usa el mismo fragmento', async action => {
+    const href = '/custodia?estado=EN_CUSTODIA&q=llave&pagina=2#registro-custody-objeto-real';
+    setCurrent(href);
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'objeto-real', message: 'Actualizado', navigateTo: '/custodia' })));
+    const form = new FormData();
+    form.set('id', 'objeto-real'); form.set('version', '7'); form.set('action', action);
+    expect((await changeLostFoundAction(null, form)).ok).toBe(true);
+    expect(calls.replaceState).toHaveBeenCalledExactlyOnceWith(null, '', origin + href);
+    expect(calls.reload).toHaveBeenCalledExactlyOnceWith();
+    expect(calls.assign).not.toHaveBeenCalled();
+    expect(calls.replaceState.mock.invocationCallOrder[0]).toBeLessThan(calls.reload.mock.invocationCallOrder[0]!);
+    expect(JSON.parse(calls.fetch.mock.calls[0]![1].body)).toEqual({ id: 'objeto-real', version: '7', action });
+  });
+
+  it.each(['', '#objeto-123', '#registro-custody-otro'])('reconsulta también si sólo cambia el fragmento anterior: %s', async fragment => {
+    setCurrent('/custodia?q=llave&pagina=2' + fragment);
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, id: 'objeto-real', message: 'Actualizado', navigateTo: '/custodia' })));
+    await changeLostFoundAction(null, new FormData());
+    expect(calls.replaceState).toHaveBeenCalledExactlyOnceWith(null, '', origin + '/custodia?q=llave&pagina=2#registro-custody-objeto-real');
+    expect(calls.reload).toHaveBeenCalledExactlyOnceWith();
+    expect(calls.assign).not.toHaveBeenCalled();
+  });
+
+  it('un rechazo de custodia conserva el panel y el documento actuales', async () => {
+    setCurrent('/custodia?q=llave#registro-custody-objeto-real');
+    const rejection = { ok: false, error: 'El registro cambió. Actualiza antes de continuar.' };
+    calls.fetch.mockResolvedValue(new Response(JSON.stringify(rejection), { status: 400 }));
+    expect(await changeLostFoundAction(null, new FormData())).toEqual(rejection);
+    expect(calls.assign).not.toHaveBeenCalled();
+    expect(calls.reload).not.toHaveBeenCalled();
+    expect(calls.replaceState).not.toHaveBeenCalled();
   });
 
   it('registrar custodia no reabre una selección anterior ni acepta filtros repetidos', async () => {

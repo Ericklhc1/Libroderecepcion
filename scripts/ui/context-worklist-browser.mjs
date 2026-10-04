@@ -2,6 +2,7 @@ import '../etapa1/guard.cjs';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { watchSyntheticNavigation } from './navigation-diagnostics.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
@@ -36,6 +37,7 @@ try {
     const context = await session(width);
     try {
       const page = await context.newPage();
+      const navigationFailure = watchSyntheticNavigation(page);
       page.setDefaultTimeout(15000);
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -103,8 +105,10 @@ try {
       await panel.getByRole('button', { name: 'Cerrar', exact: true }).click();
       await closed(page, nextAnchor, nextPosition);
       const nextPage = page.getByRole('navigation', { name: 'Páginas de coordinación' }).getByRole('link', { name: 'Siguiente →', exact: true });
-      await nextPage.click();
-      await page.waitForURL(url => url.searchParams.get('pagina') === '3');
+      try {
+        await nextPage.click();
+        await page.waitForURL(url => url.searchParams.get('pagina') === '3');
+      } catch (error) { await navigationFailure('coordination-next-page'); throw error; }
       await page.goBack();
       await row.waitFor();
       assert.equal(new URL(page.url()).searchParams.get('pagina'), '2');

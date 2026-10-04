@@ -83,9 +83,11 @@ describe('Custodia contextual conserva lectura, permisos y autoridad nativa', ()
 
   it('abre un enlace profundo sólo si el folio ya está en la página autorizada, también sin JS', async () => {
     const html = await render({ objeto: '512' });
-    const fallback = html.slice(html.indexOf('<noscript>'), html.indexOf('</noscript>'));
+    const fallback = html.match(/<details\b[^>]*data-worklist-fallback[^>]*>[\s\S]*?<\/details>/)?.[0];
+    expect(fallback).toBeDefined();
     expect(fallback).toContain('<details open=""');
     expect(fallback).toContain('Hallazgo real');
+    expect(html).not.toContain('<noscript>');
     expect(await render({ objeto: '999999' })).not.toContain('<details open=""');
     expect(calls.list.mock.calls.every(([, filters]) => !('humanId' in filters))).toBe(true);
   });

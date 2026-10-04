@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowLeft } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import {
@@ -10,6 +10,8 @@ import {
   listReturnKey,
   listReturnLabel,
   readListPosition,
+  sameOperationalList,
+  type ListPosition,
 } from '@/lib/list-navigation';
 
 type ListContextValue = {
@@ -26,42 +28,97 @@ export function ListNavigation({ href, scope, children }: {
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const traversalHref = useRef<string | null>(null);
 
   useEffect(() => {
     let frame = 0;
-    let position = null;
-    let returning = false;
-    const currentHref = href + window.location.hash;
-    try {
-      position = readListPosition(sessionStorage.getItem(listPositionKey(scope, href)));
-      returning = sessionStorage.getItem(listReturnKey(scope)) === currentHref;
-    } catch {
-      // Storage can be disabled; native links and fragment navigation still work.
-    }
-    // A native Back may revisit a list whose fragment still names an earlier
-    // row. The last activated row wins unless this is an explicit return.
-    const anchor = window.location.hash.slice(1);
-    setSelected(returning ? anchor || position?.rowAnchor || null : position?.rowAnchor || anchor || null);
-    if (returning) {
-      const saved = position;
-      // Let the browser complete its fragment navigation, then restore the exact
-      // position only for the explicit return link. Back/Forward remain native.
+    let pagePosition: ListPosition | null = null;
+    const historyKey = () => {
+      const entryKey = window.navigation?.currentEntry?.key;
+      return entryKey ? `${listPositionKey(scope, href)}:history:${entryKey}` : null;
+    };
+    const restore = (fromHistory: boolean, cachedPosition: ListPosition | null = null) => {
+      cancelAnimationFrame(frame);
+      let position = null;
+      let historyPosition = cachedPosition;
+      let returning = false;
+      try {
+        position = readListPosition(sessionStorage.getItem(listPositionKey(scope, href)));
+        const key = historyKey();
+        if (!historyPosition && key) historyPosition = readListPosition(sessionStorage.getItem(key));
+        returning = sessionStorage.getItem(listReturnKey(scope)) === href + window.location.hash;
+      } catch {
+        // Storage can be disabled; native links and fragment navigation still work.
+      }
+      // A native Back may revisit a list whose fragment still names an earlier
+      // row. The last activated row wins unless this is an explicit return.
+      const anchor = window.location.hash.slice(1);
+      const selectedAnchor = returning ? anchor || position?.rowAnchor || null : position?.rowAnchor || anchor || null;
+      if (!returning && !fromHistory) { setSelected(selectedAnchor); return; }
+      // Repeated visits to the same filtered URL are different history entries.
+      // Never restore another visit's scroll. Older browsers without entry keys
+      // keep native restoration, except for a cached document's own snapshot.
+      const saved = returning ? position : historyPosition;
+      // A restored document can paint before the hydrated list has its full
+      // height. Restore presentation after layout, without rewriting history or
+      // changing the browser's scroll-restoration mode. Only explicit returns
+      // move focus; native Back/Forward keep their normal focus behavior.
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
-          const anchor = window.location.hash.slice(1);
-          document.getElementById(anchor)?.focus({ preventScroll: true });
-          if (saved?.rowAnchor === anchor) window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-          try { sessionStorage.removeItem(listReturnKey(scope)); } catch { /* optional storage */ }
+          const target = selectedAnchor ? document.getElementById(selectedAnchor) : null;
+          if (returning) target?.focus({ preventScroll: true });
+          if (saved && document.getElementById(saved.rowAnchor) && (!returning || saved.rowAnchor === selectedAnchor)) {
+            window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+          }
+          setSelected(selectedAnchor);
+          if (returning) { try { sessionStorage.removeItem(listReturnKey(scope)); } catch { /* optional storage */ } }
         });
       });
-    }
-    return () => cancelAnimationFrame(frame);
+    };
+    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    // The original navigation entry survives later client-route changes. Apply
+    // its history signal only to the document URL it actually loaded.
+    const documentHref = navigation ? new URL(navigation.name) : null;
+    const clientTraversal = traversalHref.current !== null && sameOperationalList(traversalHref.current, href);
+    traversalHref.current = null;
+    restore(clientTraversal || (navigation?.type === 'back_forward' && documentHref?.pathname === window.location.pathname && documentHref?.search === window.location.search));
+    const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) restore(true, pagePosition); };
+    const onHistory = () => {
+      cancelAnimationFrame(frame);
+      traversalHref.current = window.location.pathname + window.location.search;
+      // Query-only client traversals may update the href prop after popstate.
+      // Keep that signal until this component renders the destination list.
+      if (!sameOperationalList(traversalHref.current, href)) return;
+      traversalHref.current = null;
+      restore(true);
+    };
+    const onPageHide = () => {
+      try {
+        const last = readListPosition(sessionStorage.getItem(listPositionKey(scope, href)));
+        if (!last || !document.getElementById(last.rowAnchor)) return;
+        pagePosition = { rowAnchor: last.rowAnchor, scrollY: window.scrollY };
+        const key = historyKey();
+        if (key) sessionStorage.setItem(key, JSON.stringify(pagePosition));
+      } catch { /* optional storage */ }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('popstate', onHistory);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('popstate', onHistory);
+    };
   }, [href, scope]);
 
   function remember(rowAnchor: string) {
     setSelected(rowAnchor);
     try {
-      sessionStorage.setItem(listPositionKey(scope, href), JSON.stringify({ rowAnchor, scrollY: window.scrollY }));
+      const position = JSON.stringify({ rowAnchor, scrollY: window.scrollY });
+      sessionStorage.setItem(listPositionKey(scope, href), position);
+      const entryKey = window.navigation?.currentEntry?.key;
+      if (entryKey) sessionStorage.setItem(`${listPositionKey(scope, href)}:history:${entryKey}`, position);
     } catch { /* optional storage */ }
   }
 

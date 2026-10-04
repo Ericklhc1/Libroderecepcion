@@ -21,6 +21,7 @@ try {
     await page.goto('http://localhost:3000/novedades/habitacion');
     assert.equal(await page.locator('[data-room-number]').count(), 89);
     await page.getByRole('navigation', { name: 'Pisos del hotel' }).getByRole('link', { name: 'Piso 5', exact: true }).click();
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('piso') === '5' && document.querySelectorAll('[data-room-number]').length === 30);
     assert.equal(await page.locator('[data-room-number]').count(), 30);
     await page.locator('[data-room-number="512"]').click();
     await page.getByRole('heading', { name: 'Habitación 512', exact: true }).waitFor();
@@ -36,6 +37,8 @@ try {
     assert.equal(await page.locator('[data-room-number="512"]').getAttribute('aria-current'), 'page');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.getByRole('link', { name: 'Cerrar', exact: true }).click();
+    await page.waitForURL(url => url.pathname === '/novedades/habitacion' && !url.searchParams.has('habitacion') && url.searchParams.get('piso') === '5');
+    await page.waitForFunction(() => document.querySelectorAll('[data-room-number]').length === 30);
     assert.equal(new URL(page.url()).searchParams.get('habitacion'), null);
     assert.equal(new URL(page.url()).searchParams.get('piso'), '5');
     assert.equal(await page.locator('[data-room-number]').count(), 30);

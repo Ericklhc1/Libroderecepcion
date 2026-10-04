@@ -101,6 +101,8 @@ describe('cabecera persistente y contexto de módulos', () => {
     const nav = readFileSync('src/components/layout/fns-navigation.tsx', 'utf8');
     for (const contract of ["'Escape'", "'ArrowDown'", "'ArrowUp'", "'Home'", "'End'", "'Tab'", "'pointerdown'", "'focusin'", 'aria-controls=', 'trigger?.focus()']) expect(nav).toContain(contract);
     expect(nav).not.toContain('role="menu"');
+    expect(nav).toContain("window.addEventListener('pageshow', onPageShow)");
+    expect(nav).toContain('if (event.persisted) setSelection(null)');
   });
 });
 

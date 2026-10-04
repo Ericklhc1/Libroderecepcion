@@ -1,6 +1,7 @@
 import '../etapa1/guard.cjs';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { watchSyntheticNavigation } from './navigation-diagnostics.mjs';
 
 // Read-only navigation against the existing guarded synthetic fixture. No writes to operations.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright-core');
@@ -35,8 +36,10 @@ try {
       return url.hostname !== 'localhost' || ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'].some(path => url.pathname.startsWith(path)) ? route.abort() : route.continue();
     });
     const page = await context.newPage();
+    const navigationFailure = watchSyntheticNavigation(page);
     page.setDefaultTimeout(12000);
     const hydrationErrors = [];
+    page.on('pageerror', error => hydrationErrors.push(error.message));
     page.on('console', message => { if (message.type() === 'error' && /hydration|didn.t match|server rendered html/i.test(message.text())) hydrationErrors.push(message.text()); });
     await page.goto(base + '/libro?clase=entry&tipo=INCIDENCIA');
     assert.equal(new URL(page.url()).pathname, '/libro', 'The synthetic session must pass native authentication');
@@ -71,8 +74,10 @@ try {
       await panel.waitFor({ state: 'hidden' });
       // Query-only navigation must close the panel and select a single destination.
       await trigger.click();
-      await panel.getByRole('link', { name: 'Mis tareas', exact: true }).click();
-      await page.waitForURL(url => url.pathname === '/libro' && url.searchParams.get('clase') === 'task');
+      try {
+        await panel.getByRole('link', { name: 'Mis tareas', exact: true }).click();
+        await page.waitForURL(url => url.pathname === '/libro' && url.searchParams.get('clase') === 'task');
+      } catch (error) { await navigationFailure('module-task-query'); throw error; }
       await panel.waitFor({ state: 'hidden' });
       await trigger.click();
       assert.equal(await panel.locator('a[aria-current="page"]').getAttribute('href'), '/libro?clase=task');
@@ -136,7 +141,9 @@ try {
     await context.route('**/*', route => new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort());
     const page = await context.newPage();
     await page.goto(base + (key === 'admin' ? '/libro' : '/admin/housekeeping'));
-    await page.getByText('Abrir módulos disponibles', { exact: true }).click();
+    const nativeSummary = page.locator('noscript details > summary');
+    assert.equal(await nativeSummary.textContent(), 'Abrir módulos disponibles');
+    await nativeSummary.click();
     const fallback = page.getByRole('navigation', { name: 'Módulos sin JavaScript', exact: true });
     await fallback.waitFor();
     assert.ok(await fallback.locator('a[href="/admin/housekeeping"]').count() > 0);

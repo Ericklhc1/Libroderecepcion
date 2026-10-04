@@ -70,7 +70,7 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
     expect(safeListReturnHref('/reservas?habitacion=512', '/libro')).toBe('/libro');
   });
 
-  it('renderiza enlaces canónicos sin JS y mantiene formularios sólo en noscript antes de hidratar', () => {
+  it('renderiza el contexto nativo sin JS y una sola copia de formularios antes de hidratar', () => {
     const html = renderToStaticMarkup(<ContextWorklist href={href} scope={scope} label="Trabajo pendiente" rows={[{
       id, title: 'Asunto #512 · Revisar equipo', href: '/tareas/trabajo-real',
       summary: <p>Responsable real · Siguiente acción canónica</p>,
@@ -81,9 +81,11 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
     expect(html).toContain('Abrir ficha completa');
     expect(html).toContain('Responsable real · Siguiente acción canónica');
     expect(html).not.toContain('role="dialog"');
-    const start = html.indexOf('<noscript>');
-    const end = html.indexOf('</noscript>');
+    const start = html.indexOf('<details');
+    const end = html.indexOf('</details>');
     expect(start).toBeGreaterThan(-1);
+    expect(html).not.toContain('<noscript>');
+    expect(html.slice(start, end)).toContain('data-worklist-fallback');
     expect(html.indexOf('<form>')).toBeGreaterThan(start);
     expect(html.indexOf('</form>')).toBeLessThan(end);
     expect(html.match(/<form>/g)).toHaveLength(1);
@@ -106,6 +108,7 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
     expect(component).toContain('window.history.pushState({ [WORKLIST_HISTORY_KEY]');
     expect(component).toContain("window.addEventListener('popstate'");
     expect(component).toContain('event.metaKey || event.ctrlKey || event.altKey || event.shiftKey');
+    expect(component).toContain('{!hydrated && <details');
     expect(dialog).toContain("presentation = 'centered'");
     expect(dialog).toContain('lockBodyScroll()');
     expect(dialog).toContain('if (activeDialogs.at(-1) !== id) return;');

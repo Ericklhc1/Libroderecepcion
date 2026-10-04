@@ -52,7 +52,10 @@ function checkFilters(page, marker, status) {
   assert.equal(url.searchParams.has('objeto'), false, 'Native success returns to the filtered list');
 }
 async function submit(page, button) {
-  await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), button.click()]);
+  const [navigation] = await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), button.click()]);
+  assert.ok(navigation, 'A saved custody action must reload the document, not only navigate its fragment');
+  assert.equal(navigation.request().resourceType(), 'document');
+  assert.equal(navigation.ok(), true);
 }
 async function nativeChange(context, fields) {
   const response = await context.request.post(base + '/api/operational-actions/custody-change', { headers: { Origin: base }, data: fields });
@@ -121,20 +124,36 @@ try {
     await page.keyboard.press('Escape');
     await page.goto(base + list);
     await row.click();
+    await panel.getByRole('button', { name: 'Mover / cambiar responsable', exact: true }).click();
+    inner = page.getByRole('dialog', { name: 'Mover / cambiar responsable', exact: true });
+    await inner.locator('input[name=custodyLocation]').fill('Gabinete confirmado desde formulario');
+    await inner.locator('textarea[name=note]').fill('Movimiento nativo posterior al rechazo obsoleto');
+    await submit(page, inner.getByRole('button', { name: 'Guardar cambio', exact: true }));
+    checkFilters(page, marker, 'EN_CUSTODIA');
+    record = await db.lostFoundItem.findUniqueOrThrow({ where: { id: record.id } });
+    assert.equal(record.custodyLocation, 'Gabinete confirmado desde formulario');
+    assert.equal(record.version, 3);
+    assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 3);
+    await row.getByText('Gabinete confirmado desde formulario', { exact: false }).waitFor();
+    assert.equal(await page.locator('[data-worklist-panel]').count(), 0, 'A saved change returns to the list even when the row remains visible');
+    await row.click();
+    await panel.getByText('Gabinete confirmado desde formulario', { exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Registrar entrega', exact: true }).click();
     inner = page.getByRole('dialog', { name: 'Registrar entrega', exact: true });
     await inner.locator('textarea[name=note]').fill('Entrega registrada en prueba');
     await inner.getByRole('button', { name: 'Cerrar custodia', exact: true }).click();
     assert.equal(await inner.locator('textarea[name=evidenceNote]').evaluate(input => input.validity.valueMissing), true);
-    assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 2, 'Evidence cannot be inferred from opening a form');
+    assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 3, 'Evidence cannot be inferred from opening a form');
     await inner.locator('textarea[name=evidenceNote]').fill('Acta de entrega sintética');
     await submit(page, inner.getByRole('button', { name: 'Cerrar custodia', exact: true }));
     checkFilters(page, marker, 'EN_CUSTODIA');
-    await page.getByText('No hay objetos con estos filtros.', { exact: true }).waitFor();
     record = await db.lostFoundItem.findUniqueOrThrow({ where: { id: record.id } });
     assert.equal(record.status, 'ENTREGADO');
     assert.equal(record.closedById, fixture.users.admin.id);
     assert.equal(record.evidenceNote, 'Acta de entrega sintética');
+    await page.getByText('No hay objetos con estos filtros.', { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-worklist-panel]').count(), 0);
+    assert.equal(await row.count(), 0, 'The delivered object is no longer in the EN_CUSTODIA list');
 
     await page.goto(base + filteredHref(marker, 'ENTREGADO', record.humanId));
     await panel.waitFor();
@@ -165,9 +184,9 @@ try {
     await page.getByText('No hay objetos con estos filtros.', { exact: true }).waitFor();
     record = await db.lostFoundItem.findUniqueOrThrow({ where: { id: record.id } });
     assert.equal(record.status, 'DISPUESTO');
-    assert.equal(record.version, 5);
+    assert.equal(record.version, 6);
     const events = await db.lostFoundEvent.findMany({ where: { itemId: record.id }, orderBy: { createdAt: 'asc' } });
-    assert.deepEqual(events.map(event => event.action), ['REGISTRAR', 'MOVER', 'ENTREGAR', 'REABRIR', 'DISPONER']);
+    assert.deepEqual(events.map(event => event.action), ['REGISTRAR', 'MOVER', 'MOVER', 'ENTREGAR', 'REABRIR', 'DISPONER']);
     assert.ok(events.every(event => event.actorId === fixture.users.admin.id));
 
     // Existing hash links still reach the correct original folio.
@@ -195,7 +214,7 @@ try {
     await readOnly.page.reload();
     await readPanel.getByRole('button', { name: 'Reabrir custodia', exact: true }).waitFor();
     await readOnly.page.getByRole('button', { name: 'Registrar objeto', exact: true }).waitFor();
-    assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 5, 'Granting permission and viewing do not register a handover');
+    assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 6, 'Granting permission and viewing do not register a handover');
 
     const noJs = await session(fixture.users.admin.token, width, { javaScriptEnabled: false });
     await noJs.page.goto(base + deepLink);
@@ -207,7 +226,7 @@ try {
     await page.goto(base + closedList + '&objeto=999999999');
     await row.waitFor();
     assert.equal(await page.locator('[data-worklist-panel]').count(), 0, 'An unreturned folio cannot open a record');
-    results.push({ width, compactList: true, originalFolio: true, nestedEscape: true, backForward: true, focusRestored: true, staleVersionRejected: true, evidenceRequired: true, filtersAfterNativeActions: true, deliveryReopenDisposition: true, actorAndHistoryPreserved: true, readOnlyAndRoleGrant: true, nativeNoJavaScriptRead: true, physicalSafari: false });
+    results.push({ width, compactList: true, originalFolio: true, nestedEscape: true, backForward: true, focusRestored: true, staleVersionRejected: true, nativeMoveReloaded: true, evidenceRequired: true, filtersAfterNativeActions: true, deliveryReopenDisposition: true, actorAndHistoryPreserved: true, readOnlyAndRoleGrant: true, nativeNoJavaScriptRead: true, physicalSafari: false });
     await admin.context.close(); await readOnly.context.close(); await noJs.context.close();
   }
 } finally {

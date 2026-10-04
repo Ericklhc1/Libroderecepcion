@@ -31,6 +31,11 @@ function DesktopModules({ groups, badges }: Props) {
 
   // Do not resurrect an old disclosure when browser Back returns to its route.
   useEffect(() => { setSelection(null); }, [route]);
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) setSelection(null); };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
 
   useEffect(() => {
     if (openIndex === null) return;

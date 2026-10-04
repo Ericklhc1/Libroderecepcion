@@ -15,6 +15,7 @@ const base = 'http://localhost:3000';
 const marker = `SEARCH_CONTEXT_${Date.now()}`;
 const entryQuery = `${marker} ENTRY habitación &`;
 const taskQuery = `${marker} TASK`;
+const workDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const results = [];
 const errors = [];
 const mutations = [];
@@ -139,9 +140,9 @@ try {
   const privateFollowUp = await db.followUp.create({ data: { action: privateTitle, visibility: 'PRIVADO', createdById: fixture.users.worker.id, ownerId: fixture.users.worker.id } });
   const privateTask = await db.task.create({ data: { title: privateTitle, followUpId: privateFollowUp.id, createdById: fixture.users.worker.id } });
   const hkVisibleTitle = `${marker} HK_OWN_VISIBLE`;
-  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-own`, workflowVersion: 1, title: hkVisibleTitle, description: 'Synthetic own work', createdById: fixture.users.maid.id, assignedToId: fixture.users.maid.id, departmentId: fixture.areaId } });
+  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-own`, workflowVersion: 1, workKind: 'ATENCION', workDate, title: hkVisibleTitle, description: 'Synthetic own work', createdById: fixture.users.maid.id, assignedToId: fixture.users.maid.id, departmentId: fixture.areaId } });
   const hkHiddenTitle = `${marker} HK_OTHER_EXCLUDED`;
-  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-other`, workflowVersion: 1, title: hkHiddenTitle, description: 'Synthetic other work', createdById: fixture.users.admin.id, assignedToId: fixture.users.admin.id, departmentId: fixture.areaId } });
+  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-other`, workflowVersion: 1, workKind: 'ATENCION', workDate, title: hkHiddenTitle, description: 'Synthetic other work', createdById: fixture.users.admin.id, assignedToId: fixture.users.admin.id, departmentId: fixture.areaId } });
   const hkDemoTitle = `${marker} HK_DEMO_EXCLUDED`;
   await db.housekeepingRequest.create({ data: { requestKey: `${marker}-demo`, isDemo: true, title: hkDemoTitle, createdById: fixture.users.admin.id } });
 

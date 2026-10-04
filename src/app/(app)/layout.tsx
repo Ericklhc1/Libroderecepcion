@@ -99,7 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-screen min-w-0">
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
-            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 flex-wrap items-center gap-2 px-4 py-2 lg:gap-3 xl:flex-nowrap">
+            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2 flex-wrap lg:gap-3 xl:flex-nowrap">
               <Link href="/" className="min-w-0 max-w-[min(12rem,45vw)] shrink-0" title={'AROH Central IA · ' + hotelName}>
                 <span className="block text-sm font-semibold text-petrol-950">AROH <span className="text-gold-600">Central IA</span></span>
                 <span className="block truncate text-xs text-slate-500">{hotelName}</span>

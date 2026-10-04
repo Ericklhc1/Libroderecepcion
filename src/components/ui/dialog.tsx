@@ -163,10 +163,10 @@ export function Dialog({
             Tampoco usamos `animate-fade-in` en este nodo: esa animación escribe
             `transform` y pisaría el `translate` que hace el centrado.
           */
-          'fixed flex flex-col border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none dialog-enter',
+          'border border-slate-300 bg-white shadow-[0_18px_48px_-28px_rgba(9,24,32,0.45)] outline-none dialog-enter',
           presentation === 'side-panel'
-            ? 'inset-y-0 right-0 h-[100dvh] max-h-[100dvh] w-full max-w-2xl'
-            : 'left-[50vw] top-[50dvh] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg',
+            ? 'fixed inset-y-0 right-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col'
+            : 'fixed left-[50vw] top-[50dvh] flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg',
           presentation === 'centered' && (width === 'sm' ? 'max-w-md' : width === 'lg' ? 'max-w-3xl' : 'max-w-xl'),
         )}
       >

@@ -35,6 +35,8 @@ export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
 
 async function assertDerivedFollowUpAccess(tx:Prisma.TransactionClient, user:CurrentUser, follow:{id:string;ownerId:string;visibility:SupervisionVisibility}, validateVisibility=true) {
   const sources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUpId:true,followUp:{select:{visibility:true}}}});
+  // Una continuidad sin otro seguimiento de origen mantiene su asignación nativa.
+  if(sources.length===0)return;
   // A source reserve cannot change while its evidence is copied/assigned.
   for(const source of [...sources].sort((a,b)=>a.followUpId.localeCompare(b.followUpId))){
     await tx.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${source.followUpId} FOR SHARE`;

@@ -1,3 +1,4 @@
+import {prepareSubjectIntent} from './fronti-v2/subject-intent';
 import 'server-only';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import { FRONTI_ACTIONS } from './execution/catalog';
@@ -947,7 +948,7 @@ export async function runReceptionAssistant(
   user: CurrentUser,
   messages: AssistantMessage[],
   runtimeContext: FrontiRuntimeContext | null = null,
-  options: { shared?: boolean } = {},
+  options: { shared?: boolean; requestKey?:string } = {},
 ): Promise<AssistantResult> {
   const telemetry = startFrontiAgentRun(user.id);
   const startedAt = telemetry.startedAt.getTime();
@@ -970,6 +971,13 @@ export async function runReceptionAssistant(
       return { reply: scheduleReviewReply(data), confirmations: [] };
     }
 
+    if(!options.shared){
+      const prepared=await prepareSubjectIntent(user,messages,runtimeContext?.page??null,options.requestKey);
+      if(prepared){
+        recordFrontiAgentRun(telemetry,{provider:'system',model:'subject-intent',configuredProvider:config.provider,configuredModel:config.model,models:[],durationMs:Date.now()-startedAt,loops:0,tools:[{name:'preparar_procedimiento',ok:true}],outcome:'success'});
+        return prepared;
+      }
+    }
     const providers = await resolveFrontiProviderChainRuntime({
       reasoningEffort: config.reasoningEffort,
     });

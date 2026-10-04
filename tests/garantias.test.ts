@@ -642,7 +642,7 @@ describe('garantías', () => {
       dueAt: ayer,
     });
 
-    const { blocks } = await getSupervisionData();
+    const { blocks } = await getSupervisionData(user);
     const bloque = blocks.find((block) => block.key === 'garantias');
     expect(bloque).toBeDefined();
     expect(bloque?.rows).toHaveLength(1);

@@ -233,15 +233,16 @@ export function ActionForm({
 }) {
   const router = useRouter();
   const close = useDialogClose();
+  const formId = useId();
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
     const result = await action(previous, formData);
+    if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
     // Server Actions may persist before React commits useActionState's returned state.
     // Close only after an explicit successful result; validation/errors remain visible.
     if (result.ok && !result.credentials && closeOnSuccess && close) close();
     return result;
-  }, [action, close, closeOnSuccess]);
+  }, [action, close, closeOnSuccess, formId]);
   const [state, formAction] = useActionState(actionWithImmediateDialogClose, null);
-  const formId = useId();
   const submitted = useRef<Map<string, ControlValue> | null>(null);
   const handledSuccess = useRef<ActionState | null>(null);
   const handledError = useRef<ActionState | null>(null);

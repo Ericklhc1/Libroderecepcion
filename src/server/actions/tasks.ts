@@ -12,6 +12,8 @@ import {
   taskStatusSchema,
   taskUpdateSchema,
 } from '@/server/schemas';
+import { taskFollowUpReadWhere } from '@/server/services/followup-access';
+import { NotFoundError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 import { requirePermission, requirePermissionOrOwner } from '@/server/auth/guard';
 import {
@@ -87,13 +89,15 @@ export async function changeTaskStatusAction(
       que se le asignó. El permiso se comprueba primero, así que quien lo
       tiene no paga la consulta extra.
     */
-    const user = await requirePermissionOrOwner('task.edit', async () => {
+    const validation = input.status === 'VALIDADA' || input.status === 'DEVUELTA';
+    const user = validation ? await requirePermission('supervision.task.validate') : await requirePermissionOrOwner('task.edit', async () => {
       const task = await prisma.task.findUnique({
         where: { id: input.id },
         select: { assigneeId: true, createdById: true },
       });
       return [task?.assigneeId, task?.createdById];
     });
+    if (!await prisma.task.count({ where: { id: input.id, AND: [taskFollowUpReadWhere(user)] } })) throw new NotFoundError();
     const task = await changeTaskStatus(user, input, revisionFromForm(formData));
     refresh(task.id);
     return { ok: true as const, message: 'Estado de la tarea actualizado.', id: task.id, committedRevision: operationalRecordRevision('tasks', task) };

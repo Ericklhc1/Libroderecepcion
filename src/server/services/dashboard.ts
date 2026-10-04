@@ -1,4 +1,6 @@
 import 'server-only';
+import {visibleHandover} from './handover-snapshot';
+import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import {
   AlertLevel,
   AlertStatus,
@@ -107,20 +109,20 @@ export async function getDashboardData(user: CurrentUser) {
       take: 8,
     }),
     prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
+      where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
       select: { id: true, title: true, priority: true },
       orderBy: { dueAt: 'asc' },
       take: 8,
     }),
     prisma.task.findMany({
-      where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
+      where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
       select: { id: true, dueAt: true },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 8,
     }),
     prisma.followUp.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[followUpReadWhere(user)],
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
       },
       select: {
@@ -184,7 +186,7 @@ export async function getDashboardData(user: CurrentUser) {
       },
     }),
     prisma.task.count({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES } },
     }),
     prisma.operationalEntry.count({
       where: {
@@ -249,7 +251,7 @@ export async function getDashboardData(user: CurrentUser) {
   return {
     now,
     myShift,
-    incoming,
+    incoming: incoming ? await visibleHandover(user,incoming) : null,
     nextShift,
     shiftMetrics,
     criticalEntries,

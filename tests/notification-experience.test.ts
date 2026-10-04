@@ -43,8 +43,8 @@ describe('experiencia de notificaciones', () => {
     const detail = readFileSync('src/app/(app)/tareas/[id]/page.tsx', 'utf8');
 
     expect(list).toContain('status={TaskStatus.COMPLETADA}');
-    expect(detail).toContain('status={TaskStatus.COMPLETADA}');
+    expect(detail).toContain("statusAction(TaskStatus.COMPLETADA, 'Resolver')");
     expect(list).toContain('Boolean(task.evidenceRequired)');
-    expect(detail).toContain('Boolean(task.evidenceRequired)');
+    expect(detail).toContain('task.evidenceRequired || task.requiresIndependentValidation');
   });
 });

@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
+import type {Prisma} from '@prisma/client';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 import {
   AuditAction,
   EntryStatus,
@@ -10,7 +12,7 @@ import {
   Severity,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_KEYS,type PermissionKey } from '@/lib/permissions';
 import { TASK_OPEN_STATUSES } from '@/domain/labels';
 import { compactNotificationText, parseFrontiNotificationSummary } from '@/domain/notification-summary';
 import { formatDateTime } from '@/lib/format';
@@ -421,14 +423,36 @@ function canReceiveCandidate(
   return true;
 }
 
+/** Re-read identity and reserved source before claims and before copying evidence. */
+async function authorizedRecipient(db:Prisma.TransactionClient,userId:string,candidate:FrontiProactiveCandidate){
+  const row=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null,role:{key:{in:[ROLE_KEYS.SUPERVISOR,ROLE_KEYS.SYSTEM_ADMIN]}}},select:{id:true,frontiAccessEnabled:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+  if(!row || row.role.key!==ROLE_KEYS.SYSTEM_ADMIN&&!row.frontiAccessEnabled)return false;
+  const permissions=row.role.permissions.map(p=>p.permission.key);
+  const recipient={id:row.id,roleKey:row.role.key,frontiAccessEnabled:row.frontiAccessEnabled,permissions:new Set(permissions)};
+  if(!canReceiveCandidate(recipient,candidate))return false;
+  const reader={id:row.id,permissions:permissions as PermissionKey[]};
+  if(candidate.entityType==='Task')return Boolean(await db.task.count({where:{id:candidate.entityId,deletedAt:null,AND:[taskFollowUpReadWhere(reader)]}}));
+  if(candidate.entityType==='FollowUp')return Boolean(await db.followUp.count({where:{id:candidate.entityId,AND:[followUpReadWhere(reader)]}}));
+  if(candidate.entityType==='Alert')return Boolean(await db.alert.count({where:{id:candidate.entityId,deletedAt:null,AND:[alertReadWhere(reader)]}}));
+  return true;
+}
+async function lockCandidateSource(tx:Prisma.TransactionClient,candidate:FrontiProactiveCandidate){
+  if(candidate.entityType==='Task'){
+    await tx.$queryRaw`SELECT id FROM "Task" WHERE id=${candidate.entityId} FOR SHARE`;
+    await tx.$queryRaw`SELECT f.id FROM "FollowUp" f JOIN "TaskSourceFollowUp" o ON o."followUpId"=f.id WHERE o."taskId"=${candidate.entityId} FOR SHARE OF f`;
+  }
+}
+
 async function claimRecipients(
   signalIdValue: string,
   userIds: string[],
   now: Date,
   cutoff: Date,
+  candidate:FrontiProactiveCandidate,
 ): Promise<string[]> {
   return prisma.$transaction(async (tx) => {
     const claimed: string[] = [];
+    await lockCandidateSource(tx,candidate);
 
     /*
      * Una sola transacción por señal: si dos instancias llegan a la vez, la
@@ -437,6 +461,7 @@ async function claimRecipients(
      * destinatarios. Así tampoco duplicamos inferencia ni auditoría.
      */
     for (const userId of userIds) {
+      if(!await authorizedRecipient(tx,userId,candidate))continue;
       const rows = await tx.$queryRaw<Array<{ userId: string }>>`
         INSERT INTO "FrontiProactiveClaim" ("signalId", "userId", "claimedAt")
         VALUES (${signalIdValue}, ${userId}, ${now})
@@ -594,13 +619,14 @@ export async function runFrontiProactiveSweep(input: {
     if (remainingMs <= 5_000) break;
 
     const id = signalId(candidate.key);
-    const userIds = recipientPool
-      .filter((recipient) => canReceiveCandidate(recipient, candidate))
-      .map((recipient) => recipient.id);
+    const userIds:string[]=[];
+    for(const recipient of recipientPool){
+      if(canReceiveCandidate(recipient,candidate)&&await authorizedRecipient(prisma,recipient.id,candidate))userIds.push(recipient.id);
+    }
 
     if (!userIds.length) continue;
 
-    const claimedUserIds = await claimRecipients(id, userIds, now, cutoff);
+    const claimedUserIds = await claimRecipients(id, userIds, now, cutoff,candidate);
     if (!claimedUserIds.length) {
       skippedCooldown += 1;
       continue;
@@ -614,8 +640,13 @@ export async function runFrontiProactiveSweep(input: {
     analysed += 1;
     if (explanation.usedFallback) fallbackExplanations += 1;
 
+    const delivered=await prisma.$transaction(async tx=>{
+      await lockCandidateSource(tx,candidate);
+      const allowed:string[]=[];
+      for(const userId of claimedUserIds){if(await authorizedRecipient(tx,userId,candidate))allowed.push(userId);}
+      if(!allowed.length)return 0;
     await notify(
-      claimedUserIds.map((userId) => ({
+      allowed.map((userId) => ({
         userId,
         type: NotificationType.FRONTI_HALLAZGO,
         title: `${candidate.severity === 'CRITICA' ? 'Crítica · ' : ''}${candidate.title}`,
@@ -624,8 +655,8 @@ export async function runFrontiProactiveSweep(input: {
         entity: 'FrontiProactiveSignal',
         entityId: id,
       })),
+      tx,
     );
-    notified += claimedUserIds.length;
 
     await recordAudit({
       entity: 'FrontiProactiveSignal',
@@ -643,9 +674,12 @@ export async function runFrontiProactiveSweep(input: {
         provider: explanation.provider,
         model: explanation.model,
         deterministicFallback: explanation.usedFallback,
-        recipients: claimedUserIds.length,
+        recipients: allowed.length,
       },
+    },tx);
+      return allowed.length;
     });
+    notified+=delivered;
   }
 
   return {

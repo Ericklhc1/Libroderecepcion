@@ -1,0 +1,126 @@
+import '../etapa1/guard.cjs';
+import assert from 'node:assert/strict';
+import { PrismaClient } from '@prisma/client';
+import { readFileSync,writeFileSync } from 'node:fs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
+const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
+const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[];
+try{
+  const room=await db.room.findFirstOrThrow({select:{id:true,number:true}});
+  for(const width of [1280,390]){
+    const context=await browser.newContext({viewport:{width,height:900}});
+    await context.addCookies([{name:'lor_session',value:f.users.admin.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+    await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
+    const page=await context.newPage();page.setDefaultTimeout(12000);
+    const entry=await db.operationalEntry.create({data:{type:'NOVEDAD',title:`PRUEBA AUTOMÁTICO DE IA · Asunto ${width}`,description:'Contexto original que debe conservarse sin transcribir',createdById:f.users.admin.id,ownerId:f.users.admin.id,departmentId:f.areaId,roomId:room.id,priority:'ALTA'}});
+    const reserved=await db.followUp.create({data:{action:'PRUEBA_PRIVADA_NO_PROYECTAR',createdById:f.users.worker.id,ownerId:f.users.worker.id,visibility:'PRIVADO',entryId:entry.id}});
+    const reservedTask=await db.task.create({data:{title:'PRUEBA_PRIVADA_NO_PROYECTAR',createdById:f.users.worker.id,followUpId:reserved.id,entryId:entry.id}});
+    await page.goto(`http://localhost:3000/libro/${entry.id}`);
+    const surface=page.locator('[aria-label="Acciones del asunto"]');
+    const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.checkVisibility()).length);
+    assert.ok(visibleBefore<=4,`Una primaria, hasta dos secundarias y Más: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
+    const sourceText=await page.locator('main').innerText();
+    if(sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'))console.error('Synthetic reserved projection:',await page.locator('main').getByText('PRUEBA_PRIVADA_NO_PROYECTAR',{exact:true}).evaluateAll(es=>es.map(e=>({tag:e.tagName,section:e.closest('section')?.innerText,visible:e.getClientRects().length>0}))),sourceText);
+    assert.ok(!sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'));
+    assert.equal(await surface.getByRole('button',{name:'Editar',exact:true}).isVisible(),false);
+    await surface.getByText('Más ···',{exact:true}).click();
+    await surface.getByRole('button',{name:'Solicitar otra atención',exact:true}).click();
+    const dialog=page.getByRole('dialog');
+    const formStarted=await page.evaluate(()=>{window.__arohResultAt=null;window.addEventListener('aroh:action-result',()=>{window.__arohResultAt=performance.now();},{once:true});return performance.now();});
+    assert.equal(await dialog.locator('input[name=title]').inputValue(),entry.title);
+    assert.equal(await dialog.locator('textarea[name=description]').inputValue(),entry.description);
+    assert.equal(await dialog.locator('select[name=roomId]').inputValue(),room.id);
+    assert.equal(await dialog.locator('select[name=departmentId]').inputValue(),f.areaId);
+    assert.equal(await dialog.locator('select[name=priority]').inputValue(),'ALTA');
+    await dialog.getByRole('button',{name:'Asignar tarea',exact:true}).click();
+    await dialog.waitFor({state:'hidden'});
+    const resultAt=await page.evaluate(()=>window.__arohResultAt);
+    let measured;
+    for(let attempt=0;attempt<30;attempt++){
+      const records=await db.operationalMetricEvent.findMany({where:{userId:f.users.admin.id,entityId:entry.id,eventType:'UX_RESULT'},orderBy:{createdAt:'desc'}});
+      measured=records.find(r=>r.metadata?.selectedAction==='REQUEST_ATTENTION');
+      if(measured)break;
+      await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    assert.ok(measured,'El resultado continúa la intención original');
+    const actions=await db.operationalMetricEvent.findMany({where:{correlationId:measured.correlationId,eventType:'UX_ACTION'}});
+    assert.equal(actions.filter(r=>r.metadata?.selectedAction==='REQUEST_ATTENTION').length,1,'Enviar no duplica la acción');
+    assert.ok(measured.durationMs>=Math.floor(resultAt-formStarted)-2,'Duración incluye completar formulario');
+    await page.reload();
+    await surface.getByRole('link',{name:'Continuar atención',exact:true}).click();
+    const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null}});
+    assert.equal(await db.task.count({where:{entryId:entry.id,followUpId:null}}),1);
+    assert.equal(task.roomId,room.id);assert.equal(task.departmentId,f.areaId);
+    await page.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
+    await page.getByRole('button',{name:'Resolver',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Resolver',exact:true}).click();
+    await page.getByRole('link',{name:'Ver historial',exact:true}).waitFor();
+    await page.goto(`http://localhost:3000/libro/${entry.id}`);
+    await page.getByText(/Resultado recibido · Completada/).waitFor();
+    await db.task.update({where:{id:task.id},data:{status:'DEVUELTA',returnReason:'Resultado devuelto para corrección'}});
+    await page.reload();
+    await page.getByText(/Último intento histórico · Devuelta/).waitFor();
+    assert.ok(!(await page.locator('main').innerText()).includes('Resultado recibido · Devuelta'));
+    await page.goto(`http://localhost:3000/novedades/habitacion?habitacion=${room.number}`);
+    await page.getByRole('button',{name:'Registrar / actuar',exact:true}).click();
+    await page.getByText('Informar algo',{exact:true}).click();
+    assert.equal(await page.getByRole('dialog').locator('input[name=type]').inputValue(),'NOVEDAD');
+    assert.equal(await page.getByRole('dialog').locator('select[name=roomId]').inputValue(),room.id);
+    await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+    await page.getByRole('button',{name:'Registrar / actuar',exact:true}).click();
+    await page.getByText('Necesito atención / derivar',{exact:true}).click();
+    assert.equal(await page.getByRole('dialog').locator('select[name=roomId]').inputValue(),room.id);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+    assert.ok(await db.operationalMetricEvent.count({where:{userId:f.users.admin.id,eventType:'UX_ROUTE'}})>0);
+    const events=await db.operationalMetricEvent.findMany({where:{userId:f.users.admin.id,eventType:{startsWith:'UX_'}}});
+    assert.ok(!JSON.stringify(events).includes(entry.description));
+    results.push({width,sourceContextInherited:true,sourceResultVisible:true,parallelTasks:1,reservedWorkHidden:true,visibleActions:visibleBefore,intentions:true,escape:true,overflow:false,telemetryWithoutContent:true});
+    await db.operationalEntry.update({where:{id:entry.id},data:{resolution:'Resultado anterior rechazado',status:'ABIERTO',reopenedAt:new Date()}});
+    await page.goto(`http://localhost:3000/libro/${entry.id}`);
+    const reopenedContext=await page.locator('[aria-label="Continuidad del asunto"]').innerText();
+    assert.ok(reopenedContext.includes('Último intento histórico: Resultado anterior rechazado'));
+    assert.ok(!reopenedContext.includes('Resultado: Resultado anterior rechazado'));
+    const worker=await db.user.findUniqueOrThrow({where:{id:f.users.worker.id},select:{roleId:true}});
+    const editGrants=await db.rolePermission.findMany({where:{roleId:worker.roleId,permission:{key:{in:['entry.edit','task.assign']}}}});
+    const ownUnassigned=await db.operationalEntry.create({data:{type:'NOVEDAD',title:`PRUEBA CREADOR SIN EDITAR ${width}`,description:'No comenzar sin responsable',createdById:f.users.worker.id}});
+    const limitedContext=await browser.newContext({viewport:{width,height:900}});
+    try{
+      await db.rolePermission.deleteMany({where:{roleId:worker.roleId,permission:{key:{in:['entry.edit','task.assign']}}}});
+      await limitedContext.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+      const limitedPage=await limitedContext.newPage();
+      await limitedPage.goto(`http://localhost:3000/libro/${ownUnassigned.id}`);
+      await limitedPage.locator('[aria-label="Continuidad del asunto"]').waitFor();
+      assert.equal(await limitedPage.locator('[aria-label="Acciones del asunto"]').getByRole('button',{name:'Comenzar atención',exact:true}).count(),0);
+      assert.equal((await db.operationalEntry.findUniqueOrThrow({where:{id:ownUnassigned.id}})).status,'ABIERTO');
+      const ownTask=await db.task.create({data:{title:`PRUEBA TRABAJO SIN DUEÑO ${width}`,createdById:f.users.worker.id}});
+      await limitedPage.goto(`http://localhost:3000/tareas/${ownTask.id}`);
+      await limitedPage.locator('[aria-label="Continuidad del asunto"]').waitFor();
+      const taskSurface=limitedPage.locator('[aria-label="Acciones del asunto"]');
+      assert.equal(await taskSurface.getByRole('button',{name:'Comenzar atención',exact:true}).count(),0);
+      await taskSurface.getByText('Espera la asignación de una persona responsable',{exact:true}).waitFor();
+      assert.equal((await db.task.findUniqueOrThrow({where:{id:ownTask.id}})).status,'PENDIENTE');
+    }finally{
+      if(editGrants.length)await db.rolePermission.createMany({data:editGrants,skipDuplicates:true});
+      await limitedContext.close();
+    }
+    const demoMarker=`PRUEBA_HK_RESERVADO_${width}`;
+    await db.housekeepingRequest.create({data:{requestKey:`reserved-subject-${width}`,sourceEntryId:entry.id,isDemo:true,resolution:demoMarker,createdById:f.users.admin.id}});
+    const scopedContext=await browser.newContext({viewport:{width,height:900}});
+    await scopedContext.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+    const scopedPage=await scopedContext.newPage();
+    await scopedPage.goto(`http://localhost:3000/libro/${entry.id}`);
+    assert.ok(!(await scopedPage.locator('main').innerText()).includes(demoMarker),'La fachada respeta reserva histórica');
+    await db.auditLog.create({data:{entity:'Task',entityId:reservedTask.id,action:'CREAR',summary:'PRUEBA_PRIVADA_NO_PROYECTAR',after:{evidence:'PRUEBA_PRIVADA_NO_PROYECTAR'}}});
+    await db.notification.create({data:{userId:f.users.admin.id,type:'ACCION_REQUERIDA',entity:'Task',entityId:reservedTask.id,title:'PRUEBA_PRIVADA_NO_PROYECTAR',body:'PRUEBA_PRIVADA_NO_PROYECTAR'}});
+    // Buscar por prefijo evita confundir el título «Resultados para…» con una fila filtrada.
+    for(const path of ['/historial?q=PRUEBA_PRIVADA','/admin/auditoria?q=PRUEBA_PRIVADA','/notificaciones?q=PRUEBA_PRIVADA']){
+      await page.goto(`http://localhost:3000${path}`);
+      const text=await page.locator('main').innerText();
+      assert.ok(!text.includes('PRUEBA_PRIVADA_NO_PROYECTAR'),`${path}: no copia una fuente reservada a otra persona`);
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    }
+    await scopedContext.close();
+    await context.close();
+  }
+}finally{writeFileSync('etapa4-subject-browser-results.json',JSON.stringify({results},null,2));await browser.close();await db.$disconnect();}

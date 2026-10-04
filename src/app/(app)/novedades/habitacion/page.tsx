@@ -13,7 +13,7 @@ import {
 import { requirePageUser } from '@/server/auth/guard';
 import { getFormOptions } from '@/server/services/options';
 import { listAlarmCandidates } from '@/server/services/operational-alarms';
-import { Dialog } from '@/components/ui/dialog';
+import { IntentDialog } from '@/components/operational/intent-dialog';
 import { EntryForm } from '@/components/forms/entry-form';
 import { TaskForm } from '@/components/forms/task-form';
 import { OperationalAlarmCreateForm } from '@/components/operational/operational-alarm-form';
@@ -170,12 +170,12 @@ export default async function RoomOperationsMonitor({
   const params = await searchParams;
   const requestedRoom = one(params.habitacion).trim();
 
-  const overview = await getRoomMonitorOverview();
+  const overview = await getRoomMonitorOverview(user);
   const selectedTile =
     overview.rooms.find((room) => room.number === requestedRoom) ?? null;
   const [detail, formOptions, alarmCandidates] = await Promise.all([
-    selectedTile ? getRoomMonitorDetail(selectedTile.number) : Promise.resolve(null),
-    getFormOptions(),
+    selectedTile ? getRoomMonitorDetail(selectedTile.number,user) : Promise.resolve(null),
+    getFormOptions(user),
     listAlarmCandidates(),
   ]);
 
@@ -295,55 +295,11 @@ export default async function RoomOperationsMonitor({
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2 no-print">
-                    {user.permissions.includes('entry.create') ? (
-                      <Dialog
-                        title={`Nueva novedad · Hab. ${detail.room.number}`}
-                        description="La habitación queda vinculada automáticamente al monitor operacional."
-                        triggerVariant="primary"
-                        triggerSize="sm"
-                        trigger="+ Novedad"
-                      >
-                        <EntryForm
-                          action={createEntryAction}
-                          options={formOptions}
-                          defaultType={EntryType.NOVEDAD}
-                          defaultRoomId={detail.room.id}
-                        />
-                      </Dialog>
-                    ) : null}
-                    {user.permissions.includes('task.create') ? (
-                      <Dialog
-                        title={`Nueva tarea · Hab. ${detail.room.number}`}
-                        description="La tarea quedará visible en esta habitación hasta que se cierre."
-                        triggerVariant="secondary"
-                        triggerSize="sm"
-                        trigger="+ Tarea"
-                      >
-                        <TaskForm
-                          action={createTaskAction}
-                          options={formOptions}
-                          defaultRoomId={detail.room.id}
-                        />
-                      </Dialog>
-                    ) : null}
-                    <Dialog
-                      title={`Nueva alerta · Hab. ${detail.room.number}`}
-                      description="Programa una llamada de atención vinculada a esta habitación. No crea una novedad paralela."
-                      triggerVariant="secondary"
-                      triggerSize="sm"
-                      trigger="+ Alerta"
-                    >
-                      <OperationalAlarmCreateForm
-                        currentUserId={user.id}
-                        defaultRoomNumber={detail.room.number}
-                        candidates={alarmCandidates.map((candidate) => ({
-                          id: candidate.id,
-                          name: candidate.name,
-                          username: candidate.username,
-                          roleName: candidate.role.name,
-                        }))}
-                      />
-                    </Dialog>
+                    <IntentDialog title={`Habitación ${detail.room.number} · Registrar / actuar`} choices={[
+                      ...(user.permissions.includes('entry.create') ? [{id:'inform',label:'Informar algo',hint:'Deja el hecho y su contexto en el libro del turno.',form:<EntryForm action={createEntryAction} options={formOptions} defaultType={EntryType.NOVEDAD} lockType defaultRoomId={detail.room.id}/>}]:[]),
+                      ...(user.permissions.includes('task.create') ? [{id:'attention',label:'Necesito atención / derivar',hint:'Indica qué debe hacerse y el área responsable. La habitación ya está vinculada.',form:<TaskForm action={createTaskAction} options={formOptions} defaultRoomId={detail.room.id} showOrigin={false}/>}]:[]),
+                      {id:'reminder',label:'Recordarme después',hint:'Programa un aviso sin crear otro trabajo.',form:<OperationalAlarmCreateForm currentUserId={user.id} defaultRoomNumber={detail.room.number} candidates={alarmCandidates.map(candidate=>({id:candidate.id,name:candidate.name,username:candidate.username,roleName:candidate.role.name}))}/>},
+                    ]} advanced={user.permissions.includes('entry.create') ? <EntryForm action={createEntryAction} options={formOptions} defaultRoomId={detail.room.id}/> : undefined}/>
                     {user.permissions.includes('cash.view') ? (
                       <Link
                         href={`/caja?seccion=garantias&habitacion=${detail.room.number}`}

@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RoomStayStage, RoomStayStatus } from '@prisma/client';
 import {
-  prisma,
+  prisma,createUser,ROLE_KEYS,
   resetOperationalData,
   resetRoomsAndKeys,
   seedCatalog,
@@ -36,6 +36,7 @@ describe('PMS retirado de la entrega', () => {
     });
 
     const snapshot = await buildHandoverSnapshot(
+      await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}),
       new Date('2026-09-17T15:00:00.000Z'),
       { shiftId: null, includeMetrics: false },
     );

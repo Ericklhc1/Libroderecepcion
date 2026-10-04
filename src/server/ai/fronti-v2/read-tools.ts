@@ -1,3 +1,4 @@
+import {followUpReadWhere,taskFollowUpReadWhere,auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { readScheduleContext } from './schedule-context';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import 'server-only';
@@ -5,7 +6,6 @@ import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
 
 import {
   FollowUpStatus,
-  SupervisionVisibility,
 } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
@@ -202,7 +202,7 @@ async function tasksTool(user: CurrentUser, args: Record<string, unknown>) {
   const scope = requestedScope === 'abiertas' && canSeeAll ? 'abiertas' : 'mias';
 
   const rows = await prisma.task.findMany({
-    where: {
+    where: { AND:[taskFollowUpReadWhere(user)],
       deletedAt: null,
       status: { in: TASK_OPEN_STATUSES },
       ...(scope === 'mias'
@@ -259,36 +259,13 @@ async function followUpsTool(user: CurrentUser, args: Record<string, unknown>) {
   );
   const limit = limitArg(args);
   const onlyOpen = args.onlyOpen !== false;
-  const canSeeSupervision = hasAnyPermission(user, [
-    'supervision.view',
-    'supervision.center.view',
-    'supervision.followup.manage',
-  ]);
-
-  const visibility = canSeeSupervision
-    ? {
-        OR: [
-          { visibility: SupervisionVisibility.OPERATIVO },
-          { visibility: SupervisionVisibility.SUPERVISION },
-          { visibility: SupervisionVisibility.PRIVADO, createdById: user.id },
-          { visibility: SupervisionVisibility.PRIVADO, ownerId: user.id },
-        ],
-      }
-    : {
-        OR: [
-          { visibility: SupervisionVisibility.OPERATIVO },
-          { visibility: SupervisionVisibility.PRIVADO, createdById: user.id },
-          { visibility: SupervisionVisibility.PRIVADO, ownerId: user.id },
-        ],
-      };
-
   const rows = await prisma.followUp.findMany({
     where: {
       deletedAt: null,
       ...(onlyOpen
         ? { status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] } }
         : {}),
-      ...visibility,
+      AND:[followUpReadWhere(user)],
     },
     select: {
       id: true,
@@ -335,7 +312,7 @@ async function supervisionTool(user: CurrentUser) {
     ['supervision.view'],
     'No tienes permiso para consultar Supervisión.',
   );
-  const data = await getSupervisionData();
+  const data = await getSupervisionData(user);
   return {
     mode: 'overview',
     generatedAt: data.now,
@@ -384,7 +361,7 @@ async function auditTool(user: CurrentUser, args: Record<string, unknown>) {
       : null;
 
   const rows = await prisma.auditLog.findMany({
-    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)], ...(entity ? { entity } : {}) },
+    where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)], ...(entity ? { entity } : {}) },
     select: {
       id: true,
       entity: true,

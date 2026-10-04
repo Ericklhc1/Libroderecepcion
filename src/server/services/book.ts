@@ -28,6 +28,8 @@ import {
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import { RECEPTION_DESK_ROLE_KEYS } from '@/lib/permissions';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 
 /**
  * Libro Operativo v1.4.0.
@@ -115,7 +117,7 @@ function priorityTone(priority: string): Tone {
   return 'neutro';
 }
 
-export async function getBookItems(filters: BookFilters): Promise<{
+export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'id'|'permissions'|'isSystemAdmin'>): Promise<{
   items: BookItem[];
   hasMore: boolean;
   page: number;
@@ -194,7 +196,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
         shift: { select: { type: true, date: true } },
-        _count: { select: { comments: true, followUps: true } },
+        _count: { select: { comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}, followUps:{where:followUpReadWhere(user)} } },
       },
       orderBy: { occurredAt: 'desc' },
       take: window,
@@ -231,7 +233,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
   }
 
   async function taskItems(): Promise<BookItem[]> {
-    const and: Prisma.TaskWhereInput[] = [];
+    const and: Prisma.TaskWhereInput[] = [taskFollowUpReadWhere(user)];
 
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { assigneeId: filters.userId }] });
@@ -275,7 +277,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
         createdBy: { select: { name: true } },
         department: { select: { name: true } },
         shift: { select: { type: true, date: true } },
-        _count: { select: { comments: true, followUps: true } },
+        _count: { select: { comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}, followUps:{where:followUpReadWhere(user)} } },
       },
       orderBy: { createdAt: 'desc' },
       take: window,
@@ -312,7 +314,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
   }
 
   async function followUpItems(): Promise<BookItem[]> {
-    const and: Prisma.FollowUpWhereInput[] = [];
+    const and: Prisma.FollowUpWhereInput[] = [followUpReadWhere(user,filters.includeDeleted)];
 
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });
@@ -390,7 +392,7 @@ export async function getBookItems(filters: BookFilters): Promise<{
   }
 
   async function alertItems(): Promise<BookItem[]> {
-    const and: Prisma.AlertWhereInput[] = [];
+    const and: Prisma.AlertWhereInput[] = [alertReadWhere(user)];
 
     if (filters.onlyOpen) and.push(LIVE_ALERT_WHERE());
     if (filters.hideClosureValidation) {

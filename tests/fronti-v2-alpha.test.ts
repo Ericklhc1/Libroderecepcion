@@ -53,7 +53,8 @@ describe('FRONTI v2 alpha', () => {
     ]) {
       expect(source).toContain(service);
     }
-    expect(source).toContain('SupervisionVisibility.PRIVADO');
+    expect(source).toContain('followUpReadWhere(user)');
+    expect(source).toContain('taskFollowUpReadWhere(user)');
     expect(source).not.toContain('$queryRaw');
     expect(source).not.toContain('$executeRaw');
   });

@@ -1,10 +1,13 @@
+import { followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
+import { SubjectActions, SubjectContext } from '@/components/operational/subject-surface';
+import { nextWorkAction } from '@/domain/coordination';
 import { notFound } from 'next/navigation';
-import { EntryType, FollowUpStatus, OperationalAlarmStatus } from '@prisma/client';
+import { EntryStatus, EntryType, FollowUpStatus, OperationalAlarmStatus } from '@prisma/client';
 import { ArrowLeft, CalendarClock, Trash2 } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
-import { getEntry } from '@/server/services/entries';
+import { getSubjectEntry } from '@/server/services/entries';
 import { getHistory } from '@/server/services/history';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
@@ -13,6 +16,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Comments } from '@/components/operational/comments';
 import { HistoryTimeline } from '@/components/operational/history-timeline';
 import {
+  AssignEntryDialog,
   CloseFollowUpDialog,
   DeleteEntryDialog,
   EditEntryDialog,
@@ -63,7 +67,7 @@ export default async function EntryDetailPage({
   const user = await requirePageUser();
   const { id } = await params;
 
-  const entry = await getEntry(id).catch(() => null);
+  const entry = await getSubjectEntry(user,id).catch(() => null);
   if (!entry) notFound();
 
   const [followUps, tasks, linkedAlerts, alertCandidates, history, options] = await Promise.all([
@@ -71,6 +75,7 @@ export default async function EntryDetailPage({
       where: {
         entryId: entry.id,
         deletedAt: null,
+        AND:[followUpReadWhere(user)],
         OR: [
           { origin: null },
           { origin: { not: { startsWith: 'SUPERVISION_' } } },
@@ -80,7 +85,7 @@ export default async function EntryDetailPage({
       orderBy: { createdAt: 'desc' },
     }),
     prisma.task.findMany({
-      where: { entryId: entry.id, deletedAt: null },
+      where: { entryId: entry.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
       include: { assignee: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     }),
@@ -100,11 +105,15 @@ export default async function EntryDetailPage({
       take: 50,
     }),
     listAlarmCandidates(),
-    getHistory({ entity: 'OperationalEntry', entityId: entry.id }),
-    getFormOptions(),
+    getHistory({ entity: 'OperationalEntry', entityId: entry.id },user),
+    getFormOptions(user),
   ]);
 
   const isIncident = entry.type === EntryType.INCIDENCIA;
+  const canAttend = Boolean(entry.ownerId) && (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id);
+  const canFinish = canAttend && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
+  const activeHk = entry.housekeepingRequest && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
+  const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
   const open = ENTRY_OPEN_STATUSES.includes(entry.status);
   const overdue = isOverdue(entry.dueAt, open);
   const pageOpenedAt = new Date();
@@ -221,7 +230,7 @@ export default async function EntryDetailPage({
             </div>
           </dl>
 
-          {entry.housekeepingRequest && (!entry.housekeepingRequest.isDemo || user.isSystemAdmin) && <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-petrol-900"><strong>Housekeeping #{entry.housekeepingRequest.humanId} · {HK_WORK_LABELS[entry.housekeepingRequest.status] ?? entry.housekeepingRequest.status}</strong>{entry.housekeepingRequest.resolution && <p className="mt-1 whitespace-pre-wrap">{entry.housekeepingRequest.resolution}</p>}{entry.housekeepingRequest.inspectedBy && <p className="mt-1 text-xs">Revisado por {entry.housekeepingRequest.inspectedBy.name}</p>}{canAccessHousekeeping(user) && <Link className="mt-2 inline-block underline" href={`/admin/housekeeping?area=${entry.housekeepingRequest.departmentId??''}&aviso=${entry.housekeepingRequest.humanId}`}>Ver atención</Link>}<p className="mt-1 text-xs text-slate-600">El resultado del área no cierra automáticamente esta novedad.</p></div>}
+          {entry.housekeepingRequest && (!entry.housekeepingRequest.isDemo || user.isSystemAdmin) && <div id="atencion-area" className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-petrol-900"><strong>Housekeeping #{entry.housekeepingRequest.humanId} · {HK_WORK_LABELS[entry.housekeepingRequest.status] ?? entry.housekeepingRequest.status}</strong>{entry.housekeepingRequest.resolution && <p className="mt-1 whitespace-pre-wrap">{entry.housekeepingRequest.resolution}</p>}{entry.housekeepingRequest.inspectedBy && <p className="mt-1 text-xs">Revisado por {entry.housekeepingRequest.inspectedBy.name}</p>}{canAccessHousekeeping(user) && <Link className="mt-2 inline-block underline" href={`/admin/housekeeping?area=${entry.housekeepingRequest.departmentId??''}&aviso=${entry.housekeepingRequest.humanId}`}>Ver atención</Link>}<p className="mt-1 text-xs text-slate-600">El resultado del área no cierra automáticamente esta novedad.</p></div>}
           {entry.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1">
               {entry.tags.map((tag) => (
@@ -229,10 +238,19 @@ export default async function EntryDetailPage({
               ))}
             </div>
           ) : null}
+          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={entry.resolution ?? entry.housekeepingRequest?.resolution} resultLabel={open ? 'Último intento histórico' : 'Resultado'}/>
         </div>
 
         {!entry.deletedAt ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
+          <SubjectActions primary={
+            activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : '#atencion-area'}>Ver atención del área</Link>
+            : activeWork ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/tareas/${activeWork.id}`}>Continuar atención</Link>
+            : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href={entry.resolution||entry.housekeepingRequest?.resolution?"#resultado-asunto":"#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{entry.resolution||entry.housekeepingRequest?.resolution?"Ver resultado":"Ver historial"}</a>
+            : !entry.ownerId && user.permissions.includes('entry.edit') ? <AssignEntryDialog entryId={entry.id} departmentId={entry.departmentId} ownerId={entry.ownerId} departments={options.departments} users={options.users}/>
+            : canAttend && (entry.status !== EntryStatus.EN_CURSO || canFinish) ? <Dialog title={entry.status === EntryStatus.EN_CURSO ? 'Finalizar asunto' : 'Comenzar atención'} trigger={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'} triggerVariant="gold" triggerSize="sm" width="sm"><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={entry.resolution} rootCause={entry.rootCause} targetStatus={entry.status === EntryStatus.EN_CURSO ? EntryStatus.CERRADO : EntryStatus.EN_CURSO} label={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'}/></Dialog>
+            : <a href="#historial-asunto" className="rounded-md px-3 py-2 text-sm font-semibold">Ver resultado e historial</a>
+          } more={<>
+
             {user.permissions.includes('entry.edit') ? (
               <EditEntryDialog
                 entry={{
@@ -276,12 +294,13 @@ export default async function EntryDetailPage({
                 description="Define qué debe hacerse y quién queda a cargo. La tarea conserva el vínculo con este asunto."
                 triggerVariant="secondary"
                 triggerSize="sm"
-                trigger="Asignar tarea"
+                trigger="Solicitar otra atención"
               >
                 <TaskForm
                   action={createTaskAction}
                   options={options}
                   entryId={entry.id}
+                  defaults={{title:entry.title,description:entry.description,departmentId:entry.departmentId,priority:entry.priority,dueAt:toDateTimeInput(entry.dueAt)}}
                   defaultAssigneeId={entry.ownerId ?? user.id}
                   defaultRoomId={entry.roomId ?? undefined}
                 />
@@ -293,7 +312,7 @@ export default async function EntryDetailPage({
               description="Programa una llamada de atención. No crea otra novedad ni cambia el estado de este registro."
               triggerVariant="secondary"
               triggerSize="sm"
-              trigger="Crear alerta"
+              trigger="Recordarme"
             >
               <OperationalAlarmCreateForm
                 currentUserId={user.id}
@@ -315,7 +334,8 @@ export default async function EntryDetailPage({
             {user.permissions.includes('entry.delete') ? (
               <DeleteEntryDialog entryId={entry.id} label="Eliminar" />
             ) : null}
-          </div>
+            <a className="rounded-md px-3 py-2 text-sm font-medium text-petrol-800" href="#historial-asunto">Historial</a>
+          </>}/>
         ) : null}
       </Card>
 
@@ -349,7 +369,7 @@ export default async function EntryDetailPage({
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-slate-500">Resolución</p>
+                    <p className="text-xs font-medium text-slate-500">{open ? 'Último intento histórico' : 'Resolución'}</p>
                     <p className="whitespace-pre-line text-sm text-petrol-900">
                       {entry.resolution ?? 'Pendiente'}
                     </p>
@@ -357,7 +377,7 @@ export default async function EntryDetailPage({
                 </div>
               ) : entry.resolution ? (
                 <div>
-                  <p className="text-xs font-medium text-slate-500">Resolución</p>
+                  <p className="text-xs font-medium text-slate-500">{open ? 'Último intento histórico' : 'Resolución'}</p>
                   <p className="whitespace-pre-line text-sm text-petrol-900">{entry.resolution}</p>
                 </div>
               ) : null}
@@ -519,6 +539,8 @@ export default async function EntryDetailPage({
                         </Badge>
                       </div>
                       <p className="mt-1 text-sm font-medium text-petrol-900">{task.title}</p>
+                      {task.completedAt && <p className="mt-2 text-sm text-petrol-900">{['VALIDADA','COMPLETADA'].includes(task.status)?'Resultado recibido':task.status === 'REALIZADA'?'Resultado por revisar':'Último intento histórico'} · {TASK_STATUS_LABEL[task.status]} · {formatDateTime(task.completedAt)}</p>}
+                      {task.evidenceProvided && <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-slate-700">{task.evidenceProvided}</p>}
                       <p className="mt-0.5 text-xs text-slate-500">
                         {task.assignee?.name ?? 'Sin asignar'}
                         {task.dueAt ? ` · vence ${relativeTime(task.dueAt)}` : ''}
@@ -538,7 +560,7 @@ export default async function EntryDetailPage({
 
         <div className="space-y-4">
           <Card>
-            <CardHeader title="Historial" count={history.length} />
+            <span id="historial-asunto"/><CardHeader title="Historial" count={history.length} />
             <HistoryTimeline events={history} />
           </Card>
 

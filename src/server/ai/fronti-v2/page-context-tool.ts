@@ -1,3 +1,4 @@
+import {alertReadWhere} from '@/server/services/followup-access';
 import 'server-only';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
@@ -139,13 +140,13 @@ function compactReservationContext(
   };
 }
 
-async function bookSnapshot(page: FrontiResolvedPageContext) {
+async function bookSnapshot(page: FrontiResolvedPageContext,user:CurrentUser) {
   const result = await getBookItems({
     q: page.filters.q || undefined,
     onlyOpen: page.moduleKey !== 'historial',
     page: 1,
     pageSize: 30,
-  });
+  },user);
   return {
     query: page.filters.q || null,
     hasMore: result.hasMore,
@@ -200,7 +201,7 @@ async function detailSnapshot(
   }
 
   if (page.entityType === 'Task') {
-    const task = await getTask(page.entityId).catch(() => null);
+    const task = await getTask(page.entityId,user).catch(() => null);
     if (!task) return { found: false };
     const room = task.roomId
       ? await prisma.room.findUnique({
@@ -727,7 +728,7 @@ export async function executeFrontiPageContextTool(
       return { ...base, snapshot: await getDashboardData(user) };
     case 'buscar':
     case 'historial':
-      return { ...base, snapshot: await bookSnapshot(page) };
+      return { ...base, snapshot: await bookSnapshot(page,user) };
     case 'novedades':
       return {
         ...base,
@@ -752,10 +753,10 @@ export async function executeFrontiPageContextTool(
           },
         };
       }
-      const overview = await getRoomMonitorOverview();
+      const overview = await getRoomMonitorOverview(user);
       const roomNumber = page.filters.habitacion ?? '';
       const selected = roomNumber
-        ? await getRoomMonitorDetail(roomNumber).catch(() => null)
+        ? await getRoomMonitorDetail(roomNumber,user).catch(() => null)
         : null;
       return {
         ...base,
@@ -801,7 +802,7 @@ export async function executeFrontiPageContextTool(
         'No tienes permiso para consultar señales internas.',
       );
       const rows = await prisma.alert.findMany({
-        where: { deletedAt: null, status: { not: 'RESUELTA' } },
+        where: { deletedAt: null, status: { not: 'RESUELTA' }, AND:[alertReadWhere(user)] },
         select: {
           id: true,
           humanId: true,

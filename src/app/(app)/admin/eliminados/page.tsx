@@ -1,3 +1,4 @@
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 import Link from 'next/link';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
@@ -25,7 +26,7 @@ export default async function DeletedPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('entry.restore');
+  const user=await requirePagePermission('entry.restore');
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const tipo = typeof params.tipo === 'string' ? params.tipo : '';
@@ -37,17 +38,17 @@ export default async function DeletedPage({
       take: 100,
     }),
     prisma.task.findMany({
-      where: { NOT: { deletedAt: null } },
+      where: { NOT: { deletedAt: null }, AND:[taskFollowUpReadWhere(user)] },
       orderBy: { deletedAt: 'desc' },
       take: 100,
     }),
     prisma.followUp.findMany({
-      where: { NOT: { deletedAt: null } },
+      where: { NOT: { deletedAt: null }, AND:[followUpReadWhere(user,true)] },
       orderBy: { deletedAt: 'desc' },
       take: 100,
     }),
     prisma.alert.findMany({
-      where: { NOT: { deletedAt: null } },
+      where: { NOT: { deletedAt: null }, AND:[alertReadWhere(user)] },
       orderBy: { deletedAt: 'desc' },
       take: 100,
     }),

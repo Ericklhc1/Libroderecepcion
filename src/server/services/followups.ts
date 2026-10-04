@@ -1,3 +1,4 @@
+import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import {
@@ -31,6 +32,23 @@ export const followUpInclude = {
 export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
   include: typeof followUpInclude;
 }>;
+
+async function assertDerivedFollowUpAccess(tx:Prisma.TransactionClient, user:CurrentUser, follow:{id:string;ownerId:string;visibility:SupervisionVisibility}, validateVisibility=true) {
+  const sources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUpId:true,followUp:{select:{visibility:true}}}});
+  // Una continuidad sin otro seguimiento de origen mantiene su asignación nativa.
+  if(sources.length===0)return;
+  // A source reserve cannot change while its evidence is copied/assigned.
+  for(const source of [...sources].sort((a,b)=>a.followUpId.localeCompare(b.followUpId))){
+    await tx.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${source.followUpId} FOR SHARE`;
+  }
+  if(!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere(user,true)]}}))throw new RuleError('No puedes acceder al origen reservado del seguimiento.');
+  const owner=await tx.user.findFirst({where:{id:follow.ownerId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{where:{permission:{key:'supervision.followup.manage'}},select:{permissionId:true}}}}}});
+  if(!owner||!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere({id:owner.id,permissions:owner.role.permissions.length?['supervision.followup.manage']:[]},true)]}}))throw new RuleError('El responsable no puede acceder al origen reservado del seguimiento.');
+  if(validateVisibility){
+    const currentSources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUp:{select:{visibility:true}}}});
+    if(currentSources.some(s=>s.followUp.visibility==='PRIVADO'&&follow.visibility!=='PRIVADO'||s.followUp.visibility==='SUPERVISION'&&follow.visibility==='OPERATIVO'))throw new RuleError('La visibilidad del seguimiento debe conservar la reserva del origen.');
+  }
+}
 
 /**
  * Crea un seguimiento operativo vinculado al objeto real que lo motivó.
@@ -91,7 +109,7 @@ export async function createFollowUp(
     if (entry === 0) throw new NotFoundError('El registro asociado no existe.');
   }
   if (input.taskId) {
-    const task = await prisma.task.count({ where: { id: input.taskId, deletedAt: null } });
+    const task = await prisma.task.count({ where: { id: input.taskId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
     if (task === 0) throw new NotFoundError('La tarea asociada no existe.');
   }
 
@@ -117,6 +135,8 @@ export async function createFollowUp(
       },
       include: followUpInclude,
     });
+
+    await assertDerivedFollowUpAccess(tx,user,created);
 
     // El registro asociado queda marcado como "con seguimiento".
     if (created.entryId) {
@@ -190,7 +210,7 @@ export async function updateFollowUp(
   expectedRevision?:string,
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null,AND:[followUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El seguimiento no existe o fue eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
@@ -243,10 +263,12 @@ export async function updateFollowUp(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.followUp.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user)] },
       data: updateData,
       include: followUpInclude,
     });
+
+    await assertDerivedFollowUpAccess(tx,user,updated,input.visibility!==undefined||Boolean(input.ownerId));
 
     if (closing) {
       await tx.alert.updateMany({
@@ -395,13 +417,13 @@ export async function softDeleteFollowUp(
   expectedRevision?:string,
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null,AND:[followUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El seguimiento no existe o ya fue eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.followUp.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user)] },
       data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
     });
     await recordAudit(
@@ -426,13 +448,13 @@ export async function restoreFollowUp(
   expectedRevision?:string,
 ) {
   const current = await prisma.followUp.findFirst({
-    where: { id: input.id, NOT: { deletedAt: null } },
+    where: { id: input.id, NOT: { deletedAt: null },AND:[followUpReadWhere(user,true)] },
   });
   if (!current) throw new NotFoundError('El seguimiento no está eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
   return prisma.$transaction(async (tx) => {
     const restored = await tx.followUp.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user,true)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
     await recordAudit(

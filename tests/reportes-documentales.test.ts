@@ -10,7 +10,7 @@ describe('informes documentales imprimibles', () => {
 
     expect(route).toContain("'Content-Type': 'application/pdf'");
     expect(route).toContain("'inline'");
-    expect(route).toContain('collect(filters)');
+    expect(route).toContain('collect(filters,user)');
     expect(history).toContain('Ver / imprimir informe');
     expect(history).toContain('/api/libro/reporte?');
     expect(book).toContain("reportParams.set('vista', 'novedades')");

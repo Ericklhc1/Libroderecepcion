@@ -51,7 +51,7 @@ describe('tablero de asignación', () => {
       tags: [],
     });
 
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     const ids = board.unassigned.map((item) => item.id);
 
     expect(ids).toContain(huerfana.id);
@@ -77,7 +77,7 @@ describe('tablero de asignación', () => {
       tags: [],
     });
 
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     const beto = board.workload.find((row) => row.userId === recepcion.id);
     const ana = board.workload.find((row) => row.userId === supervisor.id);
 
@@ -109,7 +109,7 @@ describe('tablero de asignación', () => {
       tags: [],
     });
 
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     const beto = board.workload.find((row) => row.userId === recepcion.id);
     expect(beto?.openTasks).toBe(2);
     expect(beto?.overdueTasks).toBe(1);
@@ -129,7 +129,7 @@ describe('tablero de asignación', () => {
       data: { status: TaskStatus.COMPLETADA },
     });
 
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     expect(board.workload.find((row) => row.userId === recepcion.id)?.openTasks).toBe(0);
   });
 
@@ -144,7 +144,7 @@ describe('tablero de asignación', () => {
       tags: [],
     });
 
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     const entry = board.unassigned.find((item) => item.kind === 'entry');
     expect(entry?.roomNumber).toBeNull();
     expect(entry?.href).toContain('/libro/');
@@ -152,7 +152,7 @@ describe('tablero de asignación', () => {
 
   it('el Administrador de sistema aparece en la carga y como asignable', async () => {
     const admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
 
     // Participación operativa autorizada con identidad propia.
     expect(board.workload.map((row) => row.userId)).toContain(admin.id);
@@ -161,7 +161,7 @@ describe('tablero de asignación', () => {
 
   it('el gerente sí aparece como asignable: es el único modo de que actúe', async () => {
     const gerente = await createUser({ roleKey: ROLE_KEYS.MANAGEMENT });
-    const board = await getAssignmentBoard();
+    const board = await getAssignmentBoard(supervisor);
     expect(board.assignees.map((option) => option.value)).toContain(gerente.id);
   });
 });

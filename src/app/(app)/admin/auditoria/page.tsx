@@ -1,3 +1,4 @@
+import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -56,7 +57,7 @@ export default async function AuditPage({
   const q = typeof params.q === 'string' ? params.q : undefined;
 
   const where: Prisma.AuditLogWhereInput = {
-    AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)],
+    AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)],
     ...(accion && accion in AuditAction ? { action: accion as AuditAction } : {}),
     ...(entidad ? { entity: entidad } : {}),
     ...(usuario ? { userId: usuario } : {}),

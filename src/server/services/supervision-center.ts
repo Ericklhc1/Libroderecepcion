@@ -1,3 +1,4 @@
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -248,9 +249,9 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       },
       orderBy: { updatedAt: 'desc' },
     }),
-    getSupervisionData({ exhaustive: true }),
+    getSupervisionData(user,{ exhaustive: true }),
     prisma.task.findMany({
-      where: {
+      where: { AND:[taskFollowUpReadWhere(user)],
         deletedAt: null,
         assigneeId: user.id,
         status: { in: TASK_OPEN_STATUSES },
@@ -267,7 +268,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }, { createdAt: 'asc' }],
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND:[followUpReadWhere(user)],
         deletedAt: null,
         ownerId: user.id,
         status: { in: ['PENDIENTE', 'VENCIDO'] },
@@ -1117,7 +1118,7 @@ type SupervisionSourceEntity =
   | 'Shift'
   | 'KeyInventoryCount';
 
-async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, sourceId: string) {
+async function resolveSupervisionSource(user: CurrentUser, sourceEntity: SupervisionSourceEntity, sourceId: string) {
   switch (sourceEntity) {
     case 'OperationalEntry': {
       const row = await prisma.operationalEntry.findFirst({
@@ -1128,8 +1129,8 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
       return { label: `#${row.humanId} · ${row.title}`, entryId: row.id, taskId: null };
     }
     case 'Alert': {
-      const row = await prisma.alert.findUnique({
-        where: { id: sourceId },
+      const row = await prisma.alert.findFirst({
+        where: { id: sourceId,AND:[alertReadWhere(user)] },
         select: { id: true, title: true },
       });
       if (!row) throw new NotFoundError('La alerta de origen ya no existe.');
@@ -1158,7 +1159,7 @@ async function resolveSupervisionSource(sourceEntity: SupervisionSourceEntity, s
     }
     case 'Task': {
       const row = await prisma.task.findFirst({
-        where: { id: sourceId, deletedAt: null },
+        where: { id: sourceId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] },
         select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La tarea de origen ya no existe.');
@@ -1206,7 +1207,7 @@ export async function followSupervisionSource(
   input: { sourceEntity: SupervisionSourceEntity; sourceId: string },
 ) {
   assertSupervisor(user);
-  const source = await resolveSupervisionSource(input.sourceEntity, input.sourceId);
+  const source = await resolveSupervisionSource(user,input.sourceEntity, input.sourceId);
   const existing = await prisma.followUp.findFirst({
     where: {
       deletedAt: null,
@@ -1386,13 +1387,13 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     changesSinceLastShift,
   ] = await Promise.all([
     prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
       include: { assignee: { select: { name: true } } },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 20,
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND:[followUpReadWhere(user)],
         deletedAt: null,
         status: { in: ['PENDIENTE', 'VENCIDO'] },
         OR: [
@@ -1406,7 +1407,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       take: 20,
     }),
     prisma.task.findMany({
-      where: {
+      where: { AND:[taskFollowUpReadWhere(user)],
         deletedAt: null,
         assigneeId: user.id,
         status: { in: TASK_OPEN_STATUSES },
@@ -1416,7 +1417,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       take: 30,
     }),
     prisma.followUp.findMany({
-      where: {
+      where: { AND:[followUpReadWhere(user)],
         deletedAt: null,
         ownerId: user.id,
         status: { in: ['PENDIENTE', 'VENCIDO'] },
@@ -1488,14 +1489,14 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
             where: { deletedAt: null, createdAt: { gt: sinceLastShift } },
           }),
           prisma.task.count({
-            where: {
+            where: { AND:[taskFollowUpReadWhere(user)],
               deletedAt: null,
               assigneeId: user.id,
               updatedAt: { gt: sinceLastShift },
             },
           }),
           prisma.followUp.count({
-            where: {
+            where: { AND:[followUpReadWhere(user)],
               deletedAt: null,
               ownerId: user.id,
               updatedAt: { gt: sinceLastShift },
@@ -1524,14 +1525,14 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
 
   const [myTaskCount, myFollowUpCount, auditOpenCount, measureOpenCount] = await Promise.all([
     prisma.task.count({
-      where: {
+      where: { AND:[taskFollowUpReadWhere(user)],
         deletedAt: null,
         assigneeId: user.id,
         status: { in: TASK_OPEN_STATUSES },
       },
     }),
     prisma.followUp.count({
-      where: {
+      where: { AND:[followUpReadWhere(user)],
         deletedAt: null,
         ownerId: user.id,
         status: { in: ['PENDIENTE', 'VENCIDO'] },

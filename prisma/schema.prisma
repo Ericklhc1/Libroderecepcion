@@ -5,6 +5,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["views"]
 }
 
 datasource db {
@@ -1283,6 +1284,7 @@ model HousekeepingEvent {
 }
 
 model Task {
+  sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
   requiresIndependentValidation Boolean @default(false)
   workAssignedAt DateTime?
@@ -1408,6 +1410,13 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
+  sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
+  derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
+  sourceNotifications NotificationSourceFollowUp[]
+  sourceTasks TaskSourceFollowUp[]
+  sourceAlerts AlertSourceFollowUp[]
+  sourceAlarms AlarmSourceFollowUp[]
+  sourceAudits AuditSourceFollowUp[]
   id          String                @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   action      String
@@ -1462,6 +1471,7 @@ model FollowUp {
 }
 
 model Alert {
+  sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   type         AlertType
@@ -1692,6 +1702,7 @@ model LostFoundEvent {
 // ========================= TRAZABILIDAD Y SISTEMA =========================
 
 model AuditLog {
+  sourceFollowUps AuditSourceFollowUp[]
   id        String      @id @default(cuid())
   entity    String
   entityId  String
@@ -1861,6 +1872,7 @@ model ChatMediaPreference {
 }
 
 model Notification {
+  sourceFollowUps NotificationSourceFollowUp[]
   id        String           @id @default(cuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1968,6 +1980,7 @@ model SupportRequestAttachment {
 }
 
 model OperationalAlarm {
+  sourceFollowUps AlarmSourceFollowUp[]
   id            String                 @id @default(cuid())
   kind          OperationalAlarmKind
   scope         OperationalAlarmScope
@@ -3498,4 +3511,52 @@ model FrontiExecutionRequest {
   execution FrontiExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
   @@unique([userId, requestKey])
+}
+
+// Read-only provenance of the existing sources, including historical chains.
+// SQL UNION makes each pair unique and terminates cycles; no task engine or stored copy.
+view TaskSourceFollowUp {
+  taskId String
+  followUpId String
+  task Task @relation(fields: [taskId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([taskId, followUpId])
+}
+view AlertSourceFollowUp {
+  alertId String
+  followUpId String
+  alert Alert @relation(fields: [alertId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([alertId, followUpId])
+}
+view AlarmSourceFollowUp {
+  alarmId String
+  followUpId String
+  alarm OperationalAlarm @relation(fields: [alarmId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([alarmId, followUpId])
+}
+
+view AuditSourceFollowUp {
+  auditLogId String
+  followUpId String
+  auditLog AuditLog @relation(fields: [auditLogId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([auditLogId, followUpId])
+}
+
+view FollowUpSourceFollowUp {
+  descendantId String
+  followUpId String
+  descendant FollowUp @relation("derivedFollowUp", fields: [descendantId], references: [id])
+  followUp FollowUp @relation("originFollowUp", fields: [followUpId], references: [id])
+  @@unique([descendantId, followUpId])
+}
+
+view NotificationSourceFollowUp {
+  notificationId String
+  followUpId String
+  notification Notification @relation(fields: [notificationId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([notificationId, followUpId])
 }

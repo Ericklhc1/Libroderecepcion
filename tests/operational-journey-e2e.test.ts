@@ -100,6 +100,7 @@ describe('jornada operativa transversal de punta a punta', () => {
     const entry = await createEntry(outgoing, {
       type: EntryType.NOVEDAD,
       title: 'Prueba transversal de continuidad',
+      ownerId: outgoing.id,
       description: 'Registro creado durante una jornada E2E de regresión.',
       priority: Priority.MEDIA,
       tags: ['e2e'],

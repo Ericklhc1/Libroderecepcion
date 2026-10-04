@@ -1,4 +1,5 @@
 import 'server-only';
+import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import { FRONTI_ACTIONS } from './execution/catalog';
 import { prepareExecution, executionCard, executePlan } from './execution/service';
 import { executionSummary } from '@/domain/fronti-execution';
@@ -18,7 +19,6 @@ import {
   FollowUpStatus,
   Priority,
   Severity,
-  SupervisionVisibility,
   TaskStatus,
 } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -328,13 +328,6 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
     ['followup.create', 'followup.manage', 'metrics.view'].some((permission) =>
       hasPermission(user, permission),
     );
-  const canSeeSupervisionFollowUps =
-    user.isSystemAdmin ||
-    [
-      'supervision.view',
-      'supervision.center.view',
-      'supervision.followup.manage',
-    ].some((permission) => hasPermission(user, permission));
   const canEntries =
     user.isSystemAdmin ||
     [
@@ -361,6 +354,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
       ? prisma.task.findMany({
           where: {
             deletedAt: null,
+            AND:[taskFollowUpReadWhere(user)],
             status: { in: TASK_OPEN_STATUSES },
             dueAt: { not: null, lte: until },
             ...(canSeeAllTasks
@@ -390,30 +384,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
             deletedAt: null,
             status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
             scheduledAt: { lte: until },
-            OR: canSeeSupervisionFollowUps
-              ? [
-                  { visibility: SupervisionVisibility.OPERATIVO },
-                  { visibility: SupervisionVisibility.SUPERVISION },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    createdById: user.id,
-                  },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    ownerId: user.id,
-                  },
-                ]
-              : [
-                  { visibility: SupervisionVisibility.OPERATIVO },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    createdById: user.id,
-                  },
-                  {
-                    visibility: SupervisionVisibility.PRIVADO,
-                    ownerId: user.id,
-                  },
-                ],
+            AND:[followUpReadWhere(user)],
           },
           select: {
             id: true,
@@ -720,6 +691,7 @@ async function completeTaskProposalTool(
   const task = await prisma.task.findFirst({
     where: {
       deletedAt: null,
+      AND:[taskFollowUpReadWhere(user)],
       ...(taskId ? { id: taskId } : { humanId: taskSeq as number }),
     },
     select: { id: true, humanId: true, title: true, status: true },

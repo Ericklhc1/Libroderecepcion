@@ -85,7 +85,7 @@ try {
   await page.goto('http://localhost:3000/coordinacion/automatizaciones');await page.getByRole('heading',{name:'Reglas y procedimientos',exact:true}).waitFor();assert.ok((await page.locator('body').innerText()).includes('deshabilitada'));
   // The same public form saves a paused version, simulates without effects, then pauses/revokes.
   const policyName=`ETAPA2_POLICY_${width}`;
-  const openPolicyList=async()=>{const disclosure=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Tus últimas 50 políticas'})}).first();if(!(await disclosure.evaluate(el=>el.open)))await disclosure.locator('summary').click();return disclosure;};
+  const openPolicyList=async()=>{const disclosure=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Tus últimas 50 políticas'})}).first();if(await disclosure.getAttribute('open')===null)await disclosure.locator('summary').click();return disclosure;};
   const details=page.locator('details').filter({has:page.getByText('Nuevo procedimiento o mantenimiento preventivo',{exact:true})});
   await details.locator('summary').click();
   await details.getByLabel('Nombre',{exact:true}).fill(policyName);

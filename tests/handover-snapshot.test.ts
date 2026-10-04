@@ -91,7 +91,7 @@ describe('resumen automático de la entrega', () => {
       dueAt: hoursAgo(2),
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const sections = new Set(snapshot.map((item) => item.section));
 
     expect(sections).toContain('Incidencias abiertas');
@@ -126,7 +126,7 @@ describe('resumen automático de la entrega', () => {
       },
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const sections = snapshot.map((item) => item.section);
 
     expect(sections).not.toContain('Cobros pendientes');
@@ -154,7 +154,7 @@ describe('resumen automático de la entrega', () => {
     });
     await runAlertEngine();
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const alertItems = snapshot.filter((item) => item.section === 'Alertas activas');
 
     expect(alertItems.some((item) => item.title.includes('Revisar comprobantes'))).toBe(false);
@@ -174,7 +174,7 @@ describe('resumen automático de la entrega', () => {
       },
     });
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const alertItems = snapshot.filter((item) => item.section === 'Alertas activas');
     expect(alertItems.some((item) => item.title.includes('Salida anticipada'))).toBe(true);
   });
@@ -200,13 +200,29 @@ describe('resumen automático de la entrega', () => {
     });
     await runAlertEngine();
 
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     const seguimientos = snapshot.filter((item) => item.section === 'Seguimientos próximos');
 
     expect(seguimientos).toHaveLength(2);
     const vencido = seguimientos.find((item) => item.title === 'Seguimiento vencido');
     expect(vencido?.level).toBe(HandoverLevel.URGENTE);
     expect(vencido?.detail).toContain('VENCIDO');
+  });
+
+  it('sanea al enviar un borrador histórico sin borrar evidencia ni controles',async()=>{
+    const shift=await openShiftAs(user);
+    await receiveHandover(user,{shiftId:shift.id});
+    const follow=await prisma.followUp.create({data:{action:'SECRETO_NO_COMPARTIR',visibility:'PRIVADO',createdById:user.id,ownerId:user.id}});
+    const handover=await prepareHandover(user,shift.id);
+    const original=await prisma.handoverItem.create({data:{handoverId:handover.id,title:'SECRETO_NO_COMPARTIR',detail:'Detalle privado histórico',refType:'followup',refId:follow.id,section:'Seguimientos próximos',level:'INFORMATIVO'}});
+    await confirmReview(user,handover.id);
+    const sent=await sendHandover(user,{shiftId:shift.id});
+    expect(JSON.stringify(sent.snapshot)).not.toContain('SECRETO_NO_COMPARTIR');
+    expect(JSON.stringify(sent.snapshot)).not.toContain('Detalle privado histórico');
+    expect(JSON.stringify(sent.snapshot)).toContain('Asunto reservado');
+    expect(await prisma.handoverItem.findUniqueOrThrow({where:{id:original.id}})).toMatchObject({title:'SECRETO_NO_COMPARTIR',detail:'Detalle privado histórico',refId:follow.id});
+    expect(await prisma.operationalMailOutbox.findFirst({where:{eventKey:`handover-sent:${sent.id}`}})).toMatchObject({text:expect.not.stringContaining('SECRETO_NO_COMPARTIR')});
+    expect(sent.pendingsReviewedAt).not.toBeNull();expect(sent.finalReviewAt).not.toBeNull();
   });
 
   it('la entrega enviada guarda una fotografía inmutable de lo entregado', async () => {
@@ -248,7 +264,7 @@ describe('resumen automático de la entrega', () => {
   });
 
   it('el resumen queda vacío cuando no hay nada pendiente', async () => {
-    const snapshot = await buildHandoverSnapshot();
+    const snapshot = await buildHandoverSnapshot(user);
     expect(snapshot).toHaveLength(0);
   });
 });

@@ -154,7 +154,7 @@ describe('tareas', () => {
   });
 
   it('respeta las transiciones válidas de estado', async () => {
-    const task = await createTask(receptionist, base);
+    const task = await createTask(receptionist, { ...base, assigneeId: receptionist.id });
 
     const inProgress = await changeTaskStatus(receptionist, {
       id: task.id,
@@ -177,7 +177,7 @@ describe('tareas', () => {
   });
 
   it('exige motivo al bloquear una tarea y lo limpia al desbloquear', async () => {
-    const task = await createTask(receptionist, base);
+    const task = await createTask(receptionist, { ...base, assigneeId: receptionist.id });
 
     await expect(
       changeTaskStatus(receptionist, { id: task.id, status: TaskStatus.BLOQUEADA }),
@@ -230,7 +230,7 @@ describe('tareas', () => {
     await changeTaskStatus(supervisor, { id: done.id, status: TaskStatus.COMPLETADA });
     await createTask(supervisor, { ...base, title: 'Tarea de otra persona', assigneeId: other.id });
 
-    const mine = await listMyTasks(receptionist.id);
+    const mine = await listMyTasks(receptionist);
     expect(mine.map((task) => task.title)).toEqual([
       'Tarea con vencimiento próximo',
       'Tarea con vencimiento lejano',

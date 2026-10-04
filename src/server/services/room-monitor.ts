@@ -1,4 +1,6 @@
 import 'server-only';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {followUpReadWhere,taskFollowUpReadWhere,operationalAlarmReadWhere} from './followup-access';
 
 import {
   EntryType,
@@ -42,7 +44,7 @@ export type RoomMonitorTile = {
   lastActivityAt: Date | null;
 };
 
-export async function getRoomMonitorOverview(now = new Date()) {
+export async function getRoomMonitorOverview(user: CurrentUser, now = new Date()) {
   const rooms = await prisma.room.findMany({
     where: { active: true, number: { in: ROOM_NUMBERS } },
     orderBy: [{ floor: 'asc' }, { number: 'asc' }],
@@ -62,7 +64,7 @@ export async function getRoomMonitorOverview(now = new Date()) {
         },
       },
       tasks: {
-        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+        where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES },AND:[taskFollowUpReadWhere(user)] },
         select: {
           id: true,
           dueAt: true,
@@ -86,13 +88,14 @@ export async function getRoomMonitorOverview(now = new Date()) {
     prisma.operationalAlarm.findMany({
       where: {
         roomNumber: { in: ROOM_NUMBERS },
+        AND:[operationalAlarmReadWhere(user)],
         status: OperationalAlarmStatus.ACTIVA,
       },
       select: { roomNumber: true, updatedAt: true },
     }),
     prisma.followUp.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[followUpReadWhere(user)],
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
         OR: [
           { entry: { roomId: { in: roomIds } } },
@@ -197,7 +200,7 @@ export async function getRoomMonitorOverview(now = new Date()) {
   };
 }
 
-export async function getRoomMonitorDetail(number: string, now = new Date()) {
+export async function getRoomMonitorDetail(number: string, user: CurrentUser, now = new Date()) {
   const passHistoryFrom = hotelDayStart(addHotelCalendarDays(now, -29));
   const room = await prisma.room.findFirst({
     where: { number, active: true },
@@ -225,7 +228,7 @@ export async function getRoomMonitorDetail(number: string, now = new Date()) {
       },
     }),
     prisma.task.findMany({
-      where: { roomId: room.id, deletedAt: null },
+      where: { roomId: room.id, deletedAt: null,AND:[taskFollowUpReadWhere(user)] },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
       take: 40,
       select: {
@@ -242,7 +245,7 @@ export async function getRoomMonitorDetail(number: string, now = new Date()) {
     }),
     prisma.followUp.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[followUpReadWhere(user)],
         OR: [{ entry: { roomId: room.id } }, { task: { roomId: room.id } }],
       },
       orderBy: [{ status: 'asc' }, { scheduledAt: 'asc' }, { updatedAt: 'desc' }],
@@ -261,7 +264,7 @@ export async function getRoomMonitorDetail(number: string, now = new Date()) {
       },
     }),
     prisma.operationalAlarm.findMany({
-      where: { roomNumber: number },
+      where: { roomNumber: number, AND:[operationalAlarmReadWhere(user)] },
       orderBy: [{ status: 'asc' }, { dueAt: 'desc' }],
       take: 30,
       select: {

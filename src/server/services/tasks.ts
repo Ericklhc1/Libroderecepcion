@@ -1,5 +1,6 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import {
   AuditAction,
   NotificationType,
@@ -69,6 +70,18 @@ export type TaskCreateInput = {
   checklist: string[];
 };
 
+/** Do not notify somebody about work whose reserved source they cannot read. */
+export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}) {
+  if (!source.followUpId && !source.alertId) return;
+  const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
+  for(const person of people){
+    const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
+    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
+      throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
+    }
+  }
+}
+
 /** Deduce el origen de la tarea a partir del registro que la motivó. */
 function inferOrigin(input: TaskCreateInput): TaskOrigin {
   if (input.entryId) return TaskOrigin.REGISTRO;
@@ -112,6 +125,15 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   for (const participantId of participantIds) await assertAssignable(participantId);
   if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
+  if (input.followUpId && !await db.followUp.findFirst({where:{id:input.followUpId,AND:[followUpReadWhere(user)]},select:{id:true}})) {
+    throw new NotFoundError('El seguimiento de origen no existe.');
+  }
+  if (input.alertId && !await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{id:true}})) {
+    throw new NotFoundError('La alerta de origen no existe.');
+  }
+  await assertTaskSourceRecipients(db,participantIds,input);
+  const alertSource=input.alertId?await db.alert.findFirst({where:{id:input.alertId,deletedAt:null,AND:[alertReadWhere(user)]},select:{followUpId:true,task:{select:{followUpId:true}}}}):null;
+  const inheritedFollowUpId=input.followUpId??alertSource?.followUpId??alertSource?.task?.followUpId??null;
   let origin = inferOrigin(input);
   let roomId = input.roomId ?? null;
   if (input.entryId) {
@@ -138,6 +160,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    await assertTaskSourceRecipients(tx,participantIds,input);
     if (input.procedureOccurrenceKey) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.procedureOccurrenceKey}))::text`;
       const existing = await tx.task.findUnique({ where: { procedureOccurrenceKey: input.procedureOccurrenceKey }, include: taskInclude });
@@ -156,7 +179,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
         dueAt: input.dueAt ?? null,
         departmentId: input.departmentId ?? null,
         entryId: input.entryId ?? null,
-        followUpId: input.followUpId ?? null,
+        followUpId: inheritedFollowUpId,
         alertId: input.alertId ?? null,
         handoverId: input.handoverId ?? null,
         fulfillmentCriteria: input.fulfillmentCriteria ?? null,
@@ -245,8 +268,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   return client ? write(client) : prisma.$transaction(write);
 }
 
-export async function getTask(id: string): Promise<TaskWithRelations> {
-  const task = await prisma.task.findUnique({ where: { id }, include: taskInclude });
+export async function getTask(id: string, user: CurrentUser): Promise<TaskWithRelations> {
+  const task = await prisma.task.findFirst({ where: { id, AND:[taskFollowUpReadWhere(user)] }, include: {...taskInclude,_count:{select:{followUps:{where:followUpReadWhere(user)},comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}}}} });
   if (!task) throw new NotFoundError('La tarea no existe.');
   return task;
 }
@@ -271,7 +294,7 @@ export async function updateTask(
   input: { id: string } & Partial<TaskCreateInput> & { blockedReason?: string | null },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
 
@@ -320,7 +343,7 @@ export async function updateTask(
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data,
       include: taskInclude,
     });
@@ -348,17 +371,18 @@ export async function assignTask(
   expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
-    where: { id: input.id, deletedAt: null },
+    where: { id: input.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
     include: { assignee: { select: { name: true } } },
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
-  if (input.assigneeId) await assertAssignable(input.assigneeId);
+  if (input.assigneeId) {await assertAssignable(input.assigneeId);await assertTaskSourceRecipients(prisma,[input.assigneeId],current);}
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {
+    if (input.assigneeId) await assertTaskSourceRecipients(tx,[input.assigneeId],current);
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { assigneeId: input.assigneeId ?? null, workAssignedAt: input.assigneeId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
       include: taskInclude,
     });
@@ -449,9 +473,10 @@ export async function changeTaskStatus(
   },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
+  if (input.status === TaskStatus.ACEPTADA && current.assigneeId !== user.id) throw new RuleError('La recepción corresponde al responsable asignado.');
   if (current.status === input.status) return current;
 
   const startsInFuture = Boolean(current.startsAt && current.startsAt > new Date());
@@ -465,6 +490,10 @@ export async function changeTaskStatus(
     throw new RuleError(
       `Esta tarea está programada para comenzar el ${formatDateTime(current.startsAt!)}. Si debe empezar antes, edita su inicio programado.`,
     );
+  }
+
+  if (input.status === TaskStatus.EN_CURSO && !current.assigneeId) {
+    throw new RuleError('Asigna una persona responsable antes de comenzar la atención.');
   }
 
   if (!(TASK_TRANSITIONS[current.status] ?? []).includes(input.status)) {
@@ -504,7 +533,7 @@ export async function changeTaskStatus(
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt, assigneeId: current.assigneeId, status: current.status, AND:[taskFollowUpReadWhere(user)] },
       data: {
         status: input.status,
         ...(['ACEPTADA','EN_CURSO'].includes(input.status) && current.assigneeId === user.id ? { workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id } : {}),
@@ -581,8 +610,8 @@ export async function toggleChecklistItem(
   user: CurrentUser,
   input: { itemId: string; done: boolean },
 ) {
-  const item = await prisma.taskChecklistItem.findUnique({
-    where: { id: input.itemId },
+  const item = await prisma.taskChecklistItem.findFirst({
+    where: { id: input.itemId,task:{deletedAt:null,AND:[taskFollowUpReadWhere(user)]} },
     include: {
       task: {
         select: { id: true, humanId: true, deletedAt: true, startsAt: true },
@@ -596,8 +625,9 @@ export async function toggleChecklistItem(
     );
   }
 
-  const updated = await prisma.taskChecklistItem.update({
-    where: { id: input.itemId },
+  return prisma.$transaction(async tx=>{
+  const updated = await tx.taskChecklistItem.update({
+    where: { id: input.itemId,task:{deletedAt:null,AND:[taskFollowUpReadWhere(user)]} },
     data: {
       done: input.done,
       doneAt: input.done ? new Date() : null,
@@ -612,8 +642,9 @@ export async function toggleChecklistItem(
     user,
     before: { done: item.done },
     after: { done: input.done },
-  });
+  },tx);
   return updated;
+  });
 }
 
 export async function softDeleteTask(
@@ -621,12 +652,12 @@ export async function softDeleteTask(
   input: { id: string; reason: string },
   expectedRevision?: string,
 ) {
-  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null } });
+  const current = await prisma.task.findFirst({ where: { id: input.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] } });
   if (!current) throw new NotFoundError('La tarea no existe o ya fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
     });
     await recordAudit(
@@ -658,13 +689,13 @@ export async function restoreTask(
   expectedRevision?: string,
 ) {
   const current = await prisma.task.findFirst({
-    where: { id: input.id, NOT: { deletedAt: null } },
+    where: { id: input.id, NOT: { deletedAt: null }, AND:[taskFollowUpReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
     const restored = await tx.task.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
+      where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
     await recordAudit(
@@ -685,9 +716,9 @@ export async function restoreTask(
 }
 
 /** Tareas abiertas asignadas al usuario, ordenadas por urgencia real. */
-export async function listMyTasks(userId: string, take = 20) {
+export async function listMyTasks(user: CurrentUser, take = 20) {
   return prisma.task.findMany({
-    where: { deletedAt: null, assigneeId: userId, status: { in: TASK_OPEN_STATUSES } },
+    where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES }, AND:[taskFollowUpReadWhere(user)] },
     include: taskInclude,
     orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
     take,

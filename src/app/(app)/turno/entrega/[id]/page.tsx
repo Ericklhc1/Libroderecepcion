@@ -1,3 +1,4 @@
+import {visibleSnapshotItems} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -74,9 +75,10 @@ export default async function HandoverPage({
     },
   });
   if (!handover) notFound();
+  handover.items=await visibleSnapshotItems(user,handover.items);
 
   const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
-    getHistory({ entity: 'ShiftHandover', entityId: handover.id }),
+    getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),

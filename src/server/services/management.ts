@@ -1,4 +1,6 @@
 import 'server-only';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {taskFollowUpReadWhere} from './followup-access';
 
 import {
   EntryStatus,
@@ -176,7 +178,7 @@ export async function getManagementDecisionAdvice(
   }
 }
 
-export async function getManagementCockpit(inputDays = 30) {
+export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   const now = new Date();
   const days = normalizeDays(inputDays);
   const period = periodFor(days, now);
@@ -213,7 +215,7 @@ export async function getManagementCockpit(inputDays = 30) {
   ] = await Promise.all([
     prisma.task.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
         status: TaskStatus.COMPLETADA,
         completedAt: currentRange,
       },
@@ -221,7 +223,7 @@ export async function getManagementCockpit(inputDays = 30) {
     }),
     prisma.task.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
         status: TaskStatus.COMPLETADA,
         completedAt: previousRange,
       },
@@ -229,7 +231,7 @@ export async function getManagementCockpit(inputDays = 30) {
     }),
     prisma.task.findMany({
       where: {
-        deletedAt: null,
+        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
         status: { in: TASK_OPEN_STATUSES },
         dueAt: { lt: now },
       },
@@ -351,7 +353,7 @@ export async function getManagementCockpit(inputDays = 30) {
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
-    getRoomMonitorOverview(now),
+    getRoomMonitorOverview(user,now),
     prisma.checklistRun.count({
       where: { deletedAt: null, status: { not: 'CERRADA' } },
     }),

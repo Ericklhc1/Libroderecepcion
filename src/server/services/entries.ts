@@ -265,6 +265,12 @@ export async function getEntry(id: string): Promise<EntryWithRelations> {
   return entry;
 }
 
+/** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
+export async function getSubjectEntry(user: Pick<CurrentUser, 'isSystemAdmin'>, id: string): Promise<EntryWithRelations> {
+  const entry = await getEntry(id);
+  return { ...entry, housekeepingRequest: entry.housekeepingRequest?.isDemo && !user.isSystemAdmin ? null : entry.housekeepingRequest };
+}
+
 export async function updateEntry(
   user: CurrentUser,
   input: { id: string } & Partial<EntryCreateInput> & {
@@ -387,6 +393,7 @@ export async function changeEntryStatus(
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
   if (current.status === input.status) return current;
+  if (input.status === EntryStatus.EN_CURSO && !current.ownerId) throw new RuleError('Asigna una persona responsable antes de comenzar la atención.');
 
   const closing =
     input.status === EntryStatus.CERRADO || input.status === EntryStatus.RESUELTO;
@@ -400,9 +407,9 @@ export async function changeEntryStatus(
     if (!user.permissions.includes(permission) && !user.permissions.includes('entry.close')) {
       throw new RuleError('No tienes permiso para cerrar este registro.');
     }
-    if (current.type === EntryType.INCIDENCIA && input.status === EntryStatus.CERRADO) {
+    if (current.type === EntryType.INCIDENCIA) {
       const resolution = input.resolution ?? current.resolution;
-      if (!resolution) {
+      if (!resolution?.trim()) {
         throw new RuleError(
           'Para cerrar una incidencia debes registrar cómo se resolvió.',
         );
@@ -437,7 +444,7 @@ export async function changeEntryStatus(
   const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalEntry.update({
-      where: { id: input.id, updatedAt:current.updatedAt },
+      where: { id: input.id, updatedAt:current.updatedAt, ownerId:current.ownerId, status:current.status },
       data: {
         updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime()+1)),
         status: input.status,

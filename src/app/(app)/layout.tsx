@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { UxJourney } from '@/components/observability/ux-journey';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
 import { Search, UserRound } from 'lucide-react';
@@ -90,6 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[#f3f6f8]">
+      <UxJourney/>
       <div className="flex min-h-screen min-w-0">
         <AppSidebar groups={groups} badges={badges} hotelName={hotelName} version={packageJson.version} userId={user.id} />
 

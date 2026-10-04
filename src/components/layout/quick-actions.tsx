@@ -20,7 +20,7 @@ export async function QuickActions({
   user: CurrentUser;
   compact?: boolean;
 }) {
-  const options = await getFormOptions();
+  const options = await getFormOptions(user);
   const can = (permission: string) => user.permissions.includes(permission as never);
 
   return (

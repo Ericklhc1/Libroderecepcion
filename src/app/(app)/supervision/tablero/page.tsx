@@ -74,7 +74,7 @@ export default async function AssignmentBoardPage({
   const canConfigure = isSupervisor && hasPermission(user, 'supervision.audit.create');
 
   const [board, templates, runs, myRun] = await Promise.all([
-    getAssignmentBoard(),
+    getAssignmentBoard(user),
     listTemplates(canConfigure),
     listRuns(user, 8, ChecklistRunMode.RONDA),
     getMyOpenRun(user.id, ChecklistRunMode.RONDA),

@@ -1,3 +1,5 @@
+import type {CurrentUser} from '@/server/auth/current-user';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -8,7 +10,7 @@ import {
   ShiftStatus,
   TaskStatus,
 } from '@prisma/client';
-import type { Priority, Severity } from '@prisma/client';
+import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import {
@@ -28,6 +30,34 @@ export type SnapshotItem = {
   refType: string | null;
   refId: string | null;
 };
+
+/** Preserve historical evidence and controls; redact reserved content for the current reader. */
+export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
+  const ids=(kind:string)=>items.filter(i=>i.refType===kind&&i.refId).map(i=>i.refId!);
+  const [tasks,followUps,alerts]=await Promise.all([
+    db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
+    db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
+    db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared)]},select:{id:true}}),
+  ]);
+  const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
+  return items.map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
+    ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
+    : item);
+}
+
+/** Sanitizes both native items and the historic JSON photograph without rewriting either. */
+export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T):Promise<T>{
+  const items=await visibleSnapshotItems(user,handover.items);
+  let snapshot=handover.snapshot;
+  if(snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)&&Array.isArray(snapshot.items)){
+    const historical=snapshot.items.map(value=>{
+      if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.title!=='string')return {title:'Asunto reservado',detail:'La evidencia original requiere revisión.',refType:null,refId:null};
+      return {...value,title:value.title,detail:typeof value.detail==='string'?value.detail:null,refType:typeof value.refType==='string'?value.refType:null,refId:typeof value.refId==='string'?value.refId:null};
+    });
+    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical)};
+  }
+  return {...handover,items,snapshot};
+}
 
 const SECTIONS = {
   resueltos: 'Resuelto en este turno',
@@ -77,6 +107,7 @@ type SnapshotOptions = {
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
  */
 export async function buildHandoverSnapshot(
+  user: CurrentUser,
   now = new Date(),
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
@@ -131,7 +162,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, AND:[taskFollowUpReadWhere(user,true)] },
       select: {
         id: true,
         humanId: true,
@@ -147,7 +178,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.alert.findMany({
-      where: LIVE_ALERT_WHERE(now),
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true)]},
       select: {
         id: true,
         type: true,
@@ -166,6 +197,7 @@ export async function buildHandoverSnapshot(
       where: {
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
+        AND:[followUpReadWhere(user,false,true)],
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }],
       },
       select: {
@@ -195,7 +227,7 @@ export async function buildHandoverSnapshot(
             title: true,
             resolution: true,
             closedAt: true,
-            _count: { select: { tasks: true, followUps: true } },
+            _count: { select: { tasks: {where:taskFollowUpReadWhere(user,true)}, followUps: {where:followUpReadWhere(user,false,true)} } },
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
           take: 150,
@@ -208,6 +240,7 @@ export async function buildHandoverSnapshot(
             deletedAt: null,
             entryId: null,
             status: TaskStatus.COMPLETADA,
+            AND:[taskFollowUpReadWhere(user,true)],
           },
           select: { id: true, humanId: true, title: true, completedAt: true },
           orderBy: { completedAt: 'asc' },

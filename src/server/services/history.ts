@@ -3,6 +3,8 @@ import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
+import type {CurrentUser} from '@/server/auth/current-user';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere,auditFollowUpReadWhere} from './followup-access';
 
 export type HistoryEvent = {
   id: string;
@@ -28,10 +30,14 @@ type HistoryTarget = {
  * reasignaciones, seguimientos, cambios de estado y cierre, en orden
  * cronológico. Se alimenta del AuditLog más los objetos asociados.
  */
-export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]> {
+export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id'|'permissions'>): Promise<HistoryEvent[]> {
+  const visible=target.entity==='Task'?await prisma.task.count({where:{id:target.entityId,AND:[taskFollowUpReadWhere(user)]}})
+    :target.entity==='FollowUp'?await prisma.followUp.count({where:{id:target.entityId,AND:[followUpReadWhere(user,true)]}})
+    :target.entity==='Alert'?await prisma.alert.count({where:{id:target.entityId,AND:[alertReadWhere(user)]}}):1;
+  if(!visible) return [];
   const [logs, comments, followUps] = await Promise.all([
     prisma.auditLog.findMany({
-      where: { entity: target.entity, entityId: target.entityId },
+      where: { entity: target.entity, entityId: target.entityId,AND:[auditFollowUpReadWhere(user)] },
       include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
       take: 300,
@@ -39,6 +45,7 @@ export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]>
     prisma.comment.findMany({
       where: {
         deletedAt: null,
+        AND:[{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},{OR:[{alertId:null},{alert:alertReadWhere(user)}]}],
         ...(target.entity === 'OperationalEntry' ? { entryId: target.entityId } : {}),
         ...(target.entity === 'Task' ? { taskId: target.entityId } : {}),
         ...(target.entity === 'FollowUp' ? { followUpId: target.entityId } : {}),
@@ -54,6 +61,7 @@ export async function getHistory(target: HistoryTarget): Promise<HistoryEvent[]>
       ? prisma.followUp.findMany({
           where: {
             deletedAt: null,
+            AND:[followUpReadWhere(user)],
             ...(target.entity === 'OperationalEntry'
               ? { entryId: target.entityId }
               : { taskId: target.entityId }),

@@ -1,4 +1,5 @@
 import 'server-only';
+import {followUpReadSql} from './followup-access';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -123,6 +124,11 @@ export async function searchOperationalRecords(
   );
 
   const rows = await prisma.$queryRaw<SearchRow[]>(Prisma.sql`
+    WITH reserved_sources AS MATERIALIZED (
+      SELECT DISTINCT o.kind,o.id FROM "OperationalSourceFollowUp" o
+      JOIN "FollowUp" f ON f.id=o."followUpId"
+      WHERE NOT (${followUpReadSql(user,true)})
+    )
     SELECT
       "humanId",
       "entityType",
@@ -143,6 +149,12 @@ export async function searchOperationalRecords(
     FROM "HumanOperationalRecord"
     WHERE "entityType" IN (${Prisma.join(types)})
       AND ${Prisma.join(termFilters, ' AND ')}
+      AND CASE
+        WHEN "entityType" = 'Task' THEN NOT EXISTS (SELECT 1 FROM reserved_sources s WHERE s.kind='task' AND s.id="HumanOperationalRecord"."entityId")
+        WHEN "entityType" = 'FollowUp' THEN EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = "HumanOperationalRecord"."entityId" AND ${followUpReadSql(user)})
+        WHEN "entityType" = 'Alert' THEN NOT EXISTS (SELECT 1 FROM reserved_sources s WHERE s.kind='alert' AND s.id="HumanOperationalRecord"."entityId")
+        ELSE TRUE
+      END
     ORDER BY
       CASE
         WHEN ${numeric}::integer IS NOT NULL AND "humanId" = ${numeric} THEN 0

@@ -34,6 +34,20 @@ vi.mock('@/server/mail',async original=>({...await original<object>(),sendMail:v
 vi.mock('@/server/ai/fronti-provider',async original=>({...await original<object>(),chatWithFrontiProviderChain:auth.chat,resolveFrontiProviderChainRuntime:async()=>[{provider:'groq',model:'synthetic'}]}));
 vi.mock('@/server/ai/fronti-config',async original=>{const actual=await original<typeof import('@/server/ai/fronti-config')>();return {...actual,getFrontiConfig:async()=>({...await actual.getFrontiConfig(),enabled:true,tools:{room:true,priorities:true,deadlines:true,checkout:true,reminder:true,fine:true}})};});
 
+async function privateWorkFixture(){
+    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const source=await createEntry(reader,{type:'NOVEDAD',title:'Origen común',description:'Contexto',priority:'MEDIA',requiresFollowUp:false,tags:[]});
+    const room=await prisma.room.findFirstOrThrow({where:{number:'512'}});
+    const reserved=await prisma.followUp.create({data:{action:'Reservado',visibility:'PRIVADO',createdById:owner.id,ownerId:owner.id,entryId:source.id}});
+    const task=await prisma.task.create({data:{title:'Trabajo reservado',createdById:owner.id,entryId:source.id,followUpId:reserved.id,roomId:room.id,dueAt:new Date(Date.now()-3600000)}});
+    return {reader,owner,source,reserved,task};
+}
+async function measuredRead<T>(surface:string,operation:()=>Promise<T>){
+  const start=performance.now();
+  try{return await operation();}finally{console.info('E4_PRIVATE_READ',surface,Math.round(performance.now()-start));}
+}
+
 describe('AROH Simple · reserva y revisión independiente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
   it('asignar desde el formulario conserva causa y resultado, y permite corregirlos explícitamente',async()=>{
@@ -186,41 +200,45 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     expect((await getSubjectEntry(reader,source.id)).housekeepingRequest).toBeNull();
     expect((await getSubjectEntry(admin,source.id)).housekeepingRequest?.resolution).toBe('Resultado reservado');
   });
-  it('no proyecta seguimiento privado de otra persona ni la tarea que lo ejecuta',async()=>{
-    const reader=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
-    const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
-    const source=await createEntry(reader,{type:'NOVEDAD',title:'Origen común',description:'Contexto',priority:'MEDIA',requiresFollowUp:false,tags:[]});
-    const room=await prisma.room.findFirstOrThrow({where:{number:'512'}});
-    const reserved=await prisma.followUp.create({data:{action:'Reservado',visibility:'PRIVADO',createdById:owner.id,ownerId:owner.id,entryId:source.id}});
-    const task=await prisma.task.create({data:{title:'Trabajo reservado',createdById:owner.id,entryId:source.id,followUpId:reserved.id,roomId:room.id,dueAt:new Date(Date.now()-3600000)}});
+  it('reserva opciones, historial y Libro sin ocultar el origen común',async()=>{
+    const {reader,owner,source,reserved,task}=await privateWorkFixture();
     expect(await prisma.followUp.count({where:{entryId:source.id,AND:[followUpReadWhere(reader)]}})).toBe(0);
     expect(await prisma.task.count({where:{entryId:source.id,AND:[taskFollowUpReadWhere(reader)]}})).toBe(0);
-    expect(JSON.stringify((await getFormOptions(reader)).openTasks)).not.toContain('Trabajo reservado');
+    expect(JSON.stringify((await measuredRead('opciones',()=>getFormOptions(reader))).openTasks)).not.toContain('Trabajo reservado');
     await prisma.comment.create({data:{entryId:source.id,followUpId:reserved.id,authorId:owner.id,body:'Comentario reservado'}});
-    const history=await getHistory({entity:'OperationalEntry',entityId:source.id},reader);
+    const history=await measuredRead('historial',()=>getHistory({entity:'OperationalEntry',entityId:source.id},reader));
     expect(history.some(event=>event.id===reserved.id)).toBe(false);
     expect(JSON.stringify(history)).not.toContain('Comentario reservado');
     expect((await getHistory({entity:'OperationalEntry',entityId:source.id},owner)).some(event=>event.id===reserved.id)).toBe(true);
-    expect((await getBookItems({},reader)).items.some(item=>item.id===task.id||item.id===reserved.id)).toBe(false);
+    expect((await measuredRead('libro',()=>getBookItems({},reader))).items.some(item=>item.id===task.id||item.id===reserved.id)).toBe(false);
     expect((await getBookItems({kinds:['task']},owner)).items.some(item=>item.id===task.id)).toBe(true);
+  });
+  it('reserva avisos derivados del seguimiento o de su tarea',async()=>{
+    const {reader,owner,reserved,task}=await privateWorkFixture();
     for(const origin of [{followUpId:reserved.id},{taskId:task.id}]){
       const alert=await prisma.alert.create({data:{title:'Aviso reservado',message:'Resultado reservado del origen',type:'TAREA_VENCIDA',level:'CRITICA',createdById:owner.id,...origin}});
-      expect((await searchOperationalRecords(reader,'Aviso reservado')).some(row=>row.entityId===alert.id)).toBe(false);
+      expect((await measuredRead('buscar-aviso',()=>searchOperationalRecords(reader,'Aviso reservado'))).some(row=>row.entityId===alert.id)).toBe(false);
       expect((await searchOperationalRecords(owner,'Aviso reservado')).some(row=>row.entityId===alert.id)).toBe(true);
       await expect(acknowledgeAlert(reader,alert.id)).rejects.toThrow();
       expect((await prisma.alert.findUniqueOrThrow({where:{id:alert.id}})).status).toBe('NUEVA');
     }
+  });
+  it('reserva tarea, Fronti, habitación, búsqueda y Supervisión',async()=>{
+    const {reader,owner,task}=await privateWorkFixture();
     await expect(getTask(task.id,reader)).rejects.toThrow();
     const context=await executeFrontiPageContextTool(reader,resolveFrontiPageContext({pathname:`/tareas/${task.id}`}));
     expect(context).toMatchObject({snapshot:{found:false}});
     expect(JSON.stringify(context)).not.toContain('Trabajo reservado');
     expect((await getTask(task.id,owner)).title).toBe('Trabajo reservado');
-    expect((await getRoomMonitorOverview(reader)).rooms.find(r=>r.number==='512')?.openTasks).toBe(0);
+    expect((await measuredRead('habitaciones',()=>getRoomMonitorOverview(reader))).rooms.find(r=>r.number==='512')?.openTasks).toBe(0);
     expect((await getRoomMonitorOverview(owner)).rooms.find(r=>r.number==='512')?.openTasks).toBe(1);
-    expect((await getRoomMonitorDetail('512',reader)).tasks).toHaveLength(0);
+    expect((await measuredRead('habitacion',()=>getRoomMonitorDetail('512',reader))).tasks).toHaveLength(0);
     expect((await searchOperationalRecords(reader,'Trabajo reservado')).some(row=>row.entityId===task.id)).toBe(false);
     expect((await searchOperationalRecords(owner,'Trabajo reservado')).some(row=>row.entityId===task.id)).toBe(true);
-    expect(JSON.stringify(await getSupervisionData(reader))).not.toContain('Trabajo reservado');
+    expect(JSON.stringify(await measuredRead('supervision',()=>getSupervisionData(reader)))).not.toContain('Trabajo reservado');
+  });
+  it('rechaza mutaciones por ID conocido y permite archivo y restauración del autor',async()=>{
+    const {reader,owner,task}=await privateWorkFixture();
     const item=await prisma.taskChecklistItem.create({data:{taskId:task.id,text:'Paso reservado',order:0}});
     await expect(assignTask(reader,{id:task.id,assigneeId:reader.id})).rejects.toThrow();
     await expect(toggleChecklistItem(reader,{itemId:item.id,done:true})).rejects.toThrow();

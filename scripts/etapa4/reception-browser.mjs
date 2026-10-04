@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { readFileSync, writeFileSync } from 'node:fs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE);
 const f = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
+let activePage, activeElementId;
 const db = new PrismaClient(), browser = await chromium.launch({ headless: true }), results = [];
 async function actor(key, width) {
   const context = await browser.newContext({ viewport: { width, height: 900 } });
@@ -23,6 +24,8 @@ try {
     const handover = await db.shiftHandover.create({ data: { fromShiftId: outgoing.id, toShiftId: incoming.id, issuedById: f.users.admin.id, status: 'ENVIADA', issuedAt: new Date(), receiverBriefingReviewedAt: new Date() } });
     const element = await db.handoverElement.create({ data: { handoverId: handover.id, elementTypeId: type.id, declared: true } });
     const receiver = await actor('worker', width), supervisor = await actor('admin', width);
+    activePage=receiver.page;activeElementId=element.id;
+    receiver.page.on('pageerror',error=>console.error('Synthetic reception page error',error.message));
     const path = `http://localhost:3000/turno/entrega/${handover.id}`;
     await receiver.page.goto(path);
     await receiver.page.getByText('No recibido', { exact: true }).click();
@@ -60,6 +63,10 @@ try {
     results.push({ width, reportedMissing: true, independentApproval: true, physicalConfirmation: false, correctionInvalidatesApproval: true, supervisorInReceivingShift: width === 390, overflow: false });
     await receiver.context.close(); await supervisor.context.close();
   }
+} catch(error) {
+  if(activePage) console.error('Synthetic reception screen', (await activePage.locator('body').innerText()).slice(-14000));
+  if(activeElementId) { const element=await db.handoverElement.findUnique({where:{id:activeElementId},select:{declared:true,confirmed:true,missingReason:true,missingApprovedAt:true}}); console.error('Synthetic custody persistence',JSON.stringify(element)); }
+  throw error;
 } finally {
   writeFileSync('etapa4-reception-browser-results.json', JSON.stringify({ results }, null, 2));
   await browser.close(); await db.$disconnect();

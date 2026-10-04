@@ -64,7 +64,7 @@ try {
     await receiver.context.close(); await supervisor.context.close();
   }
 } catch(error) {
-  if(activePage) console.error('Synthetic reception screen', (await activePage.locator('body').innerText()).slice(-14000));
+  if(activePage) { console.error('Synthetic reception screen', (await activePage.locator('body').innerText()).slice(-14000));console.error('Synthetic overflow',await activePage.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,elements:Array.from(document.querySelectorAll('main *')).filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,12).map(el=>({tag:el.tagName,classes:el.className,right:el.getBoundingClientRect().right}))}))); }
   if(activeElementId) { const element=await db.handoverElement.findUnique({where:{id:activeElementId},select:{declared:true,confirmed:true,missingReason:true,missingApprovedAt:true}}); console.error('Synthetic custody persistence',JSON.stringify(element)); }
   throw error;
 } finally {

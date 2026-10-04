@@ -41,7 +41,7 @@ export function HistoryTimeline({ events }: { events: HistoryEvent[] }) {
   }
 
   return (
-    <ol className="relative space-y-4 py-4 pl-8 pr-4">
+    <ol className="relative min-w-0 space-y-4 py-4 pl-8 pr-4 [overflow-wrap:anywhere]">
       <span className="absolute left-[15px] top-6 bottom-6 w-px bg-slate-200" aria-hidden="true" />
       {events.map((event) => (
         <li key={`${event.kind}-${event.id}`} className="relative">
@@ -63,7 +63,7 @@ export function HistoryTimeline({ events }: { events: HistoryEvent[] }) {
             </p>
           ) : null}
           {event.reason ? (
-            <p className="mt-1 text-xs text-slate-500">Motivo: {event.reason}</p>
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-xs text-slate-500">Motivo: {event.reason}</p>
           ) : null}
           {renderDiff(event.before, event.after)}
         </li>

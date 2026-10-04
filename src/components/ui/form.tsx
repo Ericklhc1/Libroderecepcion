@@ -238,6 +238,8 @@ export function ActionForm({
     const result = await action(previous, formData);
     if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
     // Server Actions may persist before React commits useActionState's returned state.
+    // Do not refresh from inside the action wrapper: doing so keeps React's action
+    // transition pending and delays the committed state that sibling controls need.
     // Close only after an explicit successful result; validation/errors remain visible.
     if (result.ok && !result.credentials && closeOnSuccess && close) close();
     return result;
@@ -264,11 +266,13 @@ export function ActionForm({
       if (state.credentials) return;
       if (resetOnSuccess) form?.reset();
       if (closeOnSuccess && close) close();
-      if (refreshOnSuccess) router.refresh();
       if (handledSuccess.current !== state) {
         handledSuccess.current = state;
         onSuccess?.(state);
       }
+      // Commit local state first; refresh is follow-up reconciliation, not a
+      // prerequisite for exposing the next action.
+      if (refreshOnSuccess) router.refresh();
       return;
     }
     if (form && submitted.current) writeControls(form, submitted.current);

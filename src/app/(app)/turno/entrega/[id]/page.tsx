@@ -75,7 +75,7 @@ export default async function HandoverPage({
     },
   });
   if (!handover) notFound();
-  handover.items=await visibleSnapshotItems(user,handover.items);
+  handover.items=await visibleSnapshotItems(user,handover.items,true);
 
   const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),

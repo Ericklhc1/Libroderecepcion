@@ -1,11 +1,13 @@
+import {markReadableNotifications} from '@/server/services/notification-access';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
 import {createFollowUp,updateFollowUp} from '@/server/services/followups';
 import {followUpReadWhere,followUpReadSql,notificationReadWhere} from '@/server/services/followup-access';
+import {searchOperationalRecords} from '@/server/services/global-search';
 import {getNotificationFeedForUser} from '@/server/services/notification-feed';
 import {getUnreadCountsForUser} from '@/server/services/notification-poll';
 import {getWebPushPayload} from '@/server/services/web-push';
-import {buildHandoverSnapshot,visibleSnapshotItems} from '@/server/services/handover-snapshot';
+import {buildHandoverSnapshot,visibleSnapshotItems,visibleHandover} from '@/server/services/handover-snapshot';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
@@ -43,6 +45,8 @@ describe('AROH Simple · continuidad derivada y avisos históricos',()=>{
     expect(await prisma.followUp.count({where:{id:child.id,AND:[followUpReadWhere(f.owner)]}})).toBe(1);
     const rows=await prisma.$queryRaw<Array<{id:string}>>`SELECT f.id FROM "FollowUp" f WHERE ${followUpReadSql(f.reader)}`;
     expect(rows.map(r=>r.id)).not.toContain(child.id);
+    expect((await searchOperationalRecords(f.reader,'E4_COPIA_HISTORICA')).some(r=>r.entityId===child.id)).toBe(false);
+    expect((await searchOperationalRecords(f.owner,'E4_COPIA_HISTORICA')).some(r=>r.entityId===child.id)).toBe(true);
     expect(await prisma.followUp.findUniqueOrThrow({where:{id:child.id}})).toMatchObject({action:'E4_COPIA_HISTORICA',visibility:'OPERATIVO'});
   });
   it('campana, historial, Fronti y push excluyen avisos antiguos tras restringir el origen',async()=>{
@@ -65,7 +69,12 @@ describe('AROH Simple · continuidad derivada y avisos históricos',()=>{
     await prisma.pushSubscription.create({data:{userId:f.reader.id,endpoint,createdAt:new Date(Date.now()-10000)}});
     const push=await getWebPushPayload({userId:f.reader.id,endpoint});
     expect(push.unread).toBe(1);expect(push.newCount).toBe(1);expect(push.items.map(n=>n.id)).toEqual([visible.id]);
-    expect(await prisma.notification.count({where:{title:'E4_SECRETO'}})).toBe(4);
+    expect(await markReadableNotifications(f.reader.id)).toMatchObject({count:1});
+    const hiddenNotice=await prisma.notification.findFirstOrThrow({where:{title:'E4_SECRETO'}});
+    expect(await markReadableNotifications(f.reader.id,hiddenNotice.id)).toMatchObject({count:0});
+    expect(await prisma.notification.count({where:{title:'E4_SECRETO',readAt:null}})).toBe(4);
+    await prisma.followUp.update({where:{id:f.source.id},data:{visibility:'OPERATIVO'}});
+    expect((await getNotificationFeedForUser(f.reader.id)).unread).toBe(4);
   });
   it('el relevo incluye continuidad operativa de compañeros y excluye lo reservado',async()=>{
     const f=await fixture('OPERATIVO');const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
@@ -75,6 +84,9 @@ describe('AROH Simple · continuidad derivada y avisos históricos',()=>{
     expect(snapshot.some(item=>item.refType==='task'&&item.refId===f.task.id)).toBe(true);
     expect(JSON.stringify(snapshot)).not.toContain('E4_PRIVADO');
     const visible=await visibleSnapshotItems(reception,[{refType:'followup',refId:f.source.id,title:'Continuidad de un compañero',detail:''},{refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}],true);
+    const historical={items:[{section:'continuidad',level:'INFORMATIVO' as const,refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}],snapshot:{items:[{refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}]}};
+    expect(JSON.stringify(await visibleHandover(f.owner,historical))).not.toContain('E4_PRIVADO');
+    expect(JSON.stringify(historical)).toContain('E4_PRIVADO');
     expect(visible[0]?.title).toBe('Continuidad de un compañero');expect(visible[1]?.title).toBe('Asunto reservado');
   });
 });

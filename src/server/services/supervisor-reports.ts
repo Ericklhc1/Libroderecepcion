@@ -1,3 +1,4 @@
+import {taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 
 import { AlertStatus, EntryStatus, TaskStatus } from '@prisma/client';
@@ -5,6 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { listGymPasses } from './gym-pass';
+
+const sharedReader={id:'',permissions:[]};
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -128,12 +131,12 @@ export async function buildSupervisorReport(
     }),
     prisma.task.groupBy({
       by: ['status'],
-      where: { deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      where: { AND:[taskFollowUpReadWhere(sharedReader,true)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.alert.groupBy({
       by: ['status'],
-      where: { deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      where: { AND:[alertReadWhere(sharedReader,true)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.shift.findMany({
@@ -146,10 +149,10 @@ export async function buildSupervisorReport(
       where: { deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
     }),
     prisma.task.count({
-      where: { deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
+      where: { AND:[taskFollowUpReadWhere(sharedReader,true)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
     }),
     prisma.alert.count({
-      where: { deletedAt: null, status: { not: AlertStatus.RESUELTA } },
+      where: { AND:[alertReadWhere(sharedReader,true)], deletedAt: null, status: { not: AlertStatus.RESUELTA } },
     }),
   ]);
 

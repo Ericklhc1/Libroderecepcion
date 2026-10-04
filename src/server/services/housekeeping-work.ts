@@ -89,18 +89,19 @@ export async function validateWorker(tx: Tx, departmentId: string, id: string, w
   if (!await tx.user.findFirst({ where: { id, ...membership(departmentId), ...worker }, select: { id: true } })) throw new RuleError('Selecciona un usuario activo del área con permiso para ejecutar trabajo.');
   if (workDate && (await tx.housekeepingDayMember.findUnique({ where: { departmentId_workDate_userId: { departmentId, workDate, userId: id } } }))?.available === false) throw new RuleError('Esta persona figura como no disponible para ese día.');
 }
-export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
+export async function createHkWork(user: CurrentUser, input: HkCreateInput, client?: Prisma.TransactionClient) {
+  const db = client ?? prisma;
   hasAccess(user); validDate(input.workDate);
   if (!input.title.trim() || !input.description.trim()) throw new RuleError('Indica qué se necesita y la instrucción.');
   if (!Number.isInteger(input.effortMinutes) || input.effortMinutes < 1 || input.effortMinutes > 480) throw new RuleError('La duración estimada debe estar entre 1 y 480 minutos.');
-  const canAssign = await hkCapability(user, input.departmentId, 'housekeeping.assign');
+  const canAssign = await hkCapability(user, input.departmentId, 'housekeeping.assign',db);
   if (!canAssign && !hkHas(user, 'housekeeping.request')) throw new ForbiddenError();
-  const area = await prisma.department.findFirst({ where: { id: input.departmentId, active: true }, select: { key: true } });
+  const area = await db.department.findFirst({ where: { id: input.departmentId, active: true }, select: { key: true } });
   if (!area || (!canAssign && !['HOUSEKEEPING', 'AREAS_PUBLICAS'].includes(area.key))) throw new ForbiddenError('Las solicitudes deben dirigirse a Housekeeping o Áreas públicas.');
   if (input.assignedToId && !canAssign) throw new ForbiddenError('La asignación corresponde al supervisor del área.');
-  const repeated = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
+  const repeated = await db.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
   if (repeated) { if (repeated.createdById !== user.id) throw new ForbiddenError(); return repeated; }
-  try { return await prisma.$transaction(async tx => {
+  const perform = async (tx: Prisma.TransactionClient) => {
     const room = input.roomId ? await tx.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true, number: true } }) : null;
     const zone = input.zoneId ? await tx.keyArea.findFirst({ where: { id: input.zoneId, active: true }, select: { id: true, name: true } }) : null;
     if ((input.roomId && !room) || (input.zoneId && !zone) || (room && zone)) throw new RuleError('Selecciona una habitación o zona válida.');
@@ -112,9 +113,10 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
     const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, workAssignedAt: input.assignedToId ? new Date() : null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
     await record(tx, user, request.id, request.humanId, 'CREAR', 'Trabajo del día'); await notifyHkWork(tx, request, user.id, 'Nuevo trabajo'); return request;
-  }); } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const request = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
+  };
+  try { return client ? await perform(client) : await prisma.$transaction(perform); } catch (error) {
+    if (!client && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const request = await db.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
       if (request?.createdById === user.id) return request;
       throw new RuleError('El registro de origen ya tiene una atención vinculada.');
     } throw error;
@@ -309,5 +311,23 @@ export async function acceptHkHandover(user: CurrentUser, id: string) {
     if (!changed.count) throw new RuleError('El relevo cambió. Actualiza.');
     await record(tx, user, id, null, 'ACEPTAR_CONTINUIDAD', 'Pendientes y custodias revisados. Cada trabajo conserva responsable, recepción y resultado propios.');
     return { id };
+  });
+}
+
+/** Administrative repair: preserve the private pilot and its source snapshot before freeing the live relation. */
+export async function releasePilotHkSource(user:CurrentUser,input:{id:string;version:number;note:string}) {
+  if(user.roleKey!==ADMIN)throw new ForbiddenError();
+  if(!input.note.trim())throw new RuleError('Describe el motivo de la regularización.');
+  return prisma.$transaction(async tx=>{
+    const initial=await tx.housekeepingRequest.findUnique({where:{id:input.id},select:{sourceEntryId:true}});
+    if(!initial?.sourceEntryId)throw new RuleError('El vínculo ya fue regularizado o no existe.');
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${initial.sourceEntryId} FOR UPDATE`;
+    const current=await tx.housekeepingRequest.findFirst({where:{id:input.id,isDemo:true,version:input.version,sourceEntryId:initial.sourceEntryId},include:{sourceEntry:{select:{id:true,humanId:true,title:true,description:true}}}});
+    if(!current?.sourceEntry)throw new RuleError('La prueba cambió o no admite esta regularización.');
+    const before={sourceEntryId:current.sourceEntryId,title:current.title,description:current.description,version:current.version,source:current.sourceEntry};
+    const updated=await tx.housekeepingRequest.update({where:{id:current.id,version:input.version},data:{sourceEntryId:null,title:current.title??current.sourceEntry.title,description:current.description??current.sourceEntry.description,version:{increment:1}}});
+    await tx.housekeepingEvent.create({data:{requestId:current.id,actorId:user.id,action:'REGULARIZAR_PILOTO',fromStatus:current.status,toStatus:current.status,note:`Vínculo anterior: asunto #${current.sourceEntry.humanId} (${current.sourceEntry.id}). ${input.note.trim()}`}});
+    await tx.auditLog.create({data:{entity:'HousekeepingRequest',entityId:current.id,userId:user.id,sessionId:user.sessionId,action:'EDITAR',isDemo:true,summary:`Regularización de vínculo piloto #${current.humanId}`,reason:input.note.trim(),before,after:{sourceEntryId:null,title:updated.title,description:updated.description,version:updated.version}}});
+    return updated;
   });
 }

@@ -1,3 +1,25 @@
+## Revisión 39d35f8 · resultado del asunto y diagnóstico UI
+
+Se limita el retorno vigente a tareas de atención canónica; una tarea ordinaria más reciente no reemplaza ni oculta ese resultado. Los pilotos HK no son atención activa ni resultado operativo, incluso para Administración. La Compuerta 37189799724 aprobó 1535 pruebas + una omisión y build; navegador encontró selector de primaria antiguo, lecturas de respuesta tras navegación y transición HK sin confirmación visible. Los dos primeros se corrigieron; HK registra revisión del formulario/DB y estado visible ante fallo para determinar la causa sin ampliar tiempos ni simular acciones.
+
+## Compuerta 37189452895 · correcciones de regresión
+
+1520 pruebas correctas, una omisión heredada y dos expectativas obsoletas: relevo compartido todavía esperaba contenido privado para su autor; polling esperaba updateMany en la ruta tras extraer el servicio canónico. Se actualizaron conservando las comprobaciones de aislamiento y evidencia persistida. Búsqueda reservada medida en 48/16 ms (antes 4–8 segundos), sin desactivar JIT ni ampliar tiempos. Se extendió el filtro OPERATIVO a indicadores e informes compartidos, con regresión dedicada. Nueva Compuerta requerida.
+
+## Continuación 2026-10-04 · revisión de Etapa 4
+
+Production 1.53.0 verificada en 907ed8b. Compuerta main 37188694284 y Release 37189100571 correctas. Los bloques 2–5 siguen sin publicar.
+
+Correcciones en preparación: reserva canónica en listas/contadores, lectura compartida de relevos históricos, marcar únicamente avisos visibles, bloqueo de orígenes al asignar tareas, conservación del resultado hasta validación y resultado explícito firmado en Fronti. Housekeeping reabre por su transición nativa con permisos y auditoría idempotente; permite otra área tras terminar. Se implementó regularización exclusiva de Administración para vínculos piloto: confirmación y motivo, bloqueo del origen, copia de su contexto, auditoría anterior/posterior y evento con folio original. El piloto conserva isDemo, estado e historial. No se ejecutó esta reparación sobre producción.
+
+Tipos locales correctos; nuevas regresiones PostgreSQL pendientes de Compuerta. No se ha usado base de producción para pruebas. Revisar todos los hallazgos de PR262–265 antes de publicar. Los bloques 3–5 también corrigen contexto de ubicación Fronti, navegación Avisos/HK, búsquedas y enlaces de Coordinación/Supervisión. Regresiones nuevas cubren regularización del piloto, reserva al marcar avisos, resultado firmado de Fronti y reapertura HK.
+
+## 2026-10-04 · bloque 2 · búsqueda sin recorrer dos veces la reserva
+
+PR261 integrada como 907ed8b para 1.53.0: Compuerta 37188266171 aprobó 1514 pruebas + una omisión heredada, migraciones PG16, lint, tipos, build y recorridos 1280/390; Codex revisó 49463f9 sin hallazgos importantes (5978051066). La verificación de Vercel y del release main sigue pendiente al escribir esta nota.
+
+PR265 detectó timeout de búsqueda reservada (30 s por cuatro lecturas): cada lectura tardó 7.4–7.8 s, frente a 4.3 s en la CI aprobada de PR261. La CTE ya materializa todos los orígenes, pero invocaba otra vez el predicado transitivo por nodo. Se reutiliza únicamente la regla directa de cada nodo en esa CTE, incluyendo su propia reserva, y se consulta el mismo conjunto para Task/Alert/FollowUp; la eliminación lógica sigue explícita. No se desactiva JIT ni se amplían timeouts. Regresión adicional de búsqueda de seguimiento derivado con ciclo y lector permitido. El navegador espera la primaria visible antes de medir (la evidencia anterior registró 0 antes de render y no constituye una medida válida del número de acciones). Requiere Compuerta y Codex del nuevo SHA.
+
 ## 2026-10-04 · regresiones de continuidad y navegador en validación
 
 La comprobación de reserva derivada sólo se aplica cuando hay otro seguimiento de origen; la continuidad propia de Supervisión conserva la asignación nativa (centro-supervision, entrega inalterable). Los seguimientos con origen reservado mantienen validación transaccional de lector, destinatario y visibilidad. El diálogo de estado se cierra/refresca únicamente tras confirmación real. El recorrido de reserva busca por prefijo para no confundir el encabezado «Resultados para…» con una fila oculta. Los fallos se corrigen, no se ignoran ni se amplían timeouts. Nueva Compuerta del SHA final y revisión Codex requeridas; producción sigue 1.52.0.
@@ -7,6 +29,12 @@ La comprobación de reserva derivada sólo se aplica cuando hay otro seguimiento
 Compuerta 37187188272 del SHA ada7b41 aprobó 1510 pruebas, una omisión heredada, PG16, lint, tipos, build y navegador 1280/390. Codex 5404934390 revisó fde30b5: auditoría Fronti ya corregida en d7c47dc; se reparan tres hallazgos restantes. La reserva transitiva incluye seguimientos derivados y ciclos históricos; creación/edición valida responsable y visibilidad dentro de la transacción, antes de auditoría/avisos. Campana, lista, conteos, Fronti y payload push aplican fuente vigente antes de paginar, conservando notificaciones originales. Relevo compartido permite todo OPERATIVO de compañeros y excluye PRIVADO/SUPERVISION. La migración aditiva 20261004080500 sólo actualiza vistas de lectura. Pruebas PostgreSQL cubren rollback, ciclo histórico, cambio de visibilidad, avisos/proactivo, push y relevo; navegador añade Notificaciones. Nueva Compuerta completa y Codex requeridos; producción comprobada 1.52.0/0b05951, sin publicar este bloque.
 
 Bloques posteriores preservados como PR262 (1.54.0, derivación), PR263 (1.55.0, roles), PR264 (1.56.0, Fronti/Avisos) y PR265 (1.57.0, Turno/Caja/Llaves), todos borradores dependientes. Cada uno conserva sólo su funcionalidad adicional sobre los predecesores. Propagar esta corrección a cada rama antes de integrarla; no publicar un SHA anterior por una Compuerta verde. Tipos/lint locales del conjunto 1.57 y del parche aprobados; las pruebas de integración/recorridos de cada PR mandan. Lista única docs/etapa4/PENDIENTES.md.
+
+## AROH Simple · derivación preparada (1.54.0, sin publicar)
+
+Solicitar atención conserva el asunto y el contexto y utiliza Task o HousekeepingRequest según el área. No repite descripción/habitación ni crea otro motor. Lock del origen, revisión vigente y huella de solicitud impiden duplicados concurrentes; un reintento exacto conserva el mismo trabajo incluso tras derivarlo, y no se declara atención de un área distinta. El resultado actual del área vuelve al origen para revisión manual con permisos nativos; un intento anterior de un asunto reabierto conserva su etiqueta histórica. El solicitante autorizado puede revisar el retorno sin inventarse como ejecutor del trabajo especializado. HK conserva impedimento técnico, vínculo a Mantenimiento, reconfirmación e inspección independiente.
+
+Este bloque fue rebasado con sus commits propios sobre ada7b41 de PR261; no copiar las versiones anteriores de los lectores reservados. Lint/tipos y pruebas PG/navegador deben aprobar sobre la rama final; scripts 1280/390 cubren ambas áreas con responsables reales de fixture y raíz sin dueño, sin transcripción del resultado. Todavía sin PR/publicación ni evidencia PG de este bloque. Tras squash de PR261 rebasar exclusivamente los commits propios desde ada7b41 sobre main. Lista única docs/etapa4/PENDIENTES.md.
 
 ## 2026-10-04 · Compuerta d7c47dc: reserva aprobada, fixture transversal corregida
 

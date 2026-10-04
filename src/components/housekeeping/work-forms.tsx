@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { HK_WORK_KINDS, HK_KIND_LABELS, HK_ACTION_LABELS, HK_NOTE_REQUIRED, hkInspectionRequired, type HkWorkAction, type HkWorkKind } from '@/domain/housekeeping-work';
-import { acceptHkHandoverAction, createHkWorkAction, changeHkWorkAction, saveHkRoutineAction, prepareHkDayAction, confirmHkAvailabilityAction, saveHkHandoverAction, receiveHkHandoverAction, delegateHkAction, revokeHkDelegationAction, organizeLegacyHkWorkAction } from '@/server/actions/housekeeping-work';
+import { SubjectActions } from '@/components/operational/subject-surface';
+import { HK_WORK_KINDS, HK_KIND_LABELS, HK_ACTION_LABELS, HK_NOTE_REQUIRED, HK_WORK_LABELS, hkAllowedActions, hkInspectionRequired, type HkWorkAction, type HkWorkKind } from '@/domain/housekeeping-work';
+import { releasePilotHkSourceAction, acceptHkHandoverAction, createHkWorkAction, changeHkWorkAction, saveHkRoutineAction, prepareHkDayAction, confirmHkAvailabilityAction, saveHkHandoverAction, receiveHkHandoverAction, delegateHkAction, revokeHkDelegationAction, organizeLegacyHkWorkAction } from '@/server/actions/housekeeping-work';
 
 type Person = { id:string;name:string };
 type Place = { id:string;number?:string;name?:string };
@@ -26,17 +27,50 @@ export function NewWorkForm({requestKey,date,departmentId,rooms,zones,team,canAs
     </ActionForm>
   </Dialog>;
 }
-export function WorkActionForm({id,version,action,team,defaultAssignee}:{id:string;version:number;action:HkWorkAction;team:Person[];defaultAssignee?:string}) {
+export function WorkActionForm({id,version,action,team,defaultAssignee,primary=false,onCommitted}:{id:string;version:number;action:HkWorkAction;team:Person[];defaultAssignee?:string;primary?:boolean;onCommitted?:(state:{version:number;status:string;ownerId:string|null})=>void}) {
   const hidden=<><input type="hidden" name="id" value={id}/><input type="hidden" name="version" value={version}/><input type="hidden" name="action" value={action}/></>;
-  if(!HK_NOTE_REQUIRED.includes(action))return <ActionForm action={changeHkWorkAction} refreshOnSuccess hideSuccess className="space-y-0">{hidden}<SubmitButton variant="secondary" size="sm" pendingLabel="Guardando…">{HK_ACTION_LABELS[action]}</SubmitButton></ActionForm>;
-  return <Dialog title={HK_ACTION_LABELS[action]} trigger={HK_ACTION_LABELS[action]} triggerVariant="secondary" triggerSize="sm" width="sm" description={action==='APROBAR'?'Confirma sólo después de revisar el trabajo. Tu nombre quedará registrado.':'La instrucción o el resultado se conservará en el historial.'}>
-    <ActionForm action={changeHkWorkAction} refreshOnSuccess closeOnSuccess>{hidden}
+  const committed=(state:{committedVersion?:number;committedStatus?:string;committedOwnerId?:string|null})=>{
+    if(state.committedVersion&&state.committedStatus)onCommitted?.({version:state.committedVersion,status:state.committedStatus,ownerId:state.committedOwnerId??null});
+  };
+  if(!HK_NOTE_REQUIRED.includes(action))return <ActionForm action={changeHkWorkAction} refreshOnSuccess hideSuccess className="space-y-0" onSuccess={committed}>{hidden}<SubmitButton variant={primary?"gold":"secondary"} size="sm" pendingLabel="Guardando…">{HK_ACTION_LABELS[action]}</SubmitButton></ActionForm>;
+  return <Dialog title={HK_ACTION_LABELS[action]} trigger={HK_ACTION_LABELS[action]} triggerVariant={primary?"gold":"secondary"} triggerSize="sm" width="sm" description={action==='APROBAR'?'Confirma sólo después de revisar el trabajo. Tu nombre quedará registrado.':'La instrucción o el resultado se conservará en el historial.'}>
+    <ActionForm action={changeHkWorkAction} refreshOnSuccess closeOnSuccess onSuccess={committed}>{hidden}
       {action==='ASIGNAR'&&<><Field label="Responsable" name="assignedToId"><Select name="assignedToId" required defaultValue={defaultAssignee??''} options={[{value:'',label:'Seleccionar persona'},...team.map(p=>({value:p.id,label:p.name}))]}/></Field><Field label="Atender antes de" name="dueAt" hint="Opcional · conserva el plazo si se deja vacío"><Input type="datetime-local" name="dueAt"/></Field></>}
       {action==='MANTENIMIENTO'&&<Field label="Gravedad" name="severity"><Select name="severity" required options={[{value:'',label:'Seleccionar gravedad'},...['BAJA','MEDIA','ALTA','CRITICA'].map(v=>({value:v,label:v}))]}/></Field>}
       <Field label={action==='TERMINAR'?'Qué se hizo':action==='APROBAR'?'Resultado de la inspección':action==='CORREGIR'?'Qué debe corregirse':action==='ASIGNAR'?'Instrucción / motivo':action==='MANTENIMIENTO'?'Qué debe revisar Mantenimiento':'Motivo / información'} name="note"><Textarea name="note" required maxLength={3000} rows={3}/></Field>
       <SubmitButton pendingLabel="Guardando…">Confirmar</SubmitButton>
     </ActionForm>
   </Dialog>;
+}
+
+export function WorkActionCluster({id,humanId,version,status,team,assignedToId,allowedActions,changed=false,waitingMaintenance=false,hasMaintenance=false,hasResult=false}:{id:string;humanId:number;version:number;status:string;team:Person[];assignedToId:string|null;allowedActions:HkWorkAction[];changed?:boolean;waitingMaintenance?:boolean;hasMaintenance?:boolean;hasResult?:boolean}) {
+  const [snapshot,setSnapshot]=useState({version,status,ownerId:assignedToId,changed,waitingMaintenance,hasMaintenance});
+  const available=hkAllowedActions(snapshot.status,!!snapshot.ownerId,snapshot.changed)
+    .filter(action=>allowedActions.includes(action))
+    .filter(action=>!(snapshot.waitingMaintenance&&['COMENZAR','RETOMAR','TERMINAR','APROBAR'].includes(action))&&!(snapshot.hasMaintenance&&action==='MANTENIMIENTO'));
+  const order:HkWorkAction[]=snapshot.changed?['RECONFIRMAR']:snapshot.status==='POR_REVISAR'?['APROBAR','CORREGIR']:snapshot.status==='BLOQUEADO'?['RETOMAR','MANTENIMIENTO','ASIGNAR']:snapshot.status==='EN_GESTION'?['TERMINAR']:snapshot.ownerId?['RECIBIR','COMENZAR']:['ASIGNAR'];
+  const primary=order.find(action=>available.includes(action));
+  const secondary=available.filter(action=>action!==primary&&['IMPEDIMENTO','CORREGIR','MANTENIMIENTO','COMENZAR','REABRIR'].includes(action)).slice(0,2);
+  const advanced=available.filter(action=>action!==primary&&!secondary.includes(action));
+  const committed=(action:HkWorkAction)=>(next:{version:number;status:string;ownerId:string|null})=>setSnapshot(previous=>({
+    ...previous,
+    version:next.version,
+    status:next.status,
+    ownerId:next.ownerId??previous.ownerId,
+    changed:action==='RECONFIRMAR'?false:previous.changed,
+    waitingMaintenance:action==='MANTENIMIENTO'?true:previous.waitingMaintenance,
+    hasMaintenance:action==='MANTENIMIENTO'?true:previous.hasMaintenance,
+  }));
+  const render=(action:HkWorkAction,isPrimary=false)=><WorkActionForm key={action} id={id} version={snapshot.version} action={action} team={team} defaultAssignee={snapshot.ownerId??undefined} primary={isPrimary} onCommitted={committed(action)}/>;
+  const terminal=['RESUELTO','CANCELADO'].includes(snapshot.status);
+  return <div>
+    {snapshot.status!==status?<p role="status" className="mb-2 text-xs font-semibold text-emerald-800">{HK_WORK_LABELS[snapshot.status]??snapshot.status}</p>:null}
+    <SubjectActions
+      primary={terminal?<a href={hasResult?`#resultado-${humanId}`:`#aviso-${humanId}`} className="btn-primary">Ver resultado</a>:primary?render(primary,true):<p className="text-sm">{snapshot.waitingMaintenance?'Esperando resultado de Mantenimiento':'La siguiente acción corresponde al responsable autorizado'}</p>}
+      secondary={secondary.map(action=>render(action))}
+      more={advanced.length?advanced.map(action=>render(action)):undefined}
+    />
+  </div>;
 }
 export function PrepareDayForm({departmentId,date,count}:{departmentId:string;date:string;count:number}){return <Dialog title="Preparar rutinas del día" trigger="Preparar rutinas" triggerVariant="secondary" width="sm" description={`${count} rutinas activas. Se incorporan una vez por día y después deben asignarse.`}><ActionForm action={prepareHkDayAction} closeOnSuccess refreshOnSuccess><input type="hidden" name="departmentId" value={departmentId}/><Field label="Día" name="workDate"><Input name="workDate" type="date" required defaultValue={date}/></Field><p className="text-sm">Los pendientes anteriores continúan visibles. No se generan limpiezas sin una necesidad registrada.</p><SubmitButton pendingLabel="Preparando…">Incorporar rutinas</SubmitButton></ActionForm></Dialog>;}
 export function RoutineForm({departmentId,routine}:{departmentId:string;routine?:{id:string;version:number;title:string;description:string;location:string;effortMinutes:number;requiresInspection:boolean;active:boolean}}){return <Dialog title={routine?'Editar rutina':'Nueva rutina'} trigger={routine?'Editar':'Nueva rutina'} triggerVariant="secondary" triggerSize="sm" width="sm"><ActionForm action={saveHkRoutineAction} refreshOnSuccess closeOnSuccess><input type="hidden" name="departmentId" value={departmentId}/>{routine&&<><input type="hidden" name="id" value={routine.id}/><input type="hidden" name="version" value={routine.version}/></>}<Field label="Trabajo recurrente" name="title"><Input name="title" required maxLength={160} defaultValue={routine?.title}/></Field><Field label="Instrucción" name="description"><Textarea name="description" required maxLength={3000} defaultValue={routine?.description}/></Field><Field label="Zona" name="location"><Input name="location" required maxLength={160} defaultValue={routine?.location}/></Field><Field label="Tiempo estimado (minutos)" name="effortMinutes"><Input name="effortMinutes" type="number" min={1} max={480} defaultValue={routine?.effortMinutes??20} required/></Field><label className="flex items-center gap-2 text-sm"><input name="requiresInspection" type="checkbox" defaultChecked={routine?.requiresInspection}/>Requiere inspección</label><label className="flex items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={routine?.active??true}/>Rutina activa</label><SubmitButton pendingLabel="Guardando…">Guardar rutina</SubmitButton></ActionForm></Dialog>;}
@@ -49,3 +83,13 @@ export function RevokeDelegationForm({id}:{id:string}){return <ActionForm action
 export function OrganizeLegacyForm({id,version,departmentId,date,rooms,team}:{id:string;version:number;departmentId:string;date:string;rooms:Place[];team:Person[]}){return <Dialog title="Organizar aviso existente" description="Conserva el folio y el historial. El trabajo vuelve a pendiente para confirmar la nueva asignación." trigger="Organizar trabajo" triggerVariant="secondary" triggerSize="sm" width="sm"><ActionForm action={organizeLegacyHkWorkAction} refreshOnSuccess closeOnSuccess><input type="hidden" name="id" value={id}/><input type="hidden" name="version" value={version}/><input type="hidden" name="departmentId" value={departmentId}/><Field label="Día" name="workDate"><Input name="workDate" type="date" required defaultValue={date}/></Field><Field label="Tipo de trabajo" name="workKind"><Select name="workKind" defaultValue="ATENCION" options={HK_WORK_KINDS.map(k=>({value:k,label:HK_KIND_LABELS[k]}))}/></Field><Field label="Habitación" name="roomId" hint="Opcional salvo limpieza de habitación. Si se deja vacío se conserva la zona del aviso."><Select name="roomId" options={[{value:'',label:'Conservar zona del aviso'},...rooms.map(r=>({value:r.id,label:r.number!}))]}/></Field><Field label="Responsable" name="assignedToId"><Select name="assignedToId" options={[{value:'',label:'Por asignar'},...team.map(p=>({value:p.id,label:p.name}))]}/></Field><Field label="Tiempo estimado (minutos)" name="effortMinutes"><Input name="effortMinutes" type="number" min={1} max={480} defaultValue={20} required/></Field><label className="flex items-center gap-2 text-sm"><input name="requiresInspection" type="checkbox"/>Requiere inspección (obligatoria en limpieza o revisión)</label><Field label="Instrucción / motivo" name="note"><Textarea name="note" required maxLength={3000}/></Field><SubmitButton pendingLabel="Guardando…">Incorporar al día</SubmitButton></ActionForm></Dialog>;}
 
 export function AcceptHandoverForm({id}:{id:string}) {return <ActionForm action={acceptHkHandoverAction} refreshOnSuccess className="space-y-0"><input type="hidden" name="id" value={id}/><SubmitButton size="sm" pendingLabel="Guardando…">Pendientes revisados: aceptar continuidad</SubmitButton></ActionForm>;}
+
+export function ReleasePilotSourceForm({id,version}:{id:string;version:number}){
+  return <Dialog title="Regularizar vínculo piloto" trigger="Regularizar vínculo piloto" triggerVariant="secondary" triggerSize="sm" width="sm" description="Libera el asunto para atención real. La prueba privada conserva su contenido, estado, historial y una copia auditada del vínculo original.">
+    <ActionForm action={releasePilotHkSourceAction} closeOnSuccess refreshOnSuccess>
+      <input type="hidden" name="id" value={id}/><input type="hidden" name="version" value={version}/>
+      <Field label="Motivo de la regularización" name="note"><Textarea name="note" required maxLength={3000}/></Field>
+      <SubmitButton pendingLabel="Regularizando…">Confirmar regularización</SubmitButton>
+    </ActionForm>
+  </Dialog>;
+}

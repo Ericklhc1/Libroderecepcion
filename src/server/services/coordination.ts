@@ -130,7 +130,7 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       if(!current.departmentId)throw new RuleError('Define el área en el registro antes de asignar.');
       const person=await tx.user.findFirst({where:{id:nextOwner,active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true},OR:[{departmentId:current.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:current.departmentId,active:true}}}}]},select:{id:true}});
       if(!person)throw new RuleError('El responsable debe ser un usuario operativo activo del área.');
-      if(task)await assertTaskSourceRecipients(tx,[nextOwner],task);
+      if(task)await assertTaskSourceRecipients(tx,[user.id,nextOwner],task,true);
     }
     if(input.action==='ACLARACION'&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA')))throw new RuleError('Este trabajo ya tiene un impedimento o espera activa. Resuélvelo antes de solicitar otra aclaración.');
     if(input.action==='RESPONDER_ACLARACION'&&!((entry&&entry.status==='EN_ESPERA'&&entry.workNextAction?.startsWith('Aclaración requerida:'))||(task&&task.status==='BLOQUEADA'&&task.workNextAction?.startsWith('Aclaración requerida:'))))throw new RuleError('No hay una aclaración pendiente en este trabajo.');

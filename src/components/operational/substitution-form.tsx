@@ -54,17 +54,17 @@ export function SubstitutionForm({ areas, people, existing }: {
       {!areaAvailable && <option value={departmentId}>Área no disponible; selecciona una activa</option>}
       {areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
     </select></label>
-    <label>Trabajo<select name="workKind" className="input-base" value={kind}
+    <label>Trabajo<select name="workKind" aria-label="Trabajo" className="input-base" value={kind}
       onChange={event => { setKind(event.target.value as SubstitutionWorkKind); setChoice(''); }}>
       <option value="task">Tarea</option><option value="entry">Novedad</option><option value="housekeeping">Housekeeping</option>
     </select></label>
-    <label>Condición<select name="trigger" className="input-base" defaultValue={config?.trigger ?? 'UNASSIGNED'}>
+    <label>Condición<select name="trigger" aria-label="Condición" className="input-base" defaultValue={config?.trigger ?? 'UNASSIGNED'}>
       <option value="UNASSIGNED">Sin responsable</option><option value="UNRECEIVED">Asignado sin recibir</option><option value="OVERDUE">Vencido</option><option value="BLOCKED">Bloqueado</option>
     </select></label>
-    <label>Prioridad<select name="priority" className="input-base" defaultValue={config?.priority ?? ''}>
+    <label>Prioridad<select name="priority" aria-label="Prioridad" className="input-base" defaultValue={config?.priority ?? ''}>
       <option value="">Cualquiera</option>{['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].map(value => <option key={value}>{value}</option>)}
     </select></label>
-    <label>Modo<select name="mode" className="input-base" defaultValue={config?.mode ?? 'PROPOSE'}>
+    <label>Modo<select name="mode" aria-label="Modo" className="input-base" defaultValue={config?.mode ?? 'PROPOSE'}>
       <option value="PROPOSE">Proponer al coordinador</option><option value="APPLY">Aplicar reasignación autorizada</option>
     </select></label>
 
@@ -105,7 +105,7 @@ export function SubstitutionForm({ areas, people, existing }: {
       <p className="text-xs text-slate-500">{ids.length} de 20 candidatos. La selección orienta la configuración; el servidor vuelve a comprobar elegibilidad, horario y acceso al ejecutar.</p>
     </fieldset>
 
-    <label>Horario<select name="requirePublishedSchedule" className="input-base" defaultValue={String(config?.requirePublishedSchedule ?? true)}><option value="true">Exigir planificación publicada vigente</option><option value="false">No exigir horario publicado</option></select></label>
+    <label>Horario<select name="requirePublishedSchedule" aria-label="Horario" className="input-base" defaultValue={String(config?.requirePublishedSchedule ?? true)}><option value="true">Exigir planificación publicada vigente</option><option value="false">No exigir horario publicado</option></select></label>
     {field('receiptMinutes', 'Plazo de recepción, minutos', config?.receiptMinutes ?? 30, 'number')}
     {field('nextAction', 'Motivo y siguiente acción', config?.nextAction)}
     {field('expiresAt', 'Autorización válida hasta', existing?.expiresAt, 'date')}

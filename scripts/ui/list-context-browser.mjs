@@ -16,6 +16,73 @@ const base = 'http://localhost:3000';
 const marker = `LIST_CONTEXT_${Date.now()}`;
 const results = [];
 
+// This harness only visits loopback synthetic fixtures. Keep failure output
+// bounded and omit unknown query values, headers, cookies and response bodies.
+function diagnosticUrl(value, depth = 0) {
+  try {
+    const url = new URL(value, base);
+    if (url.origin !== base) return '[non-local URL]';
+    const params = new URLSearchParams();
+    for (const [key, item] of url.searchParams) {
+      if (['clase', 'tipo', 'estado', 'prioridad', 'pagina', 'mias'].includes(key)) params.set(key, item.slice(0, 80));
+      else if (key === 'q' && item.startsWith('LIST_CONTEXT_')) params.set(key, item.slice(0, 80));
+      else if (key === 'desdeLista' && depth === 0) params.set(key, diagnosticUrl(item, 1));
+      else if (key !== '_rsc') params.set(key, '[omitted]');
+    }
+    return (url.pathname + (params.size ? '?' + params.toString() : '') + url.hash).slice(0, 1200);
+  } catch { return '[invalid URL]'; }
+}
+
+async function captureFailure(page, progress, events) {
+  const observed = await page.evaluate(({ anchor, scope }) => {
+    const target = document.getElementById(anchor);
+    const rows = [...document.querySelectorAll('[data-list-item]')];
+    const visible = element => Boolean(element.getClientRects().length);
+    const targetBox = target?.getBoundingClientRect();
+    const treeSegments = [];
+    const visitTree = (tree, depth = 0) => {
+      if (!Array.isArray(tree) || depth > 8 || treeSegments.length >= 24) return;
+      const segment = tree[0];
+      // PAGE search data and arbitrary history state are deliberately not logged.
+      if (typeof segment === 'string') treeSegments.push(segment.split('?', 1)[0].slice(0, 100));
+      else if (Array.isArray(segment)) treeSegments.push(segment.slice(0, 3).map(item => String(item).slice(0, 100)));
+      if (tree[1] && typeof tree[1] === 'object') Object.values(tree[1]).forEach(value => visitTree(value, depth + 1));
+    };
+    visitTree(history.state?.__PRIVATE_NEXTJS_INTERNALS_TREE);
+    let pendingReturn = null;
+    try { pendingReturn = sessionStorage.getItem(`aroh:list-return:${scope}`); } catch { /* optional browser storage */ }
+    return {
+      url: location.href,
+      readyState: document.readyState,
+      returnHref: document.querySelector('[data-list-return]')?.getAttribute('href') ?? null,
+      pendingReturn,
+      history: { length: history.length, nextEntry: Boolean(history.state?.__NA), treeSegments },
+      rowCount: rows.length,
+      rows: rows.filter(visible).slice(0, 12).map(element => ({ id: element.id, current: element.getAttribute('aria-current') })),
+      target: target ? { id: target.id, visible: visible(target), current: target.getAttribute('aria-current'), top: targetBox?.top, height: targetBox?.height } : null,
+      activeElement: { tag: document.activeElement?.tagName, id: document.activeElement?.id },
+      scrollY,
+      navigationTypes: performance.getEntriesByType('navigation').map(entry => entry.type).slice(-3),
+      openDialogs: [...document.querySelectorAll('[role="dialog"]')].filter(visible).length,
+    };
+  }, { anchor: progress.anchor ?? '', scope: fixture.users.admin.id }).catch(error => ({ observationError: error.name }));
+  if (observed.url) observed.url = diagnosticUrl(observed.url);
+  if (observed.returnHref) observed.returnHref = diagnosticUrl(observed.returnHref);
+  if (observed.pendingReturn) observed.pendingReturn = diagnosticUrl(observed.pendingReturn);
+  const report = {
+    status: 'failed',
+    width: page.viewportSize()?.width,
+    step: progress.step,
+    expectedList: diagnosticUrl(progress.list),
+    expectedDetail: progress.detail ? diagnosticUrl(progress.detail) : null,
+    anchor: progress.anchor ?? null,
+    observed,
+    events,
+  };
+  results.push(report);
+  console.error('List context failure diagnostics:', JSON.stringify(report));
+}
+
 async function openContext(width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, ...options });
   await context.addCookies([{ name: 'lor_session', value: fixture.users.admin.token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }]);
@@ -28,6 +95,23 @@ async function openContext(width, options = {}) {
 }
 
 async function checkJourney(page, list, expectedDetailRoot) {
+  const progress = { step: 'open-list', list, detail: null, anchor: null };
+  const events = [];
+  const record = event => {
+    events.push({ step: progress.step, ...event });
+    if (events.length > 32) events.shift();
+  };
+  const navigated = frame => {
+    if (frame === page.mainFrame()) record({ event: 'navigation', url: diagnosticUrl(frame.url()) });
+  };
+  const pageError = error => record({ event: 'pageerror', name: error.name, message: error.message.slice(0, 600) });
+  const failedRequest = request => {
+    if (request.isNavigationRequest()) record({ event: 'requestfailed', url: diagnosticUrl(request.url()), error: request.failure()?.errorText?.slice(0, 160) });
+  };
+  page.on('framenavigated', navigated);
+  page.on('pageerror', pageError);
+  page.on('requestfailed', failedRequest);
+  try {
   await page.goto(base + list);
   const rows = page.locator('[data-list-item]');
   assert.ok(await rows.count() >= 10, 'Synthetic list has enough rows to exercise real scroll');
@@ -36,8 +120,11 @@ async function checkJourney(page, list, expectedDetailRoot) {
   const anchor = await row.getAttribute('id');
   const detailHref = await row.getAttribute('href');
   const detail = new URL(detailHref, base);
+  progress.anchor = anchor;
+  progress.detail = detailHref;
   assert.ok(detail.pathname.startsWith(expectedDetailRoot));
   assert.equal(detail.searchParams.get('desdeLista'), list + '#' + anchor);
+  progress.step = 'open-detail';
   if (new URL(list, base).pathname === '/tareas') {
     await row.focus();
     await row.press('Enter');
@@ -51,6 +138,7 @@ async function checkJourney(page, list, expectedDetailRoot) {
   assert.equal(await page.locator('[data-list-return]').getAttribute('href'), list + '#' + anchor);
 
   const detailBeforeCancel = page.url();
+  progress.step = 'cancel-native-edit';
   const actions = page.locator('[aria-label="Acciones del asunto"]');
   await actions.getByText('Más ···', { exact: true }).click();
   await actions.getByRole('button', { name: 'Editar', exact: true }).click();
@@ -62,7 +150,9 @@ async function checkJourney(page, list, expectedDetailRoot) {
   assert.equal(await page.locator('[data-list-return]').getAttribute('href'), list + '#' + anchor);
 
   // Reloading or sharing a detail never drops its native return query.
+  progress.step = 'reload-detail';
   await page.reload();
+  progress.step = 'first-explicit-return';
   await page.locator('[data-list-return]').click();
   const selected = page.locator(`[data-list-item="${anchor}"]`);
   await selected.waitFor();
@@ -74,34 +164,53 @@ async function checkJourney(page, list, expectedDetailRoot) {
 
   // Real history: list -> detail -> return list; Back and Forward still traverse
   // those same pages. No replaceState, synthetic routes or router.back shortcut.
+  progress.step = 'back-to-detail-after-return';
   await page.goBack();
   await page.locator('[data-list-return]').waitFor();
   assert.equal(new URL(page.url()).pathname, detail.pathname);
+  progress.step = 'forward-to-returned-list';
   await page.goForward();
   await selected.waitFor();
   assert.equal(new URL(page.url()).hash, '#' + anchor);
+  progress.step = 'back-to-detail-again';
   await page.goBack();
   await page.locator('[data-list-return]').waitFor();
+  progress.step = 'back-to-original-list';
   await page.goBack();
   await selected.waitFor();
   assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, list);
   assert.equal(new URL(page.url()).hash, '');
   assert.equal(await selected.getAttribute('aria-current'), 'true');
   assert.ok(Math.abs(await page.evaluate(() => window.scrollY) - captured.scrollY) <= 2, 'Browser Back keeps native scroll');
+  progress.step = 'forward-to-reloaded-detail';
   await page.goForward();
   await page.locator('[data-list-return]').waitFor();
+  assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, detail.pathname + detail.search, 'Forward returns to the exact canonical detail with its context');
+  assert.equal(await page.locator('[data-list-return]').getAttribute('href'), list + '#' + anchor, 'The second return still targets the original filtered list and row');
+  progress.step = 'second-explicit-return';
+  record({ event: 'activate-return', url: diagnosticUrl(page.url()), target: diagnosticUrl(list + '#' + anchor) });
   await page.locator('[data-list-return]').click();
   await selected.waitFor();
   await page.waitForFunction(scope => sessionStorage.getItem(`aroh:list-return:${scope}`) === null, fixture.users.admin.id);
   const nextRow = page.locator('[data-list-item]').nth(10);
   const nextAnchor = await nextRow.getAttribute('id');
+  progress.step = 'open-another-row';
   await nextRow.click();
   await page.locator('[data-list-return]').waitFor();
+  progress.step = 'back-to-list-with-older-fragment';
   await page.goBack();
   await page.locator(`[data-list-item="${nextAnchor}"]`).waitFor();
   assert.equal(await page.locator(`[data-list-item="${nextAnchor}"]`).getAttribute('aria-current'), 'true', 'Back selects the most recent row even when the list URL has an older fragment');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
   return { listRoot: new URL(list, base).pathname, detailRoot: expectedDetailRoot, filters: true, selection: true, scroll: true, cancel: true, reload: true, nativeHistory: true };
+  } catch (error) {
+    await captureFailure(page, progress, events);
+    throw error;
+  } finally {
+    page.off('framenavigated', navigated);
+    page.off('pageerror', pageError);
+    page.off('requestfailed', failedRequest);
+  }
 }
 
 try {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   addOrderedCandidate, candidateIsSelectable, candidateLabel,
   moveOrderedCandidate, removeOrderedCandidate, type SubstitutionCandidate,
@@ -15,6 +16,12 @@ const housekeeper: SubstitutionCandidate = {
 };
 
 describe('selector humano de suplentes: identidad y orden sin efectos operativos', () => {
+  it('identifica los selectores por su etiqueta sin incorporar opciones al nombre accesible', () => {
+    const source = readFileSync('src/components/operational/substitution-form.tsx', 'utf8');
+    for (const [name, label] of [['workKind', 'Trabajo'], ['trigger', 'Condición'], ['priority', 'Prioridad'], ['mode', 'Modo'], ['requirePublishedSchedule', 'Horario']]) {
+      expect(source).toContain(`name="${name}" aria-label="${label}"`);
+    }
+  });
   it('distingue personas homónimas por usuario, cargo y área, sin exponer IDs', () => {
     expect(candidateLabel(technician)).toBe('Alex Pérez · @aperez · Técnico · Mantenimiento, Recepción');
     expect(candidateLabel(housekeeper)).not.toEqual(candidateLabel(technician));

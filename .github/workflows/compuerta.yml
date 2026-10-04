@@ -201,6 +201,8 @@ jobs:
           for script in appearance-browser list-context-browser substitution-candidates-browser; do
             if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
               journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/appearance-context-server.log
             fi
           done
           exit "$journey_status"

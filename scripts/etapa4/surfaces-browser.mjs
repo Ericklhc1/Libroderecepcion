@@ -37,7 +37,7 @@ try{
     await reception.page.getByRole('link',{name:'Continuar operación',exact:true}).waitFor();
     assert.equal(await reception.page.getByRole('button',{name:'INICIAR CIERRE DE TURNO',exact:true}).isVisible(),false);
     await reception.page.getByText('Siguiente acción: Comprobar habitación antes del relevo',{exact:true}).waitFor();
-    await reception.page.getByText(`PRUEBA SIN VENCER ${width}`,{exact:true}).waitFor();
+    await reception.page.getByText(`PRUEBA SIN VENCER ${width}`,{exact:true}).first().waitFor();
     await reception.page.getByText('Impedimento: Repuesto pendiente del área',{exact:true}).waitFor();
     await reception.page.getByText('Resultado esperado: Equipo probado antes de devolver resultado',{exact:true}).waitFor();
     await reception.page.getByText('Entregar turno',{exact:true}).click();

@@ -1,3 +1,4 @@
+import {alertReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus, TaskStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -44,6 +45,7 @@ export async function createManualAlert(
     departmentId?: string | null;
   },
 ) {
+  if(input.taskId&&!await prisma.task.findFirst({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{id:true}}))throw new NotFoundError('La tarea de origen no existe.');
   const created = await prisma.alert.create({
     data: {
       type: input.type,
@@ -74,8 +76,8 @@ export async function createManualAlert(
   return created;
 }
 
-async function loadAlert(id: string) {
-  const alert = await prisma.alert.findFirst({ where: { id, deletedAt: null } });
+async function loadAlert(user: CurrentUser,id: string) {
+  const alert = await prisma.alert.findFirst({ where: { id, deletedAt: null,AND:[alertReadWhere(user)] } });
   if (!alert) throw new NotFoundError('La alerta no existe o fue eliminada.');
   return alert;
 }
@@ -235,12 +237,12 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
 }
 
 export async function acknowledgeAlert(user: CurrentUser, id: string) {
-  const alert = await loadAlert(id);
+  const alert = await loadAlert(user,id);
   if (alert.status === AlertStatus.RESUELTA) {
     throw new RuleError('La alerta ya está resuelta.');
   }
   const updated = await prisma.alert.update({
-    where: { id },
+    where: { id,AND:[alertReadWhere(user)] },
     data: {
       status: AlertStatus.VISTA,
       acknowledgedById: user.id,
@@ -265,14 +267,14 @@ export async function snoozeAlert(
   user: CurrentUser,
   input: { id: string; snoozeMinutes?: number; note?: string | null },
 ) {
-  const alert = await loadAlert(input.id);
+  const alert = await loadAlert(user,input.id);
   if (alert.status === AlertStatus.RESUELTA) {
     throw new RuleError('La alerta ya está resuelta.');
   }
   const minutes = input.snoozeMinutes ?? 60;
   const until = new Date(Date.now() + minutes * 60_000);
   const updated = await prisma.alert.update({
-    where: { id: input.id },
+    where: { id: input.id,AND:[alertReadWhere(user)] },
     data: {
       status: AlertStatus.POSPUESTA,
       snoozedUntil: until,
@@ -298,7 +300,7 @@ export async function resolveAlert(
   user: CurrentUser,
   input: { id: string; note?: string | null },
 ) {
-  const alert = await loadAlert(input.id);
+  const alert = await loadAlert(user,input.id);
   if (alert.status === AlertStatus.RESUELTA) return alert;
 
   const cashTransfer = alert.dedupeKey?.startsWith('cash-transfer:') === true;
@@ -351,7 +353,7 @@ export async function resolveAlert(
   return prisma.$transaction(async (tx) => {
     const resolvedAt = new Date();
     const updated = await tx.alert.update({
-      where: { id: input.id },
+      where: { id: input.id,AND:[alertReadWhere(user)] },
       data: {
         status: AlertStatus.RESUELTA,
         resolvedById: user.id,
@@ -410,10 +412,10 @@ export async function softDeleteAlert(
   user: CurrentUser,
   input: { id: string; reason: string },
 ) {
-  const alert = await loadAlert(input.id);
+  const alert = await loadAlert(user,input.id);
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.alert.update({
-      where: { id: input.id },
+      where: { id: input.id,AND:[alertReadWhere(user)] },
       data: { deletedAt: new Date(), deletedById: user.id, deletionReason: input.reason },
     });
     await finishSupervisionTrackingForSource(tx, user, 'Alert', alert.id, 'CANCELADO');
@@ -438,11 +440,11 @@ export async function restoreAlert(
   input: { id: string; reason?: string | null },
 ) {
   const alert = await prisma.alert.findFirst({
-    where: { id: input.id, NOT: { deletedAt: null } },
+    where: { id: input.id, NOT: { deletedAt: null },AND:[alertReadWhere(user)] },
   });
   if (!alert) throw new NotFoundError('La alerta no está eliminada.');
   const restored = await prisma.alert.update({
-    where: { id: input.id },
+    where: { id: input.id,AND:[alertReadWhere(user)] },
     data: { deletedAt: null, deletedById: null, deletionReason: null },
   });
   await recordAudit({

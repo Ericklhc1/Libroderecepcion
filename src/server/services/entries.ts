@@ -406,9 +406,9 @@ export async function changeEntryStatus(
     if (!user.permissions.includes(permission) && !user.permissions.includes('entry.close')) {
       throw new RuleError('No tienes permiso para cerrar este registro.');
     }
-    if (current.type === EntryType.INCIDENCIA && input.status === EntryStatus.CERRADO) {
+    if (current.type === EntryType.INCIDENCIA) {
       const resolution = input.resolution ?? current.resolution;
-      if (!resolution) {
+      if (!resolution?.trim()) {
         throw new RuleError(
           'Para cerrar una incidencia debes registrar cómo se resolvió.',
         );

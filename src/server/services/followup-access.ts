@@ -19,6 +19,13 @@ export function taskFollowUpReadWhere(user:Pick<CurrentUser,'id'|'permissions'>)
   ]};
 }
 
+export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>): Prisma.AlertWhereInput {
+  return {AND:[
+    {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+    {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+  ]};
+}
+
 /** Same reserved-source policy for the existing PostgreSQL search view.
  * Fixed aliases f/t are internal SQL identifiers, never supplied by a request. */
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
@@ -36,5 +43,12 @@ export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'
     (t."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = t."followUpId" AND ${scope})) AND
     (t."alertId" IS NULL OR EXISTS (SELECT 1 FROM "Alert" a WHERE a.id = t."alertId" AND
       (a."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = a."followUpId" AND ${scope}))))
+  )`;
+}
+
+export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
+  return Prisma.sql`(
+    (a."followUpId" IS NULL OR EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id = a."followUpId" AND ${followUpReadSql(user)})) AND
+    (a."taskId" IS NULL OR EXISTS (SELECT 1 FROM "Task" t WHERE t.id = a."taskId" AND ${taskFollowUpReadSql(user)}))
   )`;
 }

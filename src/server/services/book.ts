@@ -29,7 +29,7 @@ import {
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import { RECEPTION_DESK_ROLE_KEYS } from '@/lib/permissions';
 import type {CurrentUser} from '@/server/auth/current-user';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 
 /**
  * Libro Operativo v1.4.0.
@@ -392,7 +392,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
   }
 
   async function alertItems(): Promise<BookItem[]> {
-    const and: Prisma.AlertWhereInput[] = [{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]}];
+    const and: Prisma.AlertWhereInput[] = [alertReadWhere(user)];
 
     if (filters.onlyOpen) and.push(LIVE_ALERT_WHERE());
     if (filters.hideClosureValidation) {

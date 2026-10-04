@@ -1,4 +1,4 @@
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -1129,8 +1129,8 @@ async function resolveSupervisionSource(user: CurrentUser, sourceEntity: Supervi
       return { label: `#${row.humanId} · ${row.title}`, entryId: row.id, taskId: null };
     }
     case 'Alert': {
-      const row = await prisma.alert.findUnique({
-        where: { id: sourceId },
+      const row = await prisma.alert.findFirst({
+        where: { id: sourceId,AND:[alertReadWhere(user)] },
         select: { id: true, title: true },
       });
       if (!row) throw new NotFoundError('La alerta de origen ya no existe.');

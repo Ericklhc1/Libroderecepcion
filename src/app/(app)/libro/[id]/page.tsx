@@ -238,14 +238,14 @@ export default async function EntryDetailPage({
               ))}
             </div>
           ) : null}
-          <SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={entry.resolution ?? entry.housekeepingRequest?.resolution}/>
+          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={entry.resolution ?? entry.housekeepingRequest?.resolution}/>
         </div>
 
         {!entry.deletedAt ? (
           <SubjectActions primary={
             activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : '#atencion-area'}>Ver atención del área</Link>
             : activeWork ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/tareas/${activeWork.id}`}>Continuar atención</Link>
-            : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href="#historial-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado</a>
+            : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href={entry.resolution||entry.housekeepingRequest?.resolution?"#resultado-asunto":"#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{entry.resolution||entry.housekeepingRequest?.resolution?"Ver resultado":"Ver historial"}</a>
             : !entry.ownerId && user.permissions.includes('entry.edit') ? <AssignEntryDialog entryId={entry.id} departmentId={entry.departmentId} ownerId={entry.ownerId} departments={options.departments} users={options.users}/>
             : canAttend && (entry.status !== EntryStatus.EN_CURSO || canFinish) ? <Dialog title={entry.status === EntryStatus.EN_CURSO ? 'Finalizar asunto' : 'Comenzar atención'} trigger={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'} triggerVariant="gold" triggerSize="sm" width="sm"><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={entry.resolution} rootCause={entry.rootCause} targetStatus={entry.status === EntryStatus.EN_CURSO ? EntryStatus.CERRADO : EntryStatus.EN_CURSO} label={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'}/></Dialog>
             : <a href="#historial-asunto" className="rounded-md px-3 py-2 text-sm font-semibold">Ver resultado e historial</a>

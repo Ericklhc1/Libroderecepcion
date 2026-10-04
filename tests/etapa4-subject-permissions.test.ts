@@ -1,3 +1,4 @@
+import {acknowledgeAlert} from '@/server/services/alerts';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
 import {getRoomMonitorDetail,getRoomMonitorOverview} from '@/server/services/room-monitor';
@@ -10,7 +11,7 @@ import {getFormOptions} from '@/server/services/options';
 import {getHistory} from '@/server/services/history';
 import {getBookItems} from '@/server/services/book';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
-import {createEntry,getSubjectEntry} from '@/server/services/entries';
+import {createEntry,getSubjectEntry,changeEntryStatus} from '@/server/services/entries';
 import {createTask,changeTaskStatus,getTask,assignTask,toggleChecklistItem,softDeleteTask,restoreTask} from '@/server/services/tasks';
 import {changeTaskStatusAction} from '@/server/actions/tasks';
 const auth=vi.hoisted(()=>({current:vi.fn()}));
@@ -46,6 +47,13 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     expect((await getHistory({entity:'OperationalEntry',entityId:source.id},owner)).some(event=>event.id===reserved.id)).toBe(true);
     expect((await getBookItems({},reader)).items.some(item=>item.id===task.id||item.id===reserved.id)).toBe(false);
     expect((await getBookItems({kinds:['task']},owner)).items.some(item=>item.id===task.id)).toBe(true);
+    for(const origin of [{followUpId:reserved.id},{taskId:task.id}]){
+      const alert=await prisma.alert.create({data:{title:'Aviso reservado',message:'Resultado reservado del origen',type:'TAREA_VENCIDA',level:'CRITICA',createdById:owner.id,...origin}});
+      expect((await searchOperationalRecords(reader,'Aviso reservado')).some(row=>row.entityId===alert.id)).toBe(false);
+      expect((await searchOperationalRecords(owner,'Aviso reservado')).some(row=>row.entityId===alert.id)).toBe(true);
+      await expect(acknowledgeAlert(reader,alert.id)).rejects.toThrow();
+      expect((await prisma.alert.findUniqueOrThrow({where:{id:alert.id}})).status).toBe('NUEVA');
+    }
     await expect(getTask(task.id,reader)).rejects.toThrow();
     const context=await executeFrontiPageContextTool(reader,resolveFrontiPageContext({pathname:`/tareas/${task.id}`}));
     expect(context).toMatchObject({snapshot:{found:false}});
@@ -70,6 +78,17 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     auth.current.mockResolvedValue(reader);
     await expect(changeTaskStatusAction(null,attempt)).resolves.toMatchObject({ok:false});
     expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('PENDIENTE');
+  });
+  it('resolver o cerrar una incidencia exige un resultado real en el servicio',async()=>{
+    const actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    for(const status of ['RESUELTO','CERRADO'] as const){
+      const incident=await createEntry(actor,{type:'INCIDENCIA',title:'Falla que requiere resultado',description:'Contexto real del procedimiento',priority:'ALTA',severity:'ALTA',requiresFollowUp:false,tags:[]});
+      await expect(changeEntryStatus(actor,{id:incident.id,status})).rejects.toThrow('resolvió');
+      await expect(changeEntryStatus(actor,{id:incident.id,status,resolution:'   '})).rejects.toThrow('resolvió');
+      expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:incident.id}})).status).toBe('ABIERTO');
+      await changeEntryStatus(actor,{id:incident.id,status,resolution:'Falla reparada y comprobada'});
+      expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:incident.id}})).resolution).toBe('Falla reparada y comprobada');
+    }
   });
   it('la aceptación registra recepción sólo por el responsable asignado',async()=>{
     const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});

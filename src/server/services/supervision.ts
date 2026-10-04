@@ -21,7 +21,7 @@ import {
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {ForbiddenError} from '@/server/errors';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 
 export type SupervisionRow = {
   id: string;
@@ -166,7 +166,7 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.alert.findMany({
-      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA,AND:[{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]}] },
+      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA,AND:[alertReadWhere(user)] },
       select: {
         id: true,
         title: true,

@@ -1,5 +1,6 @@
 'use client';
 
+import {useState} from 'react';
 import { EntryStatus, EntryType } from '@prisma/client';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -54,11 +55,14 @@ export function EntryStatusForm({
   label?: string;
 }) {
   const isIncident = type === EntryType.INCIDENCIA;
+  const [selectedStatus,setSelectedStatus]=useState(currentStatus);
+  const status=targetStatus??selectedStatus;
+  const closing=status===EntryStatus.CERRADO||status===EntryStatus.RESUELTO;
   return (
     <ActionForm action={changeEntryStatusAction}>
       <input type="hidden" name="id" value={entryId} />
       {targetStatus ? <input type="hidden" name="status" value={targetStatus}/> : <Field label="Estado" name="status" required>
-        <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} />
+        <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} onChange={e=>setSelectedStatus(e.target.value as EntryStatus)} />
       </Field>}
       {isIncident ? (
         <>
@@ -72,7 +76,7 @@ export function EntryStatusForm({
         </>
       ) : null}
       {<Field label="Resultado" name="resolution" hint="Cómo quedó atendido el asunto.">
-        <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} required={isIncident && (targetStatus === EntryStatus.CERRADO || targetStatus === EntryStatus.RESUELTO)}/>
+        <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} required={isIncident && closing}/>
       </Field>}
       <Field label="Motivo del cambio" name="reason" hint="Queda en la auditoría.">
         <Input name="reason" placeholder="Opcional" />

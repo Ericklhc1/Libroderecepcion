@@ -51,8 +51,10 @@ describe('notificaciones con sincronización eficiente', () => {
   });
 
   it('marcar lectura queda protegido por usuario y se reconcilia con el feed', () => {
-    expect(readRoute).toContain('userId: user.id');
-    expect(readRoute).toContain('readAt: null');
-    expect(readRoute).toContain('data: { readAt: new Date() }');
+    expect(readRoute).toContain('markReadableNotifications(user.id, parsed.id)');
+    const access=readFileSync('src/server/services/notification-access.ts','utf-8');
+    expect(access).toContain('notificationWhereForUser(userId)');
+    expect(access).toContain('userId,...notificationReadWhere');
+    expect(access).toContain('readAt:null');
   });
 });

@@ -4,7 +4,7 @@ import {prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS
 import {requestSubjectAttention} from '@/server/services/subject-attention';
 import {createEntry,getEntry} from '@/server/services/entries';
 import {changeTaskStatus,updateTask} from '@/server/services/tasks';
-import {changeHkWork} from '@/server/services/housekeeping-work';
+import {changeHkWork,releasePilotHkSource} from '@/server/services/housekeeping-work';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
 vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
@@ -65,6 +65,19 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     await act('RECIBIR');await act('COMENZAR');await act('TERMINAR');
     expect((await getEntry(f.source.id)).housekeepingRequest?.resolution).toContain('Trabajo atendido');
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(0);
+  });
+  it('regulariza sólo por Administración un vínculo piloto, conservando su evidencia',async()=>{
+    const f=await fixture();const first=await requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id});
+    const pilot=await prisma.housekeepingRequest.update({where:{id:first.id},data:{isDemo:true}});
+    const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    await expect(releasePilotHkSource(supervisor,{id:pilot.id,version:pilot.version,note:'Separar piloto'})).rejects.toThrow();
+    await releasePilotHkSource(f.actor,{id:pilot.id,version:pilot.version,note:'Liberar asunto real del piloto histórico'});
+    expect(await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:pilot.id}})).toMatchObject({isDemo:true,sourceEntryId:null,title:f.source.title,description:f.source.description,status:pilot.status});
+    const audit=await prisma.auditLog.findFirstOrThrow({where:{entity:'HousekeepingRequest',entityId:pilot.id,action:'EDITAR'}});
+    expect(audit.before).toMatchObject({sourceEntryId:f.source.id});expect(audit.isDemo).toBe(true);
+    const real=await requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id,requestKey:randomUUID()});
+    expect(real.id).not.toBe(pilot.id);
+    expect(await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:real.id}})).toMatchObject({sourceEntryId:f.source.id,isDemo:false});
   });
   it('una nueva atención reabre Housekeeping con permiso y conserva sus reintentos históricos',async()=>{
     const f=await fixture();const input={...f.input,departmentId:f.hk.id};

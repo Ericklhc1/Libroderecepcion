@@ -12,7 +12,7 @@ import { StatTile } from '@/components/ui/card';
 import {ListFilterBar} from '@/components/ui/list-controls';
 import { Button } from '@/components/ui/button';
 import { HousekeepingChangeForm } from '@/components/admin/housekeeping-forms';
-import { AcceptHandoverForm, NewWorkForm, WorkActionForm, PrepareDayForm, RoutineForm, AvailabilityForm, HandoverForm, ReceiveHandoverForm, DelegationForm, RevokeDelegationForm, OrganizeLegacyForm } from '@/components/housekeeping/work-forms';
+import { ReleasePilotSourceForm, AcceptHandoverForm, NewWorkForm, WorkActionForm, PrepareDayForm, RoutineForm, AvailabilityForm, HandoverForm, ReceiveHandoverForm, DelegationForm, RevokeDelegationForm, OrganizeLegacyForm } from '@/components/housekeeping/work-forms';
 import type { Prisma } from '@prisma/client';
 
 export const metadata = { title:'Housekeeping · Trabajo del día' };
@@ -71,6 +71,7 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
           {modern&&<p className="break-words text-sm text-petrol-900"><strong>Siguiente acción:</strong> {hkNextAction(r)}</p>}
           {r.sourceEntry&&<p className="text-xs text-slate-600">Origen: Novedad #{r.sourceEntry.humanId}{user.permissions.includes('entry.create')&&<Link href={`/libro/${r.sourceEntry.id}`} className="ml-2 underline">Ver novedad</Link>}</p>}
           <div className="flex flex-wrap gap-2">{!modern&&!r.isDemo&&!['RESUELTO','CANCELADO'].includes(r.status)&&board.canAssign&&<OrganizeLegacyForm id={r.id} version={r.version} departmentId={board.departmentId} date={board.date} rooms={board.rooms} team={board.workload}/>} {modern?<SubjectActions primary={['RESUELTO','CANCELADO'].includes(r.status)?<a href={r.resolution?`#resultado-${r.humanId}`:`#aviso-${r.humanId}`} className="btn-primary">Ver resultado</a>:primary?renderAction(primary,true):<p className="text-sm">{waitingMaintenance?'Esperando resultado de Mantenimiento':'La siguiente acción corresponde al responsable autorizado'}</p>} secondary={secondary.map(a=>renderAction(a))} more={advanced.length?advanced.map(a=>renderAction(a)):undefined}/>:legacyManage?housekeepingActions(r.status as HousekeepingStatus,changed).map(a=><HousekeepingChangeForm key={a} id={r.id} version={r.version} action={a} destinations={destinations} departmentId={r.departmentId??undefined}/>):null}</div>
+          {user.isSystemAdmin&&r.isDemo&&r.sourceEntryId&&<ReleasePilotSourceForm id={r.id} version={r.version}/>}
           <details className="border-t border-slate-100 pt-2"><summary className="cursor-pointer text-xs text-slate-600">Historial y responsables</summary><p className="mt-2 text-xs text-slate-500">Solicitante: {r.createdBy?.name??'Registro anterior'} · Día: {r.workDate??'Aviso anterior'}{r.isDemo?' · Prueba administrativa':''}</p><ol className="mt-2 space-y-2 text-xs text-slate-600">{r.events.map(e=><li key={e.id}><strong>{e.actor.name}</strong> · {HK_ACTION_LABELS[e.action as HkWorkAction]??HK_MAINTENANCE_EVENT_LABELS[e.action]??e.action} · {formatDateTime(e.createdAt)}{e.note&&<p className="whitespace-pre-wrap">{e.note}</p>}</li>)}</ol></details>
         </article>;
       })}

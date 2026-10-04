@@ -1,5 +1,5 @@
 import {createOperationalAlarm,dispatchDueAlarmsForUser,listMyOperationalAlarms} from '@/server/services/operational-alarms';
-import {runReceptionAssistant} from '@/server/ai/reception-assistant';
+import {runReceptionAssistant,executeReceptionConfirmation} from '@/server/ai/reception-assistant';
 import {acknowledgeAlert} from '@/server/services/alerts';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
@@ -146,6 +146,22 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
       expect(JSON.stringify(auth.chat.mock.calls[1])).not.toContain('FRONTI_SECRETO');
     }
     expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe('PENDIENTE');
+  });
+  it('Fronti pide y firma el resultado antes de cerrar una atención derivada',async()=>{
+    const actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.current.mockResolvedValue(actor);
+    const task=await prisma.task.create({data:{title:'Atención con resultado',createdById:actor.id,assigneeId:actor.id,procedureOccurrenceKey:`subject:${randomUUID()}`}});
+    const propose=async(evidenceProvided?:string)=>{
+      auth.chat.mockReset();
+      const call={id:randomUUID(),type:'function',function:{name:'proponer_resolver_tarea',arguments:JSON.stringify({taskId:task.id,evidenceProvided})}};
+      auth.chat.mockResolvedValueOnce({text:null,toolCalls:[call],assistantMessage:{role:'assistant',content:null,tool_calls:[call]},providerUsed:'groq',modelUsed:'synthetic'}).mockResolvedValueOnce({text:'Propuesta revisada.',toolCalls:[],assistantMessage:{role:'assistant',content:'Propuesta revisada.'},providerUsed:'groq',modelUsed:'synthetic'});
+      return runReceptionAssistant(actor,[{role:'user',content:`Completa tarea #${task.humanId}${evidenceProvided?': '+evidenceProvided:''}`}]);
+    };
+    expect((await propose()).confirmations).toHaveLength(0);
+    const result=await propose('Repuesto instalado y probado');
+    expect(result.confirmations).toHaveLength(1);
+    expect(result.confirmations[0]!.detail).toContain('Repuesto instalado y probado');
+    await executeReceptionConfirmation(actor,result.confirmations[0]!.token);
+    expect(await prisma.task.findUniqueOrThrow({where:{id:task.id}})).toMatchObject({status:'COMPLETADA',evidenceProvided:'Repuesto instalado y probado'});
   });
   it('resuelve cadenas históricas completas y ciclos sin perder reserva ni trabajo archivado',async()=>{
     const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

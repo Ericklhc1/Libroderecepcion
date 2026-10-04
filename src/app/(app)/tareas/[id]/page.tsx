@@ -90,7 +90,7 @@ export default async function TaskDetailPage({
     : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
   const primaryAction = !open ? <a href={task.evidenceProvided ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{task.evidenceProvided ? "Ver resultado" : "Ver historial"}</a>
     : scheduled ? <p className="text-sm text-slate-600">Disponible desde {formatDateTime(task.startsAt!)}</p>
-    : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? (canChange ? task.status === TaskStatus.PENDIENTE ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : task.status === TaskStatus.BLOQUEADA ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : finish : null))
+    : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? <p className="text-sm text-slate-600">Espera la asignación de una persona responsable</p>)
     : task.status === TaskStatus.REALIZADA ? (canValidate ? statusAction(TaskStatus.VALIDADA,'Validar') : <p className="text-sm text-slate-600">Pendiente de revisión autorizada</p>)
     : task.status === TaskStatus.BLOQUEADA ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : null)
     : task.status === TaskStatus.PENDIENTE ? (task.assigneeId === user.id ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : assign ?? <p className="text-sm text-slate-600">El responsable debe confirmar la recepción</p>)

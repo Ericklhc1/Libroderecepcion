@@ -82,17 +82,24 @@ try{
     assert.ok(reopenedContext.includes('Último intento histórico: Resultado anterior rechazado'));
     assert.ok(!reopenedContext.includes('Resultado: Resultado anterior rechazado'));
     const worker=await db.user.findUniqueOrThrow({where:{id:f.users.worker.id},select:{roleId:true}});
-    const editGrants=await db.rolePermission.findMany({where:{roleId:worker.roleId,permission:{key:'entry.edit'}}});
+    const editGrants=await db.rolePermission.findMany({where:{roleId:worker.roleId,permission:{key:{in:['entry.edit','task.assign']}}}});
     const ownUnassigned=await db.operationalEntry.create({data:{type:'NOVEDAD',title:`PRUEBA CREADOR SIN EDITAR ${width}`,description:'No comenzar sin responsable',createdById:f.users.worker.id}});
     const limitedContext=await browser.newContext({viewport:{width,height:900}});
     try{
-      await db.rolePermission.deleteMany({where:{roleId:worker.roleId,permission:{key:'entry.edit'}}});
+      await db.rolePermission.deleteMany({where:{roleId:worker.roleId,permission:{key:{in:['entry.edit','task.assign']}}}});
       await limitedContext.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
       const limitedPage=await limitedContext.newPage();
       await limitedPage.goto(`http://localhost:3000/libro/${ownUnassigned.id}`);
       await limitedPage.locator('[aria-label="Continuidad del asunto"]').waitFor();
       assert.equal(await limitedPage.locator('[aria-label="Acciones del asunto"]').getByRole('button',{name:'Comenzar atención',exact:true}).count(),0);
       assert.equal((await db.operationalEntry.findUniqueOrThrow({where:{id:ownUnassigned.id}})).status,'ABIERTO');
+      const ownTask=await db.task.create({data:{title:`PRUEBA TRABAJO SIN DUEÑO ${width}`,createdById:f.users.worker.id}});
+      await limitedPage.goto(`http://localhost:3000/tareas/${ownTask.id}`);
+      await limitedPage.locator('[aria-label="Continuidad del asunto"]').waitFor();
+      const taskSurface=limitedPage.locator('[aria-label="Acciones del asunto"]');
+      assert.equal(await taskSurface.getByRole('button',{name:'Comenzar atención',exact:true}).count(),0);
+      await taskSurface.getByText('Espera la asignación de una persona responsable',{exact:true}).waitFor();
+      assert.equal((await db.task.findUniqueOrThrow({where:{id:ownTask.id}})).status,'PENDIENTE');
     }finally{
       if(editGrants.length)await db.rolePermission.createMany({data:editGrants,skipDuplicates:true});
       await limitedContext.close();

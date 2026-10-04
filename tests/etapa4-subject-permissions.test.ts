@@ -144,6 +144,13 @@ describe('AROH Simple · reserva y revisión independiente',()=>{
     const cycle=await prisma.alert.create({data:{title:'Reserva profunda ciclo',taskId:previous.id,type:'TAREA_VENCIDA'}});
     await prisma.task.update({where:{id:first.id},data:{alertId:cycle.id}});
     await prisma.followUp.update({where:{id:source.id},data:{deletedAt:new Date()}});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+    await prisma.user.update({where:{id:owner.id},data:{departmentId:area.id}});
+    await prisma.task.update({where:{id:first.id},data:{assigneeId:null,departmentId:area.id}});
+    await assignTask(owner,{id:first.id,assigneeId:owner.id});
+    expect((await getTask(first.id,owner)).assigneeId).toBe(owner.id);
+    const latest=await prisma.task.findUniqueOrThrow({where:{id:first.id}});
+    await coordinateWork(owner,{kind:'task',id:first.id,updatedAt:latest.updatedAt,requestKey:randomUUID(),action:'ASIGNAR',ownerId:owner.id,nextAction:'Continuar trabajo cuyo origen fue archivado'});
     expect((await getTask(previous.id,owner)).id).toBe(previous.id);
     await expect(getTask(previous.id,reader)).rejects.toThrow();
     expect((await searchOperationalRecords(reader,'Reserva profunda')).some(r=>r.entityId===previous.id)).toBe(false);

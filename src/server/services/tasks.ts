@@ -76,7 +76,7 @@ export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, i
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
     const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
-    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,deletedAt:null,AND:[alertReadWhere(reader)]}})){
+    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,deletedAt:null,AND:[alertReadWhere(reader)]}})){
       throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
     }
   }

@@ -1,3 +1,7 @@
+## 04-10-2026 · PR261 · segunda revisión y origen archivado, sin publicar
+
+Compuerta 37183925230 del SHA 21b4e95 aprobó migración compatible, 1500 pruebas (una omisión heredada), lint, tipos, build y recorridos 1280/390. Codex detectó dos ajustes posteriores: asignar a una persona autorizada debe admitir el origen archivado igual que la lectura canónica; el creador sin permiso de asignación no debe recibir Comenzar atención como primaria cuando no hay responsable. Ambas correcciones conservan los procedimientos y permisos existentes. La regresión usa un responsable operativo perteneciente al área real y verifica asignación tanto nativa como en Coordinación. La acción principal ahora espera asignación autorizada; los formularios avanzados existentes siguen sujetos a sus controles. Fronti aplica también la reserva canónica a vencimientos y propuestas por ID conocido. Compuerta y revisión del SHA final pendientes; Production continúa en 1.52.0. No declarar publicado por una validación de un commit anterior. Lista única docs/etapa4/PENDIENTES.md.
+
 ## 04-10-2026 · PR261 · correcciones de continuidad y reserva, sin publicar
 
 Compuerta del SHA 21f280d falló al importar un mock incompleto de correo, no ejecutó las pruebas dirigidas del archivo. Se conserva el módulo real y se simula únicamente sendMail. Codex sobre b3ef600 detectó seis hallazgos relevantes: cadena histórica transitiva, origen archivado que ocultaba trabajo activo, recordatorios reservados, borrador histórico al enviar, resultado previo de asunto reabierto y comenzar sin responsable.

@@ -59,6 +59,8 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
       return {kind:'housekeeping' as const,id:repeatedHk.id,href:`/admin/housekeeping?area=${repeatedHk.departmentId}&aviso=${repeatedHk.humanId}`,existing:true};
     }
     const existingHk=await tx.housekeepingRequest.findFirst({where:{sourceEntryId:source.id}});
+    const activeTaskAnyArea=await tx.task.findFirst({where:{entryId:source.id,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']},AND:[coordinationTasks(user)]},orderBy:{createdAt:'asc'}});
+    if(activeTaskAnyArea&&activeTaskAnyArea.departmentId!==input.departmentId)throw new RuleError('El asunto ya tiene trabajo de otra área. Abre ese trabajo y deriva desde su contexto para conservar la continuidad.');
     const readableTask=coordinationTasks(user);
     const taskScope:Prisma.TaskWhereInput={entryId:source.id,departmentId:input.departmentId,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']},AND:[readableTask]};
     const existingCanonicalTask=await tx.task.findFirst({where:{...taskScope,procedureOccurrenceKey:{startsWith:'subject:'}},orderBy:{createdAt:'desc'}});

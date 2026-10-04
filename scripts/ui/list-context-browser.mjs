@@ -180,6 +180,7 @@ async function checkJourney(page, list, expectedDetailRoot) {
   await selected.waitFor();
   assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, list);
   assert.equal(new URL(page.url()).hash, '');
+  await page.waitForFunction(anchor => document.getElementById(anchor)?.getAttribute('aria-current') === 'true', anchor);
   assert.equal(await selected.getAttribute('aria-current'), 'true');
   assert.ok(Math.abs(await page.evaluate(() => window.scrollY) - captured.scrollY) <= 2, 'Browser Back keeps native scroll');
   progress.step = 'forward-to-reloaded-detail';
@@ -200,6 +201,7 @@ async function checkJourney(page, list, expectedDetailRoot) {
   progress.step = 'back-to-list-with-older-fragment';
   await page.goBack();
   await page.locator(`[data-list-item="${nextAnchor}"]`).waitFor();
+  await page.waitForFunction(anchor => document.getElementById(anchor)?.getAttribute('aria-current') === 'true', nextAnchor);
   assert.equal(await page.locator(`[data-list-item="${nextAnchor}"]`).getAttribute('aria-current'), 'true', 'Back selects the most recent row even when the list URL has an older fragment');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
   return { listRoot: new URL(list, base).pathname, detailRoot: expectedDetailRoot, filters: true, selection: true, scroll: true, cancel: true, reload: true, nativeHistory: true };

@@ -45,7 +45,7 @@ describe('menú principal', () => {
       '/caja', // centralización financiera
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
-      '/alertas', // llamadas de atención programables
+      '/notificaciones', // avisos recibidos y recordatorios existentes
       '/admin/housekeeping', // coordinación habilitable por permisos
     ]);
     expect(NAV_GROUPS.find((group) => group.title === 'Equipo')?.items.map((item) => item.href)).toEqual(['/equipo']);
@@ -87,16 +87,22 @@ describe('visibilidad por rol', () => {
   it('Housekeeping tiene navegación de su área sin lectores generales de Recepción',()=>{
     for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER]){
       const permissions=ROLE_PERMISSIONS[role];const hrefs=visibleNavItems(permissions).map(i=>i.href);
-      expect(hrefs).toEqual(['/coordinacion','/admin/housekeeping','/equipo']);
+      expect(hrefs).toEqual(['/coordinacion','/notificaciones','/admin/housekeeping','/equipo']);
       expect(visibleNavItems(permissions).filter(i=>i.mobile).map(i=>i.href)).toContain('/admin/housekeeping');
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).toEqual(expect.arrayContaining(['/admin/housekeeping','/equipo']));
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).not.toContain('/libro?clase=entry');
     }
   });
 
+  it('una cuenta exclusiva de Housekeeping no puede abrir Recordatorios por URL directa',()=>{
+    const source=readFileSync('src/app/(app)/alertas/page.tsx','utf-8');
+    expect(source).toContain("hkNavigationAllowed(user.permissions, '/alertas')");
+    expect(source).toContain("redirect('/sin-permisos')");
+  });
+
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/alertas', '/admin/housekeeping']);
+    expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/admin/housekeeping']);
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).toContain('housekeeping.request');
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).not.toContain('housekeeping.assign');
   });
@@ -228,7 +234,7 @@ describe('shell corporativo con sidebar', () => {
 
     const llaves = readFileSync('src/app/(app)/llaves/page.tsx', 'utf-8');
     expect(llaves).toContain('([4, 5, 6] as const).map');
-    expect(llaves).toContain('href={`/llaves?vista=llaves&piso=${value}`}');
+    expect(llaves).toContain('href={`/llaves?vista=llaves&piso=${value}${exceptionView ? "&intencion=excepciones" : ""}`}');
 
     const turno = readFileSync('src/app/(app)/turno/page.tsx', 'utf-8');
     expect(turno).toContain('href="/admin/turnos"');

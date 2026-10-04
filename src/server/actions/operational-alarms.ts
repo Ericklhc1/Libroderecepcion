@@ -13,6 +13,7 @@ import {
   type ActionState,
 } from '@/server/action';
 import { requireUser } from '@/server/auth/guard';
+import {hkNavigationAllowed} from '@/domain/housekeeping-work';
 import { RuleError } from '@/server/errors';
 import { parseHotelDateTimeLocal } from '@/domain/time';
 import { isOperationalRoomNumber } from '@/domain/room-catalog';
@@ -87,6 +88,7 @@ export async function createOperationalAlarmAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requireUser();
+    if(!hkNavigationAllowed(user.permissions,'/alertas'))throw new RuleError('Los recordatorios no están habilitados para tu área.');
     const input = parseOrThrow(createSchema, formDataToObject(formData));
 
     let dueAt: Date;
@@ -135,6 +137,7 @@ export async function updateOperationalAlarmAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requireUser();
+    if(!hkNavigationAllowed(user.permissions,'/alertas'))throw new RuleError('Los recordatorios no están habilitados para tu área.');
     const input = parseOrThrow(updateSchema, formDataToObject(formData));
     let dueAt: Date;
     try {
@@ -162,6 +165,7 @@ export async function cancelOperationalAlarmAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requireUser();
+    if(!hkNavigationAllowed(user.permissions,'/alertas'))throw new RuleError('Los recordatorios no están habilitados para tu área.');
     const input = parseOrThrow(cancelSchema, formDataToObject(formData));
     await cancelOperationalAlarm(user, input.alarmId);
     revalidatePath('/alertas');

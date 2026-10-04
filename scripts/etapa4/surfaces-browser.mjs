@@ -1,0 +1,76 @@
+import '../etapa1/guard.cjs';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {PrismaClient} from '@prisma/client';
+import {SignJWT} from 'jose';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
+const fixture=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
+const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[];
+try{
+  const terms=await db.legalAcceptance.findFirstOrThrow({where:{userId:fixture.users.admin.id},select:{document:true,version:true}});
+  const tutorial=await db.user.findUniqueOrThrow({where:{id:fixture.users.admin.id},select:{tutorialKnownModules:true}});
+  const role=await db.role.findUniqueOrThrow({where:{key:'RECEPCIONISTA'}});
+  const room=await db.room.findUniqueOrThrow({where:{number:'512'}});
+  async function session(width,userToken){
+    const context=await browser.newContext({viewport:{width,height:900}});
+    await context.addCookies([{name:'lor_session',value:userToken,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+    await context.route('**/*',route=>{const url=new URL(route.request().url());return url.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(path=>url.pathname.startsWith(path))?route.abort():route.continue();});
+    const page=await context.newPage();page.setDefaultTimeout(12000);return{context,page};
+  }
+  for(const width of [1280,390]){
+    const user=await db.user.create({data:{name:`PRUEBA RECEPCIÓN SIMPLE ${width}`,username:`e4_${randomUUID().slice(0,8)}`,passwordHash:'synthetic-no-login',roleId:role.id,departmentId:fixture.areaId,mustChangePassword:false,tutorialDoneAt:new Date(),tutorialKnownModules:tutorial.tutorialKnownModules}});
+    await db.legalAcceptance.create({data:{userId:user.id,...terms}});
+    const expiresAt=new Date(Date.now()+3600000),nativeSession=await db.session.create({data:{userId:user.id,expiresAt}});
+    const token=await new SignJWT({sub:user.id,sid:nativeSession.id}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime(Math.floor(expiresAt.getTime()/1000)).sign(new TextEncoder().encode(process.env.AUTH_SECRET));
+    const reception=await session(width,token),admin=await session(width,fixture.users.admin.token);
+    await reception.page.goto('http://localhost:3000/caja');
+    await reception.page.getByText('Caja en modo consulta',{exact:true}).waitFor();
+    assert.equal(await reception.page.locator('[aria-label="Acciones de Caja"] button').count(),0,'Sin turno no se ofrecen escrituras financieras');
+    await reception.page.getByRole('link',{name:'Continuar Mi turno',exact:true}).waitFor();
+    const shift=await db.shift.create({data:{type:'NOCHE',date:new Date(),status:'ACTIVO',createdById:user.id,plannedStart:new Date(Date.now()-3600000),plannedEnd:new Date(Date.now()+3600000),actualStart:new Date()}});
+    await db.shiftAssignment.create({data:{shiftId:shift.id,userId:user.id,activatedAt:new Date()}});
+    const entry=await db.operationalEntry.create({data:{type:'NOVEDAD',title:`PRUEBA CONTINUIDAD ${width}`,description:'Permanece activa al entregar',status:'EN_CURSO',createdById:user.id,ownerId:user.id,workAcknowledgedAt:new Date(),workNextAction:'Comprobar habitación antes del relevo'}});
+    await db.task.create({data:{title:`PRUEBA IMPEDIMENTO ${width}`,createdById:user.id,assigneeId:user.id,status:'BLOQUEADA',blockedReason:'Repuesto pendiente del área',fulfillmentCriteria:'Equipo probado antes de devolver resultado',dueAt:new Date(Date.now()-60000)}});
+    await db.task.create({data:{title:`PRUEBA SIN VENCER ${width}`,createdById:user.id,assigneeId:user.id,status:'PENDIENTE',workNextAction:'Coordinar la próxima revisión'}});
+    await reception.page.goto('http://localhost:3000/turno');
+    await reception.page.getByRole('link',{name:'Continuar operación',exact:true}).waitFor();
+    assert.equal(await reception.page.getByRole('button',{name:'INICIAR CIERRE DE TURNO',exact:true}).isVisible(),false);
+    await reception.page.getByRole('link',{name:new RegExp(`PRUEBA CONTINUIDAD ${width}`)}).getByText('Siguiente acción: Comprobar habitación antes del relevo',{exact:true}).waitFor();
+    assert.ok((await db.task.findFirstOrThrow({where:{title:`PRUEBA SIN VENCER ${width}`}})).status==='PENDIENTE');
+    await reception.page.getByRole('link',{name:new RegExp(`PRUEBA IMPEDIMENTO ${width}`)}).getByText('Impedimento: Repuesto pendiente del área',{exact:true}).waitFor();
+    await reception.page.getByRole('link',{name:new RegExp(`PRUEBA IMPEDIMENTO ${width}`)}).getByText('Resultado esperado: Equipo probado antes de devolver resultado',{exact:true}).waitFor();
+    await reception.page.getByText('Entregar turno',{exact:true}).click();
+    await reception.page.getByRole('button',{name:'INICIAR CIERRE DE TURNO',exact:true}).waitFor();
+    assert.equal((await db.operationalEntry.findUniqueOrThrow({where:{id:entry.id}})).status,'EN_CURSO','Desplegar entrega no cierra pendientes');
+    const moneyBefore=await db.cashMovement.count();
+    await admin.page.goto('http://localhost:3000/caja');
+    await admin.page.locator('[aria-label="Estado actual de Caja"]').waitFor();
+    const actions=admin.page.locator('[aria-label="Acciones de Caja"]');
+    const visible=await actions.locator('button,a,summary').evaluateAll(elements=>elements.filter(element=>element.checkVisibility()).length);
+    assert.ok(visible<=3,'Dinero, garantía y Más; no cinco procedimientos simultáneos');
+    assert.equal(await actions.getByRole('button',{name:'Regularizar diferencia',exact:true}).isVisible(),false);
+    await actions.getByText('Más ···',{exact:true}).click();
+    await actions.getByRole('button',{name:'Regularizar diferencia',exact:true}).click();
+    await admin.page.getByRole('dialog').waitFor();await admin.page.keyboard.press('Escape');await admin.page.getByRole('dialog').waitFor({state:'hidden'});
+    assert.equal(await db.cashMovement.count(),moneyBefore,'Abrir y salir no registra dinero');
+    assert.ok(await admin.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Caja sin desbordamiento');
+    const available=await db.roomKey.create({data:{code:`E4-DISP-${width}`,roomId:room.id,status:'DISPONIBLE'}});
+    const missing=await db.roomKey.create({data:{code:`E4-FALTA-${width}`,roomId:room.id,status:'EXTRAVIADA'}});
+    await admin.page.goto('http://localhost:3000/llaves?vista=llaves&piso=todos');
+    const row=admin.page.locator('main li').filter({has:admin.page.getByText(available.code,{exact:true})});
+    await row.getByRole('button',{name:'Entregar',exact:true}).waitFor();
+    assert.equal(await row.getByRole('button',{name:'Baja',exact:true}).isVisible(),false);
+    await admin.page.goto('http://localhost:3000/llaves?vista=llaves&piso=todos&intencion=excepciones');
+    await admin.page.getByRole('heading',{name:'Resolver excepción de llaves',exact:true}).waitFor();
+    assert.equal(await admin.page.getByText(available.code,{exact:true}).count(),0);
+    const exception=admin.page.locator('main li').filter({has:admin.page.getByText(missing.code,{exact:true})});
+    await exception.getByRole('button',{name:'Recuperar',exact:true}).click();
+    await admin.page.getByRole('dialog').waitFor();await admin.page.keyboard.press('Escape');await admin.page.getByRole('dialog').waitFor({state:'hidden'});
+    assert.equal((await db.roomKey.findUniqueOrThrow({where:{id:missing.id}})).status,'EXTRAVIADA','Salir no declara recuperación física');
+    assert.ok(await admin.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    assert.ok(await reception.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    results.push({width,cashVisibleActions:visible,noFinancialWrite:true,turnProgressive:true,continuityVisible:true,keysByIntent:true,noFalseRecovery:true});
+    await reception.context.close();await admin.context.close();
+  }
+}finally{writeFileSync('etapa4-surfaces-browser-results.json',JSON.stringify(results,null,2));await browser.close();await db.$disconnect();}

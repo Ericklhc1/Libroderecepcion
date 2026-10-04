@@ -76,6 +76,7 @@ export default async function KeysPage({
   const params = await searchParams;
   const floorParam = readOne(params.piso) || 'todos';
   const section = readOne(params.vista) || 'inventario';
+  const exceptionView = section === 'llaves' && readOne(params.intencion) === 'excepciones';
   const allFloors = section !== 'llaves' || floorParam === 'todos';
   const requestedFloor = Number(floorParam);
   const floor = isInventoryFloor(requestedFloor) ? requestedFloor : 4;
@@ -120,11 +121,13 @@ export default async function KeysPage({
   const canStock = hasPermission(user, 'key.stock');
 
   const latest = recentCounts[0] ?? null;
+  const exceptionStatuses: KeyStatus[] = [KeyStatus.EXTRAVIADA, KeyStatus.FUERA_DE_SERVICIO, KeyStatus.PENDIENTE_DEVOLUCION];
+  const displayRooms = exceptionView ? inventory.rooms.map(room => ({...room, keys:room.keys.filter(key => exceptionStatuses.includes(key.status))})).filter(room => room.keys.length > 0) : inventory.rooms;
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-petrol-900">Tomar inventario de llaves</h1>
+          <h1 className="text-2xl font-semibold text-petrol-900">{section === 'historial' ? 'Historial de llaves' : exceptionView ? 'Resolver excepción de llaves' : section === 'llaves' ? 'Entregar / recibir llaves' : 'Inventariar llaves'}</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
             Cuadre físico mínimo del hotel: 89 habitaciones. Piso 4: 29 habitaciones;
             pisos 5 y 6: 30 habitaciones cada uno. Se espera al menos una llave por habitación,
@@ -132,7 +135,9 @@ export default async function KeysPage({
           </p>
         </div>
 
-        {canStock ? (
+        {canStock ? (<details className="group/key-admin no-print">
+          <summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium">Más ···</summary>
+          <div className="mt-2 hidden group-open/key-admin:block">
           <Dialog
             title="Ingresar llave al inventario"
             description="Asocia la llave física a una habitación. No crea reservas ni estadías."
@@ -153,7 +158,7 @@ export default async function KeysPage({
               <Field label="Habitación" name="roomId">
                 <Select
                   name="roomId"
-                  options={inventory.rooms.map((room) => ({
+                  options={displayRooms.map((room) => ({
                     value: room.roomId,
                     label: room.roomNumber,
                   }))}
@@ -178,12 +183,21 @@ export default async function KeysPage({
               </SubmitButton>
             </ActionForm>
           </Dialog>
-        ) : null}
+          </div></details>) : null}
       </header>
+
+      <nav className="flex flex-wrap gap-2" aria-label="Intención de Llaves">
+        {[
+          {label:'Inventariar',href:'/llaves?vista=inventario&piso=todos',active:section === 'inventario'},
+          {label:'Entregar / recibir',href:'/llaves?vista=llaves&piso=todos',active:section === 'llaves' && !exceptionView},
+          {label:'Resolver excepción',href:'/llaves?vista=llaves&piso=todos&intencion=excepciones',active:exceptionView},
+        ].map(item => <Link key={item.label} href={item.href} aria-current={item.active?'page':undefined} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${item.active?'bg-petrol-800 text-white':'bg-white text-petrol-800'}`}>{item.label}</Link>)}
+        <Link className="rounded-lg border bg-white px-3 py-2 text-sm" href="/llaves?vista=historial&piso=todos" aria-current={section === 'historial'?'page':undefined}>Historial e impresión</Link>
+      </nav>
 
       {section === 'llaves' && <nav className="flex flex-wrap gap-2" aria-label="Pisos">
         <Link
-          href="/llaves?vista=llaves&piso=todos"
+          href={exceptionView ? "/llaves?vista=llaves&piso=todos&intencion=excepciones" : "/llaves?vista=llaves&piso=todos"}
           className={
             allFloors
               ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
@@ -195,7 +209,7 @@ export default async function KeysPage({
         {([4, 5, 6] as const).map((value) => (
           <Link
             key={value}
-            href={`/llaves?vista=llaves&piso=${value}`}
+            href={`/llaves?vista=llaves&piso=${value}${exceptionView ? "&intencion=excepciones" : ""}`}
             className={
               !allFloors && value === floor
                 ? 'rounded-lg bg-petrol-700 px-4 py-2 text-sm font-semibold text-white'
@@ -210,9 +224,9 @@ export default async function KeysPage({
       {section === 'llaves' && <ListFilterBar
         searchValue={q}
         searchPlaceholder="Buscar habitación o código de llave…"
-        clearHref={allFloors ? '/llaves?vista=llaves&piso=todos' : `/llaves?vista=llaves&piso=${floor}`}
+        clearHref={`/llaves?vista=llaves&piso=${allFloors ? "todos" : floor}${exceptionView ? "&intencion=excepciones" : ""}`}
       >
-        <input type="hidden" name="vista" value="llaves" /><input type="hidden" name="piso" value={allFloors ? 'todos' : floor} />
+        {exceptionView && <input type="hidden" name="intencion" value="excepciones"/>}<input type="hidden" name="vista" value="llaves" /><input type="hidden" name="piso" value={allFloors ? 'todos' : floor} />
         <label className="min-w-[13rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Estado</span>
           <select name="estado" defaultValue={status ?? ''} className="input-base w-full">
@@ -252,12 +266,12 @@ export default async function KeysPage({
       </div>
 
       <Link className="inline-flex rounded border bg-white px-3 py-2 text-sm font-semibold" href="/llaves/personal">Áreas · Entregar a personal · Mi stock</Link>
-      <nav className="flex flex-wrap gap-2" aria-label="Secciones de Llaves">{[['inventario', 'Inventario completo'], ['llaves', 'Llaves y entregas'], ['historial', 'Historial e impresión']].map(([value, label]) => <Link key={value} className={`rounded border px-3 py-2 text-sm ${section === value ? 'bg-petrol-800 text-white' : 'bg-white'}`} href={`/llaves?vista=${value}&piso=${floorParam}`}>{label}</Link>)}</nav>
+
       {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms).map(r => ({...r,custody:custody.filter(c => c.destinationId === r.roomId).map(c => c.label)}))} areas={areas.map(a => ({roomId:a.id,roomNumber:a.name,floor:0,expected:a.keys.filter(k => k.movements[0]?.action !== 'BAJA').length,keys:a.keys,custody:custody.filter(c => c.destinationId === a.id).map(c => c.label)}))} initialFloor={floorParam} /></Card>}
 
       {section === 'llaves' && <Card>
-        <CardHeader title={allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={inventory.rooms.reduce((sum, room) => sum + room.keys.length, 0)} />
-        {inventory.rooms.length === 0 ? (
+        <CardHeader title={exceptionView ? 'Excepciones físicas registradas' : allFloors ? 'Llaves registradas · Todos los pisos' : `Llaves registradas · Piso ${floor}`} count={displayRooms.reduce((sum, room) => sum + room.keys.length, 0)} />
+        {displayRooms.length === 0 ? (
           <EmptyState
             message="No hay habitaciones que coincidan con los filtros."
             hint="Limpia la búsqueda o revisa otro piso."
@@ -265,7 +279,7 @@ export default async function KeysPage({
         ) : (
           <CardScroll maxHeight="max-h-[48rem]">
             <div className="divide-y divide-slate-100">
-              {inventory.rooms.map((room) => (
+              {displayRooms.map((room) => (
                 <section key={room.roomId} className="px-4 py-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -404,7 +418,9 @@ export default async function KeysPage({
                               </Dialog>
                             ) : null}
 
-                            {canStock ? (
+                            {canStock ? (<details className="group/key-more">
+                              <summary className="cursor-pointer rounded px-3 py-2 text-sm">Más ···</summary>
+                              <div className="mt-2 hidden group-open/key-more:block">
                               <Dialog
                                 title={`Dar de baja ${key.code}`}
                                 description="La baja queda en el historial. No elimina la llave ni sus movimientos."
@@ -422,7 +438,7 @@ export default async function KeysPage({
                                   </SubmitButton>
                                 </ActionForm>
                               </Dialog>
-                            ) : null}
+                              </div></details>) : null}
                           </div>
                         </li>
                       ))}

@@ -1,11 +1,11 @@
 export type FrontiIntentMessage = { role: 'user' | 'assistant'; content: string };
 
 function normalized(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/^fronti[\s,:]+/,'');
 }
 
 function explicitAction(text: string): boolean {
-  return (
+  return /\b(?:manda(?:lo|la)?|envia(?:lo|la)?|deriva(?:lo|la)?|solicita atencion|pide atencion)\b/.test(text) || (
     /(?:crea|registr|anot|genera|levanta|deja una)/.test(text) && /novedad|incidencia/.test(text)
   ) || /recuerdame|recordatorio|check.?out|confirmar salida|confirma la salida|multa/.test(text)
     || (/(?:completa|resuelve|resolver|marca como completada)/.test(text) && /tarea|#\d+/.test(text));

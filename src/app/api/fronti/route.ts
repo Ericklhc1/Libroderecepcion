@@ -277,7 +277,7 @@ export async function POST(request: Request) {
       maxChars: 6_500,
     });
     const modelMessages = [identity, runtime, ...recentContext];
-    const result = await runReceptionAssistant(user, modelMessages, runtimeContext);
+    const result = await runReceptionAssistant(user, modelMessages, runtimeContext,{requestKey:body.requestKey});
 
     await persistAssistantReply(context.conversationId, result.reply, context.persist);
     if (context.persist) {

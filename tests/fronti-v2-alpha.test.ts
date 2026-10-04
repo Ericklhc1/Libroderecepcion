@@ -68,7 +68,7 @@ describe('FRONTI v2 alpha', () => {
     expect(assistant).toContain('executeFrontiPageContextTool');
     expect(assistant).toContain('frontiToolMode(name)');
     expect(route).toContain('search: body.pageContext.search');
-    expect(route).toContain('runReceptionAssistant(user, modelMessages, runtimeContext)');
+    expect(route).toContain('runReceptionAssistant(user, modelMessages, runtimeContext,{requestKey:body.requestKey})');
     expect(client).toContain('search: window.location.search');
     expect(client).toContain('hash: window.location.hash');
     expect(client).toContain('title: document.title');

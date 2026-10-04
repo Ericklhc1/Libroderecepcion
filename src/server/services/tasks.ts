@@ -1,6 +1,7 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
+import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import {
   AuditAction,
   NotificationType,
@@ -71,8 +72,17 @@ export type TaskCreateInput = {
 };
 
 /** Do not notify somebody about work whose reserved source they cannot read. */
-export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}) {
+export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}, lockSources = false) {
   if (!source.followUpId && !source.alertId) return;
+  if (lockSources) {
+    const [followUps, alerts] = await Promise.all([
+      source.followUpId ? db.followUpSourceFollowUp.findMany({where:{descendantId:source.followUpId},select:{followUpId:true}}) : [],
+      source.alertId ? db.alertSourceFollowUp.findMany({where:{alertId:source.alertId},select:{followUpId:true}}) : [],
+    ]);
+    const origins = new Set([...followUps, ...alerts].map(row => row.followUpId));
+    if (source.followUpId) origins.add(source.followUpId);
+    for (const id of [...origins].sort()) await db.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${id} FOR SHARE`;
+  }
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
     const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
@@ -160,7 +170,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
-    await assertTaskSourceRecipients(tx,participantIds,input);
+    await assertTaskSourceRecipients(tx,new Set([user.id,...participantIds]),input,true);
     if (input.procedureOccurrenceKey) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.procedureOccurrenceKey}))::text`;
       const existing = await tx.task.findUnique({ where: { procedureOccurrenceKey: input.procedureOccurrenceKey }, include: taskInclude });
@@ -322,6 +332,8 @@ export async function updateTask(
     );
   }
 
+  if (isSubjectAttentionTask(current.procedureOccurrenceKey) && current.status === TaskStatus.REALIZADA && 'evidenceProvided' in input && !input.evidenceProvided?.trim()) throw new RuleError('Conserva el resultado de la atención antes de validar.');
+
   const data: Prisma.TaskUpdateInput = {};
   const after: Record<string, unknown> = {};
   for (const field of TASK_EDITABLE) {
@@ -380,7 +392,7 @@ export async function assignTask(
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {
-    if (input.assigneeId) await assertTaskSourceRecipients(tx,[input.assigneeId],current);
+    await assertTaskSourceRecipients(tx,[user.id,...(input.assigneeId?[input.assigneeId]:[])],current,true);
     const updated = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { assigneeId: input.assigneeId ?? null, workAssignedAt: input.assigneeId ? new Date() : null, workAcknowledgedAt: null, workAcknowledgedById: null, workStartedAt: null, workEscalatedAt: null, workRequestKey: null },
@@ -504,6 +516,8 @@ export async function changeTaskStatus(
   if (input.status === TaskStatus.BLOQUEADA && !input.blockedReason) {
     throw new RuleError('Indica por qué la tarea queda bloqueada.');
   }
+  if (isSubjectAttentionTask(current.procedureOccurrenceKey) && input.status === TaskStatus.VALIDADA && !(input.evidenceProvided === undefined ? current.evidenceProvided : input.evidenceProvided)?.trim()) throw new RuleError('La validación requiere el resultado de la atención.');
+  if(isSubjectAttentionTask(current.procedureOccurrenceKey)&&['REALIZADA','COMPLETADA'].includes(input.status)&&!input.evidenceProvided?.trim())throw new RuleError('Describe el resultado para devolverlo al asunto de origen.');
   if (
     input.status === TaskStatus.REALIZADA &&
     current.evidenceRequired &&

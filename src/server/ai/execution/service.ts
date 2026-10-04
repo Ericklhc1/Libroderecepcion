@@ -1,3 +1,5 @@
+import {getSubjectEntry} from '@/server/services/entries';
+import {coordinationEntries} from '@/server/services/coordination-access';
 import 'server-only';
 import type { ActionState } from '@/server/action';
 import { dynamicDelegationSchema } from '@/domain/fronti-delegation';
@@ -115,12 +117,21 @@ export async function executionCard(id: string) {
   const row = await prisma.frontiExecution.findFirst({ where: { id, userId: user.id }, include: { steps: { orderBy: { position: 'asc' } } } });
   if (!row) throw new NotFoundError();
   if (row.authorizationKind === 'DELEGATION') throw new RuleError('La delegación ya contiene una autorización explícita; consulta su vigencia y sus pasos.');
-  const lines = row.steps.map((s, i) => {
+  const lines = await Promise.all(row.steps.map(async (s, i) => {
     const definition = actionDefinition(s.action);
     const fields = openSecret((s.fields as { sealed: string }).sealed, purpose(user.id));
     if (!fields) throw new RuleError('No se pudo leer el procedimiento. Prepara una nueva solicitud.');
-    return `${i + 1}. ${definition.label}\n${Object.entries(JSON.parse(fields)).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('\n')}${definition.physical ? '\nLa confirmación declara únicamente los hechos físicos que tú has comprobado.' : ''}`;
-  });
+    const values=JSON.parse(fields) as Record<string,string|string[]>;
+    if(s.action==='requestSubjectAttentionAction'){
+      const entryId=String(values.entryId);
+      if(!await prisma.operationalEntry.count({where:{id:entryId,AND:[coordinationEntries(user)]}}))throw new NotFoundError();
+      const entry=await getSubjectEntry(user,entryId);
+      const area=await prisma.department.findUnique({where:{id:String(values.departmentId)},select:{name:true}});
+      const assignee=typeof values.assigneeId==='string'&&values.assigneeId?await prisma.user.findFirst({where:{id:values.assigneeId,active:true,deletedAt:null},select:{name:true}}):null;
+      return `${i+1}. Solicitar atención\nAsunto #${entry.humanId}: ${entry.title}\nÁrea responsable: ${area?.name??'Área no disponible'}\nUbicación: ${entry.room?.number??values.location??'Contexto del asunto'}\nResponsable: ${assignee?.name??'El área asignará a una persona habilitada'}\nEl resultado vuelve al mismo asunto.`;
+    }
+    return `${i + 1}. ${definition.label}\n${Object.entries(values).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('\n')}${definition.physical ? '\nLa confirmación declara únicamente los hechos físicos que tú has comprobado.' : ''}`;
+  }));
   return { token: `fronti-plan:${id}`, title: 'Procedimiento preparado', risk: 'high' as const,
     detail: lines.join('\n\n') + '\n\nSe ejecutará en tu nombre, conservando los permisos y aprobaciones del procedimiento. Los pasos completados no se deshacen al cancelar. Vigencia: 15 minutos.' };
 }
@@ -185,7 +196,7 @@ export async function executePlan(id: string, authorize: boolean, protectedStep?
       // Native actions may commit before a post-commit error. Conservatively stop on every failure.
       const status = result.ok ? 'SUCCEEDED' : 'INTERVENTION';
       const actionModule=actionDefinition(step.action).module;
-      const href=result.ok&&result.id&&(actionModule==='tasks'||actionModule==='entries')?`${actionModule==='tasks'?'/tareas':'/libro'}/${result.id}`:undefined;
+      const href=result.ok&&step.action==='requestSubjectAttentionAction'&&typeof command.fields.entryId==='string'?`/libro/${encodeURIComponent(command.fields.entryId)}`:result.ok&&result.id&&(actionModule==='tasks'||actionModule==='entries')?`${actionModule==='tasks'?'/tareas':'/libro'}/${result.id}`:undefined;
       const safeResult = result.ok ? { ok: true, message: result.message.slice(0,2000), id: result.id ?? null, ...(href?{href}:{}) } : { ok: false, message: result.error };
       await prisma.$transaction(async tx => {
         await tx.frontiExecutionStep.update({ where: { id: step.id }, data: { status, result: safeResult, completedAt: new Date() } });

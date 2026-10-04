@@ -26,13 +26,14 @@ export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, sh
   return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
 }
 
-export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>): Prisma.OperationalAlarmWhereInput {
-  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true)}}}};
+export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.OperationalAlarmWhereInput {
+  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
 }
 
 /** Same reserved-source policy for the existing PostgreSQL search view.
  * Fixed aliases f/t are internal SQL identifiers, never supplied by a request. */
-function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted=false) {
+// Use the direct node rule only when the caller already expands every origin edge.
+export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted=false) {
   const manager = user.permissions.includes('supervision.followup.manage');
   return Prisma.sql`${includeDeleted ? Prisma.sql`TRUE` : Prisma.sql`f."deletedAt" IS NULL`} AND (
     (f."visibility" = 'PRIVADO' AND f."createdById" = ${user.id}) OR

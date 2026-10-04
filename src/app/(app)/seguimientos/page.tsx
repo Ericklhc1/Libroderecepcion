@@ -1,3 +1,5 @@
+import {NoticeNavigation} from '@/components/operational/notice-navigation';
+import { followUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { FollowUpStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -14,7 +16,7 @@ import { FOLLOWUP_STATUS_LABEL, FOLLOWUP_STATUS_TONE } from '@/domain/labels';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/search-params';
 
-export const metadata = { title: 'En seguimiento' };
+export const metadata = { title: 'Avisos · Pendientes que continúan' };
 export const dynamic = 'force-dynamic';
 
 export default async function FollowUpsPage({
@@ -30,18 +32,7 @@ export default async function FollowUpsPage({
   const humanId = /^\d+$/.test(q) ? Number(q) : null;
   const estado = typeof params.estado === 'string' ? params.estado : 'pendientes';
   const mios = params.mios === '1';
-  const canSeeSupervision = user.permissions.includes('supervision.followup.manage');
-
-  const visibilityWhere: Prisma.FollowUpWhereInput = {
-    OR: [
-      { visibility: 'PRIVADO', createdById: user.id },
-      ...(canSeeSupervision ? [{ visibility: 'SUPERVISION' as const }] : []),
-      {
-        visibility: 'OPERATIVO',
-        OR: [{ ownerId: user.id }, { createdById: user.id }, ...(canSeeSupervision ? [{}] : [])],
-      },
-    ],
-  };
+  const visibilityWhere = followUpReadWhere(user);
 
   const where: Prisma.FollowUpWhereInput = {
     AND: [visibilityWhere],
@@ -90,11 +81,12 @@ export default async function FollowUpsPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
+      <NoticeNavigation permissions={user.permissions} current="continuity"/>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900">
             <Repeat className="h-5 w-5 text-petrol-600" aria-hidden="true" />
-            En seguimiento
+            Avisos · Pendientes que continúan
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
             Asuntos que decidiste mantener en tu radar. El sistema conserva la trazabilidad y avisa si vence la revisión.

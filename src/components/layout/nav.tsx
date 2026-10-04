@@ -374,7 +374,7 @@ export function MobileNav({
   }, [openMore]);
 
   const restHasBadge = restItems.some((item) => (badges?.[item.href] ?? 0) > 0);
-  const restIsActive = restItems.some((item) => isActive(pathname, item.href));
+  const restIsActive = restItems.some((item) => isActive(pathname, item.href) || item.menu?.some(section=>section.items.some(link=>isActive(pathname,link.href.split(/[?#]/)[0]??link.href))));
 
   return (
     <>

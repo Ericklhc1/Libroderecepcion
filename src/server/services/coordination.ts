@@ -12,7 +12,7 @@ import { elapsedMinutes, nextWorkAction, receiptDueAt, hkReceiptAvailableAt, REC
 import { coordinationEntries, coordinationTasks, coordinationFollowUps, canCoordinate } from './coordination-access';
 import { hkWorkVisibility } from './housekeeping-work';
 import { coverageSlots, scheduledAt } from '@/domain/schedule';
-import { hotelDateKey } from '@/domain/time';
+import { hotelDateKey, hotelWallDateTime, addHotelCalendarDays } from '@/domain/time';
 import { scheduleAreaIds } from './schedule-access';
 import { notify } from '@/server/notifications';
 import { assertReceptionOperationPermission } from './reception-operation-gate';
@@ -23,12 +23,31 @@ export type CoordinationRow = {
   departmentId: string | null; department: string; ownerId: string | null; owner: string; createdById:string|null;
   createdAt: Date; updatedAt: Date; dueAt: Date | null; receivedAt: Date | null; assignedAt: Date | null;
   availableAt: Date | null; startedAt: Date | null; completedAt: Date | null; nextAction: string; href: string;
-  canAssign: boolean; children: { label: string; href: string }[];
+  source?: {humanId:number;href:string}; canAssign: boolean; children: { label: string; href: string }[];
 };
 
 export type CoordinationView='all'|'reception'|'unassigned'|'unreceived'|'blocked'|'clarification'|'carryover';
-export async function getCoordinationBoard(user: CurrentUser, input: { departmentId?: string; mine?: boolean; page?: number; history?: boolean; view?:CoordinationView } = {}) {
-  const page = Math.max(1, Math.min(10000, input.page || 1));
+export type CoordinationState='abierto'|'atencion'|'bloqueado'|'revision'|'resuelto';
+const COORDINATION_PAGE_SIZE=25;
+const COORDINATION_MAX_PAGE=100;
+const COORDINATION_IDENTITY_SCAN_LIMIT=5000;
+export async function getCoordinationBoard(user: CurrentUser, input: { departmentId?: string; mine?: boolean; page?: number; history?: boolean; view?:CoordinationView;q?:string;ownerId?:string;state?:CoordinationState;date?:string } = {}) {
+  const states:Record<CoordinationState,{entry:Prisma.EnumEntryStatusFilter['in'];task:Prisma.EnumTaskStatusFilter['in'];hk:string[];follow:Prisma.EnumFollowUpStatusFilter['in']}>= {
+    abierto:{entry:['ABIERTO'],task:['PENDIENTE','ACEPTADA','DEVUELTA'],hk:['PENDIENTE','RECIBIDO'],follow:['PENDIENTE','VENCIDO']},
+    atencion:{entry:['EN_CURSO'],task:['EN_CURSO'],hk:['EN_GESTION'],follow:[]},
+    bloqueado:{entry:['EN_ESPERA'],task:['BLOQUEADA'],hk:['BLOQUEADO'],follow:[]},
+    revision:{entry:[],task:['REALIZADA'],hk:['POR_REVISAR'],follow:[]},
+    resuelto:{entry:['RESUELTO','CERRADO'],task:['VALIDADA','COMPLETADA'],hk:['RESUELTO'],follow:['CUMPLIDO']},
+  };
+  const state=input.state&&states[input.state];
+  const history=input.state?input.state==='resuelto':input.history;
+  const owner=input.ownerId||(input.mine?user.id:undefined);
+  const q=input.q?.trim().slice(0,100);
+  const folio=q&&/^#?\d+$/.test(q)?Number(q.replace('#','')):null;
+  const human=folio!==null&&Number.isSafeInteger(folio)&&folio<=2147483647?{humanId:folio}:null;
+  const date=(()=>{try{return input.date&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)?hotelWallDateTime(input.date,0):null;}catch{return null;}})();
+  const due=date&&!Number.isNaN(date.getTime())&&hotelDateKey(date)===input.date?{gte:date,lt:addHotelCalendarDays(date,1)}:undefined;
+  const page = Math.max(1, Math.min(COORDINATION_MAX_PAGE, input.page || 1));
   const area = input.departmentId ? { departmentId: input.departmentId } : {};
   const hkScope = canAccessHousekeeping(user) ? await hkWorkVisibility(user) : { id: { in: [] as string[] } };
   const view=input.view??'all';
@@ -50,46 +69,92 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const taskView:Prisma.TaskWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
   const hkView:Prisma.HousekeepingRequestWhereInput = view==='reception'?{id:{in:receptionHkIds}}:view==='unassigned'?{assignedToId:null}:view==='unreceived'?{assignedToId:{not:null},acknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADO'}:view==='clarification'?{id:{in:[]}}:view==='carryover'?{workDate:{lt:hotelDateKey(new Date())}}:{};
   // Linked records are grouped under their source. Hidden source work is never inferred from counts.
-  const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView], ...area,
-    ...(input.history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
-    ...(input.mine ? { ownerId: user.id } : {}), OR: [{ housekeepingRequest: null }, { housekeepingRequest: { NOT: { workflowVersion: 1, isDemo: false, AND: [hkScope] } } }],
+  const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView,...(state?[{status:{in:state.entry}}]:[]),...(q?[{OR:[...(human?[human]:[]),{title:{contains:q,mode:'insensitive' as const}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area,
+    ...(history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
+    ...(owner ? { ownerId:owner } : {}),...(due?{dueAt:due}:{}), tasks:{none:{AND:[coordinationTasks(user)],status:{notIn:[...taskClosed]}}}, OR: [{ housekeepingRequest: null }, { housekeepingRequest: { NOT: { workflowVersion: 1, isDemo: false, AND: [hkScope] } } }],
   };
-  const taskWhere: Prisma.TaskWhereInput = { AND: [coordinationTasks(user),taskView], ...area, OR: [{entryId:null},{entry:{NOT:entryWhere}}],
-    status: input.history ? { in: [...taskClosed] } : { notIn: [...taskClosed] }, ...(input.mine ? { assigneeId: user.id } : {}) };
-  const hkWhere: Prisma.HousekeepingRequestWhereInput = { AND: [hkScope,hkView], ...area, workflowVersion: 1, isDemo: false,
-    status: input.history ? { in: ['RESUELTO','CANCELADO'] } : { notIn: ['RESUELTO','CANCELADO'] }, ...(input.mine ? { assignedToId: user.id } : {}) };
-  const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), ...(view==='all'?[]:[{id:{in:[] as string[]}}]), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(input.mine?{ownerId:user.id}:{}), status:input.history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
-  const window = { take: 25, skip: (page-1)*25, orderBy: [{ dueAt: { sort: 'asc' as const, nulls: 'last' as const } }, { id: 'asc' as const }] };
-  const [entries,tasks,hk,followups,entryGroups,taskGroups,hkGroups,followGroups,departments] = await Promise.all([
-    prisma.operationalEntry.findMany({ where: entryWhere, ...window, include: {
+  const taskWhere: Prisma.TaskWhereInput = { AND: [coordinationTasks(user),taskView,...(state?[{status:{in:state.task}}]:[]),...(q?[{OR:[...(human?[human,{entry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{entry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area, OR: [{entryId:null},{entry:{NOT:entryWhere}}],
+    status: history ? { in: [...taskClosed] } : { notIn: [...taskClosed] }, ...(owner ? { assigneeId:owner } : {}),...(due?{dueAt:due}:{}) };
+  const hkWhere: Prisma.HousekeepingRequestWhereInput = { AND: [hkScope,hkView,...(state?[{status:{in:state.hk}}]:[]),...(q?[{OR:[...(human?[human,{sourceEntry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{sourceEntry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}},{location:{contains:q,mode:'insensitive' as const}}]}]:[])], ...area, workflowVersion: 1, isDemo: false,
+    status: history ? { in: ['RESUELTO','CANCELADO'] } : { notIn: ['RESUELTO','CANCELADO'] }, ...(owner ? { assignedToId:owner } : {}),...(due?{dueAt:due}:{}) };
+  const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), ...(view==='all'?[]:[{id:{in:[] as string[]}}]),...(state?[{status:{in:state.follow}}]:[]),...(q?[{OR:[...(human?[human]:[]),{action:{contains:q,mode:'insensitive' as const}}]}]:[]), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(owner?{ownerId:owner}:{}),...(due?{scheduledAt:due}:{}), status:history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
+  // Group authorized identities before paging, so one source never inflates rows or totals.
+  const identity={id:true,humanId:true,departmentId:true,status:true,dueAt:true} as const;
+  // Keep the coordination read bounded in PostgreSQL. The UI is an operational inbox,
+  // not an export: at most 100 pages are browsable; older/deeper history remains
+  // reachable through the existing search/date/area filters. Fetch one extra row per
+  // source to know whether totals are exact without materializing hotel lifetime data.
+  const scanTake=COORDINATION_IDENTITY_SCAN_LIMIT+1;
+  const [entryRefsRaw,taskRefsRaw,hkRefsRaw,followRefsRaw]=await Promise.all([
+    prisma.operationalEntry.findMany({where:entryWhere,select:identity,orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.task.findMany({where:taskWhere,select:{...identity,entryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.housekeepingRequest.findMany({where:hkWhere,select:{...identity,sourceEntryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    prisma.followUp.findMany({where:followWhere,select:{id:true,humanId:true,status:true,scheduledAt:true,entryId:true,task:{select:{entryId:true}},owner:{select:{departmentId:true}}},orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+  ]);
+  const identityWindowTruncated=[entryRefsRaw,taskRefsRaw,hkRefsRaw,followRefsRaw].some(rows=>rows.length>COORDINATION_IDENTITY_SCAN_LIMIT);
+  const entryRefs=entryRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const taskRefs=taskRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const hkRefs=hkRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  const followRefs=followRefsRaw.slice(0,COORDINATION_IDENTITY_SCAN_LIMIT);
+  type Identity={id:string;humanId:number;kind:CoordinationKind;sourceId:string|null;departmentId:string|null;status:string;dueAt:Date|null};
+  const identities:Identity[]=[
+    ...entryRefs.map(r=>({...r,kind:'entry' as const,sourceId:r.id})),
+    ...taskRefs.map(r=>({...r,kind:'task' as const,sourceId:r.entryId})),
+    ...hkRefs.map(r=>({...r,kind:'housekeeping' as const,sourceId:r.sourceEntryId})),
+    ...followRefs.map(r=>({...r,kind:'followup' as const,sourceId:r.entryId??r.task?.entryId??null,departmentId:r.owner.departmentId,dueAt:r.scheduledAt})),
+  ];
+  identities.sort((a,b)=>(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id));
+  const subjectGroups=new Map<string,Identity[]>();
+  for(const row of identities){const key=row.sourceId?`entry:${row.sourceId}`:`${row.kind}:${row.id}`;const group=subjectGroups.get(key)??[];group.push(row);subjectGroups.set(key,group);}
+  const representative=(group:Identity[])=>[...group].sort((a,b)=>{
+    const rank=(row:Identity)=>row.kind==='entry'?0:row.kind==='task'?1:row.kind==='housekeeping'?2:3;
+    return rank(a)-rank(b)||(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id);
+  })[0]!;
+  const groups=[...subjectGroups.values()].sort((a,b)=>(a[0]?.dueAt?.getTime()??Infinity)-(b[0]?.dueAt?.getTime()??Infinity)||(representative(a).id.localeCompare(representative(b).id)));
+  const pageGroups=groups.slice((page-1)*COORDINATION_PAGE_SIZE,page*COORDINATION_PAGE_SIZE);
+  const pageIds=(kind:CoordinationKind)=>pageGroups.map(representative).filter(row=>row.kind===kind).map(row=>row.id);
+  const orderBy=[{dueAt:{sort:'asc' as const,nulls:'last' as const}},{id:'asc' as const}];
+  const [entries,tasks,hk,followups,departments] = await Promise.all([
+    prisma.operationalEntry.findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
       owner: { select: { name: true } }, department: { select: { name: true } },
       tasks: { where: coordinationTasks(user), select: { id:true,humanId:true,title:true,status:true,assigneeId:true }, take:20 },
       followUps: { where: coordinationFollowUps(user), select: { id:true,humanId:true,action:true }, take:20 },
     } }),
-    prisma.task.findMany({ where: taskWhere, ...window, include: { assignee: { select: { name:true } }, department: { select: { name:true } }, followUps:{where:coordinationFollowUps(user),select:{humanId:true,action:true},take:20} } }),
-    prisma.housekeepingRequest.findMany({ where: hkWhere, ...window, include: { assignedTo: { select:{name:true} }, department:{select:{name:true}},sourceEntry:{select:{id:true,humanId:true,title:true}},maintenanceEntry:{select:{id:true,humanId:true,status:true}} } }),
-    prisma.followUp.findMany({where:followWhere,take:window.take,skip:window.skip,orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],include:{owner:{select:{name:true,departmentId:true,department:{select:{name:true}}}}}}),
-    prisma.operationalEntry.groupBy({by:['departmentId','status'],where:entryWhere,_count:{_all:true}}),prisma.task.groupBy({by:['departmentId','status'],where:taskWhere,_count:{_all:true}}),prisma.housekeepingRequest.groupBy({by:['departmentId','status'],where:hkWhere,_count:{_all:true}}),
-    prisma.followUp.groupBy({by:['ownerId','status'],where:followWhere,_count:{_all:true}}),
+    prisma.task.findMany({ where: {AND:[taskWhere],id:{in:pageIds('task')}}, orderBy, include: { assignee: { select: { name:true } }, department: { select: { name:true } }, followUps:{where:coordinationFollowUps(user),select:{humanId:true,action:true},take:20} } }),
+    prisma.housekeepingRequest.findMany({ where: {AND:[hkWhere],id:{in:pageIds('housekeeping')}}, orderBy, include: { assignedTo: { select:{name:true} }, department:{select:{name:true}},sourceEntry:{select:{id:true,humanId:true,title:true}},maintenanceEntry:{select:{id:true,humanId:true,status:true}} } }),
+    prisma.followUp.findMany({where:{AND:[followWhere],id:{in:pageIds('followup')}},orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],include:{owner:{select:{name:true,departmentId:true,department:{select:{name:true}}}}}}),
     prisma.department.findMany({where:{active:true},select:{id:true,name:true},orderBy:{order:'asc'}}),
   ]);
-  const count=(groups:Array<{_count:{_all:number}}>)=>groups.reduce((total,g)=>total+g._count._all,0);
-  const entryCount=count(entryGroups),taskCount=count(taskGroups),hkCount=count(hkGroups);
   const loads=new Map<string,{departmentId:string;name:string;total:number;blocked:number}>();
-  for(const group of [...entryGroups,...taskGroups,...hkGroups]){
-    const id=group.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
-    load.total+=group._count._all;if(['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(group.status))load.blocked+=group._count._all;loads.set(id,load);
+  for(const group of groups){
+    const blocked=group.some(row=>['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(row.status));
+    const areaIds=[...new Set(group.map(row=>row.departmentId??'').filter(Boolean))];
+    if(!areaIds.length)areaIds.push('');
+    for(const id of areaIds){
+      const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
+      load.total+=1;if(blocked)load.blocked+=1;loads.set(id,load);
+    }
   }
-  const followOwners=followGroups.length?await prisma.user.findMany({where:{id:{in:followGroups.map(g=>g.ownerId)}},select:{id:true,departmentId:true}}):[];
-  for(const group of followGroups){const id=followOwners.find(u=>u.id===group.ownerId)?.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};load.total+=group._count._all;loads.set(id,load);}
   const byArea=[...loads.values()].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'es'));
+  const sourceIds=[...new Set([...tasks.map(t=>t.entryId),...hk.map(h=>h.sourceEntryId)].filter((id):id is string=>Boolean(id)))];
+  const visibleSources=sourceIds.length?await prisma.operationalEntry.findMany({where:{id:{in:sourceIds},OR:[{AND:[coordinationEntries(user)]},{tasks:{some:{id:{in:tasks.map(t=>t.id)}}}}]},select:{id:true,humanId:true}}):[];
+  const sources=new Map(visibleSources.map(entry=>[entry.id,{humanId:entry.humanId,href:`/libro/${entry.id}`} ]));
   const rows: CoordinationRow[] = [
     ...entries.map(r=>({id:r.id,humanId:r.humanId,kind:'entry' as const,title:r.title,status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.workAcknowledgedAt,assignedAt:r.workAssignedAt,availableAt:null,startedAt:r.workStartedAt,completedAt:r.closedAt,nextAction:nextWorkAction(r.status,r.ownerId,r.workAcknowledgedAt,r.workNextAction),href:`/libro/${r.id}`,canAssign:user.permissions.includes('entry.edit'),children:[...r.tasks.map(t=>({label:`Tarea #${t.humanId} · ${t.title} · ${t.status}`,href:`/tareas/${t.id}`})),...r.followUps.map(f=>({label:`Seguimiento #${f.humanId} · ${f.action}`,href:`/seguimientos?q=${f.humanId}&estado=todos`}))]})),
-    ...tasks.map(r=>({id:r.id,humanId:r.humanId,kind:'task' as const,title:r.title,status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.assigneeId,owner:r.assignee?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.workAcknowledgedAt,assignedAt:r.workAssignedAt,availableAt:r.startsAt,startedAt:r.workStartedAt,completedAt:r.completedAt,nextAction:nextWorkAction(r.status,r.assigneeId,r.workAcknowledgedAt,r.blockedReason||r.workNextAction),href:`/tareas/${r.id}`,canAssign:user.permissions.includes('task.assign'),children:r.followUps.map(f=>({label:`Seguimiento #${f.humanId} · ${f.action}`,href:`/seguimientos?q=${f.humanId}&estado=todos`}))})),
-    ...hk.map(r=>({id:r.id,humanId:r.humanId,kind:'housekeeping' as const,title:r.sourceEntry?.title??r.title??'Trabajo del área',status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.assignedToId,owner:r.assignedTo?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.acknowledgedAt,assignedAt:r.workAssignedAt,availableAt:hkReceiptAvailableAt(r.workDate),startedAt:r.startedAt,completedAt:r.resolvedAt,nextAction:nextWorkAction(r.status,r.assignedToId,r.acknowledgedAt,r.blockReason),href:`/admin/housekeeping?area=${r.departmentId??''}&aviso=${r.humanId}`,canAssign:false,children:[...(r.sourceEntry&&canCoordinate(user)?[{label:`Novedad de origen #${r.sourceEntry.humanId}`,href:`/libro/${r.sourceEntry.id}`}]:[]),...(r.maintenanceEntry&&canCoordinate(user)?[{label:`Mantenimiento #${r.maintenanceEntry.humanId} · ${r.maintenanceEntry.status}`,href:`/libro/${r.maintenanceEntry.id}`}]:[])]})),
+    ...tasks.map(r=>({id:r.id,humanId:r.humanId,source:r.entryId?sources.get(r.entryId):undefined,kind:'task' as const,title:r.title,status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.assigneeId,owner:r.assignee?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.workAcknowledgedAt,assignedAt:r.workAssignedAt,availableAt:r.startsAt,startedAt:r.workStartedAt,completedAt:r.completedAt,nextAction:nextWorkAction(r.status,r.assigneeId,r.workAcknowledgedAt,r.blockedReason||r.workNextAction),href:`/tareas/${r.id}`,canAssign:user.permissions.includes('task.assign'),children:[...(r.entryId&&sources.has(r.entryId)?[{label:`Asunto de origen #${sources.get(r.entryId)!.humanId}`,href:sources.get(r.entryId)!.href}]:[]),...r.followUps.map(f=>({label:`Seguimiento #${f.humanId} · ${f.action}`,href:`/seguimientos?q=${f.humanId}&estado=todos`}))]})),
+    ...hk.map(r=>({id:r.id,humanId:r.humanId,source:r.sourceEntryId?sources.get(r.sourceEntryId):undefined,kind:'housekeeping' as const,title:r.sourceEntry?.title??r.title??'Trabajo del área',status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.assignedToId,owner:r.assignedTo?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.acknowledgedAt,assignedAt:r.workAssignedAt,availableAt:hkReceiptAvailableAt(r.workDate),startedAt:r.startedAt,completedAt:r.resolvedAt,nextAction:nextWorkAction(r.status,r.assignedToId,r.acknowledgedAt,r.blockReason),href:`/admin/housekeeping?area=${r.departmentId??''}&aviso=${r.humanId}`,canAssign:false,children:[...(r.sourceEntry&&canCoordinate(user)?[{label:`Novedad de origen #${r.sourceEntry.humanId}`,href:`/libro/${r.sourceEntry.id}`}]:[]),...(r.maintenanceEntry&&canCoordinate(user)?[{label:`Mantenimiento #${r.maintenanceEntry.humanId} · ${r.maintenanceEntry.status}`,href:`/libro/${r.maintenanceEntry.id}`}]:[])]})),
     ...followups.map(r=>({id:r.id,humanId:r.humanId,kind:'followup' as const,title:r.action,status:r.status,priority:r.priority,departmentId:r.owner.departmentId,department:r.owner.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner.name,createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.scheduledAt,receivedAt:null,assignedAt:null,availableAt:null,startedAt:null,completedAt:r.completedAt,nextAction:r.nextAction??(input.history?'Consultar resultado':'Revisar y registrar siguiente acción'),href:`/seguimientos?q=${r.humanId}&estado=todos`,canAssign:false,children:[]})),
   ];
-  return {rows,departments,byArea,page,total:entryCount+taskCount+hkCount+count(followGroups),hasMore:Math.max(entryCount,taskCount,hkCount,count(followGroups))>page*25};
+  const groupedRows=pageGroups.flatMap(group=>{
+    const first=representative(group);const row=rows.find(r=>r.kind===first.kind&&r.id===first.id);if(!row)return[];
+    for(const child of group.filter(candidate=>candidate.id!==first.id||candidate.kind!==first.kind)){
+      const href=child.kind==='task'?`/tareas/${child.id}`:child.kind==='housekeeping'?`/admin/housekeeping?area=${child.departmentId??''}&aviso=${child.humanId}`:child.kind==='entry'?`/libro/${child.id}`:`/seguimientos?q=${child.humanId}&estado=todos`;
+      if(!row.children.some(link=>link.href===href))row.children.push({label:`${child.kind==='task'?'Tarea':child.kind==='housekeeping'?'Housekeeping':child.kind==='entry'?'Asunto':'Seguimiento'} #${child.humanId} · ${child.status}`,href});
+    }
+    return[row];
+  });
+  const totalExact=!identityWindowTruncated;
+  return {rows:groupedRows,departments,byArea,page,total:groups.length,totalExact,hasMore:groups.length>page*COORDINATION_PAGE_SIZE||identityWindowTruncated};
 }
 
 export async function getCoordinationTeam(user: CurrentUser, departmentId: string, now = new Date()) {
@@ -130,7 +195,7 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       if(!current.departmentId)throw new RuleError('Define el área en el registro antes de asignar.');
       const person=await tx.user.findFirst({where:{id:nextOwner,active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true},OR:[{departmentId:current.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:current.departmentId,active:true}}}}]},select:{id:true}});
       if(!person)throw new RuleError('El responsable debe ser un usuario operativo activo del área.');
-      if(task)await assertTaskSourceRecipients(tx,[nextOwner],task);
+      if(task)await assertTaskSourceRecipients(tx,[user.id,nextOwner],task,true);
     }
     if(input.action==='ACLARACION'&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA')))throw new RuleError('Este trabajo ya tiene un impedimento o espera activa. Resuélvelo antes de solicitar otra aclaración.');
     if(input.action==='RESPONDER_ACLARACION'&&!((entry&&entry.status==='EN_ESPERA'&&entry.workNextAction?.startsWith('Aclaración requerida:'))||(task&&task.status==='BLOQUEADA'&&task.workNextAction?.startsWith('Aclaración requerida:'))))throw new RuleError('No hay una aclaración pendiente en este trabajo.');

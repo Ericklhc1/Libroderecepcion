@@ -1,3 +1,4 @@
+import { requestSubjectAttentionAction } from '@/server/actions/subject-attention';
 import { createLostFoundAction, changeLostFoundAction } from '@/server/actions/lost-found';
 import { reportMissingElementAction, approveMissingElementAction } from '@/server/actions/cash';
 import { NextResponse } from 'next/server';
@@ -10,6 +11,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const fields = z.record(z.union([z.string().max(6000), z.array(z.string().max(1)).max(7)])).refine(v => Object.keys(v).length <= 25);
 const allowed = {
+  'subject-attention':['entryId','departmentId','requestKey','revision','assigneeId','location'],
   'handover-missing': ['handoverId','elementId','revision','reason'],
   'handover-missing-approve': ['handoverId','elementId','revision','reason'],
   'custody-create': ['requestKey','item','foundLocation','foundAt','custodyLocation','custodianId'],
@@ -37,7 +39,7 @@ export async function POST(request: Request, context: { params: Promise<{ proced
     if (Object.keys(input).some(key=>!(allowed[procedure as keyof typeof allowed] as readonly string[]).includes(key))) return NextResponse.json({ok:false,error:'Campos no admitidos.'},{status:400,headers});
     if (Object.entries(input).some(([key,value])=>Array.isArray(value)&&(procedure!=='automation-save'||key!=='weekdays'))) return NextResponse.json({ok:false,error:'Lista no admitida.'},{status:400,headers});
     const form=new FormData();for(const [key,value] of Object.entries(input)){for(const item of Array.isArray(value)?value:[value])form.append(key,item);}
-    const actions={'handover-missing':reportMissingElementAction,'handover-missing-approve':approveMissingElementAction,'custody-create':createLostFoundAction,'custody-change':changeLostFoundAction,coordination:coordinateWorkFormAction,'task-status':changeTaskStatusFormAction,'automation-save':saveAutomationAction,'automation-simulate':simulateAutomationAction,'automation-state':setAutomationStateAction};
+    const actions={'subject-attention':requestSubjectAttentionAction,'handover-missing':reportMissingElementAction,'handover-missing-approve':approveMissingElementAction,'custody-create':createLostFoundAction,'custody-change':changeLostFoundAction,coordination:coordinateWorkFormAction,'task-status':changeTaskStatusFormAction,'automation-save':saveAutomationAction,'automation-simulate':simulateAutomationAction,'automation-state':setAutomationStateAction};
     const result=await actions[procedure as keyof typeof actions](null,form);
     if (result.ok && procedure.startsWith('handover-missing')) return NextResponse.json({...result,navigateTo:`/turno/entrega/${encodeURIComponent(form.get('handoverId') as string)}`},{headers});
     if (result.ok && procedure.startsWith('custody-')) return NextResponse.json({...result,navigateTo:'/custodia'},{headers});

@@ -17,7 +17,7 @@ const groups = visibleNavGroups(ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN], true);
 describe('menú plegable y barra de iconos', () => {
   it('Inicio no despliega todos los módulos ni sus enlaces secundarios', () => {
     location.pathname = '/'; location.search = '';
-    const html = renderToStaticMarkup(createElement(GroupedNav, { groups, badges: { '/alertas': 3 } }));
+    const html = renderToStaticMarkup(createElement(GroupedNav, { groups, badges: { '/notificaciones': 3 } }));
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('aria-expanded="true"');
     expect(html).not.toContain('href="/admin/usuarios"');
@@ -40,7 +40,8 @@ describe('menú plegable y barra de iconos', () => {
     expect(html).not.toContain('href="/admin/usuarios"');
   });
   it('no confunde Housekeeping, Auditoría o historial de turnos con Administración', () => {
-    expect(activeModule(groups, '/alertas')).toBe('/alertas');
+    expect(activeModule(groups, '/alertas')).toBe('/notificaciones');
+    expect(activeModule(groups, '/notificaciones')).toBe('/notificaciones');
     expect(activeModule(groups, '/admin/housekeeping')).toBe('/admin/housekeeping');
     expect(activeModule(groups, '/admin/auditoria')).toBe('/admin/auditoria');
     expect(activeModule(groups, '/admin/turnos')).toBe('/turno');

@@ -1,7 +1,10 @@
+import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
 import { OperationalAlarmStatus } from '@prisma/client';
 import { AlarmClock, Link2, Users } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
+import { redirect } from 'next/navigation';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 import {
   listAlarmCandidates,
   listMyOperationalAlarms,
@@ -19,11 +22,12 @@ import {
 import { cancelOperationalAlarmAction } from '@/server/actions/operational-alarms';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
 
-export const metadata = { title: 'Alertas' };
+export const metadata = { title: 'Avisos · Recordatorios' };
 export const dynamic = 'force-dynamic';
 
 export default async function AlertsPage() {
   const user = await requirePageUser();
+  if (!hkNavigationAllowed(user.permissions, '/alertas')) redirect('/sin-permisos');
   const [candidates, alarms] = await Promise.all([
     listAlarmCandidates(),
     listMyOperationalAlarms(user.id),
@@ -37,15 +41,16 @@ export default async function AlertsPage() {
       <header>
         <div className="flex items-center gap-2">
           <AlarmClock className="h-5 w-5 text-gold-600" aria-hidden="true" />
-          <h1 className="text-xl font-semibold text-petrol-900">Alertas</h1>
+          <h1 className="text-xl font-semibold text-petrol-900">Avisos · Recordatorios</h1>
         </div>
         <p className="mt-1 text-sm text-slate-600">
-          Llamadas de atención programables. Una alerta nunca duplica ni cambia el estado de la novedad, tarea o proceso al que apunta.
+          Recuérdalo más tarde o avisa a alguien. El recordatorio abre el asunto original; no crea otro asunto ni cambia su estado.
         </p>
       </header>
 
+      <NoticeNavigation permissions={user.permissions} current="reminders"/>
       <Card>
-        <CardHeader title="Nueva alerta" />
+        <CardHeader title="Recordarme / avisar" />
         <div className="px-4 py-4">
           <OperationalAlarmCreateForm
             currentUserId={user.id}

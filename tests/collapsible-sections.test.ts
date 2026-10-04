@@ -51,7 +51,7 @@ describe('secciones desplegables del sistema',()=>{
     expect(css).toContain('details[data-disclosure-card] > :not(summary)');
     expect(supervision).toContain("sectionHref('pendientes')");
     expect(supervision).toContain("defaultOpen={requestedSection === 'seguimientos'}");
-    expect(supervision).toContain("defaultOpen={requestedSection === 'senales'}");
+    expect(supervision).toContain("defaultOpen={requestedSection === 'senales'||!!exception}");
     expect(fronti).toContain("defaultOpen={delegaciones === '1'}");
     expect(diagnostics).toContain('count={visibleDuplicateAlerts.length}');
     expect(diagnostics).toContain('count={visibleMismatches.length}');

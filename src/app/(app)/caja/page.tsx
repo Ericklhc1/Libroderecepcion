@@ -1,3 +1,4 @@
+import {SubjectActions} from '@/components/operational/subject-surface';
 import Link from 'next/link';
 import { Banknote, Download, PlusCircle, Printer, ShieldCheck, Ticket } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
@@ -144,20 +145,24 @@ export default async function LiveCashPage({
   const gymCsvQuery = new URLSearchParams({ desde: gymFrom, hasta: gymTo }).toString();
   const parkingCsvQuery = gymCsvQuery;
 
-  return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Fondo fijo, garantías bajo custodia, saldo operacional, transferencias,
-            arqueos y diferencias. Caja funciona de forma autónoma: no necesita PMS,
-            reservas ni estadías.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 no-print">
-          {canCreateGuarantee ? (
+  const manualAction = (canManual ? (
+            <Dialog
+              title="Registrar movimiento de Caja"
+              description="Registra un ingreso o egreso operativo nuevo. Si el dinero sólo corrige un faltante o sobrante anterior, usa «Regularizar diferencia»."
+              triggerVariant="primary"
+              triggerSize="sm"
+              width="sm"
+              trigger={
+                <>
+                  <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                  Ingreso / egreso
+                </>
+              }
+            >
+              <ManualCashMovementForm allowIn={canManualIn} allowOut={canManualOut} />
+            </Dialog>
+          ) : null);
+  const guaranteeAction = (canCreateGuarantee ? (
             <Dialog
               title="Registrar garantía en efectivo"
               description="Registra el dinero recibido bajo custodia. La habitación se selecciona del catálogo y alimenta Novedades / habitación; huésped y referencia siguen siendo contexto libre."
@@ -173,9 +178,9 @@ export default async function LiveCashPage({
             >
               <CreateCashGuaranteeForm defaultRoomNumber={roomContext || undefined} />
             </Dialog>
-          ) : null}
-
-          {canOperateCash ? (
+          ) : null);
+  const extraActions = (canOperateCash || canReconcileDifference ? <>
+{canOperateCash ? (
             <Dialog
               title="Generar folio de gimnasio"
               description="Registra fecha, habitación y huésped. El recepcionista se toma automáticamente de tu sesión."
@@ -192,8 +197,7 @@ export default async function LiveCashPage({
               <CreateGymPassForm defaultServiceDate={todayKey} />
             </Dialog>
           ) : null}
-
-          {canOperateCash ? (
+{canOperateCash ? (
             <Dialog
               title="Generar ticket de estacionamiento"
               description="Registra fecha, habitación, huésped e ID Reserva de FNSrooms. AROH no administra la reserva."
@@ -210,8 +214,7 @@ export default async function LiveCashPage({
               <CreateParkingPassForm defaultServiceDate={todayKey} />
             </Dialog>
           ) : null}
-
-          {canReconcileDifference ? (
+{canReconcileDifference ? (
             <Dialog
               title="Regularizar diferencia de Caja"
               description="Úsalo cuando entra dinero que faltaba o sale un sobrante previamente detectado. Corrige el efectivo esperado y deja trazabilidad sin tratarlo como un ingreso o egreso operacional nuevo."
@@ -228,26 +231,28 @@ export default async function LiveCashPage({
               <CashDifferenceRegularizationForm />
             </Dialog>
           ) : null}
+          </> : null);
 
-          {canManual ? (
-            <Dialog
-              title="Registrar movimiento de Caja"
-              description="Registra un ingreso o egreso operativo nuevo. Si el dinero sólo corrige un faltante o sobrante anterior, usa «Regularizar diferencia»."
-              triggerVariant="primary"
-              triggerSize="sm"
-              width="sm"
-              trigger={
-                <>
-                  <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                  Ingreso / egreso
-                </>
-              }
-            >
-              <ManualCashMovementForm allowIn={canManualIn} allowOut={canManualOut} />
-            </Dialog>
-          ) : null}
+  return (
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">
+            Revisa el fondo y el efectivo esperado. Registra dinero, custodia o una diferencia según lo que ocurrió físicamente.
+          </p>
+        </div>
+
+        <div className="w-full md:w-auto" aria-label="Acciones de Caja">
+          <SubjectActions primary={manualAction ?? guaranteeAction} secondary={manualAction ? guaranteeAction : null} more={extraActions}/>
         </div>
       </header>
+
+      <section aria-label="Estado actual de Caja" className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+        <p className="font-semibold">{canOperateCash ? 'Caja operativa' : 'Caja en consulta'}</p>
+        <p className="mt-1">Siguiente acción: {canOperateCash ? 'revisar el efectivo esperado y registrar lo ocurrido; el arqueo confirma el conteo físico.' : 'continuar el paso pendiente de Mi turno.'}</p>
+        <div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/caja?seccion=auditorias">Revisar arqueos y diferencias</Link><Link className="underline" href="/caja?seccion=movimientos">Ver movimientos registrados</Link>{!canOperateCash && <Link className="font-semibold underline" href="/turno">Continuar Mi turno</Link>}</div>
+      </section>
 
       {!canOperateCash ? (
         <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">

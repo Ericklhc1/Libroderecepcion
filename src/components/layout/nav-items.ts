@@ -87,11 +87,6 @@ const PRIMARY: NavItem[] = [
             label: 'Seguimientos',
             description: 'Continuidad personal y de Supervisión.',
           },
-          {
-            href: '/alertas',
-            label: 'Alertas',
-            description: 'Llamadas de atención programables vinculadas a la operación.',
-          },
         ],
       },
       {
@@ -101,11 +96,6 @@ const PRIMARY: NavItem[] = [
             href: '/historial',
             label: 'Historial',
             description: 'Registros resueltos y consulta histórica.',
-          },
-          {
-            href: '/notificaciones',
-            label: 'Notificaciones',
-            description: 'Avisos que recibió tu cuenta.',
           },
         ],
       },
@@ -218,9 +208,9 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
-    href: '/alertas',
-    label: 'Alertas',
-    mobileLabel: 'Alertas',
+    href: '/notificaciones',
+    label: 'Avisos',
+    mobileLabel: 'Avisos',
     icon: 'alarm',
     menu: [
       {
@@ -228,12 +218,12 @@ const PRIMARY: NavItem[] = [
         items: [
           {
             href: '/alertas',
-            label: 'Alertas programadas',
-            description: 'Timers y alertas personales, grupales o globales.',
+            label: 'Recordarme / avisar',
+            description: 'Recordatorios propios o para las personas autorizadas.',
           },
           {
             href: '/notificaciones',
-            label: 'Notificaciones',
+            label: 'Avisos recibidos',
             description: 'Avisos que abren el objeto original.',
           },
         ],

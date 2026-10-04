@@ -1,3 +1,4 @@
+import {nextWorkAction} from '@/domain/coordination';
 import Link from 'next/link';
 import { ShiftStatus } from '@prisma/client';
 import { CalendarClock, Inbox, Send, Users } from 'lucide-react';
@@ -261,6 +262,9 @@ export default async function ShiftPage({
         openEntries: briefing.openEntries.filter((entry) =>
           textMatches([entry.humanId, entry.type, entry.status, entry.priority, entry.title, entry.owner?.name]),
         ),
+        myTasks: briefing.myTasks.filter((task) =>
+          textMatches([task.humanId, task.status, task.title, task.assignee?.name]),
+        ),
         overdueTasks: briefing.overdueTasks.filter((task) =>
           textMatches([task.humanId, task.status, task.title, task.assignee?.name]),
         ),
@@ -273,6 +277,7 @@ export default async function ShiftPage({
 
       }
     : null;
+  const continuingTasks = visibleBriefing ? [...new Map([...visibleBriefing.overdueTasks,...visibleBriefing.myTasks].map(task=>[task.id,task])).values()] : [];
   const visibleRecentShifts = recentShifts.filter((item) =>
     textMatches([
       item.type,
@@ -529,6 +534,9 @@ export default async function ShiftPage({
                     Reforzar el mesón no pasa por Administración: lo hace quien
                     está en el turno, desde el turno.
                   */}
+                  {(canAddMembers || canChangeShiftType && changeTypeTargetShift?.id === shift.id) && <details className="group/shift-more mt-3 no-print">
+                    <summary className="w-fit cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-petrol-800">Más ···</summary>
+                    <div className="mt-2 hidden rounded-lg border border-slate-200 p-3 group-open/shift-more:block">
                   {canAddMembers ? (
                     <div className="mt-3 grid max-w-2xl gap-3 md:grid-cols-2">
                       <div>
@@ -555,12 +563,17 @@ export default async function ShiftPage({
                     <div className="mt-3 max-w-sm rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
                       <ChangeShiftTypeForm shiftId={shift.id} currentType={shift.type} />
                     </div>
-                  ) : null}
+                  ) : null}                    </div>
+                  </details>}
                 </div>
 
                 <div className="flex flex-col gap-2">
                   {shift.status === ShiftStatus.ACTIVO ? (
                     <>
+                      <Link href="/coordinacion?mios=1" className="rounded-lg bg-petrol-800 px-3.5 py-2 text-center text-sm font-semibold text-white">Continuar operación</Link>
+                      <details className="group/shift-delivery">
+                        <summary className="cursor-pointer rounded-lg border px-3.5 py-2 text-center text-sm font-medium">Entregar turno</summary>
+                        <div className="mt-2 hidden space-y-2 group-open/shift-delivery:block">
                       <PrepareHandoverForm
                         shiftId={shift.id}
                         guided={guidedShiftExperience}
@@ -570,6 +583,8 @@ export default async function ShiftPage({
                         Al iniciar el cierre, Novedades, Caja operativa y Llaves quedan bloqueadas
                         para tu cuenta. Completa Caja, envía la entrega y cierra formalmente el turno.
                       </p>
+                        </div>
+                      </details>
                     </>
                   ) : null}
                   {shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
@@ -735,8 +750,9 @@ export default async function ShiftPage({
                               </div>
                               <p className="mt-1 text-sm font-medium text-petrol-900">{entry.title}</p>
                               <p className="text-xs text-slate-500">
-                                {entry.owner?.name ?? 'Sin responsable'}
+                                {entry.owner?.name ?? 'Sin responsable'}{entry.dueAt ? ` · plazo ${formatDateTime(entry.dueAt)}` : ''}
                               </p>
+                              <p className="mt-1 text-xs text-petrol-800">Siguiente acción: {nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)}</p>
                             </Link>
                           </li>
                         ))}
@@ -749,31 +765,34 @@ export default async function ShiftPage({
               {showSection('tareas') ? (
                 <Card>
                   <CardHeader
-                    title="Tareas vencidas"
-                    count={visibleBriefing.overdueTasks.length}
+                    title="Trabajo que continúa"
+                    count={continuingTasks.length}
                     href="/libro?clase=task&estado=abiertos"
                   />
-                  {visibleBriefing.overdueTasks.length === 0 ? (
-                    <EmptyState message="Sin tareas vencidas." />
+                  {continuingTasks.length === 0 ? (
+                    <EmptyState message="Sin trabajo pendiente en esta vista." />
                   ) : (
                     <CardScroll>
                       <ul className="divide-y divide-slate-100">
-                        {visibleBriefing.overdueTasks.slice(0, 8).map((task) => (
+                        {continuingTasks.slice(0, 8).map((task) => (
                           <li key={task.id}>
                             <Link
                               href={`/tareas/${task.id}`}
                               className="block px-4 py-2.5 hover:bg-slate-50"
                             >
                               <div className="flex flex-wrap items-center gap-2">
-                                <Badge tone="critico">Vencida</Badge>
+                                {task.dueAt && task.dueAt < new Date() && <Badge tone="critico">Vencida</Badge>}
                                 <Badge tone={TASK_STATUS_TONE[task.status]}>
                                   {TASK_STATUS_LABEL[task.status]}
                                 </Badge>
                               </div>
                               <p className="mt-1 text-sm font-medium text-petrol-900">{task.title}</p>
                               <p className="text-xs text-slate-500">
-                                {task.assignee?.name ?? 'Sin asignar'} · venció {relativeTime(task.dueAt)}
+                                {task.assignee?.name ?? 'Sin asignar'}{task.dueAt ? ` · plazo ${formatDateTime(task.dueAt)}` : ' · sin plazo registrado'}
                               </p>
+                              <p className="mt-1 text-xs text-petrol-800">Siguiente acción: {nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.blockedReason || task.workNextAction)}</p>
+                              {task.blockedReason && <p className="mt-1 whitespace-pre-wrap text-xs text-amber-900">Impedimento: {task.blockedReason}</p>}
+                              {task.fulfillmentCriteria && <p className="mt-1 text-xs text-slate-600">Resultado esperado: {task.fulfillmentCriteria}</p>}
                             </Link>
                           </li>
                         ))}
@@ -831,6 +850,7 @@ export default async function ShiftPage({
                               {followUp.owner.name}
                               {followUp.scheduledAt ? ` · ${relativeTime(followUp.scheduledAt)}` : ''}
                             </p>
+                            <p className="mt-1 text-xs text-petrol-800">Siguiente acción: {followUp.nextAction ?? 'Revisar y continuar el pendiente'}</p>
                           </li>
                         ))}
                       </ul>

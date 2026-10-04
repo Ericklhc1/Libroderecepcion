@@ -67,7 +67,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         {unread.length > 0 ? <MarkAllReadForm /> : null}
       </header>
 
-      <NoticeNavigation current="received"/>
+      <NoticeNavigation permissions={user.permissions} current="received"/>
       <form method="get" className="flex flex-wrap gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-200">
         <label className="relative min-w-[15rem] flex-1">
           <span className="sr-only">Filtrar notificaciones</span>

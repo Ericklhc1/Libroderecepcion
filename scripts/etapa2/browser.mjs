@@ -16,7 +16,7 @@ try {
   await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
   const page=await context.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);
   await page.goto('http://localhost:3000/fronti/procedimientos');
-  await page.getByRole('heading',{name:'Procedimientos de Fronti',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'Solicitudes de Fronti',exact:true}).waitFor();
   const key=randomUUID();const message=`Crea una tarea: ETAPA2_FRONTI_${width}`;
   const started=performance.now();
   const response=await context.request.post('http://localhost:3000/api/fronti',{timeout:5000,headers:{Origin:'http://localhost:3000'},data:{message,requestKey:key}});

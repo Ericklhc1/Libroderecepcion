@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { markReadableNotifications } from '@/server/services/notification-access';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
@@ -45,14 +45,7 @@ export async function POST(request: Request) {
     );
   }
 
-  await prisma.notification.updateMany({
-    where: {
-      userId: user.id,
-      readAt: null,
-      ...(parsed.id ? { id: parsed.id } : {}),
-    },
-    data: { readAt: new Date() },
-  });
+  await markReadableNotifications(user.id, parsed.id);
 
   const snapshot = await getNotificationFeedForUser(user.id);
   return NextResponse.json(snapshot, { headers });

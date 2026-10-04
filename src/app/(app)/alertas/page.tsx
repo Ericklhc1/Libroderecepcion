@@ -45,7 +45,7 @@ export default async function AlertsPage() {
         </p>
       </header>
 
-      <NoticeNavigation current="reminders"/>
+      <NoticeNavigation permissions={user.permissions} current="reminders"/>
       <Card>
         <CardHeader title="Recordarme / avisar" />
         <div className="px-4 py-4">

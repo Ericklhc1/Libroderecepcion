@@ -28,7 +28,11 @@ try{
     const authorize=page.getByRole('button',{name:'Autorizar solicitud',exact:true});await authorize.waitFor();
     assert.equal(await page.getByRole('button',{name:'Cancelar pendientes',exact:true}).count(),1);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    const authorizationResponse=page.waitForResponse(r=>r.url().endsWith('/api/fronti')&&r.request().method()==='POST');
     await authorize.click();
+    const authorizationResult=await authorizationResponse,authorizationBody=await authorizationResult.json();
+    assert.equal(authorizationResult.status(),200,JSON.stringify(authorizationBody));
+    assert.match(authorizationBody.reply,/Completado/,JSON.stringify(authorizationBody));
     await page.getByRole('heading',{name:'Resultado: Completado',exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Autorizar solicitud',exact:true}).count(),0);
     const task=await db.task.findFirstOrThrow({where:{entryId:source.id}});

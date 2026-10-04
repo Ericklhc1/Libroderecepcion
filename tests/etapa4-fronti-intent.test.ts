@@ -61,6 +61,16 @@ describe('AROH Simple · intención a procedimiento nativo de Fronti',()=>{
     expect(await prisma.housekeepingRequest.findFirst({where:{sourceEntryId:f.entry.id}})).toMatchObject({location:'Lobby junto a Recepción',createdById:actor.id});
     expect(await prisma.task.count({where:{entryId:f.entry.id}})).toBe(0);
   });
+  it('no reutiliza una pregunta de ubicación después de terminar o abandonar la solicitud',async()=>{
+    const f=await source(false);
+    const first=message('Manda esto a Housekeeping');
+    const question={role:'assistant' as const,content:`¿En qué ubicación necesita atención el asunto #${f.entry.humanId}?`};
+    for(const latest of ['¿Qué pendientes tengo?','Gracias','Revisar mis avisos']){
+      expect(await prepareSubjectIntent(actor,[first,question,message('Lobby'),{role:'assistant',content:'Solicitud preparada.'},message(latest)],f.page)).toBeNull();
+    }
+    expect(await prepareSubjectIntent(actor,[first,question,message('¿Qué pendientes tengo?')],f.page)).toBeNull();
+    expect(await prisma.frontiExecution.count()).toBe(0);
+  });
   it('identifica folio explícito y corta cancelación, ambigüedad o contexto inexistente sin ejecutar',async()=>{
     const f=await source();
     const byFolio=await prepareSubjectIntent(actor,[message(`Deriva el asunto #${f.entry.humanId} a Mantenimiento`)],null);

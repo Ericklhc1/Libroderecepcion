@@ -1,5 +1,6 @@
 import {isSubjectAttentionTask, returnedSubjectTask} from '@/domain/subject-attention';
 import { followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
+import { coordinationTasks } from '@/server/services/coordination-access';
 import { getSubjectAttentionAreas } from '@/server/services/subject-attention';
 import { randomUUID } from 'node:crypto';
 import { SubjectAttentionDialog } from '@/components/operational/subject-attention-dialog';
@@ -89,7 +90,7 @@ export default async function EntryDetailPage({
       orderBy: { createdAt: 'desc' },
     }),
     prisma.task.findMany({
-      where: { entryId: entry.id, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
+      where: { entryId: entry.id, deletedAt: null, AND:[taskFollowUpReadWhere(user),coordinationTasks(user)] },
       include: { assignee: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     }),

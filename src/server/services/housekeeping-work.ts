@@ -316,3 +316,21 @@ export async function acceptHkHandover(user: CurrentUser, id: string) {
     return { id };
   });
 }
+
+/** Administrative repair: preserve the private pilot and its source snapshot before freeing the live relation. */
+export async function releasePilotHkSource(user:CurrentUser,input:{id:string;version:number;note:string}) {
+  if(user.roleKey!==ADMIN)throw new ForbiddenError();
+  if(!input.note.trim())throw new RuleError('Describe el motivo de la regularización.');
+  return prisma.$transaction(async tx=>{
+    const initial=await tx.housekeepingRequest.findUnique({where:{id:input.id},select:{sourceEntryId:true}});
+    if(!initial?.sourceEntryId)throw new RuleError('El vínculo ya fue regularizado o no existe.');
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${initial.sourceEntryId} FOR UPDATE`;
+    const current=await tx.housekeepingRequest.findFirst({where:{id:input.id,isDemo:true,version:input.version,sourceEntryId:initial.sourceEntryId},include:{sourceEntry:{select:{id:true,humanId:true,title:true,description:true}}}});
+    if(!current?.sourceEntry)throw new RuleError('La prueba cambió o no admite esta regularización.');
+    const before={sourceEntryId:current.sourceEntryId,title:current.title,description:current.description,version:current.version,source:current.sourceEntry};
+    const updated=await tx.housekeepingRequest.update({where:{id:current.id,version:input.version},data:{sourceEntryId:null,title:current.title??current.sourceEntry.title,description:current.description??current.sourceEntry.description,version:{increment:1}}});
+    await tx.housekeepingEvent.create({data:{requestId:current.id,actorId:user.id,action:'REGULARIZAR_PILOTO',fromStatus:current.status,toStatus:current.status,note:`Vínculo anterior: asunto #${current.sourceEntry.humanId} (${current.sourceEntry.id}). ${input.note.trim()}`}});
+    await tx.auditLog.create({data:{entity:'HousekeepingRequest',entityId:current.id,userId:user.id,sessionId:user.sessionId,action:'EDITAR',isDemo:true,summary:`Regularización de vínculo piloto #${current.humanId}`,reason:input.note.trim(),before,after:{sourceEntryId:null,title:updated.title,description:updated.description,version:updated.version}}});
+    return updated;
+  });
+}

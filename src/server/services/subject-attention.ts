@@ -35,7 +35,8 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
     const source=await tx.operationalEntry.findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
     if(!source)throw new NotFoundError();
-    const reopening=await tx.auditLog.findFirst({where:{entity:'SubjectAttention',entityId:occurrenceKey,userId:user.id,action:'REABRIR'},select:{after:true}});
+    const reopening=await tx.auditLog.findFirst({where:{entity:'SubjectAttention',entityId:{startsWith:prefix},userId:user.id,action:'REABRIR'},select:{entityId:true,after:true}});
+    if(reopening && reopening.entityId!==occurrenceKey)throw new RuleError('El reintento pertenece a otra solicitud.');
     if(reopening && reopening.after && typeof reopening.after==='object' && !Array.isArray(reopening.after) && typeof reopening.after.housekeepingId==='string'){
       const work=await tx.housekeepingRequest.findFirst({where:{id:reopening.after.housekeepingId,AND:[await hkWorkVisibility(user,tx)]}});
       if(!work)throw new NotFoundError();
@@ -75,6 +76,7 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
       if(existingHk.isDemo)throw new RuleError('El vínculo histórico requiere regularización auditada por Administración antes de solicitar atención especializada. Puedes solicitar atención a otra área.');
       if(existingHk.departmentId!==input.departmentId)throw new RuleError('La atención especializada histórica pertenece a otra área. Solicita su revisión al supervisor.');
       if(!await hkCapability(user,input.departmentId,'housekeeping.assign',tx))throw new RuleError('La atención anterior terminó. El supervisor del área debe reabrirla con motivo para conservar su historial.');
+      if(input.assigneeId&&input.assigneeId!==existingHk.assignedToId)throw new RuleError('Reabre la atención con su responsable actual y reasigna desde Housekeeping.');
       const result=await changeHkWork(user,{id:existingHk.id,version:existingHk.version,action:'REABRIR',note:`Nueva atención solicitada desde el asunto #${source.humanId}.`},tx);
       await tx.auditLog.create({data:{entity:'SubjectAttention',entityId:occurrenceKey,userId:user.id,sessionId:user.sessionId,action:'REABRIR',summary:`Atención reabierta para el asunto #${source.humanId}`,after:{housekeepingId:result.id}}});
       return {kind:'housekeeping' as const,id:result.id,href:`/admin/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};

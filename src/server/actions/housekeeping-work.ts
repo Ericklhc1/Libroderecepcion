@@ -7,7 +7,7 @@ import { parseOrThrow, formDataToObject, zOptionalDate, type ActionState } from 
 import { runHkAction as runAction } from '@/server/housekeeping-action';
 import { hkCheckbox as bool } from '@/domain/housekeeping-form';
 import { HK_WORK_KINDS, HK_WORK_ACTIONS } from '@/domain/housekeeping-work';
-import { acceptHkHandover, createHkWork, changeHkWork, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
+import { releasePilotHkSource, acceptHkHandover, createHkWork, changeHkWork, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork } from '@/server/services/housekeeping-work';
 const text = (n:number) => z.string().trim().max(n);
 const optional = (n:number) => text(n).optional().transform(v=>v||undefined);
 const day = text(10).regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -28,3 +28,10 @@ export async function delegateHkAction(_state:ActionState|null,form:FormData):Pr
 export async function revokeHkDelegationAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await revokeHkDelegation(user,input.id);refresh();return{ok:true as const,message:'Cobertura revocada.'};});}
 export async function organizeLegacyHkWorkAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({...area,id:text(100).min(1),version:z.coerce.number().int().min(1),workDate:day,workKind:z.enum(HK_WORK_KINDS),roomId:optional(100),effortMinutes:z.coerce.number().int().min(1).max(480),requiresInspection:bool,assignedToId:optional(100),note:text(3000).min(1)}),formDataToObject(form));const result=await organizeLegacyHkWork(user,input);refresh();return{ok:true as const,message:'Aviso incorporado al trabajo del día. Su folio e historial se conservan.',id:result.id};});}
 export async function acceptHkHandoverAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{const user=await actor();const input=parseOrThrow(z.object({id:text(100).min(1)}),formDataToObject(form));await acceptHkHandover(user,input.id);refresh();return {ok:true as const,message:'Continuidad aceptada. Los trabajos conservan su estado.'};});}
+
+export async function releasePilotHkSourceAction(_state:ActionState|null,form:FormData):Promise<ActionState>{return runAction(async()=>{
+  const user=await actor();
+  const input=parseOrThrow(z.object({id:text(100).min(1),version:z.coerce.number().int().min(1),note:text(3000).min(1)}),formDataToObject(form));
+  await releasePilotHkSource(user,input);refresh();return{ok:true as const,message:'Vínculo regularizado. La prueba y su evidencia se conservan; el asunto admite atención real.'};
+});
+}

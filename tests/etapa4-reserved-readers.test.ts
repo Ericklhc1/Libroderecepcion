@@ -1,3 +1,5 @@
+import {getMetrics,defaultRange,getShiftMetrics} from '@/server/services/metrics';
+import {buildSupervisorReport} from '@/server/services/supervisor-reports';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {createUser,createShift,prisma,seedCatalog,resetOperationalData,ROLE_KEYS} from './helpers';
 import {createEntry,changeEntryStatus,updateEntry} from '@/server/services/entries';
@@ -48,7 +50,18 @@ describe('AROH Simple · lectores independientes reservados',()=>{
     const fronti=await executeFrontiPageContextTool(f.reader,resolveFrontiPageContext({pathname:'/'}));
     expect(JSON.stringify(fronti)).not.toContain('E4_SECRETO');
     expect((await prisma.handoverItem.findFirstOrThrow({where:{handoverId:handover.id}})).title).toBe(f.task.title);
-    expect((await getDashboardData(f.owner)).incoming?.items[0]?.title).toBe(f.task.title);
+    expect((await getDashboardData(f.owner)).incoming?.items[0]?.title).toBe('Asunto reservado');
+  });
+  it('los indicadores compartidos no cuentan trabajo derivado de fuentes reservadas',async()=>{
+    const f=await reservedWork();
+    const shift=await createShift({userId:f.owner.id,type:'DIA',status:'ACTIVO'});
+    await prisma.task.update({where:{id:f.task.id},data:{shiftId:shift.id}});
+    expect((await getMetrics(defaultRange())).tasks.open).toBe(0);
+    expect((await getShiftMetrics(shift.id)).tasksCreated).toBe(0);
+    expect((await buildSupervisorReport('estado',defaultRange())).summary).toContain('Actividad del período · tareas creadas: 0');
+    await prisma.followUp.update({where:{id:f.follow.id},data:{visibility:'OPERATIVO'}});
+    expect((await getMetrics(defaultRange())).tasks.open).toBe(1);
+    expect((await getShiftMetrics(shift.id)).tasksCreated).toBe(1);
   });
   it('Incluir eliminados conserva reserva y permite recuperar continuidad autorizada',async()=>{
     const f=await reservedWork();await prisma.followUp.update({where:{id:f.follow.id},data:{deletedAt:new Date()}});

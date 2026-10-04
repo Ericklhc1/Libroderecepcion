@@ -60,7 +60,7 @@ export function detailHrefWithListContext(href: string, listHref: string, rowAnc
 export function detailHrefWithReturnContext(href: string, context: unknown): string {
   const returnHref = parseListReturnHref(context);
   if (!returnHref) return href;
-  const path = href.split(/[?#]/, 1)[0];
+  const path = href.split(/[?#]/, 1)[0] ?? '';
   if (!/^\/(libro|tareas)\/[a-zA-Z0-9_-]+$/.test(path)) return href;
   const url = new URL(href, ORIGIN);
   url.searchParams.set('desdeLista', returnHref);

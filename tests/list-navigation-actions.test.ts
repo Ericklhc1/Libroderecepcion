@@ -38,7 +38,7 @@ describe('retorno de lista después de acciones nativas', () => {
     const result = await requestSubjectAttentionAction(null, form);
     expect(result.ok).toBe(true);
     expect(calls.assign).toHaveBeenCalledExactlyOnceWith(origin + detailHrefWithReturnContext('/libro/origen', list));
-    const sent = JSON.parse(calls.fetch.mock.calls[0][1].body);
+    const sent = JSON.parse(calls.fetch.mock.calls[0]![1].body);
     expect(sent).toEqual({ entryId: 'origen' });
   });
 

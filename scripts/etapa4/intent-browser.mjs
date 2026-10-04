@@ -30,9 +30,8 @@ try{
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     const authorizationResponse=page.waitForResponse(r=>r.url().endsWith('/api/fronti')&&r.request().method()==='POST');
     await authorize.click();
-    const authorizationResult=await authorizationResponse,authorizationBody=await authorizationResult.json();
-    assert.equal(authorizationResult.status(),200,JSON.stringify(authorizationBody));
-    assert.match(authorizationBody.reply,/Completado/,JSON.stringify(authorizationBody));
+    const authorizationResult=await authorizationResponse;
+    assert.equal(authorizationResult.status(),200,authorizationResult.status()===200?'':await authorizationResult.text());
     await page.getByRole('heading',{name:'Resultado: Completado',exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Autorizar solicitud',exact:true}).count(),0);
     const task=await db.task.findFirstOrThrow({where:{entryId:source.id}});
@@ -53,12 +52,15 @@ try{
     const cancelResponse=await context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:`Manda el asunto #${cancelledSource.humanId} a Mantenimiento`,requestKey:randomUUID()}});
     const cancelBody=await cancelResponse.json();assert.equal(cancelResponse.status(),200,JSON.stringify(cancelBody));assert.equal(cancelBody.confirmations?.length,1,JSON.stringify(cancelBody));
     const cancelId=cancelBody.confirmations[0].token.replace('fronti-plan:','');
+    await db.operationalEntry.update({where:{id:cancelledSource.id},data:{deletedAt:new Date()}});
     await page.goto(`http://localhost:3000/fronti/procedimientos?ejecucion=${cancelId}`);
+    await page.getByRole('heading',{name:'El origen cambió o no está disponible',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Autorizar solicitud',exact:true}).count(),0);
     await page.getByRole('button',{name:'Cancelar pendientes',exact:true}).click();
     await page.getByRole('heading',{name:'Resultado: Cancelado',exact:true}).waitFor();
     assert.equal(await db.task.count({where:{entryId:cancelledSource.id}}),0);
     assert.equal(await page.getByRole('button',{name:'Autorizar solicitud',exact:true}).count(),0);
-    results.push({width,naturalIntent:true,onlyExplicitConfirmationExecutes:true,sameSourceContext:true,oneTask:true,nativeAudit:true,humanCard:true,advancedClosed:true,cancellation:true,noticeRoutesPreserved:true,mobileOverflow:false});
+    results.push({width,naturalIntent:true,onlyExplicitConfirmationExecutes:true,sameSourceContext:true,oneTask:true,nativeAudit:true,humanCard:true,advancedClosed:true,cancellation:true,archivedSourceCanCancel:true,noticeRoutesPreserved:true,mobileOverflow:false});
     await context.close();
   }
 }finally{writeFileSync('etapa4-intent-browser-results.json',JSON.stringify(results,null,2));await browser.close();await db.$disconnect();}

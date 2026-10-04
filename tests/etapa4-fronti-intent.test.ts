@@ -29,7 +29,8 @@ describe('AROH Simple · intención a procedimiento nativo de Fronti',()=>{
   }
   it('prepara en lenguaje humano, exige autorizar y ejecuta una sola atención concurrente con retorno al origen',async()=>{
     const f=await source();
-    const result=await prepareSubjectIntent(actor,[message('Fronti, manda esto a Mantenimiento y avísame cuando esté listo.')],f.page,randomUUID());
+    const requestKey=randomUUID();
+    const result=await prepareSubjectIntent(actor,[message('Fronti, manda esto a Mantenimiento y avísame cuando esté listo.')],f.page,requestKey);
     expect(result?.confirmations).toHaveLength(1);
     const card=result!.confirmations[0]!;
     expect(card.detail).toContain(`Asunto #${f.entry.humanId}`);expect(card.detail).toContain('Mantenimiento');expect(card.detail).toContain('512');
@@ -43,10 +44,20 @@ describe('AROH Simple · intención a procedimiento nativo de Fronti',()=>{
     expect(task).toMatchObject({title:f.entry.title,description:f.entry.description,roomId:f.entry.roomId,createdById:actor.id});
     expect(await prisma.task.count({where:{entryId:f.entry.id}})).toBe(1);
     await executePlan(id,true);expect(await prisma.task.count({where:{entryId:f.entry.id}})).toBe(1);
-    const repeated=await prepareSubjectIntent(actor,[message('Fronti, manda esto a Mantenimiento y avísame cuando esté listo.')],f.page);
+    const repeated=await prepareSubjectIntent(actor,[message('Fronti, manda esto a Mantenimiento y avísame cuando esté listo.')],f.page,requestKey);
     expect(repeated?.confirmations).toHaveLength(0);expect(repeated?.reply).toContain('ya está registrada');
     expect(await prisma.auditLog.count({where:{entity:'Task',entityId:task.id,action:'CREAR'}})).toBe(1);
     expect(await prisma.auditLog.count({where:{entity:'FrontiExecution',entityId:id}})).toBeGreaterThan(0);
+  });
+  it('una solicitud nueva después de cancelar atención no reutiliza el intento cancelado',async()=>{
+    const f=await source();const messages=[message('Manda esto a Mantenimiento')];
+    const first=await prepareSubjectIntent(actor,messages,f.page,randomUUID());await executePlan(idOf(first),true);
+    const old=await prisma.task.findFirstOrThrow({where:{entryId:f.entry.id}});
+    await prisma.task.update({where:{id:old.id},data:{status:'CANCELADA'}});
+    const next=await prepareSubjectIntent(actor,messages,f.page,randomUUID());expect(next?.confirmations).toHaveLength(1);
+    await executePlan(idOf(next),true);
+    expect(await prisma.task.count({where:{entryId:f.entry.id}})).toBe(2);
+    expect(await prisma.task.count({where:{entryId:f.entry.id,status:'PENDIENTE'}})).toBe(1);
   });
   it('pide sólo área o ubicación faltante, y conserva HK aunque la ubicación mencione Recepción',async()=>{
     const f=await source(false);

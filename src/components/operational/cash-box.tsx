@@ -310,8 +310,8 @@ function ElementsForm({
   );
 }
 
-function MissingElements({ handoverId, elements, canReport, canApprove }: {
-  handoverId: string; elements: HandoverCashState['elements']; canReport: boolean; canApprove: boolean;
+function MissingElements({ handoverId, elements, canReport, canApprove, reviewerId }: {
+  handoverId: string; elements: HandoverCashState['elements']; canReport: boolean; canApprove: boolean; reviewerId?: string;
 }) {
   const unresolved = elements.filter(element => element.declared && !element.confirmed);
   if (!unresolved.length) return null;
@@ -319,20 +319,27 @@ function MissingElements({ handoverId, elements, canReport, canApprove }: {
     {unresolved.map(element => <div key={element.id} className="rounded-xl bg-amber-50 p-3 text-sm ring-1 ring-amber-200">
       <p className="font-medium text-amber-950">{element.name} · {element.missingReason ? 'No recibido' : 'Sin confirmar'}</p>
       {element.missingReason ? <>
-        <p className="mt-1 whitespace-pre-wrap">Motivo: {element.missingReason}</p>
+        <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">Motivo: {element.missingReason}</p>
         <p className="mt-1">{element.missingApprovedAt ? `Continuidad autorizada por ${element.missingApprovedByName}. No acredita posesión física.` : 'Supervisión debe revisar esta diferencia antes de continuar.'}</p>
-        {element.missingApprovalNote ? <p className="mt-1 whitespace-pre-wrap">Tratamiento: {element.missingApprovalNote}</p> : null}
+        {element.missingApprovalNote ? <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">Tratamiento: {element.missingApprovalNote}</p> : null}
       </> : null}
-      {((canReport && !element.missingReason) || (canApprove && element.missingReason && !element.missingApprovedAt)) ? <details className="mt-2">
-        <summary className="cursor-pointer py-2 font-medium text-petrol-900">{canReport && !element.missingReason ? 'No recibido' : 'Revisar excepción'}</summary>
-        <ActionForm action={canReport && !element.missingReason ? reportMissingElementAction : approveMissingElementAction} refreshOnSuccess>
-          <input type="hidden" name="handoverId" value={handoverId} />
-          <input type="hidden" name="elementId" value={element.id} />
-          <input type="hidden" name="revision" value={element.revision} />
-          <Field name="reason" label={canReport && !element.missingReason ? 'Qué falta y cómo se localizará' : 'Tratamiento y responsable de la diferencia'} required>
-            <Textarea name="reason" required minLength={5} maxLength={500} rows={2} />
+      {canReport ? <details className="mt-2">
+        <summary className="cursor-pointer py-2 font-medium text-petrol-900">{element.missingReason ? 'Corregir no recibido' : 'No recibido'}</summary>
+        <ActionForm action={reportMissingElementAction} refreshOnSuccess>
+          <input type="hidden" name="handoverId" value={handoverId}/><input type="hidden" name="elementId" value={element.id}/><input type="hidden" name="revision" value={element.revision}/>
+          <Field name="reason" label="Qué falta y cómo se localizará" required>
+            <Textarea name="reason" required minLength={5} maxLength={500} rows={2} defaultValue={element.missingReason ?? ''}/>
           </Field>
-          <SubmitButton variant="secondary" pendingLabel="Guardando…">{canReport && !element.missingReason ? 'Registrar no recibido' : 'Autorizar continuidad con diferencia'}</SubmitButton>
+          {element.missingApprovedAt ? <p className="text-sm text-amber-900">Una corrección exige nueva revisión de Supervisión.</p> : null}
+          <SubmitButton variant="secondary" pendingLabel="Guardando…">Registrar no recibido</SubmitButton>
+        </ActionForm>
+      </details> : null}
+      {canApprove && element.missingReason && !element.missingApprovedAt && element.missingReportedById !== reviewerId ? <details className="mt-2">
+        <summary className="cursor-pointer py-2 font-medium text-petrol-900">Revisar excepción</summary>
+        <ActionForm action={approveMissingElementAction} refreshOnSuccess>
+          <input type="hidden" name="handoverId" value={handoverId}/><input type="hidden" name="elementId" value={element.id}/><input type="hidden" name="revision" value={element.revision}/>
+          <Field name="reason" label="Tratamiento y responsable de la diferencia" required><Textarea name="reason" required minLength={5} maxLength={500} rows={2}/></Field>
+          <SubmitButton variant="secondary" pendingLabel="Guardando…">Autorizar continuidad con diferencia</SubmitButton>
         </ActionForm>
       </details> : null}
     </div>)}
@@ -349,6 +356,7 @@ export function CashBox({
   formalClosure,
   canReopen = false,
   canApproveMissing = false,
+  reviewerId,
   receiverStage,
 }: {
   handoverId: string;
@@ -365,6 +373,7 @@ export function CashBox({
   } | null;
   canReopen?: boolean;
   canApproveMissing?: boolean;
+  reviewerId?: string;
   receiverStage?: 'CASH' | 'CUSTODY';
 }) {
   if (!state.enabled && state.elements.length === 0) return null;
@@ -492,7 +501,7 @@ export function CashBox({
                 <ElementsForm handoverId={handoverId} elements={state.elements} kind={role === 'emisor' ? 'declarar' : 'confirmar'} />
               </div>
             )}
-            <MissingElements handoverId={handoverId} elements={state.elements} canReport={role === 'receptor'} canApprove={canApproveMissing} />
+            <MissingElements handoverId={handoverId} elements={state.elements} canReport={role === 'receptor'} canApprove={canApproveMissing} reviewerId={reviewerId} />
           </section>
         ) : null}
 

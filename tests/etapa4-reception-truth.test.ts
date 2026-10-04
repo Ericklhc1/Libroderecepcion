@@ -3,6 +3,8 @@ import { ROLE_KEYS, createUser, prisma, resetOperationalData, seedCatalog, openS
 import { prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift, startReceptionShift, confirmReceptionReviewStep } from '@/server/services/shifts';
 import { getHandoverCashState, markHandoverElements, cashBlockersForReceiving } from '@/server/services/cash';
 import { reportHandoverElementMissing, approveHandoverElementException } from '@/server/services/handover-elements';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
 import type { RoleKey } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -41,6 +43,9 @@ describe('AROH Simple · recepción física veraz', () => {
     const f = await receivingFixture();
     await expect(confirmReceptionReviewStep(f.receiver, { handoverId: f.handoverId, step: 'CUSTODY' })).rejects.toThrow(/recibiste|recibidos/);
     const input = await inputFor(f);
+    const context = await executeFrontiPageContextTool(f.receiver, resolveFrontiPageContext({ pathname: `/turno/entrega/${f.handoverId}` }));
+    expect(JSON.stringify(context)).toContain(f.elementId);
+    expect(JSON.stringify(context)).toContain(input.revision);
     await reportHandoverElementMissing(f.receiver, input);
     expect(await cashBlockersForReceiving(f.handoverId)).not.toEqual([]);
     await expect(finish(f.receiver, f.handoverId)).rejects.toThrow();

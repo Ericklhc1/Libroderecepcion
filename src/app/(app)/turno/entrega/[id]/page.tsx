@@ -631,6 +631,8 @@ export default async function HandoverPage({
             }))}
             previous={previousQuantities}
             role="receptor"
+            canApproveMissing={user.permissions.includes('shift.manage')}
+            reviewerId={user.id}
             receiverStage="CUSTODY"
           />
           <Card className="no-print">
@@ -671,6 +673,7 @@ export default async function HandoverPage({
           previous={previousQuantities}
           role="lector"
           canApproveMissing={user.permissions.includes('shift.manage') && handover.status === HandoverStatus.ENVIADA}
+          reviewerId={user.id}
         />
       ) : null}
 

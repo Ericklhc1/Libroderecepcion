@@ -1405,12 +1405,11 @@ export async function confirmReceptionReviewStep(
     throw new RuleError('El turno receptor ya no admite completar esta recepción.');
   }
 
-  const now = new Date();
-
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
       await lockHandover(tx, handover.id);
       await assertElementActor(tx, user, handover.id, 'confirmed');
+      const now = new Date();
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
         data: {
@@ -1458,6 +1457,7 @@ export async function confirmReceptionReviewStep(
     return prisma.$transaction(async (tx) => {
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
         if (params.step === 'FINAL' && !current.receiverCustodyReviewedAt) throw new RuleError('Primero revisa la custodia.');
@@ -1502,6 +1502,7 @@ export async function confirmReceptionReviewStep(
   return prisma.$transaction(async (tx) => {
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
         if (params.step === 'FINAL' && !current.receiverCustodyReviewedAt) throw new RuleError('Primero revisa la custodia.');

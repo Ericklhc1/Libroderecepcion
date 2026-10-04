@@ -386,6 +386,7 @@ export type HandoverCashState = {
     declared: boolean;
     confirmed: boolean;
     missingReason: string | null;
+    missingReportedById: string | null;
     missingApprovedAt: string | null;
     missingApprovedByName: string | null;
     missingApprovalNote: string | null;
@@ -508,6 +509,7 @@ export async function getHandoverCashState(
       declared: element.declared,
       confirmed: element.confirmed,
       missingReason: element.missingReason,
+      missingReportedById: element.missingReportedById,
       missingApprovedAt: element.missingApprovedAt?.toISOString() ?? null,
       missingApprovedByName: element.missingApprovedByName,
       missingApprovalNote: element.missingApprovalNote,

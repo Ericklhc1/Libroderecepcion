@@ -1,3 +1,7 @@
+## Ajustes de revisión del bloque 0 · 1.52.0 (en validación)
+
+Codex detectó seis hallazgos: corrección de No recibido inaccesible, revisor participante sin acceso, cronología antes del lock, palabras largas en móvil, contexto incompleto para Fronti y fixture UI inválida. Se corrigieron sin cambiar permisos ni confirmar posesión. El recorrido incluye corrección después de aprobación y revisor del turno en 390 px. La regresión de coordinación era sensible a medianoche: la prueba ahora respeta el inicio de disponibilidad; no se cambió el plazo operativo. Pendientes únicos en `docs/etapa4/PENDIENTES.md`.
+
 ## 04/10/2026 · Etapa 4 · bloque 0 · recepción veraz (1.52.0 preparada)
 
 Base comprobada una vez: 1.51.1 / 163d61c, Vercel READY. Informes de simplificación y auditoría visual consultados. No se fabrica un relevo de otra persona en Production. El código bloqueaba recepción de elementos declarados sin confirmación física y no admitía declarar ausencia.

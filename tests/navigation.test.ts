@@ -94,6 +94,12 @@ describe('visibilidad por rol', () => {
     }
   });
 
+  it('una cuenta exclusiva de Housekeeping no puede abrir Recordatorios por URL directa',()=>{
+    const source=readFileSync('src/app/(app)/alertas/page.tsx','utf-8');
+    expect(source).toContain("hkNavigationAllowed(user.permissions, '/alertas')");
+    expect(source).toContain("redirect('/sin-permisos')");
+  });
+
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
     expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/admin/housekeeping']);

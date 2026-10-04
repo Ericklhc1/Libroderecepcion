@@ -38,7 +38,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { buildHandoverSnapshot, visibleSnapshotItems, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -412,8 +412,8 @@ export async function getShiftDesk(user: CurrentUser): Promise<ShiftDesk> {
     current,
     operationalCurrent,
     iAmIn: Boolean(current),
-    pending: pending ? {...pending,items:await visibleSnapshotItems(user,pending.items)} : null,
-    cashPending: cashPending ? {...cashPending,items:await visibleSnapshotItems(user,cashPending.items)} : null,
+    pending: pending ? await visibleHandover(user,pending) : null,
+    cashPending: cashPending ? await visibleHandover(user,cashPending) : null,
     awaitingReceipt,
     suggestedType,
     suggestedWindow: SHIFT_WINDOW_LABEL[suggestedType],
@@ -499,7 +499,7 @@ export async function getShiftBriefing(user: CurrentUser, shift: { id: string; d
   });
 
   return {
-    incoming: incoming ? {...incoming,items:await visibleSnapshotItems(user,incoming.items)} : null,
+    incoming: incoming ? await visibleHandover(user,incoming) : null,
     openEntries,
     overdueTasks,
     myTasks,

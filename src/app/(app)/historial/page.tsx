@@ -1,3 +1,4 @@
+import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
 import { housekeepingAuditVisibility } from '@/server/services/housekeeping';
@@ -49,7 +50,7 @@ export default async function HistoryPage({
     user.permissions.includes('audit.view')
       ? prisma.auditLog.findMany({
           where: {
-            AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user)],
+            AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)],
             ...(filters.q ? { summary: { contains: filters.q, mode: 'insensitive' as const } } : {}),
           },
           include: { user: { select: { name: true } } },

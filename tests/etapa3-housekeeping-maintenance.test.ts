@@ -53,7 +53,7 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
  });
  it('ediciones del resultado y reapertura quedan en el mismo historial, sin resolver Housekeeping',async()=>{
   const r=await blocked();await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Ajuste inicial'});
-  await updateEntry(admin,{id:r.maintenanceEntryId!,resolution:'Prueba adicional completada'});await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'EN_CURSO',reason:'Revisión adicional'});
+  await updateEntry(admin,{id:r.maintenanceEntryId!,ownerId:admin.id,resolution:'Prueba adicional completada'});await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'EN_CURSO',reason:'Revisión adicional'});
   await expect(change(maid,r.id,'RETOMAR')).rejects.toThrow('resultado vigente');
   const events=await prisma.housekeepingEvent.findMany({where:{requestId:r.id,action:{startsWith:'MANTENIMIENTO_'}}});expect(events.map(e=>e.action)).toEqual(expect.arrayContaining(['MANTENIMIENTO_RESULTADO','MANTENIMIENTO_REABIERTO']));expect(events.some(e=>e.note?.includes('Prueba adicional completada'))).toBe(true);
   expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('BLOQUEADO');

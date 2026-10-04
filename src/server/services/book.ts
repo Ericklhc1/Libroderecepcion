@@ -314,7 +314,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
   }
 
   async function followUpItems(): Promise<BookItem[]> {
-    const and: Prisma.FollowUpWhereInput[] = [followUpReadWhere(user)];
+    const and: Prisma.FollowUpWhereInput[] = [followUpReadWhere(user,filters.includeDeleted)];
 
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });

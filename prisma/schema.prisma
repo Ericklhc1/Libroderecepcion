@@ -1413,6 +1413,7 @@ model FollowUp {
   sourceTasks TaskSourceFollowUp[]
   sourceAlerts AlertSourceFollowUp[]
   sourceAlarms AlarmSourceFollowUp[]
+  sourceAudits AuditSourceFollowUp[]
   id          String                @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   action      String
@@ -1698,6 +1699,7 @@ model LostFoundEvent {
 // ========================= TRAZABILIDAD Y SISTEMA =========================
 
 model AuditLog {
+  sourceFollowUps AuditSourceFollowUp[]
   id        String      @id @default(cuid())
   entity    String
   entityId  String
@@ -3529,4 +3531,12 @@ view AlarmSourceFollowUp {
   alarm OperationalAlarm @relation(fields: [alarmId], references: [id])
   followUp FollowUp @relation(fields: [followUpId], references: [id])
   @@unique([alarmId, followUpId])
+}
+
+view AuditSourceFollowUp {
+  auditLogId String
+  followUpId String
+  auditLog AuditLog @relation(fields: [auditLogId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([auditLogId, followUpId])
 }

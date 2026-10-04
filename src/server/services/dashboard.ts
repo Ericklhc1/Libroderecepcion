@@ -1,4 +1,5 @@
 import 'server-only';
+import {visibleHandover} from './handover-snapshot';
 import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import {
   AlertLevel,
@@ -250,7 +251,7 @@ export async function getDashboardData(user: CurrentUser) {
   return {
     now,
     myShift,
-    incoming,
+    incoming: incoming ? await visibleHandover(user,incoming) : null,
     nextShift,
     shiftMetrics,
     criticalEntries,

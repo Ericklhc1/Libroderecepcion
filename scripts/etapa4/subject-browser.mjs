@@ -111,6 +111,13 @@ try{
     const scopedPage=await scopedContext.newPage();
     await scopedPage.goto(`http://localhost:3000/libro/${entry.id}`);
     assert.ok(!(await scopedPage.locator('main').innerText()).includes(demoMarker),'La fachada respeta reserva histórica');
+    await db.auditLog.create({data:{entity:'Task',entityId:reservedTask.id,action:'CREAR',summary:'PRUEBA_PRIVADA_NO_PROYECTAR',after:{evidence:'PRUEBA_PRIVADA_NO_PROYECTAR'}}});
+    for(const path of ['/historial?q=PRUEBA_PRIVADA_NO_PROYECTAR','/admin/auditoria?q=PRUEBA_PRIVADA_NO_PROYECTAR']){
+      await page.goto(`http://localhost:3000${path}`);
+      const text=await page.locator('main').innerText();
+      assert.ok(!text.includes('PRUEBA_PRIVADA_NO_PROYECTAR'),'Auditoría no copia una fuente reservada a otra persona');
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    }
     await scopedContext.close();
     await context.close();
   }

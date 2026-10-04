@@ -25,3 +25,28 @@ UNION
 SELECT a.id AS "alarmId", o."followUpId"
 FROM "OperationalAlarm" a JOIN "OperationalSourceFollowUp" o ON o.id=a."sourceId"
 WHERE (a."sourceEntity"='Task' AND o.kind='task') OR (a."sourceEntity"='Alert' AND o.kind='alert');
+
+-- Audit remains immutable. Reader scope follows native sources before pagination.
+CREATE VIEW "AuditSourceFollowUp" AS
+WITH refs AS (
+ SELECT id AS "auditLogId", entity AS kind, "entityId" AS "sourceId" FROM "AuditLog"
+ UNION
+ SELECT id, "after"->>'sourceEntity', "after"->>'sourceEntityId'
+ FROM "AuditLog" WHERE entity='FrontiProactiveSignal'
+), comment_origins AS (
+ SELECT c.id, c."followUpId" FROM "Comment" c WHERE c."followUpId" IS NOT NULL
+ UNION
+ SELECT c.id, o."followUpId" FROM "Comment" c JOIN "OperationalSourceFollowUp" o
+ ON (o.kind='task' AND o.id=c."taskId") OR (o.kind='alert' AND o.id=c."alertId")
+)
+SELECT r."auditLogId", f.id AS "followUpId" FROM refs r JOIN "FollowUp" f ON r.kind='FollowUp' AND r."sourceId"=f.id
+UNION
+SELECT r."auditLogId", o."followUpId" FROM refs r JOIN "OperationalSourceFollowUp" o
+ ON (r.kind='Task' AND o.kind='task' AND r."sourceId"=o.id) OR (r.kind='Alert' AND o.kind='alert' AND r."sourceId"=o.id)
+UNION
+SELECT r."auditLogId", c."followUpId" FROM refs r JOIN comment_origins c ON r.kind='Comment' AND r."sourceId"=c.id
+UNION
+SELECT r."auditLogId", a."followUpId" FROM refs r JOIN "AlarmSourceFollowUp" a ON r.kind='OperationalAlarm' AND r."sourceId"=a."alarmId"
+UNION
+SELECT r."auditLogId", a."followUpId" FROM refs r JOIN "OperationalAlarmRecipient" recipient ON r.kind='OperationalAlarmRecipient' AND r."sourceId"=recipient.id
+ JOIN "AlarmSourceFollowUp" a ON a."alarmId"=recipient."alarmId";

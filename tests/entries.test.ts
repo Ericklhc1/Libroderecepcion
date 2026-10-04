@@ -261,10 +261,10 @@ describe('registros del libro operativo', () => {
 
     const reopened = await changeEntryStatus(supervisor, {
       id: entry.id,
-      status: EntryStatus.EN_CURSO,
+      status: EntryStatus.ABIERTO,
       reason: 'El huésped reporta que el problema persiste.',
     });
-    expect(reopened.status).toBe(EntryStatus.EN_CURSO);
+    expect(reopened.status).toBe(EntryStatus.ABIERTO);
     expect(reopened.reopenedAt).not.toBeNull();
 
     const log = await prisma.auditLog.findFirst({

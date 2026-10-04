@@ -47,3 +47,7 @@ export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."alertId"=a.id AND NOT (${followUpReadSql(user,true)}))`;
 }
+
+export function auditFollowUpReadWhere(user: Pick<CurrentUser,'id'|'permissions'>): Prisma.AuditLogWhereInput {
+  return {sourceFollowUps:{none:{followUp:{NOT:followUpReadWhere(user,true)}}}};
+}

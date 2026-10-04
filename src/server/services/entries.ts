@@ -393,6 +393,7 @@ export async function changeEntryStatus(
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
   if (current.status === input.status) return current;
+  if (input.status === EntryStatus.EN_CURSO && !current.ownerId) throw new RuleError('Asigna una persona responsable antes de comenzar la atención.');
 
   const closing =
     input.status === EntryStatus.CERRADO || input.status === EntryStatus.RESUELTO;
@@ -443,7 +444,7 @@ export async function changeEntryStatus(
   const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const updated = await tx.operationalEntry.update({
-      where: { id: input.id, updatedAt:current.updatedAt },
+      where: { id: input.id, updatedAt:current.updatedAt, ownerId:current.ownerId, status:current.status },
       data: {
         updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime()+1)),
         status: input.status,

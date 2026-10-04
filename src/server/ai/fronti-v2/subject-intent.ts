@@ -1,5 +1,5 @@
 import 'server-only';
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import {prisma} from '@/lib/prisma';
 import type {CurrentUser} from '@/server/auth/current-user';
 import type {FrontiResolvedPageContext} from './page-context';
@@ -57,7 +57,9 @@ export async function prepareSubjectIntent(user:CurrentUser,messages:readonly Fr
     if(!location)return {reply:`¿En qué ubicación necesita atención el asunto #${entry.humanId}?`,confirmations:[]};
     if(location.length>160)return {reply:'Indica una ubicación de hasta 160 caracteres.',confirmations:[]};
   }
-  const intentRequestKey=requestKey??randomUUID();
+  const identityHex=createHash('sha256').update(JSON.stringify({actor:user.id,intent:normalize(intent),entry:entry.id,area:area.value,revision:entry.updatedAt.toISOString(),location:location??null})).digest('hex');
+  const fallbackRequestKey=`${identityHex.slice(0,8)}-${identityHex.slice(8,12)}-5${identityHex.slice(13,16)}-a${identityHex.slice(17,20)}-${identityHex.slice(20,32)}`;
+  const intentRequestKey=requestKey??fallbackRequestKey;
   const hex=createHash('sha256').update(JSON.stringify({requestKey:intentRequestKey,actor:user.id,entry:entry.id,area:area.value,revision:entry.updatedAt.toISOString(),location:location??null})).digest('hex');
   const operationKey=`${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
   const execution=await prepareExecution({requestKey:intentRequestKey,instruction:intent.slice(-6000),steps:[{action:'requestSubjectAttentionAction',fields:{entryId:entry.id,departmentId:area.value,revision:entry.updatedAt.toISOString(),requestKey:operationKey,...(location?{location}:{})}}]});

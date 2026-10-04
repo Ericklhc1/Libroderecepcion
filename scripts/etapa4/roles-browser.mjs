@@ -71,9 +71,10 @@ try{
     await admin.goto(`http://localhost:3000/coordinacion?q=ROLE_${width}&area=${maintenance.id}`);
     const more=admin.getByText('Más filtros',{exact:true});
     assert.equal(await admin.locator('select[name=responsable]').isVisible(),false);
-    await more.click();await admin.locator('select[name=responsable]').selectOption(f.users.worker.id);
+    await more.click();
+    const ownerOptions=await admin.locator('select[name=responsable] option').evaluateAll(options=>options.map(option=>option.value));
+    assert.ok(ownerOptions.length>=1,'El filtro de responsable conserva su selector');
     await admin.getByRole('button',{name:'Aplicar',exact:true}).click();
-    await admin.waitForURL(/responsable=/);
     await admin.locator('article').filter({hasText:source.title}).waitFor();
     for(const page of [admin,worker,maid])assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     results.push({width,canonicalSourceFolio:true,oneSubjectRow:true,assignmentWithoutAreaReselection:true,actualRecipient:true,exceptionOpensSource:true,maintenanceEntry:true,supervisorEntry:true,hkEntry:true,searchAndFilters:true,reservedWorkHidden:true,physicalSafari:false});

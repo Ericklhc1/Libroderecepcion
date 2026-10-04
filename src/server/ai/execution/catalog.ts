@@ -61,6 +61,8 @@ const handlers: Record<string, () => Promise<Handler>> = {
   recordCashTransferAction: async () => (await import('@/server/actions/cash')).recordCashTransferAction,
   saveHandoverUsdRateAction: async () => (await import('@/server/actions/cash')).saveHandoverUsdRateAction,
   declareElementsAction: async () => (await import('@/server/actions/cash')).declareElementsAction,
+  reportMissingElementAction: async () => (await import('@/server/actions/cash')).reportMissingElementAction,
+  approveMissingElementAction: async () => (await import('@/server/actions/cash')).approveMissingElementAction,
   confirmElementsAction: async () => (await import('@/server/actions/cash')).confirmElementsAction,
   removeShiftFromOperationAction: async () => (await import('@/server/actions/admin-shifts')).removeShiftFromOperationAction,
   createAlertAction: async () => (await import('@/server/actions/alerts')).createAlertAction,

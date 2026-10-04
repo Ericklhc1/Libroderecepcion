@@ -1,3 +1,4 @@
+import { assertElementActor, lockHandover } from './handover-elements';
 import 'server-only';
 import {
   AlertLevel,
@@ -1408,6 +1409,8 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
+      await lockHandover(tx, handover.id);
+      await assertElementActor(tx, user, handover.id, 'confirmed');
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
         data: {
@@ -1440,7 +1443,7 @@ export async function confirmReceptionReviewStep(
   if (cashProblems.length > 0) throw new RuleError(cashProblems.join(' '));
 
   const pendingElements = await prisma.handoverElement.findMany({
-    where: { handoverId: handover.id, declared: true, confirmed: false },
+    where: { handoverId: handover.id, declared: true, confirmed: false, OR: [{ missingReason: null }, { missingApprovedAt: null }] },
     include: { elementType: { select: { name: true } } },
   });
   if (params.step === 'CUSTODY' && pendingElements.length > 0) {
@@ -1453,6 +1456,14 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'CUSTODY') {
     return prisma.$transaction(async (tx) => {
+      await lockHandover(tx, handover.id);
+      const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      if (params.step !== 'BRIEFING') {
+        if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
+        if (params.step === 'FINAL' && !current.receiverCustodyReviewedAt) throw new RuleError('Primero revisa la custodia.');
+        const blockers = await cashBlockersForReceiving(handover.id, tx);
+        if (blockers.length) throw new RuleError(blockers.join(' '));
+      }
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
         data: {
@@ -1489,6 +1500,14 @@ export async function confirmReceptionReviewStep(
   }
 
   return prisma.$transaction(async (tx) => {
+      await lockHandover(tx, handover.id);
+      const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      if (params.step !== 'BRIEFING') {
+        if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
+        if (params.step === 'FINAL' && !current.receiverCustodyReviewedAt) throw new RuleError('Primero revisa la custodia.');
+        const blockers = await cashBlockersForReceiving(handover.id, tx);
+        if (blockers.length) throw new RuleError(blockers.join(' '));
+      }
     const updated = await tx.shiftHandover.update({
       where: { id: handover.id },
       data: {
@@ -2084,7 +2103,7 @@ export async function receiveHandover(
   if (cashProblems.length) throw new RuleError(cashProblems.join(' '));
 
   const pendingElements = await prisma.handoverElement.findMany({
-    where: { handoverId: incoming.id, declared: true, confirmed: false },
+    where: { handoverId: incoming.id, declared: true, confirmed: false, OR: [{ missingReason: null }, { missingApprovedAt: null }] },
     include: { elementType: { select: { name: true } } },
   });
   if (pendingElements.length > 0) {
@@ -2096,6 +2115,14 @@ export async function receiveHandover(
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockHandover(tx, incoming.id);
+    const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
+    if (!current.receiverBriefingReviewedAt || !current.receiverCustodyReviewedAt || !current.receiverFinalReviewAt ||
+      (hasUrgentItems && !current.receiverUrgentAcknowledgedAt)) {
+      throw new RuleError('La custodia cambió. Revisa de nuevo la recepción antes de continuar.');
+    }
+    const blockers = await cashBlockersForReceiving(incoming.id, tx);
+    if (blockers.length) throw new RuleError(blockers.join(' '));
     const now = new Date();
     const claim = await tx.shiftHandover.updateMany({
       where: {

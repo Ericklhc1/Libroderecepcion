@@ -8,6 +8,8 @@ import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import {
   confirmCashCountAction,
   confirmElementsAction,
+  reportMissingElementAction,
+  approveMissingElementAction,
   declareCashCountAction,
   declareElementsAction,
   recordCashTransferAction,
@@ -242,7 +244,7 @@ function ElementsForm({
       <Field
         label={kind === 'declarar' ? 'Agregar elemento' : 'Confirmar elemento recibido'}
         name="elementPicker"
-        hint="Selecciona un elemento y se agregará a la lista. Puedes quitarlo antes de guardar."
+        hint={kind === 'declarar' ? 'Selecciona lo que entregarás físicamente.' : 'Confirma sólo lo que tienes físicamente. Si falta algo, usa No recibido debajo.'}
       >
         <select
           name="elementPicker"
@@ -308,6 +310,35 @@ function ElementsForm({
   );
 }
 
+function MissingElements({ handoverId, elements, canReport, canApprove }: {
+  handoverId: string; elements: HandoverCashState['elements']; canReport: boolean; canApprove: boolean;
+}) {
+  const unresolved = elements.filter(element => element.declared && !element.confirmed);
+  if (!unresolved.length) return null;
+  return <div className="mt-3 space-y-3">
+    {unresolved.map(element => <div key={element.id} className="rounded-xl bg-amber-50 p-3 text-sm ring-1 ring-amber-200">
+      <p className="font-medium text-amber-950">{element.name} · {element.missingReason ? 'No recibido' : 'Sin confirmar'}</p>
+      {element.missingReason ? <>
+        <p className="mt-1 whitespace-pre-wrap">Motivo: {element.missingReason}</p>
+        <p className="mt-1">{element.missingApprovedAt ? `Continuidad autorizada por ${element.missingApprovedByName}. No acredita posesión física.` : 'Supervisión debe revisar esta diferencia antes de continuar.'}</p>
+        {element.missingApprovalNote ? <p className="mt-1 whitespace-pre-wrap">Tratamiento: {element.missingApprovalNote}</p> : null}
+      </> : null}
+      {((canReport && !element.missingReason) || (canApprove && element.missingReason && !element.missingApprovedAt)) ? <details className="mt-2">
+        <summary className="cursor-pointer py-2 font-medium text-petrol-900">{canReport && !element.missingReason ? 'No recibido' : 'Revisar excepción'}</summary>
+        <ActionForm action={canReport && !element.missingReason ? reportMissingElementAction : approveMissingElementAction} refreshOnSuccess>
+          <input type="hidden" name="handoverId" value={handoverId} />
+          <input type="hidden" name="elementId" value={element.id} />
+          <input type="hidden" name="revision" value={element.revision} />
+          <Field name="reason" label={canReport && !element.missingReason ? 'Qué falta y cómo se localizará' : 'Tratamiento y responsable de la diferencia'} required>
+            <Textarea name="reason" required minLength={5} maxLength={500} rows={2} />
+          </Field>
+          <SubmitButton variant="secondary" pendingLabel="Guardando…">{canReport && !element.missingReason ? 'Registrar no recibido' : 'Autorizar continuidad con diferencia'}</SubmitButton>
+        </ActionForm>
+      </details> : null}
+    </div>)}
+  </div>;
+}
+
 export function CashBox({
   handoverId,
   shiftId,
@@ -317,6 +348,7 @@ export function CashBox({
   role,
   formalClosure,
   canReopen = false,
+  canApproveMissing = false,
   receiverStage,
 }: {
   handoverId: string;
@@ -332,6 +364,7 @@ export function CashBox({
     reopenedAt: string | null;
   } | null;
   canReopen?: boolean;
+  canApproveMissing?: boolean;
   receiverStage?: 'CASH' | 'CUSTODY';
 }) {
   if (!state.enabled && state.elements.length === 0) return null;
@@ -448,7 +481,7 @@ export function CashBox({
                     <span className="text-petrol-900">{element.name}</span>
                     <Badge tone={element.declared ? 'resuelto' : 'neutro'}>{element.declared ? 'Declarado' : 'No entregado'}</Badge>
                     {element.declared ? (
-                      <Badge tone={element.confirmed ? 'resuelto' : 'neutro'}>{element.confirmed ? 'Recibido' : 'Sin confirmar'}</Badge>
+                      <Badge tone={element.confirmed ? 'resuelto' : 'neutro'}>{element.confirmed ? 'Recibido' : element.missingReason ? 'No recibido' : 'Sin confirmar'}</Badge>
                     ) : null}
                     {!element.declared && element.notes ? <span className="text-xs text-slate-500">{element.notes}</span> : null}
                   </li>
@@ -459,6 +492,7 @@ export function CashBox({
                 <ElementsForm handoverId={handoverId} elements={state.elements} kind={role === 'emisor' ? 'declarar' : 'confirmar'} />
               </div>
             )}
+            <MissingElements handoverId={handoverId} elements={state.elements} canReport={role === 'receptor'} canApprove={canApproveMissing} />
           </section>
         ) : null}
 

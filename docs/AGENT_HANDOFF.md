@@ -1,3 +1,11 @@
+## 04/10/2026 · Etapa 4 · bloque 0 · recepción veraz (1.52.0 preparada)
+
+Base comprobada una vez: 1.51.1 / 163d61c, Vercel READY. Informes de simplificación y auditoría visual consultados. No se fabrica un relevo de otra persona en Production. El código bloqueaba recepción de elementos declarados sin confirmación física y no admitía declarar ausencia.
+
+Nueva excepción sobre HandoverElement existente: No recibido + motivo + responsable; aviso a Supervisión, autorización independiente con tratamiento y conservación de confirmed=false. Sigue bloqueada hasta revisión; no permite autoautorizar, cambiar una entrega recibida ni confirmar bienes ajenos/no declarados. Lock del mismo handover serializa custodia, revisión y recepción; las barreras se vuelven a comprobar dentro del lock. Recuperación física conserva auditoría e invalida revisión final. Migración aditiva con CHECK físico, sin cambios de dinero, stock, permisos o proveedores. Fronti reutiliza acciones nativas y exige confirmación física/revisión.
+
+Validación real en PR/CI por SHA: tipos/lint locales, integración sobre PostgreSQL desechable y navegador 1280/390. No declarar publicado hasta Compuerta, revisión Codex y comprobación de versión/SHA Production. Lista única: docs/etapa4/PENDIENTES.md. La documentación de Etapa 3 mantiene requisitos funcionales heredados; no ocultarlos ni asumir cierre general. Seguir con bloques pequeños hasta terminar el alcance autorizado. No hay Safari/iPhone físico.
+
 ## 03/10/2026 · v1.51.1 · Estabilización de secciones desplegables
 
 Production 1.51.0 / `2e44337` quedó READY antes de que terminara la revisión Codex del PR #255. La revisión detectó cinco ajustes que no deben quedar pendientes: impresión de bloques cerrados, atajos internos de Supervisión, apertura de la lista de delegaciones solicitada, conteos visibles en Diagnóstico y relevo actualizado.

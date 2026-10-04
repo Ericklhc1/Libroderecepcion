@@ -2589,7 +2589,7 @@ model HandoverElementType {
   id       String            @id @default(cuid())
   name     String            @unique
   detail   String?
-  /// Si es obligatorio, la entrega no se recibe sin confirmarlo.
+  /// Requiere recepción física o una excepción veraz autorizada por otra persona de Supervisión.
   required Boolean           @default(true)
   active   Boolean           @default(true)
   order    Int               @default(0)
@@ -2606,6 +2606,13 @@ model HandoverElement {
   declared      Boolean             @default(false)
   /// Lo marca quien recibe: «lo tengo en la mano».
   confirmed     Boolean             @default(false)
+  missingReason String?
+  missingReportedById String?
+  missingReportedAt DateTime?
+  missingApprovedById String?
+  missingApprovedByName String?
+  missingApprovedAt DateTime?
+  missingApprovalNote String?
   notes         String?
   updatedAt     DateTime            @updatedAt
 

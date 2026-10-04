@@ -23,6 +23,8 @@ import {
   type FundStatus,
 } from '@/domain/cash';
 import { getSettingBool } from '@/server/services/settings';
+import { handoverElementPending } from '@/domain/handover-custody';
+import { assertElementActor, clearMissingElement, lockHandover } from './handover-elements';
 import { insertCashMovement } from '@/server/services/live-cash';
 
 type Tx = Prisma.TransactionClient;
@@ -383,6 +385,11 @@ export type HandoverCashState = {
     required: boolean;
     declared: boolean;
     confirmed: boolean;
+    missingReason: string | null;
+    missingApprovedAt: string | null;
+    missingApprovedByName: string | null;
+    missingApprovalNote: string | null;
+    revision: string;
     notes: string | null;
   }>;
   cashGuarantees: Array<{
@@ -500,6 +507,11 @@ export async function getHandoverCashState(
       required: element.elementType.required,
       declared: element.declared,
       confirmed: element.confirmed,
+      missingReason: element.missingReason,
+      missingApprovedAt: element.missingApprovedAt?.toISOString() ?? null,
+      missingApprovedByName: element.missingApprovedByName,
+      missingApprovalNote: element.missingApprovalNote,
+      revision: element.updatedAt.toISOString(),
       notes: element.notes,
     })),
     cashGuarantees: composition.guarantees.map((guarantee) => ({
@@ -900,11 +912,18 @@ export async function markHandoverElements(
   if (updates.length === 0) return { updated: 0 };
 
   await prisma.$transaction(async (tx) => {
+    await lockHandover(tx, params.handoverId);
+    await assertElementActor(tx, user, params.handoverId, params.field);
+    const beforeElements = [];
     for (const [id, value] of updates) {
+      const element = await tx.handoverElement.findUniqueOrThrow({ where: { id } });
+      beforeElements.push({ id, declared: element.declared, confirmed: element.confirmed, missingReason: element.missingReason, missingApprovedById: element.missingApprovedById });
+      if (params.field === 'confirmed' && value && !element.declared) throw new RuleError('No se puede confirmar un elemento no declarado.');
       await tx.handoverElement.update({
         where: { id },
         data: {
           [params.field]: value,
+          ...(value && params.field === 'confirmed' ? clearMissingElement : {}),
           ...(params.notes && id in params.notes
             ? { notes: params.notes[id]?.trim() || null }
             : {}),
@@ -923,16 +942,18 @@ export async function markHandoverElements(
         },
       });
     }
-  });
 
-  await recordAudit({
-    entity: 'HandoverElement',
+    await recordAudit({
+    entity: 'ShiftHandover',
     entityId: params.handoverId,
     action: AuditAction.EDITAR,
     summary: `Elementos de la entrega ${
       params.field === 'declared' ? 'declarados' : 'confirmados'
     }: ${updates.filter(([, value]) => value).length} de ${elements.length}`,
     user,
+    before: { elements: beforeElements },
+    after: { field: params.field, marks: params.marks },
+  }, tx);
   });
 
   return { updated: updates.length };
@@ -988,8 +1009,8 @@ export async function cashBlockersForSending(handoverId: string): Promise<string
   return problems;
 }
 
-export async function cashBlockersForReceiving(handoverId: string): Promise<string[]> {
-  const state = await getHandoverCashState(handoverId);
+export async function cashBlockersForReceiving(handoverId: string, client: Client = prisma): Promise<string[]> {
+  const state = await getHandoverCashState(handoverId, client);
   const problems: string[] = [];
 
   if (state.enabled && !state.confirmed) {
@@ -999,11 +1020,11 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
   }
 
   const pendingElements = state.elements.filter(
-    (element) => element.declared && !element.confirmed,
+    handoverElementPending,
   );
   if (pendingElements.length > 0) {
     problems.push(
-      `Confirma los elementos físicos recibidos: ${pendingElements
+      `Indica qué recibiste o registra «No recibido» y solicita revisión de Supervisión: ${pendingElements
         .map((element) => element.name)
         .join(', ')}.`,
     );
@@ -1015,6 +1036,6 @@ export async function cashBlockersForReceiving(handoverId: string): Promise<stri
 export async function pendingHandoverElements(handoverId: string): Promise<string[]> {
   const state = await getHandoverCashState(handoverId);
   return state.elements
-    .filter((element) => element.declared && !element.confirmed)
+    .filter(handoverElementPending)
     .map((element) => element.name);
 }

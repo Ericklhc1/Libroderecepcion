@@ -58,7 +58,12 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
       return {kind:'housekeeping' as const,id:repeatedHk.id,href:`/admin/housekeeping?area=${repeatedHk.departmentId}&aviso=${repeatedHk.humanId}`,existing:true};
     }
     const existingHk=await tx.housekeepingRequest.findFirst({where:{sourceEntryId:source.id}});
-    const existingTask=await tx.task.findFirst({where:{entryId:source.id,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']}},orderBy:{createdAt:'asc'}});
+    const readableTask=coordinationTasks(user);
+    const taskScope={entryId:source.id,departmentId:input.departmentId,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA'] as const},AND:[readableTask]};
+    const existingCanonicalTask=await tx.task.findFirst({where:{...taskScope,procedureOccurrenceKey:{startsWith:'subject:'}},orderBy:{createdAt:'desc'}});
+    const existingOrdinaryTask=existingCanonicalTask?null:await tx.task.findFirst({where:{...taskScope,procedureOccurrenceKey:null},orderBy:{createdAt:'asc'}});
+    const existingProcedureTask=existingCanonicalTask||existingOrdinaryTask?null:await tx.task.findFirst({where:taskScope,orderBy:{createdAt:'asc'}});
+    const existingTask=existingCanonicalTask??existingOrdinaryTask??existingProcedureTask;
     const hkClosed=existingHk && ['RESUELTO','CANCELADO'].includes(existingHk.status);
     if(existingHk && !existingHk.isDemo && !hkClosed){
       const visible=await tx.housekeepingRequest.count({where:{id:existingHk.id,AND:[await hkWorkVisibility(user,tx)]}});

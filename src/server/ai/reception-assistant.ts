@@ -1,3 +1,4 @@
+import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import 'server-only';
 import {taskFollowUpReadWhere,followUpReadWhere} from '@/server/services/followup-access';
 import { FRONTI_ACTIONS } from './execution/catalog';
@@ -153,6 +154,7 @@ type PendingAction =
       args: {
         taskId: string;
         reason?: string | null;
+        evidenceProvided?: string | null;
       };
     };
 
@@ -694,7 +696,7 @@ async function completeTaskProposalTool(
       AND:[taskFollowUpReadWhere(user)],
       ...(taskId ? { id: taskId } : { humanId: taskSeq as number }),
     },
-    select: { id: true, humanId: true, title: true, status: true },
+    select: { id: true, humanId: true, title: true, status: true, procedureOccurrenceKey: true },
   });
   if (!task) throw new Error('No encontré esa tarea.');
   if (task.status === TaskStatus.COMPLETADA) {
@@ -707,12 +709,16 @@ async function completeTaskProposalTool(
   const reason =
     typeof args.reason === 'string' && args.reason.trim() ? args.reason.trim() : null;
 
+  const evidenceProvided = typeof args.evidenceProvided === 'string' ? args.evidenceProvided.trim() || null : null;
+  if (isSubjectAttentionTask(task.procedureOccurrenceKey) && !evidenceProvided) {
+    return {status:'needs_info',missing:[{field:'evidenceProvided',message:'Describe el resultado de la atención.'}],instruction:'Pide el resultado real antes de preparar la confirmación. No lo infieras del motivo.'};
+  }
   const confirmation = makeConfirmation(
     user,
     'complete_task',
-    { taskId: task.id, reason },
+    { taskId: task.id, reason, evidenceProvided },
     `Completar tarea #${task.humanId}`,
-    task.title,
+    evidenceProvided ? `${task.title} · Resultado: ${evidenceProvided}` : task.title,
     'normal',
   );
   return {
@@ -1342,6 +1348,7 @@ export async function executeReceptionConfirmation(
       id: pending.args.taskId,
       status: TaskStatus.COMPLETADA,
       reason: pending.args.reason ?? 'Completada mediante Fronti.',
+      evidenceProvided: pending.args.evidenceProvided ?? undefined,
     });
     return { reply: `Tarea #${task.humanId} completada: ${task.title}.` };
   }

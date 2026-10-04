@@ -167,6 +167,12 @@ jobs:
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/subject-browser.mjs; then
             journey_status=1
           fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/attention-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/roles-browser.mjs; then
+            journey_status=1
+          fi
           exit "$journey_status"
 
       - name: Evidencia de recorridos sin credenciales
@@ -182,6 +188,8 @@ jobs:
             collapsible-sections-browser-results.json
             etapa4-reception-browser-results.json
             etapa4-subject-browser-results.json
+            etapa4-attention-browser-results.json
+            etapa4-roles-browser-results.json
             etapa3-typecheck.log
           if-no-files-found: warn
           retention-days: 7

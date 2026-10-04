@@ -3,6 +3,7 @@ import 'server-only';
 import {createHash} from 'node:crypto';
 import {prisma} from '@/lib/prisma';
 import type {CurrentUser} from '@/server/auth/current-user';
+import type {Prisma} from '@prisma/client';
 import {ForbiddenError,NotFoundError,RuleError} from '@/server/errors';
 import {coordinationEntries,coordinationTasks} from './coordination-access';
 import {createTask} from './tasks';
@@ -59,7 +60,7 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     }
     const existingHk=await tx.housekeepingRequest.findFirst({where:{sourceEntryId:source.id}});
     const readableTask=coordinationTasks(user);
-    const taskScope={entryId:source.id,departmentId:input.departmentId,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA'] as const},AND:[readableTask]};
+    const taskScope:Prisma.TaskWhereInput={entryId:source.id,departmentId:input.departmentId,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']},AND:[readableTask]};
     const existingCanonicalTask=await tx.task.findFirst({where:{...taskScope,procedureOccurrenceKey:{startsWith:'subject:'}},orderBy:{createdAt:'desc'}});
     const existingOrdinaryTask=existingCanonicalTask?null:await tx.task.findFirst({where:{...taskScope,procedureOccurrenceKey:null},orderBy:{createdAt:'asc'}});
     const existingProcedureTask=existingCanonicalTask||existingOrdinaryTask?null:await tx.task.findFirst({where:taskScope,orderBy:{createdAt:'asc'}});

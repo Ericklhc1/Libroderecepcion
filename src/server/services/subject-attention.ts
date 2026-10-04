@@ -5,7 +5,7 @@ import type {CurrentUser} from '@/server/auth/current-user';
 import {ForbiddenError,NotFoundError,RuleError} from '@/server/errors';
 import {coordinationEntries,coordinationTasks} from './coordination-access';
 import {createTask} from './tasks';
-import {createHkWork,hkWorkVisibility,hkCapability} from './housekeeping-work';
+import {createHkWork,changeHkWork,hkWorkVisibility,hkCapability} from './housekeeping-work';
 import {assertReceptionOperationPermission} from './reception-operation-gate';
 import {canAccessHousekeeping} from '@/domain/housekeeping';
 import {hotelDateKey} from '@/domain/time';
@@ -35,6 +35,12 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
     const source=await tx.operationalEntry.findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
     if(!source)throw new NotFoundError();
+    const reopening=await tx.auditLog.findFirst({where:{entity:'SubjectAttention',entityId:occurrenceKey,userId:user.id,action:'REABRIR'},select:{after:true}});
+    if(reopening && reopening.after && typeof reopening.after==='object' && !Array.isArray(reopening.after) && typeof reopening.after.housekeepingId==='string'){
+      const work=await tx.housekeepingRequest.findFirst({where:{id:reopening.after.housekeepingId,AND:[await hkWorkVisibility(user,tx)]}});
+      if(!work)throw new NotFoundError();
+      return {kind:'housekeeping' as const,id:work.id,href:`/admin/housekeeping?area=${work.departmentId}&aviso=${work.humanId}`,existing:true};
+    }
     const repeatedTask=await tx.task.findFirst({where:{procedureOccurrenceKey:{startsWith:prefix}}});
     const repeatedHk=await tx.housekeepingRequest.findFirst({where:{requestKey:{startsWith:prefix}}});
     if(repeatedTask&&repeatedTask.entryId!==source.id||repeatedHk&&(repeatedHk.createdById!==user.id||repeatedHk.sourceEntryId!==source.id))throw new RuleError('El reintento pertenece a otra solicitud.');
@@ -51,7 +57,8 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     }
     const existingHk=await tx.housekeepingRequest.findFirst({where:{sourceEntryId:source.id}});
     const existingTask=await tx.task.findFirst({where:{entryId:source.id,deletedAt:null,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']}},orderBy:{createdAt:'asc'}});
-    if(existingHk){
+    const hkClosed=existingHk && ['RESUELTO','CANCELADO'].includes(existingHk.status);
+    if(existingHk && !existingHk.isDemo && !hkClosed){
       const visible=await tx.housekeepingRequest.count({where:{id:existingHk.id,AND:[await hkWorkVisibility(user,tx)]}});
       if(!visible)throw new RuleError('Este asunto ya tiene atención. Consulta el resultado en el origen.');
       if(existingHk.departmentId!==input.departmentId)throw new RuleError('El asunto ya tiene trabajo de otra área. Abre ese trabajo y deriva desde su contexto para conservar la continuidad.');
@@ -64,6 +71,14 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     }
     if(source.updatedAt.toISOString()!==input.revision)throw new RuleError('El asunto cambió. Actualiza antes de solicitar atención.');
     if(['RESUELTO','CERRADO'].includes(source.status))throw new RuleError('Reabre el asunto con permiso antes de solicitar atención.');
+    if(specialized && existingHk){
+      if(existingHk.isDemo)throw new RuleError('El vínculo histórico requiere regularización auditada por Administración antes de solicitar atención especializada. Puedes solicitar atención a otra área.');
+      if(existingHk.departmentId!==input.departmentId)throw new RuleError('La atención especializada histórica pertenece a otra área. Solicita su revisión al supervisor.');
+      if(!await hkCapability(user,input.departmentId,'housekeeping.assign',tx))throw new RuleError('La atención anterior terminó. El supervisor del área debe reabrirla con motivo para conservar su historial.');
+      const result=await changeHkWork(user,{id:existingHk.id,version:existingHk.version,action:'REABRIR',note:`Nueva atención solicitada desde el asunto #${source.humanId}.`},tx);
+      await tx.auditLog.create({data:{entity:'SubjectAttention',entityId:occurrenceKey,userId:user.id,sessionId:user.sessionId,action:'REABRIR',summary:`Atención reabierta para el asunto #${source.humanId}`,after:{housekeepingId:result.id}}});
+      return {kind:'housekeeping' as const,id:result.id,href:`/admin/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};
+    }
     if(specialized){
       const result=await createHkWork(user,{requestKey:occurrenceKey,sourceEntryId:source.id,title:source.title,description:source.description,departmentId:input.departmentId,roomId:source.roomId??undefined,location:source.roomId?undefined:input.location,priority:source.priority,dueAt:source.dueAt,workDate:hotelDateKey(new Date()),workKind:'ATENCION',effortMinutes:20,requiresInspection:false,assignedToId:input.assigneeId},tx);
       return {kind:'housekeeping' as const,id:result.id,href:`/admin/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};

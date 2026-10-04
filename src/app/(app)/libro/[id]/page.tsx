@@ -118,7 +118,7 @@ export default async function EntryDetailPage({
   const canFinish = (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id) && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
   const activeHk = entry.housekeepingRequest && !entry.housekeepingRequest.isDemo && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
   const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
-  const activeAttentionTask = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && isSubjectAttentionTask(t.procedureOccurrenceKey));
+  const activeAttentionTask = tasks.find(t => !t.isDemo && !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && isSubjectAttentionTask(t.procedureOccurrenceKey)) ?? tasks.find(t => !t.isDemo && !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && t.entryId===entry.id && Boolean(t.departmentId));
   const returnedTask=returnedSubjectTask(tasks,entry.reopenedAt);
   const returnedHk=entry.housekeepingRequest&&!entry.housekeepingRequest.isDemo&&entry.housekeepingRequest.status==='RESUELTO'&&(!entry.reopenedAt||!!entry.housekeepingRequest.resolvedAt&&entry.housekeepingRequest.resolvedAt>=entry.reopenedAt)?entry.housekeepingRequest:null;
   const latestReturned=[

@@ -8,13 +8,12 @@ import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import {
   confirmCashCountAction,
   confirmElementsAction,
-  reportMissingElementAction,
-  approveMissingElementAction,
   declareCashCountAction,
   declareElementsAction,
   recordCashTransferAction,
   saveHandoverUsdRateAction,
 } from '@/server/actions/cash';
+import { reportMissingElementAction, approveMissingElementAction } from './navigation-action';
 import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
 import { closeShiftCashAction, reopenShiftCashAction } from '@/server/actions/cash-closure';

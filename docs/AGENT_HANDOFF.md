@@ -1,3 +1,7 @@
+## Bloque 0 · corrección de respuesta visible (en validación)
+
+CI 37174856351 confirmó persistencia de No recibido con confirmed=false, pero el formulario permaneció en Guardando por transición RSC. Se reutiliza el transporte JSON operativo existente para ambas acciones, con origen/campos cerrados, mismas acciones nativas y navegación al acta sólo tras éxito. No se aumenta el timeout ni se sustituye la comprobación visible por recarga manual. Requiere nueva Compuerta y revisión Codex del ajuste funcional.
+
 ## Ajustes de revisión del bloque 0 · 1.52.0 (en validación)
 
 Codex detectó seis hallazgos: corrección de No recibido inaccesible, revisor participante sin acceso, cronología antes del lock, palabras largas en móvil, contexto incompleto para Fronti y fixture UI inválida. Se corrigieron sin cambiar permisos ni confirmar posesión. El recorrido incluye corrección después de aprobación y revisor del turno en 390 px. La regresión de coordinación era sensible a medianoche: la prueba ahora respeta el inicio de disponibilidad; no se cambió el plazo operativo. Pendientes únicos en `docs/etapa4/PENDIENTES.md`.

@@ -1,10 +1,14 @@
+## Compuerta 37189452895 · correcciones de regresión
+
+1520 pruebas correctas, una omisión heredada y dos expectativas obsoletas: relevo compartido todavía esperaba contenido privado para su autor; polling esperaba updateMany en la ruta tras extraer el servicio canónico. Se actualizaron conservando las comprobaciones de aislamiento y evidencia persistida. Búsqueda reservada medida en 48/16 ms (antes 4–8 segundos), sin desactivar JIT ni ampliar tiempos. Se extendió el filtro OPERATIVO a indicadores e informes compartidos, con regresión dedicada. Nueva Compuerta requerida.
+
 ## Continuación 2026-10-04 · revisión de Etapa 4
 
 Production 1.53.0 verificada en 907ed8b. Compuerta main 37188694284 y Release 37189100571 correctas. Los bloques 2–5 siguen sin publicar.
 
-Correcciones en preparación: reserva canónica en listas/contadores, lectura compartida de relevos históricos, marcar únicamente avisos visibles, bloqueo de orígenes al asignar tareas, conservación del resultado hasta validación y resultado explícito firmado en Fronti. Housekeeping reabre por su transición nativa con permisos y auditoría idempotente; permite otra área tras terminar. El vínculo especializado de pilotos históricos aún requiere un mecanismo administrativo auditado: no se desvincula ni convierte silenciosamente.
+Correcciones en preparación: reserva canónica en listas/contadores, lectura compartida de relevos históricos, marcar únicamente avisos visibles, bloqueo de orígenes al asignar tareas, conservación del resultado hasta validación y resultado explícito firmado en Fronti. Housekeeping reabre por su transición nativa con permisos y auditoría idempotente; permite otra área tras terminar. Se implementó regularización exclusiva de Administración para vínculos piloto: confirmación y motivo, bloqueo del origen, copia de su contexto, auditoría anterior/posterior y evento con folio original. El piloto conserva isDemo, estado e historial. No se ejecutó esta reparación sobre producción.
 
-Tipos locales correctos; nuevas regresiones PostgreSQL pendientes de Compuerta. No se ha usado base de producción para pruebas. Revisar todos los hallazgos de PR262–265 antes de publicar. Pendientes adicionales: contexto de ubicación Fronti, navegación Avisos/HK, búsquedas y enlaces de Coordinación/Supervisión.
+Tipos locales correctos; nuevas regresiones PostgreSQL pendientes de Compuerta. No se ha usado base de producción para pruebas. Revisar todos los hallazgos de PR262–265 antes de publicar. Los bloques 3–5 también corrigen contexto de ubicación Fronti, navegación Avisos/HK, búsquedas y enlaces de Coordinación/Supervisión. Regresiones nuevas cubren regularización del piloto, reserva al marcar avisos, resultado firmado de Fronti y reapertura HK.
 
 ## 2026-10-04 · bloque 2 · búsqueda sin recorrer dos veces la reserva
 

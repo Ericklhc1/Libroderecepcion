@@ -9,3 +9,11 @@ export async function notificationWhereForUser(userId:string):Promise<Prisma.Not
   if(!user)return {userId,id:{in:[]}};
   return {userId,...notificationReadWhere({id:userId,permissions:user.role.permissions.length?['supervision.followup.manage']:[]})};
 }
+
+/** Only visible notices may be acknowledged, including bulk and direct-id requests. */
+export async function markReadableNotifications(userId:string, id?:string) {
+  return prisma.notification.updateMany({
+    where:{...await notificationWhereForUser(userId),readAt:null,...(id?{id}:{})},
+    data:{readAt:new Date()},
+  });
+}

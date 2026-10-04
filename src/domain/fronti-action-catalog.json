@@ -2805,5 +2805,27 @@
     "permission": "shift.manage",
     "risk": "high",
     "physical": true
+  },
+  {
+    "module": "subject-attention",
+    "name": "requestSubjectAttentionAction",
+    "label": "Solicitar atención del asunto",
+    "fields": [
+      "entryId",
+      "departmentId",
+      "requestKey",
+      "revision",
+      "assigneeId",
+      "location"
+    ],
+    "requiredFields": [
+      "entryId",
+      "departmentId",
+      "requestKey",
+      "revision"
+    ],
+    "permission": "",
+    "risk": "normal",
+    "physical": false
   }
 ]

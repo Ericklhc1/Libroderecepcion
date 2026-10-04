@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import {redirect} from 'next/navigation';
+import {prisma} from '@/lib/prisma';
+import {operationalLanding} from '@/domain/operational-entry';
 import {
   ArrowRight,
   CalendarClock,
@@ -29,6 +32,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const user = await requirePageUser();
+  const area=user.departmentId?await prisma.department.findUnique({where:{id:user.departmentId},select:{key:true}}):null;
+  const landing=operationalLanding(user,area?.key);
+  if(landing)redirect(landing);
   const data = await getDashboardData(user);
   const shift = data.myShift;
   const immediate = data.attention.filter((item) => item.tone === 'critico').length;
@@ -41,6 +47,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
+      <nav aria-label="Pendientes de Recepción" className="flex flex-wrap gap-2 text-sm">
+        <Link className="btn-primary" href="/coordinacion?mios=1">Lo que debo coordinar</Link>
+        <Link className="btn-secondary" href="/coordinacion?historial=1">Resultados recibidos</Link>
+        <details className="rounded-lg border border-slate-200 p-2"><summary className="cursor-pointer">Más ···</summary><div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/coordinacion?vista=unassigned">Sin responsable</Link><Link className="underline" href="/coordinacion?vista=carryover">Continuidad del turno anterior</Link></div></details>
+      </nav>
       {/* ------------------------------ Turno actual ------------------------------ */}
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">

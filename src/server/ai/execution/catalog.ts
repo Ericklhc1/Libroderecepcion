@@ -16,6 +16,7 @@ export const FRONTI_ACTIONS = z.array(z.object({
 
 type Handler = (state: ActionState | null, form: FormData) => Promise<ActionState>;
 const handlers: Record<string, () => Promise<Handler>> = {
+  requestSubjectAttentionAction: async () => (await import('@/server/actions/subject-attention')).requestSubjectAttentionAction,
   runHelpActionAction: async () => (await import('@/server/actions/help')).runHelpActionAction,
   finishTutorialAction: async () => (await import('@/server/actions/tutorial')).finishTutorialAction,
   finishModuleTutorialAction: async () => (await import('@/server/actions/tutorial')).finishModuleTutorialAction,

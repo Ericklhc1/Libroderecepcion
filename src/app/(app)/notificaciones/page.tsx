@@ -1,3 +1,4 @@
+import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
 import type { Prisma } from '@prisma/client';
@@ -15,7 +16,7 @@ import {
   OpenNotificationButton,
 } from './notification-actions';
 
-export const metadata = { title: 'Notificaciones' };
+export const metadata = { title: 'Avisos · Recibidos' };
 export const dynamic = 'force-dynamic';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -57,15 +58,16 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-petrol-900">
             <Bell className="h-5 w-5 text-petrol-600" aria-hidden="true" />
-            Notificaciones
+            Avisos · Recibidos
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Te avisan de algo que ocurrió. Al abrirlas se marcan como leídas y te llevan al objeto original; no tienen estado operativo propio.
+            Resultados y cambios que recibiste. Abre el aviso para continuar en el asunto original. Leer un aviso no resuelve el asunto.
           </p>
         </div>
         {unread.length > 0 ? <MarkAllReadForm /> : null}
       </header>
 
+      <NoticeNavigation permissions={user.permissions} current="received"/>
       <form method="get" className="flex flex-wrap gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-200">
         <label className="relative min-w-[15rem] flex-1">
           <span className="sr-only">Filtrar notificaciones</span>

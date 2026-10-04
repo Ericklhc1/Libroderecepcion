@@ -58,12 +58,14 @@ export function TaskStatusDialog({
   targetStatus,
   label = 'Más opciones',
   variant = 'secondary',
+  resultRequired = false,
 }: {
   taskId: string;
   currentStatus: TaskStatus;
   targetStatus?: TaskStatus;
   label?: string;
   variant?: 'secondary' | 'gold';
+  resultRequired?:boolean;
 }) {
   return (
     <Dialog
@@ -91,9 +93,9 @@ export function TaskStatusDialog({
         <Field label={targetStatus === TaskStatus.DEVUELTA ? 'Motivo de la devolución' : 'Comentario para la auditoría'} name="reason">
           <Input name="reason" required={targetStatus === TaskStatus.DEVUELTA}/>
         </Field>
-        {(!targetStatus || targetStatus === TaskStatus.REALIZADA) &&
-        <Field label="Evidencia aportada" name="evidenceProvided" hint="Obligatoria si la tarea exige evidencia y se marca como realizada.">
-          <Textarea name="evidenceProvided" rows={3} />
+        {(!targetStatus || targetStatus === TaskStatus.REALIZADA || resultRequired) &&
+        <Field label={resultRequired?'Qué se hizo / resultado':'Evidencia aportada'} name="evidenceProvided" hint={resultRequired?'Se verá en el mismo asunto de origen.':'Obligatoria si la tarea exige evidencia y se marca como realizada.'}>
+          <Textarea name="evidenceProvided" rows={3} required={resultRequired}/>
         </Field>}
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">{targetStatus ? label : 'Actualizar estado'}</SubmitButton>

@@ -69,7 +69,7 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     const e=await entry();const f=await prisma.followUp.create({data:{action:'PRIVADO_NO_MOSTRAR',ownerId:a.id,createdById:admin.id,entryId:e.id,visibility:'PRIVADO'}});
     await prisma.task.create({data:{title:'PRIVADO_TAREA',createdById:admin.id,assigneeId:a.id,followUpId:f.id,entryId:e.id}});
     await createTask(admin,{title:'Atención visible',entryId:e.id,assigneeId:a.id,priority:'MEDIA',tags:[],checklist:[]});
-    const board=await getCoordinationBoard(a);expect(board.rows).toHaveLength(1);expect(board.rows[0]!.children).toHaveLength(1);expect(board.total).toBe(1);expect(board.byArea.reduce((total,row)=>total+row.total,0)).toBe(1);expect(JSON.stringify(board)).not.toContain('PRIVADO');
+    const board=await getCoordinationBoard(a);expect(board.rows).toHaveLength(1);expect(board.rows[0]!.kind).toBe('task');expect(board.rows[0]!.source?.humanId).toBe(e.humanId);expect(board.rows[0]!.children).toHaveLength(1);expect(board.total).toBe(1);expect(board.byArea.reduce((total,row)=>total+row.total,0)).toBe(1);expect(JSON.stringify(board)).not.toContain('PRIVADO');
   });
   it('la carga por área incluye las páginas restantes sin duplicar fuentes',async()=>{
     await prisma.task.createMany({data:Array.from({length:27},(_,i)=>({title:`Carga sintética ${i}`,createdById:admin.id,assigneeId:a.id,departmentId:area}))});

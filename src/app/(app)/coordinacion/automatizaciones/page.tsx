@@ -9,6 +9,10 @@ import { saveAutomationAction, simulateAutomationAction, setAutomationStateActio
 import { procedureSchema, escalationSchema, substitutionSchema } from '@/domain/operational-automation';
 import { hotelDateKey } from '@/domain/time';
 import { formatDateTime } from '@/lib/format';
+import { SubstitutionForm } from '@/components/operational/substitution-form';
+import { hkHas, isHkFocused } from '@/domain/housekeeping-work';
+import type { PermissionKey } from '@/lib/permissions';
+import type { SubstitutionCandidate } from '@/domain/substitution-candidates';
 
 export const dynamic='force-dynamic';
 const css='input-base w-full';
@@ -23,7 +27,7 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
   const params=await searchParams;
   const [areas,people,policies,editing]=await Promise.all([
     prisma.department.findMany({where:{active:true},select:{id:true,name:true}}),
-    prisma.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true}},select:{id:true,name:true},orderBy:{name:'asc'}}),
+    prisma.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true}},select:{id:true,name:true,username:true,department:{select:{id:true,name:true}},role:{select:{name:true,key:true,permissions:{select:{permission:{select:{key:true}}}}}},scheduleCollaborator:{select:{active:true,memberships:{where:{active:true,department:{active:true}},select:{department:{select:{id:true,name:true}}}}}}},orderBy:{name:'asc'}}),
     prisma.operationalAutomation.findMany({where:{ownerId:user.id},orderBy:{createdAt:'desc'},take:50,include:{runs:{orderBy:{startedAt:'desc'},take:5}}}),
     params.editar ? prisma.operationalAutomation.findFirst({where:{id:params.editar,ownerId:user.id,revokedAt:null}}) : null,
   ]);
@@ -31,6 +35,15 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
   const procedure=editing?.kind==='PROCEDURE'?procedureSchema.parse(editing.configuration):null;
   const rule=editing?.kind==='ESCALATION'?escalationSchema.parse(editing.configuration):null;
   const substitution=editing?.kind==='SUBSTITUTION'?substitutionSchema.parse(editing.configuration):null;
+  const candidates: SubstitutionCandidate[] = people.map(person => {
+    const access = { roleKey: person.role.key, permissions: person.role.permissions.map(row => row.permission.key as PermissionKey) };
+    const membershipAreas = person.scheduleCollaborator?.active ? person.scheduleCollaborator.memberships.map(row => row.department) : [];
+    const departments = [...(person.department ? [person.department] : []), ...membershipAreas];
+    return { id: person.id, name: person.name, username: person.username, role: person.role.name,
+      areas: [...new Map(departments.filter(area => areas.some(active => active.id === area.id)).map(area => [area.id, area])).values()],
+      workKinds: [...(!isHkFocused(access) ? ['task' as const, 'entry' as const] : []), ...(hkHas(access, 'housekeeping.work') ? ['housekeeping' as const] : [])],
+    };
+  });
   const area=(selected?:string)=><label>Área<select aria-label="Área" name="departmentId" required defaultValue={selected} className={css}>{selected&&!areas.some(a=>a.id===selected)&&<option value={selected}>Área actual no disponible — selecciona un reemplazo para cambiarla</option>}{areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>;
   const person=(name:string,label:string,selected?:string)=><label>{label}<select aria-label={label} name={name} required defaultValue={selected} className={css}>{selected&&!people.some(p=>p.id===selected)&&<option value={selected}>Responsable actual no disponible — selecciona un reemplazo para cambiarlo</option>}{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
   const identity=(kind:string)=><><input type="hidden" name="kind" value={kind}/>{editing?.kind===kind&&<><input type="hidden" name="id" value={editing.id}/><input type="hidden" name="version" value={editing.version}/></>}</>;
@@ -78,7 +91,13 @@ export default async function AutomationsPage({searchParams}:{searchParams:Promi
         {field('receiptMinutes','Plazo de recepción, minutos',rule?.receiptMinutes??30,'number')}{expiry('ESCALATION')}<SubmitButton>Guardar versión en pausa</SubmitButton>
       </ActionForm>
     </details>
-    <details className="card p-4" open={!!substitution} key={'substitution-'+(substitution?editing?.version:'new')}><summary className="cursor-pointer font-semibold">{substitution?'Nueva versión de suplencia':'Nueva política de suplencias'}</summary><ActionForm action={saveAutomationAction} className="mt-4 grid gap-3 sm:grid-cols-2">{identity('SUBSTITUTION')}{field('name','Nombre',substitution?editing!.name:'')}{area(substitution?editing!.departmentId:undefined)}<label>Trabajo<select name="workKind" defaultValue={substitution?.kind??'task'} className={css}><option value="task">Tarea</option><option value="entry">Novedad</option><option value="housekeeping">Housekeeping</option></select></label><label>Condición<select name="trigger" defaultValue={substitution?.trigger??'UNASSIGNED'} className={css}><option value="UNASSIGNED">Sin responsable</option><option value="UNRECEIVED">Asignado sin recibir</option><option value="OVERDUE">Vencido</option><option value="BLOCKED">Bloqueado</option></select></label><label>Prioridad<select name="priority" defaultValue={substitution?.priority??''} className={css}><option value="">Cualquiera</option>{['BAJA','MEDIA','ALTA','CRITICA'].map(v=><option key={v}>{v}</option>)}</select></label><label>Modo<select name="mode" defaultValue={substitution?.mode??'PROPOSE'} className={css}><option value="PROPOSE">Proponer al coordinador</option><option value="APPLY">Aplicar reasignación autorizada</option></select></label>{field('candidateIds','Suplentes por ID, en orden, separados por comas',substitution?.candidateIds.join(',')??'')}<details><summary>Usuarios e identificadores</summary><ul className="text-xs">{people.map(person=><li key={person.id}>{person.name}: {person.id}</li>)}</ul></details><label>Horario<select name="requirePublishedSchedule" defaultValue={String(substitution?.requirePublishedSchedule??true)} className={css}><option value="true">Exigir planificación publicada vigente</option><option value="false">No exigir horario publicado</option></select></label>{field('receiptMinutes','Plazo de recepción, minutos',substitution?.receiptMinutes??30,'number')}{field('nextAction','Motivo y siguiente acción',substitution?.nextAction??'')}{expiry('SUBSTITUTION')}<p className="text-sm">Los suplentes deben conservar elegibilidad y pertenencia al área. La asignación no confirma recepción, presencia ni inspección. Un error pausa la política; no crea otra incidencia.</p><SubmitButton>Guardar versión en pausa</SubmitButton></ActionForm></details>
+    <details className="card p-4" open={!!substitution} key={'substitution-'+(substitution?editing?.version:'new')}>
+      <summary className="cursor-pointer font-semibold">{substitution?'Nueva versión de suplencia':'Nueva política de suplencias'}</summary>
+      <SubstitutionForm areas={areas} people={candidates} existing={substitution && editing ? {
+        id: editing.id, version: editing.version, name: editing.name, departmentId: editing.departmentId,
+        expiresAt: hotelDateKey(editing.expiresAt), configuration: substitution,
+      } : undefined} />
+    </details>
     <DisclosureCard title="Tus últimas 50 políticas" description="Historial reciente de reglas, simulaciones y estado actual." count={policies.length} contentClassName="space-y-3 p-4">{policies.map(p=><article className="rounded-lg border border-slate-200 space-y-2 p-4" key={p.id}>
       <h3 className="font-semibold">{p.name} · versión {p.version}</h3><p>{p.revokedAt?'Revocada':p.expiresAt<=new Date()?'Caducada':p.enabled?'Activa':'En pausa'} · hasta {formatDateTime(p.expiresAt)}</p>
       <p className="text-sm">{explain(p)}</p><p className="text-xs text-slate-600">Pausar o revocar detiene efectos nuevos y conserva el trabajo generado. Un error de autorización, destino o ejecución pausa la política para revisión.</p><div className="flex flex-wrap gap-2"><ActionForm action={simulateAutomationAction}><input type="hidden" name="id" value={p.id}/><SubmitButton size="sm">Simular</SubmitButton></ActionForm>{!p.revokedAt&&<><a className="underline" href={`/coordinacion/automatizaciones?editar=${p.id}`}>Preparar nueva versión</a><ActionForm action={setAutomationStateAction}><input type="hidden" name="id" value={p.id}/><input type="hidden" name="version" value={p.version}/><select name="state" className="input-base"><option value="pause">Pausar</option><option value="enable">Habilitar política</option><option value="revoke">Revocar</option></select><SubmitButton size="sm">Guardar estado</SubmitButton></ActionForm></>}</div>

@@ -1,5 +1,6 @@
 'use client';
 import type { ActionState } from '@/server/action';
+import { detailHrefWithReturnContext } from '@/lib/list-navigation';
 
 async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change'|'handover-missing'|'handover-missing-approve'|'subject-attention', form: FormData): Promise<ActionState> {
   try {
@@ -12,6 +13,12 @@ async function submit(procedure: 'coordination'|'task-status'|'automation-save'|
     if (typeof result.navigateTo!=='string') throw new Error('Missing destination');
     const destination=new URL(result.navigateTo,window.location.origin);
     if(destination.origin!==window.location.origin)throw new Error('Invalid destination');
+    if (procedure === 'subject-attention' && destination.pathname === window.location.pathname) {
+      const current = new URL(window.location.href);
+      const context = current.searchParams.getAll('desdeLista');
+      const contextual = detailHrefWithReturnContext(destination.pathname + destination.search + destination.hash, context.length === 1 ? context[0] : undefined);
+      destination.search = new URL(contextual, window.location.origin).search;
+    }
     // A document navigation does not depend on the stalled RSC action transition.
     window.location.assign(destination.href);
     return result;

@@ -91,7 +91,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
 
   return (
-    <div className="min-h-screen bg-[#f3f6f8]">
+    <div className="min-h-screen bg-[var(--aroh-canvas)]">
+      <a href="#contenido-principal" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-petrol-900">Ir al contenido principal</a>
       <UxJourney/>
       <div className="flex min-h-screen min-w-0">
         <AppSidebar groups={groups} badges={badges} hotelName={hotelName} version={packageJson.version} userId={user.id} />
@@ -153,7 +154,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </header>
 
-          <main className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
+          <main id="contenido-principal" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
             {children}
           </main>
 

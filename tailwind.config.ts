@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import { appearanceUtilities } from './src/lib/appearance-tailwind';
 
 /**
  * Paleta del producto: azul noche como base, blanco/gris frío para superficies
@@ -13,13 +14,13 @@ const config: Config = {
   theme: {
     borderRadius: {
       none: '0px',
-      sm: '2px',
-      DEFAULT: '3px',
-      md: '4px',
-      lg: '5px',
-      xl: '6px',
-      '2xl': '8px',
-      '3xl': '10px',
+      sm: '3px',
+      DEFAULT: '4px',
+      md: '6px',
+      lg: '8px',
+      xl: '10px',
+      '2xl': '12px',
+      '3xl': '16px',
       full: '9999px',
     },
     extend: {
@@ -70,7 +71,7 @@ const config: Config = {
         ],
       },
       boxShadow: {
-        card: '0 1px 1px rgba(9, 24, 32, 0.04), 0 4px 14px rgba(9, 24, 32, 0.035)',
+        card: 'var(--aroh-shadow-card)',
       },
       keyframes: {
         'fade-in': {
@@ -81,7 +82,7 @@ const config: Config = {
       animation: { 'fade-in': 'fade-in 150ms ease-out' },
     },
   },
-  plugins: [],
+  plugins: [appearanceUtilities],
 };
 
 export default config;

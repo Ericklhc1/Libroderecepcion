@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # Temporary, isolated verification: no PR, no deploy, no persistent CI storage.
+      - codex/aroh-fns-20261005
   pull_request:
     branches:
       - main
@@ -66,7 +68,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && 'npm' || '' }}
 
       - name: Validar infraestructura oficial
         run: |
@@ -137,7 +139,7 @@ jobs:
         env:
           NODE_ENV: production
         run: |
-          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" npm run start -- --hostname localhost > /tmp/etapa1-server.log 2>&1 &
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/etapa1-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
@@ -181,8 +183,41 @@ jobs:
           fi
           exit "$journey_status"
 
+      - name: Apariencia y continuidad de listas y suplencias
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/appearance-context-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          journey_status=0
+          for script in appearance-browser list-context-browser substitution-candidates-browser; do
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+            fi
+          done
+          exit "$journey_status"
+
+      - name: Evidencia temporal en logs sin almacenamiento adicional
+        if: ${{ always() && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
+        run: |
+          echo "Candidate commit: $GITHUB_SHA"
+          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json; do
+            if [ -f "$file" ]; then
+              printf '\n=== %s ===\n' "$file"
+              cat "$file"
+            fi
+          done
+
       - name: Evidencia de recorridos sin credenciales
-        if: always()
+        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' }}
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}
@@ -199,5 +234,8 @@ jobs:
             etapa4-intent-browser-results.json
             etapa4-surfaces-browser-results.json
             etapa3-typecheck.log
+            appearance-browser-results.json
+            /tmp/list-context-browser-results.json
+            substitution-candidates-browser-results.json
           if-no-files-found: warn
           retention-days: 7

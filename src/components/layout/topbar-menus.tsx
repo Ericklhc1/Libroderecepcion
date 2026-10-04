@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { logoutAction } from '@/server/actions/auth';
 import { cn } from '@/lib/cn';
+import { AppearancePreference } from '@/components/appearance/appearance-preference';
 
 function useCloseOnOutside(
   open: boolean,
@@ -27,7 +28,10 @@ function useCloseOnOutside(
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      }
     };
 
     document.addEventListener('pointerdown', onPointerDown);
@@ -116,7 +120,7 @@ export function AccountMenu({
         onClick={() => setOpen((value) => !value)}
         className={triggerClass}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-controls="account-options"
       >
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-petrol-100 text-[0.65rem] font-semibold text-petrol-800">
           {initialsText}
@@ -127,7 +131,8 @@ export function AccountMenu({
 
       {open ? (
         <div
-          role="menu"
+          id="account-options"
+          aria-label="Opciones de la cuenta"
           className="absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
         >
           <div className="border-b border-slate-100 px-3 py-3">
@@ -151,6 +156,9 @@ export function AccountMenu({
               <Bell className="h-4 w-4 text-petrol-600" aria-hidden="true" />
               Mis notificaciones
             </Link>
+          </div>
+          <div className="border-t border-slate-100 px-3 py-3">
+            <AppearancePreference />
           </div>
           <form action={logoutAction} className="border-t border-slate-100 p-2">
             <button

@@ -6,6 +6,8 @@ import { getFormOptions } from '@/server/services/options';
 import { getShiftOptions } from '@/server/services/shift-options';
 import { Card, CardScroll, EmptyState } from '@/components/ui/card';
 import { BookList } from '@/components/operational/book-row';
+import { ListNavigation } from '@/components/operational/list-navigation';
+import { operationalListHref } from '@/lib/list-navigation';
 import { Filters } from '@/components/operational/filters';
 import { ViewTabs } from '@/components/layout/view-tabs';
 import { QuickActions } from '@/components/layout/quick-actions';
@@ -153,66 +155,68 @@ export default async function BookPage({
         options={{ departments: options.departments, users: options.users, shifts }}
       />
 
-      <Card>
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
-          <p className="text-xs text-slate-500">
-            Página {result.page} · {result.items.length} registro(s) en esta página
-          </p>
-          {user.permissions.includes('entry.restore') ? (
-            <Link
-              href={
-                filters.includeDeleted
-                  ? pageHref('/libro', { ...params, eliminados: undefined }, 1)
-                  : pageHref('/libro', { ...params, eliminados: '1' }, 1)
-              }
-              className="text-xs font-medium text-petrol-600 hover:underline"
+      <ListNavigation href={operationalListHref('/libro', params)} scope={user.id}>
+        <Card>
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
+            <p className="text-xs text-slate-500">
+              Página {result.page} · {result.items.length} registro(s) en esta página
+            </p>
+            {user.permissions.includes('entry.restore') ? (
+              <Link
+                href={
+                  filters.includeDeleted
+                    ? pageHref('/libro', { ...params, eliminados: undefined }, 1)
+                    : pageHref('/libro', { ...params, eliminados: '1' }, 1)
+                }
+                className="text-xs font-medium text-petrol-600 hover:underline"
+              >
+                {filters.includeDeleted ? 'Ocultar eliminados' : 'Incluir eliminados'}
+              </Link>
+            ) : null}
+          </div>
+
+          {result.items.length === 0 ? (
+            <EmptyState
+              message="No hay registros que coincidan con los filtros."
+              hint="Prueba con menos filtros o registra una nueva novedad desde la cabecera de este módulo."
+            />
+          ) : (
+            <CardScroll>
+              <BookList items={result.items} />
+            </CardScroll>
+          )}
+
+          {result.page > 1 || result.hasMore ? (
+            <nav
+              className="flex items-center justify-between border-t border-slate-200 px-4 py-3"
+              aria-label="Paginación"
             >
-              {filters.includeDeleted ? 'Ocultar eliminados' : 'Incluir eliminados'}
-            </Link>
+              {result.page > 1 ? (
+                <Link
+                  href={pageHref('/libro', params, result.page - 1)}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Anterior
+                </Link>
+              ) : (
+                <span />
+              )}
+              {result.hasMore ? (
+                <Link
+                  href={pageHref('/libro', params, result.page + 1)}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              ) : (
+                <span />
+              )}
+            </nav>
           ) : null}
-        </div>
-
-        {result.items.length === 0 ? (
-          <EmptyState
-            message="No hay registros que coincidan con los filtros."
-            hint="Prueba con menos filtros o registra una nueva novedad desde la cabecera de este módulo."
-          />
-        ) : (
-          <CardScroll>
-            <BookList items={result.items} />
-          </CardScroll>
-        )}
-
-        {result.page > 1 || result.hasMore ? (
-          <nav
-            className="flex items-center justify-between border-t border-slate-200 px-4 py-3"
-            aria-label="Paginación"
-          >
-            {result.page > 1 ? (
-              <Link
-                href={pageHref('/libro', params, result.page - 1)}
-                className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                Anterior
-              </Link>
-            ) : (
-              <span />
-            )}
-            {result.hasMore ? (
-              <Link
-                href={pageHref('/libro', params, result.page + 1)}
-                className="inline-flex items-center gap-1 text-sm font-medium text-petrol-700 hover:underline"
-              >
-                Siguiente
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            ) : (
-              <span />
-            )}
-          </nav>
-        ) : null}
-      </Card>
+        </Card>
+      </ListNavigation>
     </div>
   );
 }

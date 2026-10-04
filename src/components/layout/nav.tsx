@@ -27,6 +27,7 @@ import { cn } from '@/lib/cn';
 import { logoutAction } from '@/server/actions/auth';
 import { lockBodyScroll } from '@/lib/body-scroll-lock';
 import { GroupedNav } from './app-sidebar';
+import { AppearancePreference } from '@/components/appearance/appearance-preference';
 import type { NavGroup, NavItem } from './nav-items';
 
 const ICONS = {
@@ -361,7 +362,7 @@ export function MobileNav({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { setOpenMore(false); moreTriggerRef.current?.focus(); }
       if (event.key === 'Tab') {
-        const controls = morePanelRef.current?.querySelectorAll<HTMLElement>('a[href], button, [tabindex="0"]');
+        const controls = morePanelRef.current?.querySelectorAll<HTMLElement>('a[href], button, input:checked, [tabindex="0"]');
         const first = controls?.[0]; const last = controls?.[controls.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -417,6 +418,9 @@ export function MobileNav({
                 <UserRound className="h-5 w-5 shrink-0 text-petrol-600" aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">Mi perfil</span>
               </Link>
+              <div className="px-3 py-3">
+                <AppearancePreference />
+              </div>
               <form action={logoutAction}>
                 <button
                   type="submit"

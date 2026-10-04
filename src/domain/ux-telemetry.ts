@@ -18,7 +18,7 @@ export function uxRoute(path:string):Pick<UxEvent,'route'|'entityType'|'entityId
 
 export function uxAction(label:string):UxEvent['selectedAction'] {
   const known:Record<string,NonNullable<UxEvent['selectedAction']>>={
-    'Asignar':'ASSIGN','Reasignar':'ASSIGN','Confirmar recepción':'RECEIVE','Comenzar atención':'START','Finalizar':'FINISH','Resolver':'FINISH','Informar impedimento':'BLOCK','Resolver impedimento':'BLOCK','Validar':'VALIDATE','Devolver':'RETURN','Ver resultado':'RESULT','Continuar atención':'START','Recordarme':'REMIND','Recordarme después':'REMIND','Más ···':'MORE','Informar algo':'INFORM','Necesito atención / derivar':'REQUEST_ATTENTION','Registro avanzado':'ADVANCED',
+    'Asignar':'ASSIGN','Reasignar':'ASSIGN','Confirmar recepción':'RECEIVE','Comenzar atención':'START','Finalizar':'FINISH','Resolver':'FINISH','Informar impedimento':'BLOCK','Resolver impedimento':'BLOCK','Validar':'VALIDATE','Devolver':'RETURN','Ver resultado':'RESULT','Continuar atención':'START','Recordarme':'REMIND','Recordarme después':'REMIND','Más ···':'MORE','Informar algo':'INFORM','Necesito atención / derivar':'REQUEST_ATTENTION','Registro avanzado':'ADVANCED','Solicitar otra atención':'REQUEST_ATTENTION','Solicitar atención':'REQUEST_ATTENTION',
   };
   return known[label.trim()]??'OTHER';
 }

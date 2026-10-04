@@ -7,7 +7,7 @@ import { EntryStatus, EntryType, FollowUpStatus, OperationalAlarmStatus } from '
 import { ArrowLeft, CalendarClock, Trash2 } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
-import { getEntry } from '@/server/services/entries';
+import { getSubjectEntry } from '@/server/services/entries';
 import { getHistory } from '@/server/services/history';
 import { getFormOptions } from '@/server/services/options';
 import { Badge, Chip } from '@/components/ui/badge';
@@ -67,7 +67,7 @@ export default async function EntryDetailPage({
   const user = await requirePageUser();
   const { id } = await params;
 
-  const entry = await getEntry(id).catch(() => null);
+  const entry = await getSubjectEntry(user,id).catch(() => null);
   if (!entry) notFound();
 
   const [followUps, tasks, linkedAlerts, alertCandidates, history, options] = await Promise.all([
@@ -301,7 +301,7 @@ export default async function EntryDetailPage({
                   options={options}
                   entryId={entry.id}
                   defaults={{title:entry.title,description:entry.description,departmentId:entry.departmentId,priority:entry.priority,dueAt:toDateTimeInput(entry.dueAt)}}
-                  defaultAssigneeId={entry.ownerId ?? undefined}
+                  defaultAssigneeId={entry.ownerId ?? user.id}
                   defaultRoomId={entry.roomId ?? undefined}
                 />
               </Dialog>

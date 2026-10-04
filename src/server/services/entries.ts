@@ -265,6 +265,12 @@ export async function getEntry(id: string): Promise<EntryWithRelations> {
   return entry;
 }
 
+/** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
+export async function getSubjectEntry(user: Pick<CurrentUser, 'isSystemAdmin'>, id: string): Promise<EntryWithRelations> {
+  const entry = await getEntry(id);
+  return { ...entry, housekeepingRequest: entry.housekeepingRequest?.isDemo && !user.isSystemAdmin ? null : entry.housekeepingRequest };
+}
+
 export async function updateEntry(
   user: CurrentUser,
   input: { id: string } & Partial<EntryCreateInput> & {

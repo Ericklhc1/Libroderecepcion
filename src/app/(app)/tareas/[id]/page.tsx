@@ -82,7 +82,7 @@ export default async function TaskDetailPage({
   const overdue = isOverdue(task.dueAt, open);
   const doneItems = task.checklist.filter((item) => item.done).length;
   const canChange = user.permissions.includes('task.edit') || task.assigneeId === user.id || task.createdById === user.id;
-  const canValidate = canChange && user.permissions.includes('supervision.task.validate') && (!task.requiresIndependentValidation || (!!task.completedById && task.completedById !== user.id));
+  const canValidate = user.permissions.includes('supervision.task.validate') && (!task.requiresIndependentValidation || (!!task.completedById && task.completedById !== user.id));
   const assign = user.permissions.includes('task.assign') ? <AssignTaskDialog taskId={task.id} currentAssigneeId={task.assigneeId} users={options.users}/> : null;
   const statusAction = (status: TaskStatus, label: string) => <QuickStatusForm taskId={task.id} status={status} label={label} variant="gold"/>;
   const finish = canChange ? (task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
@@ -90,16 +90,16 @@ export default async function TaskDetailPage({
     : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
   const primaryAction = !open ? <a href="#historial-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado</a>
     : scheduled ? <p className="text-sm text-slate-600">Disponible desde {formatDateTime(task.startsAt!)}</p>
-    : !task.assigneeId ? assign
+    : !task.assigneeId && task.status !== TaskStatus.REALIZADA ? (assign ?? (canChange ? task.status === TaskStatus.PENDIENTE ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : task.status === TaskStatus.BLOQUEADA ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : finish : null))
     : task.status === TaskStatus.REALIZADA ? (canValidate ? statusAction(TaskStatus.VALIDADA,'Validar') : <p className="text-sm text-slate-600">Pendiente de revisión autorizada</p>)
     : task.status === TaskStatus.BLOQUEADA ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : null)
     : task.status === TaskStatus.PENDIENTE ? (canChange ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : null)
     : task.status === TaskStatus.ACEPTADA && !task.evidenceRequired && !task.requiresIndependentValidation && user.permissions.includes('task.close') ? finish
     : ['ACEPTADA','DEVUELTA'].includes(task.status) ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : null)
     : finish;
-  const secondaryAction = !scheduled && canChange && open ? (task.status === TaskStatus.REALIZADA
+  const secondaryAction = !scheduled && (canChange || canValidate) && open ? (task.status === TaskStatus.REALIZADA
     ? (canValidate ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.DEVUELTA} label="Devolver"/> : null)
-    : ['ACEPTADA','EN_CURSO','DEVUELTA'].includes(task.status)
+    : canChange && ['ACEPTADA','EN_CURSO','DEVUELTA'].includes(task.status)
       ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.BLOQUEADA} label="Informar impedimento"/>
       : null) : null;
   const myDueLinkedAlerts = linkedAlerts

@@ -8,6 +8,8 @@ describe('AROH Simple · telemetría sin contenido operativo',()=>{
     expect(uxRoute('/libro/cmun4uuj60001i6042xth57hy')).toEqual({route:'asunto',entityType:'OperationalEntry',entityId:'cmun4uuj60001i6042xth57hy'});
     expect(uxRoute('/admin/seguridad')).toBeNull();expect(uxRoute('/libro?q=nombre-privado')).toBeNull();
     expect(uxAction('Texto de una descripción privada')).toBe('OTHER');
+    expect(uxAction('Solicitar otra atención')).toBe('REQUEST_ATTENTION');
+    expect(uxAction('Solicitar atención')).toBe('REQUEST_ATTENTION');
   });
   it('rechaza contenido de formularios, identidad proporcionada por cliente y duración inválida',()=>{
     const base={intentId:'e6d10c20-250a-4e85-8bad-ae1a080fb2a7',event:'ROUTE',route:'asunto'};

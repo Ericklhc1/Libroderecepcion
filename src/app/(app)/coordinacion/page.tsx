@@ -16,13 +16,13 @@ export default async function CoordinationPage({searchParams}:{searchParams:Prom
   const user=await requirePageUser({allowAreaOperation:true});const p=await searchParams;
   const area=user.departmentId?await prisma.department.findUnique({where:{id:user.departmentId},select:{key:true}}):null;
   const maintenance=area?.key==='MANTENIMIENTO';
-  const departmentId=p.area??(maintenance?user.departmentId??undefined:undefined);
+  const departmentId=p.area?.trim()||(maintenance?user.departmentId??undefined:undefined);
   const allowedViews:CoordinationView[]=['all','reception','unassigned','unreceived','blocked','clarification','carryover'];
   const view=allowedViews.includes(p.vista as CoordinationView)?p.vista as CoordinationView:maintenance?'unreceived':'all';
   const state=['abierto','atencion','bloqueado','revision','resuelto'].includes(p.estado??'')?p.estado as CoordinationState:undefined;
   const history=state?state==='resuelto':p.historial==='1';
   const board=await getCoordinationBoard(user,{departmentId,mine:p.mios==='1',page:Number(p.pagina)||1,history,view,q:p.q,ownerId:p.responsable,state,date:p.fecha});
-  const areaIds=[...new Set([...board.rows.map(r=>r.departmentId),departmentId].filter((id):id is string=>!!id))];
+  const areaIds=departmentId?[departmentId]:board.departments.map(area=>area.id);
   const teams=await Promise.all(areaIds.map(async id=>[id,await getCoordinationTeam(user,id)] as const));
   const teamByArea=new Map(teams);const team=departmentId?teamByArea.get(departmentId)??[]:[];const people=[...new Map(teams.flatMap(([,team])=>team).map(person=>[person.id,person])).values()];
   const metrics=coordinationMetrics(board.rows);

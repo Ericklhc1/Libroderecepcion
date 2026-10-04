@@ -1,3 +1,7 @@
+## Revisión 39d35f8 · resultado del asunto y diagnóstico UI
+
+Se limita el retorno vigente a tareas de atención canónica; una tarea ordinaria más reciente no reemplaza ni oculta ese resultado. Los pilotos HK no son atención activa ni resultado operativo, incluso para Administración. La Compuerta 37189799724 aprobó 1535 pruebas + una omisión y build; navegador encontró selector de primaria antiguo, lecturas de respuesta tras navegación y transición HK sin confirmación visible. Los dos primeros se corrigieron; HK registra revisión del formulario/DB y estado visible ante fallo para determinar la causa sin ampliar tiempos ni simular acciones.
+
 ## Compuerta 37189452895 · correcciones de regresión
 
 1520 pruebas correctas, una omisión heredada y dos expectativas obsoletas: relevo compartido todavía esperaba contenido privado para su autor; polling esperaba updateMany en la ruta tras extraer el servicio canónico. Se actualizaron conservando las comprobaciones de aislamiento y evidencia persistida. Búsqueda reservada medida en 48/16 ms (antes 4–8 segundos), sin desactivar JIT ni ampliar tiempos. Se extendió el filtro OPERATIVO a indicadores e informes compartidos, con regresión dedicada. Nueva Compuerta requerida.

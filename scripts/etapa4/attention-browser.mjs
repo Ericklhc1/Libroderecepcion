@@ -63,8 +63,13 @@ try{
         const maidCard=maid.page.locator(`#aviso-${work.humanId}`);
         await maidCard.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
         await maidCard.getByText('Recibido',{exact:true}).waitFor();
-        await maidCard.getByRole('button',{name:'Comenzar',exact:true}).click();
-        await maidCard.getByText('En proceso',{exact:true}).waitFor();
+        const startButton=maidCard.getByRole('button',{name:'Comenzar',exact:true});
+        const beforeStart=await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true,sourceVersion:true}});
+        const startVersion=await startButton.locator('xpath=ancestor::form').locator('input[name=version]').inputValue();
+        assert.equal(Number(startVersion),beforeStart.version,'El formulario de la siguiente acción usa la revisión recibida');
+        await startButton.click();
+        try { await maidCard.getByText('En proceso',{exact:true}).waitFor(); }
+        catch(error){console.error('HK start diagnostic',JSON.stringify({before:beforeStart,formVersion:startVersion,after:await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true,sourceVersion:true}}),visible:await maidCard.innerText(),forms:await maidCard.locator('form').evaluateAll(forms=>forms.map(form=>Object.fromEntries(new FormData(form))))}));throw error;}
         await maidCard.getByRole('button',{name:'Marcar terminado',exact:true}).click();
         const resultDialog=maid.page.getByRole('dialog');
         await resultDialog.locator('textarea[name=note]').fill('Necesidad atendida y comprobada');

@@ -1,3 +1,4 @@
+import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import 'server-only';
 import {createHash} from 'node:crypto';
 import {prisma} from '@/lib/prisma';
@@ -68,6 +69,13 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     if(existingTask){
       if(!await tx.task.count({where:{id:existingTask.id,AND:[coordinationTasks(user)]}}))throw new RuleError('Este asunto ya tiene atención. Consulta el resultado en el origen.');
       if(existingTask.departmentId!==input.departmentId)throw new RuleError('El asunto ya tiene trabajo de otra área. Abre ese trabajo y deriva desde su contexto para conservar la continuidad.');
+      if(!isSubjectAttentionTask(existingTask.procedureOccurrenceKey)){
+        if(existingTask.procedureOccurrenceKey)throw new RuleError('Este trabajo pertenece a un procedimiento programado. Continúa ese procedimiento antes de solicitar otra atención.');
+        if(!user.permissions.includes('task.edit')&&existingTask.createdById!==user.id)throw new ForbiddenError('Se requiere permiso para incorporar el trabajo existente a esta atención.');
+        if(source.updatedAt.toISOString()!==input.revision||['RESUELTO','CERRADO'].includes(source.status))throw new RuleError('El asunto cambió. Actualiza antes de solicitar atención.');
+        await tx.task.update({where:{id:existingTask.id,updatedAt:existingTask.updatedAt},data:{procedureOccurrenceKey:occurrenceKey}});
+        await tx.auditLog.create({data:{entity:'Task',entityId:existingTask.id,userId:user.id,sessionId:user.sessionId,action:'EDITAR',summary:`Trabajo #${existingTask.humanId} incorporado a la atención del asunto #${source.humanId}`,before:{procedureOccurrenceKey:null},after:{procedureOccurrenceKey:occurrenceKey},reason:'Solicitud explícita de atención; conserva el trabajo y exige devolver su resultado.'}});
+      }
       return {kind:'task' as const,id:existingTask.id,href:`/tareas/${existingTask.id}`,existing:true};
     }
     if(source.updatedAt.toISOString()!==input.revision)throw new RuleError('El asunto cambió. Actualiza antes de solicitar atención.');

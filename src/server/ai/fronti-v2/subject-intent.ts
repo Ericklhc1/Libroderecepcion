@@ -57,9 +57,10 @@ export async function prepareSubjectIntent(user:CurrentUser,messages:readonly Fr
     if(!location)return {reply:`¿En qué ubicación necesita atención el asunto #${entry.humanId}?`,confirmations:[]};
     if(location.length>160)return {reply:'Indica una ubicación de hasta 160 caracteres.',confirmations:[]};
   }
-  const hex=createHash('sha256').update(JSON.stringify({actor:user.id,entry:entry.id,area:area.value,revision:entry.updatedAt.toISOString(),location:location??null})).digest('hex');
+  const intentRequestKey=requestKey??randomUUID();
+  const hex=createHash('sha256').update(JSON.stringify({requestKey:intentRequestKey,actor:user.id,entry:entry.id,area:area.value,revision:entry.updatedAt.toISOString(),location:location??null})).digest('hex');
   const operationKey=`${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
-  const execution=await prepareExecution({requestKey:requestKey??randomUUID(),instruction:intent.slice(-6000),steps:[{action:'requestSubjectAttentionAction',fields:{entryId:entry.id,departmentId:area.value,revision:entry.updatedAt.toISOString(),requestKey:operationKey,...(location?{location}:{})}}]});
+  const execution=await prepareExecution({requestKey:intentRequestKey,instruction:intent.slice(-6000),steps:[{action:'requestSubjectAttentionAction',fields:{entryId:entry.id,departmentId:area.value,revision:entry.updatedAt.toISOString(),requestKey:operationKey,...(location?{location}:{})}}]});
   if(execution.status==='SUCCEEDED')return {reply:`La solicitud del asunto #${entry.humanId} ya está registrada. [Ver su avance y resultado](/libro/${encodeURIComponent(entry.id)}).`,confirmations:[]};
   return {reply:`Preparé la atención del asunto #${entry.humanId} por ${area.label}. Confirma la solicitud en la tarjeta; el contexto se conserva y el resultado vuelve a este asunto. Los avisos del procedimiento existente te informarán de sus cambios.`,confirmations:[await executionCard(execution.id)]};
 }

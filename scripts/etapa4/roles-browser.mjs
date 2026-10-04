@@ -34,7 +34,7 @@ try{
     await assign.locator('textarea[name=nextAction]').fill('Conseguir repuesto y devolver resultado al asunto');
     const assignedResponse=admin.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await assign.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
-    const assignedResult=await assignedResponse;assert.equal(assignedResult.status(),200,JSON.stringify(await assignedResult.json()));
+    const assignedResult=await assignedResponse;assert.equal(assignedResult.status(),200,assignedResult.status()===200?'':await assignedResult.text());
     await article.locator('p').filter({hasText:'Siguiente acción: Conseguir repuesto y devolver resultado al asunto'}).waitFor();
     assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId,f.users.worker.id);
     await worker.goto('http://localhost:3000/');
@@ -46,7 +46,7 @@ try{
     await receive.locator('textarea[name=nextAction]').fill('Recibido; gestionar repuesto y atender');
     const receivedResponse=worker.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
-    const receivedResult=await receivedResponse;assert.equal(receivedResult.status(),200,JSON.stringify(await receivedResult.json()));
+    const receivedResult=await receivedResponse;assert.equal(receivedResult.status(),200,receivedResult.status()===200?'':await receivedResult.text());
     await incoming.waitFor({state:'hidden'});
     await worker.getByRole('link',{name:'Mi trabajo',exact:true}).click();
     await worker.locator('article').filter({hasText:source.title}).locator('p').filter({hasText:'Recibido:'}).waitFor();

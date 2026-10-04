@@ -28,12 +28,16 @@ describe('AROH Simple · trabajo relevante por rol y excepción',()=>{
     const room=await prisma.room.findUniqueOrThrow({where:{number:'512'}});
     const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Revisar climatización',description:'Contexto de 512',createdById:admin.id,roomId:room.id}});
     const due=new Date(Date.now()+3600000);
-    const task=await prisma.task.create({data:{title:source.title,createdById:admin.id,entryId:source.id,roomId:room.id,departmentId:area.id,assigneeId:worker.id,status:'BLOQUEADA',blockedReason:'Falta repuesto',dueAt:due}});
+    const task=await prisma.task.create({data:{title:"Reponer pieza",createdById:admin.id,entryId:source.id,roomId:room.id,departmentId:area.id,assigneeId:worker.id,status:'BLOQUEADA',blockedReason:'Falta repuesto',dueAt:due}});
     const result=await getCoordinationBoard(admin,{q:'512',departmentId:area.id,state:'bloqueado',ownerId:worker.id,date:hotelDateKey(due)});
     expect(result.rows.map(r=>r.id)).toEqual([task.id]);expect(result.total).toBe(1);
     expect(result.rows[0]?.source).toEqual({humanId:source.humanId,href:`/libro/${source.id}`});
     expect((await getCoordinationBoard(admin,{view:'unassigned'})).rows.some(r=>r.id===source.id)).toBe(false);
     expect((await getCoordinationBoard(admin,{q:'Sin coincidencia'})).total).toBe(0);
+    const assignedOnly={...worker,permissions:[]};
+    const searched=await getCoordinationBoard(assignedOnly,{q:source.title});
+    expect(searched.rows.map(row=>row.id)).toEqual([task.id]);
+    expect(searched.rows[0]?.source).toEqual({humanId:source.humanId,href:`/libro/${source.id}`});
   });
   it('la excepción y los conteos no revelan trabajo privado aunque el tercero conserve su asignación',async()=>{
     const reader=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

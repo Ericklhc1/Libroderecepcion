@@ -1,3 +1,4 @@
+import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { UxJourney } from '@/components/observability/ux-journey';
 import packageJson from '../../../package.json';
@@ -64,7 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countMyActiveOperationalAlarms(user.id),
     getNotificationFeedForUser(user.id),
     prisma.task.count({
-      where: { deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND: [taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
     }),
     getBlockingAnnouncements(user.id),
     prisma.user.findUnique({

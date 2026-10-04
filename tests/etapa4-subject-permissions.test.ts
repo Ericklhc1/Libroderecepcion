@@ -45,7 +45,10 @@ async function privateWorkFixture(){
 }
 async function measuredRead<T>(surface:string,operation:()=>Promise<T>){
   const start=performance.now();
-  try{return await operation();}finally{console.info('E4_PRIVATE_READ',surface,Math.round(performance.now()-start));}
+  try{return await operation();}finally{
+    const elapsed=Math.round(performance.now()-start);console.info('E4_PRIVATE_READ',surface,elapsed);
+    if(surface==='buscar-aviso')expect(elapsed,'Búsqueda de fixture reservada sin recorrer dos veces sus orígenes').toBeLessThan(2000);
+  }
 }
 
 describe('AROH Simple · reserva y revisión independiente',()=>{

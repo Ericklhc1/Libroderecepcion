@@ -3,7 +3,7 @@ import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS} from './helpers';
 import {requestSubjectAttention} from '@/server/services/subject-attention';
 import {createEntry,getEntry} from '@/server/services/entries';
-import {changeTaskStatus} from '@/server/services/tasks';
+import {changeTaskStatus,updateTask} from '@/server/services/tasks';
 import {changeHkWork} from '@/server/services/housekeeping-work';
 vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.fn()}));
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
@@ -33,6 +33,15 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     expect((await requestSubjectAttention(f.actor,{...f.input,assigneeId:f.actor.id})).id).toBe(task.id);
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(1);
   });
+  it('conserva el resultado realizado y exige evidencia al validar datos históricos',async()=>{
+    const f=await fixture();const result=await requestSubjectAttention(f.actor,{...f.input,assigneeId:f.actor.id});
+    await changeTaskStatus(f.actor,{id:result.id,status:'ACEPTADA'});
+    await changeTaskStatus(f.actor,{id:result.id,status:'REALIZADA',evidenceProvided:'Resultado comprobado'});
+    await expect(updateTask(f.actor,{id:result.id,evidenceProvided:' '})).rejects.toThrow('resultado');
+    await prisma.task.update({where:{id:result.id},data:{evidenceProvided:null}});
+    await expect(changeTaskStatus(f.actor,{id:result.id,status:'VALIDADA'})).rejects.toThrow('resultado');
+    await changeTaskStatus(f.actor,{id:result.id,status:'VALIDADA',evidenceProvided:'Resultado verificado'});
+  });
   it('dos solicitudes concurrentes al mismo asunto conservan una atención y una auditoría nativa',async()=>{
     const f=await fixture();const [first,second]=await Promise.all([requestSubjectAttention(f.actor,f.input),requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID()})]);
     expect(first.id).toBe(second.id);
@@ -56,6 +65,19 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     await act('RECIBIR');await act('COMENZAR');await act('TERMINAR');
     expect((await getEntry(f.source.id)).housekeepingRequest?.resolution).toContain('Trabajo atendido');
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(0);
+  });
+  it('una nueva atención reabre Housekeeping con permiso y conserva sus reintentos históricos',async()=>{
+    const f=await fixture();const input={...f.input,departmentId:f.hk.id};
+    const first=await requestSubjectAttention(f.actor,input);
+    await prisma.housekeepingRequest.update({where:{id:first.id},data:{status:'RESUELTO',resolution:'Resultado anterior'}});
+    const retry={...input,requestKey:randomUUID()};
+    expect(await requestSubjectAttention(f.actor,retry)).toMatchObject({id:first.id,existing:false});
+    expect(await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:first.id}})).toMatchObject({status:'PENDIENTE',resolution:null});
+    expect(await requestSubjectAttention(f.actor,retry)).toMatchObject({id:first.id,existing:true});
+    expect(await requestSubjectAttention(f.actor,input)).toMatchObject({id:first.id,existing:true});
+    expect(await prisma.housekeepingEvent.count({where:{requestId:first.id,action:'REABRIR'}})).toBe(1);
+    await prisma.housekeepingRequest.update({where:{id:first.id},data:{status:'RESUELTO'}});
+    expect(await requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID()})).toMatchObject({kind:'task',existing:false});
   });
   it('un reintento conserva el trabajo derivado y otra solicitud no declara atención de un área distinta',async()=>{
     const f=await fixture();const first=await requestSubjectAttention(f.actor,f.input);

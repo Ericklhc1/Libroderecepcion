@@ -47,14 +47,14 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
 export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T):Promise<T>{
-  const items=await visibleSnapshotItems(user,handover.items);
+  const items=await visibleSnapshotItems(user,handover.items,true);
   let snapshot=handover.snapshot;
   if(snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)&&Array.isArray(snapshot.items)){
     const historical=snapshot.items.map(value=>{
       if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.title!=='string')return {title:'Asunto reservado',detail:'La evidencia original requiere revisión.',refType:null,refId:null};
       return {...value,title:value.title,detail:typeof value.detail==='string'?value.detail:null,refType:typeof value.refType==='string'?value.refType:null,refId:typeof value.refId==='string'?value.refId:null};
     });
-    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical)};
+    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true)};
   }
   return {...handover,items,snapshot};
 }

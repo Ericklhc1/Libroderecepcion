@@ -265,10 +265,10 @@ export default async function SupervisionCenterPage({
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label="🔴 Críticos" value={critical} tone={critical?'alert':'good'}/></Link>
           <Link href="/supervision?seccion=senales&excepcion=vencidos#detalle-senales"><StatTile label="🟠 Vencidos" value={overdue} tone={overdue?'alert':'good'}/></Link>
-          <Link href="/coordinacion?vista=blocked"><StatTile label="🟡 Impedimentos" value={blockedBoard.total} tone={blockedBoard.total?'alert':'good'}/></Link>
-          <Link href="/coordinacion?vista=unassigned"><StatTile label="🔵 Sin responsable" value={unassignedBoard.total}/></Link>
-          <Link href="/coordinacion?estado=revision"><StatTile label="🟣 Por validar" value={reviewBoard.total}/></Link>
-          <Link href="/coordinacion?vista=carryover"><StatTile label="🟤 Continuidad anterior" value={continuityBoard.total}/></Link>
+          <Link href={`/coordinacion?vista=blocked&q=${encodeURIComponent(q)}`}><StatTile label="🟡 Impedimentos" value={blockedBoard.total} tone={blockedBoard.total?'alert':'good'}/></Link>
+          <Link href={`/coordinacion?vista=unassigned&q=${encodeURIComponent(q)}`}><StatTile label="🔵 Sin responsable" value={unassignedBoard.total}/></Link>
+          <Link href={`/coordinacion?estado=revision&q=${encodeURIComponent(q)}`}><StatTile label="🟣 Por validar" value={reviewBoard.total}/></Link>
+          <Link href={`/coordinacion?vista=carryover&q=${encodeURIComponent(q)}`}><StatTile label="🟤 Continuidad anterior" value={continuityBoard.total}/></Link>
         </div>
         <p className="text-xs text-slate-500">Cada indicador abre sus registros reales. Una señal puede coincidir con otra; críticos y vencidos muestran la muestra disponible del centro, sin sumar personas ni crear otra tarea.</p>
       </section>

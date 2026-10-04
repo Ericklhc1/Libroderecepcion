@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { ArrowUpRight, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
+import {getCoordinationBoard} from '@/server/services/coordination';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
 import {
   getSupervisionCenterSummary,
@@ -154,13 +155,17 @@ export default async function SupervisionCenterPage({
   const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
   const canFollow = hasPermission(user, 'supervision.followup.manage');
   const canAnnounce = hasPermission(user, 'announcement.manage');
-  const [center, review, options, announcements, operationalUsers, performance] = await Promise.all([
+  const [center, review, options, announcements, operationalUsers, performance, blockedBoard, reviewBoard, unassignedBoard, continuityBoard] = await Promise.all([
     getSupervisionCenterSummary(user),
     getSupervisionData(user),
     getFormOptions(user),
     canAnnounce ? listAnnouncements() : Promise.resolve([]),
     canAnnounce ? listOperationalUsers() : Promise.resolve([]),
     canPerformance ? getTeamPerformance(user, period) : Promise.resolve([]),
+    getCoordinationBoard(user,{view:'blocked',q}),
+    getCoordinationBoard(user,{state:'revision',q}),
+    getCoordinationBoard(user,{view:'unassigned',q}),
+    getCoordinationBoard(user,{view:'carryover',q}),
   ]);
 
   const openingReadiness =
@@ -192,7 +197,10 @@ export default async function SupervisionCenterPage({
   const measures = center.measures.filter((measure) =>
     matches(measure.title, measure.action, measure.assignee.name, measure.status),
   );
+  const exception=typeof params.excepcion==='string'?params.excepcion:'';
+  const overdue=review.blocks.filter(b=>['tareas','seguimientos'].includes(b.key)).reduce((sum,b)=>sum+b.rows.length,0);
   const blocks = review.blocks
+    .filter(b=>exception==='criticos'?b.tone==='critico':exception==='vencidos'?['tareas','seguimientos'].includes(b.key):true)
     .map((block) => ({
       ...block,
       rows: block.rows.filter((row) => matches(row.ref, row.title, row.detail, row.meta)),
@@ -251,6 +259,19 @@ export default async function SupervisionCenterPage({
         </nav>
       </header>
       <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
+
+      <section id="senales" aria-label="Excepciones que requieren intervención" className="space-y-3 scroll-mt-28">
+        <h2 className="font-semibold text-petrol-900">Intervenir donde hace falta</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label="🔴 Críticos" value={critical} tone={critical?'alert':'good'}/></Link>
+          <Link href="/supervision?seccion=senales&excepcion=vencidos#detalle-senales"><StatTile label="🟠 Vencidos" value={overdue} tone={overdue?'alert':'good'}/></Link>
+          <Link href="/coordinacion?vista=blocked"><StatTile label="🟡 Impedimentos" value={blockedBoard.total} tone={blockedBoard.total?'alert':'good'}/></Link>
+          <Link href="/coordinacion?vista=unassigned"><StatTile label="🔵 Sin responsable" value={unassignedBoard.total}/></Link>
+          <Link href="/coordinacion?estado=revision"><StatTile label="🟣 Por validar" value={reviewBoard.total}/></Link>
+          <Link href="/coordinacion?vista=carryover"><StatTile label="🟤 Continuidad anterior" value={continuityBoard.total}/></Link>
+        </div>
+        <p className="text-xs text-slate-500">Cada indicador abre sus registros reales. Una señal puede coincidir con otra; críticos y vencidos muestran la muestra disponible del centro, sin sumar personas ni crear otra tarea.</p>
+      </section>
 
       <nav className="flex flex-wrap gap-2 no-print" aria-label="Atajos del Centro de Supervisión">
         <a href="#continuidad" className="rounded-full bg-petrol-50 px-3 py-1.5 text-xs font-medium text-petrol-700 ring-1 ring-petrol-100 hover:bg-petrol-100">Desde mi último turno</a>
@@ -502,11 +523,11 @@ export default async function SupervisionCenterPage({
 
       {blocks.length > 0 ? (
         <DisclosureCard
-          id="senales"
+          id="detalle-senales"
           title="Requiere atención · señales del Libro"
           description="Señales verificables para seguimiento, sin duplicar la operación."
           count={blocks.length}
-          defaultOpen={requestedSection === 'senales'}
+          defaultOpen={requestedSection === 'senales'||!!exception}
         >
           <div className="grid gap-4 p-4 lg:grid-cols-2">{blocks.map((block) => <ReviewBlock
             key={block.key}

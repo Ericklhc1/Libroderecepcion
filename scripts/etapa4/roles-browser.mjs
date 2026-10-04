@@ -1,0 +1,76 @@
+import '../etapa1/guard.cjs';
+import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
+import {readFileSync,writeFileSync} from 'node:fs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
+const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
+const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[];
+try{
+  const maintenance=await db.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+  const hk=await db.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+  const room=await db.room.findUniqueOrThrow({where:{number:'512'}});
+  for(const width of [1280,390]){
+    const contexts=[];
+    async function session(key){
+      const context=await browser.newContext({viewport:{width,height:900}});contexts.push(context);
+      await context.addCookies([{name:'lor_session',value:f.users[key].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+      await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
+      const page=await context.newPage();page.setDefaultTimeout(12000);return page;
+    }
+    await db.user.update({where:{id:f.users.worker.id},data:{departmentId:maintenance.id}});
+    const admin=await session('admin'),worker=await session('worker'),maid=await session('maid');
+    const source=await db.operationalEntry.create({data:{title:`PRUEBA AUTOMÁTICO DE IA · ROLE_${width}`,description:'Contexto del asunto',type:'NOVEDAD',createdById:f.users.admin.id,roomId:room.id}});
+    const task=await db.task.create({data:{title:source.title,description:source.description,entryId:source.id,createdById:f.users.admin.id,departmentId:maintenance.id,roomId:room.id,status:'BLOQUEADA',blockedReason:'Falta repuesto'}});
+    const reserved=await db.followUp.create({data:{action:`PRIVATE_ROLE_${width}`,visibility:'PRIVADO',createdById:f.users.worker.id,ownerId:f.users.worker.id}});
+    await db.task.create({data:{title:`PRIVATE_ROLE_${width}`,followUpId:reserved.id,createdById:f.users.worker.id,departmentId:maintenance.id,status:'BLOQUEADA'}});
+    await admin.goto(`http://localhost:3000/coordinacion?q=ROLE_${width}&area=${maintenance.id}&estado=bloqueado`);
+    const article=admin.locator('article').filter({hasText:source.title});
+    await article.getByRole('link',{name:`Asunto #${source.humanId} · ${source.title}`,exact:true}).waitFor();
+    assert.equal(await article.count(),1,'Una fila con folio del origen y responsable del trabajo');
+    assert.ok(!(await admin.locator('main').innerText()).includes(`PRIVATE_ROLE_${width}`));
+    await article.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+    const assign=article.locator('form').filter({has:admin.locator('input[name=action][value=ASIGNAR]')});
+    await assign.locator('select[name=ownerId]').selectOption(f.users.worker.id);
+    await assign.locator('textarea[name=nextAction]').fill('Conseguir repuesto y devolver resultado al asunto');
+    await assign.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
+    await assign.getByText('Responsable y siguiente acción actualizados.',{exact:true}).waitFor();
+    await admin.reload();
+    assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId,f.users.worker.id);
+    await worker.goto('http://localhost:3000/');
+    await worker.waitForURL(/coordinacion/);
+    await worker.getByRole('heading',{name:'Mi trabajo · Mantenimiento',exact:true}).waitFor();
+    const incoming=worker.locator('article').filter({hasText:source.title});
+    await incoming.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
+    const receive=incoming.locator('form').filter({has:worker.locator('input[name=action][value=RECIBIR]')});
+    await receive.locator('textarea[name=nextAction]').fill('Recibido; gestionar repuesto y atender');
+    await receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
+    await receive.getByText('Recepción confirmada. El trabajo sigue pendiente de atención.',{exact:true}).waitFor();
+    await worker.reload();
+    assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedById,f.users.worker.id);
+    await admin.goto('http://localhost:3000/supervision?seccion=senales');
+    await admin.locator('#senales').getByRole('link',{name:/Impedimentos/}).click();
+    await admin.waitForURL(/vista=blocked/);
+    await admin.locator('article').filter({hasText:source.title}).waitFor();
+    assert.equal(await db.task.count({where:{entryId:source.id,followUpId:null}}),1,'Intervención abre trabajo real sin nueva tarea');
+    await db.user.update({where:{id:f.users.worker.id},data:{departmentId:f.areaId}});
+    await worker.goto('http://localhost:3000/');
+    await worker.waitForURL(/supervision/);
+    await worker.locator('#senales').getByRole('heading',{name:'Intervenir donde hace falta',exact:true}).waitFor();
+    const workDate=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const hkWork=await db.housekeepingRequest.create({data:{requestKey:`role-${width}`,title:`PRUEBA AUTOMÁTICO DE IA · ROLE_HK_${width}`,description:'Trabajo propio de hoy',workflowVersion:1,workDate,workKind:'ATENCION',effortMinutes:15,departmentId:hk.id,roomId:room.id,assignedToId:f.users.maid.id,createdById:f.users.admin.id}});
+    await maid.goto('http://localhost:3000/');
+    await maid.waitForURL(/admin\/housekeeping/);
+    await maid.goto(`http://localhost:3000/admin/housekeeping?q=ROLE_HK_${width}`);
+    await maid.locator(`#aviso-${hkWork.humanId}`).waitFor();
+    await admin.goto(`http://localhost:3000/coordinacion?q=ROLE_${width}&area=${maintenance.id}`);
+    const more=admin.getByText('Más filtros',{exact:true});
+    assert.equal(await admin.locator('select[name=responsable]').isVisible(),false);
+    await more.click();await admin.locator('select[name=responsable]').selectOption(f.users.worker.id);
+    await admin.getByRole('button',{name:'Aplicar',exact:true}).click();
+    await admin.waitForURL(/responsable=/);
+    await admin.locator('article').filter({hasText:source.title}).waitFor();
+    for(const page of [admin,worker,maid])assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    results.push({width,canonicalSourceFolio:true,oneSubjectRow:true,assignmentWithoutAreaReselection:true,actualRecipient:true,exceptionOpensSource:true,maintenanceEntry:true,supervisorEntry:true,hkEntry:true,searchAndFilters:true,reservedWorkHidden:true,physicalSafari:false});
+    for(const context of contexts)await context.close();
+  }
+}finally{writeFileSync('etapa4-roles-browser-results.json',JSON.stringify(results,null,2));await browser.close();await db.$disconnect();}

@@ -180,7 +180,7 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
   };
   return transaction ? perform(transaction) : prisma.$transaction(perform);
 }
-export async function getHkWorkday(user: CurrentUser, input: { date?: string; departmentId?: string; view?: string; floor?: string; responsible?: string; page?: number; focusId?: number } = {}) {
+export async function getHkWorkday(user: CurrentUser, input: { date?: string; departmentId?: string; view?: string; floor?: string; responsible?: string; page?: number; focusId?: number;q?:string;state?:string } = {}) {
   hasAccess(user); const visibility = await hkWorkVisibility(user);
   const focused = input.focusId ? await prisma.housekeepingRequest.findFirst({where:{humanId:input.focusId,AND:[visibility]},select:{workDate:true,departmentId:true}}) : null;
   const date = validDate(input.date || focused?.workDate || hotelDateKey(new Date()));
@@ -189,7 +189,10 @@ export async function getHkWorkday(user: CurrentUser, input: { date?: string; de
   const beginning = hotelWallDateTime(date, 0); const end = hotelWallDateTime(nextDate(date,1),0);
   const day: Prisma.HousekeepingRequestWhereInput = { ...scope, OR: [{ status: { notIn: terminal }, OR: [{ workDate: { lte: date } }, { workDate: null, createdAt: { lt: end } }] }, { resolvedAt: { gte: beginning, lt: end } }] };
   const filters: Prisma.HousekeepingRequestWhereInput = input.view === 'revision' ? { status: 'POR_REVISAR' } : input.view === 'impedimentos' ? { status: 'BLOQUEADO' } : input.view === 'solicitudes' ? { assignedToId: null, status: { notIn: terminal } } : input.view === 'mios' ? { assignedToId: user.id } : input.view === 'historial' ? { status: { in: terminal } } : input.view === 'continuidad' ? { status: { notIn: terminal }, OR: [{ workDate: { lt: date } }, { workDate: null, createdAt: { lt: beginning } }] } : {};
-  const where: Prisma.HousekeepingRequestWhereInput = { AND: [input.view === 'historial' || input.focusId ? scope : day, filters], ...(input.floor ? { room: { floor: Number(input.floor) } } : {}), ...(input.responsible ? { assignedToId: input.responsible } : {}), ...(input.focusId ? { humanId: input.focusId } : {}) };
+  const q=input.q?.trim().slice(0,100);const folio=q&&/^#?\d+$/.test(q)?Number(q.replace('#','')):null;
+  const state=['PENDIENTE','RECIBIDO','EN_GESTION','BLOQUEADO','POR_REVISAR','RESUELTO','CANCELADO'].includes(input.state??'')?input.state:null;
+  const search:Prisma.HousekeepingRequestWhereInput=q?{OR:[...(folio!==null&&Number.isSafeInteger(folio)&&folio<=2147483647?[{humanId:folio},{sourceEntry:{humanId:folio}}]:[]),{title:{contains:q,mode:'insensitive'}},{sourceEntry:{title:{contains:q,mode:'insensitive'}}},{location:{contains:q,mode:'insensitive'}},{room:{number:{contains:q,mode:'insensitive'}}}]}:{};
+  const where: Prisma.HousekeepingRequestWhereInput = { AND: [input.view === 'historial' || input.focusId ? scope : day, filters,search,...(state?[{status:state}]:[])], ...(input.floor ? { room: { floor: Number(input.floor) } } : {}), ...(input.responsible ? { assignedToId: input.responsible } : {}), ...(input.focusId ? { humanId: input.focusId } : {}) };
   const page = Number.isSafeInteger(input.page) ? Math.max(1, Math.min(10000,input.page!)) : 1;
   const [requests, all, total, areas, rooms, zones] = await Promise.all([
     prisma.housekeepingRequest.findMany({ where, include: relations, orderBy: [{ priority: 'desc' }, { dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }], take: 30, skip: (page-1)*30 }),

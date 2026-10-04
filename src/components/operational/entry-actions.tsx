@@ -59,7 +59,7 @@ export function EntryStatusForm({
   const status=targetStatus??selectedStatus;
   const closing=status===EntryStatus.CERRADO||status===EntryStatus.RESUELTO;
   return (
-    <ActionForm action={changeEntryStatusAction}>
+    <ActionForm action={changeEntryStatusAction} closeOnSuccess refreshOnSuccess>
       <input type="hidden" name="id" value={entryId} />
       {targetStatus ? <input type="hidden" name="status" value={targetStatus}/> : <Field label="Estado" name="status" required>
         <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} onChange={e=>setSelectedStatus(e.target.value as EntryStatus)} />

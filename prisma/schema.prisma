@@ -1410,6 +1410,9 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
+  sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
+  derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
+  sourceNotifications NotificationSourceFollowUp[]
   sourceTasks TaskSourceFollowUp[]
   sourceAlerts AlertSourceFollowUp[]
   sourceAlarms AlarmSourceFollowUp[]
@@ -1869,6 +1872,7 @@ model ChatMediaPreference {
 }
 
 model Notification {
+  sourceFollowUps NotificationSourceFollowUp[]
   id        String           @id @default(cuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3539,4 +3543,20 @@ view AuditSourceFollowUp {
   auditLog AuditLog @relation(fields: [auditLogId], references: [id])
   followUp FollowUp @relation(fields: [followUpId], references: [id])
   @@unique([auditLogId, followUpId])
+}
+
+view FollowUpSourceFollowUp {
+  descendantId String
+  followUpId String
+  descendant FollowUp @relation("derivedFollowUp", fields: [descendantId], references: [id])
+  followUp FollowUp @relation("originFollowUp", fields: [followUpId], references: [id])
+  @@unique([descendantId, followUpId])
+}
+
+view NotificationSourceFollowUp {
+  notificationId String
+  followUpId String
+  notification Notification @relation(fields: [notificationId], references: [id])
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  @@unique([notificationId, followUpId])
 }

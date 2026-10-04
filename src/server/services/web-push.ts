@@ -1,4 +1,5 @@
 import 'server-only';
+import { notificationWhereForUser } from './notification-access';
 import { notificationDeviceItems, notificationPresentation } from '@/domain/notification-summary';
 
 import { generateKeyPairSync } from 'node:crypto';
@@ -398,10 +399,11 @@ export async function getWebPushPayload(input: {
   }
 
   const cursor = subscription.lastDeliveredAt ?? subscription.createdAt;
+  const readable = await notificationWhereForUser(input.userId);
   const [rows, unread] = await Promise.all([
     prisma.notification.findMany({
       where: {
-        userId: input.userId,
+        ...readable,
         isDemo: false,
         readAt: null,
         createdAt: { gt: cursor },
@@ -418,7 +420,7 @@ export async function getWebPushPayload(input: {
       },
     }),
     prisma.notification.count({
-      where: { userId: input.userId, readAt: null },
+      where: { ...readable, readAt: null },
     }),
   ]);
 

@@ -1,3 +1,11 @@
+## Bloque 0 publicado · 1.52.0 / 0b05951 / PR260
+
+Vercel dpl_4ox5CpG74v79GRPUB5L8Ni62XwGd READY, health operativo SHA/versión correctos y acta existente carga con historial intacto. Compuerta 37175857595: 1481 pruebas, una omisión heredada, PG16/migración/lint/tipos/build/navegador 1280/390 aprobados. Codex revisó be94c94 sin hallazgos relevantes; corte visual posterior conserva motivos/diffs completos. El acta histórica contiene observación de ausencia pese a confirmación; no se modifica posesión histórica sin verificación física. Dominio general devuelve 502; operativa hwl comprobada. Pendientes únicos E4-13/E4-14 en docs/etapa4/PENDIENTES.md. Continúan los demás requisitos funcionales.
+
+## AROH Simple · bloque 1 preparado (1.53.0, sin publicar)
+
+Fachada de asunto y siguiente acción en detalles de Libro/Tareas; una primaria contextual, alternativas y Más sin overlay. Conserva enlaces, permisos y formularios avanzados. La atención existente prevalece sobre crear otro trabajo; resultado del trabajo visible en su origen. La derivación reutiliza TaskForm con título, contexto, habitación, área, prioridad y plazo heredados. Habitación entra por Registrar / actuar y elige intención humana. Telemetría CLIENT_UI en OperationalMetricEvent, sin migración ni texto de formularios; rol/área vienen de la sesión. PENDING es un recorrido sin resultado observado, no demuestra abandono. Las correlaciones son recorridos de interfaz y no prueban una intención mental ni que dos objetos sean duplicados. Sin datos reales suficientes aún. No se eliminan rutas. Pendientes únicos: docs/etapa4/PENDIENTES.md.
+
 ## Bloque 0 · corrección de respuesta visible (en validación)
 
 CI 37174856351 confirmó persistencia de No recibido con confirmed=false, pero el formulario permaneció en Guardando por transición RSC. Se reutiliza el transporte JSON operativo existente para ambas acciones, con origen/campos cerrados, mismas acciones nativas y navegación al acta sólo tras éxito. No se aumenta el timeout ni se sustituye la comprobación visible por recarga manual. Requiere nueva Compuerta y revisión Codex del ajuste funcional.

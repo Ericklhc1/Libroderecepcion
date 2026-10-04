@@ -1,4 +1,7 @@
+import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
+import { SubjectActions, SubjectContext } from '@/components/operational/subject-surface';
+import { nextWorkAction } from '@/domain/coordination';
 import { notFound } from 'next/navigation';
 import { OperationalAlarmStatus, TaskStatus } from '@prisma/client';
 import { ArrowLeft, Trash2 } from 'lucide-react';
@@ -54,7 +57,7 @@ export default async function TaskDetailPage({
   const { id } = await params;
 
   const task = await getTask(id).catch(() => null);
-  if (!task) notFound();
+  if (!task || !await prisma.task.count({where:{id:task.id,AND:[taskFollowUpReadWhere(user)]}})) notFound();
 
   const [history, options, linkedAlerts, alertCandidates] = await Promise.all([
     getHistory({ entity: 'Task', entityId: task.id }),
@@ -78,6 +81,27 @@ export default async function TaskDetailPage({
   const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
   const overdue = isOverdue(task.dueAt, open);
   const doneItems = task.checklist.filter((item) => item.done).length;
+  const canChange = user.permissions.includes('task.edit') || task.assigneeId === user.id || task.createdById === user.id;
+  const canValidate = canChange && user.permissions.includes('supervision.task.validate') && (!task.requiresIndependentValidation || (!!task.completedById && task.completedById !== user.id));
+  const assign = user.permissions.includes('task.assign') ? <AssignTaskDialog taskId={task.id} currentAssigneeId={task.assigneeId} users={options.users}/> : null;
+  const statusAction = (status: TaskStatus, label: string) => <QuickStatusForm taskId={task.id} status={status} label={label} variant="gold"/>;
+  const finish = canChange ? (task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
+    ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.REALIZADA} label="Finalizar" variant="gold"/>
+    : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
+  const primaryAction = !open ? <a href="#historial-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado</a>
+    : scheduled ? <p className="text-sm text-slate-600">Disponible desde {formatDateTime(task.startsAt!)}</p>
+    : !task.assigneeId ? assign
+    : task.status === TaskStatus.REALIZADA ? (canValidate ? statusAction(TaskStatus.VALIDADA,'Validar') : <p className="text-sm text-slate-600">Pendiente de revisión autorizada</p>)
+    : task.status === TaskStatus.BLOQUEADA ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Resolver impedimento') : null)
+    : task.status === TaskStatus.PENDIENTE ? (canChange ? statusAction(TaskStatus.ACEPTADA,'Confirmar recepción') : null)
+    : task.status === TaskStatus.ACEPTADA && !task.evidenceRequired && !task.requiresIndependentValidation && user.permissions.includes('task.close') ? finish
+    : ['ACEPTADA','DEVUELTA'].includes(task.status) ? (canChange ? statusAction(TaskStatus.EN_CURSO,'Comenzar atención') : null)
+    : finish;
+  const secondaryAction = !scheduled && canChange && open ? (task.status === TaskStatus.REALIZADA
+    ? (canValidate ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.DEVUELTA} label="Devolver"/> : null)
+    : ['ACEPTADA','EN_CURSO','DEVUELTA'].includes(task.status)
+      ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.BLOQUEADA} label="Informar impedimento"/>
+      : null) : null;
   const myDueLinkedAlerts = linkedAlerts
     .filter((alert) => alert.status === OperationalAlarmStatus.ACTIVA)
     .flatMap((alert) => {
@@ -239,25 +263,12 @@ export default async function TaskDetailPage({
               ))}
             </div>
           ) : null}
+          <SubjectContext folio={task.entry ? `Asunto #${task.entry.humanId} · Trabajo #${task.humanId}` : `Asunto #${task.humanId}`} origin={task.entry ? task.entry.title : task.createdBy.name} nextAction={nextWorkAction(task.status,task.assigneeId,task.workAcknowledgedAt,task.workNextAction)} impediment={task.blockedReason} result={task.evidenceProvided}/>
         </div>
 
         {!task.deletedAt ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 no-print">
-            {!scheduled && task.status === TaskStatus.PENDIENTE &&
-                       (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
-              <QuickStatusForm taskId={task.id} status={TaskStatus.EN_CURSO} label="Tomar" />
-            ) : null}
-            {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
-              <QuickStatusForm
-                taskId={task.id}
-                status={TaskStatus.COMPLETADA}
-                label="Resolver"
-                variant="gold"
-              />
-            ) : null}
-            {task.status === TaskStatus.REALIZADA && user.permissions.includes('supervision.task.validate') ? (
-              <QuickStatusForm taskId={task.id} status={TaskStatus.VALIDADA} label="Validar" variant="gold" />
-            ) : null}
+          <SubjectActions primary={primaryAction} secondary={secondaryAction} more={<>
+
             {user.permissions.includes('task.edit') ? (
               <TaskStatusDialog taskId={task.id} currentStatus={task.status} />
             ) : null}
@@ -293,7 +304,7 @@ export default async function TaskDetailPage({
               description="Programa una llamada de atención vinculada a esta tarea. No cambia su estado."
               triggerVariant="secondary"
               triggerSize="sm"
-              trigger="Crear alerta"
+              trigger="Recordarme"
             >
               <OperationalAlarmCreateForm
                 currentUserId={user.id}
@@ -314,7 +325,8 @@ export default async function TaskDetailPage({
             {user.permissions.includes('entry.delete') ? (
               <DeleteTaskDialog taskId={task.id} />
             ) : null}
-          </div>
+            <a className="rounded-md px-3 py-2 text-sm font-medium text-petrol-800" href="#historial-asunto">Historial</a>
+          </>}/>
         ) : null}
       </Card>
 
@@ -431,7 +443,7 @@ export default async function TaskDetailPage({
         </Card>
 
         <Card>
-          <CardHeader title="Historial" count={history.length} />
+          <span id="historial-asunto"/><CardHeader title="Historial" count={history.length} />
           <HistoryTimeline events={history} />
         </Card>
       </div>

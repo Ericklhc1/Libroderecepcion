@@ -10,3 +10,11 @@ export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>)
     { visibility: 'OPERATIVO', ...(manager ? {} : { OR: [{ ownerId: user.id }, { createdById: user.id }] }) },
   ] };
 }
+
+export function taskFollowUpReadWhere(user:Pick<CurrentUser,'id'|'permissions'>):Prisma.TaskWhereInput {
+  const scope=followUpReadWhere(user);
+  return {AND:[
+    {OR:[{followUpId:null},{followUp:scope}]},
+    {OR:[{alertId:null},{sourceAlert:{OR:[{followUpId:null},{followUp:scope}]}}]},
+  ]};
+}

@@ -55,40 +55,48 @@ export function QuickStatusForm({
 export function TaskStatusDialog({
   taskId,
   currentStatus,
+  targetStatus,
+  label = 'Más opciones',
+  variant = 'secondary',
 }: {
   taskId: string;
   currentStatus: TaskStatus;
+  targetStatus?: TaskStatus;
+  label?: string;
+  variant?: 'secondary' | 'gold';
 }) {
   return (
     <Dialog
       key={currentStatus}
-      title="Más opciones de la tarea"
-      triggerVariant="secondary"
+      title={targetStatus ? label : 'Más opciones de la tarea'}
+      triggerVariant={variant}
       triggerSize="sm"
       width="sm"
-      trigger="Más opciones"
+      trigger={label}
     >
       <ActionForm action={changeTaskStatusFormAction}>
         <ReturnToCurrentPage />
         <input type="hidden" name="id" value={taskId} />
-        <Field label="Estado" name="status" required>
+        {targetStatus ? <input type="hidden" name="status" value={targetStatus}/> : <Field label="Estado" name="status" required>
           <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} />
-        </Field>
+        </Field>}
+        {(!targetStatus || targetStatus === TaskStatus.BLOQUEADA) &&
         <Field
           label="Motivo del bloqueo"
           name="blockedReason"
           hint="Obligatorio sólo si la tarea queda bloqueada."
         >
           <Textarea name="blockedReason" rows={2} />
+        </Field>}
+        <Field label={targetStatus === TaskStatus.DEVUELTA ? 'Motivo de la devolución' : 'Comentario para la auditoría'} name="reason">
+          <Input name="reason" required={targetStatus === TaskStatus.DEVUELTA}/>
         </Field>
-        <Field label="Comentario para la auditoría" name="reason">
-          <Input name="reason" />
-        </Field>
+        {(!targetStatus || targetStatus === TaskStatus.REALIZADA) &&
         <Field label="Evidencia aportada" name="evidenceProvided" hint="Obligatoria si la tarea exige evidencia y se marca como realizada.">
           <Textarea name="evidenceProvided" rows={3} />
-        </Field>
+        </Field>}
         <div className="flex justify-end">
-          <SubmitButton pendingLabel="Guardando…">Actualizar estado</SubmitButton>
+          <SubmitButton pendingLabel="Guardando…">{targetStatus ? label : 'Actualizar estado'}</SubmitButton>
         </div>
       </ActionForm>
     </Dialog>

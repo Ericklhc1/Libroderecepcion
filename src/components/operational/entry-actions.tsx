@@ -18,6 +18,20 @@ const STATUS_OPTIONS = Object.values(EntryStatus).map((status) => ({
   label: ENTRY_STATUS_LABEL[status],
 }));
 
+export function AssignEntryDialog({entryId,departmentId,ownerId,departments,users}: {
+  entryId:string; departmentId:string|null; ownerId:string|null;
+  departments:Array<{value:string;label:string}>;users:Array<{value:string;label:string}>;
+}) {
+  return <Dialog title="Asignar responsable" trigger="Asignar" triggerVariant="gold" triggerSize="sm" width="sm">
+    <ActionForm action={updateEntryAction} closeOnSuccess refreshOnSuccess>
+      <input type="hidden" name="id" value={entryId}/>
+      <Field label="Área responsable" name="departmentId"><Select name="departmentId" defaultValue={departmentId??''} options={departments} placeholder="Sin área"/></Field>
+      <Field label="Responsable" name="ownerId" required><Select name="ownerId" required defaultValue={ownerId??''} options={users} placeholder="Seleccionar responsable"/></Field>
+      <SubmitButton pendingLabel="Asignando…">Asignar</SubmitButton>
+    </ActionForm>
+  </Dialog>;
+}
+
 /**
  * Cambio de estado. Para cerrar una incidencia el servidor exige resolución,
  * por eso el formulario la pide en el mismo paso.
@@ -28,20 +42,24 @@ export function EntryStatusForm({
   type,
   resolution,
   rootCause,
+  targetStatus,
+  label = 'Actualizar estado',
 }: {
   entryId: string;
   currentStatus: EntryStatus;
   type: EntryType;
   resolution: string | null;
   rootCause: string | null;
+  targetStatus?: EntryStatus;
+  label?: string;
 }) {
   const isIncident = type === EntryType.INCIDENCIA;
   return (
     <ActionForm action={changeEntryStatusAction}>
       <input type="hidden" name="id" value={entryId} />
-      <Field label="Estado" name="status" required>
+      {targetStatus ? <input type="hidden" name="status" value={targetStatus}/> : <Field label="Estado" name="status" required>
         <Select name="status" defaultValue={currentStatus} options={STATUS_OPTIONS} />
-      </Field>
+      </Field>}
       {isIncident ? (
         <>
           <Field
@@ -51,19 +69,15 @@ export function EntryStatusForm({
           >
             <Textarea name="rootCause" rows={2} defaultValue={rootCause ?? ''} />
           </Field>
-          <Field
-            label="Resolución"
-            name="resolution"
-            hint="Obligatoria para cerrar una incidencia."
-          >
-            <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} />
-          </Field>
         </>
       ) : null}
+      {(isIncident || targetStatus === EntryStatus.CERRADO) && <Field label="Resultado" name="resolution" hint="Cómo quedó atendido el asunto.">
+        <Textarea name="resolution" rows={2} defaultValue={resolution ?? ''} required={targetStatus === EntryStatus.CERRADO}/>
+      </Field>}
       <Field label="Motivo del cambio" name="reason" hint="Queda en la auditoría.">
         <Input name="reason" placeholder="Opcional" />
       </Field>
-      <SubmitButton pendingLabel="Actualizando…">Actualizar estado</SubmitButton>
+      <SubmitButton pendingLabel="Actualizando…">{label}</SubmitButton>
     </ActionForm>
   );
 }

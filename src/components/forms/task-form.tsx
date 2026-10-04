@@ -20,6 +20,7 @@ export function TaskForm({
   alertId,
   defaultAssigneeId,
   defaultRoomId,
+  defaults,
   showOrigin = true,
 }: {
   action: (state: ActionState | null, formData: FormData) => Promise<ActionState>;
@@ -29,6 +30,7 @@ export function TaskForm({
   alertId?: string;
   defaultAssigneeId?: string;
   defaultRoomId?: string;
+  defaults?: { title: string; description: string; departmentId: string | null; priority: Priority; dueAt: string };
   showOrigin?: boolean;
 }) {
   return (
@@ -40,6 +42,7 @@ export function TaskForm({
       <Field label="Qué hay que hacer" name="title" required>
         <Input
           name="title"
+          defaultValue={defaults?.title}
           required
           maxLength={200}
           placeholder="Ej: Confirmar traslado al aeropuerto con la empresa de transporte"
@@ -47,7 +50,7 @@ export function TaskForm({
       </Field>
 
       <Field label="Detalle" name="description">
-        <Textarea name="description" rows={3} placeholder="Instrucciones o contexto necesario." />
+        <Textarea name="description" rows={3} placeholder="Instrucciones o contexto necesario." defaultValue={defaults?.description}/>
       </Field>
 
       <Field label="Criterio de cumplimiento" name="fulfillmentCriteria">
@@ -91,7 +94,7 @@ export function TaskForm({
           />
         </Field>
         <Field label="Prioridad" name="priority" required>
-          <Select name="priority" defaultValue={Priority.MEDIA} options={PRIORITY_OPTIONS} />
+          <Select name="priority" defaultValue={defaults?.priority ?? Priority.MEDIA} options={PRIORITY_OPTIONS} />
         </Field>
       </div>
 
@@ -132,7 +135,7 @@ export function TaskForm({
           />
         </Field>
         <Field label="Área" name="departmentId">
-          <Select name="departmentId" placeholder="Sin área" options={options.departments} />
+          <Select name="departmentId" placeholder="Sin área" options={options.departments} defaultValue={defaults?.departmentId ?? ''}/>
         </Field>
       </div>
 
@@ -145,7 +148,7 @@ export function TaskForm({
           <Input type="datetime-local" name="startsAt" />
         </Field>
         <Field label="Fecha límite" name="dueAt">
-          <Input type="datetime-local" name="dueAt" />
+          <Input type="datetime-local" name="dueAt" defaultValue={defaults?.dueAt}/>
         </Field>
       </div>
 

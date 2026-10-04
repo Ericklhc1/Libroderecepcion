@@ -1,4 +1,5 @@
 import 'server-only';
+import { UX_ACTIONS } from '@/domain/ux-telemetry';
 
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
@@ -56,6 +57,7 @@ export const OPERATIONAL_EVENT_TYPES = [
   ...P0_OPERATIONAL_EVENT_TYPES,
   ...P1_OPERATIONAL_EVENT_TYPES,
   ...P2_OPERATIONAL_EVENT_TYPES,
+  'UX_ROUTE','UX_ACTION','UX_RESULT','UX_EXIT',
 ] as const;
 
 export type OperationalEventType = (typeof OPERATIONAL_EVENT_TYPES)[number];
@@ -63,6 +65,7 @@ export type OperationalEventStatus = 'STARTED' | 'SUCCESS' | 'FAILED';
 export type OperationalEventSource = 'SERVER_ACTION' | 'CLIENT_UI';
 
 const ALLOWED_METADATA_KEYS = new Set([
+  'route','role','area','selectedAction','visibleActions','result','backNavigation','version',
   'shiftType',
   'mode',
   'countKind',
@@ -111,9 +114,13 @@ function sanitizeMetadata(
 ): Prisma.InputJsonObject | undefined {
   if (!metadata) return undefined;
 
-  const clean: Record<string, MetadataPrimitive> = {};
+  const clean: Record<string, MetadataPrimitive | string[]> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!ALLOWED_METADATA_KEYS.has(key)) continue;
+    if (key === 'visibleActions' && Array.isArray(value)) {
+      clean[key] = value.filter((item): item is string => typeof item === 'string' && UX_ACTIONS.includes(item as (typeof UX_ACTIONS)[number])).slice(0,16);
+      continue;
+    }
     if (typeof value === 'boolean' || typeof value === 'number') {
       clean[key] = value;
       continue;

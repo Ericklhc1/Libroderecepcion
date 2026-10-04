@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { OperationalAlarmStatus } from '@prisma/client';
 import { AlarmClock, Link2, Users } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
+import { redirect } from 'next/navigation';
+import { hkNavigationAllowed } from '@/domain/housekeeping-work';
 import {
   listAlarmCandidates,
   listMyOperationalAlarms,
@@ -25,6 +27,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AlertsPage() {
   const user = await requirePageUser();
+  if (!hkNavigationAllowed(user.permissions, '/alertas')) redirect('/sin-permisos');
   const [candidates, alarms] = await Promise.all([
     listAlarmCandidates(),
     listMyOperationalAlarms(user.id),

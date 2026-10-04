@@ -32,9 +32,10 @@ try{
     const assign=article.locator('form').filter({has:admin.locator('input[name=action][value=ASIGNAR]')});
     await assign.locator('select[name=ownerId]').selectOption(f.users.worker.id);
     await assign.locator('textarea[name=nextAction]').fill('Conseguir repuesto y devolver resultado al asunto');
+    const assignedResponse=admin.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await assign.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click();
-    await assign.getByText('Responsable y siguiente acción actualizados.',{exact:true}).waitFor();
-    await admin.reload();
+    const assignedResult=await assignedResponse;assert.equal(assignedResult.status(),200,JSON.stringify(await assignedResult.json()));
+    await article.locator('p').filter({hasText:'Siguiente acción: Conseguir repuesto y devolver resultado al asunto'}).waitFor();
     assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId,f.users.worker.id);
     await worker.goto('http://localhost:3000/');
     await worker.waitForURL(/coordinacion/);
@@ -43,9 +44,12 @@ try{
     await incoming.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
     const receive=incoming.locator('form').filter({has:worker.locator('input[name=action][value=RECIBIR]')});
     await receive.locator('textarea[name=nextAction]').fill('Recibido; gestionar repuesto y atender');
+    const receivedResponse=worker.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
     await receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
-    await receive.getByText('Recepción confirmada. El trabajo sigue pendiente de atención.',{exact:true}).waitFor();
-    await worker.reload();
+    const receivedResult=await receivedResponse;assert.equal(receivedResult.status(),200,JSON.stringify(await receivedResult.json()));
+    await incoming.waitFor({state:'hidden'});
+    await worker.getByRole('link',{name:'Mi trabajo',exact:true}).click();
+    await worker.locator('article').filter({hasText:source.title}).locator('p').filter({hasText:'Recibido:'}).waitFor();
     assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).workAcknowledgedById,f.users.worker.id);
     await admin.goto('http://localhost:3000/supervision?seccion=senales');
     await admin.locator('#senales').getByRole('link',{name:/Impedimentos/}).click();

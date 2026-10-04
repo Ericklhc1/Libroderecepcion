@@ -17,8 +17,9 @@ try{
     const reservedTask=await db.task.create({data:{title:'PRUEBA_PRIVADA_NO_PROYECTAR',createdById:f.users.worker.id,followUpId:reserved.id,entryId:entry.id}});
     await page.goto(`http://localhost:3000/libro/${entry.id}`);
     const surface=page.locator('[aria-label="Acciones del asunto"]');
+    await surface.getByRole('button',{name:'Comenzar atención',exact:true}).waitFor();
     const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.checkVisibility()).length);
-    assert.ok(visibleBefore<=4,`Una primaria, hasta dos secundarias y Más: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
+    assert.ok(visibleBefore>0&&visibleBefore<=4,`Una primaria, hasta dos secundarias y Más: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
     const sourceText=await page.locator('main').innerText();
     if(sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'))console.error('Synthetic reserved projection:',await page.locator('main').getByText('PRUEBA_PRIVADA_NO_PROYECTAR',{exact:true}).evaluateAll(es=>es.map(e=>({tag:e.tagName,section:e.closest('section')?.innerText,visible:e.getClientRects().length>0}))),sourceText);
     assert.ok(!sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'));

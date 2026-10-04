@@ -18,6 +18,10 @@ const attention=/\b(?:manda(?:lo|la)?|envia(?:lo|la)?|deriva(?:lo|la)?|solicita 
 export async function prepareSubjectIntent(user:CurrentUser,messages:readonly FrontiIntentMessage[],page:FrontiResolvedPageContext|null,requestKey?:string){
   const latest=messages.filter(m=>m.role==='user').at(-1)?.content??'';
   if(/^(?:no\b|cancela|olvida|deten|mejor no)/.test(normalize(latest)))return null;
+  const lastUserIndex=messages.map(m=>m.role).lastIndexOf('user');
+  const preceding=messages[lastUserIndex-1];
+  const pendingQuestion=preceding?.role==='assistant' ? preceding.content : '';
+  if(!attention.test(normalize(latest))&&!/^¿(?:En qué ubicación necesita atención|Qué área debe atender) el asunto #\d+\?/.test(pendingQuestion))return null;
   const intent=buildFrontiToolIntent(messages);
   if(!attention.test(normalize(intent)))return null;
   // Specialized HK work keeps its native impediment/maintenance procedure.
@@ -35,7 +39,7 @@ export async function prepareSubjectIntent(user:CurrentUser,messages:readonly Fr
   if(!entryId||!await prisma.operationalEntry.count({where:{id:entryId,AND:[coordinationEntries(user)]}}))return {reply:'Abre el asunto que necesitas derivar o indica su folio. Conservaré su contexto y el resultado volverá al mismo asunto.',confirmations:[]};
   const entry=await getSubjectEntry(user,entryId);
   if(['RESUELTO','CERRADO'].includes(entry.status))return {reply:`El asunto #${entry.humanId} está resuelto. Revisa su resultado; para una nueva atención debe reabrirse con el permiso correspondiente.`,confirmations:[]};
-  const previous=messages.filter(m=>m.role==='assistant'&&m.content===`¿En qué ubicación necesita atención el asunto #${entry.humanId}?`).at(-1)?.content??'';
+  const previous=pendingQuestion===`¿En qué ubicación necesita atención el asunto #${entry.humanId}?`?pendingQuestion:'';
   const answeringLocation=/ubicación necesita atención/.test(previous)&&!attention.test(normalize(latest));
   const areaText=answeringLocation?normalize(buildFrontiToolIntent(messages.slice(0,-1))):normalize(intent);
   const exactReply=normalize(latest).replace(/^(?:al?\s+)?(?:area\s+de\s+)?/,'').replace(/[.!]$/,'');

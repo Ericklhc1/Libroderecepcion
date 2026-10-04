@@ -1,3 +1,4 @@
+import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
@@ -161,7 +162,7 @@ export default async function AdminPage() {
     prisma.user.count({ where: { deletedAt: null } }),
     prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
     prisma.operationalEntry.count({ where: { NOT: { deletedAt: null } } }),
-    prisma.task.count({ where: { NOT: { deletedAt: null } } }),
+    prisma.task.count({ where: { AND: [taskFollowUpReadWhere(user)], NOT: { deletedAt: null } } }),
     prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)] } }),
   ]);
 

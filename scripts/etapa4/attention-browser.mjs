@@ -62,7 +62,9 @@ try{
         await maid.page.goto(workHref);
         const maidCard=maid.page.locator(`#aviso-${work.humanId}`);
         await maidCard.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
+        await maidCard.getByText('Recibido',{exact:true}).waitFor();
         await maidCard.getByRole('button',{name:'Comenzar',exact:true}).click();
+        await maidCard.getByText('En proceso',{exact:true}).waitFor();
         await maidCard.getByRole('button',{name:'Marcar terminado',exact:true}).click();
         const resultDialog=maid.page.getByRole('dialog');
         await resultDialog.locator('textarea[name=note]').fill('Necesidad atendida y comprobada');

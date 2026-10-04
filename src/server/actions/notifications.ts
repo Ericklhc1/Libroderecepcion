@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { markReadableNotifications } from '@/server/services/notification-access';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { requireUser } from '@/server/auth/guard';
 import { getUnreadCountsForUser } from '@/server/services/notification-poll';
@@ -39,14 +39,7 @@ export async function markNotificationsReadAction(
     const user = await requireUser();
     const input = parseOrThrow(markSchema, formDataToObject(formData));
 
-    const result = await prisma.notification.updateMany({
-      where: {
-        userId: user.id,
-        readAt: null,
-        ...(input.id ? { id: input.id } : {}),
-      },
-      data: { readAt: new Date() },
-    });
+    const result = await markReadableNotifications(user.id, input.id);
 
     revalidatePath('/notificaciones');
     revalidatePath('/');

@@ -70,7 +70,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     ...(history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
     ...(owner ? { ownerId:owner } : {}),...(due?{dueAt:due}:{}), tasks:{none:{AND:[coordinationTasks(user)],status:{notIn:[...taskClosed]}}}, OR: [{ housekeepingRequest: null }, { housekeepingRequest: { NOT: { workflowVersion: 1, isDemo: false, AND: [hkScope] } } }],
   };
-  const taskWhere: Prisma.TaskWhereInput = { AND: [coordinationTasks(user),taskView,...(state?[{status:{in:state.task}}]:[]),...(q?[{OR:[...(human?[human,{entry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area, OR: [{entryId:null},{entry:{NOT:entryWhere}}],
+  const taskWhere: Prisma.TaskWhereInput = { AND: [coordinationTasks(user),taskView,...(state?[{status:{in:state.task}}]:[]),...(q?[{OR:[...(human?[human,{entry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{entry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area, OR: [{entryId:null},{entry:{NOT:entryWhere}}],
     status: history ? { in: [...taskClosed] } : { notIn: [...taskClosed] }, ...(owner ? { assigneeId:owner } : {}),...(due?{dueAt:due}:{}) };
   const hkWhere: Prisma.HousekeepingRequestWhereInput = { AND: [hkScope,hkView,...(state?[{status:{in:state.hk}}]:[]),...(q?[{OR:[...(human?[human,{sourceEntry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{sourceEntry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}},{location:{contains:q,mode:'insensitive' as const}}]}]:[])], ...area, workflowVersion: 1, isDemo: false,
     status: history ? { in: ['RESUELTO','CANCELADO'] } : { notIn: ['RESUELTO','CANCELADO'] }, ...(owner ? { assignedToId:owner } : {}),...(due?{dueAt:due}:{}) };
@@ -100,7 +100,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   for(const group of followGroups){const id=followOwners.find(u=>u.id===group.ownerId)?.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};load.total+=group._count._all;loads.set(id,load);}
   const byArea=[...loads.values()].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'es'));
   const sourceIds=[...new Set([...tasks.map(t=>t.entryId),...hk.map(h=>h.sourceEntryId)].filter((id):id is string=>Boolean(id)))];
-  const visibleSources=sourceIds.length?await prisma.operationalEntry.findMany({where:{id:{in:sourceIds},AND:[coordinationEntries(user)]},select:{id:true,humanId:true}}):[];
+  const visibleSources=sourceIds.length?await prisma.operationalEntry.findMany({where:{id:{in:sourceIds},OR:[{AND:[coordinationEntries(user)]},{tasks:{some:{id:{in:tasks.map(t=>t.id)}}}}]},select:{id:true,humanId:true}}):[];
   const sources=new Map(visibleSources.map(entry=>[entry.id,{humanId:entry.humanId,href:`/libro/${entry.id}`} ]));
   const rows: CoordinationRow[] = [
     ...entries.map(r=>({id:r.id,humanId:r.humanId,kind:'entry' as const,title:r.title,status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.workAcknowledgedAt,assignedAt:r.workAssignedAt,availableAt:null,startedAt:r.workStartedAt,completedAt:r.closedAt,nextAction:nextWorkAction(r.status,r.ownerId,r.workAcknowledgedAt,r.workNextAction),href:`/libro/${r.id}`,canAssign:user.permissions.includes('entry.edit'),children:[...r.tasks.map(t=>({label:`Tarea #${t.humanId} · ${t.title} · ${t.status}`,href:`/tareas/${t.id}`})),...r.followUps.map(f=>({label:`Seguimiento #${f.humanId} · ${f.action}`,href:`/seguimientos?q=${f.humanId}&estado=todos`}))]})),
@@ -149,7 +149,7 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
       if(!current.departmentId)throw new RuleError('Define el área en el registro antes de asignar.');
       const person=await tx.user.findFirst({where:{id:nextOwner,active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true},OR:[{departmentId:current.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:current.departmentId,active:true}}}}]},select:{id:true}});
       if(!person)throw new RuleError('El responsable debe ser un usuario operativo activo del área.');
-      if(task)await assertTaskSourceRecipients(tx,[nextOwner],task);
+      if(task)await assertTaskSourceRecipients(tx,[user.id,nextOwner],task,true);
     }
     if(input.action==='ACLARACION'&&((entry&&entry.status==='EN_ESPERA')||(task&&task.status==='BLOQUEADA')))throw new RuleError('Este trabajo ya tiene un impedimento o espera activa. Resuélvelo antes de solicitar otra aclaración.');
     if(input.action==='RESPONDER_ACLARACION'&&!((entry&&entry.status==='EN_ESPERA'&&entry.workNextAction?.startsWith('Aclaración requerida:'))||(task&&task.status==='BLOQUEADA'&&task.workNextAction?.startsWith('Aclaración requerida:'))))throw new RuleError('No hay una aclaración pendiente en este trabajo.');

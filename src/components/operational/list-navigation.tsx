@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
@@ -45,7 +44,7 @@ export function ListNavigation({ href, scope, children }: {
     setSelected(returning ? anchor || position?.rowAnchor || null : position?.rowAnchor || anchor || null);
     if (returning) {
       const saved = position;
-      // Let Next complete its normal fragment navigation, then restore the exact
+      // Let the browser complete its fragment navigation, then restore the exact
       // position only for the explicit return link. Back/Forward remain native.
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
@@ -77,8 +76,11 @@ export function ListItemLink({ href, rowAnchor, className, children }: {
 }) {
   const context = useContext(ListContext);
   const selected = context?.selected === rowAnchor;
+  // Keep this boundary document-native: CI reproduced activated client links
+  // remaining on the source route. Saving context must not gate navigation on
+  // the RSC transition; the browser owns activation, new tabs and history.
   return (
-    <Link
+    <a
       id={rowAnchor}
       href={context ? detailHrefWithListContext(href, context.href, rowAnchor) : href}
       onClick={() => context?.remember(rowAnchor)}
@@ -90,7 +92,7 @@ export function ListItemLink({ href, rowAnchor, className, children }: {
         selected && 'bg-petrol-50 ring-2 ring-inset ring-petrol-300')}
     >
       {children}
-    </Link>
+    </a>
   );
 }
 
@@ -100,7 +102,7 @@ export function ListReturnLink({ href, scope }: { href: string; scope: string })
     try { sessionStorage.setItem(listReturnKey(scope), href); } catch { /* native fragment fallback */ }
   }
   return (
-    <Link
+    <a
       href={href}
       onClick={prepareReturn}
       data-list-return
@@ -108,6 +110,6 @@ export function ListReturnLink({ href, scope }: { href: string; scope: string })
     >
       <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       {listReturnLabel(href)}
-    </Link>
+    </a>
   );
 }

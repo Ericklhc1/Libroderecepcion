@@ -1,5 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The continuity boundary must remain a native document link even if the
+// framework's client transition is unavailable. Reintroducing next/link makes
+// the server-rendered link regressions below fail instead of masking the stall.
+vi.mock('next/link', () => ({
+  default: () => { throw new Error('List/detail continuity must not depend on a client-router transition'); },
+}));
 import {
   detailHrefWithListContext,
   detailHrefWithReturnContext,
@@ -100,12 +107,17 @@ describe('continuidad nativa entre lista y detalle', () => {
       </ListNavigation>,
     );
     expect(html).toContain('id="registro-task-id-canonico"');
+    expect(html).toMatch(/^<a\s/);
+    expect(html).not.toContain('target="');
     expect(html).toContain('href="/tareas/id-canonico?desdeLista=%2Flibro%3Fclase%3Dtask%26pagina%3D2%23registro-task-id-canonico"');
     const direct = renderToStaticMarkup(<ListItemLink href="/libro/id-canonico" rowAnchor="registro-entry-id-canonico">Novedad #418</ListItemLink>);
     expect(direct).toContain('href="/libro/id-canonico"');
     expect(direct).not.toContain('desdeLista');
-    expect(renderToStaticMarkup(<ListReturnLink href="/libro?clase=task" scope="usuario" />))
-      .toContain('Volver a la lista de tareas');
+    const back = renderToStaticMarkup(<ListReturnLink href="/libro?clase=task" scope="usuario" />);
+    expect(back).toMatch(/^<a\s/);
+    expect(back).toContain('href="/libro?clase=task"');
+    expect(back).toContain('Volver a la lista de tareas');
+    expect(back).not.toContain('target="');
     expect(listReturnLabel('/libro?tipo=INCIDENCIA')).toBe('Volver a incidencias');
     expect(listReturnLabel('/tareas?mias=1')).toBe('Volver a tareas');
   });

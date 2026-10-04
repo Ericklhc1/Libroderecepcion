@@ -57,6 +57,23 @@ describe('AROH Simple · trabajo relevante por rol y excepción',()=>{
     expect(group.kind==='housekeeping'||group.children.some(child=>child.href.includes(`aviso=${hk.humanId}`))).toBe(true);
     expect(group.children.some(child=>child.href.startsWith('/tareas/'))).toBe(true);
   });
+  it('cuenta un asunto en cada área activa y elige trabajo accionable como representante',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const maintenance=await prisma.department.findUniqueOrThrow({where:{key:'MANTENIMIENTO'}});
+    const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'512'}});
+    const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Asunto multiárea',description:'Mismo origen para dos áreas',createdById:admin.id,roomId:room.id}});
+    const task=await prisma.task.create({data:{title:'Revisar equipo',createdById:admin.id,entryId:source.id,departmentId:maintenance.id,assigneeId:admin.id,dueAt:new Date(Date.now()+3600000)}});
+    await prisma.followUp.create({data:{action:'Confirmar continuidad',createdById:admin.id,ownerId:admin.id,entryId:source.id,scheduledAt:new Date(Date.now()-3600000),visibility:'OPERATIVO'}});
+    const work=await createHkWork(admin,{requestKey:randomUUID(),sourceEntryId:source.id,title:'Reponer insumo',description:'Atención del mismo asunto',roomId:room.id,departmentId:hk.id,workDate:hotelDateKey(new Date()),workKind:'ATENCION',effortMinutes:15,priority:'MEDIA'});
+    const board=await getCoordinationBoard(admin);
+    expect(board.total).toBe(1);
+    expect(board.rows[0]?.kind).toBe('task');
+    expect(board.rows[0]?.id).toBe(task.id);
+    expect(board.rows[0]?.children.some(child=>child.href.includes(`aviso=${work.humanId}`))).toBe(true);
+    expect(board.byArea.find(area=>area.departmentId===maintenance.id)?.total).toBe(1);
+    expect(board.byArea.find(area=>area.departmentId===hk.id)?.total).toBe(1);
+  });
   it('la excepción y los conteos no revelan trabajo privado aunque el tercero conserve su asignación',async()=>{
     const reader=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

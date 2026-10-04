@@ -52,7 +52,7 @@ try{
     const receivedResult=await receivedResponse;assert.equal(receivedResult.status(),200,receivedResult.status()===200?'':await receivedResult.text());
     const receivedTask=await db.task.findUniqueOrThrow({where:{id:task.id}});
     assert.equal(receivedTask.workAcknowledgedById,f.users.worker.id);
-    await worker.getByRole('link',{name:'Mi trabajo',exact:true}).click();
+    await worker.goto(`http://localhost:3000/coordinacion?area=${maintenance.id}&responsable=${f.users.worker.id}`);
     await worker.locator('article').filter({hasText:source.title}).waitFor();
     await admin.goto('http://localhost:3000/supervision?seccion=senales');
     await admin.locator('#senales').getByRole('link',{name:/Impedimentos/}).click();

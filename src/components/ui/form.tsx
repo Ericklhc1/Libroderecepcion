@@ -238,10 +238,14 @@ export function ActionForm({
     const result = await action(previous, formData);
     if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
     // Server Actions may persist before React commits useActionState's returned state.
+    // Refresh immediately after the confirmed result as well: waiting only for the
+    // useActionState commit can leave sibling action forms with a stale optimistic
+    // revision (e.g. Housekeeping RECIBIR -> COMENZAR).
+    if (result.ok && !result.credentials && refreshOnSuccess) router.refresh();
     // Close only after an explicit successful result; validation/errors remain visible.
     if (result.ok && !result.credentials && closeOnSuccess && close) close();
     return result;
-  }, [action, close, closeOnSuccess, formId]);
+  }, [action, close, closeOnSuccess, formId, refreshOnSuccess, router]);
   const [state, formAction] = useActionState(actionWithImmediateDialogClose, null);
   const submitted = useRef<Map<string, ControlValue> | null>(null);
   const handledSuccess = useRef<ActionState | null>(null);

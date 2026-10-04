@@ -1,6 +1,7 @@
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
+import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import {
   AuditAction,
   NotificationType,
@@ -504,6 +505,7 @@ export async function changeTaskStatus(
   if (input.status === TaskStatus.BLOQUEADA && !input.blockedReason) {
     throw new RuleError('Indica por qué la tarea queda bloqueada.');
   }
+  if(isSubjectAttentionTask(current.procedureOccurrenceKey)&&['REALIZADA','COMPLETADA'].includes(input.status)&&!input.evidenceProvided?.trim())throw new RuleError('Describe el resultado para devolverlo al asunto de origen.');
   if (
     input.status === TaskStatus.REALIZADA &&
     current.evidenceRequired &&

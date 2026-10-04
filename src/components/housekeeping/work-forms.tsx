@@ -26,10 +26,10 @@ export function NewWorkForm({requestKey,date,departmentId,rooms,zones,team,canAs
     </ActionForm>
   </Dialog>;
 }
-export function WorkActionForm({id,version,action,team,defaultAssignee}:{id:string;version:number;action:HkWorkAction;team:Person[];defaultAssignee?:string}) {
+export function WorkActionForm({id,version,action,team,defaultAssignee,primary=false}:{id:string;version:number;action:HkWorkAction;team:Person[];defaultAssignee?:string;primary?:boolean}) {
   const hidden=<><input type="hidden" name="id" value={id}/><input type="hidden" name="version" value={version}/><input type="hidden" name="action" value={action}/></>;
-  if(!HK_NOTE_REQUIRED.includes(action))return <ActionForm action={changeHkWorkAction} refreshOnSuccess hideSuccess className="space-y-0">{hidden}<SubmitButton variant="secondary" size="sm" pendingLabel="Guardando…">{HK_ACTION_LABELS[action]}</SubmitButton></ActionForm>;
-  return <Dialog title={HK_ACTION_LABELS[action]} trigger={HK_ACTION_LABELS[action]} triggerVariant="secondary" triggerSize="sm" width="sm" description={action==='APROBAR'?'Confirma sólo después de revisar el trabajo. Tu nombre quedará registrado.':'La instrucción o el resultado se conservará en el historial.'}>
+  if(!HK_NOTE_REQUIRED.includes(action))return <ActionForm action={changeHkWorkAction} refreshOnSuccess hideSuccess className="space-y-0">{hidden}<SubmitButton variant={primary?"gold":"secondary"} size="sm" pendingLabel="Guardando…">{HK_ACTION_LABELS[action]}</SubmitButton></ActionForm>;
+  return <Dialog title={HK_ACTION_LABELS[action]} trigger={HK_ACTION_LABELS[action]} triggerVariant={primary?"gold":"secondary"} triggerSize="sm" width="sm" description={action==='APROBAR'?'Confirma sólo después de revisar el trabajo. Tu nombre quedará registrado.':'La instrucción o el resultado se conservará en el historial.'}>
     <ActionForm action={changeHkWorkAction} refreshOnSuccess closeOnSuccess>{hidden}
       {action==='ASIGNAR'&&<><Field label="Responsable" name="assignedToId"><Select name="assignedToId" required defaultValue={defaultAssignee??''} options={[{value:'',label:'Seleccionar persona'},...team.map(p=>({value:p.id,label:p.name}))]}/></Field><Field label="Atender antes de" name="dueAt" hint="Opcional · conserva el plazo si se deja vacío"><Input type="datetime-local" name="dueAt"/></Field></>}
       {action==='MANTENIMIENTO'&&<Field label="Gravedad" name="severity"><Select name="severity" required options={[{value:'',label:'Seleccionar gravedad'},...['BAJA','MEDIA','ALTA','CRITICA'].map(v=>({value:v,label:v}))]}/></Field>}

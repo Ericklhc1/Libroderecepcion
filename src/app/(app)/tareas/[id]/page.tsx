@@ -1,6 +1,7 @@
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { SubjectActions, SubjectContext } from '@/components/operational/subject-surface';
+import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import { nextWorkAction } from '@/domain/coordination';
 import { notFound } from 'next/navigation';
 import { OperationalAlarmStatus, TaskStatus } from '@prisma/client';
@@ -85,7 +86,8 @@ export default async function TaskDetailPage({
   const canValidate = user.permissions.includes('supervision.task.validate') && (!task.requiresIndependentValidation || (!!task.completedById && task.completedById !== user.id));
   const assign = user.permissions.includes('task.assign') ? <AssignTaskDialog taskId={task.id} currentAssigneeId={task.assigneeId} users={options.users}/> : null;
   const statusAction = (status: TaskStatus, label: string) => <QuickStatusForm taskId={task.id} status={status} label={label} variant="gold"/>;
-  const finish = canChange ? (task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
+  const attention=isSubjectAttentionTask(task.procedureOccurrenceKey);
+  const finish = canChange ? (attention?<TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={task.requiresIndependentValidation||!user.permissions.includes('task.close')?TaskStatus.REALIZADA:TaskStatus.COMPLETADA} label="Informar resultado" variant="gold" resultRequired/>:task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
     ? <TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={TaskStatus.REALIZADA} label="Finalizar" variant="gold"/>
     : statusAction(TaskStatus.COMPLETADA, 'Resolver')) : null;
   const primaryAction = !open ? <a href={task.evidenceProvided ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{task.evidenceProvided ? "Ver resultado" : "Ver historial"}</a>

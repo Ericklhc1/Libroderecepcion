@@ -89,18 +89,19 @@ export async function validateWorker(tx: Tx, departmentId: string, id: string, w
   if (!await tx.user.findFirst({ where: { id, ...membership(departmentId), ...worker }, select: { id: true } })) throw new RuleError('Selecciona un usuario activo del área con permiso para ejecutar trabajo.');
   if (workDate && (await tx.housekeepingDayMember.findUnique({ where: { departmentId_workDate_userId: { departmentId, workDate, userId: id } } }))?.available === false) throw new RuleError('Esta persona figura como no disponible para ese día.');
 }
-export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
+export async function createHkWork(user: CurrentUser, input: HkCreateInput, client?: Prisma.TransactionClient) {
+  const db = client ?? prisma;
   hasAccess(user); validDate(input.workDate);
   if (!input.title.trim() || !input.description.trim()) throw new RuleError('Indica qué se necesita y la instrucción.');
   if (!Number.isInteger(input.effortMinutes) || input.effortMinutes < 1 || input.effortMinutes > 480) throw new RuleError('La duración estimada debe estar entre 1 y 480 minutos.');
-  const canAssign = await hkCapability(user, input.departmentId, 'housekeeping.assign');
+  const canAssign = await hkCapability(user, input.departmentId, 'housekeeping.assign',db);
   if (!canAssign && !hkHas(user, 'housekeeping.request')) throw new ForbiddenError();
-  const area = await prisma.department.findFirst({ where: { id: input.departmentId, active: true }, select: { key: true } });
+  const area = await db.department.findFirst({ where: { id: input.departmentId, active: true }, select: { key: true } });
   if (!area || (!canAssign && !['HOUSEKEEPING', 'AREAS_PUBLICAS'].includes(area.key))) throw new ForbiddenError('Las solicitudes deben dirigirse a Housekeeping o Áreas públicas.');
   if (input.assignedToId && !canAssign) throw new ForbiddenError('La asignación corresponde al supervisor del área.');
-  const repeated = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
+  const repeated = await db.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
   if (repeated) { if (repeated.createdById !== user.id) throw new ForbiddenError(); return repeated; }
-  try { return await prisma.$transaction(async tx => {
+  const perform = async (tx: Prisma.TransactionClient) => {
     const room = input.roomId ? await tx.room.findFirst({ where: { id: input.roomId, active: true }, select: { id: true, number: true } }) : null;
     const zone = input.zoneId ? await tx.keyArea.findFirst({ where: { id: input.zoneId, active: true }, select: { id: true, name: true } }) : null;
     if ((input.roomId && !room) || (input.zoneId && !zone) || (room && zone)) throw new RuleError('Selecciona una habitación o zona válida.');
@@ -112,9 +113,10 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput) {
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
     const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, workAssignedAt: input.assignedToId ? new Date() : null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
     await record(tx, user, request.id, request.humanId, 'CREAR', 'Trabajo del día'); await notifyHkWork(tx, request, user.id, 'Nuevo trabajo'); return request;
-  }); } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const request = await prisma.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
+  };
+  try { return client ? await perform(client) : await prisma.$transaction(perform); } catch (error) {
+    if (!client && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const request = await db.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
       if (request?.createdById === user.id) return request;
       throw new RuleError('El registro de origen ya tiene una atención vinculada.');
     } throw error;

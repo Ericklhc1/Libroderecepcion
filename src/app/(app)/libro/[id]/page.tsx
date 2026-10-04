@@ -1,4 +1,4 @@
-import {returnedSubjectTask} from '@/domain/subject-attention';
+import {isSubjectAttentionTask, returnedSubjectTask} from '@/domain/subject-attention';
 import { followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { getSubjectAttentionAreas } from '@/server/services/subject-attention';
 import { randomUUID } from 'node:crypto';
@@ -118,6 +118,7 @@ export default async function EntryDetailPage({
   const canFinish = (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id) && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
   const activeHk = entry.housekeepingRequest && !entry.housekeepingRequest.isDemo && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
   const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
+  const activeAttentionTask = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && isSubjectAttentionTask(t.procedureOccurrenceKey));
   const returnedTask=returnedSubjectTask(tasks,entry.reopenedAt);
   const returnedHk=entry.housekeepingRequest&&!entry.housekeepingRequest.isDemo&&entry.housekeepingRequest.status==='RESUELTO'&&(!entry.reopenedAt||!!entry.housekeepingRequest.resolvedAt&&entry.housekeepingRequest.resolvedAt>=entry.reopenedAt)?entry.housekeepingRequest:null;
   const returnedWork=Boolean(returnedTask||returnedHk);
@@ -256,7 +257,7 @@ export default async function EntryDetailPage({
         {!entry.deletedAt ? (
           <SubjectActions primary={
             activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : '#atencion-area'}>Ver atención del área</Link>
-            : activeWork ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/tareas/${activeWork.id}`}>Continuar atención</Link>
+            : activeAttentionTask ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/tareas/${activeAttentionTask.id}`}>Continuar atención</Link>
             : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href={receivedResult ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{receivedResult ? "Ver resultado" : "Ver historial"}</a>
             : returnedWork ? (canFinish ? <Dialog title="Revisar y cerrar el asunto" trigger="Revisar y cerrar" triggerVariant="gold" width="sm" description="El resultado del área está incluido. Confirma cómo quedó el asunto; sus controles y seguimientos se mantienen."><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={receivedResult??null} rootCause={entry.rootCause} targetStatus={EntryStatus.CERRADO} label="Revisar y cerrar"/></Dialog> : <a href="#resultado-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado recibido</a>)
 

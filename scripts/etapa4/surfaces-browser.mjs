@@ -36,7 +36,7 @@ try{
     await reception.page.goto('http://localhost:3000/turno');
     await reception.page.getByRole('link',{name:'Continuar operación',exact:true}).waitFor();
     assert.equal(await reception.page.getByRole('button',{name:'INICIAR CIERRE DE TURNO',exact:true}).isVisible(),false);
-    await reception.page.getByText('Siguiente acción: Comprobar habitación antes del relevo',{exact:true}).waitFor();
+    await reception.page.getByRole('link',{name:new RegExp(`PRUEBA CONTINUIDAD ${width}`)}).getByText('Siguiente acción: Comprobar habitación antes del relevo',{exact:true}).waitFor();
     assert.ok((await db.task.findFirstOrThrow({where:{title:`PRUEBA SIN VENCER ${width}`}})).status==='PENDIENTE');
     await reception.page.getByText('Impedimento: Repuesto pendiente del área',{exact:true}).waitFor();
     await reception.page.getByText('Resultado esperado: Equipo probado antes de devolver resultado',{exact:true}).waitFor();

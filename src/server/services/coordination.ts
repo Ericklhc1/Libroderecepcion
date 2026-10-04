@@ -75,29 +75,45 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const hkWhere: Prisma.HousekeepingRequestWhereInput = { AND: [hkScope,hkView,...(state?[{status:{in:state.hk}}]:[]),...(q?[{OR:[...(human?[human,{sourceEntry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{sourceEntry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}},{location:{contains:q,mode:'insensitive' as const}}]}]:[])], ...area, workflowVersion: 1, isDemo: false,
     status: history ? { in: ['RESUELTO','CANCELADO'] } : { notIn: ['RESUELTO','CANCELADO'] }, ...(owner ? { assignedToId:owner } : {}),...(due?{dueAt:due}:{}) };
   const followWhere: Prisma.FollowUpWhereInput = { AND: [coordinationFollowUps(user), ...(view==='all'?[]:[{id:{in:[] as string[]}}]),...(state?[{status:{in:state.follow}}]:[]),...(q?[{OR:[...(human?[human]:[]),{action:{contains:q,mode:'insensitive' as const}}]}]:[]), {OR:[{entryId:null},{entry:{NOT:entryWhere}}]}, {OR:[{taskId:null},{task:{NOT:taskWhere}}]}], isDemo:false, ...(canCoordinate(user)?{}:{id:{in:[]}}), ...(input.departmentId?{owner:{departmentId:input.departmentId}}:{}), ...(owner?{ownerId:owner}:{}),...(due?{scheduledAt:due}:{}), status:history?{in:['CUMPLIDO','CANCELADO']}:{in:['PENDIENTE','VENCIDO']} };
-  const window = { take: 25, skip: (page-1)*25, orderBy: [{ dueAt: { sort: 'asc' as const, nulls: 'last' as const } }, { id: 'asc' as const }] };
-  const [entries,tasks,hk,followups,entryGroups,taskGroups,hkGroups,followGroups,departments] = await Promise.all([
-    prisma.operationalEntry.findMany({ where: entryWhere, ...window, include: {
+  // Group authorized identities before paging, so one source never inflates rows or totals.
+  const identity={id:true,humanId:true,departmentId:true,status:true,dueAt:true} as const;
+  const [entryRefs,taskRefs,hkRefs,followRefs]=await Promise.all([
+    prisma.operationalEntry.findMany({where:entryWhere,select:identity}),
+    prisma.task.findMany({where:taskWhere,select:{...identity,entryId:true}}),
+    prisma.housekeepingRequest.findMany({where:hkWhere,select:{...identity,sourceEntryId:true}}),
+    prisma.followUp.findMany({where:followWhere,select:{id:true,humanId:true,status:true,scheduledAt:true,entryId:true,task:{select:{entryId:true}},owner:{select:{departmentId:true}}}}),
+  ]);
+  type Identity={id:string;humanId:number;kind:CoordinationKind;sourceId:string|null;departmentId:string|null;status:string;dueAt:Date|null};
+  const identities:Identity[]=[
+    ...entryRefs.map(r=>({...r,kind:'entry' as const,sourceId:r.id})),
+    ...taskRefs.map(r=>({...r,kind:'task' as const,sourceId:r.entryId})),
+    ...hkRefs.map(r=>({...r,kind:'housekeeping' as const,sourceId:r.sourceEntryId})),
+    ...followRefs.map(r=>({...r,kind:'followup' as const,sourceId:r.entryId??r.task?.entryId??null,departmentId:r.owner.departmentId,dueAt:r.scheduledAt})),
+  ];
+  identities.sort((a,b)=>(a.dueAt?.getTime()??Infinity)-(b.dueAt?.getTime()??Infinity)||a.id.localeCompare(b.id));
+  const subjectGroups=new Map<string,Identity[]>();
+  for(const row of identities){const key=row.sourceId?`entry:${row.sourceId}`:`${row.kind}:${row.id}`;const group=subjectGroups.get(key)??[];group.push(row);subjectGroups.set(key,group);}
+  const groups=[...subjectGroups.values()];
+  const pageGroups=groups.slice((page-1)*25,page*25);
+  const pageIds=(kind:CoordinationKind)=>pageGroups.map(group=>group[0]!).filter(row=>row.kind===kind).map(row=>row.id);
+  const orderBy=[{dueAt:{sort:'asc' as const,nulls:'last' as const}},{id:'asc' as const}];
+  const [entries,tasks,hk,followups,departments] = await Promise.all([
+    prisma.operationalEntry.findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
       owner: { select: { name: true } }, department: { select: { name: true } },
       tasks: { where: coordinationTasks(user), select: { id:true,humanId:true,title:true,status:true,assigneeId:true }, take:20 },
       followUps: { where: coordinationFollowUps(user), select: { id:true,humanId:true,action:true }, take:20 },
     } }),
-    prisma.task.findMany({ where: taskWhere, ...window, include: { assignee: { select: { name:true } }, department: { select: { name:true } }, followUps:{where:coordinationFollowUps(user),select:{humanId:true,action:true},take:20} } }),
-    prisma.housekeepingRequest.findMany({ where: hkWhere, ...window, include: { assignedTo: { select:{name:true} }, department:{select:{name:true}},sourceEntry:{select:{id:true,humanId:true,title:true}},maintenanceEntry:{select:{id:true,humanId:true,status:true}} } }),
-    prisma.followUp.findMany({where:followWhere,take:window.take,skip:window.skip,orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],include:{owner:{select:{name:true,departmentId:true,department:{select:{name:true}}}}}}),
-    prisma.operationalEntry.groupBy({by:['departmentId','status'],where:entryWhere,_count:{_all:true}}),prisma.task.groupBy({by:['departmentId','status'],where:taskWhere,_count:{_all:true}}),prisma.housekeepingRequest.groupBy({by:['departmentId','status'],where:hkWhere,_count:{_all:true}}),
-    prisma.followUp.groupBy({by:['ownerId','status'],where:followWhere,_count:{_all:true}}),
+    prisma.task.findMany({ where: {AND:[taskWhere],id:{in:pageIds('task')}}, orderBy, include: { assignee: { select: { name:true } }, department: { select: { name:true } }, followUps:{where:coordinationFollowUps(user),select:{humanId:true,action:true},take:20} } }),
+    prisma.housekeepingRequest.findMany({ where: {AND:[hkWhere],id:{in:pageIds('housekeeping')}}, orderBy, include: { assignedTo: { select:{name:true} }, department:{select:{name:true}},sourceEntry:{select:{id:true,humanId:true,title:true}},maintenanceEntry:{select:{id:true,humanId:true,status:true}} } }),
+    prisma.followUp.findMany({where:{AND:[followWhere],id:{in:pageIds('followup')}},orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],include:{owner:{select:{name:true,departmentId:true,department:{select:{name:true}}}}}}),
     prisma.department.findMany({where:{active:true},select:{id:true,name:true},orderBy:{order:'asc'}}),
   ]);
-  const count=(groups:Array<{_count:{_all:number}}>)=>groups.reduce((total,g)=>total+g._count._all,0);
-  const entryCount=count(entryGroups),taskCount=count(taskGroups),hkCount=count(hkGroups);
   const loads=new Map<string,{departmentId:string;name:string;total:number;blocked:number}>();
-  for(const group of [...entryGroups,...taskGroups,...hkGroups]){
-    const id=group.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
-    load.total+=group._count._all;if(['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(group.status))load.blocked+=group._count._all;loads.set(id,load);
+  for(const group of groups){
+    const first=group[0]!,id=first.departmentId??'';
+    const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};
+    load.total+=1;if(group.some(row=>['BLOQUEADO','BLOQUEADA','EN_ESPERA'].includes(row.status)))load.blocked+=1;loads.set(id,load);
   }
-  const followOwners=followGroups.length?await prisma.user.findMany({where:{id:{in:followGroups.map(g=>g.ownerId)}},select:{id:true,departmentId:true}}):[];
-  for(const group of followGroups){const id=followOwners.find(u=>u.id===group.ownerId)?.departmentId??'';const load=loads.get(id)??{departmentId:id,name:departments.find(d=>d.id===id)?.name??'Sin área',total:0,blocked:0};load.total+=group._count._all;loads.set(id,load);}
   const byArea=[...loads.values()].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'es'));
   const sourceIds=[...new Set([...tasks.map(t=>t.entryId),...hk.map(h=>h.sourceEntryId)].filter((id):id is string=>Boolean(id)))];
   const visibleSources=sourceIds.length?await prisma.operationalEntry.findMany({where:{id:{in:sourceIds},OR:[{AND:[coordinationEntries(user)]},{tasks:{some:{id:{in:tasks.map(t=>t.id)}}}}]},select:{id:true,humanId:true}}):[];
@@ -108,7 +124,15 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     ...hk.map(r=>({id:r.id,humanId:r.humanId,source:r.sourceEntryId?sources.get(r.sourceEntryId):undefined,kind:'housekeeping' as const,title:r.sourceEntry?.title??r.title??'Trabajo del área',status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.assignedToId,owner:r.assignedTo?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.acknowledgedAt,assignedAt:r.workAssignedAt,availableAt:hkReceiptAvailableAt(r.workDate),startedAt:r.startedAt,completedAt:r.resolvedAt,nextAction:nextWorkAction(r.status,r.assignedToId,r.acknowledgedAt,r.blockReason),href:`/admin/housekeeping?area=${r.departmentId??''}&aviso=${r.humanId}`,canAssign:false,children:[...(r.sourceEntry&&canCoordinate(user)?[{label:`Novedad de origen #${r.sourceEntry.humanId}`,href:`/libro/${r.sourceEntry.id}`}]:[]),...(r.maintenanceEntry&&canCoordinate(user)?[{label:`Mantenimiento #${r.maintenanceEntry.humanId} · ${r.maintenanceEntry.status}`,href:`/libro/${r.maintenanceEntry.id}`}]:[])]})),
     ...followups.map(r=>({id:r.id,humanId:r.humanId,kind:'followup' as const,title:r.action,status:r.status,priority:r.priority,departmentId:r.owner.departmentId,department:r.owner.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner.name,createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.scheduledAt,receivedAt:null,assignedAt:null,availableAt:null,startedAt:null,completedAt:r.completedAt,nextAction:r.nextAction??(input.history?'Consultar resultado':'Revisar y registrar siguiente acción'),href:`/seguimientos?q=${r.humanId}&estado=todos`,canAssign:false,children:[]})),
   ];
-  return {rows,departments,byArea,page,total:entryCount+taskCount+hkCount+count(followGroups),hasMore:Math.max(entryCount,taskCount,hkCount,count(followGroups))>page*25};
+  const groupedRows=pageGroups.flatMap(group=>{
+    const first=group[0]!;const row=rows.find(r=>r.kind===first.kind&&r.id===first.id);if(!row)return[];
+    for(const child of group.slice(1)){
+      const href=child.kind==='task'?`/tareas/${child.id}`:child.kind==='housekeeping'?`/admin/housekeeping?area=${child.departmentId??''}&aviso=${child.humanId}`:child.kind==='entry'?`/libro/${child.id}`:`/seguimientos?q=${child.humanId}&estado=todos`;
+      if(!row.children.some(link=>link.href===href))row.children.push({label:`${child.kind==='task'?'Tarea':child.kind==='housekeeping'?'Housekeeping':child.kind==='entry'?'Asunto':'Seguimiento'} #${child.humanId} · ${child.status}`,href});
+    }
+    return[row];
+  });
+  return {rows:groupedRows,departments,byArea,page,total:groups.length,hasMore:groups.length>page*25};
 }
 
 export async function getCoordinationTeam(user: CurrentUser, departmentId: string, now = new Date()) {

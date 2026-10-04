@@ -39,6 +39,24 @@ describe('AROH Simple · trabajo relevante por rol y excepción',()=>{
     expect(searched.rows.map(row=>row.id)).toEqual([task.id]);
     expect(searched.rows[0]?.source).toEqual({humanId:source.humanId,href:`/libro/${source.id}`});
   });
+  it('agrupa varios trabajos y Housekeeping del mismo asunto antes de contar y paginar',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'512'}});
+    const roots:Array<{id:string;humanId:number}>=[];
+    for(let i=0;i<27;i++){
+      const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:`Asunto agrupado ${i}`,description:'Contexto de la atención',createdById:admin.id,roomId:room.id}});roots.push(source);
+      await prisma.task.createMany({data:[0,1].map(j=>({title:`Trabajo ${i}/${j}`,createdById:admin.id,entryId:source.id,departmentId:area.id,assigneeId:admin.id}))});
+    }
+    const hk=await createHkWork(admin,{requestKey:randomUUID(),sourceEntryId:roots[0]!.id,title:'Atención vinculada',description:'Contexto conservado',roomId:room.id,departmentId:area.id,workDate:hotelDateKey(new Date()),workKind:'ATENCION',effortMinutes:15,priority:'MEDIA'});
+    const first=await getCoordinationBoard(admin),second=await getCoordinationBoard(admin,{page:2});
+    expect(first.total).toBe(27);expect(first.rows).toHaveLength(25);expect(second.rows).toHaveLength(2);
+    const all=[...first.rows,...second.rows];expect(new Set(all.map(row=>row.source?.humanId)).size).toBe(27);
+    expect(first.byArea.reduce((total,area)=>total+area.total,0)).toBe(27);
+    const group=all.find(row=>row.source?.humanId===roots[0]!.humanId)!;
+    expect(group.kind==='housekeeping'||group.children.some(child=>child.href.includes(`aviso=${hk.humanId}`))).toBe(true);
+    expect(group.children.some(child=>child.href.startsWith('/tareas/'))).toBe(true);
+  });
   it('la excepción y los conteos no revelan trabajo privado aunque el tercero conserve su asignación',async()=>{
     const reader=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     const owner=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});

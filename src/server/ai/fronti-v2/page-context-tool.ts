@@ -331,7 +331,7 @@ async function detailSnapshot(
           select: { id: true, declared: true, confirmed: true, missingReason: true, missingReportedById: true, missingApprovedAt: true, missingApprovalNote: true, updatedAt: true, elementType: { select: { name: true } } },
         },
         items: {
-          select: { id: true, level: true, text: true, order: true },
+          select: { id: true, level: true, title: true, detail: true, order: true },
           orderBy: [{ level: 'asc' }, { order: 'asc' }],
         },
       },

@@ -1,0 +1,174 @@
+name: Verificación hotfix mantenimiento
+
+on:
+  push:
+    branches:
+      - codex/aroh-maintenance-hotfix-20261005
+
+concurrency:
+  group: maintenance-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Regresiones, tipos y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: libro
+          POSTGRES_PASSWORD: libro_test
+          POSTGRES_DB: libro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U libro -d libro_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public
+      DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
+      DIRECT_DATABASE_URL: postgresql://libro:libro_test@127.0.0.1:5432/libro_test?schema=public&application_name=compuerta
+      AUTH_SECRET: compuerta-local-no-produccion-solo-datos-sinteticos
+      NODE_ENV: test
+
+    steps:
+      - name: Código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validar infraestructura oficial
+        run: |
+          test -f vercel.json
+          test ! -f netlify.toml
+          test ! -d .netlify
+          if grep -RIl --exclude='*.md' -E 'netlify\.app|NETLIFY_|@netlify/' src prisma package.json 2>/dev/null; then
+            echo 'Se detectó una dependencia o configuración activa de Netlify. La infraestructura oficial es GitHub + Vercel + Neon.'
+            exit 1
+          fi
+          if find .github -type f ! -name 'compuerta.yml' ! -name 'maintenance-hotfix.yml' -print0 | xargs -0 -r grep -Il -E 'netlify\.app|NETLIFY_|@netlify/' 2>/dev/null; then
+            echo 'Se detectó configuración activa de Netlify en .github.'
+            exit 1
+          fi
+
+      - name: Validar hotfix aislado y versión
+        run: |
+          base=928f57b5fc6823229d160623e6253d4a7ce02fb3
+          git merge-base --is-ancestor "$base" HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          current_version=$(node -p "require('./package.json').version")
+          lock_version=$(node -p "require('./package-lock.json').version")
+          lock_root_version=$(node -p "require('./package-lock.json').packages[''].version")
+          base_version=$(git show "$base:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+          test "$base_version" = "1.57.0"
+          test "$current_version" = "1.57.1"
+          test "$lock_version" = "$current_version"
+          test "$lock_root_version" = "$current_version"
+          node -e "const v=require('./vercel.json').git.deploymentEnabled; if(v['**']!==false||v['main']!==true||v['codex/aroh-maintenance-hotfix-20261005']===true)process.exit(1)"
+
+      - name: Dependencias
+        run: npm ci
+
+      - name: Bloquear vulnerabilidades críticas
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Cliente Prisma
+        run: npm run db:generate
+
+      - name: Validar migraciones
+        run: npm run db:deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tipos
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee etapa3-typecheck.log
+
+      - name: Regresiones
+        run: npm run test
+
+      - name: Build
+        env:
+          NODE_ENV: production
+        run: npm run build
+
+      - name: Preparar recorridos de navegador de Etapa 1
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          node node_modules/playwright-core/cli.js install --with-deps chromium
+
+      - name: Recorridos autenticados de escritorio y móvil
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" npm run start -- --hostname localhost > /tmp/etapa1-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          journey_status=0
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa1/browser.mjs; then
+            grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa2/browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa3/browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa3/block2-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/collapsible-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/reception-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/subject-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/attention-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/roles-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/intent-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/surfaces-browser.mjs; then
+            journey_status=1
+          fi
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/maintenance/browser.mjs; then
+            journey_status=1
+          fi
+          exit "$journey_status"
+
+      - name: Resumen de recorridos en el log
+        if: always()
+        run: |
+          for report in etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json maintenance-browser-results.json; do
+            if [ -f "$report" ]; then printf '\n%s\n' "$report"; cat "$report"; fi
+          done

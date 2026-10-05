@@ -4,6 +4,8 @@ import { extname } from 'node:path';
 import type { TextFragment } from '@/domain/pms/layout';
 import { RuleError } from '@/server/errors';
 import { readPdfFragments } from './read-pdf';
+import { parseDelimited } from '@/domain/delimited-report';
+export { parseDelimited } from '@/domain/delimited-report';
 
 export type ExtractedReport = {
   name: string;
@@ -20,54 +22,6 @@ function decodeText(data: Uint8Array): string {
   } catch {
     return new TextDecoder('windows-1252').decode(data).replace(/^\uFEFF/, '');
   }
-}
-
-function delimiterOf(text: string): ',' | ';' | '\t' {
-  const sample = text.split(/\r?\n/).slice(0, 12).join('\n');
-  const counts = ([',', ';', '\t'] as const).map((delimiter) => ({
-    delimiter,
-    count: [...sample].filter((character) => character === delimiter).length,
-  }));
-  return counts.sort((a, b) => b.count - a.count)[0]?.delimiter ?? ',';
-}
-
-/** Lector pequeño de CSV/TSV: admite comillas, separadores dentro de celdas y saltos de línea. */
-export function parseDelimited(text: string, delimiter = delimiterOf(text)): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '"') {
-      if (quoted && text[index + 1] === '"') {
-        cell += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-      continue;
-    }
-    if (!quoted && character === delimiter) {
-      row.push(cell.trim());
-      cell = '';
-      continue;
-    }
-    if (!quoted && (character === '\n' || character === '\r')) {
-      if (character === '\r' && text[index + 1] === '\n') index += 1;
-      row.push(cell.trim());
-      if (row.some(Boolean)) rows.push(row);
-      row = [];
-      cell = '';
-      continue;
-    }
-    cell += character;
-  }
-
-  row.push(cell.trim());
-  if (row.some(Boolean)) rows.push(row);
-  return rows;
 }
 
 function dateText(value: Date): string {

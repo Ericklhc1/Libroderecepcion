@@ -1,8 +1,11 @@
+import {subjectDistributionEnabled} from '@/server/services/subject-distribution-gate';
+import {SubjectAttentionDialog} from '@/components/operational/subject-attention-dialog';
 import {isSubjectAttentionTask, returnedSubjectTask} from '@/domain/subject-attention';
 import { followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { getSubjectAttentionAreas } from '@/server/services/subject-attention';
 import { randomUUID } from 'node:crypto';
-import { SubjectAttentionDialog } from '@/components/operational/subject-attention-dialog';
+import {SubjectDistributionDialog} from '@/components/operational/subject-distribution-dialog';
+import {listAreaAttentions,attentionPeople} from '@/server/services/subject-distribution';
 import Link from 'next/link';
 import { SubjectActions, SubjectContext } from '@/components/operational/subject-surface';
 import { nextWorkAction } from '@/domain/coordination';
@@ -30,8 +33,6 @@ import {
   EntryStatusForm,
   RestoreEntryForm,
 } from '@/components/operational/entry-actions';
-import { TaskForm } from '@/components/forms/task-form';
-import { createTaskAction } from '@/server/actions/tasks';
 import {
   AlarmKindIcon,
   LinkedAlertPrompt,
@@ -123,16 +124,17 @@ export default async function EntryDetailPage({
   const isIncident = entry.type === EntryType.INCIDENCIA;
   const canAttend = Boolean(entry.ownerId) && (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id);
   const canFinish = (user.permissions.includes('entry.edit') || entry.ownerId === user.id || entry.createdById === user.id) && (user.permissions.includes('entry.close') || (entry.type === EntryType.INCIDENCIA && user.permissions.includes('incident.close')));
-  const activeHk = entry.housekeepingRequest && !entry.housekeepingRequest.isDemo && !['RESUELTO','CANCELADO'].includes(entry.housekeepingRequest.status) ? entry.housekeepingRequest : null;
+  const activeHk = entry.housekeepingRequests.find(work=>!work.isDemo&&!['RESUELTO','CANCELADO'].includes(work.status))??null;
   const activeWork = tasks.find(t => !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status));
   const activeAttentionTask = tasks.find(t => !t.isDemo && !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && isSubjectAttentionTask(t.procedureOccurrenceKey)) ?? tasks.find(t => !t.isDemo && !['VALIDADA','COMPLETADA','CANCELADA'].includes(t.status) && t.entryId===entry.id && Boolean(t.departmentId));
   const returnedTask=returnedSubjectTask(tasks,entry.reopenedAt);
-  const returnedHk=entry.housekeepingRequest&&!entry.housekeepingRequest.isDemo&&entry.housekeepingRequest.status==='RESUELTO'&&(!entry.reopenedAt||!!entry.housekeepingRequest.resolvedAt&&entry.housekeepingRequest.resolvedAt>=entry.reopenedAt)?entry.housekeepingRequest:null;
+  const returnedHk=entry.housekeepingRequests.find(work=>!work.isDemo&&work.status==='RESUELTO'&&(!entry.reopenedAt||!!work.resolvedAt&&work.resolvedAt>=entry.reopenedAt))??null;
   const latestReturned=[
     returnedTask&&returnedTask.completedAt?{at:returnedTask.completedAt,result:returnedTask.evidenceProvided}:null,
     returnedHk&&returnedHk.resolvedAt?{at:returnedHk.resolvedAt,result:returnedHk.resolution}:null,
   ].filter((item):item is {at:Date;result:string|null}=>Boolean(item)).sort((a,b)=>b.at.getTime()-a.at.getTime())[0];
   const returnedWork=Boolean(latestReturned);
+  const completedLinkedWork=tasks.some(t=>!t.isDemo&&['VALIDADA','COMPLETADA'].includes(t.status)&&(!entry.reopenedAt||!!t.completedAt&&t.completedAt>=entry.reopenedAt));
   const open = ENTRY_OPEN_STATUSES.includes(entry.status);
   const areaResult=latestReturned?.result??null;
   const receivedResult=open?(returnedWork?areaResult:entry.resolution):(entry.resolution??areaResult);
@@ -159,7 +161,10 @@ export default async function EntryDetailPage({
         : [];
     });
 
-  const attentionAreas = await getSubjectAttentionAreas(user);
+  const distributionEnabled=subjectDistributionEnabled();
+  const attentionAreas = await Promise.all((await getSubjectAttentionAreas(user)).map(async area=>({...area,people:distributionEnabled?await attentionPeople(area.value):[]})));
+  const areaAttention=await listAreaAttentions(user,{entryId:entry.id});
+  const awaitingAreaReview=areaAttention.rows.filter(r=>['POR_REVISAR','ACLARACION'].includes(r.status));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -187,7 +192,7 @@ export default async function EntryDetailPage({
               {ENTRY_STATUS_LABEL[entry.status]}
             </Badge>
             <Badge tone={PRIORITY_TONE[entry.priority]} withSymbol={false}>
-              Prioridad {PRIORITY_LABEL[entry.priority]}
+              Importancia {PRIORITY_LABEL[entry.priority]}
             </Badge>
             {entry.severity ? (
               <Badge tone={SEVERITY_TONE[entry.severity]}>
@@ -247,7 +252,8 @@ export default async function EntryDetailPage({
             </div>
           </dl>
 
-          {entry.housekeepingRequest && (!entry.housekeepingRequest.isDemo || user.isSystemAdmin) && <div id="atencion-area" className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-petrol-900"><strong>Housekeeping #{entry.housekeepingRequest.humanId} · {HK_WORK_LABELS[entry.housekeepingRequest.status] ?? entry.housekeepingRequest.status}</strong>{entry.housekeepingRequest.resolution && <p className="mt-1 whitespace-pre-wrap">{entry.housekeepingRequest.resolution}</p>}{entry.housekeepingRequest.inspectedBy && <p className="mt-1 text-xs">Revisado por {entry.housekeepingRequest.inspectedBy.name}</p>}{canAccessHousekeeping(user) && <Link className="mt-2 inline-block underline" href={`/admin/housekeeping?area=${entry.housekeepingRequest.departmentId??''}&aviso=${entry.housekeepingRequest.humanId}`}>Ver atención</Link>}<p className="mt-1 text-xs text-slate-600">El resultado del área no cierra automáticamente esta novedad.</p></div>}
+          {entry.housekeepingRequests.map(work=><div id={`atencion-area-${work.humanId}`} key={work.humanId} className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-petrol-900"><strong>Housekeeping #{work.humanId} · {HK_WORK_LABELS[work.status]??work.status}</strong>{work.resolution&&<p className="mt-1 whitespace-pre-wrap">{work.resolution}</p>}{work.inspectedBy&&<p className="text-xs">Revisado por {work.inspectedBy.name}</p>}{canAccessHousekeeping(user)&&<Link className="block underline" href={`/admin/housekeeping?area=${work.departmentId??''}&aviso=${work.humanId}`}>Ver atención especializada</Link>}</div>)}
+          <section id="distribucion-areas" className="mt-4 space-y-2"><h2 className="text-sm font-semibold">Avance por área</h2>{areaAttention.rows.length?areaAttention.rows.map(row=><div key={row.id} className="rounded-lg border border-slate-200 p-3 text-sm"><Link className="font-medium underline" href={`/coordinacion/areas?atencion=${row.id}`}>{row.department.name}</Link> · {row.status==='POR_REVISAR'?'Por revisar por jefatura':row.status==='ACLARACION'?'Aclaración pendiente':row.status==='INFORMADA'?'Información publicada':'Trabajo asignado'} · {row.urgent?'Urgente':'Revisión normal'}<p>{row.task?`${TASK_STATUS_LABEL[row.task.status]} · ${row.task.assignee?.name??'Por asignar'}`:row.housekeeping?`${HK_WORK_LABELS[row.housekeeping.status]} · ${row.housekeeping.assignedTo?.name??'Por asignar'}`:row.knownAt?'Jefatura tomó conocimiento; decisión separada':'Sin conocimiento registrado'}</p>{row.decisionNote&&<p className="whitespace-pre-wrap">{row.decisionNote}</p>}{(row.task?.evidenceProvided||row.housekeeping?.resolution)&&<p className="whitespace-pre-wrap">Resultado: {row.task?.evidenceProvided||row.housekeeping?.resolution}</p>}</div>):<p className="text-xs text-slate-600">Sin distribución interna por áreas registrada. Los trabajos históricos conservan sus vínculos.</p>}<p className="text-xs text-slate-600">Ningún resultado parcial cierra automáticamente el asunto. Revisa todas las intervenciones y seguimientos pendientes.</p></section>
           {entry.tags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1">
               {entry.tags.map((tag) => (
@@ -255,18 +261,18 @@ export default async function EntryDetailPage({
               ))}
             </div>
           ) : null}
-          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : returnedWork && open ? 'Revisar el resultado del área y cerrar cuando corresponda' : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={receivedResult} resultLabel={open&&!returnedWork||activeWork||activeHk?"Último intento histórico":open?"Resultado recibido":"Resultado"}/>
+          <span id="resultado-asunto"/><SubjectContext folio={`Asunto #${entry.humanId}`} origin={entry.createdBy.name} nextAction={awaitingAreaReview.length ? `Revisar ${awaitingAreaReview.length} área(s) pendientes en Avance por área` : activeHk ? `Housekeeping #${activeHk.humanId}: ${HK_WORK_LABELS[activeHk.status] ?? activeHk.status}` : activeWork ? `Continuar atención en el trabajo #${activeWork.humanId}` : (returnedWork||completedLinkedWork) && open ? 'Revisar resultados y seguimientos antes de resolver o cerrar el asunto' : nextWorkAction(entry.status,entry.ownerId,entry.workAcknowledgedAt,entry.workNextAction)} result={receivedResult} resultLabel={open&&!returnedWork||activeWork||activeHk?"Último intento histórico":open?"Resultado recibido":"Resultado"}/>
 
         </div>
 
         {!entry.deletedAt ? (
           <SubjectActions primary={
-            activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : '#atencion-area'}>Ver atención del área</Link>
+            awaitingAreaReview.length ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/coordinacion/areas?atencion=${awaitingAreaReview[0]!.id}`}>Ver revisión del área</Link> : activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : `#atencion-area-${activeHk.humanId}`}>Ver atención del área</Link>
             : activeAttentionTask ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={detailHrefWithReturnContext(`/tareas/${activeAttentionTask.id}`, returnContext)}>Continuar atención</Link>
             : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href={receivedResult ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{receivedResult ? "Ver resultado" : "Ver historial"}</a>
             : returnedWork ? (canFinish ? <Dialog title="Revisar y cerrar el asunto" trigger="Revisar y cerrar" triggerVariant="gold" width="sm" description="El resultado del área está incluido. Confirma cómo quedó el asunto; sus controles y seguimientos se mantienen."><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={receivedResult??null} rootCause={entry.rootCause} targetStatus={EntryStatus.CERRADO} label="Revisar y cerrar"/></Dialog> : <a href="#resultado-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado recibido</a>)
 
-            : entry.status === EntryStatus.ABIERTO && attentionAreas.length > 0 ? <SubjectAttentionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>
+            : open && attentionAreas.length > 0 ? (distributionEnabled?<SubjectDistributionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>:<SubjectAttentionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>)
             : !entry.ownerId && user.permissions.includes('entry.edit') ? <AssignEntryDialog entryId={entry.id} departmentId={entry.departmentId} ownerId={entry.ownerId} departments={options.departments} users={options.users}/>
             : canAttend && (entry.status !== EntryStatus.EN_CURSO || canFinish) ? <Dialog title={entry.status === EntryStatus.EN_CURSO ? 'Finalizar asunto' : 'Comenzar atención'} trigger={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'} triggerVariant="gold" triggerSize="sm" width="sm"><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={entry.resolution} rootCause={entry.rootCause} targetStatus={entry.status === EntryStatus.EN_CURSO ? EntryStatus.CERRADO : EntryStatus.EN_CURSO} label={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'}/></Dialog>
             : <a href="#historial-asunto" className="rounded-md px-3 py-2 text-sm font-semibold">Ver resultado e historial</a>
@@ -309,24 +315,8 @@ export default async function EntryDetailPage({
               </Dialog>
             ) : null}
 
-            {user.permissions.includes('task.create') ? (
-              <Dialog
-                title="Asignar tarea desde este asunto"
-                description="Define qué debe hacerse y quién queda a cargo. La tarea conserva el vínculo con este asunto."
-                triggerVariant="secondary"
-                triggerSize="sm"
-                trigger="Solicitar otra atención"
-              >
-                <TaskForm
-                  action={createTaskAction}
-                  options={options}
-                  entryId={entry.id}
-                  defaults={{title:entry.title,description:entry.description,departmentId:entry.departmentId,priority:entry.priority,dueAt:toDateTimeInput(entry.dueAt)}}
-                  defaultAssigneeId={entry.ownerId ?? user.id}
-                  defaultRoomId={entry.roomId ?? undefined}
-                />
-              </Dialog>
-            ) : null}
+            {open&&attentionAreas.length>0&&(distributionEnabled?<SubjectDistributionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>:<SubjectAttentionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>)}
+
 
             <Dialog
               title="Crear alerta para este asunto"

@@ -1,3 +1,4 @@
+import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
 import {visibleSnapshotItems} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
@@ -243,6 +244,7 @@ export default async function HandoverPage({
 
   return (
     <div className="print-report mx-auto max-w-5xl space-y-4">
+      {handover.status !== HandoverStatus.BORRADOR && !receptionInProgress && <ClearHandoverDrafts handoverId={handover.id} />}
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
         <Link
           href="/turno"
@@ -585,6 +587,7 @@ export default async function HandoverPage({
             medium: denomination.medium,
           }))}
           previous={previousQuantities}
+          reviewerId={user.id}
           role="emisor"
           canReopen={user.permissions.includes('cash.reopen')}
         />
@@ -608,6 +611,7 @@ export default async function HandoverPage({
             medium: denomination.medium,
           }))}
           previous={previousQuantities}
+          reviewerId={user.id}
           role="receptor"
           receiverStage="CASH"
         />
@@ -811,7 +815,9 @@ export default async function HandoverPage({
           <Card className="no-print">
             <CardHeader title="Agregar nota manual" />
             <div className="px-4 py-4">
-              <AddHandoverNoteForm handoverId={handover.id} />
+              <AddHandoverNoteForm handoverId={handover.id} actorId={user.id} revision={handover.items.find(item => item.manual)?.id ?? 'new'}
+                observation={handover.items.find(item => item.manual)?.title.replace(/^Observación:\s*/, '') ?? ''}
+                nextAction={handover.items.find(item => item.manual)?.detail?.replace(/^Siguiente acción:\s*/, '').replace(/^Sin acción adicional indicada\.$/, '') ?? ''} />
             </div>
           </Card>
           <Card className="no-print">

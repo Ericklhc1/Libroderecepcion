@@ -214,12 +214,25 @@ export function calendarDateKey(date: Date): string {
 
 /** Inicio real del día del hotel, como instante UTC. */
 export function hotelDayStart(date = new Date()): Date {
-  return hotelWallDateTime(hotelDateKey(date), 0, 0);
+  const key = hotelDateKey(date);
+  const candidate = hotelWallDateTime(key, 0, 0);
+  if (hotelDateKey(candidate) === key && hotelDateKey(new Date(candidate.getTime() - 1)) !== key) return candidate;
+  // Santiago can skip midnight. Find the first real instant of the calendar
+  // date instead of oscillating between 23:00 on the previous day and 01:00.
+  let low = candidate.getTime() - 36 * 3600_000;
+  let high = candidate.getTime() + 36 * 3600_000;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (hotelDateKey(new Date(mid)) < key) low = mid + 1;
+    else high = mid;
+  }
+  return new Date(low);
 }
 
 /** Fin real del día del hotel, respetando cambios de DST. */
 export function hotelDayEnd(date = new Date()): Date {
-  const next = addHotelCalendarDays(hotelDayStart(date), 1);
+  const nextKey = calendarDateKey(addCalendarDateDays(hotelCalendarDate(date), 1));
+  const next = hotelDayStart(hotelWallDateTime(nextKey, 12));
   return new Date(next.getTime() - 1);
 }
 

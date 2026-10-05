@@ -1,3 +1,5 @@
+import {changeTaskStatus} from '@/server/services/tasks';
+import {updateFollowUp} from '@/server/services/followups';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser} from './helpers';
@@ -27,10 +29,16 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
   await prisma.user.updateMany({where:{id:{in:[admin.id,maid.id,other.id,supervisor.id]}},data:{departmentId:area}});
  });
  async function change(user:CurrentUser,id:string,action:Parameters<typeof changeHkWork>[1]['action'],note='Hecho declarado',extra:Record<string,unknown>={}){const r=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id}});return changeHkWork(user,{id,version:r.version,action,note,...extra});}
+ async function finishMaintenanceWork(entryId:string){
+  for(const task of await prisma.task.findMany({where:{entryId,deletedAt:null,status:{notIn:['COMPLETADA','VALIDADA','CANCELADA']}}}))await changeTaskStatus(admin,{id:task.id,status:'COMPLETADA',evidenceProvided:'Reparación realizada y comprobada'});
+  for(const follow of await prisma.followUp.findMany({where:{entryId,deletedAt:null,status:{in:['PENDIENTE','VENCIDO']}}}))await updateFollowUp(admin,{id:follow.id,status:'CUMPLIDO',result:'Verificada la intervención; falta revisión del asunto.'});
+ }
  async function blocked(){const r=await createHkWork(admin,{requestKey:randomUUID(),title:'Limpieza solicitada',description:'Limpiar tras revisión de fuga',departmentId:area,workDate:hotelDateKey(new Date()),workKind:'LIMPIEZA',roomId,priority:'ALTA',effortMinutes:25,assignedToId:maid.id});await change(maid,r.id,'COMENZAR');await change(maid,r.id,'IMPEDIMENTO','Fuga de agua');return change(supervisor,r.id,'MANTENIMIENTO','Reparar fuga',{severity:'ALTA'});}
  it('devuelve resultado y evidencia, exige retomar e inspeccionar, sin cambios comerciales',async()=>{
   const r=await blocked();const roomBefore=await prisma.room.findUniqueOrThrow({where:{id:roomId}});
   await expect(change(maid,r.id,'RETOMAR')).rejects.toThrow('resultado vigente');
+  await expect(changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Válvula reparada y probada'})).rejects.toThrow('pendiente');
+  await finishMaintenanceWork(r.maintenanceEntryId!);
   await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Válvula reparada y probada'});
   const current=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}});expect(current.status).toBe('BLOQUEADO');expect(current.assignedToId).toBe(maid.id);expect(current.humanId).toBe(r.humanId);expect(current.version).toBeGreaterThan(r.version);
   const board=await getHkWorkday(maid,{focusId:r.humanId});expect(board.requests[0]?.maintenanceEntry?.resolution).toBe('Válvula reparada y probada');expect((await getHkWorkday(other,{focusId:r.humanId})).requests).toHaveLength(0);
@@ -46,13 +54,13 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
   expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:before.id}})).status).toBe(before.status);expect(await prisma.housekeepingEvent.count({where:{requestId:r.id}})).toBe(events);
  });
  it('reintentos concurrentes generan un solo resultado y conservan ambas identidades vinculadas',async()=>{
-  const r=await blocked();const command={id:r.maintenanceEntryId!,status:'RESUELTO' as const,resolution:'Fuga corregida'};
+  const r=await blocked();await finishMaintenanceWork(r.maintenanceEntryId!);const command={id:r.maintenanceEntryId!,status:'RESUELTO' as const,resolution:'Fuga corregida'};
   const attempts=await Promise.allSettled([changeEntryStatus(admin,command),changeEntryStatus(admin,command)]);expect(attempts.some(x=>x.status==='fulfilled')).toBe(true);
   await changeEntryStatus(admin,command);expect(await prisma.housekeepingEvent.count({where:{requestId:r.id,action:'MANTENIMIENTO_RESULTADO'}})).toBe(1);
   expect(await prisma.housekeepingRequest.count({where:{maintenanceEntryId:r.maintenanceEntryId}})).toBe(1);expect(await prisma.operationalEntry.count({where:{id:r.maintenanceEntryId!}})).toBe(1);
  });
  it('ediciones del resultado y reapertura quedan en el mismo historial, sin resolver Housekeeping',async()=>{
-  const r=await blocked();await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Ajuste inicial'});
+  const r=await blocked();await finishMaintenanceWork(r.maintenanceEntryId!);await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Ajuste inicial'});
   await updateEntry(admin,{id:r.maintenanceEntryId!,ownerId:admin.id,resolution:'Prueba adicional completada'});await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'EN_CURSO',reason:'Revisión adicional'});
   await expect(change(maid,r.id,'RETOMAR')).rejects.toThrow('resultado vigente');
   const events=await prisma.housekeepingEvent.findMany({where:{requestId:r.id,action:{startsWith:'MANTENIMIENTO_'}}});expect(events.map(e=>e.action)).toEqual(expect.arrayContaining(['MANTENIMIENTO_RESULTADO','MANTENIMIENTO_REABIERTO']));expect(events.some(e=>e.note?.includes('Prueba adicional completada'))).toBe(true);
@@ -60,7 +68,7 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
  });
  it('no envía la actualización a una persona que perdió el acceso al área',async()=>{
   const r=await blocked();const role=await prisma.role.findUniqueOrThrow({where:{key:ROLE_KEYS.RECEPTIONIST}});await prisma.user.update({where:{id:maid.id},data:{roleId:role.id,departmentId:(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id}});
-  const before=await prisma.notification.count({where:{userId:maid.id,entityId:r.id}});await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Reparación terminada'});expect(await prisma.notification.count({where:{userId:maid.id,entityId:r.id}})).toBe(before);
+  await finishMaintenanceWork(r.maintenanceEntryId!);const before=await prisma.notification.count({where:{userId:maid.id,entityId:r.id}});await changeEntryStatus(admin,{id:r.maintenanceEntryId!,status:'RESUELTO',resolution:'Reparación terminada'});expect(await prisma.notification.count({where:{userId:maid.id,entityId:r.id}})).toBe(before);
  });
  it('Fronti completa instrucciones naturales por pasos nativos y un reintento no duplica el efecto',async()=>{
   const r=await createHkWork(admin,{requestKey:randomUUID(),title:'Reposición',description:'Reponer tras revisión',departmentId:area,workDate:hotelDateKey(new Date()),workKind:'REPOSICION',roomId,priority:'MEDIA',effortMinutes:10,assignedToId:admin.id});
@@ -69,6 +77,7 @@ describe('Etapa 3: resultado entre áreas sin duplicar trabajo',()=>{
   const before=await prisma.frontiExecution.count();expect((await executeFrontiCommand(`Solicita Mantenimiento para Housekeeping #${r.humanId}: Reparar fuga`,randomUUID()))?.reply).toContain('gravedad');expect(await prisma.frontiExecution.count()).toBe(before);
   expect((await executeFrontiCommand(`Solicita Mantenimiento para Housekeeping #${r.humanId} con gravedad ALTA: Reparar fuga`,randomUUID()))?.reply).toContain('Completado');
   const maintenance=(await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id},include:{maintenanceEntry:true}})).maintenanceEntry!;
+  await finishMaintenanceWork(maintenance.id);
   expect((await executeFrontiCommand(`Finaliza Mantenimiento #${maintenance.humanId}: Reparación comprobada`,randomUUID()))?.reply).toContain('Completado');
   expect((await executeFrontiCommand(`Consulta el resultado de Housekeeping #${r.humanId}`))?.reply).toContain('Reparación comprobada');
   expect((await executeFrontiCommand(`Retoma Housekeeping #${r.humanId}: Resultado revisado`,randomUUID()))?.reply).toContain('Completado');

@@ -154,6 +154,15 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
   }
   const sweep = () => runOperationalAutomations(new Date());
   const noSuccess = async (policyId: string) => expect(await prisma.operationalAutomationRun.count({ where: { policyId, status: 'SUCCEEDED' } })).toBe(0);
+  const taskNotices = (workId: string) => prisma.notification.findMany({ where: { entity: 'Task', entityId: workId, userId: first.id }, orderBy: { id: 'asc' } });
+  async function expectTaskNoticeDelta(workId: string, before: Awaited<ReturnType<typeof taskNotices>>, added: number) {
+    // Creating an unassigned task can already notify this area's coordinator.
+    // Assert the exact effect of this sweep without deleting or ignoring that notice.
+    const after = await taskNotices(workId);
+    const ids = new Set(before.map(row => row.id));
+    expect(after.filter(row => ids.has(row.id))).toEqual(before);
+    expect(after.filter(row => !ids.has(row.id))).toHaveLength(added);
+  }
 
   it.each([undefined,false])('guarda opt-in %s en formato aceptado por el lector exacto 928f57b',async flag=>{
     const raw=configuration({waitForPublishedSchedule:flag});
@@ -228,6 +237,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     const slot = await schedule();
     const saved = await policy();
     const before = await effectsSnapshot();
+    const noticesBefore = await taskNotices(work.id);
     for (const at of [BASE_TIME, new Date(slot.startAt!.getTime() - 60_000), new Date(slot.startAt!.getTime() - 1)]) {
       vi.setSystemTime(at);
       expect(await sweep()).toMatchObject({ attempted: 0, failed: 0 });
@@ -245,9 +255,26 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
       status: 'SUCCEEDED', stateKey: `substitution:task:${work.id}`, result: expect.objectContaining({ sourceId: work.id, substituteId: first.id }),
     })]);
     expect(await prisma.taskAssignment.count({ where: { taskId: work.id, userId: first.id, removedAt: null } })).toBe(1);
-    expect(await prisma.notification.count({ where: { entity: 'Task', entityId: work.id, userId: first.id } })).toBe(1);
+    await expectTaskNoticeDelta(work.id, noticesBefore, 1);
     expect(await prisma.auditLog.count({ where: { entity: 'Task', entityId: work.id, action: 'CAMBIO_RESPONSABLE' } })).toBe(1);
     expect(after.shifts).toBe(0); expect(after.shiftAssignments).toBe(0); expect(after.cash).toBe(0);
+  });
+
+  it('conserva un aviso anterior del trabajo y añade sólo el aviso de la suplencia confirmada', async () => {
+    const work = await task();
+    const prior = await prisma.notification.create({ data: { userId: first.id, type: 'ACTUALIZACION_OPERATIVA', entity: 'Task', entityId: work.id, title: 'Antecedente sintético anterior a la suplencia', link: `/tareas/${work.id}` } });
+    const slot = await schedule();
+    await policy();
+    const noticesBefore = await taskNotices(work.id);
+    expect(noticesBefore.some(row => row.id === prior.id)).toBe(true);
+    expect(await sweep()).toMatchObject({ attempted: 0, failed: 0 });
+    await expectTaskNoticeDelta(work.id, noticesBefore, 0);
+    vi.setSystemTime(slot.startAt!);
+    expect(await sweep()).toMatchObject({ attempted: 1, failed: 0 });
+    await expectTaskNoticeDelta(work.id, noticesBefore, 1);
+    await sweep();
+    await expectTaskNoticeDelta(work.id, noticesBefore, 1);
+    expect(await prisma.notification.findUniqueOrThrow({ where: { id: prior.id } })).toEqual(prior);
   });
 
   it('PROPOSE también espera y luego conserva un aviso único sin asignar', async () => {
@@ -297,6 +324,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     const slot = await schedule();
     const expiresAt = new Date(slot.startAt!.getTime() + 60_000);
     const saved = await policy({}, { expiresAt });
+    const noticesBefore = await taskNotices(work.id);
     await sweep();
     const before = await prisma.task.findUniqueOrThrow({ where: { id: work.id } });
     if (change === 'pausa') await saveAutomation(admin, { id: saved.id, version: saved.version, name: saved.name, kind: saved.kind, departmentId: area, configuration: {...substitutionSchema.parse(saved.configuration),waitForPublishedSchedule:false}, expiresAt, enabled: false });
@@ -310,7 +338,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     await noSuccess(saved.id);
     expect(await prisma.task.findUniqueOrThrow({ where: { id: work.id } })).toEqual(before);
     expect(await prisma.taskAssignment.count({ where: { taskId: work.id } })).toBe(0);
-    expect(await prisma.notification.count({ where: { entity: 'Task', entityId: work.id, userId: first.id } })).toBe(0);
+    await expectTaskNoticeDelta(work.id, noticesBefore, 0);
   });
 
   it.each(['recibido', 'en curso', 'otro responsable'] as const)('revalida el origen %s entre simulación y escritura y no lo pisa', async change => {
@@ -531,6 +559,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     const work = await task();
     const slot = await schedule();
     const saved = await policy();
+    const noticesBefore = await taskNotices(work.id);
     const cancelledButUncommitted = deferred();
     const releaseCancellation = deferred();
     const cronReachesLocks = deferred();
@@ -576,7 +605,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
       expect((await prisma.scheduleSlot.findUniqueOrThrow({ where: { id: slot.id } })).cancelledAt).not.toBeNull();
       expect((await prisma.task.findUniqueOrThrow({ where: { id: work.id } })).assigneeId).toBeNull();
       expect(await prisma.operationalAutomationRun.count({ where: { policyId: saved.id } })).toBe(0);
-      expect(await prisma.notification.count({ where: { entity: 'Task', entityId: work.id, userId: first.id } })).toBe(0);
+      await expectTaskNoticeDelta(work.id, noticesBefore, 0);
       // A serialization retry is safe only if it rereads the cancellation too.
       await sweep();
       await noSuccess(saved.id);
@@ -642,6 +671,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     const work = await task();
     const slot = await schedule();
     const saved = await policy();
+    const noticesBefore = await taskNotices(work.id);
     vi.setSystemTime(slot.startAt!);
     const results = await Promise.all([sweep(), sweep()]);
     expect(results.reduce((sum, result) => sum + result.attempted, 0)).toBe(1);
@@ -649,7 +679,7 @@ describe('Suplencia futura: entrega protegida y motor de preparación con Postgr
     expect(await prisma.operationalAutomationRun.findMany({ where: { policyId: saved.id } })).toEqual([expect.objectContaining({ status: 'SUCCEEDED', stateKey: `substitution:task:${work.id}` })]);
     expect(await prisma.taskAssignment.count({ where: { taskId: work.id, userId: first.id, removedAt: null } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { entity: 'Task', entityId: work.id, action: 'CAMBIO_RESPONSABLE' } })).toBe(1);
-    expect(await prisma.notification.count({ where: { entity: 'Task', entityId: work.id, userId: first.id } })).toBe(1);
+    await expectTaskNoticeDelta(work.id, noticesBefore, 1);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: work.id } }))).toMatchObject({ assigneeId: first.id, workAcknowledgedAt: null, workStartedAt: null });
     expect((await prisma.operationalAutomation.findUniqueOrThrow({ where: { id: saved.id } })).enabled).toBe(true);
   });

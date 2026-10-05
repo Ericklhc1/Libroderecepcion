@@ -3,6 +3,7 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { defaultRange, getMetrics } from '@/server/services/metrics';
 import { Card, CardHeader, DisclosureCard, EmptyState, StatTile } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
+import { normalizeMetricDays } from '@/domain/operational-metrics';
 import type { RawSearchParams } from '@/lib/search-params';
 
 export const metadata = { title: 'Indicadores' };
@@ -41,7 +42,7 @@ export default async function MetricsPage({
 }) {
   await requirePagePermission('metrics.view');
   const params = await searchParams;
-  const days = Number(typeof params.dias === 'string' ? params.dias : '30') || 30;
+  const days = normalizeMetricDays(Number(typeof params.dias === 'string' ? params.dias : '30'));
   const metrics = await getMetrics(defaultRange(days));
 
   const maxIncidents = Math.max(1, ...metrics.incidents.byDepartment.map((d) => d.count));
@@ -57,7 +58,7 @@ export default async function MetricsPage({
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
             Del {formatDate(metrics.range.from)} al {formatDate(metrics.range.to)}. Cumplimiento,
-            carga operativa vigente y tiempos de resolución.
+            carga operativa vigente y tiempos de resolución. Incluye hoy parcial, en horario del hotel.
           </p>
         </div>
         <nav className="flex gap-2" aria-label="Rango de fechas">
@@ -77,13 +78,14 @@ export default async function MetricsPage({
           ))}
         </nav>
       </header>
+      <p className="text-xs text-slate-500">{metrics.scope}</p>
 
-      <DisclosureCard title="Tareas" description="Cumplimiento, vencimientos y carga vigente." defaultOpen contentClassName="p-4">
+      <DisclosureCard title="Tareas" description={metrics.definitions.tasks} defaultOpen contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Completadas en plazo"
             value={metrics.tasks.onTimeRate !== null ? `${metrics.tasks.onTimeRate}%` : '—'}
-            hint={`${metrics.tasks.completedOnTime} de ${metrics.tasks.completed} completadas`}
+            hint={`${metrics.tasks.completedOnTime} de ${metrics.tasks.completed} terminadas en el período`}
             tone={
               metrics.tasks.onTimeRate !== null && metrics.tasks.onTimeRate >= 80
                 ? 'good'
@@ -102,16 +104,17 @@ export default async function MetricsPage({
           />
           <StatTile label="Abiertas ahora" value={metrics.tasks.open} />
         </div>
+        <p className="mt-3 text-xs text-slate-500">{metrics.tasks.withoutCompletionDate} tareas terminadas sin fecha de ejecución utilizable; no se imputan al período.</p>
       </DisclosureCard>
 
-      <DisclosureCard title="Incidencias y alertas" description="Riesgos abiertos y tiempos observados." contentClassName="p-4">
+      <DisclosureCard title="Incidencias y alertas" description={metrics.definitions.incidents} contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Incidencias abiertas"
             value={metrics.incidents.open}
             tone={metrics.incidents.open > 0 ? 'alert' : 'good'}
           />
-          <StatTile label="Cerradas en el período" value={metrics.incidents.closedInRange} />
+          <StatTile label="Resueltas en el período" value={metrics.incidents.resolvedInRange} hint={`${metrics.incidents.closedInRange} cierres formales en el período`} />
           <StatTile
             label="Tiempo medio de resolución"
             value={
@@ -119,7 +122,7 @@ export default async function MetricsPage({
                 ? `${metrics.incidents.avgResolutionHours.toFixed(1)} h`
                 : '—'
             }
-            hint="Desde el hecho hasta el cierre"
+            hint={`${metrics.incidents.resolutionSamples} mediciones; ${metrics.incidents.historicalClosureSamples} usan cierre histórico`}
           />
           <StatTile
             label="Alertas activas"
@@ -127,6 +130,7 @@ export default async function MetricsPage({
             tone={metrics.alerts.live > 0 ? 'alert' : 'good'}
           />
         </div>
+        <p className="mt-3 text-xs text-slate-500">{metrics.incidents.withoutResolutionDate} incidencias resueltas sin fecha utilizable; no se imputan al período.</p>
       </DisclosureCard>
 
       <DisclosureCard title="Turnos y entregas" description="Recepción de relevos, cierres y continuidad." contentClassName="p-4">

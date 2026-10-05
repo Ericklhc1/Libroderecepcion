@@ -18,11 +18,11 @@ import {
 import { requirePagePermission } from '@/server/auth/guard';
 import {
   getManagementCockpit,
-  getManagementDecisionAdvice,
   type ManagementDecisionSeverity,
   type ManagementTrend,
 } from '@/server/services/management';
 import { formatDateTime } from '@/lib/format';
+import { signedMoney } from '@/domain/operational-metrics';
 import { DisclosureCard } from '@/components/ui/card';
 
 export const metadata = { title: 'Gerencia' };
@@ -139,13 +139,12 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
   const params = await searchParams;
   const requestedDays = Number(typeof params.dias === 'string' ? params.dias : 30);
   const cockpit = await getManagementCockpit(user,requestedDays);
-  const frontiAdvice = await getManagementDecisionAdvice(cockpit.decisions);
   const periodLabel = `${cockpit.period.days} días`;
 
   const cashSummary =
     cockpit.controls.cashDifferenceByCurrency.length > 0
       ? cockpit.controls.cashDifferenceByCurrency
-          .map((row) => `${row.currency} ${row.amount.toLocaleString('es-CL')}`)
+          .map((row) => `${row.currency} ${row.amount.toLocaleString('es-CL')} absoluto; neto ${signedMoney(row.currency, row.netAmount)}`)
           .join(' · ')
       : 'Sin diferencias monetarias en arqueos del período';
 
@@ -185,7 +184,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
               </Link>
             ))}
             <Link
-              href="/indicadores"
+              href={`/indicadores?dias=${cockpit.period.days}`}
               className="rounded-sm bg-white px-3 py-2 text-sm font-medium text-petrol-800 ring-1 ring-slate-300 hover:bg-slate-50"
             >
               Indicadores operativos
@@ -193,8 +192,9 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
           </div>
         </div>
         <p className="mt-3 text-xs text-slate-400">
-          Fotografía generada {formatDateTime(cockpit.generatedAt)} · comparación contra los {periodLabel} inmediatamente anteriores
+          Fotografía generada {formatDateTime(cockpit.generatedAt)} · del {formatDateTime(cockpit.period.current.from)} al {formatDateTime(cockpit.period.current.to)} · incluye hoy parcial. Comparación con {periodLabel} calendario completos anteriores.
         </p>
+        <p className="mt-2 text-xs text-slate-500">{cockpit.scope} Las alertas de trabajo pendiente son actuales, fuera del corte histórico.</p>
       </header>
       <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
 
@@ -234,8 +234,8 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                         {style.label}
                       </p>
                       <h3 className="mt-1 text-base font-semibold text-petrol-950">{decision.title}</h3>
-                      <p className="mt-2 text-sm font-medium text-slate-800">{decision.fact}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{decision.why}</p>
+                      <p className="mt-2 text-sm font-medium text-slate-800"><strong>Hecho: </strong>{decision.fact}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600"><strong>Contexto de riesgo: </strong>{decision.why}</p>
 
                       {decision.evidence.length > 0 ? (
                         <div className="mt-3 overflow-hidden rounded-md border border-black/10 bg-white/75">
@@ -264,6 +264,12 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                               </li>
                             ))}
                           </ul>
+                          {decision.evidenceTotal !== undefined && decision.evidenceHref ? (
+                            <p className="border-t border-black/5 px-3 py-2 text-xs text-slate-600">
+                              Muestra: {decision.evidence.length} de {decision.evidenceTotal} registros.{' '}
+                              <Link href={decision.evidenceHref} className="font-semibold underline">Ver todo</Link>
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
 
@@ -272,16 +278,14 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-700" aria-hidden="true" />
                           <div>
                             <p className="text-[0.64rem] font-semibold uppercase tracking-[0.07em] text-gold-800">
-                              {frontiAdvice[decision.id] ? 'Fronti sugiere' : 'Acción operativa'}
+                              Recomendación operativa
                             </p>
                             <p className="mt-1 text-sm font-medium leading-5 text-petrol-950">
-                              {frontiAdvice[decision.id] ?? decision.action}
+                              {decision.action}
                             </p>
-                            {!frontiAdvice[decision.id] ? (
-                              <p className="mt-1 text-[0.68rem] leading-5 text-slate-500">
-                                Fronti no respondió en esta carga; se muestra la acción determinística definida por el sistema.
-                              </p>
-                            ) : null}
+                            <p className="mt-1 text-[0.68rem] leading-5 text-slate-500">
+                              Regla determinística; sin inferencia automática ni causas atribuidas por IA.
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -319,10 +323,10 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
               </div>
             </div>
             <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
-              <Metric label="Tareas en plazo" value={pct(cockpit.execution.taskOnTimeRate)} />
-              <Metric label="Tareas vencidas" value={cockpit.execution.overdueTasks} emphasis={cockpit.execution.overdueTasks > 0} />
-              <Metric label="Entregas recibidas" value={pct(cockpit.execution.handoverComplianceRate)} />
-              <Metric label="Turnos cerrados" value={pct(cockpit.execution.shiftClosureRate)} />
+              <Metric label="Tareas en plazo" value={pct(cockpit.execution.taskOnTimeRate)} hint={`${cockpit.execution.tasksOnTime} de ${cockpit.execution.tasksCompleted} terminadas en el período`} />
+              <Metric label="Tareas vencidas" value={cockpit.execution.overdueTasks} hint="Abiertas ahora; sin corte de creación" emphasis={cockpit.execution.overdueTasks > 0} />
+              <Metric label="Entregas recibidas" value={pct(cockpit.execution.handoverComplianceRate)} hint={`${cockpit.execution.handoversReceived} de ${cockpit.execution.handoversSent} enviadas en el período`} />
+              <Metric label="Turnos cerrados" value={pct(cockpit.execution.shiftClosureRate)} hint={`${cockpit.execution.shiftsClosed} de ${cockpit.execution.shiftsTotal} turnos no anulados`} />
             </div>
           </div>
 
@@ -360,6 +364,11 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
         </div>
       </DisclosureCard>
 
+      <div className="rounded-lg border border-slate-200 p-4 text-xs leading-5 text-slate-600">
+        <p>{cockpit.definitions.tasks}</p>
+        <p>{cockpit.definitions.incidents}</p>
+        <p>Resolución: {cockpit.execution.incidentResolutionSamples} mediciones de {cockpit.execution.incidentsResolved} resultados del período; {cockpit.execution.incidentHistoricalClosures} usan cierre histórico. Sin fecha utilizable, fuera de la tasa: {cockpit.execution.incidentsWithoutDate} incidencias y {cockpit.execution.tasksWithoutDate} tareas terminadas.</p>
+      </div>
       <DisclosureCard
         title="Tendencias, exposición y fuentes"
         description="Comparación con el período anterior y calidad de los datos conectados."
@@ -381,10 +390,12 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
                   <div>
                     <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-400">Actual</p>
                     <p className="mt-0.5 font-semibold tabular text-petrol-950">{trendValue(item, item.current)}</p>
+                    {item.currentDenominator !== undefined ? <p className="text-xs text-slate-500">Base: {item.currentDenominator} registros</p> : null}
                   </div>
                   <div>
                     <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-400">Anterior</p>
                     <p className="mt-0.5 tabular text-slate-600">{trendValue(item, item.previous)}</p>
+                    {item.previousDenominator !== undefined ? <p className="text-xs text-slate-500">Base: {item.previousDenominator} registros</p> : null}
                   </div>
                   <div
                     className={`inline-flex w-fit items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold ${

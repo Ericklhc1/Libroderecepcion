@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { RuleError, NotFoundError } from '@/server/errors';
 import { scheduleDate, scheduleId, scheduleTime, templateSchema, templateWindow, scheduleAllowed } from '@/domain/schedule';
-import { hotelCalendarDate } from '@/domain/time';
+import { ongoingOrFutureScheduleSlots } from './schedule-admin-safety';
+import { eligibleScheduleAccountWhere, eligibleScheduleCollaboratorWhere } from './schedule-eligibility';
 import { assertScheduleArea, assertSchedulePermission, scheduleAreaIds, type ScheduleClient } from './schedule-access';
 
 export async function lockScheduleAreas(tx: ScheduleClient, ids: string[]) {
@@ -23,19 +24,24 @@ export const collaboratorSchema = z.object({
 export async function saveScheduleCollaborator(user: CurrentUser, raw: z.input<typeof collaboratorSchema>) {
   assertSchedulePermission(user, 'schedule.catalog.manage'); const input = collaboratorSchema.parse(raw);
   return prisma.$transaction(async (tx) => {
-    // Serializes first registration and additions from different areas for one user.
-    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE`;
-    const account = await tx.user.findFirst({ where: { id: input.userId, active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } }, include: { role: { select: { name: true } } } });
-    if (!account) throw new RuleError('Selecciona un usuario activo y operativo.');
+    // Share the substitution reader's User → Department → collaborator order.
+    // NO KEY UPDATE permits notification/audit FK KEY SHARE in schedule writers.
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR NO KEY UPDATE`;
+    const observed = input.id ? await tx.scheduleCollaborator.findUnique({ where: { id: input.id }, include: { memberships: true } }) : await tx.scheduleCollaborator.findUnique({ where: { userId: input.userId }, include: { memberships: true } });
+    const guardedAreas = input.id ? [...new Set([...input.departmentIds, ...(observed?.memberships.map(m => m.departmentId) ?? [])])] : input.departmentIds;
+    for (const area of guardedAreas) await assertScheduleArea(user, area, 'schedule.catalog.manage', tx);
+    await lockScheduleAreas(tx, guardedAreas);
+    const account = await tx.user.findUnique({ where: { id: input.userId }, include: { role: { select: { name: true } } } });
+    if (!account) throw new RuleError('Selecciona un usuario existente.');
     const existing = input.id ? await tx.scheduleCollaborator.findUnique({ where: { id: input.id }, include: { memberships: true } }) : await tx.scheduleCollaborator.findUnique({ where: { userId: account.id }, include: { memberships: true } });
+    if (!(input.id && input.active === false) && !await tx.user.findFirst({ where: { id: account.id, ...eligibleScheduleAccountWhere }, select: { id: true } })) throw new RuleError('Selecciona un usuario activo, visible y operativo. Puedes deshabilitar su perfil después de resolver sus asignaciones vigentes o futuras.');
     if (input.id && !existing) throw new NotFoundError();
     if (input.id && !existing?.userId && await tx.scheduleCollaborator.findUnique({ where: { userId: account.id } })) throw new RuleError('Este usuario ya tiene un perfil de colaborador. Abre su referencia existente.');
     if (existing?.userId && existing.userId !== account.id) throw new RuleError('No se puede sustituir la identidad de un colaborador.');
     if (input.id && input.version !== existing?.version) throw new RuleError('El colaborador cambió. Actualiza antes de guardar.');
-    // An addition never removes memberships or overwrites existing weekly reference.
-    const guardedAreas = input.id ? [...new Set([...input.departmentIds, ...(existing?.memberships.map(m => m.departmentId) ?? [])])] : input.departmentIds;
-    for (const area of guardedAreas) await assertScheduleArea(user, area, 'schedule.catalog.manage', tx);
-    await lockScheduleAreas(tx, guardedAreas);
+    // A newly added membership after our first read requires a fresh review of
+    // global edits; never lock a newly discovered area out of order.
+    if (input.id && existing?.memberships.some(m => !guardedAreas.includes(m.departmentId))) throw new RuleError('Las áreas del colaborador cambiaron. Actualiza antes de guardar.');
     if (existing) {
       await tx.$queryRaw`SELECT "id" FROM "ScheduleCollaborator" WHERE "id" = ${existing.id} FOR UPDATE`;
       const current = await tx.scheduleCollaborator.findUniqueOrThrow({ where: { id: existing.id } });
@@ -50,11 +56,32 @@ export async function saveScheduleCollaborator(user: CurrentUser, raw: z.input<t
       weeklyMinutes: editing || !existing ? (input.weeklyHours === undefined ? existing?.weeklyMinutes ?? null : Math.round(input.weeklyHours * 60) || null) : existing.weeklyMinutes,
       minRestMinutes: 0,
     };
-    if (existing && editing && (!data.active || data.functionName !== existing.functionName) && await tx.scheduleSlot.count({ where: { collaboratorId: existing.id, cancelledAt: null, date: { gte: hotelCalendarDate() } } })) throw new RuleError('Revisa las asignaciones futuras antes de desactivar o cambiar función.');
+    if (existing && editing && (!data.active || data.functionName !== existing.functionName) && await tx.scheduleSlot.count({ where: { collaboratorId: existing.id, ...ongoingOrFutureScheduleSlots() } })) throw new RuleError('Revisa las asignaciones vigentes o futuras antes de deshabilitar el perfil global o cambiar su función. Reasigna o cancela las futuras y espera a que finalicen las jornadas iniciadas.');
     const saved = existing ? await tx.scheduleCollaborator.update({ where: { id: existing.id }, data: { ...data, version: { increment: 1 } } }) : await tx.scheduleCollaborator.create({ data });
-    for (const departmentId of input.departmentIds) await tx.scheduleMembership.upsert({ where: { collaboratorId_departmentId: { collaboratorId: saved.id, departmentId } }, create: { collaboratorId: saved.id, departmentId }, update: { active: true } });
+    if (!editing) for (const departmentId of input.departmentIds) await tx.scheduleMembership.upsert({ where: { collaboratorId_departmentId: { collaboratorId: saved.id, departmentId } }, create: { collaboratorId: saved.id, departmentId }, update: { active: true } });
     for (const area of input.departmentIds) await scheduleCatalogAudit(tx, user, area, `Usuario ${account.name}: ${existing ? 'actualizado' : 'incorporado'}`, { id: saved.id, ...data, departmentIds: input.departmentIds });
     return saved;
+  });
+}
+/** Remove only this area's membership. Account and global profile stay intact. */
+export async function removeScheduleMembership(user: CurrentUser, raw: unknown) {
+  const input = z.object({ collaboratorId: scheduleId, departmentId: scheduleId, version: z.coerce.number().int().min(0), reason: z.string().trim().min(3).max(1000) }).parse(raw);
+  await assertScheduleArea(user, input.departmentId, 'schedule.catalog.manage');
+  return prisma.$transaction(async tx => {
+    const observed = await tx.scheduleCollaborator.findUnique({ where: { id: input.collaboratorId }, select: { userId: true } });
+    if (!observed) throw new NotFoundError();
+    if (observed.userId) await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${observed.userId} FOR NO KEY UPDATE`;
+    await lockScheduleAreas(tx, [input.departmentId]);
+    await tx.$queryRaw`SELECT "id" FROM "ScheduleCollaborator" WHERE "id" = ${input.collaboratorId} FOR UPDATE`;
+    await assertScheduleArea(user, input.departmentId, 'schedule.catalog.manage', tx);
+    const person = await tx.scheduleCollaborator.findUniqueOrThrow({ where: { id: input.collaboratorId }, include: { memberships: true } });
+    if (person.version !== input.version) throw new RuleError('El colaborador cambió. Actualiza antes de retirar su pertenencia.');
+    const membership = person.memberships.find(m => m.departmentId === input.departmentId && m.active);
+    if (!membership) throw new RuleError('Esta pertenencia ya está retirada. Actualiza el listado.');
+    if (await tx.scheduleSlot.count({ where: { collaboratorId: person.id, plan: { departmentId: input.departmentId }, ...ongoingOrFutureScheduleSlots() } })) throw new RuleError('Reasigna o cancela las asignaciones futuras de esta área y espera a que finalicen las jornadas iniciadas antes de retirar la pertenencia.');
+    await tx.scheduleMembership.update({ where: { collaboratorId_departmentId: { collaboratorId: person.id, departmentId: input.departmentId } }, data: { active: false } });
+    await tx.scheduleCollaborator.update({ where: { id: person.id }, data: { version: { increment: 1 } } });
+    await tx.auditLog.create({ data: { entity: 'ScheduleCatalog', entityId: input.departmentId, action: 'EDITAR', summary: `Pertenencia al área retirada: ${person.name}`, reason: input.reason, userId: user.id, sessionId: user.sessionId, before: { collaboratorId: person.id, departmentId: input.departmentId, active: true }, after: { collaboratorId: person.id, departmentId: input.departmentId, active: false, accountUnchanged: true } } });
   });
 }
 export async function saveScheduleTemplate(user: CurrentUser, raw: z.input<typeof templateSchema>) {
@@ -103,12 +130,13 @@ export async function getScheduleCatalog(user: CurrentUser, departmentId: string
   await assertScheduleArea(user, departmentId, configurationOnly ? 'schedule.configure' : 'schedule.catalog.manage');
   const areas = await scheduleAreaIds(user);
   const [collaborators, templates, coverage, accounts, grants, holidays] = await Promise.all([
-    configurationOnly ? Promise.resolve([]) : prisma.scheduleCollaborator.findMany({ where: { memberships: { some: { departmentId } } }, include: { memberships: true, user: { select: { name: true, username: true } } }, orderBy: { name: 'asc' }, take: 500 }),
+    configurationOnly ? Promise.resolve([]) : prisma.scheduleCollaborator.findMany({ where: { memberships: { some: { departmentId } } }, include: { memberships: { include: { department: { select: { name: true } } } }, user: { select: { name: true, username: true, active: true, hiddenFromSelectors: true, deletedAt: true, departmentId: true, department: { select: { name: true } }, role: { select: { operational: true } } } } }, orderBy: { name: 'asc' }, take: 500 }),
     prisma.scheduleTemplate.findMany({ where: { departmentId }, orderBy: [{ code: 'asc' }, { revision: 'desc' }], take: 500 }),
     prisma.scheduleCoverageRule.findMany({ where: { departmentId }, orderBy: { name: 'asc' } }),
-    prisma.user.findMany({ where: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true }, ...(areas ? { departmentId: { in: areas } } : {}) }, select: { id: true, name: true, departmentId: true }, orderBy: { name: 'asc' }, take: 500 }),
+    prisma.user.findMany({ where: { ...eligibleScheduleAccountWhere, ...(areas ? { departmentId: { in: areas } } : {}) }, select: { id: true, name: true, username: true, departmentId: true }, orderBy: { name: 'asc' }, take: 500 }),
     scheduleAllowed(user, 'schedule.configure') ? prisma.scheduleAreaGrant.findMany({ include: { user: { select: { name: true } }, department: { select: { name: true } } } }) : Promise.resolve([]),
     scheduleAllowed(user, 'schedule.configure') ? prisma.scheduleHoliday.findMany({ orderBy: { date: 'asc' }, take: 100 }) : Promise.resolve([]),
   ]);
-  return { collaborators: collaborators.map(p => ({ ...p, name: p.user?.name ?? p.name, username: p.user?.username ?? null })), templates, coverage, accounts, grants, holidays };
+  const eligible = new Set((await prisma.scheduleCollaborator.findMany({ where: eligibleScheduleCollaboratorWhere(departmentId), select: { id: true } })).map(p => p.id));
+  return { collaborators: collaborators.map(p => ({ ...p, name: p.user?.name ?? p.name, username: p.user?.username ?? null, eligible: eligible.has(p.id) })), templates, coverage, accounts, grants, holidays };
 }

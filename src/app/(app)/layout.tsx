@@ -1,10 +1,11 @@
+import { FormDraftSession } from '@/components/operational/form-draft-session';
 import { Fragment } from 'react';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { UxJourney } from '@/components/observability/ux-journey';
 import packageJson from '../../../package.json';
 import { redirect } from 'next/navigation';
-import { Search, UserRound } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { NotificationCenter } from '@/components/layout/notification-center';
 import { ChatWidget } from '@/components/layout/chat-widget';
 import { ReceptionAssistant } from '@/components/layout/reception-assistant';
@@ -38,7 +39,6 @@ import { getReceptionOperationGate } from '@/server/services/reception-operation
 import {
   AccountMenu,
   FrontiLauncher,
-  PropertyMenu,
 } from '@/components/layout/topbar-menus';
 import { SupportRequestPanel } from '@/components/layout/support-request-panel';
 import { assertMaintenanceAccess, getMaintenanceState, MaintenanceError } from '@/server/services/system-maintenance';
@@ -107,11 +107,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <UxJourney/>
       <div className="flex min-h-screen min-w-0">
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white no-print">
+          <header className="aroh-topbar sticky top-0 z-30 border-b no-print">
             <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2 flex-wrap lg:gap-3 xl:flex-nowrap">
               <Link href="/" className="min-w-0 max-w-[min(12rem,45vw)] shrink-0" title={'AROH Central IA · ' + hotelName}>
                 <span className="block text-sm font-semibold text-petrol-950">AROH <span className="text-gold-600">Central IA</span></span>
-                <span className="block truncate text-xs text-slate-500">{hotelName}</span>
+                <span className="block truncate text-xs text-petrol-700">{hotelName}</span>
               </Link>
 
               <form
@@ -134,7 +134,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 {frontiVisible ? <FrontiLauncher displayName={frontiConfig.displayName} /> : null}
-                <PropertyMenu hotelName={hotelName} />
                 <AccountMenu
                   userName={user.name}
                   roleName={user.roleName}
@@ -152,13 +151,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   <ChatWidget currentUserId={user.id} initialUnread={chatUnread} />
                 ) : null}
 
-                <Link
-                  href="/perfil"
-                  className="rounded-md p-2 text-petrol-700 hover:bg-gold-50 lg:hidden"
-                  aria-label="Mi perfil"
-                >
-                  <UserRound className="h-5 w-5" aria-hidden="true" />
-                </Link>
+
               </div>
             </div>
             <div className="mx-auto flex w-full max-w-[1680px] flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-2 text-xs text-slate-600" aria-label="Contexto operativo">
@@ -184,7 +177,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {/* Keep streamed route content on its own fiber. React bundled with
                 Next 15 can replay a claimed host before rewinding hydration. A
                 constant keyed Fragment preserves HTML and route/shell identity. */}
-            <Fragment key="aroh-route-content">{children}</Fragment>
+            <Fragment key="aroh-route-content"><FormDraftSession userId={user.id} />{children}</Fragment>
           </main>
 
           <div className="mx-auto w-full max-w-[1680px] px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">

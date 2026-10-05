@@ -1,3 +1,4 @@
+import { formatAuditValue } from '@/domain/audit-display';
 import { formatDateTime } from '@/lib/format';
 import type { HistoryEvent } from '@/server/services/history';
 
@@ -9,25 +10,20 @@ const KIND_STYLE: Record<HistoryEvent['kind'], string> = {
 
 function renderDiff(before: unknown, after: unknown) {
   if (!before && !after) return null;
-  const format = (value: unknown) =>
-    value && typeof value === 'object'
-      ? Object.entries(value as Record<string, unknown>)
-          .map(([key, val]) => `${key}: ${val === null ? '—' : String(val)}`)
-          .join(' · ')
-      : String(value ?? '—');
+
 
   return (
     <dl className="mt-1 space-y-0.5 text-xs text-slate-500">
       {before && Object.keys(before as object).length > 0 ? (
         <div>
           <dt className="inline font-medium">Antes: </dt>
-          <dd className="inline">{format(before)}</dd>
+          <dd className="inline">{formatAuditValue(before)}</dd>
         </div>
       ) : null}
       {after && Object.keys(after as object).length > 0 ? (
         <div>
           <dt className="inline font-medium">Después: </dt>
-          <dd className="inline">{format(after)}</dd>
+          <dd className="inline">{formatAuditValue(after)}</dd>
         </div>
       ) : null}
     </dl>

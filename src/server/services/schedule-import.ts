@@ -8,6 +8,7 @@ import { extractScheduleRoster, type RosterRow } from '@/domain/schedule-import'
 import { functionKey, mutationSchema, scheduleId, slotSchema, type SlotInput } from '@/domain/schedule';
 import { assertScheduleArea } from './schedule-access';
 import { scheduleImportRowStarted } from '@/domain/schedule-import-timing';
+import { eligibleScheduleCollaboratorWhere } from './schedule-eligibility';
 import { buildScheduleSlot, getSchedulePlan, mutateSchedulePlan, lockScheduleCollaborators } from './schedules';
 
 export async function reviewScheduleImport(user: CurrentUser, planId: string, fileName: string, bytes: Uint8Array) {
@@ -44,24 +45,24 @@ export async function applyScheduleImport(user: CurrentUser, raw: unknown, impor
     }
     if (omitted.length === rows.length) throw new RuleError('No quedan asignaciones futuras para incorporar. Las filas pasadas o ya iniciadas se conservan en la revisión.');
     await tx.scheduleImport.update({ where: { id: draft.id }, data: { status: 'APLICADO', appliedAt: now } });
-    return { after: { importId, fileName: draft.fileName, fileHash: draft.fileHash, assignments: after, omitted, omittedReason: 'Pasadas o ya iniciadas' }, affected };
+    return { after: { importId, fileName: draft.fileName, fileHash: draft.fileHash, assignments: after, omitted, omittedReason: 'Pasadas o ya iniciadas' }, affected, eligibilitySlotIds: after.map(s => s.id) };
   });
 }
 
 async function resolveRows(plan: Awaited<ReturnType<typeof getSchedulePlan>>, rows: RosterRow[], parseIssues: string[]) {
-  const accounts = await prisma.scheduleCollaborator.findMany({ where: { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } }, memberships: { some: { departmentId: plan.departmentId, active: true } } }, include: { user: { select: { name: true } } } });
-  const people = accounts.map(({ user, ...p }) => ({ ...p, name: user?.name ?? p.name }));
+  const accounts = await prisma.scheduleCollaborator.findMany({ where: { ...eligibleScheduleCollaboratorWhere(plan.departmentId) }, include: { user: { select: { name: true, username: true } } } });
+  const people = accounts.map(({ user, ...p }) => ({ ...p, name: user?.name ?? p.name, username: user?.username ?? null }));
   const templates = await prisma.scheduleTemplate.findMany({ where: { departmentId: plan.departmentId, active: true } });
   const issues = [...parseIssues];
   if (rows.length > 2000) throw new RuleError('La carga admite como máximo 2.000 asignaciones.');
   const resolved: Array<{ source: RosterRow; input: SlotInput | null; issue: string | null }> = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    const identified = row.employeeCode ? people.filter((p) => p.employeeCode === row.employeeCode!.trim().toUpperCase()) : [];
+    const identified = row.employeeCode ? people.filter((p) => row.employeeCode!.trim().startsWith('@') ? p.username?.toLowerCase() === row.employeeCode!.trim().slice(1).toLowerCase() : p.employeeCode === row.employeeCode!.trim().toUpperCase()) : [];
     const matches = row.employeeCode ? identified : people.filter((p) => row.name && functionKey(p.name) === functionKey(row.name));
     let issue: string | null = null; let input: SlotInput | null = null;
     const person = matches.length === 1 ? matches[0] : undefined;
-    if (!person) issue = 'No se encontró una persona única con ese nombre. Añade su usuario al área o usa el código de la plantilla CSV.';
+    if (!person) issue = 'No se encontró una persona única habilitada en el área. Usa @usuario (visible en Colaboradores) o el código de importación; el nombre completo sólo sirve si no tiene homónimos.';
     if (person && row.employeeCode && row.name && row.name !== row.employeeCode && functionKey(person.name) !== functionKey(row.name)) issue = 'El código y el nombre indican colaboradores diferentes.';
     const template = templates.find((t) => t.code === row.code);
     const kind = ['LIBRE', 'VACACIONES', 'AUSENCIA'].includes(row.code) ? row.code as 'LIBRE' | 'VACACIONES' | 'AUSENCIA' : 'TURNO';

@@ -1,3 +1,4 @@
+import {lockOpenSubjectForWork} from './subject-completion';
 import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
@@ -114,6 +115,7 @@ export async function createFollowUp(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockOpenSubjectForWork(tx,input);
     const created = await tx.followUp.create({
       data: {
         entryId: input.entryId ?? null,
@@ -262,6 +264,7 @@ export async function updateFollowUp(
   };
 
   return prisma.$transaction(async (tx) => {
+    if(input.status&&['PENDIENTE','VENCIDO'].includes(input.status))await lockOpenSubjectForWork(tx,current);
     const updated = await tx.followUp.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user)] },
       data: updateData,
@@ -453,6 +456,7 @@ export async function restoreFollowUp(
   if (!current) throw new NotFoundError('El seguimiento no está eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
   return prisma.$transaction(async (tx) => {
+    if(['PENDIENTE','VENCIDO'].includes(current.status))await lockOpenSubjectForWork(tx,current);
     const restored = await tx.followUp.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user,true)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

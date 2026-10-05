@@ -10,7 +10,10 @@
   --aroh-subtle: #f8fafc;
   --aroh-ink: #193b50;
   --aroh-muted: #526d7f;
-  --aroh-focus: #007f9b;
+  --aroh-focus: #356c7c;
+  --aroh-topbar: #e4edf5;
+  --aroh-topbar-wash: #f0f4f8;
+  --aroh-topbar-border: #b8cbd9;
   --aroh-shadow-card: 0 1px 2px rgb(9 24 32 / 4%), 0 5px 18px rgb(9 24 32 / 3%);
 }
 
@@ -22,9 +25,19 @@
     --aroh-subtle: #102533;
     --aroh-ink: #e9f2f7;
     --aroh-muted: #adbfcd;
-    --aroh-focus: #67e8f9;
+    --aroh-focus: #aecdd5;
+    --aroh-topbar: #203b4e;
+    --aroh-topbar-wash: #29485c;
+    --aroh-topbar-border: #50788a;
     --aroh-shadow-card: 0 1px 2px rgb(0 0 0 / 12%), 0 5px 20px rgb(0 0 0 / 10%);
   }
+}
+
+
+/* A restrained watercolor-blue shell; the cyan brand accent remains on the logo. */
+.aroh-topbar {
+  background: linear-gradient(115deg, var(--aroh-topbar-wash), var(--aroh-topbar));
+  border-color: var(--aroh-topbar-border);
 }
 
 html,

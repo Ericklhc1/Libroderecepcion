@@ -107,6 +107,7 @@ async function main() {
         const nav = page.getByRole('navigation', { name: 'Módulos', exact: true });
         await nav.getByRole('button', { name: 'Operación', exact: true }).click();
         const panel = page.locator('[aria-label="Accesos de Operación"]');
+        await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
         const link = panel.getByRole('link', { name: 'Mis tareas', exact: true });
         assert.equal(await link.getAttribute('href'), '/libro?clase=task');
         const origin = await page.evaluate(() => performance.timeOrigin);

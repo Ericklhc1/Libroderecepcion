@@ -233,6 +233,7 @@ export async function runFactoryReset(
       count('Coberturas Housekeeping', await tx.housekeepingDelegation.deleteMany());
       count('Relevos Housekeeping', await tx.housekeepingHandover.deleteMany());
       count('Disponibilidad Housekeeping', await tx.housekeepingDayMember.deleteMany());
+      count('Distribuciones interáreas', await tx.subjectAreaAttention.deleteMany());
       count('Trabajos Housekeeping', await tx.housekeepingRequest.deleteMany());
       count('Rutinas Housekeeping', await tx.housekeepingRoutine.deleteMany());
       count('Suscripciones push', await tx.pushSubscription.deleteMany());

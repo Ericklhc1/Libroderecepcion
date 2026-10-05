@@ -24,7 +24,8 @@ describe('informes del turno', () => {
 
   const midnight = (date: Date) => {
     const out = new Date(date);
-    out.setHours(0, 0, 0, 0);
+    // PostgreSQL @db.Date is a calendar key at 00:00 UTC, not hotel midnight.
+    out.setUTCHours(0, 0, 0, 0);
     return out;
   };
 

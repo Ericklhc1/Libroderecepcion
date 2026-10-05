@@ -2,7 +2,7 @@
 import type { ActionState } from '@/server/action';
 import { detailHrefWithReturnContext, operationalListHref, listRowAnchor } from '@/lib/list-navigation';
 
-async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change'|'handover-missing'|'handover-missing-approve'|'subject-attention', form: FormData): Promise<ActionState> {
+async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change'|'handover-missing'|'handover-missing-approve'|'subject-attention'|'subject-distribution'|'area-decision', form: FormData): Promise<ActionState> {
   try {
     const fields:Record<string,string|string[]>={};
     for(const [key,value] of form.entries()){if(typeof value!=='string')throw new Error('File not supported');if(key==='weekdays')fields[key]=form.getAll(key).map(String);else fields[key]=value;}
@@ -62,3 +62,6 @@ export async function reportMissingElementAction(_state:ActionState|null,form:Fo
 export async function approveMissingElementAction(_state:ActionState|null,form:FormData){return submit('handover-missing-approve',form);}
 
 export async function requestSubjectAttentionAction(_state:ActionState|null,form:FormData){return submit('subject-attention',form);}
+
+export async function distributeSubjectAction(_state:ActionState|null,form:FormData){return submit('subject-distribution',form);}
+export async function decideAreaAttentionAction(_state:ActionState|null,form:FormData){return submit('area-decision',form);}

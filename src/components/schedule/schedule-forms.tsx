@@ -6,10 +6,12 @@ import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { createSchedulePlanAction, addScheduleSlotAction, publishSchedulePlanAction, reviewScheduleImportAction, applyScheduleImportAction, acknowledgeScheduleAction, refreshScheduleImportAction } from '@/server/actions/schedule';
+import { scheduleDestinationIssue, scheduleMinimumDate } from '@/domain/schedule-navigation';
+import { hotelDateKey } from '@/domain/time';
 import { scheduleLabel, collaboratorReference } from '@/domain/schedule-display';
 import { SLOT_LABELS, SLOT_KINDS, EXTRA_LABELS, EXTRA_KINDS } from '@/domain/schedule';
 
-export type SchedulePerson = { id: string; name: string; employeeCode: string; functionName: string; weeklyMinutes: number | null; userId: string | null; username?: string | null };
+export type SchedulePerson = { eligible?: boolean; id: string; name: string; employeeCode: string; functionName: string; weeklyMinutes: number | null; userId: string | null; username?: string | null };
 export type ScheduleTemplateOption = { id: string; code: string; label: string; startTime: string; endTime: string; crossesMidnight: boolean };
 export type CalendarPlan = { id: string; humanId: number; version: number; status: string; startDate: string; endDate: string };
 export type CalendarSlot = { id: string; collaboratorId: string; date: string; kind: string; code: string; templateId: string | null; startTime: string | null; endTime: string | null; crossesMidnight: boolean; startAt: string | null; endAt: string | null; extraKind: string; extraMinutes: number; extraStatus: string; reportedExtraMinutes: number | null; note: string | null; breakMinutes: number; breakPaid: boolean; plannedMinutes: number };
@@ -26,17 +28,24 @@ export function NewSchedulePlanForm({ departmentId, today, requestKey }: { depar
     </ActionForm>
   </Dialog>;
 }
-export function ScheduleSlotFields({ plan, people, templates, personId, date, slot, onSaved }: { plan: CalendarPlan; people: SchedulePerson[]; templates: ScheduleTemplateOption[]; personId?: string; date?: string; slot?: CalendarSlot; onSaved?: () => void }) {
+export function ScheduleSlotFields({ plan, people, templates, personId, date, slot, onSaved, now }: { plan: CalendarPlan; people: SchedulePerson[]; templates: ScheduleTemplateOption[]; personId?: string; date?: string; slot?: CalendarSlot; onSaved?: () => void; now: string }) {
   const [kind, setKind] = useState(slot?.kind ?? 'TURNO'); const [extra, setExtra] = useState(slot?.extraKind ?? 'NINGUNO'); const [requestKey] = useState(() => crypto.randomUUID());
+  const eligiblePeople = people.filter(p => p.eligible !== false);
+  const [person, setPerson] = useState(eligiblePeople.find(p => p.id === (slot?.collaboratorId ?? personId))?.id ?? eligiblePeople[0]?.id ?? '');
+  const minimumDate = scheduleMinimumDate(plan, hotelDateKey(new Date(now)));
+  const [selectedDate, setSelectedDate] = useState(slot?.date ?? date ?? minimumDate);
+  const [templateId, setTemplateId] = useState(templates.find(t => t.id === slot?.templateId)?.id ?? templates[0]?.id ?? '');
+  const template = templates.find(t => t.id === templateId);
+  const issue = kind === 'TURNO' && !template ? 'Selecciona un tipo de turno vigente del área.' : scheduleDestinationIssue({ plan, date: selectedDate, person: eligiblePeople.find(p => p.id === person), now, slot: kind === 'TURNO' && template ? { kind, ...template } : undefined });
   return <ActionForm action={addScheduleSlotAction} closeOnSuccess refreshOnSuccess onSuccess={onSaved}>
     <ScheduleMutationFields plan={plan} requestKey={requestKey} />{slot && <input type="hidden" name="replaceSlotId" value={slot.id} />}
-    <div className="grid gap-3 sm:grid-cols-2"><Field label="Colaborador" name="collaboratorId"><Select name="collaboratorId" required defaultValue={slot?.collaboratorId ?? personId} options={people.map((p) => ({ value: p.id, label: [p.name, collaboratorReference(p)].filter(Boolean).join(' · ') }))} /></Field><Field label="Fecha de inicio" name="date"><Input name="date" type="date" required min={plan.startDate} max={plan.endDate} defaultValue={slot?.date ?? date ?? plan.startDate} /></Field></div>
+    <div className="grid gap-3 sm:grid-cols-2"><Field label="Colaborador" name="collaboratorId"><Select name="collaboratorId" required value={person} onChange={e => setPerson(e.target.value)} options={eligiblePeople.map((p) => ({ value: p.id, label: [p.name, collaboratorReference(p)].filter(Boolean).join(' · ') }))} /></Field><Field label="Fecha de inicio" name="date"><Input name="date" type="date" required min={minimumDate} max={plan.endDate} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} /></Field></div>
     <Field label="Programación" name="kind"><Select name="kind" value={kind} onChange={(e) => { setKind(e.target.value); if (e.target.value !== 'TURNO') setExtra('NINGUNO'); }} options={SLOT_KINDS.map((k) => ({ value: k, label: SLOT_LABELS[k] }))} /></Field>
-    {kind === 'TURNO' ? <><Field label="Plantilla del área" name="templateId"><Select name="templateId" required defaultValue={slot?.templateId ?? ''} options={templates.map((t) => ({ value: t.id, label: `${scheduleLabel(t)} · ${t.label}` }))} /></Field><Field label="Extra solicitado" name="extraKind"><Select name="extraKind" value={extra} onChange={(e) => setExtra(e.target.value)} options={EXTRA_KINDS.map((k) => ({ value: k, label: EXTRA_LABELS[k]! }))} /></Field>{extra === 'EXTENSION' ? <Field label="Minutos adicionales al término" name="extraMinutes" hint="Se mantienen el código y las horas de la plantilla; la extensión queda registrada por separado."><Input name="extraMinutes" type="number" min={1} max={720} step={1} required defaultValue={slot?.extraMinutes || 60} /></Field> : <input type="hidden" name="extraMinutes" value="0" />}</> : <><input type="hidden" name="extraKind" value="NINGUNO" /><input type="hidden" name="extraMinutes" value="0" /></>}
+    {kind === 'TURNO' ? <><Field label="Tipo de turno del área" name="templateId"><Select name="templateId" required value={templateId} onChange={e => setTemplateId(e.target.value)} options={templates.map((t) => ({ value: t.id, label: `${scheduleLabel(t)} · ${t.label}` }))} /></Field><Field label="Extra solicitado" name="extraKind"><Select name="extraKind" value={extra} onChange={(e) => setExtra(e.target.value)} options={EXTRA_KINDS.map((k) => ({ value: k, label: EXTRA_LABELS[k]! }))} /></Field>{extra === 'EXTENSION' ? <Field label="Minutos adicionales al término" name="extraMinutes" hint="Se mantienen el código y las horas de la plantilla; la extensión queda registrada por separado."><Input name="extraMinutes" type="number" min={1} max={720} step={1} required defaultValue={slot?.extraMinutes || 60} /></Field> : <input type="hidden" name="extraMinutes" value="0" />}</> : <><input type="hidden" name="extraKind" value="NINGUNO" /><input type="hidden" name="extraMinutes" value="0" /></>}
     <Field label="Observación operativa (opcional)" name="note" hint="No incluyas diagnósticos ni información laboral privada."><Textarea name="note" maxLength={1000} rows={2} defaultValue={slot?.note ?? ''} /></Field>
     {(plan.status === 'PUBLICADO' || slot) && <ScheduleReason />}
     {slot && <p className="text-xs text-slate-600">La versión anterior se conserva. Los extras de la nueva asignación requieren una nueva aprobación.</p>}
-    <SubmitButton>Guardar asignación</SubmitButton>
+    <p className="text-xs text-slate-600">Sólo se admiten fechas y horas de inicio futuras. Las personas no habilitadas se conservan en el historial, pero no pueden recibir nuevas asignaciones.</p>{issue && <p role="status" className="text-sm text-amber-800">{issue}</p>}<SubmitButton disabled={!!issue}>Guardar asignación</SubmitButton>
   </ActionForm>;
 }
 export function PublishScheduleForm({ plan, requestKey, gaps }: { plan: CalendarPlan; requestKey: string; gaps: number }) {

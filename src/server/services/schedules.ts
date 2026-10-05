@@ -13,10 +13,11 @@ import { lockScheduleAreas } from './schedule-catalog';
 import { scheduleWebPushForUsers } from './web-push-scheduler';
 import { scheduleAssignmentStarted } from '@/domain/schedule';
 import { scheduleImportOmittedRows } from '@/domain/schedule-import-timing';
+import { eligibleScheduleCollaboratorWhere } from './schedule-eligibility';
 
 type Tx = Prisma.TransactionClient;
 type Mutation = z.infer<typeof mutationSchema>;
-type Change = { before?: unknown; after?: unknown; affected: string[] };
+type Change = { before?: unknown; after?: unknown; affected: string[]; eligibilitySlotIds?: string[] };
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value ?? {}));
 function rule(message: string): never { throw new RuleError(message); }
 function templateWindow(...args: Parameters<typeof domainTemplateWindow>) {
@@ -69,13 +70,22 @@ export async function lockScheduleCollaborators(tx: Tx, ids: string[]) {
 function futureSlot(s: Pick<ScheduleSlot, 'startAt' | 'date'>, now = new Date()) {
   if (scheduleAssignmentStarted(s, now)) rule('La asignación ya comenzó o pertenece al pasado. Se conserva su historial; no se puede mover ni cancelar desde el calendario.');
 }
-export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
+export async function validateScheduleCollaborators(tx: Tx, ids: string[], eligibilitySlotIds?: string[]) {
   await lockScheduleCollaborators(tx, ids);
   const people = await tx.scheduleCollaborator.findMany({ where: { id: { in: ids } }, include: { memberships: true, slots: { where: { cancelledAt: null, OR: [{ endAt: { gte: new Date(Date.now() - 48 * 3600000) } }, { date: { gte: new Date(hotelCalendarDate().getTime() - 2 * 86400000) } }] }, include: { plan: { select: { departmentId: true } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] } } });
+  // Only newly scheduled or explicitly published rows require eligibility. This
+  // lets an operator cancel/reassign an invalid legacy row one at a time.
+  const now = new Date(); const today = hotelCalendarDate(now);
+  const toValidate = people.flatMap(p => p.slots).filter(s => (s.endAt ? s.endAt > now : s.date >= today) && (!eligibilitySlotIds || eligibilitySlotIds.includes(s.id)));
+  const eligibleByArea = new Map<string, Set<string>>();
+  for (const area of [...new Set(toValidate.map(s => s.plan.departmentId))]) {
+    const eligible = await tx.scheduleCollaborator.findMany({ where: { id: { in: ids }, ...eligibleScheduleCollaboratorWhere(area) }, select: { id: true } });
+    eligibleByArea.set(area, new Set(eligible.map(p => p.id)));
+  }
   for (const person of people) {
     const slots = person.slots;
     for (const s of slots) {
-      if (s.date >= hotelCalendarDate() && (!person.active || !person.memberships.some((m) => m.active && m.departmentId === s.plan.departmentId))) rule(`${person.name} no está habilitado en el área de una asignación futura.`);
+      if (toValidate.some(candidate => candidate.id === s.id) && !eligibleByArea.get(s.plan.departmentId)?.has(person.id)) rule(`${person.name} no está habilitado en el área de una asignación futura: revisa cuenta activa, visible y operativa, perfil y pertenencia al área.`);
     }
     for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
       const a = slots[i]!; const b = slots[j]!;
@@ -96,7 +106,7 @@ export async function validateScheduleCollaborators(tx: Tx, ids: string[]) {
 export async function buildScheduleSlot(tx: Tx, plan: SchedulePlan, input: SlotInput, now = new Date()): Promise<Prisma.ScheduleSlotUncheckedCreateInput> {
   const date = new Date(`${input.date}T00:00:00Z`);
   if (date < plan.startDate || date > plan.endDate) rule('La fecha está fuera de la malla.');
-  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } }, memberships: { some: { departmentId: plan.departmentId, active: true } } } });
+  const person = await tx.scheduleCollaborator.findFirst({ where: { id: input.collaboratorId, ...eligibleScheduleCollaboratorWhere(plan.departmentId) } });
   if (!person) rule('El colaborador debe estar activo y habilitado en esta área.');
   if (input.kind !== 'TURNO') {
     if (scheduleAssignmentStarted({ date, startAt: null }, now)) rule('No se pueden crear descansos o ausencias retroactivos.');
@@ -140,7 +150,7 @@ export async function mutateSchedulePlan(user: CurrentUser, raw: Mutation, actio
     if (published && !options.noScheduleChange && permission !== 'schedule.extra.approve') await assertScheduleArea(user, plan.departmentId, 'schedule.publish', tx);
     if ((published || options.publish) && !input.reason.trim()) rule('Registra un motivo antes de publicar o cambiar un horario publicado.');
     const change = await fn(tx, plan);
-    await validateScheduleCollaborators(tx, [...new Set(change.affected)]);
+    await validateScheduleCollaborators(tx, [...new Set(change.affected)], change.eligibilitySlotIds);
     const version = plan.version + 1;
     const shouldPublish = options.publish || (published && !options.noScheduleChange);
     const updated = await tx.schedulePlan.update({ where: { id: plan.id }, data: { version, ...(shouldPublish ? { status: 'PUBLICADO', publishedAt: new Date(), publishedVersion: version } : {}) } });
@@ -160,7 +170,7 @@ export async function addScheduleSlot(user: CurrentUser, mutation: Mutation, raw
     if (previous) { futureSlot(previous); if (!mutation.reason.trim()) rule('Registra el motivo del cambio de asignación.'); }
     await lockScheduleCollaborators(tx, [input.collaboratorId, ...(previous ? [previous.collaboratorId] : [])]);
     if (previous) await tx.scheduleSlot.update({ where: { id: previous.id }, data: { cancelledAt: new Date() } });
-    const slot = await tx.scheduleSlot.create({ data: await buildScheduleSlot(tx, plan, input) }); return { before: previous, after: slot, affected: [slot.collaboratorId, ...(previous ? [previous.collaboratorId] : [])] };
+    const slot = await tx.scheduleSlot.create({ data: await buildScheduleSlot(tx, plan, input) }); return { before: previous, after: slot, affected: [slot.collaboratorId, ...(previous ? [previous.collaboratorId] : [])], eligibilitySlotIds: [slot.id] };
   });
 }
 export const moveSchema = z.object({ slotId: scheduleId, targetCollaboratorId: scheduleId, targetDate: scheduleDate, mode: z.enum(['MOVER', 'REASIGNAR', 'INTERCAMBIAR', 'AGREGAR']), targetSlotId: z.string().max(100).optional() });
@@ -180,7 +190,8 @@ export async function moveScheduleSlot(user: CurrentUser, mutation: Mutation, ra
     }
     await lockScheduleCollaborators(tx, [source.collaboratorId, input.targetCollaboratorId]);
     const clone = async (s: ScheduleSlot, collaboratorId: string, dateKey: string) => {
-      const person = await tx.scheduleCollaborator.findFirst({ where: { id: collaboratorId, active: true, memberships: { some: { departmentId: plan.departmentId, active: true } } } }); if (!person) rule('El destino no pertenece al área o está inactivo.');
+      if (dateKey < plan.startDate.toISOString().slice(0, 10) || dateKey > plan.endDate.toISOString().slice(0, 10)) rule('La fecha está fuera de la malla.');
+      const person = await tx.scheduleCollaborator.findFirst({ where: { id: collaboratorId, ...eligibleScheduleCollaboratorWhere(plan.departmentId) } }); if (!person) rule('El destino debe tener cuenta activa, visible y operativa y estar habilitado en el área.');
       const { id: _id, createdAt: _created, updatedAt: _updated, ...values } = s;
       const clocks = s.kind === 'TURNO' ? templateWindow(dateKey, { startTime: s.startTime!, endTime: s.endTime!, crossesMidnight: s.crossesMidnight, breakStartTime: s.breakStartAt ? `${hotelPartsTime(s.breakStartAt)}` : null, breakMinutes: s.breakMinutes, breakPaid: s.breakPaid }) : { startAt: null, endAt: null, breakStartAt: null, breakEndAt: null };
       const data = { ...values, ...clocks, baseEndAt: clocks.endAt, collaboratorId, date: new Date(`${dateKey}T00:00:00Z`), functionName: person.functionName, cancelledAt: null };
@@ -191,7 +202,7 @@ export async function moveScheduleSlot(user: CurrentUser, mutation: Mutation, ra
     if (target) await tx.scheduleSlot.update({ where: { id: target.id }, data: { cancelledAt: new Date() } });
     const after = [await clone(source, input.targetCollaboratorId, input.targetDate)];
     if (target) after.push(await clone(target, source.collaboratorId, source.date.toISOString().slice(0, 10)));
-    return { before, after, affected: [source.collaboratorId, input.targetCollaboratorId] };
+    return { before, after, affected: [source.collaboratorId, input.targetCollaboratorId], eligibilitySlotIds: after.map(s => s.id) };
   });
 }
 function hotelPartsTime(date: Date) { const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); return formatter.format(date); }
@@ -199,7 +210,7 @@ export async function cancelScheduleSlot(user: CurrentUser, mutation: Mutation, 
   scheduleId.parse(slotId); if (!mutation.reason.trim()) rule('Indica por qué cancelas la asignación.');
   return mutateSchedulePlan(user, mutation, 'CANCELAR_ASIGNACION', 'schedule.manage', { slotId }, async (tx, plan) => {
     const slot = await tx.scheduleSlot.findFirst({ where: { id: slotId, planId: plan.id, cancelledAt: null } }); if (!slot) throw new NotFoundError(); futureSlot(slot);
-    await lockScheduleCollaborators(tx, [slot.collaboratorId]); const after = await tx.scheduleSlot.update({ where: { id: slot.id }, data: { cancelledAt: new Date() } }); return { before: slot, after, affected: [slot.collaboratorId] };
+    await lockScheduleCollaborators(tx, [slot.collaboratorId]); const after = await tx.scheduleSlot.update({ where: { id: slot.id }, data: { cancelledAt: new Date() } }); return { before: slot, after, affected: [slot.collaboratorId], eligibilitySlotIds: [] };
   });
 }
 export async function publishSchedulePlan(user: CurrentUser, mutation: Mutation) {
@@ -207,7 +218,7 @@ export async function publishSchedulePlan(user: CurrentUser, mutation: Mutation)
     if (plan.status === 'PUBLICADO') rule('Esta malla ya está publicada. Los cambios posteriores se publican con su propio motivo e historial.');
     const slots = await tx.scheduleSlot.findMany({ where: { planId: plan.id, cancelledAt: null } });
     if (!slots.length) rule('Agrega asignaciones antes de publicar.');
-    return { before: { status: plan.status }, after: { status: 'PUBLICADO', slots }, affected: slots.map((s) => s.collaboratorId) };
+    return { before: { status: plan.status }, after: { status: 'PUBLICADO', slots }, affected: slots.map((s) => s.collaboratorId), eligibilitySlotIds: slots.map(s => s.id) };
   }, { publish: true });
 }
 export async function changeScheduleExtra(user: CurrentUser, mutation: Mutation, raw: unknown) {
@@ -232,7 +243,7 @@ export async function changeScheduleExtra(user: CurrentUser, mutation: Mutation,
       if (!extraStart || extraStart <= new Date()) rule('El extra ya comenzó. Conserva su registro y revisa la realización; no se rechaza retroactivamente.');
     }
     const after = await tx.scheduleSlot.update({ where: { id: slot.id }, data: { extraStatus, ...(input.action === 'RECHAZAR' ? slot.extraKind === 'TURNO_EXTRA' ? { cancelledAt: new Date() } : { endAt: slot.baseEndAt } : {}), ...(reportedExtraMinutes !== undefined ? { reportedExtraMinutes } : {}) } });
-    return { before: slot, after, affected: [slot.collaboratorId] };
+    return { before: slot, after, affected: [slot.collaboratorId], eligibilitySlotIds: input.action === 'APROBAR' ? [slot.id] : [] };
   }, { noScheduleChange: ['REPORTAR', 'VALIDAR'].includes(input.action), ...(own ? { ownSlotId: input.slotId } : {}) });
 }
 export async function acknowledgeSchedule(user: CurrentUser, planId: string, version: number) {
@@ -256,14 +267,14 @@ export async function getScheduleBoard(user: CurrentUser, departmentId: string, 
   const today = hotelCalendarDate();
   const selected = focused ?? plans.find((p) => p.startDate <= today && p.endDate >= today) ?? [...plans].filter((p) => p.startDate > today).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0] ?? plans[0];
   if (focused && !plans.some((p) => p.id === focused.id)) plans.push(focused);
-  const catalogPeople = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), memberships: { some: { departmentId, active: true } }, ...(canManage ? { active: true, user: { active: true, deletedAt: null, hiddenFromSelectors: false, role: { operational: true } } } : {}) }, include: { user: { select: { name: true, username: true } } }, orderBy: { name: 'asc' }, take: 500 });
+  const catalogPeople = await prisma.scheduleCollaborator.findMany({ where: { ...(team ? {} : { userId: user.id }), ...eligibleScheduleCollaboratorWhere(departmentId) }, include: { user: { select: { name: true, username: true } } }, orderBy: { name: 'asc' }, take: 500 });
   const templates = canManage ? await prisma.scheduleTemplate.findMany({ where: { departmentId, active: true }, orderBy: { code: 'asc' } }) : [];
-  const collaborators = catalogPeople.map(({ user: account, ...p }) => ({ ...p, name: account?.name ?? p.name, username: account?.username ?? null }));
+  const collaborators = catalogPeople.map(({ user: account, ...p }) => ({ ...p, name: account?.name ?? p.name, username: account?.username ?? null, eligible: true }));
   if (!selected) return { plans, selected: null, collaborators, templates, slots: [], contextSlots: [], rules: [], gaps: [], totals: {}, holidays: [], events: [], acknowledgments: [], imports: [], canManage, canPublish, canApprove: writable && scheduleAllowed(user, 'schedule.extra.approve'), team };
   const from = datePlus(selected.startDate.toISOString().slice(0, 10), -7); const to = datePlus(selected.endDate.toISOString().slice(0, 10), 7);
   const [slots, contextSlots, rules, holidays, events, acknowledgments, imports] = await Promise.all([
     prisma.scheduleSlot.findMany({ where: { planId: selected.id, cancelledAt: null, ...(team ? {} : { collaborator: { userId: user.id } }) }, include: { collaborator: { select: { id: true, name: true, employeeCode: true, weeklyMinutes: true, userId: true, user: { select: { name: true, username: true } } } } }, orderBy: [{ date: 'asc' }, { startAt: 'asc' }] }),
-    prisma.scheduleSlot.findMany({ where: { cancelledAt: null, date: { gte: new Date(from), lte: new Date(to) }, ...(team ? { OR: [{ plan: { departmentId, status: 'PUBLICADO' } }, { planId: selected.id }] } : { collaborator: { userId: user.id }, plan: { departmentId, status: 'PUBLICADO' } }) } }),
+    prisma.scheduleSlot.findMany({ where: { collaborator: eligibleScheduleCollaboratorWhere(departmentId), cancelledAt: null, date: { gte: new Date(from), lte: new Date(to) }, ...(team ? { OR: [{ plan: { departmentId, status: 'PUBLICADO' } }, { planId: selected.id }] } : { collaborator: { userId: user.id, ...eligibleScheduleCollaboratorWhere(departmentId) }, plan: { departmentId, status: 'PUBLICADO' } }) } }),
     team ? prisma.scheduleCoverageRule.findMany({ where: { departmentId, active: true } }) : Promise.resolve([]),
     prisma.scheduleHoliday.findMany({ where: { active: true, date: { gte: new Date(from), lte: new Date(to) } }, orderBy: { date: 'asc' } }),
     canManage || canPublish ? prisma.scheduleEvent.findMany({ where: { planId: selected.id }, include: { actor: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 50 }) : Promise.resolve([]),

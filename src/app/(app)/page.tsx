@@ -47,11 +47,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <nav aria-label="Pendientes de Recepción" className="flex flex-wrap gap-2 text-sm">
-        <Link className="btn-primary" href="/coordinacion?mios=1">Lo que debo coordinar</Link>
-        <Link className="btn-secondary" href="/coordinacion?historial=1">Resultados recibidos</Link>
-        <details className="rounded-lg border border-slate-200 p-2"><summary className="cursor-pointer">Más ···</summary><div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/coordinacion?vista=unassigned">Sin responsable</Link><Link className="underline" href="/coordinacion?vista=carryover">Continuidad del turno anterior</Link></div></details>
-      </nav>
+      <Link href="/turno/cambios" className="block rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-petrol-800 underline">Qué cambió desde mi último turno</Link>
+      <details className="group rounded-md border border-slate-200 bg-white">
+        <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-petrol-800">Ver coordinación</summary>
+        <nav aria-label="Vistas de Coordinación" className="flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-200 px-4 py-3 text-sm text-petrol-700">
+          <Link className="flex min-h-11 items-center underline underline-offset-4" href="/coordinacion?mios=1">Lo que debo coordinar</Link>
+          <Link className="flex min-h-11 items-center underline underline-offset-4" href="/coordinacion?historial=1">Resultados recibidos</Link>
+          <Link className="flex min-h-11 items-center underline underline-offset-4" href="/coordinacion?vista=unassigned">Sin responsable</Link>
+          <Link className="flex min-h-11 items-center underline underline-offset-4" href="/coordinacion?vista=carryover">Continuidad del turno anterior</Link>
+        </nav>
+      </details>
       {/* ------------------------------ Turno actual ------------------------------ */}
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4">
@@ -114,7 +119,7 @@ export default async function DashboardPage() {
             {data.incoming && !shift && !outgoingStillClosing && user.roleOperational ? (
               <Link
                 href={`/turno/entrega/${data.incoming.id}`}
-                className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                className="inline-flex items-center gap-2 rounded-md bg-petrol-800 px-3.5 py-2 text-sm font-semibold text-white hover:bg-petrol-900"
               >
                 <Inbox className="h-4 w-4" aria-hidden="true" />
                 Revisar y recibir entrega
@@ -132,7 +137,7 @@ export default async function DashboardPage() {
             {shift && shift.status === ShiftStatus.PREPARANDO_ENTREGA && shift.handoverOut ? (
               <Link
                 href={`/turno/entrega/${shift.handoverOut.id}`}
-                className="inline-flex items-center gap-2 rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 hover:bg-gold-400"
+                className="inline-flex items-center gap-2 rounded-md bg-petrol-800 px-3.5 py-2 text-sm font-semibold text-white hover:bg-petrol-900"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
                 Continuar la entrega
@@ -277,8 +282,6 @@ export default async function DashboardPage() {
           title="Atención ahora"
           count={data.attention.length}
           action={<OperationalBriefButton />}
-          href="/libro"
-          hrefLabel="Abrir Libro"
         />
         {data.attention.length === 0 ? (
           <EmptyState

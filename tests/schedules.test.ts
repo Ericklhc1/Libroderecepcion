@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
-import { saveScheduleCollaborator, saveScheduleTemplate, saveScheduleCoverage, saveScheduleGrant } from '@/server/services/schedule-catalog';
+import { saveScheduleCollaborator, removeScheduleMembership, getScheduleCatalog, saveScheduleTemplate, saveScheduleCoverage, saveScheduleGrant } from '@/server/services/schedule-catalog';
 import { createSchedulePlan, addScheduleSlot, getScheduleBoard, getSchedulePlan, moveScheduleSlot, cancelScheduleSlot, publishSchedulePlan, changeScheduleExtra, acknowledgeSchedule } from '@/server/services/schedules';
 import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
 import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
@@ -11,12 +11,21 @@ import { readScheduleContext, scheduleReviewReply } from '@/server/ai/fronti-v2/
 import { runReceptionAssistant } from '@/server/ai/reception-assistant';
 import { buildFrontiRuntimeContext } from '@/server/ai/fronti-v2/context-builder';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
+import { scheduleCsvTemplate } from '@/domain/schedule-csv';
 import { reviewScheduleImport, applyScheduleImport, refreshScheduleImport } from '@/server/services/schedule-import';
 
 describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => {
   let admin: CurrentUser; let reader: CurrentUser; let own: CurrentUser; let area: string; let other: string; let planId: string; let a: string; let b: string; let day: string; let night: string;
   beforeAll(seedCatalog);
-  afterEach(() => vi.useRealTimers());
+  let nonOperationalRoleId: string | null = null;
+  afterEach(async () => {
+    vi.useRealTimers();
+    if (nonOperationalRoleId) {
+      await prisma.user.updateMany({ where: { roleId: nonOperationalRoleId }, data: { roleId: own.roleId } });
+      await prisma.role.delete({ where: { id: nonOperationalRoleId } });
+      nonOperationalRoleId = null;
+    }
+  });
   beforeEach(async () => {
     await resetOperationalData();
     admin = await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN });
@@ -265,9 +274,118 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     expect(response.snapshot.assignments).toHaveLength(1); expect(response.snapshot.assignments[0]?.collaborator).toBe('Colaborador Uno');
   });
 
+  it('rechaza una malla que pertenece a otra área en vez de mezclar sus datos', async () => {
+    await expect(getScheduleBoard(admin, other, planId)).rejects.toThrow();
+    expect((await getScheduleBoard(admin, other)).selected).toBeNull();
+  });
+
   it('elige por defecto la malla vigente o la futura más cercana', async () => {
     await createSchedulePlan(admin, { departmentId: area, startDate: '2090-10-09', endDate: '2090-10-16' });
     expect((await getScheduleBoard(admin, area)).selected?.id).toBe(planId);
+  });
+
+  it.each(['inactiva', 'oculta', 'eliminada', 'no operativa', 'perfil inactivo', 'sin pertenencia'] as const)('aplica elegibilidad única a cuenta %s en creación, movimiento, publicación y cobertura', async state => {
+    await add(a, '2090-10-03');
+    await add(b, '2090-10-05');
+    await saveScheduleCoverage(admin, { departmentId: area, name: 'TEST_COBERTURA', weekdays: [0, 1, 2, 3, 4, 5, 6], startTime: '08:00', endTime: '19:00', crossesMidnight: false, minimum: 1 });
+    if (state === 'inactiva') await prisma.user.update({ where: { id: own.id }, data: { active: false } });
+    if (state === 'oculta') await prisma.user.update({ where: { id: own.id }, data: { hiddenFromSelectors: true } });
+    if (state === 'eliminada') await prisma.user.update({ where: { id: own.id }, data: { deletedAt: new Date() } });
+    if (state === 'no operativa') {
+      nonOperationalRoleId = (await prisma.role.create({ data: { key: `TEST_NO_OPERATIVO_${randomUUID()}`, name: 'Prueba no operativa', operational: false } })).id;
+      await prisma.user.update({ where: { id: own.id }, data: { roleId: nonOperationalRoleId } });
+    }
+    if (state === 'perfil inactivo') await prisma.scheduleCollaborator.update({ where: { id: a }, data: { active: false } });
+    if (state === 'sin pertenencia') await prisma.scheduleMembership.update({ where: { collaboratorId_departmentId: { collaboratorId: a, departmentId: area } }, data: { active: false } });
+    const original = await slot(); const sourceB = await slot(b, '2090-10-05'); const version = (await mutation()).version;
+    await expect(add(a, '2090-10-04')).rejects.toThrow('activo');
+    await expect(moveScheduleSlot(admin, await mutation(), { slotId: original.id, targetCollaboratorId: a, targetDate: '2090-10-04', mode: 'MOVER' })).rejects.toThrow('habilitado');
+    await expect(moveScheduleSlot(admin, await mutation(), { slotId: sourceB.id, targetCollaboratorId: a, targetDate: '2090-10-04', mode: 'REASIGNAR' })).rejects.toThrow('habilitado');
+    await expect(publishSchedulePlan(admin, await mutation(planId, 'Prueba de publicación inválida'))).rejects.toThrow('no está habilitado');
+    const board = await getScheduleBoard(admin, area, planId);
+    expect(board.collaborators.some(p => p.id === a)).toBe(false);
+    expect(board.slots.find(s => s.id === original.id)?.cancelledAt).toBeNull();
+    expect(board.contextSlots.some(s => s.collaboratorId === a)).toBe(false);
+    expect(board.gaps.find(g => g.date === '2090-10-03')?.scheduled).toBe(0);
+    expect((await mutation()).version).toBe(version);
+    // Resolving one invalid legacy assignment must remain possible.
+    await moveScheduleSlot(admin, await mutation(), { slotId: original.id, targetCollaboratorId: b, targetDate: '2090-10-03', mode: 'REASIGNAR' });
+    expect((await slot(b)).collaboratorId).toBe(b);
+  });
+
+  it('permite limpiar varias asignaciones de una cuenta deshabilitada sin restaurar su elegibilidad', async () => {
+    await add(a, '2090-10-03'); await add(a, '2090-10-04');
+    await prisma.user.update({ where: { id: own.id }, data: { active: false } });
+    await cancelScheduleSlot(admin, await mutation(planId, 'Retiro de programación'), (await slot()).id);
+    expect((await slot(a, '2090-10-04')).cancelledAt).toBeNull();
+    await cancelScheduleSlot(admin, await mutation(planId, 'Retiro de programación restante'), (await slot(a, '2090-10-04')).id);
+    const current = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    await saveScheduleCollaborator(admin, { id: a, version: current.version, userId: own.id, departmentIds: [area], active: false });
+    expect((await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } })).active).toBe(false);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: own.id } })).active).toBe(false);
+  });
+
+  it('rechaza mover fuera de periodo sin cancelar origen ni incrementar versión', async () => {
+    await add(); const original = await slot(); const m = await mutation();
+    await expect(moveScheduleSlot(admin, m, { slotId: original.id, targetCollaboratorId: a, targetDate: '2090-10-09', mode: 'MOVER' })).rejects.toThrow('fuera de la malla');
+    expect((await slot()).id).toBe(original.id); expect((await mutation()).version).toBe(m.version);
+  });
+
+  it('retira sólo una pertenencia con permiso actual y conserva cuenta, principal, otras áreas e historial', async () => {
+    const account = await prisma.user.findUniqueOrThrow({ where: { id: own.id } });
+    const person = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    const areaManager = { ...reader, departmentId: other, permissions: ['schedule.catalog.manage'] as CurrentUser['permissions'] };
+    await expect(removeScheduleMembership(areaManager, { collaboratorId: a, departmentId: area, version: person.version, reason: 'Retiro de una pertenencia' })).rejects.toThrow('fuera de tu alcance');
+    await removeScheduleMembership(areaManager, { collaboratorId: a, departmentId: other, version: person.version, reason: 'Retiro de una pertenencia' });
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: own.id } })).toEqual(account);
+    expect(await prisma.scheduleMembership.findUniqueOrThrow({ where: { collaboratorId_departmentId: { collaboratorId: a, departmentId: other } } })).toMatchObject({ active: false });
+    expect(await prisma.scheduleMembership.findUniqueOrThrow({ where: { collaboratorId_departmentId: { collaboratorId: a, departmentId: area } } })).toMatchObject({ active: true });
+    const updated = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    expect(updated.active).toBe(person.active); expect(updated.version).toBe(person.version + 1);
+    expect(await prisma.auditLog.count({ where: { entity: 'ScheduleCatalog', entityId: other, reason: 'Retiro de una pertenencia' } })).toBe(1);
+    // Editing global reference does not silently re-add the removed area.
+    await saveScheduleCollaborator(admin, { id: a, version: updated.version, userId: own.id, departmentIds: [other], weeklyHours: 40 });
+    expect(await prisma.scheduleMembership.findUniqueOrThrow({ where: { collaboratorId_departmentId: { collaboratorId: a, departmentId: other } } })).toMatchObject({ active: false });
+  });
+
+  it('retirar pertenencia bloquea asignaciones futuras y revisiones obsoletas', async () => {
+    await add(); const p = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: a } });
+    await expect(removeScheduleMembership(admin, { collaboratorId: a, departmentId: area, version: p.version, reason: 'Retiro solicitado' })).rejects.toThrow('futuras');
+    await expect(removeScheduleMembership(admin, { collaboratorId: a, departmentId: other, version: p.version - 1, reason: 'Retiro solicitado' })).rejects.toThrow('cambió');
+    expect(await prisma.scheduleMembership.count({ where: { collaboratorId: a, active: true } })).toBe(2);
+  });
+
+  it('importa la identidad literal descargada en fechas por columnas sin resolver homónimos por nombre', async () => {
+    const accountB = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: b } });
+    await prisma.user.update({ where: { id: accountB.userId! }, data: { name: own.name } });
+    const board = await getScheduleBoard(admin, area, planId);
+    const person = board.collaborators.find(person => person.id === a)!;
+    const exportedIdentity = scheduleCsvTemplate([person]).split('\r\n')[1]!.split(';')[0]!;
+    const csv = `ID_COLABORADOR;2090-10-03;2090-10-04\r\n${exportedIdentity};TEST_DIA;LIBRE\r\n`;
+    const draft = await reviewScheduleImport(admin, planId, 'malla-columnas.csv', new TextEncoder().encode(csv));
+    expect(draft.issues).toEqual([]);
+    expect(draft.rows).toHaveLength(2);
+    await applyScheduleImport(admin, await mutation(), draft.id);
+    expect(await prisma.scheduleSlot.count({ where: { planId, collaboratorId: a, cancelledAt: null } })).toBe(2);
+    expect(await prisma.scheduleSlot.count({ where: { planId, collaboratorId: b, cancelledAt: null } })).toBe(0);
+  });
+
+  it('CSV descargado contiene identidades visibles y permite homónimos con @usuario sin acceso técnico', async () => {
+    const accountB = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: b } });
+    await prisma.user.update({ where: { id: accountB.userId! }, data: { name: own.name } });
+    const board = await getScheduleBoard(admin, area, planId);
+    const csv = scheduleCsvTemplate(board.collaborators);
+    expect(csv).toContain(`@${own.username}`); expect(csv).toContain('NOMBRE;FECHA');
+    const lines = csv.trimEnd().split('\r\n');
+    const completed = lines.map((line, i) => !i ? line : line.replace(/;"";"";"";""$/, `;"2090-10-0${i + 2}";"TEST_DIA";"08:00";"19:00"`)).join('\r\n');
+    const draft = await reviewScheduleImport(admin, planId, 'plantilla.csv', new TextEncoder().encode(completed));
+    expect(draft.issues).toEqual([]); expect(draft.rows).toHaveLength(2);
+    await applyScheduleImport(admin, await mutation(), draft.id);
+    expect(await prisma.scheduleSlot.count({ where: { planId, cancelledAt: null } })).toBe(2);
+    const namesOnly = await reviewScheduleImport(admin, planId, 'nombres.csv', new TextEncoder().encode(`NOMBRE;FECHA;CODIGO\n${own.name};2090-10-06;LIBRE\n`));
+    expect(JSON.stringify(namesOnly.issues)).toContain('homónimos');
+    const catalog = await getScheduleCatalog(admin, area);
+    expect(catalog.collaborators.find(p => p.id === a)?.username).toBe(own.username);
   });
 
 });

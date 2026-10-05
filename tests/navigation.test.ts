@@ -197,9 +197,10 @@ describe('shell corporativo con módulos horizontales', () => {
     expect(nav).toContain('export function SidebarNav');
   });
 
-  it('la cabecera conserva las utilidades globales originales', () => {
+  it('la cabecera conserva utilidades y muestra el hotel sin selector redundante', () => {
     expect(layout).toContain('data-tour="global-search"');
-    expect(layout).toContain('<PropertyMenu');
+    expect(layout).not.toContain('<PropertyMenu');
+    expect(layout).toContain('{hotelName}</span>');
     expect(layout).toContain('<AccountMenu');
     expect(layout).toContain('<SupportRequestPanel');
     expect(layout).not.toContain('<QuickActions');
@@ -350,12 +351,11 @@ describe('cerrar sesión es alcanzable en cualquier pantalla', () => {
   });
 
   it('y el perfil es alcanzable desde el teléfono', () => {
-    /*
-      Sin esto, tener el botón en el perfil no serviría de nada: la cadena
-      completa es cabecera móvil → perfil → cerrar sesión.
-    */
-    const layout = readFileSync('src/app/(app)/layout.tsx', 'utf-8');
-    expect(layout).toMatch(/href="\/perfil"[\s\S]{0,200}lg:hidden/);
+    const nav = readFileSync('src/components/layout/nav.tsx', 'utf-8');
+    expect(nav).toContain('role="dialog" aria-modal="true" aria-label="Todo el menú"');
+    expect(nav).toContain('href="/perfil"');
+    expect(nav).toContain('<span>Mi perfil</span>');
+    expect(nav).toContain('<span>Más</span>');
   });
 
   it('el menú de cuenta de escritorio también ofrece cerrar sesión', () => {

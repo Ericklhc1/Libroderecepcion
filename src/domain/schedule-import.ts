@@ -1,3 +1,4 @@
+import { scheduleCsvText } from './schedule-csv';
 import { dateDays, functionKey, validDate } from './schedule';
 import type { TextFragment } from './pms/layout';
 
@@ -40,7 +41,7 @@ export function extractScheduleRoster(fragments: TextFragment[], start: string, 
       for (let i = headerIndex + 1; i < lines.length; i++) {
         const row = lines[i]!; const label = row.find((f) => key(f.text) === 'codigoturno');
         const names = row.filter((f) => f.x < firstX - (glosa ? 140 : 30) && !['nombre', 'firma', 'sumainiciotermino', 'codigoturno', 'horainicio', 'horatermino', 'horas', 'permanencia', 'feriado'].includes(key(f.text)) && !/^semana\s*\d/i.test(f.text));
-        if (names.length) { const raw = names.map((f) => f.text.trim()).filter(Boolean).join(' '); if (glosa) name = row.some((f) => key(f.text) === 'sumainiciotermino') || !name ? raw : `${name} ${raw}`; else { identity = raw; name = raw; } }
+        if (names.length) { const raw = names.map((f) => f.text.trim()).filter(Boolean).join(' '); if (glosa) name = row.some((f) => key(f.text) === 'sumainiciotermino') || !name ? raw : `${name} ${raw}`; else { identity = scheduleCsvText(raw); name = identity; } }
         if (glosa && !label) continue;
         if (!name) { if (label) result.issues.push(`Página ${page}: hay códigos sin nombre reconocible.`); continue; }
         for (const col of dateColumns) {
@@ -53,7 +54,7 @@ export function extractScheduleRoster(fragments: TextFragment[], start: string, 
           if (!code) { result.issues.push(`${name} · ${col.date}: casilla sin programación; no se interpreta como Libre.`); continue; }
           const startTime = glosa && startCell && Math.abs(startCell.x - col.x) < maxDistance ? timeOf(startCell.text) : null; const endTime = glosa && endCell && Math.abs(endCell.x - col.x) < maxDistance ? timeOf(endCell.text) : null;
           if (glosa && !['LIBRE', 'VACACIONES', 'AUSENCIA'].includes(code) && (!startTime || !endTime)) result.issues.push(`${name} · ${col.date}: falta una hora válida en la glosa.`);
-          result.rows.push({ employeeCode: !glosa && identity && /^[A-Za-z0-9_-]{1,32}$/.test(identity) ? identity : null, name, date: col.date, code, startTime, endTime });
+          result.rows.push({ employeeCode: !glosa && identity && /^(?:@[A-Za-z0-9_.-]{1,100}|[A-Za-z0-9_-]{1,32})$/.test(identity) ? identity : null, name, date: col.date, code, startTime, endTime });
         }
       }
     } else {
@@ -68,7 +69,7 @@ export function extractScheduleRoster(fragments: TextFragment[], start: string, 
         if (!date || !code) { if (row.some((f) => f.text.trim())) result.issues.push(`Página/hoja ${page}: fila con fecha o código inválido.`); continue; }
         const startRaw = cell(row, startX); const endRaw = cell(row, endX); const startTime = timeOf(startRaw ?? undefined); const endTime = timeOf(endRaw ?? undefined);
         if ((startRaw && !startTime) || (endRaw && !endTime)) result.issues.push(`Página/hoja ${page}: hora inválida en ${date}.`);
-        result.rows.push({ employeeCode: cell(row, employeeX), name: cell(row, nameX), date, code: codeOf(code), startTime, endTime });
+        result.rows.push({ employeeCode: cell(row, employeeX) ? scheduleCsvText(cell(row, employeeX)!) : null, name: cell(row, nameX) ? scheduleCsvText(cell(row, nameX)!) : null, date, code: codeOf(code), startTime, endTime });
       }
     }
   }

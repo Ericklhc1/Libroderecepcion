@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { ActionForm, Checkbox, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -78,7 +79,7 @@ export function CreateUserDialog({
           <Field label="Rol" name="roleId" required>
             <Select name="roleId" placeholder="Selecciona un rol" options={roles} required />
           </Field>
-          <Field label="Área" name="departmentId">
+          <Field label="Área principal" name="departmentId" hint="Define el área principal de la cuenta. Las pertenencias adicionales se gestionan desde Equipo → Colaboradores.">
             <Select name="departmentId" placeholder="Sin área" options={departments} />
           </Field>
         </div>
@@ -92,11 +93,11 @@ export function CreateUserDialog({
         />
         <Checkbox
           name="hiddenFromSelectors"
-          label="Usuario oculto: no aparece en listas, asignaciones ni turnos"
+          label="Ocultar cuenta de los selectores de todas las áreas"
         />
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
-          Ocultarlo no desactiva la cuenta: podrá iniciar sesión, trabajar, recibir avisos globales
-          y conservará toda su trazabilidad. Sólo deja de ser seleccionable por otras personas.
+          La cuenta oculta puede iniciar sesión y conserva su historial, pero no es elegible para
+          nuevas asignaciones en Equipo. Este estado se aplica a todas sus áreas.
         </p>
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
           Si registras un correo, la clave temporal se envía allí. Sin correo, se usa la casilla
@@ -125,6 +126,8 @@ export function EditUserDialog({
     hiddenFromSelectors: boolean;
     phone: string | null;
     active: boolean;
+    scheduleAreas: string[];
+    scheduleAssignmentCount: number;
   };
   roles: Option[];
   departments: Option[];
@@ -133,6 +136,11 @@ export function EditUserDialog({
     <Dialog title={`Editar ${user.name}`} triggerVariant="secondary" triggerSize="sm" trigger="Editar">
       <ActionForm action={updateUserAction} closeOnSuccess>
         <input type="hidden" name="id" value={user.id} />
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          <p>Pertenencias de horarios activas: {user.scheduleAreas.join(', ') || 'ninguna'}.</p>
+          <p>Cambiar el área principal no añade ni retira estas pertenencias. También pueden intervenir en el acceso operativo según el rol.</p>
+          <p>Para retirar sólo un área, usa Equipo → Colaboradores. Los cambios de cuenta se aplican a todas sus áreas.</p>
+        </div>
         <Field label="Nombre" name="name" required>
           <Input name="name" defaultValue={user.name} required maxLength={120} />
         </Field>
@@ -158,7 +166,7 @@ export function EditUserDialog({
           >
             <Select name="roleId" defaultValue={user.roleId} options={roles} required />
           </Field>
-          <Field label="Área" name="departmentId">
+          <Field label="Área principal" name="departmentId" hint="Define el área principal de la cuenta. Las pertenencias adicionales se gestionan desde Equipo → Colaboradores.">
             <Select
               name="departmentId"
               placeholder="Sin área"
@@ -177,14 +185,16 @@ export function EditUserDialog({
         />
         <Checkbox
           name="hiddenFromSelectors"
-          label="Usuario oculto: no aparece en listas, asignaciones ni turnos"
+          label="Ocultar cuenta de los selectores de todas las áreas"
           defaultChecked={user.hiddenFromSelectors}
         />
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
-          La cuenta seguirá completamente activa y operativa. El ocultamiento sólo evita que
-          otras personas puedan seleccionarla en directorios y formularios operativos.
+          Ocultarla mantiene el inicio de sesión, pero impide nuevas asignaciones en Equipo.
+          Desactivar, ocultar o cambiar a un rol no operativo requiere resolver antes las asignaciones
+          vigentes o futuras de todas las áreas, incluidas las de borradores.
         </p>
-        <Checkbox name="active" label="Cuenta activa" defaultChecked={user.active} />
+        <ScheduleAccountReview count={user.scheduleAssignmentCount} />
+        <Checkbox name="active" label="Cuenta activa en todo el sistema" defaultChecked={user.active} />
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>
         </div>
@@ -216,11 +226,22 @@ export function ResetPasswordDialog({ userId, name }: { userId: string; name: st
   );
 }
 
-export function DeleteUserDialog({ userId, name }: { userId: string; name: string }) {
+function ScheduleAccountReview({ count }: { count: number }) {
+  return (
+    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+      {count} asignaciones vigentes o futuras al abrir esta página. El servidor volverá a revisarlas al guardar.
+      {' '}Si hay alguna, desactivar, ocultar, pasar a un rol no operativo o eliminar se bloqueará. Cancela o reasigna las futuras desde{' '}
+      <Link href="/equipo" className="font-medium underline">Equipo</Link> y espera el término de las jornadas en curso.
+      El horario y su historial no se modifican automáticamente.
+    </p>
+  );
+}
+
+export function DeleteUserDialog({ userId, name, scheduleAssignmentCount }: { userId: string; name: string; scheduleAssignmentCount: number }) {
   return (
     <Dialog
       title={`Eliminar a ${name}`}
-      description="Eliminación lógica: se desactiva la cuenta y se conservan sus registros históricos."
+      description="Eliminación lógica de la cuenta en todas sus áreas. Se conserva el historial; no retira sólo una pertenencia."
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
@@ -228,6 +249,7 @@ export function DeleteUserDialog({ userId, name }: { userId: string; name: strin
     >
       <ActionForm action={deleteUserAction} closeOnSuccess>
         <input type="hidden" name="id" value={userId} />
+        <ScheduleAccountReview count={scheduleAssignmentCount} />
         <Field label="Motivo" name="reason" required>
           <Textarea name="reason" rows={3} required minLength={5} />
         </Field>
@@ -368,6 +390,11 @@ export function DepartmentDialog({
           <Input type="number" name="order" min={0} max={999} defaultValue={department?.order ?? 0} />
         </Field>
         <Checkbox name="active" label="Área activa" defaultChecked={department?.active ?? true} />
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          Desactivar retira el área de los selectores y conserva sus cuentas, pertenencias e historial.
+          El servidor bloqueará la desactivación si hay asignaciones vigentes o futuras, incluso en borradores.
+          Revisa y resuelve las futuras desde Equipo; las jornadas en curso deben terminar antes de continuar.
+        </p>
         <div className="flex justify-end">
           <SubmitButton pendingLabel="Guardando…">Guardar área</SubmitButton>
         </div>

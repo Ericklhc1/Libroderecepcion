@@ -1,0 +1,7 @@
+'use client';
+import {ActionForm,Field,Select,Textarea} from '@/components/ui/form';
+import {SubmitButton} from '@/components/ui/button';
+import {decideAreaAttentionAction} from './navigation-action';
+import type {AreaDecision} from '@/server/services/subject-distribution';
+const labels:Record<AreaDecision,string>={CONOCER:'Tomar conocimiento',INFORMAR:'Publicar información al área',ASIGNAR:'Asignar trabajo',ACLARACION:'Devolver para aclaración',RESPONDER:'Responder aclaración',REVISAR_URGENCIA:'Registrar revisión de urgencia',TOMAR_URGENCIA:'Tomar atención urgente',REABRIR:'Solicitar nueva atención al área'};
+export function AreaDecisionForm({id,version,sourceRevision,action,people=[]}:{id:string;version:number;sourceRevision:string;action:AreaDecision;people?:{id:string;name:string}[]}){return <ActionForm action={decideAreaAttentionAction}><input type="hidden" name="id" value={id}/><input type="hidden" name="version" value={version}/><input type="hidden" name="sourceRevision" value={sourceRevision}/><input type="hidden" name="action" value={action}/>{action==='ASIGNAR'&&<Field label="Responsable" name="assigneeId"><Select name="assigneeId" required placeholder="Seleccionar persona del área" options={people.map(p=>({value:p.id,label:p.name}))}/></Field>}{action!=='CONOCER'&&<Field label={action==='ACLARACION'?'Qué debe aclararse':'Instrucción, motivo o resultado de la revisión'} name="note"><Textarea name="note" required maxLength={2000}/></Field>}<SubmitButton size="sm" pendingLabel="Guardando…">{labels[action]}</SubmitButton></ActionForm>;}

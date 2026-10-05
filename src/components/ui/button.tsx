@@ -13,7 +13,8 @@ const VARIANTS: Record<Variant, string> = {
     'bg-white text-petrol-900 ring-1 ring-slate-300 hover:bg-[#f8fafc] disabled:text-slate-400',
   ghost: 'text-petrol-700 hover:bg-petrol-50 disabled:text-slate-400',
   danger: 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300 shadow-sm',
-  gold: 'bg-gold-500 text-petrol-950 hover:bg-gold-400 disabled:bg-gold-200 shadow-sm font-semibold',
+  // Legacy action name; emphasis uses the same navy as primary actions.
+  gold: 'bg-petrol-800 text-white hover:bg-petrol-900 disabled:bg-petrol-300 shadow-sm font-semibold',
 };
 
 const SIZES: Record<Size, string> = {

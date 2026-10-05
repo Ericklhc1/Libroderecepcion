@@ -1,3 +1,6 @@
+import {lockOpenSubjectForWork} from './subject-completion';
+import {assertTaskAssignable} from './task-assignment-access';
+import {notifyUnassignedTask,notifyNativeWork,sourceStakeholders} from './work-notifications';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
@@ -20,7 +23,6 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { TASK_OPEN_STATUSES, TASK_STATUS_LABEL } from '@/domain/labels';
 import { normalizeTags } from '@/domain/tags';
 import { getMyOpenShift } from './shifts';
-import { assertAssignable } from './users';
 import { finishSupervisionTrackingForSource } from './followups';
 
 export const taskInclude = {
@@ -43,6 +45,8 @@ export const taskInclude = {
 export type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
 export type TaskCreateInput = {
+  /** Internal notification channel override for staged inter-area workflow. */
+  internalOnly?: boolean;
   /** Internal recurrence key; never accepted from a public form. */
   procedureOccurrenceKey?: string;
   requiresIndependentValidation?: boolean;
@@ -132,7 +136,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   if (targetType === TaskTargetType.MULTIPLES && participantIds.size < 2) {
     throw new RuleError('Una tarea para varias personas requiere al menos dos participantes.');
   }
-  for (const participantId of participantIds) await assertAssignable(participantId);
+  for (const participantId of participantIds) await assertTaskAssignable(participantId,db);
   if (!assigneeId && participantIds.size > 0) assigneeId = [...participantIds][0] ?? null;
 
   if (input.followUpId && !await db.followUp.findFirst({where:{id:input.followUpId,AND:[followUpReadWhere(user)]},select:{id:true}})) {
@@ -170,6 +174,11 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    if(input.entryId){
+      await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
+      if(!await tx.operationalEntry.count({where:{id:input.entryId,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de solicitar trabajo nuevo.');
+    }
+    for(const id of participantIds)await assertTaskAssignable(id,tx);
     await assertTaskSourceRecipients(tx,new Set([user.id,...participantIds]),input,true);
     if (input.procedureOccurrenceKey) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.procedureOccurrenceKey}))::text`;
@@ -258,6 +267,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
     if (recipients.length > 0) {
       await notify(
         recipients.map((userId) => ({
+          internalOnly:input.internalOnly,
           userId,
           type: NotificationType.TAREA_ASIGNADA,
           title: `Nueva tarea asignada: ${created.title}`,
@@ -273,6 +283,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
       );
     }
 
+    await notifyUnassignedTask(tx,created,user.id);
     return created;
   };
   return client ? write(client) : prisma.$transaction(write);
@@ -388,10 +399,11 @@ export async function assignTask(
   });
   if (!current) throw new NotFoundError('La tarea no existe o fue eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
-  if (input.assigneeId) {await assertAssignable(input.assigneeId);await assertTaskSourceRecipients(prisma,[input.assigneeId],current);}
+  if (input.assigneeId) {await assertTaskAssignable(input.assigneeId);await assertTaskSourceRecipients(prisma,[input.assigneeId],current);}
   if ((current.assigneeId ?? null) === (input.assigneeId ?? null)) return current;
 
   return prisma.$transaction(async (tx) => {
+    if(input.assigneeId)await assertTaskAssignable(input.assigneeId,tx);
     await assertTaskSourceRecipients(tx,[user.id,...(input.assigneeId?[input.assigneeId]:[])],current,true);
     const updated = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
@@ -435,12 +447,14 @@ export async function assignTask(
       });
     }
 
+    const internalOnly=!!await tx.subjectAreaAttention.count({where:{taskId:updated.id}});
     const targets = new Set<string>();
     if (updated.assigneeId) targets.add(updated.assigneeId);
     if (current.assigneeId) targets.add(current.assigneeId);
     targets.delete(user.id);
     await notify(
       Array.from(targets).map((userId) => ({
+        internalOnly,
         userId,
         type:
           userId === updated.assigneeId
@@ -545,6 +559,10 @@ export async function changeTaskStatus(
   }
 
   return prisma.$transaction(async (tx) => {
+    if(current.entryId){
+      await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.entryId} FOR UPDATE`;
+      if(!['VALIDADA','COMPLETADA','CANCELADA'].includes(input.status)&&!await tx.operationalEntry.count({where:{id:current.entryId,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de reactivar su trabajo.');
+    }
     const now = new Date();
     const updated = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt, assigneeId: current.assigneeId, status: current.status, AND:[taskFollowUpReadWhere(user)] },
@@ -595,26 +613,10 @@ export async function changeTaskStatus(
       );
     }
 
-    const targets = new Set<string>([current.createdById]);
-    if (current.assigneeId) targets.add(current.assigneeId);
-    targets.delete(user.id);
-    await notify(
-      Array.from(targets).map((userId) => ({
-        userId,
-        type:
-          input.status === TaskStatus.DEVUELTA ||
-          input.status === TaskStatus.BLOQUEADA ||
-          input.status === TaskStatus.PENDIENTE
-            ? NotificationType.ACCION_REQUERIDA
-            : NotificationType.ACTUALIZACION_OPERATIVA,
-        title: `Tarea ${TASK_STATUS_LABEL[input.status].toLowerCase()}: ${updated.title}`,
-        body: `Actualizada por ${user.name}.`,
-        link: `/tareas/${updated.id}`,
-        entity: 'Task',
-        entityId: updated.id,
-      })),
-      tx,
-    );
+    const originalTargets=[current.createdById,current.assigneeId];
+    const fromDistribution=!!await tx.subjectAreaAttention.count({where:{taskId:updated.id}});
+    await notifyNativeWork(tx,{kind:'task',id:updated.id,actorId:user.id,ids:originalTargets,internalOnly:fromDistribution,title:`Tarea ${TASK_STATUS_LABEL[input.status].toLowerCase()}: ${updated.title}`,body:`Actualizada por ${user.name}.`});
+    await notifyNativeWork(tx,{kind:'task',id:updated.id,actorId:user.id,ids:(await sourceStakeholders(tx,current.entryId)).filter(id=>!originalTargets.includes(id)),title:`Tarea ${TASK_STATUS_LABEL[input.status].toLowerCase()}: ${updated.title}`,body:'Revisa el resultado en el asunto de origen.'});
 
     return updated;
   });
@@ -708,6 +710,7 @@ export async function restoreTask(
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
+    if(!['VALIDADA','COMPLETADA','CANCELADA'].includes(current.status))await lockOpenSubjectForWork(tx,current);
     const restored = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

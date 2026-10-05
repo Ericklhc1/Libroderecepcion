@@ -89,12 +89,12 @@ describe('cabecera persistente y contexto de módulos', () => {
     expect(nav).toContain('<GroupedNav groups={allGroups}');
     expect(nav).toContain('items.filter((item) => item.mobile).slice(0, 4)');
     expect(nav).toContain('<AppearancePreference />');
-    expect(nav).toContain('form action={logoutAction}');
+    expect(nav).toContain('form data-clear-form-drafts action={logoutAction}');
     expect(nav).toContain("}, [route]);");
     expect(nav).toContain('if (returnFocus.current) trigger?.focus()');
     expect(layout).toContain('hotelName={hotelName} roleName={user.roleName}');
     expect(layout.indexOf('<MobileNav')).toBeLessThan(layout.indexOf('</header>'));
-    for (const preserved of ['<FrontiLauncher', '<PropertyMenu', '<AccountMenu', '<HelpCenter', '<NotificationCenter', '<ChatWidget', '<ReceptionAssistant', '<ReceptionOperationGate', '<AnnouncementGate', '<TutorialTour']) expect(layout).toContain(preserved);
+    for (const preserved of ['<FrontiLauncher', '<AccountMenu', '<HelpCenter', '<NotificationCenter', '<ChatWidget', '<ReceptionAssistant', '<ReceptionOperationGate', '<AnnouncementGate', '<TutorialTour']) expect(layout).toContain(preserved);
   });
 
   it('los desplegables contemplan teclado, clic exterior y retorno del foco', () => {
@@ -102,7 +102,7 @@ describe('cabecera persistente y contexto de módulos', () => {
     for (const contract of ["'Escape'", "'ArrowDown'", "'ArrowUp'", "'Home'", "'End'", "'Tab'", "'pointerdown'", "'focusin'", 'aria-controls=', 'trigger?.focus()']) expect(nav).toContain(contract);
     expect(nav).not.toContain('role="menu"');
     expect(nav).toContain("window.addEventListener('pageshow', onPageShow)");
-    expect(nav).toContain('if (event.persisted) setSelection(null)');
+    expect(nav).toContain('if (event.persisted) { setSelection(null); setExpandedModule(null); }');
   });
 });
 

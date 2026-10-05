@@ -10,13 +10,14 @@ import {
 import { saveSingleHandoverNoteAction } from '@/server/actions/handover-note';
 
 /** Una sola nota operativa para el turno siguiente. Volver a guardar reemplaza la anterior. */
-export function AddHandoverNoteForm({ handoverId }: { handoverId: string }) {
+export function AddHandoverNoteForm({ handoverId, actorId, revision, observation = '', nextAction = '' }: { handoverId: string; actorId: string; revision?: string; observation?: string; nextAction?: string }) {
   return (
-    <ActionForm action={saveSingleHandoverNoteAction} hideSuccess>
+    <ActionForm key={`${actorId}:${handoverId}:${revision}`} action={saveSingleHandoverNoteAction} preserveOnSuccess draftRevision={revision} draftScope={`handover-note:${actorId}:${handoverId}`} draftFields={['observation', 'nextAction']}>
       <input type="hidden" name="handoverId" value={handoverId} />
       <Field label="Observación" name="observation" required>
         <Textarea
           name="observation"
+          defaultValue={observation}
           rows={2}
           required
           minLength={3}
@@ -27,6 +28,7 @@ export function AddHandoverNoteForm({ handoverId }: { handoverId: string }) {
       <Field label="Siguiente acción (turno entrante)" name="nextAction">
         <Textarea
           name="nextAction"
+          defaultValue={nextAction}
           rows={2}
           maxLength={500}
           placeholder="Qué debe hacer después, si corresponde."

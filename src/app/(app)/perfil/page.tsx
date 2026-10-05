@@ -100,7 +100,7 @@ export default async function ProfilePage() {
             se comparte entre turnos eso significa que el siguiente opera con la
             cuenta del anterior.
           */}
-          <form action={logoutAction}>
+          <form data-clear-form-drafts action={logoutAction}>
             <button
               type="submit"
               className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-red-700 ring-1 ring-red-200 hover:bg-red-50"

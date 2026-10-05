@@ -16,6 +16,7 @@ import {
 import { formatDateTime } from '@/lib/format';
 import { displayUsername } from '@/domain/username';
 import { credentialsRecipient } from '@/server/mail';
+import { ongoingOrFutureScheduleSlots } from '@/server/services/schedule-admin-safety';
 
 export const metadata = { title: 'Usuarios' };
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,15 @@ export default async function UsersPage({
   // mismo Promise.all en vez de encadenar una espera más.
   const [users, roles, departments, credentialsMailTo] = await Promise.all([
     prisma.user.findMany({
-      include: { role: true, department: { select: { name: true } } },
+      include: {
+        role: true,
+        department: { select: { name: true } },
+        scheduleCollaborator: { select: {
+          active: true,
+          memberships: { select: { active: true, department: { select: { id: true, name: true, active: true } } }, orderBy: { department: { name: 'asc' } } },
+          _count: { select: { slots: { where: ongoingOrFutureScheduleSlots() } } },
+        } },
+      },
       orderBy: [{ deletedAt: 'asc' }, { role: { level: 'desc' } }, { name: 'asc' }],
     }),
     prisma.role.findMany({ orderBy: { level: 'desc' } }),
@@ -57,6 +66,7 @@ export default async function UsersPage({
       user.username,
       user.role.name,
       user.department?.name,
+      ...(user.scheduleCollaborator?.memberships.map((membership) => membership.department.name) ?? []),
       user.email,
       user.phone,
     ]
@@ -80,7 +90,8 @@ export default async function UsersPage({
         <div>
           <h1 className="text-xl font-semibold text-petrol-900">Usuarios</h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Al desactivar o cambiar el rol de un usuario se revocan sus sesiones activas.
+            El estado de la cuenta es global. Al desactivar o cambiar el rol se revocan sus sesiones.
+            El área principal y las pertenencias de horarios tienen efectos distintos.
           </p>
         </div>
         <CreateUserDialog
@@ -137,16 +148,16 @@ export default async function UsersPage({
                     {!user.role.operational ? <Chip>Fuera de operación</Chip> : null}
                     {user.hiddenFromSelectors ? <Chip>Oculto</Chip> : null}
                     {user.active ? (
-                      <Badge tone="resuelto">Activa</Badge>
+                      <Badge tone="resuelto">Cuenta activa</Badge>
                     ) : (
-                      <Badge tone="neutro">Inactiva</Badge>
+                      <Badge tone="neutro">Cuenta inactiva</Badge>
                     )}
                     {user.deletedAt ? <Badge tone="critico">Eliminada</Badge> : null}
                     {user.isDemo ? <Chip>Demo</Chip> : null}
                     {user.mustChangePassword ? <Chip>Debe cambiar contraseña</Chip> : null}
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {user.department?.name ?? 'Sin área'}
+                    Área principal: {user.department?.name ?? 'Sin área principal'}
                     {user.email ? ` · ${user.email}` : ' · sin correo'}
                     {user.email && !user.emailNotificationsEnabled ? ' · avisos por correo desactivados' : ''}
                     {user.phone ? ` · ${user.phone}` : ''} · último ingreso{' '}
@@ -154,6 +165,13 @@ export default async function UsersPage({
                     {user.lockedUntil && user.lockedUntil > new Date()
                       ? ` · bloqueada hasta ${formatDateTime(user.lockedUntil)}`
                       : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Pertenencias de horarios: {user.scheduleCollaborator?.memberships.length
+                      ? user.scheduleCollaborator.memberships.map((membership) => `${membership.department.name}${membership.active ? '' : ' (retirada)'}${membership.department.active ? '' : ' (área inactiva)'}`).join(' · ')
+                      : 'ninguna'}.
+                    {' '}{user.scheduleCollaborator ? `Perfil de horarios ${user.scheduleCollaborator.active ? 'activo' : 'inactivo'}.` : 'Sin perfil de horarios.'}
+                    {' '}{user.scheduleCollaborator?._count.slots ?? 0} asignaciones vigentes o futuras en todas las áreas (incluye borradores).
                   </p>
                   {user.deletionReason ? (
                     <p className="mt-0.5 text-xs text-slate-500">
@@ -178,12 +196,16 @@ export default async function UsersPage({
                           hiddenFromSelectors: user.hiddenFromSelectors,
                           phone: user.phone,
                           active: user.active,
+                          scheduleAreas: user.scheduleCollaborator?.memberships.filter((membership) => membership.active).map((membership) => membership.department.name) ?? [],
+                          scheduleAssignmentCount: user.scheduleCollaborator?._count.slots ?? 0,
                         }}
                         roles={roleOptions}
-                        departments={departmentOptions}
+                        departments={user.departmentId && !departmentOptions.some((department) => department.value === user.departmentId)
+                          ? [...departmentOptions, { value: user.departmentId, label: `${user.department?.name ?? 'Área principal'} (inactiva)` }]
+                          : departmentOptions}
                       />
                       <ResetPasswordDialog userId={user.id} name={user.name} />
-                      <DeleteUserDialog userId={user.id} name={user.name} />
+                      <DeleteUserDialog userId={user.id} name={user.name} scheduleAssignmentCount={user.scheduleCollaborator?._count.slots ?? 0} />
                     </>
                   )}
                 </div>

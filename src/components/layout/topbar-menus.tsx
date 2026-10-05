@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
   Bell,
-  Building2,
   ChevronDown,
   LogOut,
   Sparkles,
@@ -44,7 +43,7 @@ function useCloseOnOutside(
 }
 
 const triggerClass =
-  'inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-petrol-800 shadow-sm transition-colors hover:bg-slate-50';
+  'inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-petrol-800 px-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-petrol-900';
 
 export function FrontiLauncher({ displayName }: { displayName: string }) {
   return (
@@ -55,48 +54,9 @@ export function FrontiLauncher({ displayName }: { displayName: string }) {
       aria-label={`Abrir ${displayName}`}
       title={displayName}
     >
-      <Sparkles className="h-4 w-4 text-gold-600" aria-hidden="true" />
+      <Sparkles className="h-4 w-4" aria-hidden="true" />
       <span className="hidden xl:inline">{displayName}</span>
     </button>
-  );
-}
-
-export function PropertyMenu({ hotelName }: { hotelName: string }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useCloseOnOutside(open, setOpen, ref);
-
-  return (
-    <div ref={ref} className="relative hidden lg:block">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={triggerClass}
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <Building2 className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-        <span>Alojamiento</span>
-        <ChevronDown className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
-      </button>
-
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
-        >
-          <p className="px-2 pb-1 pt-1 text-[0.68rem] font-semibold uppercase tracking-wide text-slate-400">
-            Alojamiento activo
-          </p>
-          <div className="rounded-lg bg-petrol-50 px-3 py-2 text-sm font-semibold text-petrol-900">
-            {hotelName}
-          </div>
-          <p className="px-2 pt-2 text-xs leading-4 text-slate-500">
-            La Central está preparada para que el alojamiento sea contexto global. Actualmente sólo existe esta propiedad.
-          </p>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -126,7 +86,7 @@ export function AccountMenu({
           {initialsText}
         </span>
         <span className="max-w-36 truncate">{userName}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
 
       {open ? (
@@ -160,7 +120,7 @@ export function AccountMenu({
           <div className="border-t border-slate-100 px-3 py-3">
             <AppearancePreference />
           </div>
-          <form action={logoutAction} className="border-t border-slate-100 p-2">
+          <form data-clear-form-drafts action={logoutAction} className="border-t border-slate-100 p-2">
             <button
               type="submit"
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"

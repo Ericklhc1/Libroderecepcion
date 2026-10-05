@@ -1,3 +1,4 @@
+import {canReceiveGenericTask} from './task-assignment-access';
 import 'server-only';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere} from './followup-access';
@@ -11,6 +12,7 @@ export type Option = { value: string; label: string };
 
 export type FormOptions = {
   users: Option[];
+  taskUsers?: Option[];
   departments: Option[];
   /** Legado PMS: se conserva vacío para compatibilidad de componentes antiguos. */
   guests: Option[];
@@ -67,6 +69,7 @@ export async function getFormOptions(user:Pick<CurrentUser,'id'|'permissions'|'i
 
   return {
     users: users.map((user) => ({ value: user.id, label: user.name })),
+    taskUsers: users.filter(user=>canReceiveGenericTask(user.role)).map(user=>({value:user.id,label:user.name})),
     departments: departments.map((department) => ({
       value: department.id,
       label: department.name,

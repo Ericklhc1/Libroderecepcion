@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { preserveScheduleContextHref } from '@/domain/schedule-navigation';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Home, BookOpen, CalendarClock, ShieldCheck, BedDouble, History, BarChart3, DoorClosed, KeyRound, Banknote, AlarmClock, Settings } from 'lucide-react';
 import type { NavGroup, NavItem } from './nav-items';
 import { cn } from '@/lib/cn';
+import { secondaryDestinations } from './navigation-presentation';
 
 const icons = { home: Home, book: BookOpen, shift: CalendarClock, supervision: ShieldCheck, guest: BedDouble, history: History, metrics: BarChart3, room: DoorClosed, key: KeyRound, cash: Banknote, alarm: AlarmClock, admin: Settings };
 
@@ -62,16 +64,16 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
   }, [currentFlyout]);
 
   const badge = (item: NavItem) => badges?.[item.href] ?? badges?.[item.href.split(/[?#]/)[0] ?? item.href] ?? 0;
-  const row = cn('flex min-h-10 items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm font-medium',
+  const row = cn('flex min-h-11 items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm font-medium',
     light ? 'border-transparent text-slate-700 hover:bg-slate-100' : 'border-transparent text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
   const selected = light ? 'bg-petrol-50 text-petrol-900' : 'border-gold-500 bg-petrol-800 text-white';
   const destinations = (item: NavItem) => <div className="space-y-1">
-    {item.menu?.map((section, index) => <div key={section.title + index}>
+    {secondaryDestinations(item).map((section, index) => <div key={section.title + index}>
       <p className={cn('px-3 pt-2 text-xs font-semibold', light || compact ? 'text-slate-500' : 'text-petrol-400')}>{section.title}</p>
-      {section.items.map(subitem => <Link key={subitem.href} href={subitem.href}
+      {section.items.map(subitem => <Link key={subitem.href} href={preserveScheduleContextHref(subitem.href, pathname, search)}
         onClick={() => { setFlyout(null); onNavigate?.(); }}
         aria-current={activeDestination(item, pathname, search) === subitem.href ? 'page' : undefined}
-        className={cn('block rounded-md px-3 py-2 text-sm', light || compact ? 'text-slate-700 hover:bg-slate-100' : 'text-petrol-200 hover:bg-petrol-900',
+        className={cn('flex min-h-11 items-center rounded-md px-3 py-2 text-sm', light || compact ? 'text-slate-700 hover:bg-slate-100' : 'text-petrol-200 hover:bg-petrol-900',
           activeDestination(item, pathname, search) === subitem.href && (light || compact ? 'bg-petrol-50 font-semibold' : 'bg-petrol-800 font-semibold'))}>
         {subitem.label}
       </Link>)}
@@ -80,7 +82,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
 
   const moduleRow = (item: NavItem, groupIndex: number) => {
     const Icon = icons[item.icon];
-    const hasMenu = !!item.menu?.length;
+    const hasMenu = secondaryDestinations(item).length > 0;
     if (compact) return <div key={item.href} className="relative">
       {hasMenu ? <button type="button" title={item.label} aria-label={item.label}
         aria-expanded={currentFlyout?.item.href === item.href} aria-controls={currentFlyout?.item.href === item.href ? id + '-flyout' : undefined}
@@ -91,20 +93,20 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
           setFlyout({ item, route, left: Math.min(rect.right + 8, window.innerWidth - 332), top: Math.max(12, Math.min(rect.top, window.innerHeight - 360)) });
         }} className={cn(row, 'w-full justify-center px-2', active === item.href && selected)}>
         <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-      </button> : <Link href={item.href} onClick={onNavigate} title={item.label} aria-label={item.label} aria-current={active === item.href ? 'page' : undefined}
+      </button> : <Link href={preserveScheduleContextHref(item.href, pathname, search)} onClick={onNavigate} title={item.label} aria-label={item.label} aria-current={active === item.href ? 'page' : undefined}
         className={cn(row, 'justify-center px-2', active === item.href && selected)}><Icon className="h-5 w-5" aria-hidden="true" /></Link>}
       {badge(item) > 0 ? <span className="pointer-events-none absolute right-0 top-0"><Count value={badge(item)} /></span> : null}
     </div>;
     return <div key={item.href}>
       <div className="flex items-center">
-        <Link href={item.href} onClick={onNavigate} className={cn(row, 'min-w-0 flex-1', active === item.href && selected)}>
+        <Link href={preserveScheduleContextHref(item.href, pathname, search)} onClick={onNavigate} aria-current={activeDestination(item, pathname, search) === item.href ? 'page' : undefined} className={cn(row, 'min-w-0 flex-1', active === item.href && selected)}>
           <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{item.label}</span><Count value={badge(item)} />
         </Link>
-        {hasMenu ? <button type="button" aria-label={'Opciones de ' + item.label} aria-expanded={openItem === item.href}
+        {hasMenu ? <button type="button" aria-label={'Vistas de ' + item.label} aria-expanded={openItem === item.href}
           aria-controls={openItem === item.href ? id + '-module-' + groupIndex + '-' + groupIndexForItem(item) : undefined}
-          className={cn('rounded p-2', light ? 'text-slate-600' : 'text-petrol-300')}
+          className={cn('flex min-h-11 items-center gap-1 rounded px-3 text-xs', light ? 'text-petrol-700 hover:bg-petrol-50' : 'text-petrol-300')}
           onClick={() => setSelection({ route, group: groupIndex, item: openItem === item.href ? null : item.href })}>
-          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', openItem === item.href && 'rotate-180')} aria-hidden="true" />
+          Vistas<ChevronDown className={cn('h-4 w-4 transition-transform duration-200', openItem === item.href && 'rotate-180')} aria-hidden="true" />
         </button> : null}
       </div>
       {hasMenu && openItem === item.href ? <div id={id + '-module-' + groupIndex + '-' + groupIndexForItem(item)} className="nav-disclosure-enter ml-4 border-l border-petrol-700 pl-1">{destinations(item)}</div> : null}
@@ -135,7 +137,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
       if (compact) return <div key={'principal-' + index}>{group.items.map(item => moduleRow(item, index))}</div>;
       if (!group.title) return <div key="principal">{group.items.map(item => moduleRow(item, index))}</div>;
       const single = group.items.length === 1 ? group.items[0] : null;
-      if (single && !single.menu?.length) return <div key={group.title}>{moduleRow(single, index)}</div>;
+      if (single && secondaryDestinations(single).length === 0) return <div key={group.title}>{moduleRow(single, index)}</div>;
       return <div key={group.title} onKeyDown={event => {
         if (event.key === 'Escape' && openGroup === index) {
           event.stopPropagation();
@@ -150,7 +152,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
           <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', openGroup === index && 'rotate-180')} aria-hidden="true" />
         </button>
         {openGroup === index ? <div id={id + '-group-' + index} className="nav-disclosure-enter mt-1 space-y-1">
-          {single?.menu?.length ? destinations(single) : group.items.map(item => moduleRow(item, index))}
+          {group.items.map(item => moduleRow(item, index))}
         </div> : null}
       </div>;
     })}
@@ -158,7 +160,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
       aria-label={'Opciones de ' + (currentFlyout.group?.title ?? currentFlyout.item.label)} className="nav-dropdown-enter fixed z-50 w-80 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
       style={{ left: currentFlyout.left, top: currentFlyout.top, maxHeight: 'calc(100dvh - ' + (currentFlyout.top + 12) + 'px)' }}>
       {(currentFlyout.group?.items ?? [currentFlyout.item]).map(item => <div key={item.href}>
-        <Link href={item.href} onClick={() => { setFlyout(null); onNavigate?.(); }} className="block rounded-md px-3 py-2 font-semibold text-petrol-900 hover:bg-slate-100">{item.label}</Link>
+        <Link href={preserveScheduleContextHref(item.href, pathname, search)} onClick={() => { setFlyout(null); onNavigate?.(); }} className="block rounded-md px-3 py-2 font-semibold text-petrol-900 hover:bg-slate-100">{item.label}</Link>
         {destinations(item)}
       </div>)}
     </div>, document.body) : null}

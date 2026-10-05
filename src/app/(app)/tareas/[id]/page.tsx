@@ -91,7 +91,7 @@ export default async function TaskDetailPage({
   const doneItems = task.checklist.filter((item) => item.done).length;
   const canChange = user.permissions.includes('task.edit') || task.assigneeId === user.id || task.createdById === user.id;
   const canValidate = user.permissions.includes('supervision.task.validate') && (!task.requiresIndependentValidation || (!!task.completedById && task.completedById !== user.id));
-  const assign = user.permissions.includes('task.assign') ? <AssignTaskDialog taskId={task.id} currentAssigneeId={task.assigneeId} users={options.users}/> : null;
+  const assign = user.permissions.includes('task.assign') ? <AssignTaskDialog taskId={task.id} currentAssigneeId={task.assigneeId} users={(options.taskUsers??options.users)}/> : null;
   const statusAction = (status: TaskStatus, label: string) => <QuickStatusForm taskId={task.id} status={status} label={label} variant="gold"/>;
   const attention=isSubjectAttentionTask(task.procedureOccurrenceKey);
   const finish = canChange ? (attention?<TaskStatusDialog taskId={task.id} currentStatus={task.status} targetStatus={task.requiresIndependentValidation||!user.permissions.includes('task.close')?TaskStatus.REALIZADA:TaskStatus.COMPLETADA} label="Informar resultado" variant="gold" resultRequired/>:task.evidenceRequired || task.requiresIndependentValidation || !user.permissions.includes('task.close')
@@ -279,7 +279,7 @@ export default async function TaskDetailPage({
               <AssignTaskDialog
                 taskId={task.id}
                 currentAssigneeId={task.assigneeId}
-                users={options.users}
+                users={(options.taskUsers??options.users)}
               />
             ) : null}
             {user.permissions.includes('task.edit') && open ? (

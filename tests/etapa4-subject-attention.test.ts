@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS} from './helpers';
 import {requestSubjectAttention} from '@/server/services/subject-attention';
 import {createEntry,getEntry} from '@/server/services/entries';
@@ -9,7 +9,7 @@ vi.mock('@/server/services/web-push-scheduler',()=>({scheduleWebPushForUsers:vi.
 vi.mock('@/server/services/operational-mail',async original=>({...await original<object>(),tryDeliverOperationalMail:vi.fn()}));
 vi.mock('@/server/ai/fronti-proactive-scheduler',()=>({scheduleFrontiProactiveSweep:vi.fn()}));
 describe('AROH Simple · solicitar atención sin transcripción',()=>{
-  beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  beforeAll(seedCatalog);beforeEach(async()=>{vi.stubEnv('AROH_SUBJECT_AREA_DISTRIBUTION_ENABLED','true');await resetOperationalData();});afterEach(()=>vi.unstubAllEnvs());
   async function fixture(){
     const actor=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
     const room=await prisma.room.findUniqueOrThrow({where:{number:'512'}});
@@ -112,9 +112,9 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     await prisma.housekeepingRequest.update({where:{id:first.id},data:{status:'RESUELTO'}});
     expect(await requestSubjectAttention(f.actor,{...f.input,requestKey:randomUUID()})).toMatchObject({kind:'task',existing:false});
   });
-  it('un reintento conserva el trabajo derivado y otra solicitud no declara atención de un área distinta',async()=>{
+  it('un reintento conserva su trabajo y otra área recibe intervención independiente',async()=>{
     const f=await fixture();const first=await requestSubjectAttention(f.actor,f.input);
-    await expect(requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id,requestKey:randomUUID()})).rejects.toThrow('otra área');
+    expect((await requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id,requestKey:randomUUID()})).kind).toBe('housekeeping');
     await prisma.task.update({where:{id:first.id},data:{departmentId:f.hk.id}});
     expect((await requestSubjectAttention(f.actor,f.input)).id).toBe(first.id);
     await expect(requestSubjectAttention(f.actor,{...f.input,departmentId:f.hk.id})).rejects.toThrow('reintento');
@@ -122,8 +122,8 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     const other=await createEntry(f.actor,{type:'NOVEDAD',title:'Atención especializada existente',description:'Mismo contexto',roomId:f.room.id,priority:'MEDIA',requiresFollowUp:false,tags:[]});
     const hkInput={entryId:other.id,departmentId:f.hk.id,requestKey:randomUUID(),revision:other.updatedAt.toISOString()};
     const hkWork=await requestSubjectAttention(f.actor,hkInput);
-    await expect(requestSubjectAttention(f.actor,{entryId:other.id,departmentId:f.maintenance.id,requestKey:randomUUID(),revision:other.updatedAt.toISOString()})).rejects.toThrow('otra área');
-    expect(await prisma.task.count({where:{entryId:other.id}})).toBe(0);
+    expect((await requestSubjectAttention(f.actor,{entryId:other.id,departmentId:f.maintenance.id,requestKey:randomUUID(),revision:other.updatedAt.toISOString()})).kind).toBe('task');
+    expect(await prisma.task.count({where:{entryId:other.id}})).toBe(1);
     await prisma.housekeepingRequest.update({where:{id:hkWork.id},data:{departmentId:f.maintenance.id}});
     expect((await requestSubjectAttention(f.actor,hkInput)).id).toBe(hkWork.id);
     await expect(requestSubjectAttention(f.actor,{...hkInput,departmentId:f.maintenance.id})).rejects.toThrow('reintento');

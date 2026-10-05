@@ -23,13 +23,15 @@ describe('menú plegable y barra de iconos', () => {
     expect(html).not.toContain('href="/admin/usuarios"');
     expect(html).toContain('>3</span>');
   });
-  it('abre únicamente el grupo actual y evita una capa redundante en Equipo', () => {
+  it('abre el grupo actual y mantiene las vistas de Equipo bajo demanda', () => {
     location.pathname = '/equipo'; location.search = 'seccion=plantillas';
     const html = renderToStaticMarkup(createElement(GroupedNav, { groups }));
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
-    expect(html).toContain('href="/equipo?seccion=plantillas" aria-current="page"');
+    expect(html).toContain('href="/equipo"');
+    expect(html).not.toContain('href="/equipo?seccion=plantillas"');
+    expect(html).toContain('aria-label="Vistas de Equipo y horarios" aria-expanded="false"');
     expect(html).not.toContain('href="/admin/usuarios"');
-    expect(html).not.toContain('Opciones de Equipo y horarios');
+    expect(html.match(/href="\/equipo"/g)).toHaveLength(1);
   });
   it('el modo reducido conserva grupos y no vuelve a listar cada módulo', () => {
     location.pathname = '/'; location.search = '';

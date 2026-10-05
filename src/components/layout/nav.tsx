@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { preserveScheduleContextHref } from '@/domain/schedule-navigation';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,7 +22,7 @@ export function SidebarNav({ groups, badges }: { groups: NavGroup[]; badges?: Pa
 }
 
 /** Barra inferior para móvil: acceso a lo que se usa de pie en el mesón.
- * Módulos y Más abren el catálogo completo, incluidas las vistas secundarias de
+ * Más abre el catálogo completo, incluidas las vistas secundarias de
  * los accesos rápidos. Perfil, apariencia y salida siguen disponibles por rol.
  */
 type MobileNavProps = {
@@ -96,23 +97,18 @@ function MobileNavigation({ items, groups, badges, hotelName, roleName }: Mobile
   const restIsActive = restItems.some(item => current.item?.href === item.href);
 
   return <>
-    <div className="border-t border-petrol-800 bg-petrol-950 px-4 text-white lg:hidden" data-module-navigation="mobile">
-      <button type="button" onClick={event => openPanel(event.currentTarget)} aria-expanded={openMore} aria-controls={openMore ? id + '-panel' : undefined}
-        aria-label={'Abrir módulos. Actual: ' + (current.item?.label ?? 'Navegación')}
-        className="flex min-h-12 w-full items-center gap-2 py-2 text-left">
-        <CurrentIcon className="h-4 w-4 shrink-0 text-gold-400" aria-hidden="true" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{current.item?.label ?? 'Navegación'}</span>
-          {current.destinationLabel && current.destinationLabel !== current.item?.label ? <span className="block truncate text-xs text-petrol-200">{current.destinationLabel}</span> : null}
-        </span>
-        <span className="text-xs text-petrol-200">Módulos</span><Menu className="h-4 w-4 shrink-0" aria-hidden="true" />
-      </button>
+    <div className="flex min-h-10 items-center gap-2 border-t border-petrol-200 px-4 py-2 text-petrol-800 lg:hidden" data-module-navigation="mobile" aria-label="Módulo actual">
+      <CurrentIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <p className="min-w-0 truncate text-sm">
+        <span className="font-semibold">{current.item?.label ?? 'Navegación'}</span>
+        {current.destinationLabel && current.destinationLabel !== current.item?.label ? <span className="text-petrol-700"> · {current.destinationLabel}</span> : null}
+      </p>
     </div>
     {openMore && mounted ? createPortal(
       <div className="fixed inset-0 z-[60] lg:hidden no-print">
         <div className="surface-enter absolute inset-0 bg-petrol-950/40" aria-hidden="true" onClick={() => closePanel()} />
         <div ref={morePanelRef} id={id + '-panel'} role="dialog" aria-modal="true" aria-label="Todo el menú"
-          className="mobile-menu-enter absolute inset-x-0 bottom-[var(--mobile-nav-height)] max-h-[calc(100dvh-var(--mobile-nav-height)-env(safe-area-inset-top)-1rem)] overflow-y-auto overscroll-contain rounded-t-lg border-t-2 border-t-gold-500 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
+          className="mobile-menu-enter absolute inset-x-0 bottom-[var(--mobile-nav-height)] max-h-[calc(100dvh-var(--mobile-nav-height)-env(safe-area-inset-top)-1rem)] overflow-y-auto overscroll-contain rounded-t-lg border-t-2 border-t-petrol-300 bg-white p-3 shadow-[0_-12px_40px_-28px_rgba(9,24,32,0.45)]">
           <div className="mb-2 flex items-start justify-between gap-3 px-1">
             <div className="min-w-0"><p className="text-sm font-semibold text-petrol-900">Todo el menú</p>
               {hotelName ? <p className="truncate text-xs text-slate-500">{hotelName}</p> : null}
@@ -129,7 +125,7 @@ function MobileNavigation({ items, groups, badges, hotelName, roleName }: Mobile
               <UserRound className="h-5 w-5 shrink-0 text-petrol-600" aria-hidden="true" /><span>Mi perfil</span>
             </Link>
             <div className="px-3 py-3"><AppearancePreference /></div>
-            <form action={logoutAction}>
+            <form data-clear-form-drafts action={logoutAction}>
               <button type="submit" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-700 active:bg-red-50">
                 <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Cerrar sesión</span>
               </button>
@@ -143,18 +139,18 @@ function MobileNavigation({ items, groups, badges, hotelName, roleName }: Mobile
         const Icon = NAV_ICONS[item.icon];
         const active = current.item?.href === item.href;
         const badge = badgeFor(badges, item.href);
-        return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
+        return <Link key={item.href} href={preserveScheduleContextHref(item.href, pathname, search)} aria-current={active ? 'page' : undefined}
           className={cn('relative flex h-[3.75rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-800', active ? 'text-white' : 'text-petrol-200')}>
           <Icon className="h-5 w-5" aria-hidden="true" /><span className="max-w-full truncate">{item.mobileLabel ?? item.label}</span>
           {badge > 0 ? <><span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-red-600" aria-hidden="true" /><span className="sr-only">{badge} pendientes</span></> : null}
-          {active ? <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-gold-500" aria-hidden="true" /> : null}
+          {active ? <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-petrol-200" aria-hidden="true" /> : null}
         </Link>;
       })}
       <button type="button" ref={moreTriggerRef} onClick={event => openMore ? closePanel() : openPanel(event.currentTarget)} aria-expanded={openMore} aria-controls={openMore ? id + '-panel' : undefined}
         className={cn('relative flex h-[3.75rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[0.65rem] font-medium transition-colors active:bg-petrol-800', openMore || restIsActive ? 'text-white' : 'text-petrol-200')}>
         <Menu className="h-5 w-5" aria-hidden="true" /><span>Más</span>
         {restHasBadge ? <span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-red-600" aria-hidden="true" /> : null}
-        {restIsActive ? <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-gold-500" aria-hidden="true" /> : null}
+        {restIsActive ? <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-petrol-200" aria-hidden="true" /> : null}
       </button>
     </nav>
   </>;

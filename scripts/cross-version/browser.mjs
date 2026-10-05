@@ -309,6 +309,7 @@ async function declareElements(page, elementId) {
 }
 async function prepare(page, fixture, evidence) {
   await page.goto(`${origin}/turno`);
+  await page.locator('summary').filter({ hasText: /^Entregar turno$/ }).click();
   await button(page, 'INICIAR CIERRE DE TURNO').click();
   await submit(page, 'SÍ, INICIAR CIERRE', evidence);
   const handover = await eventually(() => db.shiftHandover.findUnique({ where: { fromShiftId: fixture.shiftId } }), 'No native draft');
@@ -541,7 +542,16 @@ try {
         row.stage = 'native-close-and-receive';
         row.cycle = await finishCycle(browser, page, fixture, state, width, row.actions);
         row.status = 'PASS';
-      } catch (error) { row.status = mode.includes('control') ? 'CONTROL_FAILED' : 'NO_GO_OR_HARNESS_FAILURE'; row.failure = error.message; }
+      } catch (error) {
+        row.status = mode.includes('control') ? 'CONTROL_FAILED' : 'NO_GO_OR_HARNESS_FAILURE'; row.failure = error.message;
+        row.syntheticUiDiagnostics = [];
+        for (const context of contexts) for (const page of context.pages()) {
+          try {
+            row.syntheticUiDiagnostics.push({ path: new URL(page.url()).pathname,
+              visibleText: (await page.locator('body').innerText({ timeout: 1000 })).slice(-4000) });
+          } catch { /* Preserve the actual failure if a document is unavailable. */ }
+        }
+      }
       finally {
         row.elapsedMs = Date.now() - start;
         await Promise.all(contexts.splice(0).map(context => context.close().catch(() => {})));

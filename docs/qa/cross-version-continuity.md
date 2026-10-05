@@ -12,9 +12,9 @@ nuevos y su publicación requieren autorización antes de subirlos al repositori
   UI + asignación futura, identificado por SHA y etiquetado explícitamente como
   diagnóstico sin aprobación de release. Si las correcciones producen otro SHA,
   revisar el delta y repetir lo afectado sobre ese nuevo SHA. El workflow
-  propuesto fija el candidato provisional `02467f43e60220a8a599d1758dde9551d41cc78d`,
-  árbol `c301620ec5647fa352ce7a78fe26d33feb2abe8e`, con motor y UI diagnóstica.
-  No incluye la reparación SPA final ni aprueba un release. La base
+  propuesto fija el candidato provisional `9ad0138dbba3069847a392d2ff30bccd6eea8570`,
+  árbol `ee053c0500227e14327fe7cba90a57fd4d5e945e`, con motor y UI diagnóstica.
+  Incluye la reparación SPA bajo validación y no aprueba un release. La base
   local del arnés sigue siendo `c1428ea`.
 - El SHA de ambas fuentes queda en `results.json` y en los logs, junto con los
   BUILD_ID. No se acepta evidencia del candidato anterior para el nuevo head.
@@ -97,7 +97,8 @@ Incluso código 0 mantiene `productionDecision=UNVERIFIED_PLATFORM_AND_RELOAD_LI
   físico. El inventario de llaves completo se conserva, pero no se ensayan 89
   conteos físicos, préstamos o cambios de habitación nuevos.
 - Las excepciones de elemento faltante usan una precondición sintética preparada
-  por la fixture; declaración, correcciones, rechazos y aprobaciones se ejecutan
+  por la fixture, sin fondo activo como la regresión de recepción existente;
+  declaración, correcciones, rechazos y aprobaciones se ejecutan
   con botones reales. Este bloque específico no simula su cierre/recepción final
   ni confirma validación posterior de Supervisión del cierre. El ciclo normal
   completo permanece como escenario separado.
@@ -238,3 +239,15 @@ Verificación realizada aquí: `node --check` en ambos archivos JavaScript,
 `bash -n`, transpile sintáctico de `fixture.mts` (0 diagnósticos), `git diff --check`.
 Pendiente: ejecución del job completo, lint/tipos/pruebas/build canónicos y lectura
 del resultado exacto antes de decidir cualquier publicación.
+
+## Primera ejecución provisional, 5 octubre 2026
+
+Run `37255639233`, candidata `02467f43`: ambos builds aprobaron con BUILD_ID
+distintos, cero Server Action IDs compartidos, claves independientes y red de
+runtime limpia. Las sondas de origen aceptaron el público y rechazaron el ajeno
+en ambos builds. Ningún guardado cruzado llegó a ejecutarse: el arnés omitía abrir
+«Entregar turno» y la fixture de excepción pretendía cerrar un turno con fondo
+activo sin cierre de Caja, correctamente impedido por la base. Son fallos del
+arnés, no evidencia de incompatibilidad de la aplicación. Se corrigen esas
+precondiciones; el ciclo normal conserva fondos activos y cierre nativo completo.
+Los fallos futuros incluyen diagnóstico de texto visible exclusivamente sintético.

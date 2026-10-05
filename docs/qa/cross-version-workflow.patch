@@ -24,7 +24,7 @@ new file mode 100644
 +    timeout-minutes: 30
 +    env:
 +      BASELINE_SHA: '928f57b5fc6823229d160623e6253d4a7ce02fb3'
-+      CANDIDATE_SHA: '02467f43e60220a8a599d1758dde9551d41cc78d'
++      CANDIDATE_SHA: '9ad0138dbba3069847a392d2ff30bccd6eea8570'
 +    services:
 +      postgres:
 +        image: postgres:16-alpine

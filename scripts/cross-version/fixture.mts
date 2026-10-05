@@ -44,7 +44,13 @@ try {
     actualStart: new Date(), createdById: outgoing.id, startedById: outgoing.id,
     assignments: { create: { userId: outgoing.id, activatedAt: new Date() } },
   } });
-  await prisma.cashFund.createMany({ data: [{ currency: 'CLP', amount: 20000 }, { currency: 'USD', amount: 20 }] });
+  // The full close-and-receive assay keeps active funds. The separate custody
+  // exception fixture follows the existing reception regression's no-active-
+  // fund precondition; it does not claim to test cash closure in that scenario.
+  await prisma.cashFund.createMany({ data: [
+    { currency: 'CLP', amount: 20000, active: scenario === 'normal' },
+    { currency: 'USD', amount: 20, active: scenario === 'normal' },
+  ] });
   const denominations = await prisma.cashDenomination.findMany({ where: { OR: [{ currency: 'CLP', value: 20000 }, { currency: 'USD', value: 20 }] } });
   if (denominations.length !== 2) throw new Error('Canonical denomination catalog changed');
   const type = await prisma.handoverElementType.create({ data: { name: 'PRUEBA SINTÉTICA · Llaves y teléfono', required: true } });

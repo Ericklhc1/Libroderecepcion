@@ -97,7 +97,7 @@ try {
     await page.reload();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador en conflicto editado');
     await submit(form(),'Guardar arqueo declarado');await page.waitForFunction(key=>sessionStorage.getItem(key)===null,cashDraftKey);await page.reload();
-    await db.cashMovement.create({data:{id:randomUUID(),kind:'AJUSTE',direction:'ENTRADA',amount:1,currency:'CLP',createdById:f.users.admin.id,affectsExpected:false,reference:'SYNTHETIC revision invalidates count'}});
+    await db.cashMovement.create({data:{id:randomUUID(),kind:'AJUSTE_ENTRADA',direction:'ENTRADA',amount:1,currency:'CLP',createdById:f.users.admin.id,affectsExpected:false,reference:'SYNTHETIC revision invalidates count'}});
     await page.reload();await page.getByText(/Caja cambió: confirma nuevamente/).waitFor();assert.equal(await check().isChecked(),false);assert.equal(await quantity().inputValue(),'5');
     // In the synthetic configuration without cash requirements, inspect the note step independently.
     await db.cashFund.updateMany({data:{active:false}});
